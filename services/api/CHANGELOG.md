@@ -9,6 +9,117 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- **`POST /intents/clarify`** — one stateless clarification round. Send
+  `{ payload, answers? }`, get back `{ payload, questions }`. Nothing is stored;
+  the client decides whether to ask again or create.
+- **`POST /intents`** — the one way to create a signal. Takes
+  `{ description, networkIds }`, runs the intent graph, and links the signal to
+  exactly the networks named, each of which must be a current membership. An
+  empty list is allowed: the signal is saved and reaches nobody until it is
+  linked.
+
+### Changed
+- Signal clarification and creation are rate-limited as `intent_llm` (20/min),
+  the class previously named `intake_synthesis`. Both run a model call per
+  request, so the generic write budget was far too loose for them.
+
+### Removed
+- **BREAKING: `/intents/intake/*`, `POST /intents/confirm`, `POST /intents/reject`
+  and `POST /intents/proposals/status`.** The guided intake funnel and the
+  propose-then-confirm handshake are replaced by clarify-then-create.
+  `signal-intake.service.ts`, the pack and run adapters, the proposal adapter and
+  the `FAST_SIGNAL_INTAKE` feature flag are deleted with them. Migration `0173`
+  drops `signal_intake_packs`, `signal_intake_runs` and `intent_proposals`.
+- **BREAKING: automatic network assignment.** A signal no longer gets scored
+  against every network the owner belongs to. `assignIntentToNetworks`,
+  `reconcileIntentNetworks`, `addNetworkReconcileForUser`, the join-time
+  re-evaluation hook and the `maintenance:backfill-intent-networks` script are
+  gone. Links come from `networkIds` on create, or `create_intent_index` later.
+- **`conversations.persona` and the dead H2A chat-session API.** The column
+  labelled which in-process agent loop owned a conversation; every one of those
+  loops is gone and the surviving writers (H2H DMs, agent DMs, negotiation
+  conversations) all left it at `'none'`. `createChatSession`, `getChatSession`,
+  `getUserChatSessions`, `listChatSessionSummaries`, `getChatSessionDetail`,
+  `getChatSessionByShareToken`, `createChatMessage`, `getChatSessionMessages`,
+  `getChatSessionMetadata` and the rest of that block are deleted, along with
+  `ChatPersonaId`, `ChatSession`, `ChatMessage`, `ChatConversationMeta`,
+  `ChatMessageMeta`, `CreateSessionInput`, `CreateMessageInput` and the
+  `X-Chat-Persona` CORS header. Conversation listings key off participant
+  topology. Migration `0171` drops the column.
+- **`agents.type = 'personal'`.** The auto-provisioned `{First}'s Negotiator` row
+  is gone with `ensureNegotiatorAgent`, `getNegotiatorAgent`, the Better Auth
+  sign-in/registration hooks, the invite-path call and
+  `uniq_agents_personal_per_owner`. Migration `0172` deletes the rows and
+  recreates `agent_type` as `('external','system')`. User-registered agents were
+  already `external`.
+- **The seed-persona fixtures.** `sandbox-personas.ts`, `db-seed-sandbox.ts`,
+  `test-data.ts`, `opportunity-three-user-test.ts`, the `db:seed:sandbox` and
+  `test:opportunity-three-user` scripts. `db:seed` now creates only the networks,
+  the three admin accounts (the first owns every network) and the system
+  negotiator — no tester users, intents, agent API keys or `.seed-api-keys.json`.
+  `notify:simulate` without `--counterpart` falls back to any other user.
+  **Break:** local `protocol_sandbox` no longer comes with a curated market.
+- **The experiment service and master-key signup.** `POST /networks/:id/signup`,
+  `/signup/lookup`, `/master-key`, `/rotate-master-key`, `/members/import` and
+  `/members/import/parse` are gone, along with `ExperimentService`,
+  `MasterKeyGuard`, `lib/experiment/master-key.ts`, the
+  `experiment-import-credentials` and `network-master-key-rotated` email
+  templates, and the `maintenance:audit-experiment-emails` script. Networks no
+  longer project `hasMasterKey`.
+- **The Telegram bot.** The gateway, `lib/telegram/bot-api.ts`, the webhooks
+  controller (Telegram was its only route), the boot wiring in `main.ts`, the
+  `TELEGRAM_BOT_*` and `TELEGRAM_WEBHOOK_*` variables, the Telegram
+  notification preference adapters and the notification event are removed. MCP
+  authentication no longer reads `x-telegram-handle` / `x-telegram-username` or
+  binds a handle to an account. Telegram on a user profile stays as a social
+  link.
+- **Composio Slack and Gmail.** `integration.controller.ts`,
+  `integration.service.ts`, `integration.adapter.ts`, `lib/composio/`, the
+  `@composio/core` and `@composio/langchain` dependencies and `COMPOSIO_API_KEY`
+  are gone. Google *login* is unaffected: it runs through Better Auth.
+- Migration `0162` drops `networks.master_key_hash` and the
+  `network_integrations` table.
+
+### Removed
+- **Daily frame-drift monitoring.** The 00:15 UTC cron, its service, both
+  adapters and `lib/frame-drift.config.ts` are gone, along with the
+  `FrameDriftCron` wiring in `main.ts`. The job measured per-network embedding
+  centroids and a cross-network opportunity-yield proxy and then only logged
+  them; nothing read the rows, and its premise corpus disappeared with
+  `premises` in `0160`. Migration `0161` drops
+  `frame_drift_observation_runs`, `frame_centroid_snapshots`,
+  `cross_network_yield_snapshots` and `frame_drift_execution_attempts`,
+  historical snapshots included.
+- **Premises, the opportunity delivery ledger, and the activity summary.** The
+  premise cascade, events, adapters, and seeds are gone; profile saves no longer
+  decompose into premises. `OpportunityDeliveryService` and the
+  `/agents/:id/opportunities/{pickup,pending,accepted,delivery-stats}` and
+  `/:opportunityId/delivered` routes are removed, as is
+  `getAgentActivitySummary`. Migration `0160` drops `premises`,
+  `premise_networks`, `opportunity_deliveries`, the `premise_status` type,
+  `signal_intake_packs.premise_hash`, and `manage:premises` from live
+  `agent_permissions.actions`. `ProjectedScreenDecision` drops
+  `counterpartyPremiseFit`; the historical `tasks.metadata.screenDecision` rows
+  still project their reasoning, `intentAlignment` and `screenedAt`.
+- **The Index Chat Orchestrator system agent and the `orchestrator` chat
+  persona.** `SYSTEM_AGENT_IDS` is only the negotiator; onboarding no longer
+  grants chat-orchestrator permissions; seed no longer inserts that row.
+  Migration `0159` relabels leftover `conversations.persona = 'orchestrator'`
+  to `'none'` and deletes agent `00000000-0000-0000-0000-000000000001`.
+- **The in-process personal agent and every host path that fed it.**
+  `personal-agent.service.ts`, the PersonalAgent reply stream, the intent
+  dossier/ledger adapters, `lib/negotiation/negotiation-graph.ts`, the chat
+  H2A endpoints (`/chat/stream`, `/chat/web/stream`,
+  `/chat/onboarding/stream`), the `ChatGraphFactory` composition, the
+  negotiation watchdog, the `matchesReady` wakes, the intent-cycle/timeline
+  debug endpoints, the negotiator-memory and negotiation-insights endpoints,
+  the connected-agents and agent-runtime controllers/services/adapters, the
+  Hermes credential/capability/telemetry helpers, the floor lab, and
+  `PERSONAL_AGENT_KICKOFF_CONCURRENCY`. Discovery still records candidates and
+  the Radar owner verdict still works; nothing advances a negotiation until an
+  external agent is built against the API.
+
 ### Changed
 - **Delete `src/queues/`.** Nothing in it had been a queue since BullMQ was
   removed; the folder, filenames and class names were the only thing left

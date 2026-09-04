@@ -2,8 +2,12 @@ import { log } from '../lib/log';
 
 import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
+import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
 
 const logger = log.service.from('ConversationService');
+
+/** Well-known conversation id for the caller's own agent DM. */
+export const AGENT_DM_ID = 'agent';
 
 /**
  * Manages conversation lifecycle, messaging, and DM deduplication.
@@ -20,12 +24,21 @@ export class ConversationService {
   constructor(private db: ConversationDatabaseAdapter = conversationDatabaseAdapter) {}
 
   /**
-   * Resolve a conversation identifier (full UUID or short prefix) to a full UUID.
-   * @param idOrPrefix - Full UUID or short hex prefix
+   * Resolve a conversation identifier to a full UUID.
+   *
+   * `agent` is the caller's own agent DM, created on first use: the owner has
+   * exactly one, so it needs no id to address.
+   *
+   * @param idOrPrefix - `agent`, a full UUID, or a short hex prefix
    * @param userId - The user ID (for participant scoping)
    * @returns Resolved ID, or error object with status
    */
   async resolveId(idOrPrefix: string, userId: string): Promise<{ id: string } | { error: string; status: number }> {
+    if (idOrPrefix === AGENT_DM_ID) {
+      const conversation = await this.db.getOrCreateAgentDm(userId);
+      return { id: conversation.id };
+    }
+
     const result = await this.db.resolveConversationId(idOrPrefix, userId);
     if (!result) {
       return { error: 'Conversation not found', status: 404 };
@@ -42,7 +55,7 @@ export class ConversationService {
    * @param conversationId - Conversation ID
    * @throws Error if the user is not a participant
    */
-  async verifyParticipant(userId: string, conversationId: string): Promise<void> {
+  private async verifyParticipant(userId: string, conversationId: string): Promise<void> {
     const ok = await this.db.isParticipant(conversationId, userId)
       || await this.db.isParticipant(conversationId, `agent:${userId}`);
     if (!ok) throw new Error('Forbidden: not a participant in this conversation');
@@ -58,15 +71,6 @@ export class ConversationService {
   }
 
   /**
-   * Retrieves a conversation by ID, including its participants.
-   * @param conversationId - Conversation ID
-   * @returns The conversation with participants, or null if not found
-   */
-  async getConversation(conversationId: string) {
-    return this.db.getConversation(conversationId);
-  }
-
-  /**
    * Lists all visible conversations for a user, ordered by most recent message.
    * @param userId - The user whose conversations to list
    * @returns Summaries with participant lists
@@ -76,43 +80,26 @@ export class ConversationService {
   }
 
   /**
-   * Lists A2A conversations where `agent:{userId}` is a participant.
-   * Used to surface negotiation conversations to the user whose agent participated.
-   */
-  async getAgentConversations(userId: string) {
-    // The agent participant authenticates the A2A thread, while the owning
-    // human is the only identity permitted to see intent provenance.
-    return this.db.getConversationsForUser(`agent:${userId}`, userId, true);
-  }
-
-  async getNegotiationTaskIndex(userId: string) {
-    return this.db.getNegotiationTaskIndex(userId);
-  }
-
-  /**
-   * Returns the latest persisted A2A turns grouped by correspondent for one
-   * intent owned by the authenticated user.
-   */
-  async getIntentCycleForIntent(userId: string, intentId: string) {
-    return this.db.getIntentCycleForIntent(userId, intentId);
-  }
-
-  async getIntentCycleTimelineForIntent(userId: string, intentId: string) {
-    return this.db.getIntentCycleTimelineForIntent(userId, intentId);
-  }
-
-  async getIntentCycleNegotiationForIntent(userId: string, intentId: string, taskId: string) {
-    return this.db.getIntentCycleNegotiationForIntent(userId, intentId, taskId);
-  }
-
-  /**
    * Finds an existing DM between two users, or creates one if none exists.
    * @param userA - First user ID
    * @param userB - Second user ID
    * @returns The existing or newly created conversation
    */
-  async getOrCreateDM(userA: string, userB: string) {
+  async getOrCreateDm(userA: string, userB: string) {
     return this.db.getOrCreateDM(userA, userB);
+  }
+
+  /**
+   * True when the conversation is an owner's agent DM.
+   *
+   * The agent is a participant of that thread and of nothing else, so its
+   * membership is what identifies the thread.
+   *
+   * @param conversationId - Conversation ID
+   * @returns Whether the agent speaks in this conversation
+   */
+  async isAgentDm(conversationId: string): Promise<boolean> {
+    return this.db.isParticipant(conversationId, SYSTEM_AGENT_ID);
   }
 
   /**
@@ -121,7 +108,7 @@ export class ConversationService {
    * @param senderId - ID of the sender (must be a participant)
    * @param role - Role of the sender ('user' or 'agent')
    * @param parts - Message content parts
-   * @param opts - Optional task association and metadata
+   * @param opts - Optional metadata
    * @returns The created message
    * @throws Error if senderId is not a participant
    */
@@ -130,7 +117,7 @@ export class ConversationService {
     senderId: string,
     role: 'user' | 'agent',
     parts: unknown[],
-    opts?: { taskId?: string; metadata?: Record<string, unknown> },
+    opts?: { metadata?: Record<string, unknown> },
   ) {
     await this.verifyParticipant(senderId, conversationId);
 
@@ -139,7 +126,6 @@ export class ConversationService {
       senderId,
       role,
       parts,
-      taskId: opts?.taskId,
       metadata: opts?.metadata,
     });
 
@@ -147,13 +133,35 @@ export class ConversationService {
   }
 
   /**
+   * The agent speaks in its owner's agent DM.
+   *
+   * Questions only — outcomes live in Radar. One DM per owner carries every
+   * signal, so the `intentId` tag is what keeps the message on its own: it is
+   * read back only under that signal. The write itself tells the owner:
+   * `createMessage` publishes the message on their conversation channel, which
+   * is where the question gets answered.
+   *
+   * @param conversationId - The owner's agent DM.
+   * @param parts - Message content parts.
+   * @param opts - Metadata, carrying the `intentId` tag.
+   * @returns The created message.
+   */
+  async sendAgentMessage(
+    conversationId: string,
+    parts: unknown[],
+    opts?: { metadata?: Record<string, unknown> },
+  ) {
+    return this.sendMessage(conversationId, SYSTEM_AGENT_ID, 'agent', parts, opts);
+  }
+
+  /**
    * Retrieves messages for a conversation.
    * @param conversationId - Conversation ID
-   * @param opts - Optional limit, cursor (before), taskId filter, or userId for authorization
+   * @param opts - Optional limit, cursor (before), intent filter, or userId for authorization
    * @returns Ordered list of messages
    * @throws Error if opts.userId is provided and is not a participant
    */
-  async getMessages(conversationId: string, opts?: { limit?: number; before?: string; taskId?: string; userId?: string }) {
+  async getMessages(conversationId: string, opts?: { limit?: number; before?: string; userId?: string; intentId?: string }) {
     if (opts?.userId) {
       await this.verifyParticipant(opts.userId, conversationId);
     }
@@ -169,7 +177,7 @@ export class ConversationService {
    */
   async getSessionHistory(
     conversationId: string,
-    opts: { userId: string; taskId?: string; beforeSessionId?: string },
+    opts: { userId: string; beforeSessionId?: string },
   ) {
     await this.verifyParticipant(opts.userId, conversationId);
     return this.db.getConversationSessionHistory(conversationId, opts);

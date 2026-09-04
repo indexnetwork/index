@@ -11,9 +11,9 @@ import { log } from '../lib/log';
 
 const logger = log.controller.from('opportunity');
 
-const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
+const listStatusSchema = z.enum(['pending', 'accepted', 'rejected', 'expired']);
 /** Full lifecycle enum for the radar view's explicit `statuses` filter (e.g. the intent radar). */
-const radarStatusSchema = z.enum(['negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
+const radarStatusSchema = z.enum(['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 
@@ -248,8 +248,8 @@ export class OpportunityController {
     if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 
     const rawStatus = typeof body.status === 'string' ? body.status : undefined;
-    const status = rawStatus as 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
-    const allowed = ['pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
+    const status = rawStatus as 'pending' | 'negotiating' | 'accepted' | 'rejected' | 'expired' | undefined;
+    const allowed = ['pending', 'negotiating', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
       return Response.json({ error: 'Invalid status; use one of: ' + allowed.join(', ') }, { status: 400 });
     }

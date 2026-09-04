@@ -4,8 +4,8 @@ import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 import { canUserSeeOpportunity, isActionableForViewer } from '@indexnetwork/protocol';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
-import { intents, hydeDocuments, intentNetworks, networks, networkMembers, opportunities } from '../schemas/database.schema';
-import { conversations, conversationParticipants, conversationMetadata, messages, tasks } from '../schemas/conversation.schema';
+import { intents, hydeDocuments, intentNetworks, networks, networkMembers, opportunities, negotiations as negotiationsTable, negotiationTurns } from '../schemas/database.schema';
+import { conversations, conversationParticipants, conversationMetadata, messages } from '../schemas/conversation.schema';
 
 import { buildIntentAssignmentDiagnostic, buildIntentDebugRecord, buildIntentPipelineHealthDiagnostic, buildVerificationAnalysisDiagnostic } from '../services/debug-intent-diagnostics.service';
 
@@ -534,25 +534,22 @@ export class DebugController {
 
     type NegotiationTurnEntry = {
       turnIndex: number;
-      actor: 'source' | 'candidate';
+      actor: 'initiator' | 'responder';
       action: string;
-      reasoning?: string;
-      message?: string;
-      suggestedRoles?: { ownUser?: string; otherUser?: string };
+      message: string;
       createdAt: string;
     };
 
     type NegotiationDebugEntry = {
       opportunityId: string;
-      negotiationConversationId: string;
-      taskState: string;
-      sourceUserId: string;
-      candidateUserId: string;
+      initiatorUserId: string;
+      responderUserId: string;
+      awaitingUserId: string | null;
       turns: NegotiationTurnEntry[];
-      outcome: { status: string; turnCount: number } | null;
-      startedAt: string | null;
-      endedAt: string | null;
-      durationMs: number | null;
+      outcome: { status: string; negotiationOutcome: string | null; turnCount: number } | null;
+      startedAt: string;
+      endedAt: string;
+      durationMs: number;
       turnsTruncated?: boolean;
     };
 
@@ -674,36 +671,11 @@ export class DebugController {
 
       const opportunityIds = effectiveOpportunityIds;
 
-      // Fetch negotiation tasks matching any of the opportunity IDs (newest first)
-      const taskRows = await db
-        .select({
-          id: tasks.id,
-          conversationId: tasks.conversationId,
-          state: tasks.state,
-          metadata: tasks.metadata,
-          createdAt: tasks.createdAt,
-          updatedAt: tasks.updatedAt,
-        })
-        .from(tasks)
-        .where(
-          and(
-            sql`${tasks.metadata}->>'type' = 'negotiation'`,
-            inArray(sql`${tasks.metadata}->>'opportunityId'`, opportunityIds),
-          ),
-        )
-        .orderBy(desc(tasks.createdAt));
+      const negotiationRows = await db
+        .select()
+        .from(negotiationsTable)
+        .where(inArray(negotiationsTable.opportunityId, opportunityIds));
 
-      // Build a map from opportunityId to task row — first entry wins (latest due to orderBy above)
-      const taskByOppId = new Map<string, typeof taskRows[0]>();
-      for (const row of taskRows) {
-        const meta = row.metadata as Record<string, unknown> | null;
-        const oppId = meta?.opportunityId;
-        if (typeof oppId === 'string' && !taskByOppId.has(oppId)) {
-          taskByOppId.set(oppId, row);
-        }
-      }
-
-      // Fetch opportunity status for all IDs
       const oppRows = await db
         .select({ id: opportunities.id, status: opportunities.status })
         .from(opportunities)
@@ -712,88 +684,39 @@ export class DebugController {
 
       const negotiations: NegotiationDebugEntry[] = [];
 
-      for (const oppId of opportunityIds) {
-        const task = taskByOppId.get(oppId);
-        if (!task) continue;
-
-        const taskMeta = (task.metadata ?? {}) as Record<string, unknown>;
-        const sourceUserId = typeof taskMeta.sourceUserId === 'string' ? taskMeta.sourceUserId : '';
-        const candidateUserId = typeof taskMeta.candidateUserId === 'string' ? taskMeta.candidateUserId : '';
-
-        // Fetch THIS negotiation's turns. Scoped by opportunity, not by
-        // conversation: the pair's DM holds every negotiation they have run, so
-        // a conversation-wide read shows each entry the union of all of them.
+      for (const negotiation of negotiationRows) {
         const TURN_LIMIT = 20;
-        const negMessages = await db
-          .select({
-            id: messages.id,
-            senderId: messages.senderId,
-            parts: messages.parts,
-            createdAt: messages.createdAt,
-          })
-          .from(messages)
-          .innerJoin(tasks, eq(messages.taskId, tasks.id))
-          .where(and(
-            sql`${tasks.metadata}->>'type' = 'negotiation'`,
-            sql`${tasks.metadata}->>'opportunityId' = ${oppId}`,
-          ))
-          .orderBy(asc(messages.createdAt), asc(messages.id))
+        const turnRows = await db
+          .select()
+          .from(negotiationTurns)
+          .where(eq(negotiationTurns.negotiationId, negotiation.id))
+          .orderBy(asc(negotiationTurns.turnIndex))
           .limit(TURN_LIMIT + 1);
 
-        const turnsTruncated = negMessages.length > TURN_LIMIT;
-        const turnMessages = negMessages.slice(0, TURN_LIMIT);
+        const turnsTruncated = turnRows.length > TURN_LIMIT;
+        const negTurns: NegotiationTurnEntry[] = turnRows.slice(0, TURN_LIMIT).map((turn) => ({
+          turnIndex: turn.turnIndex,
+          actor: turn.seatUserId === negotiation.initiatorUserId ? 'initiator' : 'responder',
+          action: turn.action,
+          message: turn.message,
+          createdAt: turn.createdAt.toISOString(),
+        }));
 
-        const negTurns: NegotiationTurnEntry[] = turnMessages.map((m, i) => {
-          const senderBareId = m.senderId?.startsWith('agent:') ? m.senderId.slice('agent:'.length) : m.senderId;
-          const actor: 'source' | 'candidate' = senderBareId === sourceUserId ? 'source' : 'candidate';
-
-          // Find the data part
-          const parts = m.parts as Array<{ kind?: string; data?: Record<string, unknown> }>;
-          const dataPart = parts.find((p) => p.kind === 'data');
-          const data = dataPart?.data ?? {};
-
-          const action = typeof data.action === 'string' ? data.action : 'unknown';
-          const assessment = data.assessment && typeof data.assessment === 'object'
-            ? data.assessment as Record<string, unknown>
-            : {};
-          const reasoning = typeof assessment.reasoning === 'string' ? assessment.reasoning : undefined;
-          const suggestedRolesRaw = assessment.suggestedRoles;
-          const suggestedRoles = suggestedRolesRaw && typeof suggestedRolesRaw === 'object'
-            ? suggestedRolesRaw as { ownUser?: string; otherUser?: string }
-            : undefined;
-          const message = typeof data.message === 'string' ? data.message : undefined;
-
-          return {
-            turnIndex: i,
-            actor,
-            action,
-            reasoning,
-            message,
-            suggestedRoles,
-            createdAt: m.createdAt.toISOString(),
-          };
-        });
-
-        const oppStatus = oppStatusById.get(oppId) ?? null;
-        const startedAt = task.createdAt.toISOString();
-        const endedAt = task.updatedAt.toISOString();
-        const durationMs = task.updatedAt.getTime() - task.createdAt.getTime();
-
-        const entry: NegotiationDebugEntry = {
-          opportunityId: oppId,
-          negotiationConversationId: task.conversationId,
-          taskState: task.state,
-          sourceUserId,
-          candidateUserId,
+        const oppStatus = oppStatusById.get(negotiation.opportunityId) ?? null;
+        negotiations.push({
+          opportunityId: negotiation.opportunityId,
+          initiatorUserId: negotiation.initiatorUserId,
+          responderUserId: negotiation.responderUserId,
+          awaitingUserId: negotiation.awaitingUserId,
           turns: negTurns,
-          outcome: oppStatus !== null ? { status: oppStatus, turnCount: negTurns.length } : null,
-          startedAt,
-          endedAt,
-          durationMs,
+          outcome: oppStatus !== null
+            ? { status: oppStatus, negotiationOutcome: negotiation.outcome, turnCount: negTurns.length }
+            : null,
+          startedAt: negotiation.createdAt.toISOString(),
+          endedAt: negotiation.updatedAt.toISOString(),
+          durationMs: negotiation.updatedAt.getTime() - negotiation.createdAt.getTime(),
           ...(turnsTruncated ? { turnsTruncated: true } : {}),
-        };
-
-        negotiations.push(entry);
+        });
       }
 
       if (negotiations.length > 0) {

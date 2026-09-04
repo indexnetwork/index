@@ -194,7 +194,7 @@ async function discoverDirectConnection(
 
 /**
  * Context source: HyDE (when a search query exists) plus the additive
- * premise/context strategies.
+ * context strategies.
  */
 async function discoverFromContext(
   ctx: DiscoveryStrategyContext,
@@ -204,7 +204,7 @@ async function discoverFromContext(
   const { state } = ctx;
 
   if (state.searchQuery?.trim()) {
-    discoveryLog.verbose('Context source with searchQuery → running query HyDE + premise paths', {
+    discoveryLog.verbose('Context source with searchQuery → running query HyDE paths', {
       searchQuery: state.searchQuery.trim().substring(0, 80),
     });
     const queryResult = await runQueryHydeDiscovery(ctx);

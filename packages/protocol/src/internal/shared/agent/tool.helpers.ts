@@ -1,29 +1,20 @@
 import type { Id } from '../../../platform/database.js';
 import { ChatContextAccessError } from '../../../platform/runtime/errors.js';
 import type { OpportunityGraphDeps } from '../../opportunities/opportunity.graph.shared.js';
-import type { MatchesReadyFn } from '../../opportunities/opportunity.graph.shared.js';
 import type { OpportunityMutationOutcome } from '../../opportunities/opportunity.graph.modes.js';
 import { z } from "zod";
 import type { ModelConfig } from "./model.config.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
 import type { ToolScopeType } from "./tool.scope.js";
 import type { UserIdentity } from "../../../protocol/schemas/identity.schema.js";
-import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../../../platform/database.js";
+import type { CompositeToolDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase } from "../../../platform/database.js";
 import type { Scraper } from "../../../platform/discovery/scraper.js";
 import type { Cache, HydeCache } from "../../../platform/discovery/cache.js";
 import type { ProfileEnricher } from "../../../platform/enrichment/ports.js";
 import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
-import type { ChatSessionReader } from "../../../platform/chat/ports.js";
-import type { ChatSummaryReader } from "../../../platform/chat/ports.js";
-import type { ChatMessageWriter } from "../../../platform/chat/ports.js";
-import type { NegotiationSummaryReader } from "../../../platform/negotiation/summary.js";
 import type { Embedder } from "../../../platform/discovery/embedder.js";
 import type { AgentDatabase } from "../../agents/agent.repository.port.js";
-import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
-import type { DeliveryLedger } from "../../../platform/runtime/delivery-ledger.js";
 import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiation/verdict.js";
-import type { McpActivityCaller } from "./activity-projection.js";
-import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.js";
 
 export type IdentityContext = UserIdentity | null;
 
@@ -101,14 +92,6 @@ export interface ResolvedToolContext {
   isMcp?: boolean;
   /** Agent ID when the request originates from an API key linked to an agent. */
   agentId?: string;
-  /**
-   * Typed resolved MCP caller context, set only by the MCP server after the
-   * capability subject is resolved. Tools with permission-projected output
-   * (currently `read_activity_summary`) pass it into the centralized
-   * projection in `activity-projection.ts`. Absent on REST/chat surfaces,
-   * which are owner-trusted and receive the full owner view.
-   */
-  mcpCaller?: McpActivityCaller;
 }
 
 /**
@@ -122,7 +105,7 @@ export interface ResolvedToolContext {
 interface ToolContextBindings {
   userId: string;
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
-  database: ChatGraphCompositeDatabase;
+  database: CompositeToolDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. Created internally if not provided. */
   userDb?: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. Created internally if not provided. */
@@ -147,16 +130,6 @@ interface ToolContextBindings {
   hydeCache: HydeCache;
   /** Queue for enqueuing follow-up intent processing (HyDE generation/deletion). */
   intentFollowUp: IntentFollowUp;
-  /** Chat session reader for loading conversation history. */
-  chatSession: ChatSessionReader;
-  /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
-  chatSummary?: ChatSummaryReader;
-  /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
-  chatMessageWriter?: ChatMessageWriter;
-  /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
-  negotiationSummary?: NegotiationSummaryReader;
-  /** Durable host persistence for verified intent proposals shown in chat. */
-  intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   /**
    * Host bridge for the `reject_opportunity` / `accept_opportunity` tools —
    * the owner's VERDICT lane (#1471). Injected by the composition root;
@@ -166,28 +139,18 @@ interface ToolContextBindings {
   negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
-  /** Database adapter for negotiations/conversation operations. */
-  negotiationDatabase: NegotiationGraphDatabase;
-  /** The compiled negotiation graph — every negotiation write goes through it. */
-  negotiationGraph?: NegotiationGraphLike;
-  /** Wakes a signal's PersonalAgent when discovery persists matches for it. */
-  matchesReady?: MatchesReadyFn;
   /** Factory for user-scoped database access. */
-  createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) => UserDatabase;
+  createUserDatabase: (db: CompositeToolDatabase, userId: string) => UserDatabase;
   /** Factory for system-scoped database access. */
-  createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
+  createSystemDatabase: (db: CompositeToolDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
   /** Optional runtime LLM config. Pass to override env vars for API key, model, etc. */
   modelConfig?: ModelConfig;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
   agentDatabase?: AgentDatabase;
   /** Grants the default system-agent permissions after onboarding (optional). */
   grantDefaultSystemPermissions?: (userId: string) => Promise<void>;
-  /** Dispatcher for routing negotiation turns to personal agents (optional — falls back to system AI). */
-  agentDispatcher?: AgentDispatcher;
   /** Host callback for pre-insert newborn pool-preference stamping (optional). */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
-  /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
-  deliveryLedger?: DeliveryLedger;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
@@ -198,7 +161,7 @@ interface ToolContextBindings {
    * Optional host-side per-principal MCP call throttle. Invoked once per MCP
    * tool dispatch (after identity resolves, before any DB work). When the
    * returned decision is `allowed: false`, the dispatch short-circuits with a
-   * rate-limit error carrying `retryAfterSec`. Absent in chat/test contexts.
+   * rate-limit error carrying `retryAfterSec`. Absent in test contexts.
    */
   mcpRateLimiter?: (input: { userId: string; agentId?: string; toolName: string }) => Promise<{
     allowed: boolean;
@@ -245,7 +208,7 @@ export { ChatContextAccessError } from "../../../platform/runtime/errors.js";
  */
 export async function resolveChatContext(params: {
   database: Pick<
-    ChatGraphCompositeDatabase,
+    CompositeToolDatabase,
     "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isIndexOwner" | "isNetworkMember" | "getUserContext"
   >;
   userId: string;
@@ -404,23 +367,15 @@ export type ToolRegistry = Map<string, RawToolDefinition>;
  */
 interface ToolDepsBindings {
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
-  database: ChatGraphCompositeDatabase;
+  database: CompositeToolDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. */
   userDb: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. */
   systemDb: SystemDatabase;
-  /** Durable host persistence for verified intent proposals shown in chat. */
-  intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   scraper: Scraper;
   embedder: import('../../../platform/discovery/embedder.js').Embedder;
   cache: Cache;
   enricher: ProfileEnricher;
-  /** Database adapter for negotiations/conversation operations. */
-  negotiationDatabase: NegotiationGraphDatabase;
-  /** The compiled negotiation graph — every negotiation write goes through it. */
-  negotiationGraph?: NegotiationGraphLike;
-  /** Wakes a signal's PersonalAgent when discovery persists matches for it. */
-  matchesReady?: MatchesReadyFn;
   /**
    * Host bridge behind the MCP-surface `reject_opportunity` /
    * `accept_opportunity` owner-verdict tools (#1471, one surface over).
@@ -428,10 +383,6 @@ interface ToolDepsBindings {
    * session-authenticated owners (capability matrix + provenance re-check).
    */
   negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
-  /** Chat session reader for exposing the caller's past conversations as MCP tools. */
-  chatSession?: ChatSessionReader;
-  /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
-  chatSummary?: ChatSummaryReader;
   /**
    * Test seam for opportunity card presentation helpers. Production
    * compositions leave this unset so tools construct the real presenter.
@@ -440,20 +391,12 @@ interface ToolDepsBindings {
     createPresenter?: () => { presentCard(input: unknown): Promise<unknown> };
     gatherPresenterContext?: (...args: unknown[]) => Promise<unknown>;
   };
-  /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
-  chatMessageWriter?: ChatMessageWriter;
-  /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
-  negotiationSummary?: NegotiationSummaryReader;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
   agentDatabase?: AgentDatabase;
   /** Grants the default system-agent permissions after onboarding (optional). */
   grantDefaultSystemPermissions?: (userId: string) => Promise<void>;
-  /** Dispatcher for routing negotiation turns to personal agents (optional — falls back to system AI). */
-  agentDispatcher?: AgentDispatcher;
   /** Host callback for pre-insert newborn pool-preference stamping (optional). */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
-  /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
-  deliveryLedger?: DeliveryLedger;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
@@ -484,7 +427,6 @@ interface ToolDepsBindings {
     networkMembership: CompiledGraph;
     intentIndex: CompiledGraph;
     opportunity: CompiledGraph;
-    premise: CompiledGraph;
   };
   /**
    * Optional network ranking override for `read_networks`. Injected by tests or custom compositions.
@@ -501,12 +443,12 @@ interface ToolDepsBindings {
  * ports may Pick from this type, but it is intentionally not a root export.
  */
 export type ToolRegistryCompositionDeps = Omit<ToolDepsBindings,
-  'embedder' | 'chatMessageWriter' | 'apiBaseUrl' | 'mcpRateLimiter'
+  'embedder' | 'apiBaseUrl' | 'mcpRateLimiter'
 >;
 
 /** Runtime-only hooks retained for MCP and existing host composition. */
 type ToolRuntimeCompatibilityDeps = Pick<ToolDepsBindings,
-  'embedder' | 'chatMessageWriter' | 'apiBaseUrl' | 'mcpRateLimiter'
+  'embedder' | 'apiBaseUrl' | 'mcpRateLimiter'
 >;
 
 /**

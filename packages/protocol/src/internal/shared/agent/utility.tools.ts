@@ -1,22 +1,13 @@
 import { z } from "zod";
 
 import { requestContext } from "../observability/request-context.js";
-import { ActivitySummaryResponseSchema, McpActivityCallerSchema, activitySummaryNetworkId, projectActivitySummary } from "./activity-projection.js";
-import type { McpActivityCaller } from "./activity-projection.js";
 import { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS, CANONICAL_GUIDANCE_TOPICS_CONTENT } from "./canonical-guidance.js";
 
 import type { DefineTool, ToolRegistryCompositionDeps } from "./tool.helpers.js";
 import { success, error, normalizeUrl } from "./tool.helpers.js";
 
-/** Owner-trusted surfaces (REST/chat) receive the full owner view. */
-const HUMAN_OWNER_CALLER: McpActivityCaller = {
-  kind: "human",
-  permissions: [],
-  networkScopeId: null,
-};
-
 /** Host capabilities consumed by URL and profile utility tools. */
-type UtilityToolDeps = Pick<ToolRegistryCompositionDeps, "scraper" | "userDb">;
+type UtilityToolDeps = Pick<ToolRegistryCompositionDeps, "scraper">;
 
 /**
  * Tool-surface profile. The restricted `'mcp'` surface omits `scrape_url`
@@ -88,7 +79,7 @@ export function createUtilityTools(
       "Returns comprehensive documentation about the Index Network protocol — entity model, workflows, tool usage guidance, and domain concepts. " +
       "This is the primary way for an external agent to bootstrap understanding of the system.\n\n" +
       "**When to use:** Call this FIRST when starting a new session.\n" +
-      "Also call when you need to understand identity, context, premises, signals, communities, networks, opportunities, or negotiations.\n\n" +
+      "Also call when you need to understand identity, context, signals, communities, networks, opportunities, or negotiations.\n\n" +
       "**Returns:** Markdown documentation. Pass `topic` to get a specific section, or omit for the summary.\n\n" +
       `**Available canonical topics:** ${CANONICAL_GUIDANCE_TOPICS.join(", ")}`,
     querySchema: z.object({
@@ -144,12 +135,12 @@ export function createUtilityTools(
 
 Intents are the core unit of discovery — they represent what users are seeking and drive semantic matching.
 
-1. **Creation** (create_intent): User describes what they're looking for. The system runs inference (extracting structured intents from free text) and verification (checking specificity, speech-act type). Returns a proposal for user approval.
+1. **Creation** (create_intent): User describes what they're looking for and names the networks to share it in. The system runs inference (extracting structured intents from free text) and verification (checking specificity, speech-act type), then persists the intent and links it to those networks.
 2. **Confidence & Classification**: Each intent gets a confidence score (0-1), inferenceType (explicit = user stated directly, implicit = system inferred), and speech act classification (commissive, directive, assertive).
-3. **Index Assignment**: After creation, the intent is automatically evaluated against all networks the user belongs to. The index's prompt is used as criteria. Matching indexes get linked via IntentNetworks with a relevancyScore (0-1).
+3. **Index Assignment**: Links are explicit. An intent is shared in exactly the networks named at creation, and later linked or unlinked with create_intent_index / delete_intent_index.
 4. **Discovery Trigger**: Creating an intent triggers background opportunity detection — the system searches for other users in shared networks whose intents complement this one.
 5. **Source Tracking**: Intents track their origin via sourceType (integration, discovery_form, enrichment) and sourceId.
-6. **Update** (update_intent): Re-processes through inference/verification, recalculates embeddings and index assignments.
+6. **Update** (update_intent): Re-processes through inference/verification and recalculates embeddings. Network links are unchanged.
 7. **Archive** (delete_intent): Soft-deletes the intent. It stops participating in discovery but is not permanently removed.
 
 ### Intent Best Practices
@@ -281,7 +272,6 @@ Discovery is the process of finding meaningful connections between users based o
 
         // Canonical topics (on REST/chat for completeness)
         "identity-context": CANONICAL_GUIDANCE_TOPICS_CONTENT["identity-context"],
-        premises: CANONICAL_GUIDANCE_TOPICS_CONTENT.premises,
         signals: CANONICAL_GUIDANCE_TOPICS_CONTENT.signals,
         "communities-networks": CANONICAL_GUIDANCE_TOPICS_CONTENT["communities-networks"],
         negotiations: CANONICAL_GUIDANCE_TOPICS_CONTENT.negotiations,
@@ -303,43 +293,7 @@ Discovery is the process of finding meaningful connections between users based o
     },
   });
 
-  const readActivitySummary = defineTool({
-    name: "read_activity_summary",
-    description:
-      "Returns grounded, aggregate-only activity for the authenticated user's agent over a recent time window.\n\n" +
-      "**Response domains (permission-projected for agent callers):**\n" +
-      "- signals (`liveSignalsWatched`, `opportunitiesBySignal` with signal IDs/titles) — requires manage:intents.\n" +
-      "- opportunities (`opportunitiesSurfaced`) — requires manage:opportunities.\n" +
-      "- questions (`pendingQuestionsByDomain`, `answeredQuestionsByDomain`) — meta-network counts grouped by the question's affected domain; " +
-      "each domain's counts require that domain's manage:identity/premises/intents/opportunities/negotiations permission; conversational chat-mode counts are human-owner-only.\n" +
-      "- negotiations (`negotiationsStarted`, `negotiationsCompleted`) — requires manage:negotiations.\n" +
-      "Human owners receive every domain. Agent callers receive only the domains their permissions authorize; " +
-      "a network agent's network-bound aggregates are narrowed to its bound community at the query layer.\n\n" +
-      "**Privacy:** the response never returns counterparty identities, chats, turns, transcripts, per-counterparty rows, " +
-      "or any private content — only aggregate counts and (with manage:intents) the owner's own signal IDs/titles.",
-    querySchema: z.object({
-      sinceHours: z.number().int().optional().default(24).describe("Look back this many hours; values are clamped to 1-168 (default 24)."),
-    }).strict(),
-    handler: async ({ context, query }) => {
-      const sinceHours = Math.max(1, Math.min(168, query.sinceHours));
-      // Absent on owner-trusted REST/chat surfaces → full owner view. On MCP the
-      // server binds the typed resolved caller context and the centralized
-      // projection decides every visible domain.
-      const caller = context.mcpCaller
-        ? McpActivityCallerSchema.parse(context.mcpCaller)
-        : HUMAN_OWNER_CALLER;
-      const networkId = activitySummaryNetworkId(caller);
-      const summary = await deps.userDb.getAgentActivitySummary({
-        sinceHours,
-        ...(networkId ? { networkId } : {}),
-      });
-      return success(ActivitySummaryResponseSchema.parse(
-        projectActivitySummary(caller, summary),
-      ));
-    },
-  });
-
-  return [scrapeUrl, readDocs, readActivitySummary].filter(
+  return [scrapeUrl, readDocs].filter(
     (tool): tool is Exclude<typeof tool, null> => tool !== null,
   );
 }

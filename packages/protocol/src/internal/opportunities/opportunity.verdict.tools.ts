@@ -10,14 +10,12 @@ import { ownerApprovalProvenanceFor } from './opportunity.owner-provenance.js';
  * Owner verdict tools on the MCP surface (`reject_opportunity` /
  * `accept_opportunity`, #1471 one surface over).
  *
- * The owner's three decisions on a signal are ANSWER, EDIT, and VERDICT. On
- * MCP, answer ships with `answer_pending_question` and edit is
- * `update_intent`; the verdict had no lane — `update_opportunity` refuses a
- * `negotiating` pairing outright and its IND-593 proof flow is built for
- * agent-mediated writes. These tools reuse the negotiator verdict host
- * verbatim: the same numbered-counterparty mapping, the same Radar
- * Skip/Start-Chat service call underneath, the same outcome hooks (question
- * retirement, DM resolution, contact memberships) in its wake.
+ * `update_opportunity` cannot serve the verdict: it refuses a `negotiating`
+ * pairing outright and its IND-593 proof flow is built for agent-mediated
+ * writes. These tools go through the verdict host instead: a numbered
+ * counterparty mapping, the same Radar Skip/Start-Chat service call
+ * underneath, and the same outcome hooks (question retirement, DM resolution,
+ * contact memberships) in its wake.
  *
  * Admission is exactly the class IND-593 admits for a direct owner
  * interaction: a SESSION-AUTHENTICATED principal, proven by the host-bound

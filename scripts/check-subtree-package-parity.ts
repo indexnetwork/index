@@ -38,7 +38,6 @@ export const MIRRORED_PACKAGE_DIRS = [
   'packages/cli',
   'packages/claude-plugin',
   'packages/hermes-plugin',
-  'packages/a2a',
   'packages/agent',
 ] as const;
 

@@ -21,7 +21,7 @@
  *      threshold k, so aggregate telemetry never exposes a small cell.
  *
  * P7 (shadow) uses these types for aggregate-telemetry output only: no
- * questions, ranking, intent, premise, memory, newborn-stamp, or push writes.
+ * questions, ranking, intent, memory, newborn-stamp, or push writes.
  */
 
 import type { MinedDiscriminator } from "../discriminator/discriminator.types.js";

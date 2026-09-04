@@ -18,7 +18,6 @@ interface ConversationEventMessage {
   senderAvatar?: string;
   role: 'user' | 'agent';
   parts: unknown;
-  taskId?: string | null;
   createdAt: Date;
 }
 
@@ -60,45 +59,4 @@ export async function publishConversationMessageEvent(
   await Promise.all(conversationEventRecipientUserIds(participants).map((userId) => (
     publisher.publish(`conversations:user:${userId}`, event)
   )));
-}
-
-/**
- * Publishes a completed PersonalAgent turn after the graph has returned from
- * its durable writes. This is owner-scoped: no counterpart or turn payload is
- * carried over the shared conversation channel.
- */
-export async function publishPersonalAgentTurnCompletedEvent(input: {
-  userId: string;
-  intentId: string;
-}): Promise<void> {
-  await getRedisClient().publish(
-    `conversations:user:${input.userId}`,
-    JSON.stringify({ type: 'personal_agent_turn_completed', intentId: input.intentId }),
-  );
-}
-
-/**
- * Publishes an owner-scoped invalidation after the durable discovery-progress
- * snapshot changes. The client re-fetches its authoritative intent response;
- * no progress data crosses the shared SSE channel.
- */
-export async function publishIntentDiscoveryProgressEvent(input: {
-  userId: string;
-  intentId: string;
-}): Promise<void> {
-  await getRedisClient().publish(
-    `conversations:user:${input.userId}`,
-    JSON.stringify({ type: 'intent_discovery_progress', intentId: input.intentId }),
-  );
-}
-
-/** Publishes an owner-scoped invalidation after another intent-owned view changes. */
-export async function publishIntentInvalidationEvent(input: {
-  userId: string;
-  intentId: string;
-}): Promise<void> {
-  await getRedisClient().publish(
-    `conversations:user:${input.userId}`,
-    JSON.stringify({ type: 'intent_invalidated', intentId: input.intentId }),
-  );
 }

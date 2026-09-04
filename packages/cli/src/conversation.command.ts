@@ -2,8 +2,7 @@
  * Conversation command handlers for the Index CLI.
  *
  * H2H (direct messaging) only. The H2A agent-chat surface (REPL, one-shot,
- * session listing) ran on the retired orchestrator persona and was removed
- * with it — API-key callers can no longer start a chat without naming one.
+ * session listing) was removed with the in-process chat runtime.
  */
 
 import type { ApiClient } from "./api.client";
@@ -39,9 +38,7 @@ export async function handleConversation(
   positionals: string[],
   options?: ConversationOptions,
 ): Promise<void> {
-  // Agent chat over the CLI is gone: it ran on the retired orchestrator
-  // persona, and API-key callers can no longer start a chat without naming a
-  // persona. The H2H subcommands below are unaffected.
+  // Agent chat over the CLI is gone. The H2H subcommands below are unaffected.
   if (!subcommand) {
     output.error(
       "Agent chat is no longer available from the CLI. Use `index conversation list` "

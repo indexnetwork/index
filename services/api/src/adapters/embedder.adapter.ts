@@ -19,7 +19,7 @@ export interface LensEmbedding {
   /** Free-text lens label (e.g. "crypto infrastructure VC"). */
   lens: string;
   /** Which corpus to search. */
-  corpus: 'profiles' | 'intents' | 'premises';
+  corpus: 'profiles' | 'intents';
   /** 2000-dim embedding vector. */
   embedding: number[];
 }
@@ -61,7 +61,7 @@ export type VectorStoreOption<T> = {
  *
  * The retained score is the user's best raw cosine similarity plus a bounded
  * bonus for each ADDITIONAL DISTINCT lens that surfaced them. Counting matched
- * rows instead of lenses (one lens hitting three of a user's premises counted as
+ * rows instead of lenses (one lens hitting three of a user's intents counted as
  * three signals) saturated the old additive bonus, so unrelated candidates all
  * landed on exactly 1.0 and monopolised the by-rank evaluation batch.
  */
@@ -265,10 +265,6 @@ export class EmbedderAdapter {
 
     const filter = { indexScope, excludeUserId };
 
-    // Corpus selection honors the caller-composed `corpusGating` option, composed
-    // by the discovery graph from DISCOVERY_ALLOWED_TYPES / DISCOVERY_PROFILE_SOURCE.
-    // 'profiles' hints remap to the active profile corpus: premises (default) or
-    // user_contexts (lightweight mode).
     const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
@@ -286,7 +282,7 @@ export class EmbedderAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Private: intent/premise search for HyDE
+  // Private: intent search for HyDE
   // ─────────────────────────────────────────────────────────────────────────
 
   private async searchIntentsForHyde(
@@ -356,10 +352,8 @@ export class EmbedderAdapter {
 
   // NOTE: profile-HyDE discovery (the `searchProfiles` profiles-corpus reader) was
   // retired in WS10 (IND-367). It was the last runtime read of `user_profiles` and was
-  // already unreachable: the live HyDE path (`searchWithHydeEmbeddings`) remaps the
-  // 'profiles' corpus hint to 'premises', and no caller passed 'profiles' to `search()`.
-  // Discovery now runs on HyDE query retrieval. See IND-365 for the
-  // table drop.
+  // already unreachable. Discovery now runs on HyDE query retrieval over intents.
+  // See IND-365 for the table drop.
 
   private async searchIntents(
     embedding: number[],

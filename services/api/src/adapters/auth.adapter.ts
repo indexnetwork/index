@@ -2,7 +2,6 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
-import { agentDatabaseAdapter } from './agent.database.adapter';
 
 /**
  * Database adapter for Better Auth integration.
@@ -67,15 +66,4 @@ export class AuthDatabaseAdapter {
       };
     };
   }
-
-  /**
-   * Ensures the user has a personal negotiator agent row.
-   * Idempotent — safe to call on every sign-in.
-   * @param userId - The authenticated user
-   * @returns The negotiator agent ID, or null when the user is missing
-   */
-  async ensureNegotiatorAgent(userId: string): Promise<string | null> {
-    return agentDatabaseAdapter.ensureNegotiatorAgent(userId);
-  }
-
 }

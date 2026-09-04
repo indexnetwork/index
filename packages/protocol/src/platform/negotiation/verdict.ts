@@ -1,18 +1,9 @@
 /**
- * Host bridge for the negotiator persona's `reject_opportunity` and
- * `accept_opportunity` tools.
+ * Host bridge for the `reject_opportunity` and `accept_opportunity` tools.
  *
- * The owner has exactly three kinds of decision in their signal's DM: they can
- * ANSWER a question the negotiation asked, they can EDIT the signal, and they
- * can pass a VERDICT on a counterparty. The first two had lanes —
- * `answer_pending_question` (#1466) and `update_intent`. The third had none.
- * On 2026-08-20, in the DM for a parked pairing, the client told their agent to
- * reject the counterparty and the agent could not comply: the only verdict
- * levers in the product were the Radar card's Skip/Start-Chat and the REST
- * endpoints behind them, both out of the chat agent's reach. `update_opportunity`
- * is in the toolset but cannot serve — its admission blocks `negotiating`
- * outright, and the IND-593 owner-approval boundary fails closed on the chat
- * surface by design.
+ * The owner passes a VERDICT on a counterparty. `update_opportunity` cannot
+ * serve — its admission blocks `negotiating` outright, and the IND-593
+ * owner-approval boundary fails closed there by design.
  *
  * Positions, never ids. The prompt lists this signal's actionable
  * counterparties, numbered; the tool takes the number; the host owns the
@@ -23,7 +14,7 @@
  * Everything behind the seam — enumerating the scope's actionable pairings,
  * resolving the number, and executing the SAME owner accept/reject the Radar's
  * card executes — lives on the host. The protocol package only ever sees this
- * surface, and only the negotiator persona's toolset receives it.
+ * surface.
  */
 
 /**

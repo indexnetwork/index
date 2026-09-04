@@ -15,9 +15,8 @@
  * fields are never trusted by either path — the binding below is always
  * derived from the resolved tool context.
  *
- * A2A negotiation approvals, agent self-acknowledgment
- * (`acknowledgedUptakeQuestionIds`), and server-generated advisory/challenge
- * values are explicitly NOT substitutes for owner authorization.
+ * A2A negotiation approvals and server-generated advisory/challenge values are
+ * explicitly NOT substitutes for owner authorization.
  */
 
 /** Owner-gated opportunity actions. `expired` is a system transition and is not gated. */
@@ -64,7 +63,7 @@ export type OpportunityOwnerInteractionSurface = 'mcp' | 'chat' | 'rest';
  */
 export interface OpportunityOwnerInteractionProvenance {
   surface: OpportunityOwnerInteractionSurface;
-  /** True only when the host bound an authenticated owner session (never an API key or a mediated orchestrator) to this exact request. */
+  /** True only when the host bound an authenticated owner session (never an API key or a mediated agent) to this exact request. */
   sessionAuthenticated: boolean;
 }
 

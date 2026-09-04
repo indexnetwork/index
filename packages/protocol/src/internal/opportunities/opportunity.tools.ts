@@ -1,9 +1,9 @@
 /**
- * The opportunity tool registry: list, update, and delivery confirmation.
+ * The opportunity tool registry: list and update.
  *
  * `list_opportunities` lives in `opportunity.tools.list.ts` and the shared card
- * and link helpers in `opportunity.tools.cards.ts`; this file wires the three
- * tools together and owns the two mutation tools.
+ * and link helpers in `opportunity.tools.cards.ts`; this file wires the two
+ * tools together and owns the mutation tool.
  */
 
 import { z } from "zod";
@@ -23,9 +23,9 @@ export { buildOpportunityPresentation } from "./opportunity.presentation.js";
 
 import { updateOpportunityStatus } from "./opportunity.graph.modes.js";
 import { createListOpportunitiesTool } from "./opportunity.tools.list.js";
-import { confirmDeliveryError, logger, ownerApprovalDenial } from "./opportunity.tools.cards.js";
+import { ownerApprovalDenial } from "./opportunity.tools.cards.js";
 
-export { attachOpportunityAppLink, attachProfileLink, buildMinimalOpportunityCard, buildNegotiationUrl, buildOpportunityAppUrl, buildProfileUrl } from "./opportunity.tools.cards.js";
+export { attachOpportunityAppLink, attachProfileLink, buildMinimalOpportunityCard, buildOpportunityAppUrl, buildProfileUrl } from "./opportunity.tools.cards.js";
 
 export function createOpportunityTools(defineTool: DefineTool, deps: OpportunityToolDeps) {
   const { systemDb } = deps;
@@ -179,97 +179,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
     },
   });
 
-  const confirmOpportunityDelivery = defineTool({
-    name: "confirm_opportunity_delivery",
-    description:
-      "Marks an opportunity as delivered to the user via the OpenClaw channel. " +
-      "Call this for each opportunity you decide to surface, BEFORE including it in your delivery message. " +
-      "The 'trigger' argument records which dispatch path produced this delivery: " +
-      "'ambient' for real-time critical alerts (target ≤3/day), 'digest' for the daily sweep, " +
-      "'accepted' for accepted-opportunity notifications to the counterparty. " +
-      "Idempotent — safe to call even if the opportunity was already confirmed.",
-    querySchema: z.object({
-      opportunityId: z
-        .string()
-        .describe("The UUID of the opportunity to mark as delivered."),
-      trigger: z
-        .enum(['ambient', 'digest', 'accepted'])
-        .describe(
-          "Which dispatch path produced this delivery. Use 'ambient' if the dispatch prompt says you are in the ambient pass; use 'digest' if it says you are in the daily digest; use 'accepted' for accepted-opportunity notifications to the counterparty.",
-        ),
-    }),
-    handler: async ({ context, query }) => {
-      if (!context.isMcp || !context.agentId) {
-        return confirmDeliveryError(
-          "unauthenticated",
-          false,
-          "confirm_opportunity_delivery is only available to authenticated agent MCP contexts.",
-        );
-      }
-      if (!deps.deliveryLedger) {
-        return confirmDeliveryError(
-          "ledger_unavailable",
-          false,
-          "Delivery ledger not available in this context.",
-        );
-      }
-      if (!UUID_REGEX.test(query.opportunityId)) {
-        return confirmDeliveryError(
-          "invalid_opportunity_id",
-          false,
-          "Invalid opportunity ID format.",
-        );
-      }
-      try {
-        const result = await deps.deliveryLedger.confirmOpportunityDelivery({
-          opportunityId: query.opportunityId,
-          userId: context.userId,
-          agentId: context.agentId,
-          trigger: query.trigger,
-        });
-        return success({ status: result });
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        // Permanent failures — the caller MUST NOT retry. Retrying a deleted
-        // opportunity or an unauthorized actor never succeeds and only spams
-        // the ledger / MCP transport.
-        if (reason === 'opportunity_not_found') {
-          logger.warn('confirm_opportunity_delivery: opportunity not found', {
-            opportunityId: query.opportunityId,
-          });
-          return confirmDeliveryError(
-            'opportunity_not_found',
-            false,
-            'Opportunity not found — it may have been deleted. Do not retry.',
-          );
-        }
-        if (reason === 'not_authorized') {
-          logger.warn('confirm_opportunity_delivery: caller is not an actor', {
-            opportunityId: query.opportunityId,
-            userId: context.userId,
-          });
-          return confirmDeliveryError(
-            'not_authorized',
-            false,
-            'You are not an actor on this opportunity. Do not retry.',
-          );
-        }
-        // Unknown / transient (e.g. DB connectivity) — safe to retry. The
-        // ledger write is idempotent, so a retry that races a prior success
-        // returns 'already_delivered' rather than a duplicate row.
-        logger.error('Failed to confirm opportunity delivery', { err });
-        return confirmDeliveryError(
-          'confirm_failed',
-          true,
-          'Failed to confirm opportunity delivery — transient error, safe to retry.',
-        );
-      }
-    },
-  });
-
   return [
     listOpportunities,
     updateOpportunity,
-    confirmOpportunityDelivery,
   ] as const;
 }

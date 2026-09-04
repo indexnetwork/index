@@ -24,16 +24,13 @@ import { MatchExplainer } from "./opportunity.match-explainer.js";
 import type { MatchExplainerLike } from "./opportunity.match-explainer.js";
 import type { OpportunityGraphDatabase } from '../../platform/database.js';
 import type { Embedder } from '../../platform/discovery/embedder.js';
-import type { MatchesReadyFn } from "./opportunity.graph.shared.js";
-import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { DISCOVERY_MIN_SIMILARITY, validateDiscoveryMinSimilarity } from './discovery.env.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
 import { routingLog, withNodeTrace, type OpportunityGraphDeps, type OpportunityGraphThresholdOverrides, type OpportunityHydeGenerator, type OpportunityState } from "./opportunity.graph.shared.js";
 import { prepNode, prepTraceSummary, resolveNode, resolveTraceSummary, scopeNode, scopeTraceSummary } from "./opportunity.graph.prep.js";
 import { discoveryNode, discoveryTraceSummary } from "./opportunity.graph.discovery.js";
 import { evaluationNode, rankingNode, rankingTraceSummary } from "./opportunity.graph.evaluation.js";
-import { emitCandidatesNode, emitCandidatesTraceSummary } from "./opportunity.graph.emit-candidates.js";
-import { matchesReadyNode } from "./opportunity.graph.matches-ready.js";
+import { emitCounterpartiesNode, emitCounterpartiesTraceSummary } from "./opportunity.graph.emit-counterparties.js";
 
 export type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
 export {
@@ -71,13 +68,6 @@ export class OpportunityGraphFactory {
     /** Optional test double for the discovery-path match explainer (positional slot kept for existing call sites). */
     optionalMatchExplainer?: MatchExplainerLike,
     queueNotification?: QueueOpportunityNotificationFn,
-    matchesReady?: MatchesReadyFn,
-    /**
-     * Used on the chat path to decide whether to wait for the user's personal
-     * agent (long timeout) or fall back to the system agent immediately
-     * (short timeout). Without it, the chat path always uses a short timeout.
-     */
-    agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>,
     /** Eval/test-only overrides; production composition resolves from environment. */
     thresholdOverrides?: OpportunityGraphThresholdOverrides,
   ) {
@@ -87,8 +77,6 @@ export class OpportunityGraphFactory {
       hydeGenerator,
       matchExplainer: optionalMatchExplainer ?? new MatchExplainer(),
       queueNotification,
-      matchesReady,
-      agentDispatcher,
       retrievalMinSimilarity: thresholdOverrides?.retrievalMinSimilarity === undefined
         ? DISCOVERY_MIN_SIMILARITY
         : validateDiscoveryMinSimilarity(thresholdOverrides.retrievalMinSimilarity),
@@ -120,8 +108,7 @@ export class OpportunityGraphFactory {
       .addNode('discovery', withNodeTrace("opportunity-discovery", (s: OpportunityState) => discoveryNode(s, deps), discoveryTraceSummary))
       .addNode('evaluation', (s: OpportunityState) => evaluationNode(s, deps))
       .addNode('ranking', withNodeTrace("opportunity-ranking", (s: OpportunityState) => rankingNode(s), rankingTraceSummary))
-      .addNode('emitCandidates', withNodeTrace("opportunity-emit-candidates", (s: OpportunityState) => emitCandidatesNode(s, deps), emitCandidatesTraceSummary))
-      .addNode('matchesReady', (s: OpportunityState) => matchesReadyNode(s, deps))
+      .addNode('emitCounterparties', withNodeTrace("opportunity-emit-counterparties", (s: OpportunityState) => emitCounterpartiesNode(s, deps), emitCounterpartiesTraceSummary))
 
       .addEdge(START, 'prep')
 
@@ -138,28 +125,13 @@ export class OpportunityGraphFactory {
       })
       .addEdge('resolve', 'discovery')
 
-      .addConditionalEdges('discovery', shouldContinueAfterDiscovery, {
-        evaluation: 'evaluation',
-        [END]: END,
-      })
+      .addEdge('discovery', 'evaluation')
 
-      // Discovery → Ranking → EmitCandidates → matches_ready. The stage is
-      // skipped only when no host callback is wired or the run recorded no
-      // candidates (matchesReadyNode guards both cases too).
-      //
-      // Nothing here INSERTs an opportunity. That happens at kickoff, in
-      // createAndOpen, when a principal's agent decides to reach out.
+      // Discovery → Ranking → EmitCounterparties. The terminal stage opens
+      // every scored pair into an opportunity and its negotiation.
       .addEdge('evaluation', 'ranking')
-      .addEdge('ranking', 'emitCandidates')
-      .addConditionalEdges('emitCandidates', (state: OpportunityState) => {
-        if (!deps.matchesReady) return END;
-        if (!state.candidatesEmitted || state.candidatesEmitted.length === 0) return END;
-        return 'matchesReady';
-      }, {
-        matchesReady: 'matchesReady',
-        [END]: END,
-      })
-      .addEdge('matchesReady', END)
+      .addEdge('ranking', 'emitCounterparties')
+      .addEdge('emitCounterparties', END)
       .compile();
   }
 }
@@ -187,15 +159,4 @@ function shouldContinueAfterScope(state: OpportunityState): string {
   }
   routingLog.verbose('Continuing to resolve');
   return 'resolve';
-}
-
-/**
- * After discovery: if create-intent signal was set, end so tool can return it; else continue to evaluation.
- */
-function shouldContinueAfterDiscovery(state: OpportunityState): string {
-  if (state.createIntentSuggested) {
-    routingLog.verbose('Create-intent suggested - ending for tool signal');
-    return END;
-  }
-  return 'evaluation';
 }

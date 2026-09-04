@@ -79,10 +79,9 @@ export function useOpportunityActions({
   );
 
   /**
-   * Start Chat handler for an orchestrator-streamed draft card. Uses the
-   * atomic POST /opportunities/:id/start-chat endpoint to flip the opp to
-   * `accepted` and resolve the pair's conversation in one round-trip, then
-   * navigates to the h2h chat.
+   * Start Chat handler. Uses the atomic POST /opportunities/:id/start-chat
+   * endpoint to flip the opp to `accepted` and resolve the pair's conversation
+   * in one round-trip, then navigates to the h2h chat.
    */
   const handleStreamingDraftStartChat = useCallback(
     async (opportunityId: string, counterpartUserId: string) => {

@@ -10,7 +10,7 @@
  *                              neutral trade-off hypotheses for the exact
  *                              recipient + intent + fingerprint, and emit
  *                              aggregate telemetry only. No question, ranking,
- *                              intent, premise, memory, newborn-stamp, or push
+ *                              intent, memory, newborn-stamp, or push
  *                              writes.
  *                            on: reserved for a later phase (IND-438) that
  *                              turns a grounded hypothesis into a user-facing

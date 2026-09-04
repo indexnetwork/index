@@ -26,7 +26,6 @@ const logger = protocolLogger('ChatTools:Agent');
 
 const AGENT_ACTIONS = [
   'manage:identity',
-  'manage:premises',
   'manage:intents',
   'manage:networks',
   'manage:opportunities',
@@ -64,17 +63,6 @@ function ensureAgentScopedAccess(context: { agentId?: string }, requestedAgentId
   return null;
 }
 
-function sanitizeAgentForOutput<T extends { transports?: Array<{ channel: string; config: Record<string, unknown> }> }>(agent: T): T {
-  return {
-    ...agent,
-    // Transport config carries private connection material (endpoint secrets,
-    // auth headers/tokens). It is never projected to ANY MCP caller — including
-    // the agent reading its own record via read_own_agent (IND-599). Channel,
-    // priority, and health metadata remain visible; config is fully redacted.
-    transports: agent.transports?.map((transport) => ({ ...transport, config: {} })),
-  };
-}
-
 function sanitizeAgentName(name: string): string | null {
   const cleanName = name.trim();
   return cleanName ? cleanName : null;
@@ -98,7 +86,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
     querySchema: z.object({
       name: z.string().min(1).describe('Display name for the agent.'),
       description: z.string().optional().describe('What the agent does.'),
-      permissions: z.array(AgentPermissionActionSchema).optional().describe('Optional initial permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
+      permissions: z.array(AgentPermissionActionSchema).optional().describe('Optional initial permission actions to grant. Valid values: manage:identity, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
     }),
     handler: async ({ context, query }) => {
       if (context.agentId) {
@@ -150,7 +138,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
         const fullAgent = await agentDb.getAgentWithRelations(agent.id);
         return success({
           message: `Agent "${agent.name}" registered successfully.`,
-          agent: sanitizeAgentForOutput(fullAgent ?? ({ ...agent, transports: [], permissions: [] })),
+          agent: fullAgent ?? { ...agent, permissions: [] },
         });
       } catch (err) {
         logger.error('Failed to register agent', { err });
@@ -162,8 +150,8 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
   const readOwnAgent = defineTool({
     name: 'read_own_agent',
     description:
-      "Read the calling agent's own registration record \u2014 its identity, " +
-      'transports, and granted permissions. Returns only the authenticated ' +
+      "Read the calling agent's own registration record \u2014 its identity " +
+      'and granted permissions. Returns only the authenticated ' +
       'agent\u2019s own record; no other agent can be named or targeted. Use this ' +
       'when an agent needs to inspect its own configuration.',
     querySchema: z.object({}),
@@ -181,7 +169,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
           return error('Agent not found');
         }
 
-        return success({ agent: sanitizeAgentForOutput(agent) });
+        return success({ agent });
       } catch (err) {
         logger.error('Failed to read own agent', { err });
         return error('Failed to read agent. Please try again.');
@@ -200,7 +188,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
           ? agents.filter((agent) => agent.id === context.agentId)
           : agents;
         return success({
-          agents: filteredAgents.map((agent) => sanitizeAgentForOutput(agent)),
+          agents: filteredAgents,
           count: filteredAgents.length,
         });
       } catch (err) {
@@ -262,7 +250,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
         const fullAgent = await agentDb.getAgentWithRelations(query.agent_id);
         return success({
           message: 'Agent updated.',
-          agent: sanitizeAgentForOutput(fullAgent ?? ({ ...updated, transports: [], permissions: [] })),
+          agent: fullAgent ?? { ...updated, permissions: [] },
         });
       } catch (err) {
         logger.error('Failed to update agent', { err });
@@ -273,7 +261,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
 
   const deleteAgent = defineTool({
     name: 'delete_agent',
-    description: 'Soft-delete a personal agent and deactivate its transports.',
+    description: 'Soft-delete a personal agent.',
     querySchema: z.object({
       agent_id: z.string().min(1).describe('The agent ID to delete.'),
     }),
@@ -304,10 +292,10 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
   const grantAgentPermission = defineTool({
     name: 'grant_agent_permission',
     description: 'Grant one or more permissions to an agent for the current user. ' +
-      'Valid actions: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.',
+      'Valid actions: manage:identity, manage:intents, manage:networks, manage:opportunities, manage:negotiations.',
     querySchema: z.object({
       agent_id: z.string().min(1).describe('The agent ID to grant permissions to.'),
-      actions: z.array(AgentPermissionActionSchema).min(1).describe('Permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
+      actions: z.array(AgentPermissionActionSchema).min(1).describe('Permission actions to grant. Valid values: manage:identity, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
       scope: z.enum(['global', 'node', 'network']).optional().describe('Optional permission scope.'),
       scope_id: z.string().optional().describe('Scope target ID for node/network scopes.'),
     }),

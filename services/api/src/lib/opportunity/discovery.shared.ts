@@ -3,18 +3,11 @@ import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
+import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, OpenedNegotiation } from '@indexnetwork/protocol';
 
 
 /** Graph DB shape the opportunity/HyDE graphs require; discovery casts its ChatDatabaseAdapter to this. */
 export type OpportunityGraphDb = OpportunityGraphDatabase & HydeGraphDatabase;
-
-/** Runtime deps shared by every opportunity-discovery run. */
-export interface OpportunityDiscoveryDeps {
-  /** Wakes a signal's PersonalAgent once the batch is persisted. */
-  matchesReady?: MatchesReadyFn;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-}
 
 type DiscoveryLogger = ReturnType<typeof log.job.from>;
 
@@ -24,10 +17,10 @@ export function createOpportunityGraphDb(database: object = new ChatDatabaseAdap
 }
 
 /**
- * Assemble the configured opportunity graph (HyDE sub-graph + matches_ready wiring).
+ * Assemble the configured opportunity graph (HyDE sub-graph included).
  * Shared by every discovery entry point, so it lives here once.
  */
-export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: OpportunityDiscoveryDeps) {
+export function buildOpportunityGraph(graphDb: OpportunityGraphDb) {
   const embedder: Embedder = new EmbedderAdapter();
   const cache: HydeCache = new RedisCacheAdapter();
   const inferrer = new LensInferrer();
@@ -37,10 +30,6 @@ export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: Opport
     graphDb,
     embedder,
     hydeGraph,
-    undefined,
-    undefined,
-    deps?.matchesReady,
-    deps?.agentDispatcher,
   ).createGraph();
 }
 
@@ -70,12 +59,14 @@ export interface OpportunityDiscoverySummary {
   sameIntentPairDuplicateSuppressions: number;
   crossIntentPairAllowedCount: number;
   finalAtomicConflictCount: number;
+  /** Negotiations this run opened; each owes its initiator a first turn. */
+  opened: OpenedNegotiation[];
 }
 
 interface OpportunityDiscoveryResultShape {
   candidates?: unknown[];
   evaluatedOpportunities?: unknown[];
-  opportunities?: unknown[];
+  opened?: OpenedNegotiation[];
   persistenceOutcome?: {
     evaluatedCount: number;
     sameIntentPairDuplicateSuppressions: number;
@@ -89,14 +80,16 @@ export function summarizeOpportunityDiscoveryResult(
   result: OpportunityDiscoveryResultShape,
 ): OpportunityDiscoverySummary {
   const candidates = Array.isArray(result.candidates) ? result.candidates : [];
-  const opportunities = Array.isArray(result.opportunities) ? result.opportunities : [];
+  // Discovery's output is what it opened: every evaluated pair becomes an
+  // opportunity with a negotiation beside it, so there is no separate count.
+  const opened = Array.isArray(result.opened) ? result.opened : [];
   const persistence = result.persistenceOutcome;
   const evaluatedCount = persistence?.evaluatedCount
     ?? (Array.isArray(result.evaluatedOpportunities) ? result.evaluatedOpportunities.length : 0);
   const sameIntentPairDuplicateSuppressions = persistence?.sameIntentPairDuplicateSuppressions ?? 0;
   const crossIntentPairAllowedCount = persistence?.crossIntentPairAllowedCount ?? 0;
   const finalAtomicConflictCount = persistence?.finalAtomicConflictCount ?? 0;
-  const completionReason: OpportunityDiscoveryCompletionReason = opportunities.length > 0
+  const completionReason: OpportunityDiscoveryCompletionReason = opened.length > 0
     ? 'created_or_reactivated'
     : candidates.length === 0
       ? 'no_search_candidates'
@@ -111,17 +104,18 @@ export function summarizeOpportunityDiscoveryResult(
   return {
     candidatesFound: candidates.length,
     evaluatedCount,
-    opportunitiesCreated: opportunities.length,
+    opportunitiesCreated: opened.length,
     completionReason,
     sameIntentPairDuplicateSuppressions,
     crossIntentPairAllowedCount,
     finalAtomicConflictCount,
+    opened,
   };
 }
 
 export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOptions>(params: {
   graphDb: OpportunityGraphDb;
-  deps?: OpportunityDiscoveryDeps & { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
+  deps?: { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
   invokeOpts: TOpts;
   logger: DiscoveryLogger;
   /** Human label for the run, e.g. `'Discovery'`. */
@@ -144,7 +138,7 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
     return null;
   }
 
-  const opportunityGraph = buildOpportunityGraph(graphDb, deps);
+  const opportunityGraph = buildOpportunityGraph(graphDb);
   const result = await opportunityGraph.invoke(invokeOpts);
   if (result.error) {
     logger.error('Graph failed', { ...logContext, error: result.error });
@@ -153,9 +147,11 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
 
   const summary = summarizeOpportunityDiscoveryResult(result);
 
+  const { opened, ...counts } = summary;
   logger.info('Graph complete', {
     ...logContext,
-    ...summary,
+    ...counts,
+    openedCount: opened.length,
   });
 
   if (logTrace) {

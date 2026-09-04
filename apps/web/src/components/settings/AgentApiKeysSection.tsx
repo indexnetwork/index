@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Check, Copy, Loader2, Plus, Trash2 } from "lucide-react";
@@ -282,20 +281,6 @@ export default function AgentApiKeysSection() {
 
   return (
     <>
-      <div className="mb-5 flex items-center justify-between gap-4 rounded-sm border border-gray-200 p-4">
-        <div>
-          <p className="text-sm font-medium text-gray-900">Hermes connections</p>
-          <p className="mt-1 text-xs text-gray-500 font-ibm-plex-mono">
-            Review health, pause routing, or revoke standalone Hermes installations.
-          </p>
-        </div>
-        <Link
-          to="/agents/connected"
-          className="shrink-0 text-sm font-medium text-gray-900 underline hover:text-black"
-        >
-          Manage connected agents
-        </Link>
-      </div>
       {!primaryAgent ? (
         <div className="space-y-4 max-w-2xl">
           <div className="space-y-3">

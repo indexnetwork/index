@@ -15,14 +15,10 @@ import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import type { MatchExplainerLike } from "./opportunity.match-explainer.js";
 import type { OpportunityGraphDatabase, Opportunity } from '../../platform/database.js';
 import type { Embedder } from '../../platform/discovery/embedder.js';
-import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
-
-/** Host callback that wakes a signal's PersonalAgent with `matches_ready`. */
-export type MatchesReadyFn = (input: { userId: string; intentId: string }) => Promise<void>;
 
 /** The graph's channel state, as every node sees it. */
 export type OpportunityState = typeof OpportunityGraphState.State;
@@ -39,7 +35,7 @@ export interface HydeGeneratorInvokeInput {
 export interface OpportunityHydeGenerator {
   invoke: (input: HydeGeneratorInvokeInput) => Promise<{
     hydeEmbeddings: Record<string, number[]>;
-    lenses?: Array<{ label: string; corpus: 'profiles' | 'intents' | 'premises' }>;
+    lenses?: Array<{ label: string; corpus: 'profiles' | 'intents' }>;
     hydeDocuments?: Record<string, { hydeText?: string; lens?: string }>;
   }>;
 }
@@ -59,17 +55,6 @@ export interface OpportunityGraphDeps {
   /** Resolved match explainer: the injected test double, or a real `MatchExplainer`. Used by discovery-path evaluation. */
   matchExplainer: MatchExplainerLike;
   queueNotification?: QueueOpportunityNotificationFn;
-  /**
-   * Emits `matches_ready` for a signal that just got matches. Discovery never
-   * opens a negotiation itself; the signal's PersonalAgent decides.
-   */
-  matchesReady?: MatchesReadyFn;
-  /**
-   * Used on the chat path to decide whether to wait for the user's personal
-   * agent (long timeout) or fall back to the system agent immediately
-   * (short timeout). Without it, the chat path always uses a short timeout.
-   */
-  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
   retrievalMinSimilarity: number;
 }
 
@@ -79,7 +64,6 @@ export const scopeLog = protocolLogger('OpportunityGraph:Scope');
 export const resolveLog = protocolLogger('OpportunityGraph:Resolve');
 export const discoveryLog = protocolLogger('OpportunityGraph:Discovery');
 export const evaluationLog = protocolLogger('OpportunityGraph:Evaluation');
-export const matchesReadyLog = protocolLogger('OpportunityGraph:MatchesReady');
 export const rankingLog = protocolLogger('OpportunityGraph:Ranking');
 export const introValidationLog = protocolLogger('OpportunityGraph:IntroValidation');
 export const introEvaluationLog = protocolLogger('OpportunityGraph:IntroEvaluation');
@@ -167,7 +151,7 @@ export function belongsToOwnedIntent(
 
 /**
  * IND-567: Cool-down window (ms) for cross-query rejection suppression.
- * Candidates with a recently rejected or stalled opportunity within this window
+ * Candidates with a recently rejected opportunity within this window
  * receive a similarity penalty during evaluation ranking. 7 days.
  */
 export const REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
@@ -180,7 +164,7 @@ export const REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export const REJECTION_COOLDOWN_SIMILARITY_PENALTY = 0.5;
 
-/** Default cap for source premises used by premise-to-premise discovery. Prevents BACKEND-5-style fan-out. */
+/** Default cap for discovery sources. Prevents BACKEND-5-style fan-out. */
 
 /** NUL separator: it cannot occur inside an id, so the composite key is unambiguous. */
 const PAIR_KEY_SEPARATOR = String.fromCharCode(0);
@@ -193,7 +177,7 @@ export function buildEvaluatorEvidenceKey(candidate: CandidateMatch): string {
   return [
     candidate.candidateUserId,
     candidate.networkId,
-    candidate.candidateIntentId ?? candidate.candidatePremiseId ?? candidate.candidateContextId ?? candidate.sourceContextId ?? 'profile',
+    candidate.candidateIntentId ?? candidate.candidateContextId ?? candidate.sourceContextId ?? 'profile',
   ].join(':');
 }
 

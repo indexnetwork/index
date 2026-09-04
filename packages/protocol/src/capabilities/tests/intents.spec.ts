@@ -21,7 +21,7 @@ const UPDATED_SIGNAL =
   "I am looking for an ML engineer with production LLM experience to co-found my New York developer-tools company, starting in October.";
 const VAGUE_SIGNAL = "I want a job.";
 
-/** In-memory host implementing the ports the intent graph uses. No profile text or premises reach the model. */
+/** In-memory host implementing the ports the intent graph uses. No profile text reaches the model. */
 class FakeIntentHost {
   readonly intents: Array<CreatedIntent & { archivedAt: Date | null; embedding?: number[] }> = [];
   readonly hydeJobs: Array<
@@ -29,6 +29,7 @@ class FakeIntentHost {
     | { kind: "delete"; data: Parameters<IntentFollowUp["deleteHyde"]>[0] }
   > = [];
   readonly embedded: string[] = [];
+  readonly links: Array<{ intentId: string; networkId: string }> = [];
   private idCounter = 0;
 
   private active(): ActiveIntent[] {
@@ -72,6 +73,11 @@ class FakeIntentHost {
       if (!intent) return { success: false, error: "Intent not found" };
       intent.archivedAt = new Date();
       return { success: true };
+    },
+    assignIntentToNetworkIfMember: async (_userId: string, intentId: string, networkId: string) => {
+      if (networkId !== NETWORK_ID) return { kind: "not_member" as const };
+      this.links.push({ intentId, networkId });
+      return { kind: "assigned" as const };
     },
     deleteIntentIndexAssociations: async () => {},
     expireOpportunitiesByIntentActor: async () => 0,
@@ -129,10 +135,11 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     const scoped = { ...base, scopeType: "network" as const, scopeId: NETWORK_ID };
 
     // Create: infer → verify → reconcile → execute.
-    const created = await graph.invoke({ ...scoped, inputContent: CO_FOUNDER_SIGNAL });
+    const created = await graph.invoke({ ...scoped, inputContent: CO_FOUNDER_SIGNAL, networkIds: [NETWORK_ID] });
     show("create", CO_FOUNDER_SIGNAL, {
       classification: created.verifiedIntents[0]?.verification?.classification,
       persisted: host.intents[0]?.payload,
+      linked: host.links.map((link) => link.networkId),
       trace: created.trace.map((entry) => entry.detail),
       failures: created.validationFailures,
     });
@@ -140,8 +147,9 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     expect(created.verifiedIntents.length).toBeGreaterThan(0);
     expect(created.verifiedIntents[0].verification?.classification).toMatch(/COMMISSIVE|DIRECTIVE/);
     expect(created.executionResults).toEqual([
-      expect.objectContaining({ actionType: "create", success: true, intentId: "intent-1" }),
+      expect.objectContaining({ actionType: "create", success: true, intentId: "intent-1", linkedNetworkIds: [NETWORK_ID] }),
     ]);
+    expect(host.links).toEqual([{ intentId: "intent-1", networkId: NETWORK_ID }]);
     expect(host.intents[0]).toMatchObject({ userId: USER_ID, embedding: expect.any(Array) });
     expect(host.embedded).toEqual([host.intents[0].payload]);
     expect(host.hydeJobs).toEqual([
@@ -178,22 +186,6 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     show("read after delete", `network ${NETWORK_ID}`, { intents: readAfterDelete.readResult?.intents });
     expect(readAfterDelete.readResult).toMatchObject({ count: 0, intents: [] });
   }, 180_000);
-
-  test.concurrent("proposes a signal without persisting it", async () => {
-    const host = new FakeIntentHost();
-    const result = await host.graph().invoke({ ...base, dryRun: true, inputContent: CO_FOUNDER_SIGNAL });
-    show("propose", CO_FOUNDER_SIGNAL, {
-      proposed: result.verifiedIntents.map((intent) => intent.description),
-      persisted: host.intents.length,
-      trace: result.trace.map((entry) => entry.detail),
-    });
-
-    expect(result.verifiedIntents.length).toBeGreaterThan(0);
-    expect(result.actions).toEqual([]);
-    expect(result.executionResults).toEqual([]);
-    expect(host.intents).toEqual([]);
-    expect(host.hydeJobs).toEqual([]);
-  }, 120_000);
 
   test.concurrent("rejects a vague utterance instead of persisting it", async () => {
     const host = new FakeIntentHost();

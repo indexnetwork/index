@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { Loader2, MessageSquare } from "lucide-react";
-import { useAIChat } from "@/contexts/AIChatContext";
 import { useSaveBarVisible } from "@/contexts/SaveBarContext";
 import { getJwtToken } from "@/lib/auth-client";
 import { log } from "@/lib/logger";
@@ -12,7 +11,6 @@ export default function FeedbackWidget() {
   const [feedback, setFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { sessionId, messages } = useAIChat();
   const saveBarVisible = useSaveBarVisible();
 
   useEffect(() => {
@@ -44,16 +42,7 @@ export default function FeedbackWidget() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${jwt}`,
         },
-        body: JSON.stringify({
-          feedback,
-          sessionId: sessionId ?? undefined,
-          conversation:
-            messages.length > 0
-              ? messages
-                  .slice(-50)
-                  .map((m) => ({ role: m.role, content: m.content }))
-              : undefined,
-        }),
+        body: JSON.stringify({ feedback }),
       });
 
       if (!response.ok) {
@@ -100,15 +89,7 @@ export default function FeedbackWidget() {
             disabled={isSubmitting}
           />
 
-          <div className="flex items-center justify-between mt-auto">
-            <div className="flex items-center">
-              {messages.length > 0 && (
-                <span className="text-xs text-gray-400">
-                  Includes conversation
-                </span>
-              )}
-            </div>
-
+          <div className="flex items-center justify-end mt-auto">
             <button
               className="bg-[#041729] text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-[#0a2d4a] transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleSubmit}

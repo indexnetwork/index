@@ -1,4 +1,4 @@
-import { agentDatabaseAdapter, type AgentPermissionRow, type AgentRegistryStore, type AgentScope, type AgentRow, type AgentTransportRow, type AgentWithRelations, type PermissionScope, type TransportChannel } from '../adapters/agent.database.adapter';
+import { agentDatabaseAdapter, type AgentPermissionRow, type AgentRegistryStore, type AgentScope, type AgentRow, type AgentWithRelations, type PermissionScope } from '../adapters/agent.database.adapter';
 import { agentTokenAdapter, type AgentTokenStore } from '../adapters/agent-token.adapter';
 import { userDatabaseAdapter } from '../adapters/database.adapter';
 import { log } from '../lib/log';
@@ -8,7 +8,6 @@ const logger = log.service.from('AgentService');
 /** All valid agent actions. Used for input validation. */
 export const AGENT_ACTIONS = [
   'manage:identity',
-  'manage:premises',
   'manage:intents',
   'manage:networks',
   'manage:opportunities',
@@ -17,19 +16,9 @@ export const AGENT_ACTIONS = [
 
 export type AgentAction = (typeof AGENT_ACTIONS)[number];
 
-/** Actions granted to the chat orchestrator by default (excludes negotiations). */
-const ORCHESTRATOR_ACTIONS: readonly AgentAction[] = [
-  'manage:identity',
-  'manage:premises',
-  'manage:intents',
-  'manage:networks',
-  'manage:opportunities',
-];
-
 /** Default actions granted to the owner of a newly created personal agent. */
 export const PERSONAL_AGENT_DEFAULT_ACTIONS: readonly AgentAction[] = [
   'manage:identity',
-  'manage:premises',
   'manage:intents',
   'manage:networks',
   'manage:opportunities',
@@ -41,7 +30,7 @@ export type AgentServiceStore = AgentRegistryStore;
  * AgentService
  *
  * Business logic for the agent registry. Owns validation and authorization
- * rules around agent CRUD, transports, and permissions.
+ * rules around agent CRUD and permissions.
  */
 export class AgentService {
   constructor(
@@ -55,8 +44,8 @@ export class AgentService {
       throw new Error('Agent name is required');
     }
 
-    // User-registered agents are external poller runtimes — delegates of the
-    // user's personal negotiator, authenticated via API key (IND-410).
+    // User-registered agents are external poller runtimes authenticated via
+    // API key.
     const agent = await this.db.createAgent({
       ownerId,
       name: cleanName,
@@ -74,21 +63,8 @@ export class AgentService {
     logger.info('Created external agent with default permissions', { agentId: agent.id, ownerId });
     return this.sanitizeAgent({
       ...agent,
-      transports: [],
       permissions: [permission],
     });
-  }
-
-  /**
-   * Resolve the user's personal negotiator agent row (`type='personal'`),
-   * provisioning it when missing — `ensureNegotiatorAgent` is idempotent.
-   * Returns null for missing users, which callers treat as
-   * "negotiator not available" (404-equivalent).
-   */
-  async getNegotiatorAgent(userId: string): Promise<AgentRow | null> {
-    const agentId = await this.db.ensureNegotiatorAgent(userId);
-    if (!agentId) return null;
-    return this.db.getAgent(agentId);
   }
 
   async getById(agentId: string, userId: string): Promise<AgentWithRelations> {
@@ -181,7 +157,6 @@ export class AgentService {
       await this.db.setNegotiationExecutorBinding({
         ownerId: userId,
         targetAgentId: updates.handleNegotiations ? agentId : null,
-        exactTargetPermissions: false,
         ...(!updates.handleNegotiations && { disableTargetAgentId: agentId }),
       });
     }
@@ -215,36 +190,6 @@ export class AgentService {
 
     await this.db.deleteAgent(agentId);
     logger.info('Deleted agent', { agentId, userId });
-  }
-
-  async addTransport(
-    agentId: string,
-    userId: string,
-    channel: TransportChannel,
-    config?: Record<string, unknown>,
-    priority?: number,
-  ): Promise<AgentTransportRow> {
-    const agent = await this.requireOwnedAgent(agentId, userId);
-    if (agent.type === 'system') {
-      throw new Error('System agents cannot be modified');
-    }
-
-    const transport = await this.db.createTransport({ agentId, channel, config, priority });
-    return this.sanitizeTransport(transport);
-  }
-
-  async removeTransport(agentId: string, transportId: string, userId: string): Promise<void> {
-    const agent = await this.requireOwnedAgentWithRelations(agentId, userId);
-    if (agent.type === 'system') {
-      throw new Error('System agents cannot be modified');
-    }
-
-    const transport = agent.transports.find((item) => item.id === transportId);
-    if (!transport) {
-      throw new Error('Transport not found');
-    }
-
-    await this.db.deleteTransport(transportId);
   }
 
   async grantPermission(
@@ -343,40 +288,18 @@ export class AgentService {
   }
 
   async grantDefaultSystemPermissions(userId: string): Promise<void> {
-    const systemAgentIds = this.db.getSystemAgentIds();
-
-    const [chatAgent, negotiatorAgent] = await Promise.all([
-      this.db.getAgent(systemAgentIds.chatOrchestrator),
-      this.db.getAgent(systemAgentIds.negotiator),
-    ]);
-
-    if (chatAgent) {
-      const missingChatActions = await this.findMissingGlobalActions(
-        systemAgentIds.chatOrchestrator,
-        userId,
-        ORCHESTRATOR_ACTIONS,
-      );
-      if (missingChatActions.length > 0) {
-        await this.db.grantPermission({
-          agentId: systemAgentIds.chatOrchestrator,
-          userId,
-          scope: 'global',
-          actions: missingChatActions,
-        });
-      }
-    } else {
-      logger.warn('Skipping default chat-orchestrator permissions; system agent missing', { userId });
-    }
+    const { negotiator } = this.db.getSystemAgentIds();
+    const negotiatorAgent = await this.db.getAgent(negotiator);
 
     if (negotiatorAgent) {
       const missingNegotiatorActions = await this.findMissingGlobalActions(
-        systemAgentIds.negotiator,
+        negotiator,
         userId,
         ['manage:opportunities', 'manage:negotiations'],
       );
       if (missingNegotiatorActions.length > 0) {
         await this.db.grantPermission({
-          agentId: systemAgentIds.negotiator,
+          agentId: negotiator,
           userId,
           scope: 'global',
           actions: missingNegotiatorActions,
@@ -396,11 +319,6 @@ export class AgentService {
     return this.db.touchLastSeen(agentId);
   }
 
-  /** Stamp only the negotiation polling heartbeat used for runtime routing. */
-  async touchNegotiationPickup(agentId: string): Promise<void> {
-    return this.db.touchNegotiationPickup(agentId);
-  }
-
   async hasPermission(
     agentId: string,
     userId: string,
@@ -408,14 +326,6 @@ export class AgentService {
     scope?: AgentScope,
   ): Promise<boolean> {
     return this.db.hasPermission(agentId, userId, action, scope);
-  }
-
-  async findAuthorizedAgents(
-    userId: string,
-    action: string,
-    scope?: AgentScope,
-  ): Promise<AgentWithRelations[]> {
-    return this.db.findAuthorizedAgents(userId, action, scope);
   }
 
   private async requireOwnedAgent(agentId: string, userId: string): Promise<AgentRow> {
@@ -453,10 +363,6 @@ export class AgentService {
     return agent;
   }
 
-  private sanitizeTransport(transport: AgentTransportRow): AgentTransportRow {
-    return transport;
-  }
-
   private sanitizeAgent(agent: AgentWithRelations, viewerId?: string): AgentWithRelations {
     const isOwner = viewerId === undefined || agent.ownerId === viewerId;
     // Owners of non-system agents see every permission; everyone else (and any
@@ -465,7 +371,6 @@ export class AgentService {
 
     return {
       ...agent,
-      transports: agent.transports.map((transport) => this.sanitizeTransport(transport)),
       permissions: keepAllPermissions
         ? agent.permissions
         : agent.permissions.filter((permission) => permission.userId === viewerId),

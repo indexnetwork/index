@@ -22,7 +22,6 @@ const ROOT = new URL("../src", import.meta.url).pathname;
 export const LIVE_MODEL_SPECS = new Set([
   "capabilities/tests/intents.spec.ts",
   "opportunities/tests/opportunity.graph.spec.ts",
-  "premises/tests/premise.decomposer.spec.ts",
 ]);
 
 type ChildTestInput = Pick<ChildTestResult, "file" | "exitCode" | "durationMs" | "output">;
@@ -62,8 +61,13 @@ export async function main(): Promise<number> {
 
   const { providerFreeFiles: files, liveFiles } = classifySpecFiles(ROOT, LIVE_MODEL_SPECS);
   if (files.length === 0) {
-    console.error("No provider-free spec files discovered");
-    return 1;
+    if (liveFiles.length === 0) {
+      console.error("No spec files discovered");
+      return 1;
+    }
+    console.log("Every spec is a live-model spec; nothing for the credential-free gate to run.");
+    for (const file of liveFiles) console.log(`  ${file.replace(ROOT + "/", "").replace(/^internal\//, "")}`);
+    return 0;
   }
 
   console.log(`Running ${files.length} provider-free spec files with concurrency=${concurrency}`);

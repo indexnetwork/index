@@ -351,7 +351,6 @@ async function main(): Promise<void> {
         limit: args.limit,
         json: args.json,
         positionals: args.positionals,
-        acknowledgeUptake: args.acknowledgeUptake,
       });
       return;
     case "negotiation":

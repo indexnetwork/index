@@ -80,7 +80,7 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
             };
           }
 
-          if (!state.dryRun && !isExplicitUpdate && verdict.referential_breadth === 'broad') {
+          if (!isExplicitUpdate && verdict.referential_breadth === 'broad') {
             logger.warn('Dropping broad attributive intent before persistence', {
               description,
               referentialBreadth: verdict.referential_breadth,
@@ -179,8 +179,8 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
 
     /**
      * Node 3: Reconciliation
-     * Decides on final actions. Archive, transition, and confirm build their
-     * one deterministic action directly (no LLM). Explicit update binds to its
+     * Decides on final actions. Archive and transition build their one
+     * deterministic action directly (no LLM). Explicit update binds to its
      * one target. A bare content path (no target) reconciles via the LLM.
      */
 export async function reconciliationNode(state: IntentState, deps: IntentGraphDeps) {
@@ -190,7 +190,6 @@ export async function reconciliationNode(state: IntentState, deps: IntentGraphDe
       targetIntentIds: state.targetIntentIds,
       archive: state.archive,
       status: state.status,
-      hasProposal: !!state.proposalId,
     });
 
     const agentTimingsAccum: DebugMetaAgent[] = [];
@@ -214,20 +213,6 @@ export async function reconciliationNode(state: IntentState, deps: IntentGraphDe
         actions,
         agentTimings: agentTimingsAccum,
         trace: [{ node: "reconciler", detail: `Actions: transition=1 (${state.status})` }],
-      };
-    }
-
-    if (state.proposalId !== undefined) {
-      const actions = [{
-        type: 'confirm' as const,
-        proposalId: state.proposalId,
-        description: state.description ?? '',
-        ...(state.networkId ? { networkId: state.networkId } : {}),
-      }];
-      return {
-        actions,
-        agentTimings: agentTimingsAccum,
-        trace: [{ node: "reconciler", detail: "Actions: confirm=1" }],
       };
     }
 

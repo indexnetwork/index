@@ -36,7 +36,7 @@ export function normalizeSimilarity(raw: number): number {
  *
  * `distinctSignals` is the number of *distinct* signals (lenses, strategies) that
  * surfaced this candidate — not the number of matched rows. The same lens hitting
- * three of a user's premises is one signal, not three.
+ * three of a user's intents is one signal, not three.
  */
 export function withMultiSignalBonus(
   raw: number,

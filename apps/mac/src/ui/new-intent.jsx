@@ -1,47 +1,42 @@
-/* global useIndexEnv */
 // NewIntent — the signal-creation flow. Mac System 6 chrome, conversational.
 // + Calibrating screen.
-// Live-only: clarifying questions after the opening prompt come from the
-// backend (the intake funnel or the chat agent). There is no local scripted
-// question set or canned example content.
+//
+// The agent asks, you answer, it asks again. The opening answer is the signal;
+// each follow-up comes from /intents/clarify, which folds the answers back into
+// the payload. Then you confirm what was written and it goes out everywhere.
 
 // The opening prompt: the user's first answer IS the signal, handed to the
 // agent to clarify. No suggestion chips — whatever they type drives it.
 const INTENT_STEP = {
   id: "intent",
+  kind: "ask",
   prompt: "who are you trying to meet right now?",
   placeholder: "type what you're looking for…",
 };
 
-// How many dynamic follow-ups follow the opening prompt. Caps the chat
-// clarify loop and drives the progress pips (opening + middle beats).
-const DYN_MAX = 2;
-const STEP_COUNT = 1 + DYN_MAX;
+// How many clarifying questions follow the opening prompt. Caps the loop and
+// drives the progress pips (opening + middle beats).
+const MAX_FOLLOW_UPS = 2;
+const STEP_COUNT = 1 + MAX_FOLLOW_UPS;
 
 function NewIntent({ onDone, onBack }) {
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
   const client = live ? window.IndexApp.getClient() : null;
-  const env = useIndexEnv();
-  // The web app's deterministic intake funnel (/intents/intake/*), gated by the
-  // backend FAST_SIGNAL_INTAKE flag. When off, the scripted chat flow below
-  // runs. When on, start failure shows retry — never chat fallback.
-  const fastEnabled = !!(client && env.features && env.features.fastSignalIntake);
 
   // Completed turns drive the progress bar and the faded history; the current
-  // step is either a local scripted one or a backend-generated question.
+  // step is the opening prompt, a clarifying question, or one of the two gates.
   const [turns, setTurns] = useState([]);
   const [step, setStep] = useState(() => INTENT_STEP);
-  const [thinking, setThinking] = useState(fastEnabled);
-  const [answers, setAnswers] = useState({});
+  const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
   const [calibrating, setCalibrating] = useState(false);
   const inputRef = useRef(null);
 
-  const intentIdRef = useRef(null);       // set once the live signal exists
-  const createdRef = useRef(false);
-  const createdDescriptionRef = useRef(null);
-  const answersRef = useRef({});          // mirror of `answers` for async handlers
-  const flowStartRef = useRef(Date.now());
+  // The payload as it currently reads. Clarify rewrites it; create persists it.
+  const payloadRef = useRef("");
+  const queue = useRef([]);            // clarifying questions not yet asked
+  const pending = useRef([]);          // answers not yet folded into the payload
+  const askedRef = useRef(0);          // clarifying questions asked so far
   const cancelledRef = useRef(false);
   useEffect(() => () => { cancelledRef.current = true; }, []);
 
@@ -55,268 +50,100 @@ function NewIntent({ onDone, onBack }) {
     }
   }, [stepId, thinking]);
 
-  // Fold the collected steps into one signal description for create_intent.
-  const composeDescription = (a) => {
-    const parts = [];
-    if (a.intent) parts.push(String(a.intent).trim());
-    if (a.edges) parts.push(`a great match: ${String(a.edges).trim()}`);
-    if (a["off-limits"]) parts.push(`off-limits: ${String(a["off-limits"]).trim()}`);
-    return parts.filter(Boolean).join(" · ");
-  };
-
-  // ---- fast intake (the web app's /intents/intake funnel) ------------------
-  //
-  // Round 1 comes from /start, follow-ups from /question until the locked
-  // total, then /prepare starts synthesis while the user chooses where to look.
-  // /proposal resolves that speculative work (a 422 carries a clarification
-  // question), and a one-button summary gates /intents/confirm. The server holds
-  // no funnel session: every call resends the answered rounds.
-
-  const fastRounds = useRef([]);          // [{ prompt, answer }]
-  const fastQueue = useRef([]);           // prefetched follow-up questions
-  const fastTotal = useRef(null);         // locked question budget
-  const fastPrepare = useRef(null);       // in-flight /prepare promise
-  const fastRunId = useRef(null);
-  const fastProposal = useRef(null);      // resolved proposal shown on the summary
-  const fastChoice = useRef({});          // { networkId } or { whereText }, matching web
-  const fastWhereLabel = useRef("everywhere");
-
-  const fastCommunities = env.networks || [];
-
-  const showFastQuestion = (q, kind = "question") => {
+  const showQuestion = (question) => {
+    askedRef.current += 1;
     setThinking(false);
     setStep({
-      id: `fast-${kind}-${Date.now()}`,
-      fast: kind,
-      prompt: q.prompt,
-      hint: q.evidence || "",
+      id: `q-${askedRef.current}-${Date.now()}`,
+      kind: "ask",
+      prompt: question.prompt,
       placeholder: "type your answer…",
-      examples: (q.options || []).map((o) => o.label).filter(Boolean),
+      examples: (question.options || []).map((option) => option.label).filter(Boolean),
     });
   };
 
-  const showFastWhere = () => {
+  const showSummary = (note) => {
+    setThinking(false);
+    setStep({ id: `summary-${Date.now()}`, kind: "summary", note: note || "" });
+  };
+
+  // The agent could not be reached. The answers are kept, so retrying resumes
+  // the same round rather than restarting the conversation.
+  const showRetry = () => {
     setThinking(false);
     setStep({
-      id: `fast-where-${Date.now()}`,
-      fast: "where",
-      prompt: "where should we look?",
+      id: `retry-${Date.now()}`,
+      kind: "retry",
+      prompt: "couldn't reach your agent.",
+      note: "your answers are kept.",
     });
   };
 
-  // Summary gate: rendered as a dedicated card (SignalSummaryCard), not the
-  // generic question layout. `choices` stays so submit() resolves the label.
-  const showFastSummary = (p, note) => {
-    fastProposal.current = p;
-    setThinking(false);
-    setStep({
-      id: `fast-summary-${Date.now()}`,
-      fast: "summary",
-      prompt: p.description,
-      proposal: p,
-      whereLabel: fastWhereLabel.current,
-      note: note || "",
-      choices: [{ value: "create", label: "create this signal", sub: `looking in ${fastWhereLabel.current}` }],
-    });
-  };
-
-  const showFastRetry = () => {
-    setThinking(false);
-    setStep({
-      id: `fast-retry-${Date.now()}`,
-      fast: "retry",
-      prompt: "couldn't build your signal.",
-      choices: [{ value: "retry", label: "try again", sub: "your answers are kept" }],
-    });
-  };
-
-  const showFastStartRetry = () => {
-    setThinking(false);
-    setStep({
-      id: `fast-start-retry-${Date.now()}`,
-      fast: "start-retry",
-      prompt: "couldn't start your signal.",
-      choices: [{ value: "retry", label: "try again", sub: "check your connection and retry" }],
-    });
-  };
-
-  const loadFastStart = () => {
-    if (!client) return;
-    setThinking(true);
-    client.intents.intake.start()
-      .then(({ question }) => { if (!cancelledRef.current) showFastQuestion(question); })
-      .catch(() => { if (!cancelledRef.current) showFastStartRetry(); });
-  };
-
-  // Next follow-up from the queue or the server; once the budget is spent,
-  // fire speculative synthesis and move on to the where step.
-  const fastAdvance = async () => {
-    if (fastQueue.current.length > 0) { showFastQuestion(fastQueue.current.shift()); return; }
-    const rounds = fastRounds.current;
-    if (fastTotal.current === null || rounds.length < fastTotal.current) {
-      try {
-        const res = await client.intents.intake.question({
-          rounds,
-          ...(fastTotal.current !== null ? { plannedTotal: fastTotal.current } : {}),
-        });
-        if (cancelledRef.current) return;
-        fastTotal.current = res.total;
-        const qs = res.questions || [];
-        if (qs.length > 0 && rounds.length < res.total) {
-          fastQueue.current = qs.slice(1);
-          showFastQuestion(qs[0]);
-          return;
-        }
-      } catch (_e) { /* proceed with the rounds we have */ }
-      if (cancelledRef.current) return;
-    }
-    fastPrepare.current = client.intents.intake.prepare({ rounds });
-    fastPrepare.current.then((r) => { fastRunId.current = r.runId; }).catch(() => {});
-    showFastWhere();
-  };
-
-  const chooseFastWhere = (choice, label) => {
-    fastChoice.current = choice;
-    fastWhereLabel.current = label;
-    fastResolve();
-  };
-
-  const fastResolve = async () => {
+  // One clarification round: the answers gathered since the last one get folded
+  // into the payload, and whatever is still worth asking comes back.
+  const clarify = async () => {
     setThinking(true);
     try {
-      if (!fastRunId.current && fastPrepare.current) {
-        fastRunId.current = await fastPrepare.current.then((r) => r.runId).catch(() => null);
-      }
-      if (!fastRunId.current) {
-        fastRunId.current = (await client.intents.intake.prepare({ rounds: fastRounds.current })).runId;
-      }
-      const p = await client.intents.intake.proposal({
-        runId: fastRunId.current,
-        rounds: fastRounds.current,
-        ...fastChoice.current,
-      });
-      if (!cancelledRef.current) showFastSummary(p);
-    } catch (e) {
-      if (cancelledRef.current) return;
-      const body = e && e.response;
-      if (body && body.code === "verification_rejected" && body.clarification) {
-        showFastQuestion(body.clarification, "clarify");
-        return;
-      }
-      showFastRetry();
-    }
-  };
-
-  const fastConfirm = async (ans) => {
-    setThinking(true);
-    try {
-      const p = fastProposal.current;
-      const res = await client.intents.confirm({
-        proposalId: p.proposalId,
-        description: p.description,
-        ...(fastChoice.current.networkId ? { networkId: fastChoice.current.networkId } : {}),
+      const answers = pending.current;
+      const result = await client.intents.clarify({
+        payload: payloadRef.current,
+        ...(answers.length > 0 ? { answers } : {}),
       });
       if (cancelledRef.current) return;
-      if (res && res.intentId) intentIdRef.current = res.intentId;
-      createdDescriptionRef.current = p.description;
-      createdRef.current = true;
-      finish(ans);
+      payloadRef.current = result.payload;
+      pending.current = [];
+      queue.current = result.questions || [];
+      advance();
     } catch (_e) {
       if (cancelledRef.current) return;
-      showFastSummary(fastProposal.current, "that didn't go through — try again.");
+      showRetry();
     }
   };
 
-  useEffect(() => {
-    if (!fastEnabled) return;
-    loadFastStart();
-    // The intake is one mounted flow. Retrying is an explicit UI action; a
-    // client/closure identity change must not silently restart answered rounds.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Signal intake no longer opens a chat turn. The macOS app authenticates
-  // with an API key, and API-key callers cannot start a global chat — that
-  // surface is web-only.
-  // Clarification comes from the deterministic intake funnel below; without it
-  // the flow finishes from the answers already collected.
-
-  // Close out the flow: create the signal from the composed answers when the
-  // intake funnel has not already produced one, then hand back to the caller.
-  const finish = (ans) => {
-    setCalibrating(true);
-    (async () => {
-      let created = createdRef.current;
-      if (client && !created) {
-        // No signal was created upstream (the guided beat was cut short), so
-        // create it from the composed answers.
-        try {
-          const description = composeDescription(ans);
-          const result = await window.IndexApp.createIntent(description);
-          intentIdRef.current = result && (result.intentId || result.id) || intentIdRef.current;
-          createdDescriptionRef.current = description;
-          created = true;
-        } catch (_e) { /* fall through to the calibrating transition */ }
-      }
-      const completedAnswers = createdDescriptionRef.current
-        ? { ...ans, intent: createdDescriptionRef.current }
-        : ans;
-      onDone(completedAnswers, created, intentIdRef.current);
-    })();
-  };
-
-  const submit = (val) => {
-    const raw = val ?? draft;
-    const v = String(raw).trim();
-    if (!v && !step.choices) return;
-    const answerLabel = step.choices
-      ? ((step.choices.find((c) => c.value === raw) || {}).label || String(raw))
-      : v;
-    setTurns((prev) => [...prev, { id: step.id, prompt: step.prompt, answer: answerLabel }]);
-
-    const newAns = { ...answers, [step.id]: raw };
-    // Alias dynamic answers onto the prototype's edges/off-limits slots so the
-    // field preview and the main view header keep reading naturally.
-    if (step.fast === "question" || step.fast === "clarify") {
-      if (!newAns.intent) newAns.intent = v;
-      else if (!newAns.edges) newAns.edges = v;
-      else if (!newAns["off-limits"]) newAns["off-limits"] = v;
-    }
-    setAnswers(newAns);
-    answersRef.current = newAns;
-
-    // Fast-intake steps: each answer extends the resent rounds, exactly like
-    // the web funnel.
-    if (step.fast) {
-      const isChip = (step.examples || []).includes(raw);
-      if (step.fast === "question") {
-        fastRounds.current = [...fastRounds.current, {
-          prompt: step.prompt,
-          answer: isChip ? { selectedOptions: [raw] } : { selectedOptions: [], freeText: v },
-        }];
-        setThinking(true);
-        fastAdvance();
-      } else if (step.fast === "clarify") {
-        // Merges into the last round's free text; it is not a new round and
-        // does not count toward the locked total.
-        const last = fastRounds.current[fastRounds.current.length - 1];
-        last.answer = {
-          selectedOptions: last.answer.selectedOptions,
-          freeText: [last.answer.freeText, v].filter(Boolean).join(" — "),
-        };
-        fastResolve();
-      } else if (step.fast === "summary") {
-        fastConfirm(newAns);
-      } else if (step.fast === "retry") {
-        fastResolve();
-      } else if (step.fast === "start-retry") {
-        loadFastStart();
-      }
+  // Next beat: another question while there is budget and something to ask,
+  // one more clarification round to fold in what was just answered, else the
+  // summary.
+  const advance = () => {
+    if (askedRef.current >= MAX_FOLLOW_UPS) {
+      if (pending.current.length > 0) { void clarify(); return; }
+      showSummary();
       return;
     }
+    if (queue.current.length > 0) { showQuestion(queue.current.shift()); return; }
+    if (pending.current.length > 0) { void clarify(); return; }
+    showSummary();
+  };
 
-    // No live client to clarify against — finish from what was answered.
-    finish(newAns);
+  const submit = (value) => {
+    const raw = value ?? draft;
+    const answer = String(raw).trim();
+    if (!answer) return;
+    setTurns((prev) => [...prev, { id: step.id, prompt: step.prompt, answer }]);
+
+    if (step.id === "intent") {
+      payloadRef.current = answer;
+      // Signed out (the prototype walkthrough) there is nothing to clarify
+      // against; the caller renders the signal locally.
+      if (!client) { setCalibrating(true); onDone({ intent: answer }, false, null); return; }
+      void clarify();
+      return;
+    }
+    pending.current = [...pending.current, { prompt: step.prompt, answer }];
+    advance();
+  };
+
+  const create = async () => {
+    setCalibrating(true);
+    try {
+      const description = payloadRef.current.trim();
+      const created = await client.intents.create({ description });
+      if (cancelledRef.current) return;
+      onDone({ intent: description }, true, created.intentId);
+    } catch (_e) {
+      if (cancelledRef.current) return;
+      setCalibrating(false);
+      showSummary("that didn't go through — try again.");
+    }
   };
 
   if (calibrating) return <Calibrating/>;
@@ -386,82 +213,70 @@ function NewIntent({ onDone, onBack }) {
                     </span>
                   </AgentBubble>
                 </div>
-              ) : step.fast === "where" ? (
+              ) : step.kind === "retry" ? (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:12 }}>
                 <AgentBubble>{step.prompt}</AgentBubble>
-                <FastWherePicker networks={fastCommunities} onSelect={chooseFastWhere}/>
+                <div style={{ marginLeft:36, display:"flex", alignItems:"center", gap:12 }}>
+                  <Btn primary onClick={() => clarify()}>try again</Btn>
+                  <span style={{
+                    fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+                  }}>{step.note}</span>
+                </div>
               </div>
-              ) : step.fast === "summary" ? (
+              ) : step.kind === "summary" ? (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:12 }}>
                 <AgentBubble>Here's your signal.</AgentBubble>
                 <SignalSummaryCard
-                  proposal={step.proposal}
-                  whereLabel={step.whereLabel}
+                  description={payloadRef.current}
                   note={step.note}
-                  onCreate={() => submit("create")}
+                  onCreate={create}
                 />
               </div>
               ) : (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:10 }}>
                 <AgentBubble>{step.prompt}</AgentBubble>
-                {step.hint && (
-                  <div style={{
-                    fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-                    marginLeft:36, marginTop:-2, lineHeight:1.4,
-                  }}>{step.hint}</div>
-                )}
 
                 <div style={{ marginLeft:36, marginTop:10, display:"grid", gap:16 }}>
-                  {step.choices ? (
-                    <div style={{ display:"grid", gap:8, maxWidth:560 }}>
-                      {step.choices.map(c => (
-                        <ChoiceRow key={c.value} c={c} onClick={() => submit(c.value)}/>
-                      ))}
-                    </div>
-                  ) : (
+                  {/* type your own answer first, the suggestions are the
+                      "or pick one" fallback, so they come after */}
+                  <form onSubmit={(e) => { e.preventDefault(); submit(); }}
+                    style={{ display:"flex", gap:12, alignItems:"center", maxWidth:560 }}>
+                    <span style={{
+                      fontFamily:"var(--mac-mono)",
+                      fontSize: 17, color:"#000",
+                    }}>›</span>
+                    <input
+                      ref={inputRef}
+                      value={draft}
+                      onChange={e => setDraft(e.target.value)}
+                      placeholder={step.placeholder}
+                      style={{
+                        flex:1,
+                        background:"#fff",
+                        border:"none",
+                        borderBottom:"1px solid #000",
+                        outline:"none",
+                        color:"#000",
+                        fontFamily:"var(--mac-sans)",
+                        fontSize: 16,
+                        padding:"7px 0",
+                      }}
+                    />
+                    <Btn primary disabled={!draft.trim()} onClick={() => submit()}>send ↵</Btn>
+                  </form>
+                  {step.examples && step.examples.length > 0 && (
                     <React.Fragment>
-                      {/* type your own answer first, the suggestions are the
-                          "or pick one" fallback, so they come after */}
-                      <form onSubmit={(e) => { e.preventDefault(); submit(); }}
-                        style={{ display:"flex", gap:12, alignItems:"center", maxWidth:560 }}>
-                        <span style={{
-                          fontFamily:"var(--mac-mono)",
-                          fontSize: 17, color:"#000",
-                        }}>›</span>
-                        <input
-                          ref={inputRef}
-                          value={draft}
-                          onChange={e => setDraft(e.target.value)}
-                          placeholder={step.placeholder}
-                          style={{
-                            flex:1,
-                            background:"#fff",
-                            border:"none",
-                            borderBottom:"1px solid #000",
-                            outline:"none",
-                            color:"#000",
-                            fontFamily:"var(--mac-sans)",
-                            fontSize: 16,
-                            padding:"7px 0",
-                          }}
-                        />
-                        <Btn primary disabled={!draft.trim()} onClick={() => submit()}>send ↵</Btn>
-                      </form>
-                      {step.examples && step.examples.length > 0 && (
-                        <React.Fragment>
-                          <div style={{
-                            fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
-                            textTransform:"uppercase", color:"var(--ink-3)",
-                          }}>or pick one</div>
-                          <div style={{
-                            display:"grid", gap:7, maxWidth:560,
-                          }}>
-                            {step.examples.map(ex => (
-                              <SuggestChip key={ex} onClick={() => submit(ex)}>{ex}</SuggestChip>
-                            ))}
-                          </div>
-                        </React.Fragment>
-                      )}
+                      <div style={{
+                        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
+                        textTransform:"uppercase", color:"var(--ink-3)",
+                      }}>or pick one</div>
+                      <div style={{
+                        display:"grid", gap:7, maxWidth:560,
+                      }}>
+                        {step.examples.map(ex => (
+                          <SuggestChip key={ex} onClick={() => submit(ex)}>{ex}</SuggestChip>
+                        ))}
+                      </div>
                     </React.Fragment>
                   )}
                 </div>
@@ -473,7 +288,7 @@ function NewIntent({ onDone, onBack }) {
 
         {/* RIGHT, the field warming */}
         <MacWindow title="the field, warming">
-          <NewIntentFieldPreview answers={answers} stepIdx={stepIdx}/>
+          <NewIntentFieldPreview turns={turns} stepIdx={stepIdx}/>
         </MacWindow>
       </div>
     </div>
@@ -534,56 +349,14 @@ function PastTurn({ step, answer }) {
       <AgentBubble>
         <span style={{ fontSize:16, color:"var(--ink-2)" }}>{step.prompt}</span>
       </AgentBubble>
-      <UserBubble>{step.choices ? step.choices.find(c => c.value === answer)?.label : answer}</UserBubble>
+      <UserBubble>{answer}</UserBubble>
     </div>
   );
 }
 
-// The fast-intake summary gate, kept quiet: the signal as an indented quote in
-// the conversation, small detail lines, one button. No card chrome.
-function FastWherePicker({ networks, onSelect }) {
-  const [whereText, setWhereText] = useState("");
-  return (
-    <div style={{ marginLeft:36, maxWidth:560, display:"grid", gap:10 }}>
-      {networks.map((network) => (
-        <ChoiceRow
-          key={network.id}
-          c={{ value:network.id, label:network.name, sub:"look in this community" }}
-          onClick={() => onSelect({ networkId:network.id }, network.name)}
-        />
-      ))}
-      <ChoiceRow
-        c={{ value:"everywhere", label:"Everywhere", sub:"no community or place constraint" }}
-        onClick={() => onSelect({}, "everywhere")}
-      />
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          const value = whereText.trim();
-          if (value) onSelect({ whereText:value }, value);
-        }}
-        style={{ display:"flex", gap:12, alignItems:"center", marginTop:6 }}
-      >
-        <input
-          value={whereText}
-          onChange={(event) => setWhereText(event.target.value)}
-          placeholder="Somewhere more specific?"
-          style={{
-            flex:1, background:"#fff", border:"none", borderBottom:"1px solid #000",
-            outline:"none", color:"#000", fontFamily:"var(--mac-sans)", fontSize:15,
-            padding:"7px 0",
-          }}
-        />
-        <Btn primary type="submit" disabled={!whereText.trim()}>continue</Btn>
-      </form>
-      <div style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>
-        naming a place rewrites your signal, so it takes a moment longer.
-      </div>
-    </div>
-  );
-}
-
-function SignalSummaryCard({ proposal, whereLabel, note, onCreate }) {
+// The confirmation gate, kept quiet: the signal as an indented quote in the
+// conversation, small detail lines, one button. No card chrome.
+function SignalSummaryCard({ description, note, onCreate }) {
   return (
     <div style={{ marginLeft:36, maxWidth:560, display:"grid", gap:14 }}>
       <div style={{
@@ -593,17 +366,11 @@ function SignalSummaryCard({ proposal, whereLabel, note, onCreate }) {
         <div style={{
           fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
           lineHeight:1.4, color:"#000",
-        }}>{proposal.description}</div>
-        {(proposal.lookingFor || proposal.youBring || whereLabel) && (
-          <div style={{
-            fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-            lineHeight:1.6, display:"grid", gap:2,
-          }}>
-            {proposal.lookingFor && <div>looking for · {proposal.lookingFor}</div>}
-            {proposal.youBring && <div>you bring · {proposal.youBring}</div>}
-            {whereLabel && <div>looking in · {whereLabel}</div>}
-          </div>
-        )}
+        }}>{description}</div>
+        <div style={{
+          fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+          lineHeight:1.6,
+        }}>going out to · everywhere</div>
       </div>
 
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
@@ -647,43 +414,16 @@ function SuggestChip({ children, onClick }) {
   );
 }
 
-function ChoiceRow({ c, onClick }) {
-  const [down, setDown] = useState(false);
-  return (
-    <button
-      onClick={onClick}
-      onMouseDown={() => setDown(true)}
-      onMouseUp={() => setDown(false)}
-      onMouseLeave={() => setDown(false)}
-      style={{
-        textAlign:"left",
-        padding:"12px 16px",
-        border:"1px solid #000",
-        background: down ? "#000" : "#fff",
-        color:      down ? "#fff" : "#000",
-        display:"grid", gap:5,
-        cursor:"pointer",
-      }}>
-      <div style={{
-        fontFamily:"var(--mac-mono)", fontSize:14,
-        letterSpacing:0.4, textTransform:"lowercase",
-        fontWeight:700,
-      }}>{c.label}</div>
-      <div style={{ fontFamily:"var(--mac-sans)", fontSize:13, opacity:0.78 }}>{c.sub}</div>
-    </button>
-  );
-}
-
 // Right column during signal creation
-function NewIntentFieldPreview({ answers, stepIdx }) {
+function NewIntentFieldPreview({ turns, stepIdx }) {
   // Just the narrative of what the agent is doing with you.
   const lines = [
     "getting a read on what you need…",
-    answers.intent ? `you're after: "${truncate(answers.intent, 40)}"` : null,
+    turns[0] ? `you're after: "${truncate(turns[0].answer, 40)}"` : null,
     stepIdx >= 1 ? "taking in what's on your mind…" : null,
-    answers.edges ? `noted: ${truncate(answers.edges, 40)}` : null,
-    stepIdx >= 2 ? "marking what to steer you clear of…" : null,
-    answers["off-limits"] ? `off-limits: ${truncate(answers["off-limits"], 40)}` : null,
+    turns[1] ? `noted: ${truncate(turns[1].answer, 40)}` : null,
+    stepIdx >= 2 ? "sharpening the edges…" : null,
+    turns[2] ? `noted: ${truncate(turns[2].answer, 40)}` : null,
   ].filter(Boolean);
 
   return (
@@ -709,7 +449,7 @@ function NewIntentFieldPreview({ answers, stepIdx }) {
             }}>{l}</span>
           </div>
         ))}
-        {stepIdx >= 1 && <FieldGlyph/>}
+        {turns.length > 0 && <FieldGlyph/>}
       </div>
     </div>
   );

@@ -6,8 +6,6 @@ export interface EvidenceCandidateInput {
   lens: string;
   discoverySource?: 'query';
   matchedStrategies?: string[];
-  sourcePremiseId?: string;
-  candidatePremiseId?: string;
   candidateIntentId?: string;
   sourceContextId?: string;
   candidateContextId?: string;
@@ -24,14 +22,11 @@ export function buildCandidateEvidence(candidate: EvidenceCandidateInput): Oppor
     lens: candidate.lens,
     discoverySource: candidate.discoverySource,
     matchedStrategies: candidate.matchedStrategies,
-    sourcePremiseId: candidate.sourcePremiseId,
-    candidatePremiseId: candidate.candidatePremiseId,
     candidateIntentId: candidate.candidateIntentId,
     sourceContextId: candidate.sourceContextId,
     candidateContextId: candidate.candidateContextId,
     payload: candidate.candidatePayload,
     summary: candidate.candidateSummary,
-    assertionText: candidate.candidatePremiseId ? candidate.candidatePayload : undefined,
   };
 }
 
@@ -45,8 +40,6 @@ export function mergeOpportunityEvidence(...groups: Array<OpportunityEvidence[] 
     const key = [
       evidence.kind,
       evidence.networkId,
-      evidence.sourcePremiseId ?? '',
-      evidence.candidatePremiseId ?? '',
       evidence.candidateIntentId ?? '',
       evidence.sourceContextId ?? '',
       evidence.candidateContextId ?? '',
@@ -69,30 +62,21 @@ export function renderOpportunityEvidenceForPrompt(evidence: OpportunityEvidence
   if (evidence.length === 0) return '    —';
   return evidence.map((item) => {
     const refs = [
-      item.sourcePremiseId ? `sourcePremise=${item.sourcePremiseId}` : undefined,
-      item.candidatePremiseId ? `candidatePremise=${item.candidatePremiseId}` : undefined,
       item.candidateIntentId ? `candidateIntent=${item.candidateIntentId}` : undefined,
       item.sourceContextId ? `sourceContext=${item.sourceContextId}` : undefined,
       item.candidateContextId ? `candidateContext=${item.candidateContextId}` : undefined,
       item.matchedStrategies?.length ? `strategies=${item.matchedStrategies.join(',')}` : undefined,
     ].filter(Boolean).join(', ');
-    const text = item.summary ?? item.payload ?? item.assertionText ?? '';
-    // IND-567 Fix B: when a query_premise entry has no text, warn the evaluator
-    // so it does not treat a high RAG score as domain confirmation.
-    // (text should be populated by Fix A; this fallback fires if the DB fetch
-    //  failed or the adapter omitted getPremise).
+    const text = item.summary ?? item.payload ?? '';
     const domainCaution =
-      (item.kind === 'query_premise' && !text)
-        ? ' [premise text unavailable — do NOT infer domain match from RAG score alone; verify domain alignment from profile]'
-        : (item.kind === 'query_context' && !text)
-          ? ' [context text unavailable — do NOT infer domain match from RAG score alone; verify domain alignment from profile]'
-          : '';
+      (item.kind === 'query_context' && !text)
+        ? ' [context text unavailable — do NOT infer domain match from RAG score alone; verify domain alignment from profile]'
+        : '';
     return `    - ${item.kind} on ${item.networkId} via ${item.lens ?? 'unknown'} score=${item.score?.toFixed(3) ?? '—'}${refs ? ` (${refs})` : ''}${text ? `: ${text}` : ''}${domainCaution}`;
   }).join('\n');
 }
 
 function resolveEvidenceKind(candidate: EvidenceCandidateInput): OpportunityEvidence['kind'] {
-  if (candidate.candidatePremiseId) return 'query_premise';
   if (candidate.candidateContextId) return 'query_context';
   if (candidate.candidateIntentId) return 'query_intent';
   return 'profile';

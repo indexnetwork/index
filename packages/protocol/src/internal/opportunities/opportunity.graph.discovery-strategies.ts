@@ -94,7 +94,7 @@ export async function runQueryHydeDiscovery(ctx: DiscoveryStrategyContext): Prom
 /** Map HyDE embeddings back onto their lens metadata. */
 export function toLensEmbeddings(
   hydeEmbeddings: Record<string, number[]>,
-  lenses: Array<{ label: string; corpus: 'profiles' | 'intents' | 'premises' }>,
+  lenses: Array<{ label: string; corpus: 'profiles' | 'intents' }>,
 ): LensEmbedding[] {
   const lensMap = new Map(lenses.map(l => [l.label, l]));
   const lensEmbeddings: LensEmbedding[] = [];
@@ -149,7 +149,7 @@ export function mergeStrategyCandidates(...groups: CandidateMatch[][]): Candidat
   const merged = new Map<string, CandidateMatch & { _strategies: Set<string> }>();
   for (const group of groups) {
     for (const c of group) {
-      const entityId = c.candidateIntentId ?? c.candidatePremiseId ?? c.candidateContextId ?? 'none';
+      const entityId = c.candidateIntentId ?? c.candidateContextId ?? 'none';
       const key = `${c.candidateUserId}:${c.networkId}:${entityId}`;
       const existing = merged.get(key);
       if (!existing) {

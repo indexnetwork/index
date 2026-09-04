@@ -46,19 +46,16 @@ export function mapEventSummary(input = {}) {
 /**
  * Convert API intents to the current mac signal rows.
  * @param {Array<Object>} intents
- * @param {Array<Object>} [questions]
  */
-export function mapIntents(intents = [], questions = []) {
-  const questionCounts = countQuestionsBySource(questions);
-  return intents.map((intent) => mapIntent(intent, questionCounts.get(intent.id) || 0));
+export function mapIntents(intents = []) {
+  return intents.map((intent) => mapIntent(intent));
 }
 
 /**
  * Convert one API intent to a mac signal row.
  * @param {Object} intent
- * @param {number} [questionCount]
  */
-export function mapIntent(intent, questionCount = 0) {
+export function mapIntent(intent) {
   const networkTitles = Array.isArray(intent.networks)
     ? intent.networks.map((network) => network.networkTitle).filter(Boolean)
     : [];
@@ -78,11 +75,9 @@ export function mapIntent(intent, questionCount = 0) {
     matches: 0,
     connected: 0,
     inConversations: 0,
-    questions: questionCount,
-    // Consolidated row badge: pending questions + awaiting opportunities,
-    // straight from the server list counts so it matches the Hermes and web
-    // dashboards.
-    pending: count(intent.pendingQuestionCount) + count(intent.waitingOpportunityCount),
+    // Row badge: opportunities awaiting the user, straight from the server
+    // list count so it matches the Hermes and web dashboards.
+    pending: count(intent.waitingOpportunityCount),
     inbound: [],
     source: intent,
   };
@@ -222,43 +217,15 @@ export function mapPeopleFromOpportunities(opportunities = []) {
 }
 
 /**
- * Convert API pending questions into the current clarifier shape.
- * @param {Array<Object>} questions
- */
-export function mapClarifiers(questions = []) {
-  return questions.map(mapClarifier);
-}
-
-/**
- * Convert one API question into a current clarifier shape.
- * @param {Object} question
- */
-export function mapClarifier(question) {
-  const options = Array.isArray(question.payload?.options) ? question.payload.options : [];
-  return {
-    id: question.id,
-    source: question.detection?.mode || 'agent',
-    effect: 'neutral',
-    sourceMeta: question.detection || {},
-    text: question.payload?.prompt || question.payload?.title || '',
-    chips: options.map((option) => option.label).filter(Boolean),
-    triggersHint: question.payload?.multiSelect ? 'choose all that apply' : '',
-    apiQuestion: question,
-  };
-}
-
-/**
  * Compose a INDEX_DATA-like snapshot without mutating window.INDEX_DATA.
  * @param {Object} input
  * @param {Object} [input.user]
  * @param {Array<Object>} [input.networks]
  * @param {Array<Object>} [input.intents]
- * @param {Array<Object>} [input.questions]
  * @param {Array<Object>} [input.radarItems]
  * @param {Array<Object>} [input.opportunities]
  */
 export function mapIndexSnapshot(input = {}) {
-  const questions = Array.isArray(input.questions) ? input.questions : [];
   const radarItems = Array.isArray(input.radarItems) ? input.radarItems : [];
   const opportunityRows = Array.isArray(input.opportunities) ? input.opportunities : [];
   const people = radarItems.length
@@ -267,10 +234,9 @@ export function mapIndexSnapshot(input = {}) {
 
   return {
     EVENT: mapEventSummary({ networks: input.networks, user: input.user }),
-    INTENTS: mapIntents(input.intents || [], questions),
+    INTENTS: mapIntents(input.intents || []),
     PEOPLE: people.filter((person) => !person.hidden),
     POOL: people.filter((person) => person.hidden),
-    CLARIFIERS: mapClarifiers(questions),
     FIELD_EVENTS: [],
     AMBIENT_NOTES: [],
   };
@@ -295,20 +261,6 @@ export function mapOpportunityStatusToPrototype(status) {
     default:
       return 'considering';
   }
-}
-
-/**
- * @param {Array<Object>} questions
- * @returns {Map<string, number>}
- */
-function countQuestionsBySource(questions) {
-  const counts = new Map();
-  for (const question of questions) {
-    const sourceId = question?.detection?.sourceId;
-    if (!sourceId) continue;
-    counts.set(sourceId, (counts.get(sourceId) || 0) + 1);
-  }
-  return counts;
 }
 
 /**

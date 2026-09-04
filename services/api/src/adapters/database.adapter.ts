@@ -9,15 +9,13 @@ export { IntentDatabaseAdapter } from './intent.database.adapter';
 export { ChatDatabaseAdapter } from './chat.database.adapter';
 export { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 export { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
-import { discoveryCandidateAdapter, type DiscoveryCandidateDatabaseAdapter } from './discovery-candidate.database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from './negotiation.database.adapter';
 export { HydeDatabaseAdapter } from './hyde.database.adapter';
 export { UserDatabaseAdapter } from './user.database.adapter';
 export { ConversationDatabaseAdapter } from './conversation.database.adapter';
 
 // ── Public helpers + DTO types ──
 export type {
-  ChatSession, ChatMessage, ChatConversationMeta, ChatMessageMeta,
-  CreateSessionInput, CreateMessageInput,
   ResolvedParticipant, ConversationSummary,
 } from './database.shared';
 
@@ -171,12 +169,6 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     // ─────────────────────────────────────────────────────────────────────────────
     getPublicIndexesNotJoined: () => db.getPublicIndexesNotJoined(authUserId),
     joinPublicNetwork: (networkId: string) => db.joinPublicNetwork(networkId, authUserId),
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Agent reporting (own activity only)
-    // ─────────────────────────────────────────────────────────────────────────────
-    getAgentActivitySummary: (input: Parameters<ChatDatabaseAdapter['getAgentActivitySummary']>[1]) =>
-      db.getAgentActivitySummary(authUserId, input),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Opportunity Operations
@@ -391,13 +383,11 @@ export function createSystemDatabase(
      */
     createOpportunityAndExpireIds: (data: Parameters<ChatDatabaseAdapter['createOpportunityAndExpireIds']>[0], expireIds: string[]) => db.createOpportunityAndExpireIds(data, expireIds),
     /**
-     * Discovery candidates. Intentionally unscoped: a candidate is a pair, and
-     * both of its sides are read by their own principal's agent.
+     * Discovery counterparties. Intentionally unscoped: a pair has two sides,
+     * and each is read by its own principal's agent.
      */
-    upsertDiscoveryMatchCandidates: (items: Parameters<DiscoveryCandidateDatabaseAdapter['upsertDiscoveryMatchCandidates']>[0]) =>
-      discoveryCandidateAdapter.upsertDiscoveryMatchCandidates(items),
-    listPendingCandidatesForIntent: (userId: string, intentId: string) =>
-      discoveryCandidateAdapter.listPendingCandidatesForIntent(userId, intentId),
+    openCounterparties: (pairs: Parameters<NegotiationDatabaseAdapter['openCounterparties']>[0]) =>
+      negotiationDatabaseAdapter.openCounterparties(pairs),
     /**
      * Retrieves an opportunity by ID without scope check.
      * @remarks Intentionally unscoped -- used by the negotiation graph and opportunity

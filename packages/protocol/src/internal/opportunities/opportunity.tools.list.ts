@@ -20,7 +20,7 @@ import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { selectOpportunityFeed } from "./opportunity.feed-selection.js";
 
 
-import { CHAT_DISPLAY_LIMIT, attachOpportunityAppLink, attachProfileLink, buildNegotiationUrl } from "./opportunity.tools.cards.js";
+import { CHAT_DISPLAY_LIMIT, attachOpportunityAppLink, attachProfileLink } from "./opportunity.tools.cards.js";
 import { logger } from "./opportunity.tools.cards.js";
 
 /** Builds the `list_opportunities` tool against the host's capabilities. */
@@ -56,10 +56,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
         .string()
         .optional()
         .describe("Selected intent UUID when scopeType is 'intent'. Ignored only when absent."),
-      includeDigestMarkers: z
-        .boolean()
-        .optional()
-        .describe("Internal scheduled-digest mode only. When true, includes hidden delivery markers so the digest send pass can confirm only edited-in opportunities."),
     }),
     handler: async ({ context, query }) => {
       const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
@@ -104,16 +100,13 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
 
       const selection = await selectOpportunityFeed({
         reader: database,
-        deliveryLedger: deps.deliveryLedger,
         viewerId: context.userId,
         networkId: effectiveIndexId,
         intentScope: effectiveIntentScope,
-        isMcp: context.isMcp === true,
-        includeDigestMarkers: query.includeDigestMarkers,
         displayLimit: CHAT_DISPLAY_LIMIT,
         warn: (message, data) => logger.warn(message, data),
       });
-      const { opportunities, dedupedCount, skippedIds, redeliveryIds, fetchedCount, isDigestMode } = selection;
+      const { opportunities, skippedIds, fetchedCount } = selection;
       const buildListDebugSteps = (): Array<{ step: string; detail?: string; data?: Record<string, unknown> }> => {
         const steps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }> = [];
         if (skippedIds.length > 0) {
@@ -139,18 +132,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
             message:
               "I found opportunities, but couldn't render them. Please try again.",
             ...(listDebugSteps.length ? { debugSteps: listDebugSteps } : {}),
-          });
-        }
-        // Digest mode: distinguish "everything was already shown" from "nothing
-        // exists" so the brief omits the people section instead of prompting
-        // the user to run discovery.
-        if (isDigestMode && dedupedCount > 0) {
-          return success({
-            found: false,
-            count: 0,
-            summary: "No new opportunities to show",
-            message:
-              "No new opportunities today — everything actionable has already been shown recently. Omit the people section from the digest.",
           });
         }
         return success({
@@ -185,222 +166,98 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
       const cardDataList: Array<Record<string, unknown> & { opportunityId: string }> = [];
       const seenOpportunityIds = new Set<string>();
 
-      if (isDigestMode) {
-        // ── Digest mode: use LLM presenter for rich, second-person card text ──
-        const presenter = createOpportunityPresenter();
-        const presenterDb: PresenterDatabase = database;
-        const PRESENTER_CONCURRENCY = 6;
+      // ── Chat/list mode: use OpportunityPresenter for user-facing card copy ──
+      const presenter = createOpportunityPresenter();
+      const presenterDb: PresenterDatabase = database;
+      const PRESENTER_CONCURRENCY = 6;
 
-        for (let i = 0; i < opportunities.length; i += PRESENTER_CONCURRENCY) {
-          const chunk = opportunities.slice(i, i + PRESENTER_CONCURRENCY);
-          const chunkCards = await Promise.all(
-            chunk.map(async (opp) => {
-              if (seenOpportunityIds.has(opp.id)) return null;
-              seenOpportunityIds.add(opp.id);
-              try {
-                const counterpartActor = opp.actors.find((a) => a.userId !== context.userId);
-                const counterpartUserId = counterpartActor?.userId;
-                if (!counterpartUserId) return null;
+      for (let i = 0; i < opportunities.length; i += PRESENTER_CONCURRENCY) {
+        const chunk = opportunities.slice(i, i + PRESENTER_CONCURRENCY);
+        const chunkCards = await Promise.all(
+          chunk.map(async (opp) => {
+            if (seenOpportunityIds.has(opp.id)) return null;
+            seenOpportunityIds.add(opp.id);
+            try {
+              const counterpartActor = opp.actors.find((a) => a.userId !== context.userId);
+              const counterpartUserId = counterpartActor?.userId;
+              if (!counterpartUserId) return null;
 
-                const counterpartUser = userMap.get(counterpartUserId) ?? null;
-                const counterpartName =
-                  profileMap.get(counterpartUserId)?.identity?.name ??
-                  counterpartUser?.name ??
-                  "Someone";
+              const counterpartProfile = profileMap.get(counterpartUserId) ?? null;
+              const counterpartUser = userMap.get(counterpartUserId) ?? null;
+              const counterpartName =
+                counterpartProfile?.identity?.name ??
+                counterpartUser?.name ??
+                "Someone";
 
-                const viewerActor = opp.actors.find((a) => a.userId === context.userId);
-                const viewerRole = viewerActor?.role ?? "party";
+              const viewerActor = opp.actors.find((a) => a.userId === context.userId);
+              const viewerRole = viewerActor?.role ?? "party";
 
-                try {
-                  // Load the negotiation context alongside presenter context so
-                  // the digest copy can explain *why* the opportunity surfaced
-                  // (EDG-50) — the presenter grounds `digestSummary` in concrete
-                  // negotiation turns when this is present. The same context
-                  // yields the conversationId for the negotiation-trace link
-                  // (EDG-51).
-                  const [ctx, negotiationContext] = await Promise.all([
-                    gatherOpportunityPresenterContext(
-                      presenterDb,
-                      opp,
-                      context.userId,
-                      counterpartUserId,
-                      effectiveIntentScope.scopeId,
-                    ),
-                    loadNegotiationContext(deps.negotiationDatabase, opp.id, opp.status, context.userId),
-                  ]);
+              const [ctx, negotiationContext] = await Promise.all([
+                gatherOpportunityPresenterContext(
+                  presenterDb,
+                  opp,
+                  context.userId,
+                  counterpartUserId,
+                  effectiveIntentScope.scopeId,
+                ),
+                loadNegotiationContext(deps.database, opp.id, opp.status, context.userId),
+              ]);
 
-                  const presentation = await presenter.presentCard({
-                    ...ctx,
-                    opportunityStatus: opp.status,
-                    ...(negotiationContext ? { negotiationContext } : {}),
-                  });
+              const presentation = await presenter.presentCard({
+                ...ctx,
+                opportunityStatus: opp.status,
+                ...(negotiationContext ? { negotiationContext } : {}),
+              });
 
-                  const negotiationUrl = buildNegotiationUrl(
-                    negotiationContext?.conversationId,
-                    deps.frontendUrl,
-                  );
+              const narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } =
+                { name: "Index", text: presentation.narratorRemark };
 
-                  // Every card is system-discovered now: one narrator.
-                  const narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } =
-                    { name: "Index", text: presentation.narratorRemark };
+              const cardData: Record<string, unknown> & { opportunityId: string } = {
+                opportunityId: opp.id,
+                userId: counterpartUserId,
+                name: counterpartName,
+                avatar: counterpartUser?.avatar ?? null,
+                mainText: stripUuids(presentation.personalizedSummary),
+                cta: presentation.suggestedAction,
+                headline: presentation.headline,
+                primaryActionLabel: getPrimaryActionLabel(viewerRole),
+                secondaryActionLabel: SECONDARY_ACTION_LABEL,
+                mutualIntentsLabel: presentation.mutualIntentsLabel,
+                narratorChip,
+                viewerRole,
+                score: typeof opp.interpretation?.confidence === "number"
+                  ? opp.interpretation.confidence
+                  : undefined,
+                status: opp.status,
+              };
 
-                  const card: Record<string, unknown> = {
-                    opportunityId: opp.id,
-                    userId: counterpartUserId,
-                    name: counterpartName,
-                    avatar: counterpartUser?.avatar ?? null,
-                    mainText: stripUuids(presentation.personalizedSummary),
-                    digestSummary: stripUuids(presentation.digestSummary),
-                    // Deep-link to the negotiation trace that produced this card
-                    // (EDG-51). Only present when a negotiation conversation exists.
-                    ...(negotiationUrl ? { negotiationUrl } : {}),
-                    cta: presentation.suggestedAction,
-                    headline: presentation.headline,
-                    primaryActionLabel: getPrimaryActionLabel(viewerRole),
-                    secondaryActionLabel: SECONDARY_ACTION_LABEL,
-                    mutualIntentsLabel: presentation.mutualIntentsLabel,
-                    narratorChip,
-                    viewerRole,
-                    score: typeof opp.interpretation?.confidence === "number"
-                      ? opp.interpretation.confidence
-                      : undefined,
-                    status: opp.status,
-                    ...(redeliveryIds.has(opp.id) ? { redelivery: true } : {}),
-                  };
-
-                  // Attach the agent-facing profile and opportunity links for
-                  // MCP callers
-                  if (context.isMcp) {
-                    attachProfileLink(card as Record<string, unknown> & { opportunityId: string }, {
-                      counterpartUserId,
-                      frontendUrl: deps.frontendUrl,
-                    });
-                    attachOpportunityAppLink(card as Record<string, unknown> & { opportunityId: string }, {
-                      frontendUrl: deps.frontendUrl,
-                    });
-                  }
-
-                  return card as Record<string, unknown> & { opportunityId: string };
-                } catch (presenterErr) {
-                  logger.warn("LLM presenter failed for list_opportunities digest card, skipping raw fallback", {
-                    opportunityId: opp.id,
-                    err: presenterErr,
-                  });
-                  // Scheduled digests should only surface OpportunityPresenter-rendered
-                  // copy. The minimal fallback reuses evaluator reasoning, which can
-                  // contain raw narrator phrasing (for example "The discoverer...")
-                  // and is not suitable for AgentVillage morning briefs.
-                  skippedIds.push(opp.id);
-                  return null;
-                }
-              } catch (err) {
-                logger.warn("Skipping opportunity that failed to build card", {
-                  opportunityId: opp.id,
-                  err,
+              // For MCP callers, attach the agent-facing profile link and the
+              // opportunity deep link so the agent never has to fabricate
+              // either. Accepting still happens in the Index app behind an
+              // authenticated call — the deep link only opens the card.
+              if (context.isMcp) {
+                attachProfileLink(cardData as Record<string, unknown> & { opportunityId: string }, {
+                  counterpartUserId,
+                  frontendUrl: deps.frontendUrl,
                 });
-                skippedIds.push(opp.id);
-                return null;
+                attachOpportunityAppLink(cardData as Record<string, unknown> & { opportunityId: string }, {
+                  frontendUrl: deps.frontendUrl,
+                });
               }
-            }),
-          );
-          for (const card of chunkCards) {
-            if (card) cardDataList.push(card);
-          }
-        }
-      } else {
-        // ── Chat/list mode: use OpportunityPresenter for user-facing card copy ──
-        const presenter = createOpportunityPresenter();
-        const presenterDb: PresenterDatabase = database;
-        const PRESENTER_CONCURRENCY = 6;
 
-        for (let i = 0; i < opportunities.length; i += PRESENTER_CONCURRENCY) {
-          const chunk = opportunities.slice(i, i + PRESENTER_CONCURRENCY);
-          const chunkCards = await Promise.all(
-            chunk.map(async (opp) => {
-              if (seenOpportunityIds.has(opp.id)) return null;
-              seenOpportunityIds.add(opp.id);
-              try {
-                const counterpartActor = opp.actors.find((a) => a.userId !== context.userId);
-                const counterpartUserId = counterpartActor?.userId;
-                if (!counterpartUserId) return null;
-
-                const counterpartProfile = profileMap.get(counterpartUserId) ?? null;
-                const counterpartUser = userMap.get(counterpartUserId) ?? null;
-                const counterpartName =
-                  counterpartProfile?.identity?.name ??
-                  counterpartUser?.name ??
-                  "Someone";
-
-                const viewerActor = opp.actors.find((a) => a.userId === context.userId);
-                const viewerRole = viewerActor?.role ?? "party";
-
-                const [ctx, negotiationContext] = await Promise.all([
-                  gatherOpportunityPresenterContext(
-                    presenterDb,
-                    opp,
-                    context.userId,
-                    counterpartUserId,
-                    effectiveIntentScope.scopeId,
-                  ),
-                  loadNegotiationContext(deps.negotiationDatabase, opp.id, opp.status, context.userId),
-                ]);
-
-                const presentation = await presenter.presentCard({
-                  ...ctx,
-                  opportunityStatus: opp.status,
-                  ...(negotiationContext ? { negotiationContext } : {}),
-                });
-
-                const narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } =
-                  { name: "Index", text: presentation.narratorRemark };
-
-                const cardData: Record<string, unknown> & { opportunityId: string } = {
-                  opportunityId: opp.id,
-                  userId: counterpartUserId,
-                  name: counterpartName,
-                  avatar: counterpartUser?.avatar ?? null,
-                  mainText: stripUuids(presentation.personalizedSummary),
-                  cta: presentation.suggestedAction,
-                  headline: presentation.headline,
-                  primaryActionLabel: getPrimaryActionLabel(viewerRole),
-                  secondaryActionLabel: SECONDARY_ACTION_LABEL,
-                  mutualIntentsLabel: presentation.mutualIntentsLabel,
-                  narratorChip,
-                  viewerRole,
-                  score: typeof opp.interpretation?.confidence === "number"
-                    ? opp.interpretation.confidence
-                    : undefined,
-                  status: opp.status,
-                };
-
-                // For MCP callers, attach the agent-facing profile link and the
-                // opportunity deep link so the agent never has to fabricate
-                // either. Accepting still happens in the Index app behind an
-                // authenticated call — the deep link only opens the card.
-                if (context.isMcp) {
-                  attachProfileLink(cardData as Record<string, unknown> & { opportunityId: string }, {
-                    counterpartUserId,
-                    frontendUrl: deps.frontendUrl,
-                  });
-                  attachOpportunityAppLink(cardData as Record<string, unknown> & { opportunityId: string }, {
-                    frontendUrl: deps.frontendUrl,
-                  });
-                }
-
-                return cardData;
-              } catch (err) {
-                logger.warn("Skipping opportunity that failed to build presenter card", {
-                  opportunityId: opp.id,
-                  err,
-                });
-                skippedIds.push(opp.id);
-                return null;
-              }
-            }),
-          );
-          for (const card of chunkCards) {
-            if (card) cardDataList.push(card);
-          }
+              return cardData;
+            } catch (err) {
+              logger.warn("Skipping opportunity that failed to build presenter card", {
+                opportunityId: opp.id,
+                err,
+              });
+              skippedIds.push(opp.id);
+              return null;
+            }
+          }),
+        );
+        for (const card of chunkCards) {
+          if (card) cardDataList.push(card);
         }
       }
 
@@ -433,7 +290,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
         message: buildOpportunityPresentation(cardDataList, {
           isMcp: context.isMcp ?? false,
           leadIn: `You have ${cardDataList.length} opportunity(ies).`,
-          includeDigestMarkers: context.isMcp === true && query.includeDigestMarkers === true,
         }),
         ...(listDebugSteps.length ? { debugSteps: listDebugSteps } : {}),
       });

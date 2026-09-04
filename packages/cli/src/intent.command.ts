@@ -85,21 +85,15 @@ export async function handleIntent(
       if (!options.json) output.info("Processing signal...");
       const result = await client.callTool("create_intent", {
         description: options.intentContent,
+        ...(options.targetId ? { networkIds: [options.targetId] } : {}),
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to create signal", 1); return; }
 
-      // `create_intent` returns a proposal (for interactive approval), not a
-      // persisted intent. Confirm it so the CLI actually creates the signal.
-      const proposals = parseIntentProposals((result.data as { message?: string })?.message);
-      if (proposals.length === 0) {
-        output.error("Signal proposal could not be parsed from the response.", 1);
-        return;
-      }
-      for (const proposal of proposals) {
-        await client.confirmIntent(proposal.proposalId, proposal.description);
-        output.success("Signal created.");
-        output.dim(`  ${proposal.description}`);
+      const created = (result.data as { intents?: Array<{ description?: string }> })?.intents ?? [];
+      output.success("Signal created.");
+      for (const intent of created) {
+        if (intent.description) output.dim(`  ${intent.description}`);
       }
       return;
     }
@@ -169,34 +163,4 @@ export async function handleIntent(
       return;
     }
   }
-}
-
-/**
- * Extract intent proposals from a `create_intent` tool message.
- *
- * The tool embeds one or more ```intent_proposal fenced JSON blocks (each with
- * a `proposalId` and `description`) in its message. This pulls them out so the
- * CLI can confirm them into real signals.
- *
- * @param message - The `message` field of the create_intent tool result.
- * @returns Parsed proposals (empty if none found).
- */
-function parseIntentProposals(
-  message: string | undefined,
-): Array<{ proposalId: string; description: string }> {
-  if (!message) return [];
-  const proposals: Array<{ proposalId: string; description: string }> = [];
-  const blockRegex = /```intent_proposal\s*\n([\s\S]*?)\n```/g;
-  let match: RegExpExecArray | null;
-  while ((match = blockRegex.exec(message)) !== null) {
-    try {
-      const parsed = JSON.parse(match[1]) as { proposalId?: string; description?: string };
-      if (parsed.proposalId && parsed.description) {
-        proposals.push({ proposalId: parsed.proposalId, description: parsed.description });
-      }
-    } catch {
-      // Skip blocks whose body is not valid JSON.
-    }
-  }
-  return proposals;
 }

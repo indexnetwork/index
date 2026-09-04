@@ -1,24 +1,19 @@
-import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime-errors';
-import { API_KEY_START_LENGTH, generateApiKey, hashApiKey } from '../lib/apikey/credential';
 import * as schema from '../schemas/database.schema';
 import { log } from '../lib/log';
-import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS } from '../lib/agent/hermes-credential';
-import { hermesRuntimeTelemetry, observeHermesAdvisoryLockWait } from '../lib/agent/hermes-runtime-telemetry';
 
 const logger = log.lib.from('agent.database.adapter');
 
 /**
- * Agent type semantics (IND-410):
- * - `personal`: the user's own negotiator — one active row per user, auto-provisioned.
- * - `external`: a registered third-party poller runtime (delegate of the negotiator).
+ * Agent type semantics:
+ * - `external`: a registered third-party poller runtime.
  * - `system`: seeded builtin agents.
  */
-export type AgentType = 'personal' | 'external' | 'system';
+export type AgentType = 'external' | 'system';
 export type AgentStatus = 'active' | 'inactive';
-export type TransportChannel = 'mcp';
 export type PermissionScope = 'global' | 'node' | 'network';
 
 export interface AgentScope {
@@ -34,27 +29,12 @@ export interface AgentRow {
   type: AgentType;
   status: AgentStatus;
   metadata: Record<string, unknown>;
-  runtimeKind: 'hermes' | null;
   installationId: string | null;
-  runtimeSetupAttemptId: string | null;
   lastSeenAt: Date | null;
-  lastNegotiationPickupAt: Date | null;
   notifyOnOpportunity: boolean;
   dailySummaryEnabled: boolean;
   handleNegotiations: boolean;
   lastDailySummaryAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface AgentTransportRow {
-  id: string;
-  agentId: string;
-  channel: TransportChannel;
-  config: Record<string, unknown>;
-  priority: number;
-  active: boolean;
-  failureCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -70,7 +50,6 @@ export interface AgentPermissionRow {
 }
 
 export interface AgentWithRelations extends AgentRow {
-  transports: AgentTransportRow[];
   permissions: AgentPermissionRow[];
 }
 
@@ -79,18 +58,9 @@ export interface CreateAgentInput {
   ownerId: string;
   name: string;
   description?: string | null;
-  /** Required: an accidental default-typed create would collide with the one-personal-per-owner unique index. */
   type: AgentType;
   status?: AgentStatus;
   metadata?: Record<string, unknown>;
-}
-
-export interface CreateTransportInput {
-  agentId: string;
-  channel: TransportChannel;
-  config?: Record<string, unknown>;
-  priority?: number;
-  active?: boolean;
 }
 
 export interface GrantPermissionInput {
@@ -102,7 +72,6 @@ export interface GrantPermissionInput {
 }
 
 export interface AgentSystemIds {
-  chatOrchestrator: string;
   negotiator: string;
 }
 
@@ -116,39 +85,28 @@ export interface AgentRegistryStore {
   ): Promise<AgentRow | null>;
   deleteAgent(agentId: string): Promise<void>;
   listAgentsForUser(userId: string): Promise<AgentWithRelations[]>;
-  createTransport(input: CreateTransportInput): Promise<AgentTransportRow>;
-  deleteTransport(transportId: string): Promise<void>;
-  recordTransportFailure(transportId: string): Promise<void>;
-  recordTransportSuccess(transportId: string): Promise<void>;
   grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow>;
   upsertGlobalPermission(input: { agentId: string; userId: string; actions: string[] }): Promise<AgentPermissionRow>;
   revokePermission(permissionId: string): Promise<void>;
   revokeGlobalPermission(agentId: string, userId: string): Promise<void>;
   hasPermission(agentId: string, userId: string, action: string, scope?: AgentScope): Promise<boolean>;
-  findAuthorizedAgents(userId: string, action: string, scope?: AgentScope): Promise<AgentWithRelations[]>;
   getSystemAgentIds(): AgentSystemIds;
   touchLastSeen(agentId: string): Promise<void>;
-  touchNegotiationPickup(agentId: string): Promise<void>;
   setNegotiationExecutorBinding(input: {
     ownerId: string;
     targetAgentId: string | null;
-    exactTargetPermissions: boolean;
-    expectedSetupAttemptId?: string;
     disableTargetAgentId?: string;
   }): Promise<AgentWithRelations | null>;
-  ensureNegotiatorAgent(userId: string): Promise<string | null>;
 }
 
 export const SYSTEM_AGENT_IDS: AgentSystemIds = {
-  chatOrchestrator: '00000000-0000-0000-0000-000000000001',
   negotiator: '00000000-0000-0000-0000-000000000002',
 };
 
 /**
  * AgentDatabaseAdapter
  *
- * Database adapter for agent registry CRUD, transport management, and
- * permission queries.
+ * Database adapter for agent registry CRUD and permission queries.
  */
 export class AgentDatabaseAdapter implements AgentRegistryStore {
   async createAgent(input: CreateAgentInput): Promise<AgentRow> {
@@ -185,19 +143,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       return null;
     }
 
-    const [transportRows, permissionRows] = await Promise.all([
-      db
-        .select()
-        .from(schema.agentTransports)
-        .where(eq(schema.agentTransports.agentId, agentId))
-        .orderBy(desc(schema.agentTransports.priority)),
-      db
-        .select()
-        .from(schema.agentPermissions)
-        .where(eq(schema.agentPermissions.agentId, agentId)),
-    ]);
+    const permissionRows = await db
+      .select()
+      .from(schema.agentPermissions)
+      .where(eq(schema.agentPermissions.agentId, agentId));
 
-    return this.mapAgentWithRelations(agent, transportRows, permissionRows);
+    return this.mapAgentWithRelations(agent, permissionRows);
   }
 
   async updateAgent(
@@ -232,11 +183,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         })
         .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)));
 
-      await tx
-        .update(schema.agentTransports)
-        .set({ active: false, updatedAt: new Date() })
-        .where(eq(schema.agentTransports.agentId, agentId));
-
       await tx.delete(schema.apikeys).where(
         sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${agentId}`,
       );
@@ -246,8 +192,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
   }
 
   async listAgentsForUser(userId: string): Promise<AgentWithRelations[]> {
-    // Personal negotiator rows are excluded: they carry no API key or transports and
-    // get their own surfaces (sidebar chat, memory panel) — not the agents page.
     const [ownedRows, permittedRows] = await Promise.all([
       db
         .select({ id: schema.agents.id })
@@ -256,7 +200,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           and(
             eq(schema.agents.ownerId, userId),
             isNull(schema.agents.deletedAt),
-            ne(schema.agents.type, 'personal'),
           ),
         ),
       db
@@ -270,7 +213,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       return [];
     }
 
-    const [agentRows, transportRows, permissionRows] = await Promise.all([
+    const [agentRows, permissionRows] = await Promise.all([
       db
         .select()
         .from(schema.agents)
@@ -278,71 +221,15 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           and(
             inArray(schema.agents.id, agentIds),
             isNull(schema.agents.deletedAt),
-            ne(schema.agents.type, 'personal'),
           ),
         ),
-      db
-        .select()
-        .from(schema.agentTransports)
-        .where(inArray(schema.agentTransports.agentId, agentIds))
-        .orderBy(desc(schema.agentTransports.priority)),
       db
         .select()
         .from(schema.agentPermissions)
         .where(inArray(schema.agentPermissions.agentId, agentIds)),
     ]);
 
-    return this.mapAgentsWithRelations(agentRows, transportRows, permissionRows);
-  }
-
-  async createTransport(input: CreateTransportInput): Promise<AgentTransportRow> {
-    const [row] = await db
-      .insert(schema.agentTransports)
-      .values({
-        agentId: input.agentId,
-        channel: input.channel,
-        config: input.config ?? {},
-        priority: input.priority ?? 0,
-        active: input.active ?? true,
-      })
-      .returning();
-
-    logger.info('Created agent transport', { agentId: input.agentId, transportId: row.id, channel: row.channel });
-    return this.toTransportRow(row);
-  }
-
-  async deleteTransport(transportId: string): Promise<void> {
-    await db.delete(schema.agentTransports).where(eq(schema.agentTransports.id, transportId));
-    logger.info('Deleted agent transport', { transportId });
-  }
-
-  async recordTransportFailure(transportId: string): Promise<void> {
-    const [row] = await db
-      .update(schema.agentTransports)
-      .set({
-        failureCount: sql`${schema.agentTransports.failureCount} + 1`,
-        active: sql`CASE WHEN ${schema.agentTransports.failureCount} + 1 >= 10 THEN false ELSE ${schema.agentTransports.active} END`,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.agentTransports.id, transportId))
-      .returning();
-
-    if (row && !row.active) {
-      logger.warn('Auto-deactivated transport after repeated failures', {
-        transportId,
-        failureCount: row.failureCount,
-      });
-    }
-  }
-
-  async recordTransportSuccess(transportId: string): Promise<void> {
-    await db
-      .update(schema.agentTransports)
-      .set({
-        failureCount: 0,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.agentTransports.id, transportId));
+    return this.mapAgentsWithRelations(agentRows, permissionRows);
   }
 
   /**
@@ -472,199 +359,13 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     return !!row;
   }
 
-  async findAuthorizedAgents(
-    userId: string,
-    action: string,
-    scope?: AgentScope,
-  ): Promise<AgentWithRelations[]> {
-    const scopeCondition = this.buildScopeCondition(scope);
-    const permissionRows = await db
-      .select({ agentId: schema.agentPermissions.agentId })
-      .from(schema.agentPermissions)
-      .where(
-        and(
-          eq(schema.agentPermissions.userId, userId),
-          sql`${action} = ANY(${schema.agentPermissions.actions})`,
-          scopeCondition,
-        ),
-      );
-
-    const agentIds = [...new Set(permissionRows.map((row) => row.agentId))];
-    if (agentIds.length === 0) {
-      return [];
-    }
-
-    const [agentRows, transportRows, allPermissionRows, credentialedExternalAgentIds] = await Promise.all([
-      db
-        .select()
-        .from(schema.agents)
-        .where(
-          and(
-            inArray(schema.agents.id, agentIds),
-            isNull(schema.agents.deletedAt),
-            eq(schema.agents.status, 'active'),
-          ),
-        ),
-      db
-        .select()
-        .from(schema.agentTransports)
-        .where(
-          and(
-            inArray(schema.agentTransports.agentId, agentIds),
-            eq(schema.agentTransports.active, true),
-          ),
-        )
-        .orderBy(desc(schema.agentTransports.priority)),
-      db
-        .select()
-        .from(schema.agentPermissions)
-        .where(inArray(schema.agentPermissions.agentId, agentIds)),
-      this.findExternalAgentIdsWithValidCredentials(agentIds),
-    ]);
-
-    // Polling model: external (poller) agents authenticate to /agents/:id/pickup with
-    // their API key and do not require a DB-registered transport row. An external agent
-    // is only dispatch-eligible if it has at least one enabled, unexpired API key —
-    // otherwise parking a turn for pickup would strand it until the 24h timeout. System
-    // agents are always eligible; they execute in-process and never poll.
-    const dispatchableAgentRows = agentRows.filter((row) => {
-      if (row.type !== 'external') return true;
-      return credentialedExternalAgentIds.has(row.id);
-    });
-    return this.mapAgentsWithRelations(dispatchableAgentRows, transportRows, allPermissionRows);
-  }
-
-  private async findExternalAgentIdsWithValidCredentials(agentIds: string[]): Promise<Set<string>> {
-    if (agentIds.length === 0) {
-      return new Set();
-    }
-    const rows = await db
-      .select({ agentId: sql<string>`(${schema.apikeys.metadata}::jsonb ->> 'agentId')` })
-      .from(schema.apikeys)
-      .where(
-        and(
-          eq(schema.apikeys.enabled, true),
-          or(
-            isNull(schema.apikeys.expiresAt),
-            sql`${schema.apikeys.expiresAt} > now()`,
-          ),
-          inArray(sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId')`, agentIds),
-        ),
-      );
-    return new Set(
-      rows.map((row) => row.agentId).filter((id): id is string => !!id),
-    );
-  }
-
-  /**
-   * Create or rotate one Hermes installation credential under the owner's
-   * runtime lock. Preparation deliberately removes negotiation authority; the
-   * matching setup generation must be activated separately.
-   */
-  async prepareHermesInstallation(input: {
-    ownerId: string;
-    installationId: string;
-    setupAttemptId: string;
-  }): Promise<{ agent: AgentWithRelations; credential: { id: string; key: string; expiresAt: string } }> {
-    const prepared = await db.transaction(async (tx) => {
-      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
-
-      let [row] = await tx
-        .select()
-        .from(schema.agents)
-        .where(and(
-          eq(schema.agents.ownerId, input.ownerId),
-          eq(schema.agents.type, 'external'),
-          eq(schema.agents.runtimeKind, 'hermes'),
-          eq(schema.agents.installationId, input.installationId),
-          isNull(schema.agents.deletedAt),
-        ))
-        .limit(1)
-        .for('update');
-
-      if (!row) {
-        [row] = await tx
-          .insert(schema.agents)
-          .values({
-            ownerId: input.ownerId,
-            name: 'Hermes Negotiator',
-            description: 'Negotiation-only Hermes runtime',
-            type: 'external',
-            status: 'active',
-            metadata: {},
-            runtimeKind: 'hermes',
-            installationId: input.installationId,
-            runtimeSetupAttemptId: input.setupAttemptId,
-            notifyOnOpportunity: false,
-            dailySummaryEnabled: false,
-            handleNegotiations: false,
-          })
-          .returning();
-      } else {
-        [row] = await tx
-          .update(schema.agents)
-          .set({
-            status: 'active',
-            runtimeSetupAttemptId: input.setupAttemptId,
-            handleNegotiations: false,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.agents.id, row.id))
-          .returning();
-      }
-
-      // A prepared principal has no authority until the exact generation is
-      // selected. Hermes permissions are replaced, not merged.
-      await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.agentId, row.id));
-      await tx.delete(schema.apikeys).where(
-        sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${row.id}`,
-      );
-
-      const plainKey = generateApiKey();
-      const hashedKey = await hashApiKey(plainKey);
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS);
-      const [credential] = await tx
-        .insert(schema.apikeys)
-        .values({
-          key: hashedKey,
-          userId: input.ownerId,
-          referenceId: input.ownerId,
-          name: 'Hermes Negotiator API Key',
-          start: plainKey.substring(0, API_KEY_START_LENGTH),
-          metadata: JSON.stringify({
-            agentId: row.id,
-            setupAttemptId: input.setupAttemptId,
-            audience: HERMES_NEGOTIATOR_AUDIENCE,
-            kind: HERMES_NEGOTIATOR_CREDENTIAL_KIND,
-            expiresAt: expiresAt.toISOString(),
-          }),
-          createdAt: now,
-          updatedAt: now,
-          enabled: true,
-          expiresAt,
-        })
-        .returning({ id: schema.apikeys.id });
-
-      return { row, credential: { id: credential.id, key: plainKey, expiresAt: expiresAt.toISOString() } };
-    });
-
-    const agent = await this.getAgentWithRelations(prepared.row.id);
-    if (!agent) throw new Error('Prepared Hermes executor not found');
-    return { agent, credential: prepared.credential };
-  }
-
   /**
    * Atomically choose the sole external negotiation executor for an owner.
-   * Negotiator credentials retain negotiation-only authority; an active full
-   * negotiator credential retains negotiation-only authority. The generic path
-   * preserves other actions.
+   * Other actions on the target agent are preserved.
    */
   async setNegotiationExecutorBinding(input: {
     ownerId: string;
     targetAgentId: string | null;
-    exactTargetPermissions: boolean;
-    expectedSetupAttemptId?: string;
     disableTargetAgentId?: string;
   }): Promise<AgentWithRelations | null> {
     const selectedId = await db.transaction(async (tx) => {
@@ -693,7 +394,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       }
 
       let target: typeof schema.agents.$inferSelect | null = null;
-      const exactTargetActions: readonly string[] = ['manage:negotiations'];
       if (input.targetAgentId) {
         const [candidate] = await tx
           .select()
@@ -708,27 +408,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           .limit(1)
           .for('update');
         if (!candidate) throw new RuntimeNotFoundError();
-        if (input.exactTargetPermissions && (
-          candidate.runtimeKind !== 'hermes'
-          || !input.expectedSetupAttemptId
-          || candidate.runtimeSetupAttemptId !== input.expectedSetupAttemptId
-        )) {
-          throw new RuntimeConflictError();
-        }
         const [credential] = await tx.select({ id: schema.apikeys.id })
           .from(schema.apikeys)
           .where(and(
             eq(schema.apikeys.enabled, true),
             or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
             sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${candidate.id}`,
-            input.exactTargetPermissions
-              ? and(
-                  isNotNull(schema.apikeys.expiresAt),
-                  sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${input.expectedSetupAttemptId}`,
-                  sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
-                  sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
-                )
-              : undefined,
           ))
           .limit(1);
         if (!credential) throw new RuntimeConflictError();
@@ -769,29 +454,18 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
       if (!target) return null;
 
-      if (input.exactTargetPermissions) {
-        await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.agentId, target.id));
-        await tx.insert(schema.agentPermissions).values({
-          agentId: target.id,
-          userId: input.ownerId,
-          scope: 'global',
-          scopeId: null,
-          actions: [...exactTargetActions],
-        });
-      } else {
-        // id has no DB default; Postgres checks NOT NULL before ON CONFLICT.
-        const permissionId = crypto.randomUUID();
-        await tx.execute(sql`
-          INSERT INTO agent_permissions (id, agent_id, user_id, scope, scope_id, actions)
-          VALUES (${permissionId}, ${target.id}, ${input.ownerId}, 'global', NULL, ARRAY['manage:negotiations']::text[])
-          ON CONFLICT (agent_id, user_id) WHERE scope = 'global'
-          DO UPDATE SET actions = CASE
-            WHEN 'manage:negotiations' = ANY(agent_permissions.actions)
-              THEN agent_permissions.actions
-            ELSE array_append(agent_permissions.actions, 'manage:negotiations')
-          END
-        `);
-      }
+      // id has no DB default; Postgres checks NOT NULL before ON CONFLICT.
+      const permissionId = crypto.randomUUID();
+      await tx.execute(sql`
+        INSERT INTO agent_permissions (id, agent_id, user_id, scope, scope_id, actions)
+        VALUES (${permissionId}, ${target.id}, ${input.ownerId}, 'global', NULL, ARRAY['manage:negotiations']::text[])
+        ON CONFLICT (agent_id, user_id) WHERE scope = 'global'
+        DO UPDATE SET actions = CASE
+          WHEN 'manage:negotiations' = ANY(agent_permissions.actions)
+            THEN agent_permissions.actions
+          ELSE array_append(agent_permissions.actions, 'manage:negotiations')
+        END
+      `);
 
       await tx
         .update(schema.agents)
@@ -803,315 +477,13 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     return selectedId ? this.getAgentWithRelations(selectedId) : null;
   }
 
-  /** Owner-locked CAS that can only deselect the exact observed Hermes authority. */
-  async compareAndSelectIndex(input: {
-    ownerId: string;
-    expectedAgentId: string;
-    expectedInstallationId: string;
-    expectedSetupAttemptId: string;
-  }): Promise<'selected' | 'already_index' | 'preserved'> {
-    return db.transaction(async (tx) => {
-      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
-      const [selected] = await tx.select().from(schema.agents).where(and(
-        eq(schema.agents.ownerId, input.ownerId),
-        eq(schema.agents.type, 'external'),
-        eq(schema.agents.handleNegotiations, true),
-        isNull(schema.agents.deletedAt),
-      )).limit(1).for('update');
-      if (!selected) return 'already_index';
-      if (selected.id !== input.expectedAgentId
-        || selected.runtimeKind !== 'hermes'
-        || selected.installationId !== input.expectedInstallationId
-        || selected.runtimeSetupAttemptId !== input.expectedSetupAttemptId) {
-        return 'preserved';
-      }
-      await tx.update(schema.agents).set({
-        handleNegotiations: false,
-        updatedAt: new Date(),
-      }).where(and(
-        eq(schema.agents.id, input.expectedAgentId),
-        eq(schema.agents.handleNegotiations, true),
-        eq(schema.agents.installationId, input.expectedInstallationId),
-        eq(schema.agents.runtimeSetupAttemptId, input.expectedSetupAttemptId),
-      ));
-      await tx.execute(sql`
-        UPDATE agent_permissions
-        SET actions = array_remove(actions, 'manage:negotiations')
-        WHERE agent_id = ${input.expectedAgentId}
-          AND 'manage:negotiations' = ANY(actions)
-      `);
-      await tx.execute(sql`
-        DELETE FROM agent_permissions
-        WHERE agent_id = ${input.expectedAgentId} AND cardinality(actions) = 0
-      `);
-      return 'selected';
-    });
-  }
-
-  /** Compare-and-clear one current legacy setup generation and only its token. */
-  async rollbackHermesSetup(input: { ownerId: string; expectedSetupAttemptId: string }): Promise<boolean> {
-    return db.transaction(async (tx) => {
-      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
-      const [target] = await tx
-        .select()
-        .from(schema.agents)
-        .where(and(
-          eq(schema.agents.ownerId, input.ownerId),
-          eq(schema.agents.type, 'external'),
-          eq(schema.agents.runtimeKind, 'hermes'),
-          eq(schema.agents.runtimeSetupAttemptId, input.expectedSetupAttemptId),
-          isNull(schema.agents.deletedAt),
-        ))
-        .orderBy(desc(schema.agents.updatedAt), desc(schema.agents.id))
-        .limit(1)
-        .for('update');
-      if (!target) return false;
-
-      await tx
-        .update(schema.agents)
-        .set({
-          handleNegotiations: false,
-          status: 'inactive',
-          runtimeSetupAttemptId: null,
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(schema.agents.id, target.id),
-          eq(schema.agents.runtimeSetupAttemptId, input.expectedSetupAttemptId),
-        ));
-      await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.agentId, target.id));
-      await tx.delete(schema.apikeys).where(sql`
-        ${schema.apikeys.metadata} IS NOT NULL
-        AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${target.id}
-        AND ${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${input.expectedSetupAttemptId}
-      `);
-      return true;
-    });
-  }
-
-  /** Return the one admitted selected executor, clearing stale authority atomically. */
-  async getNegotiationExecutorBinding(ownerId: string): Promise<AgentWithRelations | null> {
-    return db.transaction(async (tx) => {
-      await this.acquireOwnerRuntimeLock(tx, ownerId);
-      const [selected] = await tx
-        .select()
-        .from(schema.agents)
-        .where(and(
-          eq(schema.agents.ownerId, ownerId),
-          eq(schema.agents.type, 'external'),
-          eq(schema.agents.handleNegotiations, true),
-          isNull(schema.agents.deletedAt),
-        ))
-        .limit(1)
-        .for('update');
-      if (!selected) return null;
-
-      const permissionRows = await tx
-        .select()
-        .from(schema.agentPermissions)
-        .where(eq(schema.agentPermissions.agentId, selected.id));
-      const hasGlobalAuthority = permissionRows.some((permission) =>
-        permission.userId === ownerId
-        && permission.scope === 'global'
-        && permission.actions.includes('manage:negotiations'));
-      const [legacyCredential] = await tx.select({ id: schema.apikeys.id })
-        .from(schema.apikeys)
-        .where(and(
-          eq(schema.apikeys.enabled, true),
-          or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
-          sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${selected.id}`,
-          selected.runtimeKind === 'hermes'
-            ? and(
-                isNotNull(schema.apikeys.expiresAt),
-                sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${selected.runtimeSetupAttemptId}`,
-                sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
-                sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
-              )
-            : undefined,
-        ))
-        .limit(1);
-
-      if (selected.status !== 'active' || !hasGlobalAuthority || !legacyCredential) {
-        await tx.execute(sql`
-          UPDATE agent_permissions
-          SET actions = array_remove(actions, 'manage:negotiations')
-          WHERE agent_id = ${selected.id}
-            AND 'manage:negotiations' = ANY(actions)
-        `);
-        await tx.execute(sql`
-          DELETE FROM agent_permissions
-          WHERE agent_id = ${selected.id} AND cardinality(actions) = 0
-        `);
-        await tx
-          .update(schema.agents)
-          .set({ handleNegotiations: false, updatedAt: new Date() })
-          .where(eq(schema.agents.id, selected.id));
-        return null;
-      }
-
-      const transportRows = await tx
-        .select()
-        .from(schema.agentTransports)
-        .where(eq(schema.agentTransports.agentId, selected.id))
-        .orderBy(desc(schema.agentTransports.priority));
-      return this.mapAgentWithRelations(this.toAgentRow(selected), transportRows, permissionRows);
-    });
-  }
-
-  /** Resolve one owned Hermes installation independently of current selection. */
-  async getHermesInstallation(ownerId: string, installationId: string): Promise<AgentWithRelations | null> {
-    const [row] = await db
-      .select({ id: schema.agents.id })
-      .from(schema.agents)
-      .where(and(
-        eq(schema.agents.ownerId, ownerId),
-        eq(schema.agents.type, 'external'),
-        eq(schema.agents.runtimeKind, 'hermes'),
-        eq(schema.agents.installationId, installationId),
-        isNull(schema.agents.deletedAt),
-      ))
-      .limit(1);
-    return row ? this.getAgentWithRelations(row.id) : null;
-  }
-
-  /** Select Index and remove one installation and all of its credentials. */
-  async disconnectHermesInstallation(input: { ownerId: string; installationId: string }): Promise<'disconnected' | 'absent' | 'owner_mismatch'> {
-    return db.transaction(async (tx) => {
-      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
-      // First resolve and lock only this owner's exact installation. Installation
-      // UUIDs may coincide across owners, so if it is absent, a separate
-      // non-locking existence read distinguishes proven global absence (safe
-      // idempotent logout) from a cross-owner target (non-enumerating 404).
-      const [target] = await tx
-        .select()
-        .from(schema.agents)
-        .where(and(
-          eq(schema.agents.ownerId, input.ownerId),
-          eq(schema.agents.type, 'external'),
-          eq(schema.agents.runtimeKind, 'hermes'),
-          eq(schema.agents.installationId, input.installationId),
-          isNull(schema.agents.deletedAt),
-        ))
-        .limit(1)
-        .for('update');
-      if (!target) {
-        const [otherOwner] = await tx.select({ id: schema.agents.id }).from(schema.agents)
-          .where(and(
-            ne(schema.agents.ownerId, input.ownerId),
-            eq(schema.agents.type, 'external'),
-            eq(schema.agents.runtimeKind, 'hermes'),
-            eq(schema.agents.installationId, input.installationId),
-            isNull(schema.agents.deletedAt),
-          ))
-          .limit(1);
-        return otherOwner ? 'owner_mismatch' : 'absent';
-      }
-
-      await tx.execute(sql`
-        UPDATE agent_permissions
-        SET actions = array_remove(actions, 'manage:negotiations')
-        WHERE agent_id IN (
-          SELECT id FROM agents
-          WHERE owner_id = ${input.ownerId} AND type = 'external' AND deleted_at IS NULL
-        )
-          AND 'manage:negotiations' = ANY(actions)
-      `);
-      await tx.execute(sql`
-        DELETE FROM agent_permissions
-        WHERE cardinality(actions) = 0
-          AND agent_id IN (
-            SELECT id FROM agents
-            WHERE owner_id = ${input.ownerId} AND type = 'external' AND deleted_at IS NULL
-          )
-      `);
-      await tx
-        .update(schema.agents)
-        .set({ handleNegotiations: false, updatedAt: new Date() })
-        .where(and(
-          eq(schema.agents.ownerId, input.ownerId),
-          eq(schema.agents.type, 'external'),
-          isNull(schema.agents.deletedAt),
-        ));
-      await tx
-        .update(schema.agents)
-        .set({ status: 'inactive', runtimeSetupAttemptId: null, updatedAt: new Date() })
-        .where(eq(schema.agents.id, target.id));
-      await tx.delete(schema.apikeys).where(
-        sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${target.id}`,
-      );
-      return 'disconnected';
-    });
-  }
-
   getSystemAgentIds(): AgentSystemIds {
     return SYSTEM_AGENT_IDS;
   }
 
   /**
-   * Ensure the user has a personal negotiator agent row (one per user).
-   * Idempotent — safe to call on every sign-in. A missing user row is skipped
-   * rather than provisioned.
-   *
-   * @param userId - The user to provision a negotiator for
-   * @returns The negotiator agent id, or null when the user is missing
-   */
-  async ensureNegotiatorAgent(userId: string): Promise<string | null> {
-    const findExisting = () =>
-      db
-        .select({ id: schema.agents.id })
-        .from(schema.agents)
-        .where(
-          and(
-            eq(schema.agents.ownerId, userId),
-            eq(schema.agents.type, 'personal'),
-            isNull(schema.agents.deletedAt),
-          ),
-        )
-        .limit(1);
-
-    // Fast path: already provisioned.
-    const [existing] = await findExisting();
-    if (existing) {
-      return existing.id;
-    }
-
-    const [user] = await db
-      .select({ name: schema.users.name })
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .limit(1);
-
-    if (!user) {
-      return null;
-    }
-
-    const firstName = (user.name ?? '').trim().split(/\s+/)[0] ?? '';
-    const name = firstName ? `${firstName}'s Negotiator` : 'Your Negotiator';
-
-    await db
-      .insert(schema.agents)
-      .values({
-        ownerId: userId,
-        name,
-        description: 'Negotiates on your behalf across the network.',
-        type: 'personal',
-        status: 'active',
-        metadata: {},
-      })
-      .onConflictDoNothing();
-
-    // Re-query rather than trusting RETURNING — a concurrent sign-in may have won
-    // the insert race (onConflictDoNothing returns no row in that case).
-    const [row] = await findExisting();
-    if (row) {
-      logger.info('Ensured negotiator agent', { userId, agentId: row.id });
-    }
-    return row?.id ?? null;
-  }
-
-  /**
-   * Update the agent's lastSeenAt timestamp. Called on every personal-agent pickup
-   * poll so the dispatcher can tell whether the agent is actively running.
+   * Update the agent's lastSeenAt timestamp. Called on every agent pickup poll
+   * so callers can tell whether the agent is actively running.
    *
    * Silently no-ops when the agent doesn't exist — callers invoke this from pickup
    * endpoints that already validated the agent, and we don't want to leak 404s
@@ -1131,33 +503,15 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     }
   }
 
-  /** Stamp the negotiation-specific polling heartbeat used for runtime health. */
-  async touchNegotiationPickup(agentId: string): Promise<void> {
-    try {
-      await db
-        .update(schema.agents)
-        .set({ lastNegotiationPickupAt: new Date() })
-        .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)));
-    } catch (err: unknown) {
-      logger.warn('touchNegotiationPickup failed', {
-        agentId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
   private async acquireOwnerRuntimeLock(
     tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
     ownerId: string,
   ): Promise<void> {
-    await observeHermesAdvisoryLockWait(
-      hermesRuntimeTelemetry,
-      () => tx.execute(sql`
-        SELECT pg_advisory_xact_lock(
-          hashtextextended(${`agent-runtime:${ownerId}`}, 0)
-        )
-      `),
-    );
+    await tx.execute(sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${`agent-runtime:${ownerId}`}, 0)
+      )
+    `);
   }
 
   private buildScopeCondition(scope?: AgentScope) {
@@ -1176,16 +530,13 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   private mapAgentsWithRelations(
     agentRows: Array<typeof schema.agents.$inferSelect>,
-    transportRows: Array<typeof schema.agentTransports.$inferSelect>,
     permissionRows: Array<typeof schema.agentPermissions.$inferSelect>,
   ): AgentWithRelations[] {
-    const transportsByAgent = this.groupTransportsByAgent(transportRows);
     const permissionsByAgent = this.groupPermissionsByAgent(permissionRows);
 
     return agentRows
       .map((row) => ({
         ...this.toAgentRow(row),
-        transports: transportsByAgent.get(row.id) ?? [],
         permissions: permissionsByAgent.get(row.id) ?? [],
       }))
       .sort((left, right) => {
@@ -1199,28 +550,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   private mapAgentWithRelations(
     agent: AgentRow,
-    transportRows: Array<typeof schema.agentTransports.$inferSelect>,
     permissionRows: Array<typeof schema.agentPermissions.$inferSelect>,
   ): AgentWithRelations {
     return {
       ...agent,
-      transports: transportRows.map((row) => this.toTransportRow(row)),
       permissions: permissionRows.map((row) => this.toPermissionRow(row)),
     };
-  }
-
-  private groupTransportsByAgent(
-    rows: Array<typeof schema.agentTransports.$inferSelect>,
-  ): Map<string, AgentTransportRow[]> {
-    const result = new Map<string, AgentTransportRow[]>();
-
-    for (const row of rows) {
-      const current = result.get(row.agentId) ?? [];
-      current.push(this.toTransportRow(row));
-      result.set(row.agentId, current);
-    }
-
-    return result;
   }
 
   private groupPermissionsByAgent(
@@ -1246,33 +581,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       type: row.type,
       status: row.status,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
-      runtimeKind: row.runtimeKind ?? null,
       installationId: row.installationId ?? null,
-      runtimeSetupAttemptId: row.runtimeSetupAttemptId ?? null,
       lastSeenAt: row.lastSeenAt ?? null,
-      lastNegotiationPickupAt: row.lastNegotiationPickupAt ?? null,
       notifyOnOpportunity: row.notifyOnOpportunity,
       dailySummaryEnabled: row.dailySummaryEnabled,
       handleNegotiations: row.handleNegotiations,
       lastDailySummaryAt: row.lastDailySummaryAt ?? null,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
-  }
-
-  private toTransportRow(
-    row: typeof schema.agentTransports.$inferSelect,
-  ): AgentTransportRow {
-    const config = ((row.config ?? {}) as Record<string, unknown>);
-
-    return {
-      id: row.id,
-      agentId: row.agentId,
-      channel: row.channel,
-      config,
-      priority: row.priority,
-      active: row.active,
-      failureCount: row.failureCount,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

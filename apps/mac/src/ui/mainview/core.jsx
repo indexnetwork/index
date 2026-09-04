@@ -15,7 +15,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
                     onOpenRoom, onBack, registerChats, pendingChat, onPendingHandled }) {
   // Live-only: these demo sim feeds no longer exist, so they default to empty.
   // The simulation loops below stay wired but idle on empty arrays.
-  const { CLARIFIERS = [], FIELD_EVENTS = [], AMBIENT_NOTES = [] } = window.INDEX_DATA;
+  const { FIELD_EVENTS = [], AMBIENT_NOTES = [] } = window.INDEX_DATA;
   // "all" opens the radar on the whole field with no stage selected, so the
   // negotiating rows are visible next to the ones awaiting you and a status
   // changing under the agents can be watched as it happens. Selecting a stage
@@ -33,14 +33,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const [paused, setPaused] = useState(() => profile.status === "paused");
   const [pipelineMode, setPipelineMode] = useState("broad");
   const modeTimerRef = useRef(null);
-  const clarifierCursor = useRef(0);
-  const queuedRef = useRef(false);
-  const answeredSinceRefill = useRef(0);
-  const MAX_OPEN = 4;
 
   // ---- live backend wiring ------------------------------------------------
-  // When signed in and this signal maps to a real intent, the radar, clarifiers,
-  // agent chat, and H2H threads come from services/api; otherwise the simulation
+  // When signed in and this signal maps to a real intent, the radar, agent
+  // chat, and H2H threads come from services/api; otherwise the simulation
   // below runs as the signed-out (browser preview) demo. The polling loop,
   // handlers, and inbox stream that consume these live below.
   const intentId = profile.intentId || null;
@@ -57,16 +53,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Current user id (for telling "you" from "them" in H2H threads). Mirrored
   // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
-  // Agent chat is the signal's DM — the one PersonalAgent chat in intent
-  // scope. This app only ever drives that scope: api-key callers may not
-  // start global chats (those are web-only), so every stream here is
-  // intent-scoped.
   const { patchIntentStatus, refreshIntents } = useIndexEnv();
-  // Agent-chat session id per intent, persisted across signal switches.
-  const chatSessions = (window.__indexChatSessions = window.__indexChatSessions || {});
-  const chatKey = intentId;
-  const chatSessionRef = useRef(chatSessions[chatKey] || null);
-  const seenQuestionIds = useRef(new Set());   // question ids already in the feed
   const radarSeqRef = useRef(0);               // drops stale radar responses
   const convByPerson = useRef({});             // opportunityId -> conversationId
   const personByConv = useRef({});             // conversationId -> opportunityId
@@ -100,45 +87,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }
   }, (paused || live) ? null : Math.max(800, 4200 / simRate));
 
-  /* ----- seed feed with the first batch of clarifiers (max 4 open) ----- */
-  useEffect(() => {
-    if (live || !CLARIFIERS.length) return;
-    if (queuedRef.current) return;
-    queuedRef.current = true;
-    const timers = [];
-    for (let k = 0; k < MAX_OPEN; k++) {
-      timers.push(setTimeout(() => pushClarifierOne(), 2400 + k * 850));
-    }
-    return () => timers.forEach(clearTimeout);
-  }, []);
-
-  const makeClarifier = () => {
-    if (!CLARIFIERS.length) return null;
-    const c = CLARIFIERS[clarifierCursor.current % CLARIFIERS.length];
-    clarifierCursor.current += 1;
-    return {
-      kind:"clarifier",
-      id: `${c.id}-${Math.random().toString(36).slice(2,6)}`,
-      clarifierId: c.id,
-      source: c.source,
-      sourceMeta: c.sourceMeta,
-      effect: c.effect || "neutral",
-      text: c.text,
-      chips: c.chips,
-      triggersHint: c.triggersHint,
-      answered: false, choice: null,
-      t: now(),
-    };
-  };
-  // Push one clarifier, but never let more than MAX_OPEN unanswered ones pile up.
-  const pushClarifierOne = () => {
-    setConversation(prev => {
-      const open = prev.filter(it => it.kind === "clarifier" && !it.answered).length;
-      if (open >= MAX_OPEN) return prev;
-      const c = makeClarifier();
-      return c ? [...prev, c] : prev;
-    });
-  };
   const pushAmbientNote = () => {
     if (!AMBIENT_NOTES.length) return;
     const n = AMBIENT_NOTES[Math.floor(Math.random() * AMBIENT_NOTES.length)];
@@ -198,45 +146,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }
   }, (paused || live) ? null : 14000 / simRate);
 
-  /* ----- live radar + clarifier polling ----- */
-  const injectClarifiers = React.useCallback((questions) => {
-    const fresh = (questions || []).filter((q) => q && q.id && !seenQuestionIds.current.has(q.id));
-    if (fresh.length === 0) return;
-    fresh.forEach((q) => seenQuestionIds.current.add(q.id));
-    const items = window.IndexApi.mapClarifiers(fresh).map((c) => ({
-      kind: "clarifier", id: c.id, clarifierId: c.id,
-      source: c.source, sourceMeta: c.sourceMeta, effect: "neutral",
-      text: c.text, chips: c.chips, triggersHint: c.triggersHint,
-      answered: false, choice: null, t: now(),
-    }));
-    setConversation((prev) => [...prev, ...items]);
-  }, [setConversation]);
-
-  // Server-answered questions rise into the scrollback as settled records, so
-  // given answers survive app restarts and include answers from other surfaces.
-  const injectAnsweredClarifiers = React.useCallback((questions) => {
-    const fresh = (questions || []).filter((q) => q && q.id && !seenQuestionIds.current.has(q.id));
-    if (fresh.length === 0) return;
-    fresh.forEach((q) => seenQuestionIds.current.add(q.id));
-    fresh.sort((a, b) => String((a.answer || {}).answeredAt || "").localeCompare(String((b.answer || {}).answeredAt || "")));
-    const items = window.IndexApi.mapClarifiers(fresh).map((c) => {
-      const answer = (c.apiQuestion && c.apiQuestion.answer) || {};
-      const chosen = (Array.isArray(answer.selectedOptions) ? answer.selectedOptions : []).filter(Boolean);
-      return {
-        kind: "clarifier", id: c.id, clarifierId: c.id,
-        source: c.source, sourceMeta: c.sourceMeta, effect: "neutral",
-        text: c.text, answered: true, choice: chosen.join(", ") || answer.freeText || "answered", t: now(),
-      };
-    });
-    setConversation((prev) => [...items, ...prev]);
-  }, [setConversation]);
-
+  /* ----- live radar polling ----- */
   // Intent switches keep MainView mounted; wipe the previous signal's radar
-  // and clarifier dedupe set before the next poll lands.
+  // before the next poll lands.
   useEffect(() => {
     if (!live) return;
     radarSeqRef.current += 1;
-    seenQuestionIds.current = new Set();
     setPeople([]);
   }, [live, intentId, setPeople]);
 
@@ -272,16 +187,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (radarSeqRef.current !== seq || intentIdRef.current !== forIntent) return;
     applyRadar(skeletonR);
 
-    const [radarR, qR, answeredR] = await Promise.all([
-      client.opportunities.radarForIntent(forIntent, { statuses: radarStatuses }).catch(() => null),
-      client.questions.pendingForIntent(forIntent).catch(() => null),
-      client.questions.answeredForIntent(forIntent).catch(() => null),
-    ]);
+    const radarR = await client.opportunities
+      .radarForIntent(forIntent, { statuses: radarStatuses })
+      .catch(() => null);
     if (radarSeqRef.current !== seq || intentIdRef.current !== forIntent) return;
     applyRadar(radarR);
-    if (answeredR) injectAnsweredClarifiers(window.IndexApp.normalizeList(answeredR, "questions"));
-    if (qR) injectClarifiers(window.IndexApp.normalizeList(qR, "questions"));
-  }, [live, client, intentId, setPeople, injectClarifiers, injectAnsweredClarifiers]);
+  }, [live, client, intentId, setPeople]);
 
   const visiblePeople = useMemo(() => people.filter(p => !p.hidden), [people]);
   // What the radar actually lists, which is what "empty" has to mean here: a
@@ -350,108 +261,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       { label:"missed",       count: by("missed") },
     ];
   }, [visiblePeople]);
-
-  const answerClarifier = (item, choice) => {
-    setConversation(prev => prev.map(it =>
-      it.id === item.id ? { ...it, answered:true, choice } : it
-    ));
-    if (live) {
-      if (client && item.clarifierId) {
-        const isChip = Array.isArray(item.chips) && item.chips.includes(choice);
-        const body = isChip ? { selectedOptions: [choice] } : { selectedOptions: [], freeText: choice };
-        client.questions.answer(item.clarifierId, body)
-          .then(() => setTimeout(refreshRadar, 1500))
-          .catch(() => {});
-      }
-      return;
-    }
-    const clarifier = { id: item.clarifierId, effect: item.effect };
-    const effectKind = applyClarifierEffect(clarifier, choice, setPeople, setField);
-    const finalKind = effectKind || (item.effect && item.effect !== "neutral" ? item.effect : "broad");
-    flashMode(finalKind, finalKind === "expanding" ? 8000 : 9000);
-
-    // Every 2 answered, top the feed back up to MAX_OPEN with fresh ones.
-    answeredSinceRefill.current += 1;
-    if (answeredSinceRefill.current >= 2) {
-      answeredSinceRefill.current = 0;
-      for (let k = 0; k < 2; k++) {
-        setTimeout(() => pushClarifierOne(), 900 + k * 850);
-      }
-    }
-  };
-  const dismissClarifier = (item) => {
-    setConversation(prev => prev.map(it =>
-      it.id === item.id ? { ...it, answered:true, choice:"(dismissed)", dismissed:true } : it
-    ));
-    if (live && client && item.clarifierId) {
-      client.questions.dismiss(item.clarifierId).catch(() => {});
-    }
-  };
-
-  const [draft, setDraft] = useState("");
-  const sendDraft = () => {
-    if (!draft.trim()) return;
-    const text = draft.trim();
-    setDraft("");
-    setConversation(prev => [
-      ...prev,
-      { kind:"user", id: Math.random().toString(36).slice(2), text, t: now() },
-    ]);
-
-    if (live && window.IndexApp) {
-      const agentMsgId = rid();
-      setConversation(prev => [...prev, { kind:"agent", id: agentMsgId, text: "", t: now() }]);
-      const setAgentText = (t) => setConversation(prev =>
-        prev.map(it => it.id === agentMsgId ? { ...it, text: t } : it));
-      let acc = "";
-      // Always intent-scoped: `live` (see its definition above) is only true
-      // with a truthy intentId, and this pane is per-signal. Passed straight
-      // through rather than as `intentId ? "intent" : undefined`, whose false
-      // branch is unreachable and reads as if unscoped were a supported mode
-      // for this app — it is not. streamChat rejects a half-supplied
-      // scope, so loosening `live` surfaces as an error instead of a
-      // silently-unscoped turn.
-      window.IndexApp.streamChat({
-        message: text,
-        sessionId: chatSessionRef.current,
-        scopeType: "intent",
-        scopeId: intentId,
-        onEvent: (e) => {
-          if (!e || !e.type) return;
-          if (e.type === "token") { acc += e.content || ""; setAgentText(acc); }
-          else if (e.type === "response_reset") { acc = ""; setAgentText(""); }
-          else if (e.type === "done") { setAgentText(e.response || acc); }
-          else if (e.type === "error") { setAgentText(acc || `· ${e.message || "something went wrong"}`); }
-          else if (e.type === "user_question") { fetchChatQuestions(); }
-        },
-      }).then((sid) => {
-        if (sid) { chatSessionRef.current = sid; if (intentId) chatSessions[chatKey] = sid; }
-      }).catch((err) => {
-        // A rejected turn (transport failure, or a 4xx such as the API
-        // refusing a scopeless negotiator stream) used to be swallowed here,
-        // leaving an empty agent bubble and no signal that anything broke.
-        setAgentText(acc || `· ${(err && err.message) || "something went wrong"}`);
-      });
-      return;
-    }
-
-    // demo fallback, the agent reads what you wrote and reaches back.
-    const reply = agentReplyTo(text, { profile, negotiatingPeople, people });
-    setTimeout(() => {
-      setConversation(prev => [
-        ...prev,
-        { kind:"agent", id: Math.random().toString(36).slice(2), text: reply, t: now() },
-      ]);
-    }, 650);
-  };
-
-  // On a blocking chat-mode question, pull it and render it inline as a clarifier.
-  const fetchChatQuestions = () => {
-    if (!client || !chatSessionRef.current) return;
-    client.questions.pending({ conversationId: chatSessionRef.current, mode: "chat" })
-      .then((res) => injectClarifiers(window.IndexApp.normalizeList(res, "questions")))
-      .catch(() => {});
-  };
 
   /* ----- chat (3rd window): opens when you click someone in the pipeline ----- */
   const [chatId, setChatId] = useState(null);
@@ -742,9 +551,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
           <ConversationPane
             profile={profile}
             conversation={conversation}
-            onAnswer={answerClarifier}
-            onDismiss={dismissClarifier}
-            draft={draft} setDraft={setDraft} sendDraft={sendDraft}
             negotiatingPeople={live ? [] : negotiatingPeople}
             onRespondPerson={respondPerson}
             paused={paused}

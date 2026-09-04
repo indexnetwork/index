@@ -22,29 +22,6 @@ import type { ActiveIntent, ArchiveResult, CreateHydeDocumentData, CreateIntentD
  *
  * Use via `createUserDatabase(db, authUserId)` factory function.
  */
-export interface AgentActivitySummary {
-  /** The requested reporting window, in hours. */
-  sinceHours: number;
-  /** Number of the user's own non-archived ACTIVE intents. */
-  liveSignalsWatched: number;
-  /** Opportunities created in the window and linked to one of the user's intents. */
-  opportunitiesSurfaced: number;
-  /** Opportunity counts grouped by the user's own signal. */
-  opportunitiesBySignal: Array<{
-    intentId: string;
-    title: string;
-    count: number;
-  }>;
-  /** Current, non-expired questions waiting for the user, grouped by affected mode (QuestionMode values). Meta-network. */
-  pendingQuestionsByMode: Record<string, number>;
-  /** Questions answered by the user during the window, grouped by affected mode (QuestionMode values). Meta-network. */
-  answeredQuestionsByMode: Record<string, number>;
-  /** Distinct opportunity negotiations started during the window. */
-  negotiationsStarted: number;
-  /** Distinct opportunity negotiations completed during the window. */
-  negotiationsCompleted: number;
-}
-
 export interface UserDatabase {
   /** The bound authenticated user ID */
   readonly authUserId: string;
@@ -197,19 +174,6 @@ export interface UserDatabase {
 
   /** Join a public network (validates joinPolicy === 'anyone'). */
   joinPublicNetwork(networkId: string): Promise<{ success: boolean; alreadyMember?: boolean }>;
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Agent reporting (own activity only)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Summarize the authenticated user's own agent activity without counterparty rows.
-   * When `networkId` is present (a network agent's bound community), the
-   * network-bound aggregates (opportunity and negotiation counts) are narrowed
-   * to that community inside the query; own-signal and question aggregates are
-   * meta-network and stay global.
-   */
-  getAgentActivitySummary(input: { sinceHours: number; networkId?: string }): Promise<AgentActivitySummary>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Opportunity Operations (where user is actor)

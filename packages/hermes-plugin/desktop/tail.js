@@ -44,10 +44,10 @@ function ensureAssets() {
   return assetsPromise
 }
 
-// Native OS alerts use only the authenticated Hermes SDK doors. Question and
-// opportunity sockets share canonical persisted dedupe with the 60-second
-// snapshot fallback; messages remain realtime-only and fail closed until the
-// current user's identity is known.
+// Native OS alerts use only the authenticated Hermes SDK doors. Opportunity
+// sockets use canonical persisted dedupe with the 60-second snapshot fallback;
+// messages remain realtime-only and fail closed until the current user's
+// identity is known.
 function socketEventPayload(value) {
   const data = value && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value
   if (typeof data !== 'string') return data

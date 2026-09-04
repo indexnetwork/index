@@ -10,10 +10,6 @@ function notificationId(event, preferredField) {
 
 export function notificationEntityKey(event) {
   if (!event || typeof event.type !== 'string') return null
-  if (event.type.indexOf('question.') === 0) {
-    const id = notificationId(event, 'questionId')
-    return id ? `question:${id}` : null
-  }
   if (event.type.indexOf('opportunity.') === 0) {
     const id = notificationId(event, 'opportunityId')
     return id ? `opportunity:${id}` : null
@@ -51,7 +47,7 @@ const PLUGIN_ACTIVATE_URL = '/index-network'
 
 export function composeNotification(event) {
   if (!event || typeof event.type !== 'string') return null
-  if (event.type.indexOf('question.') === 0 || event.type.indexOf('opportunity.') === 0) {
+  if (event.type.indexOf('opportunity.') === 0) {
     if (typeof event.title !== 'string' || !event.title.trim()) return null
     return {
       title: event.title,
@@ -111,7 +107,7 @@ export function snapshotNotificationEvents(payload) {
   if (!payload || !Array.isArray(payload.events)) return null
   return payload.events.filter((event) => {
     if (!event || typeof event.type !== 'string') return false
-    const persistedType = event.type.indexOf('question.') === 0 || event.type.indexOf('opportunity.') === 0
+    const persistedType = event.type.indexOf('opportunity.') === 0
     return persistedType && notificationEntityKey(event) && composeNotification(event)
   })
 }

@@ -290,33 +290,6 @@ export function createIndexApiClient(options = {}) {
   return {
     request,
 
-    // Owner-control runtime binding. These methods deliberately use the Mac's
-    // unbound owner credential; agent-bound Hermes credentials are rejected by
-    // the server guard and never flow back through this client after prepare.
-    getRuntimeBinding: (installationId, options = {}) => request(
-      `/agent-runtime${toQueryString({ installationId })}`,
-      options,
-    ),
-    prepareHermesRuntime: (installationId, setupAttemptId, options = {}) => request(
-      '/agent-runtime/hermes/prepare',
-      { ...options, method: 'POST', body: { installationId, setupAttemptId } },
-    ),
-    setRuntimeBinding: (body, options = {}) => request(
-      '/agent-runtime',
-      { ...options, method: 'PUT', body },
-    ),
-    compareAndSelectIndex: (expected, options = {}) => request(
-      '/agent-runtime/reconcile-index',
-      { ...options, method: 'POST', body: expected },
-    ),
-    rollbackHermesRuntime: (setupAttemptId, options = {}) => request(
-      '/agent-runtime/rollback',
-      { ...options, method: 'POST', body: { setupAttemptId } },
-    ),
-    disconnectHermesRuntime: (installationId, options = {}) => request(
-      `/agent-runtime/hermes/${encodeURIComponent(installationId)}`,
-      { ...options, method: 'DELETE' },
-    ),
     auth: {
       me: (options = {}) => request('/auth/me', options),
       updateProfile: (body, options = {}) => request('/auth/profile/update', { ...options, method: 'PATCH', body }),
@@ -445,20 +418,11 @@ export function createIndexApiClient(options = {}) {
 
     intents: {
       list: (body = {}, options = {}) => request('/intents/list', { ...options, method: 'POST', body }),
-      // Turns a chat `intent_proposal` (proposalId + description) into a
-      // persisted intent; resolves { intentId }.
-      confirm: (body, options = {}) => request('/intents/confirm', { ...options, method: 'POST', body }),
-      // Dismisses a pending proposal row instead of orphaning it.
-      reject: (body, options = {}) => request('/intents/reject', { ...options, method: 'POST', body }),
-      // Fast-intake funnel (FAST_SIGNAL_INTAKE flag): the server is stateless,
-      // so every call resends the answered rounds. Ends in /intents/confirm.
-      intake: {
-        start: (options = {}) => request('/intents/intake/start', { ...options, method: 'POST', body: {} }),
-        question: (body, options = {}) => request('/intents/intake/question', { ...options, method: 'POST', body }),
-        prepare: (body, options = {}) => request('/intents/intake/prepare', { ...options, method: 'POST', body }),
-        proposal: (body, options = {}) => request('/intents/intake/proposal', { ...options, method: 'POST', body }),
-        revise: (body, options = {}) => request('/intents/intake/revise', { ...options, method: 'POST', body }),
-      },
+      // One stateless clarification round: send { payload, answers } and get
+      // back { payload, questions }. Nothing is stored; answering is optional.
+      clarify: (body, options = {}) => request('/intents/clarify', { ...options, method: 'POST', body }),
+      // Persist the signal; resolves { intentId, networkIds }.
+      create: (body, options = {}) => request('/intents', { ...options, method: 'POST', body }),
       get: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}`, options),
       archive: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}/archive`, { ...options, method: 'PATCH' }),
       updateStatus: (intentId, status, options = {}) => request(
@@ -505,33 +469,6 @@ export function createIndexApiClient(options = {}) {
       ),
     },
 
-    questions: {
-      pending: (filters = {}, options = {}) => request(
-        `/questions${toQueryString({ status: 'pending', ...filters })}`,
-        options,
-      ),
-      pendingForIntent: (intentId, filters = {}, options = {}) => request(
-        `/questions${toQueryString({ status: 'pending', ...filters, scopeType: 'intent', scopeId: intentId })}`,
-        options,
-      ),
-      answered: (filters = {}, options = {}) => request(
-        `/questions${toQueryString({ status: 'answered', ...filters })}`,
-        options,
-      ),
-      answeredForIntent: (intentId, filters = {}, options = {}) => request(
-        `/questions${toQueryString({ status: 'answered', ...filters, scopeType: 'intent', scopeId: intentId })}`,
-        options,
-      ),
-      answer: (questionId, body, options = {}) => request(
-        `/questions/${encodeURIComponent(questionId)}/answer`,
-        { ...options, method: 'POST', body },
-      ),
-      dismiss: (questionId, options = {}) => request(
-        `/questions/${encodeURIComponent(questionId)}/dismiss`,
-        { ...options, method: 'POST', body: {} },
-      ),
-    },
-
     enrichment: {
       // Public profile prefill (Parallel lookup). Optional body hints merge with account defaults.
       trigger: (hints = {}, options = {}) => request('/enrichment/enrich', { ...options, method: 'POST', body: hints }),
@@ -539,7 +476,6 @@ export function createIndexApiClient(options = {}) {
 
     conversations: {
       list: (options = {}) => request('/conversations', options),
-      negotiations: (options = {}) => request('/conversations/negotiations', options),
       messages: (conversationId, query = {}, options = {}) => request(
         `/conversations/${encodeURIComponent(conversationId)}/messages${toQueryString(query)}`,
         options,

@@ -381,7 +381,7 @@ export const log = {
   /**
    * Pre-bound loggers. Source label conventions per layer:
    * controllers = lowercase feature ('chat'); services = PascalCase class name ('IntentService');
-   * crons = PascalCase class name ('FrameDriftCron'); adapters = '<name>.adapter'; guards = '<name>.guard';
+   * crons = PascalCase class name ('HydeMaintenanceCron'); adapters = '<name>.adapter'; guards = '<name>.guard';
    * lib = module name without lib/ prefix or extension ('email/transport.helper');
    * protocol components = PascalCase with optional ':SubScope' ('OpportunityGraph:Prep').
    */

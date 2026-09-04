@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import * as Dialog from '@radix-ui/react-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, RotateCw, Shield, ShieldOff } from 'lucide-react';
 
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -9,9 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Member } from '@/services/networks';
-import { validateFile } from '@/lib/file-validation';
-import { parseCsvText, type ImportRow, type ParsedCsvResult } from '@/lib/csv-import';
-import CsvPreviewModal from '@/components/modals/CsvPreviewModal';
 import UserAvatar from '@/components/UserAvatar';
 import { useNavigate } from 'react-router';
 import { log } from '@/lib/logger';
@@ -58,11 +54,6 @@ export default function AccessTab({
   const [resendTarget, setResendTarget] = useState<Member | null>(null);
   const [isResendInFlight, setIsResendInFlight] = useState(false);
   const [roleChangeTarget, setRoleChangeTarget] = useState<{ member: Member; newRole: 'owner' | 'member' } | null>(null);
-
-  const csvInputRef = useRef<HTMLInputElement>(null);
-  const [csvPreview, setCsvPreview] = useState<ParsedCsvResult | null>(null);
-  const [csvError, setCsvError] = useState<string | null>(null);
-  const [showCsvModal, setShowCsvModal] = useState(false);
 
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [membersPage, setMembersPage] = useState(1);
@@ -181,10 +172,6 @@ export default function AccessTab({
   };
 
   const handleAddMember = async (memberUser: Member) => {
-    if (network.hasMasterKey) {
-      await handleInviteMember(memberUser.email);
-      return;
-    }
     try {
       const newMember = await networkService.addMember(networkId, memberUser.id, ['member']);
       setMembers(prev => [...prev, newMember]);
@@ -257,41 +244,6 @@ export default function AccessTab({
     }
   };
 
-  const handleCsvFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (csvInputRef.current) csvInputRef.current.value = '';
-    if (!file) return;
-
-    const validation = validateFile(file);
-    if (!validation.isValid) {
-      setCsvError(validation.message || 'Invalid file');
-      return;
-    }
-
-    setCsvError(null);
-    try {
-      const text = await file.text();
-      const result = parseCsvText(text);
-      setCsvPreview(result);
-    } catch {
-      error('Failed to read CSV file');
-    }
-  }, [error]);
-
-  const handleCsvConfirm = useCallback(async (rows: ImportRow[]) => {
-    try {
-      const result = await networkService.importMembers(networkId, rows);
-      setCsvPreview(null);
-      const suffix = result.ownersNotified > 0
-        ? ` · credentials emailed to ${result.ownersNotified} owner${result.ownersNotified !== 1 ? 's' : ''}`
-        : '';
-      success(`Imported ${result.imported} member${result.imported !== 1 ? 's' : ''}${result.skipped > 0 ? ` · ${result.skipped} skipped` : ''}${suffix}`);
-      await loadMembers();
-    } catch {
-      error('Import failed');
-    }
-  }, [networkService, networkId, loadMembers, success, error]);
-
   const filteredSuggestions = suggestedUsers.filter(u => !members.find(m => m.id === u.id));
   const filteredMembers = useMemo(() =>
     (memberSearchQuery.trim()
@@ -312,72 +264,66 @@ export default function AccessTab({
     <>
       <div className="space-y-8">
 
-        {/* Who can join — master-key networks are always private */}
-        {!network.hasMasterKey && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => { setAnyoneCanJoin(true); handleUpdatePermissions(true); }}
-                className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
-              >
-                <Globe className={`h-4 w-4 flex-shrink-0 ${anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
-                <div>
-                  <p className="text-sm font-medium text-black">Public</p>
-                  <p className="text-xs text-gray-400">Anyone can join</p>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAnyoneCanJoin(false); handleUpdatePermissions(false); }}
-                className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${!anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
-              >
-                <Lock className={`h-4 w-4 flex-shrink-0 ${!anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
-                <div>
-                  <p className="text-sm font-medium text-black">Private</p>
-                  <p className="text-xs text-gray-400">Invite only</p>
-                </div>
-              </button>
-            </div>
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => { setAnyoneCanJoin(true); handleUpdatePermissions(true); }}
+              className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
+            >
+              <Globe className={`h-4 w-4 flex-shrink-0 ${anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
+              <div>
+                <p className="text-sm font-medium text-black">Public</p>
+                <p className="text-xs text-gray-400">Anyone can join</p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAnyoneCanJoin(false); handleUpdatePermissions(false); }}
+              className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${!anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
+            >
+              <Lock className={`h-4 w-4 flex-shrink-0 ${!anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
+              <div>
+                <p className="text-sm font-medium text-black">Private</p>
+                <p className="text-xs text-gray-400">Invite only</p>
+              </div>
+            </button>
           </div>
-        )}
+        </div>
 
-        {/* Invitation link — not applicable for master-key networks */}
-        {!network.hasMasterKey && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-              Invitation link
-            </p>
-            <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-sm bg-gray-50">
-              <code className="flex-1 text-xs text-gray-500 truncate">
-                {invitationLink
-                  ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}`
-                  : 'Loading...'}
-              </code>
-              <Tooltip content="Regenerate link">
-                <button
-                  type="button"
-                  aria-label="Regenerate invitation link"
-                  onClick={() => setShowRegenerateConfirm(true)}
-                  disabled={!invitationLink || isRegeneratingLink}
-                  className="flex-shrink-0 p-1 rounded-sm text-gray-400 hover:text-black transition-colors disabled:opacity-50"
-                >
-                  <RotateCw className="h-3.5 w-3.5" />
-                </button>
-              </Tooltip>
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
+            Invitation link
+          </p>
+          <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-sm bg-gray-50">
+            <code className="flex-1 text-xs text-gray-500 truncate">
+              {invitationLink
+                ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}`
+                : 'Loading...'}
+            </code>
+            <Tooltip content="Regenerate link">
               <button
                 type="button"
-                aria-label="Copy invitation link"
-                onClick={handleCopyLink}
-                disabled={!invitationLink}
-                className={`flex-shrink-0 p-1 rounded-sm transition-colors disabled:opacity-50 ${isCopied ? 'text-green-600' : 'text-gray-400 hover:text-black'}`}
+                aria-label="Regenerate invitation link"
+                onClick={() => setShowRegenerateConfirm(true)}
+                disabled={!invitationLink || isRegeneratingLink}
+                className="flex-shrink-0 p-1 rounded-sm text-gray-400 hover:text-black transition-colors disabled:opacity-50"
               >
-                {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                <RotateCw className="h-3.5 w-3.5" />
               </button>
-            </div>
+            </Tooltip>
+            <button
+              type="button"
+              aria-label="Copy invitation link"
+              onClick={handleCopyLink}
+              disabled={!invitationLink}
+              className={`flex-shrink-0 p-1 rounded-sm transition-colors disabled:opacity-50 ${isCopied ? 'text-green-600' : 'text-gray-400 hover:text-black'}`}
+            >
+              {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Members */}
         <div>
@@ -402,29 +348,7 @@ export default function AccessTab({
                   className="pl-9"
                 />
               </div>
-              {network.hasMasterKey && (
-                <>
-                  <input
-                    ref={csvInputRef}
-                    type="file"
-                    accept=".csv"
-                    onChange={handleCsvFile}
-                    className="hidden"
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowCsvModal(true)}
-                    className="flex-shrink-0 gap-1.5 h-10"
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                    Import CSV
-                  </Button>
-                </>
-              )}
             </div>
-            {csvError && (
-              <p className="text-xs text-red-600 mt-1">{csvError}</p>
-            )}
 
             {/* Dropdown: new users to add (not already in list) */}
             {showSuggestions && memberSearchQuery.trim() && !searchIsLoading && filteredSuggestions.length > 0 && (
@@ -442,7 +366,7 @@ export default function AccessTab({
             {/* No results: add by email or show empty state */}
             {showSuggestions && memberSearchQuery.trim() && !searchIsLoading && noResults && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-sm shadow-sm z-10">
-                {memberSearchQuery.includes('@') && network.hasMasterKey ? (
+                {memberSearchQuery.includes('@') ? (
                   <button
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
                     onClick={() => handleInviteMember(memberSearchQuery)}
@@ -526,16 +450,14 @@ export default function AccessTab({
                     </button>
                   </Tooltip>
                 )}
-                {network.hasMasterKey && (
-                  <Tooltip content="Resend invitation · expires old key">
-                    <button
-                      onClick={() => setResendTarget(member)}
-                      className="hidden group-hover:block p-1 text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0"
-                    >
-                      <RotateCw className="h-3.5 w-3.5" />
-                    </button>
-                  </Tooltip>
-                )}
+                <Tooltip content="Resend invitation · expires old key">
+                  <button
+                    onClick={() => setResendTarget(member)}
+                    className="hidden group-hover:block p-1 text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0"
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                  </button>
+                </Tooltip>
                 {!member.permissions.includes('owner') && (
                   <Tooltip content="Remove member">
                     <button
@@ -656,67 +578,6 @@ export default function AccessTab({
         </AlertDialog.Portal>
       </AlertDialog.Root>
 
-      {/* CSV modal */}
-      <Dialog.Root open={showCsvModal} onOpenChange={setShowCsvModal}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg w-full max-w-sm z-[100] focus:outline-none">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <Dialog.Title className="text-lg font-bold text-gray-900">Import CSV</Dialog.Title>
-              <Dialog.Close asChild>
-                <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
-                  <X className="h-4 w-4" />
-                </button>
-              </Dialog.Close>
-            </div>
-            <div className="px-6 py-5 space-y-4">
-              <p className="text-sm text-gray-600">
-                Upload a CSV file with member data. The file must have an <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">email</code> column. Optional profile columns are applied immediately and also retained as onboarding provenance seeds for each member to review: <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">name</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">bio</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">location</code>, and social links (e.g. <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">linkedin</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">github</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">twitter</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">website</code>).
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  const csv = 'email,name,bio,location,linkedin,github,twitter,website\njane@example.com,Jane Doe,Product designer,Berlin,https://linkedin.com/in/janedoe,janedoe,@janedoe,https://janedoe.com\njohn@example.com,John Smith,Full-stack developer,San Francisco,,johnsmith,,\n';
-                  const blob = new Blob([csv], { type: 'text/csv' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'example-import.csv';
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="flex items-center gap-2 text-sm text-gray-600 hover:text-black transition-colors"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Download example CSV
-              </button>
-              <Button
-                className="w-full gap-2"
-                onClick={() => {
-                  setShowCsvModal(false);
-                  csvInputRef.current?.click();
-                }}
-              >
-                <Upload className="h-4 w-4" />
-                Choose file
-              </Button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-
-      {/* CSV preview modal */}
-      {csvPreview && (
-        <CsvPreviewModal
-          open={!!csvPreview}
-          onOpenChange={(open) => { if (!open) setCsvPreview(null); }}
-          valid={csvPreview.valid}
-          invalid={csvPreview.invalid}
-          columns={csvPreview.columns}
-          hasEmailColumn={csvPreview.hasEmailColumn}
-          onConfirm={handleCsvConfirm}
-        />
-      )}
     </>
   );
 }

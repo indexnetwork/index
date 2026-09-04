@@ -5,41 +5,25 @@
  * visible in one line.
  */
 
-import type { NegotiationGraphDatabase } from './negotiation.js';
+import type { NegotiationContextDatabase } from './negotiation.js';
 import type { Database } from '../database.js';
 
 
 /**
- * Database interface narrowed for Premise Graph operations.
- * Provides premise lifecycle: create, read, update, and network assignment.
- *
- * Access layer: UserDatabase (user's own premises)
- */
-export type PremiseGraphDatabase = Pick<
-  Database,
-  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext' | 'findSimilarActivePremise' | 'getUser' | 'updateUser'
->;
-
-/**
- * Composite database interface for Chat Graph.
- * Includes direct ChatGraph operations plus all methods needed by
- * internally composed subgraphs (ProfileGraph, OpportunityGraph, IntentGraph, NetworkGraph).
- *
- * Use this type when ChatGraph orchestrates subgraphs internally.
+ * Composite database interface for a tool composition that reaches every
+ * subgraph (OpportunityGraph, IntentGraph, NetworkGraph).
  *
  * Access layer: Both UserDatabase + SystemDatabase (orchestrates all operations)
  */
-export type ChatGraphCompositeDatabase = Pick<
+export type CompositeToolDatabase = Pick<
   Database,
-  // Direct ChatGraph operations
   | 'getProfile'
-  // The chat/MCP discovery path builds an OpportunityGraph too, and its
-  // terminal stage records candidates.
-  | 'upsertDiscoveryMatchCandidates'
+  // The MCP discovery path builds an OpportunityGraph too, and its terminal
+  // stage opens the pairs it scored.
+  | 'openCounterparties'
   | 'getActiveIntents'
   | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
-  // ProfileGraph subgraph requirements
   | 'getUser'
   | 'updateUser'
   | 'getUserSocials'
@@ -53,9 +37,6 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'expireOpportunitiesByIntentActor'
   | 'transitionIntentLifecycle'
   | 'compensateFailedResume'
-  | 'getProposalForOwner'
-  | 'revisePendingProposal'
-  | 'confirmProposalIntent'
   // OpportunityGraph subgraph requirements (getProfile already included)
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
@@ -111,29 +92,10 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getNetworkMemberCount'
   | 'addMemberToNetwork'
   | 'removeMemberFromIndex'
-  // ProfileGraph post-enrichment ghost deduplication
-  // ProfileGraph aggregate mode (premise-to-profile materialization)
-  // Premise lifecycle (CRUD + network assignment)
-  | 'getPremisesForUser'
-  | 'getPremisesForUserInNetworks'
-  | 'createPremise'
-  | 'getPremise'
-  | 'updatePremise'
-  | 'assignPremiseToNetwork'
-  | 'getPremiseNetworks'
-  // Premise-to-premise discovery (path D) in OpportunityGraph
-  | 'searchPremisesBySimilarity'
-  | 'searchPremisesBySimilarityBatch'
   // User context text for discovery in OpportunityGraph
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
-> & Pick<
-  NegotiationGraphDatabase,
-  // Orphan heal in OpportunityGraph persist node
-  | 'getNegotiationTaskForOpportunity'
-  // negotiateNode bumps the round once per (intentId) in a kickoff batch
-  | 'bumpIntentNegotiationBatch'
->;
+> & NegotiationContextDatabase;
 
 /**
  * Database interface for Opportunity Graph operations.
@@ -145,7 +107,7 @@ export type ChatGraphCompositeDatabase = Pick<
 export type OpportunityGraphDatabase = Pick<
   Database,
   | 'getProfile'
-  | 'upsertDiscoveryMatchCandidates'
+  | 'openCounterparties'
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'
@@ -174,13 +136,6 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
-  // IND-567 Fix A: fetch candidate premise text for evaluator (prevents empty-text query_premise false-positives)
-  | 'getPremise'
-  // Premise-to-premise discovery (path D)
-  | 'getPremisesForUser'
-  | 'getPremisesForUserInNetworks'
-  | 'searchPremisesBySimilarity'
-  | 'searchPremisesBySimilarityBatch'
   // User context text for discovery
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
@@ -188,13 +143,6 @@ export type OpportunityGraphDatabase = Pick<
   | 'getHydeDocumentsForSource'
   // IND-567: Rejection cool-down (optional — adapters may omit)
   | 'getRecentlyRejectedOpportunityCounterparties'
-> & Pick<
-  NegotiationGraphDatabase,
-  // Orphan heal: check if a prior negotiating opportunity has a stale task
-  | 'getNegotiationTaskForOpportunity'
-  // negotiateNode bumps the round once per (intentId) in a kickoff batch and
-  // passes it to every open() in that batch — a round is the batch, not one opportunity.
-  | 'bumpIntentNegotiationBatch'
 >;
 export interface OutcomeOutbox {
   event: unknown;
@@ -252,22 +200,14 @@ export type IntentGraphDatabase = Pick<
   | 'isNetworkMember'
   | 'getNetworkIntentsForMember'
   | 'getUser'
-  // Global user_context paragraph, read to verify an owner-edited proposal.
-  // Never used to rewrite a description: intents derive from what the user said.
-  | 'getUserContext'
-  | 'assignIntentToNetwork'
+  // Create action links the new intent to exactly the networks the caller named.
+  | 'assignIntentToNetworkIfMember'
   // Archive action's full cleanup (network associations, referencing opportunities)
   | 'deleteIntentIndexAssociations'
   | 'expireOpportunitiesByIntentActor'
   // Status transition action (pause/resume)
   | 'transitionIntentLifecycle'
   | 'compensateFailedResume'
-  // Confirm action (chat/MCP proposal → persisted intent). Ownership is
-  // enforced by the proposal row itself (owner-scoped) and by the caller
-  // for archive/transition, same as create/update today.
-  | 'getProposalForOwner'
-  | 'revisePendingProposal'
-  | 'confirmProposalIntent'
 >;
 
 /**
@@ -356,9 +296,4 @@ export type RadarGraphDatabase = Pick<
   | 'getActiveIntents'
   | 'getNetwork'
   | 'getUser'
-> & Pick<
-  NegotiationGraphDatabase,
-  | 'getNegotiationTaskForOpportunity'
-  | 'getNegotiationMessages'
-  | 'getArtifactsForTask'
->;
+> & NegotiationContextDatabase;

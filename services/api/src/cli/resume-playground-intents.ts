@@ -4,8 +4,8 @@
  *
  * Each intent goes through the normal lifecycle transition rather than a bulk
  * database update, so its resume discovery runs as well — triggered
- * fire-and-forget, in this process, so this script polls the progress table
- * until every resumed intent's scan finishes before closing the DB pool.
+ * fire-and-forget, in this process, so this script polls the first-discovery
+ * stamp until every resumed intent's scan finishes before closing the DB pool.
  *
  * Usage: bun src/cli/resume-playground-intents.ts --confirm
  */
@@ -16,14 +16,13 @@ dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', '.env.develop
 
 const DISCOVERY_WAIT_TIMEOUT_MS = 5 * 60_000;
 const DISCOVERY_POLL_INTERVAL_MS = 2_000;
-const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'blocked']);
 
 async function main(): Promise<void> {
   if (!process.argv.includes('--confirm')) {
     throw new Error('This resumes every paused playground intent. Re-run with --confirm.');
   }
 
-  const [{ and, eq, isNull, inArray }, { default: db, closeDb }, { intentService }, { intents, intentDiscoveryProgress }] = await Promise.all([
+  const [{ and, eq, isNull, isNotNull, inArray }, { default: db, closeDb }, { intentService }, { intents }] = await Promise.all([
     import('drizzle-orm/sql'),
     import('../lib/drizzle/drizzle'),
     import('../services/intent.service'),
@@ -43,21 +42,25 @@ async function main(): Promise<void> {
     .map(({ id }) => id);
   const failed = outcomes.filter((outcome) => outcome.kind !== 'success');
 
-  // Discovery for each resumed intent runs in the background, in this
-  // process — wait for it to reach a terminal status before closing the DB
-  // pool, or the scans get killed mid-flight.
-  const pending = new Set(resumedIds);
+  // Discovery for each resumed intent runs in the background, in this process
+  // — wait for its first-discovery stamp before closing the DB pool, or the
+  // scans get killed mid-flight. Only intents that have never completed a scan
+  // are observable this way; an already-stamped intent is not waited on.
+  const pending = new Set(
+    resumedIds.length === 0 ? [] : (await db
+      .select({ id: intents.id })
+      .from(intents)
+      .where(and(inArray(intents.id, resumedIds), isNull(intents.firstDiscoverySucceededAt)))
+    ).map(({ id }) => id),
+  );
   const waitDeadline = Date.now() + DISCOVERY_WAIT_TIMEOUT_MS;
   while (pending.size > 0 && Date.now() < waitDeadline) {
-    const rows = await db
-      .select({ intentId: intentDiscoveryProgress.intentId, status: intentDiscoveryProgress.status })
-      .from(intentDiscoveryProgress)
-      .where(inArray(intentDiscoveryProgress.intentId, [...pending]));
-    for (const row of rows) {
-      if (TERMINAL_STATUSES.has(row.status)) pending.delete(row.intentId);
-    }
-    if (pending.size === 0) break;
     await Bun.sleep(DISCOVERY_POLL_INTERVAL_MS);
+    const stamped = await db
+      .select({ id: intents.id })
+      .from(intents)
+      .where(and(inArray(intents.id, [...pending]), isNotNull(intents.firstDiscoverySucceededAt)));
+    for (const row of stamped) pending.delete(row.id);
   }
   if (pending.size > 0) {
     console.warn(`[playground] Timed out waiting for discovery on ${pending.size} intent(s), closing anyway: ${[...pending].join(', ')}`);

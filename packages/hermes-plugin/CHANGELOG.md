@@ -8,6 +8,25 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Removed
+- **The `hasMasterKey` network field.** The dashboard no longer forwards it and
+  the network detail always shows visibility and the invitation link, matching
+  the web app now that master-key signup is gone.
+
+### Removed
+- **The forwarders for deleted Index tools:** `confirm_opportunity_delivery`,
+  the four premise tools, and `read_activity_summary`. `research_profile` is
+  unchanged.
+- **The `index-orchestrator` skill**, plus the `pre_llm_call` hint hook and
+  `/index` command that existed only to load it.
+
+### Removed
+- **The negotiator mode and its tools.** `INDEX_PLUGIN_MODE`, `_mode.py`, the
+  `index-negotiator` skill, `index_respond_negotiation`, and the forwarded
+  `list_negotiations` / `get_negotiation` / `respond_to_negotiation` MCP
+  wrappers are gone: Index no longer exposes a negotiation turn surface. The
+  dashboard is always mounted and its `/mode` endpoint is removed.
+
+### Removed
 - Delete `tests/`. No source or tool-contract change.
 
 ### Breaking

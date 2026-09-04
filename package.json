@@ -9,7 +9,6 @@
     "packages/cli",
     "packages/claude-plugin",
     "packages/hermes-plugin",
-    "packages/a2a",
     "packages/agent"
   ],
   "scripts": {
@@ -18,8 +17,7 @@
     "dev:api": "cd services/api && bun run dev",
     "dev:frontend": "bun run dev:web",
     "dev:backend": "bun run dev:api",
-    "build:skills": "bun scripts/build-skills.ts",
-    "build": "bun run build:skills && bun run build:package:protocol && bun run build:api && bun run build:web",
+    "build": "bun run build:package:protocol && bun run build:api && bun run build:web",
     "build:web": "cd apps/web && bun install && bun run build",
     "build:api": "cd services/api && bun install && bun run build",
     "build:frontend": "bun run build:web",
@@ -34,7 +32,6 @@
     "lint:mac-universal-links": "eslint --config apps/mac/eslint.config.mjs apps/mac/eslint.config.mjs apps/mac/api/deeplink.mjs apps/mac/src/ui/app.jsx",
     "check:subtree-parity": "bun scripts/check-subtree-package-parity.ts",
     "db:setup:local": "bash scripts/setup-local-testdb.sh",
-    "db:seed:sandbox": "cd services/api && bun run db:seed:sandbox",
     "db:playground:reset": "bun scripts/playground-reset.ts",
     "db:playground:resume": "cd services/api && bun src/cli/resume-playground-intents.ts",
     "sync:lockfile-versions": "bun scripts/sync-lockfile-versions.ts",

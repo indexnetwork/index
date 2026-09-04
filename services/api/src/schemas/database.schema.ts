@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, timestamp, bigint, boolean, check, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, real } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm/relations';
 import { sql } from 'drizzle-orm/sql';
@@ -9,25 +9,12 @@ export const sourceType = pgEnum('source_type', ['integration', 'discovery_form'
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
-export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
-export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'system']);
+export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
+export const agentTypeEnum = pgEnum('agent_type', ['external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
-export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
-export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
-export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
-export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
-export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
-
-export interface OnboardingProfileSeed {
-  source: 'experiment_signup' | 'experiment_csv_import';
-  networkId: string;
-  capturedAt: string;
-  name?: string;
-  bio?: string;
-  location?: string;
-  socials?: { label: string; value: string }[];
-}
+export const negotiationOutcomeEnum = pgEnum('negotiation_outcome', ['agreed', 'declined', 'closed']);
+export const negotiationTurnActionEnum = pgEnum('negotiation_turn_action', ['propose', 'counter', 'accept', 'decline']);
 
 export interface OnboardingState {
   completedAt?: string;
@@ -37,7 +24,6 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
-  profileSeeds?: OnboardingProfileSeed[];
 }
 
 export interface NetworkPermissionsState {
@@ -68,18 +54,8 @@ export interface NetworkRequestDetails {
 
 export type NetworkRequestStatus = 'pending' | 'needs_changes';
 
-export interface TelegramPrefs {
-  chatId: string;
-  sessionId?: string;       // lazily created on first outbound message
-  connectedAt: string;      // ISO timestamp
-  notifications: {
-    opportunityAccepted: boolean;
-  };
-}
-
 export interface NotificationPreferences {
   connectionUpdates: boolean;
-  telegram?: TelegramPrefs;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -260,107 +236,6 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export interface PremiseAssertion {
-  text: string;
-  tier: 'assertive' | 'contextual';
-  summary?: string;
-}
-
-export interface PremiseProvenance {
-  source: 'explicit' | 'enrichment' | 'integration' | 'onboarding';
-  sourceId?: string;
-  confidence: number;
-  timestamp: string;
-}
-
-export interface PremiseAnalysis {
-  speechActType: 'DECLARATIVE' | 'ASSERTIVE';
-  felicityAuthority: number;
-  felicitySincerity: number;
-  felicityClarity: number;
-  semanticEntropy: number;
-}
-
-export interface PremiseValidity {
-  validFrom?: string;
-  validUntil?: string;
-  volatile: boolean;
-}
-
-export const premises = pgTable('premises', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  assertion: jsonb('assertion').$type<PremiseAssertion>().notNull(),
-  provenance: jsonb('provenance').$type<PremiseProvenance>().notNull(),
-  analysis: jsonb('analysis').$type<PremiseAnalysis>(),
-  validity: jsonb('validity').$type<PremiseValidity>().notNull(),
-  embedding: vector('embedding', { dimensions: 2000 }),
-  status: premiseStatusEnum('status').notNull().default('ACTIVE'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  retractedAt: timestamp('retracted_at', { withTimezone: true }),
-  deletedAt: timestamp('deleted_at', { withTimezone: true }),
-}, (table) => ({
-  embeddingIdx: index('premises_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
-  userIdIdx: index('premises_user_id_idx').on(table.userId),
-  statusIdx: index('premises_status_idx').on(table.status),
-}));
-
-export const premiseNetworks = pgTable('premise_networks', {
-  premiseId: text('premise_id').notNull().references(() => premises.id, { onDelete: 'cascade' }),
-  networkId: text('network_id').notNull().references(() => networks.id),
-  relevancyScore: numeric('relevancy_score'),
-  assignmentMetadata: jsonb('assignment_metadata').$type<import('@indexnetwork/protocol').NetworkAssignmentMetadata>(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => ({
-  pk: primaryKey({ columns: [t.premiseId, t.networkId] }),
-  networkIdIdx: index('premise_networks_network_id_idx').on(t.networkId),
-}));
-
-/** Precomputed fast-intake artifact: one row per user. */
-export const signalIntakePacks = pgTable('signal_intake_packs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
-  brief: text('brief').notNull(),
-  question: jsonb('question').$type<{
-    title: string;
-    prompt: string;
-    options: Array<{ label: string; description: string }>;
-    multiSelect: boolean;
-  }>().notNull(),
-  premiseHash: text('premise_hash'),
-  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
-});
-// No explicit user_id index: `.unique()` on user_id already creates
-// `signal_intake_packs_user_id_unique`, a btree on exactly that column, which
-// serves every lookup (getPack) and the upsert's ON CONFLICT target.
-
-export type SignalIntakePackRow = typeof signalIntakePacks.$inferSelect;
-export type NewSignalIntakePackRow = typeof signalIntakePacks.$inferInsert;
-
-export const signalIntakeRunStatusEnum = pgEnum('signal_intake_run_status', ['pending', 'ready', 'failed']);
-
-/** Single-flight record for speculative intake synthesis. */
-export const signalIntakeRuns = pgTable('signal_intake_runs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  answersHash: text('answers_hash').notNull(),
-  status: signalIntakeRunStatusEnum('status').notNull().default('pending'),
-  proposalId: text('proposal_id'),
-  /** "Looking for" card summary from the synthesis that settled this run. */
-  lookingFor: text('looking_for'),
-  /** "You bring" card summary from the synthesis that settled this run. */
-  youBring: text('you_bring'),
-  error: text('error'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  userAnswersUniq: uniqueIndex('signal_intake_runs_user_answers_uniq').on(table.userId, table.answersHash),
-  userIdIdx: index('signal_intake_runs_user_id_idx').on(table.userId),
-  createdAtIdx: index('signal_intake_runs_created_at_idx').on(table.createdAt),
-}));
-
-export type SignalIntakeRunRow = typeof signalIntakeRuns.$inferSelect;
-
 export type HydeSourceType = 'intent' | 'query' | 'context';
 
 export const hydeDocuments = pgTable('hyde_documents', {
@@ -396,8 +271,6 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
-  /** Which premise grounded this match, when the match was premise-grounded. */
-  premise?: Id<'premises'>;
   role: string;
   /**
    * ISO-8601 timestamp set the first time this actor advanced the opportunity's
@@ -444,132 +317,54 @@ export const opportunities = pgTable('opportunities', {
   statusIdx: index('opportunities_status_idx').on(table.status),
 }));
 
-export const discoveryMatchCandidateStatusEnum = pgEnum('discovery_match_candidate_status', [
-  'pending', 'opened', 'superseded', 'expired',
-]);
-
 /**
- * A pair discovery found, before anyone reached out. One row per pair — the
- * unique `pair_key` is what stops both principals' discovery runs from
- * producing two opportunities between the same two people.
+ * The negotiation between the two seats of one opportunity. Index is the
+ * server: both seats read this record and take turns against it, and Index
+ * computes the settlement from its own turn log.
  */
-export const discoveryMatchCandidates = pgTable('discovery_match_candidates', {
+export const negotiations = pgTable('negotiations', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  /**
+   * Stable identity of the two-intent pair, from the protocol's `pairKeyOf`.
+   * Unique: both principals' discovery runs converge here instead of opening
+   * two negotiations between the same two intents.
+   */
   pairKey: text('pair_key').notNull(),
-  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
-  intentA: text('intent_a').notNull().references(() => intents.id, { onDelete: 'cascade' }),
-  intentB: text('intent_b').notNull().references(() => intents.id, { onDelete: 'cascade' }),
-  userA: text('user_a').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  userB: text('user_b').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  score: numeric('score').notNull(),
-  reasoning: text('reasoning').notNull(),
-  evidence: jsonb('evidence').$type<import('@indexnetwork/protocol').OpportunityEvidence[]>().notNull().default([]),
-  status: discoveryMatchCandidateStatusEnum('status').notNull().default('pending'),
-  /** Set when this candidate became a row, by `createAndOpen`. */
-  openedOpportunityId: text('opened_opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),
+  opportunityId: text('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
+  initiatorUserId: text('initiator_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  initiatorIntentId: text('initiator_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  responderUserId: text('responder_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  responderIntentId: text('responder_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  /** The seat whose turn it is. Null once settled; never a third value. */
+  awaitingUserId: text('awaiting_user_id').references(() => users.id, { onDelete: 'set null' }),
+  outcome: negotiationOutcomeEnum('outcome'),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  pairKeyIdx: uniqueIndex('discovery_match_candidates_pair_key_idx').on(table.pairKey),
-  intentAIdx: index('discovery_match_candidates_intent_a_idx').on(table.intentA),
-  intentBIdx: index('discovery_match_candidates_intent_b_idx').on(table.intentB),
+  pairKeyIdx: uniqueIndex('negotiations_pair_key_idx').on(table.pairKey),
+  opportunityIdx: uniqueIndex('negotiations_opportunity_id_idx').on(table.opportunityId),
+  initiatorIntentIdx: index('negotiations_initiator_intent_idx').on(table.initiatorIntentId),
+  responderIntentIdx: index('negotiations_responder_intent_idx').on(table.responderIntentId),
+  awaitingIdx: index('negotiations_awaiting_user_idx').on(table.awaitingUserId),
 }));
 
-export interface QuestionDetection {
-  mode: 'intent' | 'chat';
-  /** Internal generation purpose; stripped from public API responses. */
-  purpose?: import('@indexnetwork/protocol').QuestionPurpose;
-  sourceType: string;
-  sourceId: string;
-  triggeredBy?: string;
-  timestamp: string;
-  /** Generation strategy — persisted as metadata, not exposed on read. */
-  strategy?: import('@indexnetwork/protocol').QuestionStrategy;
-  /** QUD repair category — persisted as metadata, not exposed on read. */
-  underspecificationType?: import('@indexnetwork/protocol').UnderspecificationType | null;
-  /** ID of the assistant message that triggered this question. */
-  messageId?: string;
-  /** Durable conversation-session binding for verified in-chat rendering. */
-  sessionId?: string;
-  /** Post-discovery intent recovery snapshot. Never exposed publicly. */
-  recovery?: import('@indexnetwork/protocol').QuestionRecoverySnapshot;
-  /** Internal reason a question was voided after drift or retirement. */
-  voidedReason?: import('@indexnetwork/protocol').QuestionVoidedReason;
-}
-
-export interface QuestionActor {
-  userId: string;
-  networkId?: string;
-  role: 'subject';
-}
-
-export interface QuestionAnswer {
-  selectedOptions: string[];
-  freeText?: string;
-  answeredBy: string;
-  answeredAt: string;
-}
-
-export const questions = pgTable('questions', {
+/**
+ * One structured decision from one seat. The unique index on
+ * `(negotiation_id, turn_index)` is the concurrency control: a seat racing
+ * its counterparty, or retrying, collides rather than appending twice.
+ */
+export const negotiationTurns = pgTable('negotiation_turns', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  detection: jsonb('detection').$type<QuestionDetection>().notNull(),
-  actors: jsonb('actors').$type<QuestionActor[]>().notNull(),
-  payload: jsonb('payload').$type<import('@indexnetwork/protocol').Question>().notNull(),
-  status: questionStatusEnum('status').notNull().default('pending'),
-  answer: jsonb('answer').$type<QuestionAnswer>(),
-  conversationId: text('conversation_id'),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  negotiationId: text('negotiation_id').notNull().references(() => negotiations.id, { onDelete: 'cascade' }),
+  turnIndex: integer('turn_index').notNull(),
+  seatUserId: text('seat_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  action: negotiationTurnActionEnum('action').notNull(),
+  message: text('message').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  statusIdx: index('questions_status_idx').on(table.status),
-  conversationIdx: index('questions_conversation_id_idx').on(table.conversationId),
-  // Durable negotiation-family idempotency across every lifecycle status.
-  // Ordinal preserves the existing up-to-two-card generator cardinality.
-  negotiationProvenanceUnique: uniqueIndex('questions_negotiation_provenance_uniq')
-    .on(
-      sql`(${table.detection}->'negotiation'->>'recipientUserId')`,
-      sql`(${table.detection}->'negotiation'->>'recipientIntentId')`,
-      sql`(${table.detection}->'negotiation'->>'opportunityId')`,
-      sql`COALESCE(${table.detection}->'negotiation'->>'taskId', '')`,
-      sql`(${table.detection}->'negotiation'->>'purpose')`,
-      sql`(${table.detection}->'negotiation'->>'questionOrdinal')`,
-    )
-    .where(sql`${table.detection}->'negotiation'->>'version' = '1'`),
-  // One recovery refinement per recipient + intent + material fingerprint
-  // across every status and expiry state. Advisory locking is the application
-  // gate; this expression index is the final cross-worker race guard.
-  recoveryRecipientIntentFingerprintUnique: uniqueIndex('questions_recovery_recipient_intent_fingerprint_uniq')
-    .on(
-      sql`(${table.actors}->0->>'userId')`,
-      sql`(${table.detection}->>'sourceId')`,
-      sql`(${table.detection}->'recovery'->>'intentFingerprint')`,
-    )
-    .where(sql`${table.detection}->>'purpose' = 'recovery' AND ${table.detection}->>'mode' = 'intent' AND ${table.detection}->>'sourceType' = 'intent'`),
+  orderIdx: uniqueIndex('negotiation_turns_negotiation_turn_idx').on(table.negotiationId, table.turnIndex),
 }));
-
-export type QuestionRow = typeof questions.$inferSelect;
-export type NewQuestionRow = typeof questions.$inferInsert;
-
-export interface IntentProposalVerifierOutputRecord {
-  reasoning: string;
-  classification: 'COMMISSIVE' | 'DIRECTIVE' | 'ASSERTIVE' | 'EXPRESSIVE' | 'DECLARATION' | 'UNKNOWN';
-  felicity_scores: {
-    clarity: number;
-    authority: number;
-    sincerity: number;
-  };
-  semantic_entropy: number;
-  referential_anchor: string | null;
-  referential_breadth: 'narrow' | 'moderate' | 'broad';
-  missing_selectional_constraints: Array<'role' | 'outcome' | 'location' | 'timeframe' | 'domain' | 'concrete_need'>;
-  specificity_warning: string | null;
-  flags: string[];
-}
-
-export interface IntentProposalAnalysisRecord {
-  verifierOutput: IntentProposalVerifierOutputRecord;
-  combinedScore: number | null;
-}
 
 export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -580,14 +375,6 @@ export const intents = pgTable('intents', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
-  /**
-   * Written by NegotiationGraph at every fresh kickoff batch for this intent.
-   * A fresh UUID per kickoff; null means this signal has never itself kicked
-   * off (#1494). The reflect trigger's key, alongside the negotiation task's
-   * `batchId` metadata — settlement itself is folded from
-   * `negotiation_round_log_events`, not read from a size/timestamp pair here.
-   */
-  negotiationBatchId: text('negotiation_batch_id'),
   /**
    * When the intent's first background discovery run completed successfully
    * (any path: web discovery queue or async MCP discovery-run). Null until
@@ -617,7 +404,6 @@ export const networks = pgTable('networks', {
   key: text('key'),
   prompt: text('prompt'),
   imageUrl: text('image_url'),
-  masterKeyHash: text('master_key_hash'),
   // Non-null only while this row is an unapproved "create a network" request
   // (early access). Cleared to null when a staff reviewer approves it.
   requestStatus: text('request_status').$type<NetworkRequestStatus>(),
@@ -633,167 +419,6 @@ export const networks = pgTable('networks', {
   indexesKeyUnique: uniqueIndex('indexes_key_unique').on(table.key),
 }));
 
-export const intentProposals = pgTable('intent_proposals', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  description: text('description').notNull(),
-  networkId: text('network_id'),
-  analysis: jsonb('analysis').$type<IntentProposalAnalysisRecord>().notNull(),
-  status: intentProposalStatusEnum('status').notNull().default('pending'),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  consumedAt: timestamp('consumed_at', { withTimezone: true }),
-  consumedIntentId: text('consumed_intent_id').references(() => intents.id, { onDelete: 'set null' }),
-}, (table) => ({
-  userIdIdx: index('intent_proposals_user_id_idx').on(table.userId),
-  expiresAtIdx: index('intent_proposals_expires_at_idx').on(table.expiresAt),
-}));
-
-export type IntentProposalRow = typeof intentProposals.$inferSelect;
-export type NewIntentProposalRow = typeof intentProposals.$inferInsert;
-
-export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';
-export type FrameDriftExecutionTerminalStatus = 'inserted' | 'duplicate' | 'skipped' | 'failed';
-export type FrameDriftExecutionFailureCategory = 'measurement';
-
-export const frameDriftExecutionAttempts = pgTable('frame_drift_execution_attempts', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  queueName: text('queue_name').notNull(),
-  schedulerId: text('scheduler_id').notNull(),
-  jobId: text('job_id').notNull(),
-  jobName: text('job_name').notNull(),
-  scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
-  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
-  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
-  attempt: integer('attempt').notNull(),
-  maxAttempts: integer('max_attempts').notNull(),
-  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  terminalStatus: text('terminal_status').$type<FrameDriftExecutionTerminalStatus>(),
-  willRetry: boolean('will_retry'),
-  failureCategory: text('failure_category').$type<FrameDriftExecutionFailureCategory>(),
-}, (table) => ({
-  jobAttemptUnique: uniqueIndex('frame_drift_execution_attempts_job_attempt_uniq')
-    .on(table.jobId, table.attempt),
-  bucketStartIdx: index('frame_drift_execution_attempts_bucket_start_idx').on(table.bucketStart),
-  incompleteIdx: index('frame_drift_execution_attempts_incomplete_idx')
-    .on(table.startedAt)
-    .where(sql`${table.completedAt} IS NULL`),
-  identityCheck: check('frame_drift_execution_attempts_identity_check', sql`
-    length(btrim(${table.queueName})) > 0
-    AND length(btrim(${table.schedulerId})) > 0
-    AND length(btrim(${table.jobId})) > 0
-    AND length(btrim(${table.jobName})) > 0
-  `),
-  dailyBucketCheck: check('frame_drift_execution_attempts_daily_bucket_check', sql`
-    ${table.bucketEnd} = ${table.bucketStart} + interval '1 day'
-    AND date_trunc('day', ${table.bucketStart} AT TIME ZONE 'UTC') = ${table.bucketStart} AT TIME ZONE 'UTC'
-    AND date_trunc('day', ${table.bucketEnd} AT TIME ZONE 'UTC') = ${table.bucketEnd} AT TIME ZONE 'UTC'
-    AND ${table.scheduledAt} >= ${table.bucketEnd}
-    AND ${table.scheduledAt} < ${table.bucketEnd} + interval '1 day'
-  `),
-  attemptBoundsCheck: check('frame_drift_execution_attempts_attempt_bounds_check', sql`
-    ${table.attempt} BETWEEN 1 AND ${table.maxAttempts}
-    AND ${table.maxAttempts} BETWEEN 1 AND 100
-  `),
-  terminalStatusCheck: check('frame_drift_execution_attempts_terminal_status_check', sql`
-    ${table.terminalStatus} IS NULL
-    OR ${table.terminalStatus} IN ('inserted', 'duplicate', 'skipped', 'failed')
-  `),
-  failureCategoryCheck: check('frame_drift_execution_attempts_failure_category_check', sql`
-    ${table.failureCategory} IS NULL OR ${table.failureCategory} = 'measurement'
-  `),
-  terminalStateCheck: check('frame_drift_execution_attempts_terminal_state_check', sql`
-    (
-      ${table.terminalStatus} IS NULL
-      AND ${table.completedAt} IS NULL
-      AND ${table.willRetry} IS NULL
-      AND ${table.failureCategory} IS NULL
-    ) OR (
-      ${table.terminalStatus} IN ('inserted', 'duplicate', 'skipped')
-      AND ${table.completedAt} IS NOT NULL
-      AND ${table.completedAt} >= ${table.startedAt}
-      AND ${table.willRetry} IS NOT NULL
-      AND ${table.willRetry} = false
-      AND ${table.failureCategory} IS NULL
-    ) OR (
-      ${table.terminalStatus} = 'failed'
-      AND ${table.completedAt} IS NOT NULL
-      AND ${table.completedAt} >= ${table.startedAt}
-      AND ${table.willRetry} IS NOT NULL
-      AND ${table.failureCategory} IS NOT NULL
-      AND ${table.failureCategory} = 'measurement'
-    )
-  `),
-}));
-
-export const frameDriftObservationRuns = pgTable('frame_drift_observation_runs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
-  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
-  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
-  configuredEmbeddingModel: text('configured_embedding_model').notNull(),
-  maxNetworks: integer('max_networks').notNull(),
-  maxPairs: integer('max_pairs').notNull(),
-  minUsers: integer('min_users').notNull(),
-  stableCohortHash: text('stable_cohort_hash'),
-  aggregateDiagnostics: jsonb('aggregate_diagnostics').$type<Record<string, unknown>>().notNull().default({}),
-}, (table) => ({
-  bucketStartUnique: uniqueIndex('frame_drift_observation_runs_bucket_start_uniq').on(table.bucketStart),
-  bucketCheck: check('frame_drift_observation_runs_bucket_check', sql`${table.bucketEnd} = ${table.bucketStart} + interval '1 day' AND ${table.capturedAt} >= ${table.bucketEnd}`),
-  configuredEmbeddingModelCheck: check('frame_drift_observation_runs_configured_embedding_model_check', sql`length(btrim(${table.configuredEmbeddingModel})) > 0`),
-  maxNetworksCheck: check('frame_drift_observation_runs_max_networks_check', sql`${table.maxNetworks} BETWEEN 1 AND 200`),
-  maxPairsCheck: check('frame_drift_observation_runs_max_pairs_check', sql`${table.maxPairs} BETWEEN 1 AND 10000`),
-  minUsersCheck: check('frame_drift_observation_runs_min_users_check', sql`${table.minUsers} BETWEEN 2 AND 100`),
-  stableCohortHashCheck: check('frame_drift_observation_runs_stable_cohort_hash_check', sql`${table.stableCohortHash} IS NULL OR ${table.stableCohortHash} ~ '^[0-9a-f]{64}$'`),
-  aggregateDiagnosticsCheck: check('frame_drift_observation_runs_aggregate_diagnostics_check', sql`jsonb_typeof(${table.aggregateDiagnostics}) = 'object'`),
-}));
-
-export const frameCentroidSnapshots = pgTable('frame_centroid_snapshots', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  runId: text('run_id').notNull().references(() => frameDriftObservationRuns.id, { onDelete: 'cascade' }),
-  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
-  corpus: text('corpus').$type<FrameCentroidCorpus>().notNull(),
-  centroid: vector('centroid', { dimensions: 2000 }).notNull(),
-  sampleCount: integer('sample_count').notNull(),
-  configuredEmbeddingModel: text('configured_embedding_model').notNull(),
-  cosineDrift: doublePrecision('cosine_drift'),
-  priorBucketStart: timestamp('prior_bucket_start', { withTimezone: true }),
-  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
-  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
-  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  corpusCheck: check('frame_centroid_snapshots_corpus_check', sql`${table.corpus} IN ('premise', 'intent', 'user_context')`),
-  sampleCountCheck: check('frame_centroid_snapshots_sample_count_check', sql`${table.sampleCount} > 0`),
-  cosineDriftCheck: check('frame_centroid_snapshots_cosine_drift_check', sql`${table.cosineDrift} IS NULL OR (${table.cosineDrift} >= 0 AND ${table.cosineDrift} <= 2)`),
-  bucketRangeCheck: check('frame_centroid_snapshots_bucket_range_check', sql`${table.bucketEnd} > ${table.bucketStart}`),
-  dailyUnique: uniqueIndex('frame_centroid_snapshots_daily_uniq')
-    .on(table.networkId, table.corpus, table.configuredEmbeddingModel, table.bucketStart),
-}));
-
-export const crossNetworkYieldSnapshots = pgTable('cross_network_yield_snapshots', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  runId: text('run_id').notNull().references(() => frameDriftObservationRuns.id, { onDelete: 'cascade' }),
-  networkAId: text('network_a_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
-  networkBId: text('network_b_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
-  opportunityCount: bigint('opportunity_count', { mode: 'number' }).notNull(),
-  potentialIntentPairCount: bigint('potential_active_intent_pair_count', { mode: 'number' }).notNull(),
-  yieldRate: doublePrecision('yield_rate').notNull(),
-  yieldRateDelta: doublePrecision('yield_rate_delta'),
-  priorBucketStart: timestamp('prior_bucket_start', { withTimezone: true }),
-  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
-  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
-  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  canonicalPairCheck: check('cross_network_yield_snapshots_canonical_pair_check', sql`${table.networkAId} < ${table.networkBId}`),
-  opportunityCountCheck: check('cross_network_yield_snapshots_opportunity_count_check', sql`${table.opportunityCount} >= 0`),
-  potentialPairCountCheck: check('cross_network_yield_snapshots_potential_pair_count_check', sql`${table.potentialIntentPairCount} > 0`),
-  yieldRateCheck: check('cross_network_yield_snapshots_yield_rate_check', sql`${table.yieldRate} >= 0`),
-  bucketRangeCheck: check('cross_network_yield_snapshots_bucket_range_check', sql`${table.bucketEnd} > ${table.bucketStart}`),
-  dailyUnique: uniqueIndex('cross_network_yield_snapshots_daily_uniq')
-    .on(table.networkAId, table.networkBId, table.bucketStart),
-}));
-
 export const networkMembers = pgTable('network_members', {
   networkId: text('network_id').notNull().references(() => networks.id),
   userId: text('user_id').notNull().references(() => users.id),
@@ -806,44 +431,6 @@ export const networkMembers = pgTable('network_members', {
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
   pk: primaryKey({ columns: [table.networkId, table.userId] }),
-}));
-
-export const networkIntegrations = pgTable('network_integrations', {
-  networkId: text('network_id').notNull().references(() => networks.id),
-  toolkit: text('toolkit').notNull(),
-  connectedAccountId: text('connected_account_id').notNull(),
-  syncConfig: jsonb('sync_config').$type<{
-    intervalMs?: number;
-    lastSyncAt?: string;
-    calendarId?: string;
-    status?: 'active' | 'paused' | 'error';
-  }>().default({}).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.networkId, table.toolkit] }),
-}));
-
-/**
- * Owner-visible, aggregate-only observability for the ordinary discovery
- * worker. Unlike BullMQ retention this survives completed, failed and stale
- * jobs and deliberately has no error payload or candidate-level data.
- */
-export const intentDiscoveryProgress = pgTable('intent_discovery_progress', {
-  intentId: text('intent_id').primaryKey().references(() => intents.id, { onDelete: 'cascade' }),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  status: intentDiscoveryProgressStatusEnum('status').notNull().default('queued'),
-  attempt: integer('attempt').notNull().default(0),
-  maxAttempts: integer('max_attempts').notNull().default(3),
-  assignedCommunityCount: integer('assigned_community_count').notNull().default(0),
-  processedCommunityCount: integer('processed_community_count').notNull().default(0),
-  possibleOverlapCount: integer('possible_overlap_count').notNull().default(0),
-  conversationsStartedCount: integer('conversations_started_count').notNull().default(0),
-  queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  userUpdatedIdx: index('intent_discovery_progress_user_updated_idx').on(table.userId, table.updatedAt),
 }));
 
 export const intentNetworks = pgTable('intent_networks', {
@@ -873,7 +460,6 @@ export const agents = pgTable('agents', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
-  lastNegotiationPickupAt: timestamp('last_negotiation_pickup_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   runtimeKind: text('runtime_kind').$type<'hermes' | null>(),
   installationId: text('installation_id'),
@@ -886,32 +472,12 @@ export const agents = pgTable('agents', {
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
   lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
-  lastNegotiationPickupAtIdx: index('agents_last_negotiation_pickup_at_idx').on(table.lastNegotiationPickupAt),
-  // One active personal negotiator row per owner. External (poller) and system
-  // rows are unconstrained.
-  uniquePersonalPerOwner: uniqueIndex('uniq_agents_personal_per_owner')
-    .on(table.ownerId)
-    .where(sql`${table.type} = 'personal' AND ${table.deletedAt} IS NULL`),
   uniqueHermesInstallation: uniqueIndex('uniq_agents_hermes_installation')
     .on(table.ownerId, table.runtimeKind, table.installationId)
     .where(sql`${table.type} = 'external' AND ${table.runtimeKind} = 'hermes' AND ${table.installationId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
   uniqueSelectedNegotiationExecutor: uniqueIndex('uniq_agents_selected_negotiation_executor')
     .on(table.ownerId)
     .where(sql`${table.type} = 'external' AND ${table.handleNegotiations} = true AND ${table.deletedAt} IS NULL`),
-}));
-
-export const agentTransports = pgTable('agent_transports', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
-  channel: transportChannelEnum('channel').notNull(),
-  config: jsonb('config').$type<Record<string, unknown>>().default({}),
-  priority: integer('priority').notNull().default(0),
-  active: boolean('active').notNull().default(true),
-  failureCount: integer('failure_count').notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  agentIdIdx: index('agent_transports_agent_id_idx').on(table.agentId),
 }));
 
 export const agentPermissions = pgTable('agent_permissions', {
@@ -930,124 +496,6 @@ export const agentPermissions = pgTable('agent_permissions', {
     .on(table.agentId, table.userId)
     .where(sql`${table.scope} = 'global'`),
 }));
-
-/**
- * Negotiator memory kinds (IND-405):
- * - `playbook`: negotiation tactics/strategies the negotiator has learned for its client.
- * - `disclosure_rule`: standing rules about what may/may not be shared, with whom.
- * - `counterparty_dossier`: private notes about a specific counterparty (subjectUserId).
- * - `threshold`: client-specific limits (pricing floors, time budgets, deal-breakers).
- *
- * Plain text column (not a pg enum) by design: adding kinds is a code-only change,
- * avoiding ALTER TYPE ... ADD VALUE same-deploy hazards (55P04).
- */
-export type NegotiatorMemoryKind = 'playbook' | 'disclosure_rule' | 'counterparty_dossier' | 'threshold';
-
-/** Provenance pointer for a negotiator memory (e.g. the negotiation it was learned from). */
-export interface NegotiatorMemorySourceRef {
-  type: 'negotiation' | 'question_answer' | 'chat' | 'manual';
-  id: string;
-  /** For negotiation refs: 0-based turn indexes evidencing the memory. */
-  turnIndexes?: number[];
-}
-
-/**
- * Private operational memory of a user's personal negotiator agent row (IND-405).
- *
- * Strictly separate from premises: premises are public-ish identity assertions
- * that feed discovery; negotiator memories are private operational knowledge
- * (playbooks, disclosure rules, dossiers, thresholds) and MUST NOT be exposed
- * to discovery, user contexts, or any counterparty-visible surface.
- */
-export const negotiatorMemories = pgTable('negotiator_memories', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  /** The owning negotiator agent row (type='personal'). Memories die with the agent. */
-  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
-  /** Denormalized owner (matches agents.ownerId) for cheap user-scoped queries. */
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  kind: text('kind').$type<NegotiatorMemoryKind>().notNull(),
-  /**
-   * For counterparty dossiers: who the memory is about. Cascade delete is a
-   * privacy stance — when the subject user is deleted, notes about them go too.
-   */
-  subjectUserId: text('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
-  content: text('content').notNull(),
-  /** Same embedding space as premises: text-embedding-3-large @ 2000 dims. */
-  embedding: vector('embedding', { dimensions: 2000 }),
-  sourceRefs: jsonb('source_refs').$type<NegotiatorMemorySourceRef[]>().notNull().default([]),
-  confidence: real('confidence').notNull().default(0.5),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  agentKindIdx: index('negotiator_memories_agent_kind_idx').on(table.agentId, table.kind),
-  userSubjectIdx: index('negotiator_memories_user_subject_idx').on(table.userId, table.subjectUserId),
-  embeddingIdx: index('negotiator_memories_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
-}));
-
-export const agentTestMessages = pgTable(
-  'agent_test_messages',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    agentId: text('agent_id')
-      .notNull()
-      .references(() => agents.id, { onDelete: 'cascade' }),
-    requestedByUserId: text('requested_by_user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    content: text('content').notNull(),
-    reservationToken: text('reservation_token'),
-    reservedAt: timestamp('reserved_at', { withTimezone: true }),
-    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (t) => ({
-    byAgent: index('idx_agent_test_messages_agent_pending').on(
-      t.agentId,
-      t.reservedAt,
-    ),
-  }),
-);
-
-export type AgentTestMessage = typeof agentTestMessages.$inferSelect;
-export type NewAgentTestMessage = typeof agentTestMessages.$inferInsert;
-
-export const opportunityDeliveries = pgTable(
-  'opportunity_deliveries',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    opportunityId: text('opportunity_id')
-      .notNull()
-      .references(() => opportunities.id, { onDelete: 'cascade' }),
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    agentId: text('agent_id').references(() => agents.id, {
-      onDelete: 'set null',
-    }),
-    channel: text('channel').notNull(),
-    trigger: text('trigger').notNull(),
-    deliveredAtStatus: text('delivered_at_status').notNull(),
-    reservationToken: text('reservation_token'),
-    reservedAt: timestamp('reserved_at', { withTimezone: true }),
-    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (t) => ({
-    uniqueCommitted: uniqueIndex('uniq_opp_deliveries_committed')
-      .on(t.userId, t.opportunityId, t.channel, t.deliveredAtStatus)
-      .where(sql`${t.deliveredAt} IS NOT NULL`),
-    reservationLookup: index('idx_opp_deliveries_open_reservations')
-      .on(t.userId, t.channel, t.reservedAt)
-      .where(sql`${t.deliveredAt} IS NULL`),
-  }),
-);
-
-export type OpportunityDelivery = typeof opportunityDeliveries.$inferSelect;
-export type NewOpportunityDelivery = typeof opportunityDeliveries.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Lens B outcome feedback events (IND-434)
@@ -1119,104 +567,12 @@ export const opportunityOutcomeEvents = pgTable(
 export type OpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferSelect;
 export type NewOpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferInsert;
 
-/** Where a dossier entry came from (docs/plans/2026-08-21-holistic-intent-agent.md). */
-export const intentDossierSourceEnum = pgEnum('intent_dossier_source', ['user_message', 'answer', 'agent_note']);
-
-/**
- * The intent dossier — the disclosure boundary of the IntentAgent
- * (docs/plans/2026-08-21-holistic-intent-agent.md). Negotiation-facing
- * material may come only from entries here; the raw DM transcript never
- * feeds a negotiation turn. Entries are retired, never deleted, so the
- * boundary's history stays auditable.
- */
-export const intentDossier = pgTable(
-  'intent_dossier',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-    intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
-    text: text('text').notNull(),
-    source: intentDossierSourceEnum('source').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    retiredAt: timestamp('retired_at', { withTimezone: true }),
-  },
-  (t) => ({
-    scopeIdx: index('idx_intent_dossier_scope').on(t.userId, t.intentId, t.retiredAt),
-  }),
-);
-
-export type IntentDossierEntry = typeof intentDossier.$inferSelect;
-export type NewIntentDossierEntry = typeof intentDossier.$inferInsert;
-
-/**
- * The IntentAgent's act ledger — append-only accountability substrate
- * (docs/plans/2026-08-21-holistic-intent-agent.md). Written by the agent
- * loop, read only by the agent's own context assembly; never a logic input
- * anywhere else. Provenance ids only, no cascading source FKs beyond the
- * owning user: the record of what the agent decided must survive routine
- * intent cleanup.
- */
-export const intentAgentActs = pgTable(
-  'intent_agent_acts',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-    intentId: text('intent_id').notNull(),
-    /** What woke the agent: the triggering event, verbatim. */
-    event: jsonb('event').$type<Record<string, unknown>>().notNull(),
-    /** The tool the agent called and its payload. */
-    act: jsonb('act').$type<Record<string, unknown>>().notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    scopeIdx: index('idx_intent_agent_acts_scope').on(t.userId, t.intentId, t.createdAt),
-  }),
-);
-
-export type IntentAgentAct = typeof intentAgentActs.$inferSelect;
-export type NewIntentAgentAct = typeof intentAgentActs.$inferInsert;
-
-export const negotiationRoundLogEventKindEnum = pgEnum('negotiation_round_log_event_kind', ['opened', 'stopped', 'resumed', 'opening_complete']);
-export const negotiationRoundLogEventViaEnum = pgEnum('negotiation_round_log_event_via', ['paused', 'completed']);
-
-/**
- * Append-only event log a batch's "has everything settled" answer is folded
- * from (`@indexnetwork/protocol`'s `foldNegotiationRoundLog`), replacing the
- * racy quartet of separately-written fields (`intents.negotiation_round`,
- * `negotiation_round_size`, `negotiation_kickoff_started_at`,
- * `metadata.drainGeneration`) that used to live on `intents`/`tasks`.
- */
-export const negotiationRoundLogEvents = pgTable(
-  'negotiation_round_log_events',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    intentId: text('intent_id').notNull(),
-    batchId: text('batch_id').notNull(),
-    /** Absent only for 'opening_complete', which has no task. */
-    taskId: text('task_id'),
-    kind: negotiationRoundLogEventKindEnum('kind').notNull(),
-    /** Only set on 'stopped' events. */
-    via: negotiationRoundLogEventViaEnum('via'),
-    /** Only set on 'stopped' events whose `via` is 'paused' (a `NegotiationPauseReasonName`). */
-    reason: text('reason'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    // The fold's read: one intent's one batch, in append order.
-    batchIdx: index('idx_negotiation_round_log_events_batch').on(t.intentId, t.batchId, t.createdAt),
-  }),
-);
-
-export type NegotiationRoundLogEventRow = typeof negotiationRoundLogEvents.$inferSelect;
-export type NewNegotiationRoundLogEventRow = typeof negotiationRoundLogEvents.$inferInsert;
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
-  premises: many(premises),
   memberOf: many(networkMembers),
   socials: many(userSocials),
   notificationSettings: one(userNotificationSettings, {
@@ -1229,25 +585,6 @@ export const userSocialsRelations = relations(userSocials, ({ one }) => ({
   user: one(users, {
     fields: [userSocials.userId],
     references: [users.id],
-  }),
-}));
-
-export const premisesRelations = relations(premises, ({ one, many }) => ({
-  user: one(users, {
-    fields: [premises.userId],
-    references: [users.id],
-  }),
-  networks: many(premiseNetworks),
-}));
-
-export const premiseNetworksRelations = relations(premiseNetworks, ({ one }) => ({
-  premise: one(premises, {
-    fields: [premiseNetworks.premiseId],
-    references: [premises.id],
-  }),
-  network: one(networks, {
-    fields: [premiseNetworks.networkId],
-    references: [networks.id],
   }),
 }));
 
@@ -1269,8 +606,6 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
 export const networksRelations = relations(networks, ({ many }) => ({
   members: many(networkMembers),
   intents: many(intentNetworks),
-  premises: many(premiseNetworks),
-  integrations: many(networkIntegrations),
 }));
 
 export const networkMembersRelations = relations(networkMembers, ({ one }) => ({
@@ -1281,13 +616,6 @@ export const networkMembersRelations = relations(networkMembers, ({ one }) => ({
   user: one(users, {
     fields: [networkMembers.userId],
     references: [users.id],
-  }),
-}));
-
-export const networkIntegrationsRelations = relations(networkIntegrations, ({ one }) => ({
-  network: one(networks, {
-    fields: [networkIntegrations.networkId],
-    references: [networks.id],
   }),
 }));
 
@@ -1307,15 +635,7 @@ export const agentsRelations = relations(agents, ({ one, many }) => ({
     fields: [agents.ownerId],
     references: [users.id],
   }),
-  transports: many(agentTransports),
   permissions: many(agentPermissions),
-}));
-
-export const agentTransportsRelations = relations(agentTransports, ({ one }) => ({
-  agent: one(agents, {
-    fields: [agentTransports.agentId],
-    references: [agents.id],
-  }),
 }));
 
 export const agentPermissionsRelations = relations(agentPermissions, ({ one }) => ({
@@ -1325,21 +645,6 @@ export const agentPermissionsRelations = relations(agentPermissions, ({ one }) =
   }),
   user: one(users, {
     fields: [agentPermissions.userId],
-    references: [users.id],
-  }),
-}));
-
-export const negotiatorMemoriesRelations = relations(negotiatorMemories, ({ one }) => ({
-  agent: one(agents, {
-    fields: [negotiatorMemories.agentId],
-    references: [agents.id],
-  }),
-  user: one(users, {
-    fields: [negotiatorMemories.userId],
-    references: [users.id],
-  }),
-  subjectUser: one(users, {
-    fields: [negotiatorMemories.subjectUserId],
     references: [users.id],
   }),
 }));
@@ -1362,19 +667,13 @@ export type HydeDocument = typeof hydeDocuments.$inferSelect;
 export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
 export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
-export type NetworkIntegration = typeof networkIntegrations.$inferSelect;
-export type NewNetworkIntegration = typeof networkIntegrations.$inferInsert;
 export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
-export type AgentTransport = typeof agentTransports.$inferSelect;
-export type NewAgentTransport = typeof agentTransports.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
-export type NegotiatorMemory = typeof negotiatorMemories.$inferSelect;
-export type NewNegotiatorMemory = typeof negotiatorMemories.$inferInsert;
-export type Premise = typeof premises.$inferSelect;
-export type NewPremise = typeof premises.$inferInsert;
-export type PremiseNetwork = typeof premiseNetworks.$inferSelect;
-export type NewPremiseNetwork = typeof premiseNetworks.$inferInsert;
+export type Negotiation = typeof negotiations.$inferSelect;
+export type NewNegotiation = typeof negotiations.$inferInsert;
+export type NegotiationTurn = typeof negotiationTurns.$inferSelect;
+export type NewNegotiationTurn = typeof negotiationTurns.$inferInsert;
 
 export * from './conversation.schema';

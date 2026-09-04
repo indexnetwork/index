@@ -1093,6 +1093,118 @@
       "when": 1788034636040,
       "tag": "0158_single_path_opportunities",
       "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1788034636041,
+      "tag": "0159_remove_chat_orchestrator",
+      "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1788034636042,
+      "tag": "0160_drop_premises_and_opportunity_deliveries",
+      "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "when": 1788034636043,
+      "tag": "0161_drop_frame_drift",
+      "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1788034636044,
+      "tag": "0162_drop_master_key_and_integrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1788034636046,
+      "tag": "0163_drop_dead_agent_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1788034636048,
+      "tag": "0164_negotiations",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1788034636050,
+      "tag": "0165_drop_stalled_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1788034636052,
+      "tag": "0166_agent_dm_intent_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1788034636054,
+      "tag": "0167_drop_tasks_and_artifacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1788478579548,
+      "tag": "0168_drop_chat_session_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1788484800000,
+      "tag": "0169_drop_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1788484800002,
+      "tag": "0170_drop_discovery_match_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1788484800004,
+      "tag": "0171_drop_conversation_persona",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1788484800006,
+      "tag": "0172_drop_personal_agent_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1788484800007,
+      "tag": "0173_drop_intake_and_proposal_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1788484800008,
+      "tag": "0174_drop_unused_agent_and_progress_tables",
+      "breakpoints": true
     }
   ]
 }

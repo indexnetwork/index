@@ -2,17 +2,15 @@ import './startup.env';
 
 import * as Sentry from '@sentry/bun';
 
-import { ChatController } from './controllers/chat.controller';
 import { DebugController } from './controllers/debug.controller';
-import { FloorLabController } from './controllers/floor-lab.controller';
 import { ToolController } from './controllers/tool.controller';
 import { ToolService } from './services/tool.service';
 import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
 import { NetworkRequestController } from './controllers/network-request.controller';
 import { IntentController } from './controllers/intent.controller';
-import { IntentIntakeController } from './controllers/intent-intake.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
+import { NegotiationController } from './controllers/negotiation.controller';
 import { AuthController } from './controllers/auth.controller';
 import { EnrichmentController } from './controllers/enrichment.controller';
 import { UserController } from './controllers/user.controller';
@@ -22,19 +20,12 @@ import { SubscribeController } from './controllers/subscribe.controller';
 import { ConversationController } from './controllers/conversation.controller';
 import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
-import { AgentRuntimeController } from './controllers/agent-runtime.controller';
-import { ConnectedAgentsController } from './controllers/connected-agents.controller';
 import { ConversationService } from './services/conversation.service';
 import { NotificationService } from './services/notification.service';
 import { NotificationDeliveryService } from './services/notification-delivery.service';
-import { TaskService } from './services/task.service';
-import { IntegrationController } from './controllers/integration.controller';
-import { WebhooksController } from './controllers/webhooks.controller';
-import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
-import { IntegrationService } from './services/integration.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
-import { HermesNegotiatorRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
+import { OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
@@ -42,29 +33,15 @@ import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
-import { mcpHandler, chatFactory } from './controllers/mcp.controller';
-import { chatSessionService } from './services/chat.service';
+import { mcpHandler } from './controllers/mcp.controller';
 import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
-import { intentIndexing } from './lib/intent/indexing';
-import { intentDiscovery } from './lib/opportunity/discovery';
-import { negotiationWatchdogCron, isNegotiationWatchdogEnabled } from './crons/negotiation-watchdog.cron';
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
 import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
-import { frameDriftCron } from './crons/frame-drift.cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
-import { negotiationReflect } from './lib/negotiation/reflect';
-import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
-import { personalAgentService } from './services/personal-agent.service';
-import { NetworkMembershipEvents } from './events/network_membership.event';
-import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
-import { premiseCascade } from './lib/premise/cascade';
-import { background } from './lib/background';
-import { init as initTelegramGateway } from './gateways/telegram.gateway';
-import { setWebhook } from './lib/telegram/bot-api';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
 import { publishNotificationStreamEvent } from './lib/notification-stream-events';
@@ -76,9 +53,6 @@ setLoggerFactory(
   (context, source) => log.withContext(context as Parameters<typeof log.withContext>[0], source),
   sanitizeForLog,
 );
-
-// Wire ChatGraphFactory into chat service at startup
-chatSessionService.setFactory(chatFactory);
 
 setTimingWrapper((name, fn) => traceAppOperation(
   {
@@ -94,19 +68,6 @@ setTimingWrapper((name, fn) => traceAppOperation(
 
 setRequestContextStore(hostRequestContext);
 
-// Wire the matches_ready hand-off into background discovery, so the
-// post-assignment HyDE path wakes the signal's agent exactly as chat/MCP
-// discovery does. Without this, the graph's matches_ready node
-// short-circuits and a persisted batch never reaches its agent.
-intentDiscovery.setRuntimeDeps({
-  matchesReady,
-  agentDispatcher: backgroundAgentDispatcher,
-});
-negotiationWatchdogCron.setNegotiationGraph(negotiationGraph);
-negotiationWatchdogCron.setReflectEnqueue(async (job) => {
-  await personalAgentService.addAllPausedEvent(job);
-});
-
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
 const notificationDeliveryService = new NotificationDeliveryService({
   opportunities: notificationOpportunityAdapter,
@@ -117,51 +78,9 @@ const notificationDeliveryService = new NotificationDeliveryService({
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
 OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
 
-NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
-  // Re-evaluate the member's pre-existing intents against the joined network.
-  // Intents created before joining never get an assignment pass for this network
-  // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
-  // regen / opportunity discovery); scoped to this network.
-  intentIndexing.addNetworkReconcileForUser(userId, networkId).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to trigger intent network reconcile', { userId, networkId, error: err });
-  });
-};
-
-
-PremiseEvents.onCreated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise created', { premiseId, userId });
-};
-
-PremiseEvents.onUpdated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise updated', { premiseId, userId });
-};
-
-PremiseEvents.onRetracted = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade', { premiseId, userId });
-  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'retracted' }));
-};
-
-PremiseEvents.onExpired = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade', { premiseId, userId });
-  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'expired' }));
-};
-
-if (isNegotiationWatchdogEnabled()) {
-  void negotiationWatchdogCron.start().catch((error) => {
-    log.job.from('NegotiationWatchdogCron').error('Negotiation watchdog startup failed', { error });
-  });
-}
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
-void frameDriftCron.start().catch((error) => {
-  log.job.from('FrameDriftCron').error('Frame-drift cron startup failed', {
-    event: 'frame_drift_monitoring_startup_failed',
-    error,
-  });
-});
 hydeMaintenanceCron.startCrons();
-negotiationReflect.startCrons();
-premiseCascade.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';
@@ -169,25 +88,14 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
 
-// Warm up the PostgresSaver checkpointer at boot so the first chat request
+// Warm up the PostgresSaver checkpointer at boot so the first graph run
 // doesn't pay the table-setup round trip and misconfiguration surfaces at
-// startup instead of mid-stream. Non-fatal: chat degrades to no checkpointer.
+// startup instead of mid-run. Non-fatal: graphs degrade to no checkpointer.
 getCheckpointer().catch((err) => {
-  logger.warn('Checkpointer warm-up failed; chat will run without persistence', {
+  logger.warn('Checkpointer warm-up failed; graphs will run without persistence', {
     error: err instanceof Error ? err.message : String(err),
   });
 });
-
-// ── Telegram bot startup ────────────────────────────────────────────────────
-if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {
-  const webhookBase = process.env.TELEGRAM_WEBHOOK_URL ?? process.env.API_URL ?? '';
-  const webhookUrl = `${webhookBase.replace(/\/$/, '')}/api/webhooks/telegram`;
-  setWebhook(webhookUrl, process.env.TELEGRAM_WEBHOOK_SECRET).catch((err) => {
-    logger.error('Failed to register Telegram webhook on startup', { error: err });
-  });
-  initTelegramGateway();
-  logger.info('Telegram bot gateway initialised', { webhookUrl });
-}
 
 /** Match pathname against a route pattern with :param placeholders; returns params or null. */
 function matchPath(pattern: string, pathname: string): Record<string, string> | null {
@@ -229,30 +137,22 @@ const storageAdapter = new S3StorageAdapter({
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(EnrichmentController, new EnrichmentController());
-controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(NetworkController, new NetworkController());
 controllerInstances.set(NetworkRequestController, new NetworkRequestController());
 controllerInstances.set(IntentController, new IntentController());
-controllerInstances.set(IntentIntakeController, new IntentIntakeController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
+controllerInstances.set(NegotiationController, new NegotiationController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
-controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
+controllerInstances.set(ConversationController, new ConversationController(new ConversationService()));
 controllerInstances.set(
   NotificationController,
   new NotificationController(new NotificationService(), notificationDeliveryService),
 );
 controllerInstances.set(AgentController, new AgentController());
-controllerInstances.set(AgentRuntimeController, new AgentRuntimeController());
-controllerInstances.set(ConnectedAgentsController, new ConnectedAgentsController());
-const integrationAdapter = new ComposioIntegrationAdapter();
-const integrationService = new IntegrationService(integrationAdapter);
-controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
-controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
-controllerInstances.set(FloorLabController, new FloorLabController());
 const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));
 
@@ -462,7 +362,7 @@ const server = Bun.serve({
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             // Session-only endpoints reject API-key credentials outright
-            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError || error instanceof HermesNegotiatorRouteDeniedError) {
+            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }

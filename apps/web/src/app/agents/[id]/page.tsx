@@ -2,25 +2,21 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import * as Dialog from "@radix-ui/react-dialog";
-import { Loader2, ArrowLeft, Bot, Handshake, TrendingUp, Clock, KeyRound, Shield, Plus, Trash2, Copy, Check, ChevronDown, ChevronRight, Send } from "lucide-react";
+import { Loader2, ArrowLeft, Bot, KeyRound, Shield, Plus, Trash2, Copy, Check, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useAgents, useUsers } from "@/contexts/APIContext";
+import { useAgents } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { buildMcpConfigs } from "@/lib/mcp-config";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import UserAvatar from "@/components/UserAvatar";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import { AlphaBadge } from "@/components/AlphaBadge";
 import type { Agent, AgentTokenInfo } from "@/services/agents";
-import type { NegotiationInsights } from "@/services/users";
 
 const SYSTEM_AGENT_IDS = {
-  chatOrchestrator: "00000000-0000-0000-0000-000000000001",
   negotiator: "00000000-0000-0000-0000-000000000002",
 } as const;
 
@@ -28,57 +24,11 @@ type TabValue = "overview" | "api-keys" | "permissions";
 
 const PERMISSION_LABELS: Record<string, string> = {
   "manage:identity": "Identity",
-  "manage:premises": "Premises",
   "manage:intents": "Signals",
   "manage:networks": "Networks",
   "manage:opportunities": "Opportunities",
   "manage:negotiations": "Negotiations",
 };
-
-const ROLE_LABELS: Record<string, string> = {
-  Helper: "Helper",
-  Seeker: "Seeker",
-  Peer: "Peer",
-};
-
-function StatCard({
-  label,
-  value,
-  icon,
-  sublabel,
-}: {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  sublabel?: string;
-}) {
-  return (
-    <div className="p-4 rounded-md border border-gray-100 bg-white">
-      <div className="flex items-center gap-2 mb-2">
-        {icon}
-        <span className="text-xs text-gray-500 uppercase tracking-wide">
-          {label}
-        </span>
-      </div>
-      <div className="text-2xl font-bold text-gray-900 font-ibm-plex-mono">
-        {value}
-      </div>
-      {sublabel && (
-        <div className="text-xs text-gray-400 mt-1">{sublabel}</div>
-      )}
-    </div>
-  );
-}
-
-function SkeletonCard() {
-  return (
-    <div className="p-4 rounded-md border border-gray-100 bg-white animate-pulse">
-      <div className="h-3 bg-gray-200 rounded w-20 mb-3" />
-      <div className="h-7 bg-gray-200 rounded w-12 mb-1" />
-      <div className="h-3 bg-gray-200 rounded w-16" />
-    </div>
-  );
-}
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "Never";
@@ -91,88 +41,6 @@ function formatDate(dateStr: string | null): string {
 
 function maskKey(start: string): string {
   return start ? `${start}${"*".repeat(24)}` : "Unavailable";
-}
-
-const DEFAULT_TEST_MESSAGE = [
-  "🔔 New opportunity: AI-Assisted Developer Tooling",
-  "",
-  "Alice Park (user:00000000-0000-0000-0000-000000000001) is building an LLM-powered code review tool & looking for early design partners with TypeScript expertise.",
-  "",
-  "Relevance: strong overlap with your signals around developer experience & LLM integrations.",
-].join("\n");
-
-function SendTestMessageDialog({
-  agentId,
-  open,
-  onOpenChange,
-}: {
-  agentId: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const agentsService = useAgents();
-  const { success, error } = useNotifications();
-  const [content, setContent] = useState(DEFAULT_TEST_MESSAGE);
-  const [sending, setSending] = useState(false);
-
-  async function handleSend() {
-    if (!content.trim() || sending) return;
-    setSending(true);
-    try {
-      await agentsService.sendTestMessage(agentId, content.trim());
-      success("Sent — should arrive in your agent within ~30s");
-      onOpenChange(false);
-    } catch (err) {
-      error(
-        "Failed to send test message",
-        err instanceof Error ? err.message : undefined,
-      );
-    } finally {
-      setSending(false);
-    }
-  }
-
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-          <Dialog.Title className="text-lg font-bold text-gray-900 mb-2">
-            Send test message
-          </Dialog.Title>
-          <Dialog.Description className="text-sm text-gray-600 mb-4">
-            Tests the full delivery pipeline: the default content includes a
-            headline, user reference, and multi-line structure so you can verify
-            bold, links, and HTML formatting render correctly. Edit if needed.
-          </Dialog.Description>
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={6}
-            disabled={sending}
-            className="w-full mb-4 font-mono text-sm"
-          />
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={sending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSend} disabled={sending || !content.trim()}>
-              {sending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-1" />
-              ) : (
-                <Send className="w-4 h-4 mr-1" />
-              )}
-              {sending ? "Sending..." : "Send"}
-            </Button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
 }
 
 function NotificationsSection({
@@ -263,7 +131,7 @@ function OverviewTab({
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
   if (isNegotiator) {
-    return <NegotiationInsightsTab userId={userId} />;
+    return <NegotiationHistory userId={userId} />;
   }
 
   return (
@@ -310,175 +178,6 @@ function OverviewTab({
       </div>
 
       <NotificationsSection agent={agent} onChange={onPatch} disabled={isSaving} />
-    </div>
-  );
-}
-
-function NegotiationInsightsTab({ userId }: { userId: string }) {
-  const usersService = useUsers();
-  const [data, setData] = useState<NegotiationInsights | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
-
-    usersService
-      .getNegotiationInsights(userId)
-      .then((result) => {
-        if (!cancelled) setData(result);
-      })
-      .catch(() => {
-        if (!cancelled) setData(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, usersService]);
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-3 gap-3">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-        <div className="p-5 rounded-md bg-gray-50 border border-gray-100 animate-pulse">
-          <div className="h-3 bg-gray-200 rounded w-3/4 mb-2" />
-          <div className="h-3 bg-gray-200 rounded w-full mb-2" />
-          <div className="h-3 bg-gray-200 rounded w-1/2" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-        <p>No negotiation activity yet</p>
-      </div>
-    );
-  }
-
-  const { stats, summary } = data;
-  const opportunityRate =
-    stats.totalCount > 0
-      ? Math.round(
-          (stats.opportunityCount /
-            (stats.opportunityCount + stats.noOpportunityCount || 1)) *
-            100,
-        )
-      : 0;
-
-  const roleEntries = Object.entries(stats.roleDistribution).sort(
-    (a, b) => b[1] - a[1],
-  );
-  const topRole = roleEntries.length > 0 ? roleEntries[0] : null;
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard
-          label="Total"
-          value={stats.totalCount}
-          icon={<Handshake className="w-4 h-4 text-gray-400" />}
-          sublabel={`${stats.opportunityCount} opportunities`}
-        />
-        <StatCard
-          label="Opportunity rate"
-          value={`${opportunityRate}%`}
-          icon={<TrendingUp className="w-4 h-4 text-gray-400" />}
-          sublabel={`${stats.noOpportunityCount} no opportunity`}
-        />
-        <StatCard
-          label="In progress"
-          value={stats.inProgressCount}
-          icon={<Clock className="w-4 h-4 text-gray-400" />}
-          sublabel="Active right now"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="p-4 rounded-md border border-gray-100 bg-white">
-          <h3 className="text-xs text-gray-500 uppercase tracking-wide mb-3">
-            Your roles
-          </h3>
-          {roleEntries.length === 0 ? (
-            <p className="text-sm text-gray-400">No role data yet</p>
-          ) : (
-            <div className="space-y-2">
-              {roleEntries.map(([role, count]) => {
-                  const pct = Math.round(
-                    (count / (stats.opportunityCount || 1)) * 100,
-                  );
-                  return (
-                    <div key={role}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="text-gray-700">
-                          {ROLE_LABELS[role] ?? role}
-                        </span>
-                        <span className="text-gray-500 font-ibm-plex-mono">
-                          {count} ({pct}%)
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gray-900 rounded-full transition-all"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              {topRole && (
-                <p className="text-xs text-gray-400 mt-2">
-                  You're most often matched as{" "}
-                  <span className="font-medium text-gray-600">
-                    {ROLE_LABELS[topRole[0]] ?? topRole[0]}
-                  </span>
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="p-4 rounded-md border border-gray-100 bg-white">
-          <h3 className="text-xs text-gray-500 uppercase tracking-wide mb-3">
-            Top counterparties
-          </h3>
-          {stats.topCounterparties.length === 0 ? (
-            <p className="text-sm text-gray-400">No counterparty data yet</p>
-          ) : (
-            <div className="space-y-2.5">
-              {stats.topCounterparties.map((cp) => (
-                <div key={cp.id} className="flex items-center gap-3">
-                  <UserAvatar
-                    id={cp.id}
-                    name={cp.name}
-                    avatar={cp.avatar}
-                    size={28}
-                  />
-                  <span className="text-sm text-gray-700 flex-1 truncate">
-                    {cp.name}
-                  </span>
-                  <span className="text-xs text-gray-400 font-ibm-plex-mono">
-                    {cp.count} {cp.count === 1 ? "negotiation" : "negotiations"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {summary && (
-        <p className="text-sm text-gray-600 leading-relaxed">{summary}</p>
-      )}
     </div>
   );
 }
@@ -924,7 +623,6 @@ export default function AgentDetailPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabValue>("overview");
-  const [testMessageOpen, setTestMessageOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -996,7 +694,6 @@ export default function AgentDetailPage() {
   }
 
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
-  const canSendTestMessage = agent.type === "external";
 
   return (
     <ClientLayout>
@@ -1024,26 +721,7 @@ export default function AgentDetailPage() {
             }`}>
               {agent.status}
             </span>
-            {canSendTestMessage && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setTestMessageOpen(true)}
-                className="ml-auto"
-              >
-                <Send className="w-3.5 h-3.5 mr-1" />
-                Send test message
-              </Button>
-            )}
           </div>
-
-          {canSendTestMessage && (
-            <SendTestMessageDialog
-              agentId={agent.id}
-              open={testMessageOpen}
-              onOpenChange={setTestMessageOpen}
-            />
-          )}
 
           <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
             <Tabs.List className="flex border-b border-gray-200 mb-6">

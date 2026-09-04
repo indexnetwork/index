@@ -4,8 +4,6 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { DiscoveryFilterProvider } from "@/contexts/DiscoveryFilterContext";
-import { AIChatSessionsProvider } from "@/contexts/AIChatSessionsContext";
-import { AIChatProvider } from "@/contexts/AIChatContext";
 
 import ClientWrapper from "@/components/ClientWrapper";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
@@ -21,14 +19,10 @@ function RootLayout() {
       <APIProvider>
         <NotificationProvider>
           <DiscoveryFilterProvider>
-            <AIChatSessionsProvider>
-              <AIChatProvider>
-                <ClientWrapper>
-                  <ScrollRestoration />
-                  <Outlet />
-                </ClientWrapper>
-              </AIChatProvider>
-            </AIChatSessionsProvider>
+            <ClientWrapper>
+              <ScrollRestoration />
+              <Outlet />
+            </ClientWrapper>
           </DiscoveryFilterProvider>
         </NotificationProvider>
       </APIProvider>
@@ -116,16 +110,8 @@ export const router = createBrowserRouter([
         element: <NegotiationIndexRedirect />,
       },
       {
-        path: "/d/:id",
-        lazy: lazyRoute("/d/:id", () => import("@/app/d/[id]/page")),
-      },
-      {
         path: "/i/new",
         lazy: lazyRoute("/i/new", () => import("@/app/i/new/page")),
-      },
-      {
-        path: "/i/:intentId/negotiations/:taskId",
-        lazy: lazyRoute("/i/:intentId/negotiations/:taskId", () => import("@/app/i/[intentId]/negotiations/[taskId]/page")),
       },
       {
         path: "/i/:intentId",
@@ -152,10 +138,6 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/agents", () => import("@/app/agents/page")),
       },
       {
-        path: "/agents/connected",
-        lazy: lazyRoute("/agents/connected", () => import("@/app/agents/connected/page")),
-      },
-      {
         path: "/agents/:id",
         lazy: lazyRoute("/agents/:id", () => import("@/app/agents/[id]/page")),
       },
@@ -166,8 +148,6 @@ export const router = createBrowserRouter([
       {
         path: "/networks/:id/*",
         lazy: lazyRoute("/networks/:id/*", () => import("@/app/networks/[id]/page")),
-      },
-      {
       },
       {
         path: "/pages/privacy-policy",
@@ -202,28 +182,12 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/opportunities/:id/skip", () => import("@/app/opportunities/[id]/skip/page")),
       },
       {
-        path: "/oauth/callback",
-        lazy: lazyRoute("/oauth/callback", () => import("@/app/oauth/callback/page")),
-      },
-      {
         path: "/cli-auth",
         lazy: lazyRoute("/cli-auth", () => import("@/app/cli-auth/page")),
       },
       {
         path: "/login",
         lazy: lazyRoute("/login", () => import("@/app/login/page")),
-      },
-      {
-        path: "/dev/intent-proposal",
-        lazy: lazyRoute("/dev/intent-proposal", () => import("@/app/dev/intent-proposal/page")),
-      },
-      {
-        path: "/dev/floor",
-        lazy: lazyRoute("/dev/floor", () => import("@/app/dev/floor/page")),
-      },
-      {
-        path: "/agent/:tab?",
-        lazy: lazyRoute("/agent/:tab?", () => import("@/app/agent/page")),
       },
       {
         path: "*",

@@ -7,12 +7,12 @@ import { createConnectionsService } from '@/services/connections';
 import { createSynthesisService } from '@/services/synthesis';
 import { createDiscoverService } from '@/services/discover';
 import { createAuthService } from '@/services/auth';
-import { createIntegrationsService } from '@/services/integrations';
 import { createUsersService } from '@/services/users';
 import { createOpportunitiesService } from '@/services/opportunities';
 import { createConversationService } from '@/services/conversation';
 import { createApiKeysService } from '@/services/api-keys';
 import { createAgentsService } from '@/services/agents';
+import { createNegotiationService } from '@/services/negotiations';
 
 export interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
@@ -22,12 +22,12 @@ export interface APIContextType {
   synthesisService: ReturnType<typeof createSynthesisService>;
   discoverService: ReturnType<typeof createDiscoverService>;
   authService: ReturnType<typeof createAuthService>;
-  integrationsService: ReturnType<typeof createIntegrationsService>;
   usersService: ReturnType<typeof createUsersService>;
   opportunitiesService: ReturnType<typeof createOpportunitiesService>;
   conversationService: ReturnType<typeof createConversationService>;
   apiKeysService: ReturnType<typeof createApiKeysService>;
   agentsService: ReturnType<typeof createAgentsService>;
+  negotiationService: ReturnType<typeof createNegotiationService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -43,12 +43,12 @@ export function APIProvider({ children }: { children: ReactNode }) {
     synthesisService: createSynthesisService(api),
     discoverService: createDiscoverService(api),
     authService: createAuthService(api),
-    integrationsService: createIntegrationsService(api),
     usersService: createUsersService(api),
     opportunitiesService: createOpportunitiesService(api),
     conversationService: createConversationService(api),
     apiKeysService: createApiKeysService(api),
     agentsService: createAgentsService(api),
+    negotiationService: createNegotiationService(api),
   }), [api]);
 
   return (
@@ -124,4 +124,9 @@ export function useApiKeys() {
 export function useAgents() {
   const { agentsService } = useAPI();
   return agentsService;
+}
+
+export function useNegotiations() {
+  const { negotiationService } = useAPI();
+  return negotiationService;
 }

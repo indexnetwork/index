@@ -5,52 +5,18 @@ interface BatchUsersResponse {
   users: User[];
 }
 
-export interface NegotiationTurnSummary {
-  speaker: { id: string; name: string; avatar: string | null };
-  action: string;
-  reasoning: string;
-  suggestedRoles: { ownUser?: string; otherUser?: string } | null;
-  createdAt: string;
-}
+import type { NegotiationOutcome } from './negotiations';
 
-export type NegotiationState = 'submitted' | 'working' | 'paused' | 'completed';
-
-export type NegotiationStatusMessage =
-  | string
-  | number
-  | boolean
-  | null
-  | NegotiationStatusMessage[]
-  | { [key: string]: NegotiationStatusMessage };
-
-export interface NegotiationSummary {
+/** One entry of a profile's negotiation history. The turn log lives on `/negotiations/:opportunityId`. */
+export interface NegotiationHistoryEntry {
   id: string;
-  segments: number;
-  state: NegotiationState;
-  statusMessage: NegotiationStatusMessage;
-  statusTimestamp: string | null;
+  opportunityId: string;
   counterparty: { id: string; name: string; avatar: string | null };
-  outcome: {
-    hasOpportunity: boolean;
-    role: string | null;
-    turnCount: number;
-    reason?: string;
-  } | null;
-  turns: NegotiationTurnSummary[];
+  outcome: NegotiationOutcome | null;
+  settledAt: string | null;
+  turnCount: number;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface NegotiationInsights {
-  summary: string | null;
-  stats: {
-    totalCount: number;
-    opportunityCount: number;
-    noOpportunityCount: number;
-    inProgressCount: number;
-    roleDistribution: Record<string, number>;
-    topCounterparties: Array<{ id: string; name: string; avatar: string | null; count: number }>;
-  };
 }
 
 export const createUsersService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
@@ -99,27 +65,15 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
   },
 
   /**
-   * Get negotiation dashboard data: LLM-generated summary + structured stats. Self-only.
+   * The viewer's negotiation history with a profile: all of their own on their
+   * own profile, the shared ones on someone else's.
    */
-  getNegotiationInsights: async (userId: string): Promise<NegotiationInsights | null> => {
-    try {
-      const response = await api.get<{ insights: NegotiationInsights | null }>(`/users/${userId}/negotiations/insights`);
-      return response.insights ?? null;
-    } catch {
-      return null;
-    }
-  },
-
-  /**
-   * Get past negotiations for a user. Returns mutual negotiations when viewing another user's profile.
-   */
-  getUserNegotiations: async (userId: string, opts?: { limit?: number; offset?: number; result?: string }): Promise<NegotiationSummary[]> => {
+  getUserNegotiations: async (userId: string, opts?: { limit?: number; offset?: number }): Promise<NegotiationHistoryEntry[]> => {
     const params = new URLSearchParams();
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.offset) params.set('offset', String(opts.offset));
-    if (opts?.result) params.set('result', opts.result);
     const qs = params.toString();
-    const response = await api.get<{ negotiations: NegotiationSummary[] }>(`/users/${userId}/negotiations${qs ? `?${qs}` : ''}`);
+    const response = await api.get<{ negotiations: NegotiationHistoryEntry[] }>(`/users/${userId}/negotiations${qs ? `?${qs}` : ''}`);
     return response.negotiations ?? [];
   },
 });

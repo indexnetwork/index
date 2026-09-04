@@ -1,11 +1,10 @@
-import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, logger, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
+import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, logger, lte, ne, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
-import { acquireNegotiationAttemptLock, qualifyingActiveNegotiationTaskWhere } from './negotiation-attempt.atomic';
-import { runTasklessNegotiationReactivation } from './negotiation-reactivation.atomic';
-import { exactEvidencePoolWhere, exactLivePoolWhere } from './poolquery.shared';
+import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
+import { exactLivePoolWhere } from './poolquery.shared';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
@@ -643,28 +642,30 @@ export class OpportunityDatabaseAdapter {
         return row ? toOpportunityRow(row) : null;
       };
 
+      // Reactivating out of `negotiating` races the negotiation itself: lock
+      // the row, then refuse while the negotiation attached to it is still
+      // unsettled.
       if (expectedStatus === 'negotiating') {
-        return runTasklessNegotiationReactivation({
-          acquireAttemptLock: () => acquireNegotiationAttemptLock(tx, id),
-          validateEligibility,
-          lockOpportunity: async () => {
-            const [opportunity] = await tx
-              .select({ status: opportunities.status })
-              .from(opportunities)
-              .where(eq(opportunities.id, id))
-              .for('update');
-            return opportunity ?? null;
-          },
-          hasFreshNegotiationTask: async () => {
-            const [task] = await tx
-              .select({ id: schema.tasks.id })
-              .from(schema.tasks)
-              .where(qualifyingActiveNegotiationTaskWhere(id))
-              .limit(1);
-            return Boolean(task);
-          },
-          reactivate,
-        });
+        if (!await validateEligibility()) return null;
+
+        const [locked] = await tx
+          .select({ status: opportunities.status })
+          .from(opportunities)
+          .where(eq(opportunities.id, id))
+          .for('update');
+        if (locked?.status !== 'negotiating') return null;
+
+        const [live] = await tx
+          .select({ id: schema.negotiations.id })
+          .from(schema.negotiations)
+          .where(and(
+            eq(schema.negotiations.opportunityId, id),
+            isNull(schema.negotiations.settledAt),
+          ))
+          .limit(1);
+        if (live) return null;
+
+        return reactivate();
       }
 
       return await validateEligibility() ? reactivate() : null;
@@ -861,64 +862,6 @@ export class OpportunityDatabaseAdapter {
     return rows.map(toOpportunityRow);
   }
 
-  /**
-   * Lens-C-only (IND-465): the exact recipient+intent pool INCLUDING terminal
-   * statuses ('stalled','accepted','rejected','expired') — negotiation
-   * evidence lives on decided negotiations. Lens A discriminator mining must
-   * keep using {@link getLivePoolOpportunitiesForIntent}.
-   */
-  async getEvidencePoolOpportunitiesForIntent(
-    recipientUserId: string,
-    intentId: string,
-  ): Promise<OpportunityRow[]> {
-    const rows = await db
-      .select()
-      .from(opportunities)
-      .where(exactEvidencePoolWhere(recipientUserId, intentId))
-      .orderBy(desc(opportunities.createdAt));
-    return rows.map(toOpportunityRow);
-  }
-
-  /**
-   * Retrieve opportunities for a user that cite a specific premise in their
-   * provenance. An opportunity "cites" the premise when:
-   *  - any `metadata.evidence` entry references it as `sourcePremiseId` or
-   *    `candidatePremiseId` (recorded by `buildCandidateEvidence` at discovery
-   *    time), or
-   *  - any actor row carries it as the grounding `premise` (set when
-   *    the match was premise-grounded).
-   *
-   * Used by the premise retract/expire cascade so that only opportunities
-   * actually motivated by the lapsed premise are invalidated — opportunities
-   * evidenced solely by other premises are left untouched (IND-423).
-   * @param userId - The user whose opportunities to inspect (must be an actor)
-   * @param premiseId - The retracted/expired premise
-   * @param options - Optional status filter (e.g. cascade-eligible statuses)
-   */
-  async getOpportunitiesCitingPremise(
-    userId: string,
-    premiseId: string,
-    options?: { statuses?: string[] },
-  ): Promise<OpportunityRow[]> {
-    const conditions = [
-      sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`,
-      sql`(
-        ${opportunities.metadata}->'evidence' @> ${JSON.stringify([{ sourcePremiseId: premiseId }])}::jsonb
-        OR ${opportunities.metadata}->'evidence' @> ${JSON.stringify([{ candidatePremiseId: premiseId }])}::jsonb
-        OR ${opportunities.actors} @> ${JSON.stringify([{ premise: premiseId }])}::jsonb
-      )`,
-    ];
-    if (options?.statuses?.length) {
-      conditions.push(inArray(opportunities.status, options.statuses as Array<typeof opportunities.$inferSelect.status>));
-    }
-    const rows = await db
-      .select()
-      .from(opportunities)
-      .where(and(...conditions))
-      .orderBy(desc(opportunities.createdAt));
-    return rows.map(toOpportunityRow);
-  }
-
   async getOpportunitiesForNetwork(
     networkId: string,
     options?: { status?: string; statuses?: string[]; actorUserId?: string; limit?: number; offset?: number }
@@ -958,7 +901,7 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
@@ -1010,7 +953,7 @@ export class OpportunityDatabaseAdapter {
   async stampOpportunityActorAction(
     id: string,
     actorUserId: string,
-    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
@@ -1242,8 +1185,8 @@ export class OpportunityDatabaseAdapter {
     actorIds: string[],
     options?: {
       includeIntroducers?: boolean;
-      statuses?: ('negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
-      excludeStatuses?: ('negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
+      statuses?: ('negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[];
+      excludeStatuses?: ('negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[];
     }
   ): Promise<OpportunityRow[]> {
     if (actorIds.length === 0) return [];
@@ -1279,8 +1222,7 @@ export class OpportunityDatabaseAdapter {
   /**
    * IND-567 Rejection cool-down: returns the subset of `candidateUserIds` that
    * have at least one non-draft opportunity with `discovererId` whose `updatedAt`
-   * falls within the last `windowMs` milliseconds AND whose status is `rejected`
-   * or `stalled`.
+   * falls within the last `windowMs` milliseconds AND whose status is `rejected`.
    *
    * Used by the opportunity-graph evaluation node to apply a similarity penalty
    * before sending candidates to the LLM, preventing cross-query re-surfacing of
@@ -1294,13 +1236,13 @@ export class OpportunityDatabaseAdapter {
     if (candidateUserIds.length === 0) return [];
     const cutoff = new Date(Date.now() - windowMs);
     // Find non-draft opps that include discovererId as an actor,
-    // have been updated within the window, and are in rejected or stalled status.
+    // have been updated within the window, and are in rejected status.
     const rows = await db
       .select({ actors: opportunities.actors })
       .from(opportunities)
       .where(
         and(
-          inArray(opportunities.status, ['rejected', 'stalled']),
+          inArray(opportunities.status, ['rejected']),
           gte(opportunities.updatedAt, cutoff),
           // Discoverer must be an actor
           sql`EXISTS (
@@ -1389,305 +1331,11 @@ export class OpportunityDatabaseAdapter {
         )
       )
       .returning({ id: opportunities.id });
+    await negotiationDatabaseAdapter.closeForOpportunities(updated.map((row) => row.id));
     for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return updated.length;
   }
 
-  /**
-   * Retrieve premises for a user, optionally filtered by status.
-   * Used by the opportunity graph prep node for premise-to-premise discovery.
-   * @param userId - The user whose premises to retrieve
-   * @param status - Optional status filter
-   * @returns Array of premise records
-   */
-  async getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[] | null;
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  }>> {
-    const conditions: ReturnType<typeof eq>[] = [
-      eq(schema.premises.userId, userId),
-      isNull(schema.premises.deletedAt),
-    ];
-    if (status) {
-      conditions.push(eq(schema.premises.status, status));
-    }
-    const rows = await db
-      .select()
-      .from(schema.premises)
-      .where(and(...conditions))
-      .orderBy(desc(schema.premises.createdAt));
-    return rows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
-      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt,
-    }));
-  }
-
-  /**
-   * Retrieve a capped set of embedded premises for a user, scoped to target networks.
-   * Premises are ordered by network relevancy score, then recency, so the
-   * premise-to-premise discovery path searches representative premises instead
-   * of every active premise a user has ever accumulated.
-   * @param userId - The source user whose premises should seed discovery
-   * @param networkIds - Target network IDs that premises must be assigned to
-   * @param status - Optional status filter
-   * @param limit - Maximum number of source premises to return
-   * @returns Scoped premise records with non-null embeddings
-   */
-  async getPremisesForUserInNetworks(userId: string, networkIds: string[], status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED', limit = 40): Promise<Array<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[];
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  }>> {
-    if (networkIds.length === 0 || limit <= 0) return [];
-    const statusClause = status ? sql`AND p.status = ${status}` : sql``;
-    const rows = await db.execute<{
-      id: string;
-      userId: string;
-      assertion: unknown;
-      provenance: unknown;
-      analysis: unknown | null;
-      validity: unknown;
-      // Raw db.execute bypasses Drizzle's vector mapper: a pgvector column
-      // arrives as a string here, not number[]. Typed `unknown` so every
-      // caller must route through normalizeEmbedding (IND-348).
-      embedding: unknown;
-      status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-      createdAt: Date;
-      updatedAt: Date;
-      retractedAt: Date | null;
-    }>(sql`
-      WITH scoped AS (
-        SELECT
-          p.id,
-          MAX(COALESCE(pn.relevancy_score::double precision, 0)) AS max_relevancy
-        FROM ${schema.premises} p
-        JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
-        WHERE p.user_id = ${userId}
-          AND pn.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
-          ${statusClause}
-          AND p.embedding IS NOT NULL
-          AND p.deleted_at IS NULL
-        GROUP BY p.id
-      )
-      SELECT
-        p.id AS "id",
-        p.user_id AS "userId",
-        p.assertion AS "assertion",
-        p.provenance AS "provenance",
-        p.analysis AS "analysis",
-        p.validity AS "validity",
-        p.embedding AS "embedding",
-        p.status AS "status",
-        p.created_at AS "createdAt",
-        p.updated_at AS "updatedAt",
-        p.retracted_at AS "retractedAt"
-      FROM scoped s
-      JOIN ${schema.premises} p ON p.id = s.id
-      ORDER BY s.max_relevancy DESC, p.created_at DESC
-      LIMIT ${limit}
-    `);
-
-    return rows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      // Raw `db.execute` bypasses Drizzle's vector mapper, so `embedding` arrives
-      // as a pgvector string here — normalize to number[] before consumers call
-      // `.join(',')` to rebuild the vector literal (IND-348).
-      embedding: normalizeEmbedding(row.embedding),
-      status: row.status,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt,
-    }));
-  }
-
-  /**
-   * Cosine similarity search against premise embeddings, scoped to shared networks.
-   * Used by the opportunity graph's premise discovery path (path D).
-   * @param params - Search parameters including embedding vector, network scope, and exclusions
-   * @returns Matching premises ranked by cosine similarity
-   */
-  async searchPremisesBySimilarity(params: {
-    embedding: number[];
-    networkIds: string[];
-    excludeUserId: string;
-    limit: number;
-    minScore?: number;
-  }) {
-    return traceAppOperation(
-      {
-        name: 'vector search premises by similarity',
-        op: 'db.vector_search',
-        attributes: {
-          subsystem: 'database',
-          'db.system': 'postgresql',
-          'db.operation': 'vector_search',
-          'search.strategy': 'premise-embedding',
-          'search.index_scope_count': params.networkIds.length,
-          'search.limit': params.limit,
-        },
-      },
-      async () => {
-    const { embedding, networkIds, excludeUserId, limit, minScore } = params;
-    const vectorStr = `[${embedding.join(',')}]`;
-
-    const rows = await db.execute<{
-      premiseId: string;
-      userId: string;
-      networkId: string;
-      assertionText: string;
-      similarity: number;
-    }>(sql`
-      SELECT
-        p.id AS "premiseId",
-        p.user_id AS "userId",
-        pn.network_id AS "networkId",
-        p.assertion->>'text' AS "assertionText",
-        1 - (p.embedding <=> ${vectorStr}::vector) AS similarity
-      FROM ${schema.premises} p
-      JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
-      JOIN ${schema.networkMembers} nm
-        ON nm.user_id = p.user_id AND nm.network_id = pn.network_id
-      JOIN ${schema.networks} n ON n.id = pn.network_id
-      WHERE pn.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
-        AND p.user_id != ${excludeUserId}
-        AND nm.deleted_at IS NULL
-        AND n.deleted_at IS NULL
-        AND p.status = 'ACTIVE'
-        AND p.embedding IS NOT NULL
-        AND p.deleted_at IS NULL
-        ${minScore !== undefined ? sql`AND 1 - (p.embedding <=> ${vectorStr}::vector) >= ${minScore}` : sql``}
-      ORDER BY p.embedding <=> ${vectorStr}::vector
-      LIMIT ${limit}
-    `);
-
-    return rows as Array<{
-      premiseId: string;
-      userId: string;
-      networkId: string;
-      assertionText: string;
-      similarity: number;
-    }>;
-      },
-    );
-  }
-
-
-  /**
-   * Batched cosine similarity search against premise embeddings, scoped to shared networks.
-   * Uses a VALUES CTE plus LATERAL nearest-neighbor searches so OpportunityGraph
-   * emits one DB span and one DB round-trip for all selected source premises.
-   * @param params - Batch search parameters including source embeddings and candidate scope
-   * @returns Matching premises ranked per source premise
-   */
-  async searchPremisesBySimilarityBatch(params: {
-    sources: Array<{ premiseId: string; embedding: number[] }>;
-    networkIds: string[];
-    excludeUserId: string;
-    limitPerSource: number;
-    minScore?: number;
-  }) {
-    if (params.sources.length === 0 || params.networkIds.length === 0 || params.limitPerSource <= 0) return [];
-    return traceAppOperation(
-      {
-        name: 'batch vector search premises by similarity',
-        op: 'db.vector_search',
-        attributes: {
-          subsystem: 'database',
-          'db.system': 'postgresql',
-          'db.operation': 'vector_search',
-          'search.strategy': 'premise-embedding-batch',
-          'search.source_premise_count': params.sources.length,
-          'search.index_scope_count': params.networkIds.length,
-          'search.limit_per_source': params.limitPerSource,
-        },
-      },
-      async () => {
-        const sourceValues = sql.join(
-          params.sources.map(source => sql`(${source.premiseId}, ${`[${source.embedding.join(',')}]`}::vector)`),
-          sql`, `,
-        );
-
-        const rows = await db.execute<{
-          sourcePremiseId: string;
-          premiseId: string;
-          userId: string;
-          networkId: string;
-          assertionText: string;
-          similarity: number;
-        }>(sql`
-          WITH source_embeddings(source_premise_id, embedding) AS (
-            VALUES ${sourceValues}
-          )
-          SELECT
-            matches.source_premise_id AS "sourcePremiseId",
-            matches.premise_id AS "premiseId",
-            matches.user_id AS "userId",
-            matches.network_id AS "networkId",
-            matches.assertion_text AS "assertionText",
-            matches.similarity AS "similarity"
-          FROM source_embeddings se
-          CROSS JOIN LATERAL (
-            SELECT
-              se.source_premise_id,
-              p.id AS premise_id,
-              p.user_id,
-              pn.network_id,
-              p.assertion->>'text' AS assertion_text,
-              1 - (p.embedding <=> se.embedding) AS similarity
-            FROM ${schema.premises} p
-            JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
-            JOIN ${schema.networkMembers} nm
-              ON nm.user_id = p.user_id AND nm.network_id = pn.network_id
-            JOIN ${schema.networks} n ON n.id = pn.network_id
-            WHERE pn.network_id = ANY(ARRAY[${sql.join(params.networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
-              AND p.user_id != ${params.excludeUserId}
-              AND nm.deleted_at IS NULL
-              AND n.deleted_at IS NULL
-              AND p.status = 'ACTIVE'
-              AND p.embedding IS NOT NULL
-              AND p.deleted_at IS NULL
-              ${params.minScore !== undefined ? sql`AND 1 - (p.embedding <=> se.embedding) >= ${params.minScore}` : sql``}
-            ORDER BY p.embedding <=> se.embedding
-            LIMIT ${params.limitPerSource}
-          ) matches
-        `);
-
-        return rows as Array<{
-          sourcePremiseId: string;
-          premiseId: string;
-          userId: string;
-          networkId: string;
-          assertionText: string;
-          similarity: number;
-        }>;
-      },
-    );
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

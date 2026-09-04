@@ -6,13 +6,9 @@
  */
 
 import type { ActiveIntent, Id } from '../../platform/database.js';
-import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { IndexedIntent, TargetNetwork } from './opportunity.state.js';
-import { IntentIndexer } from '../shared/intent-indexer.js';
-import type { IntentIndexingResult } from '../../protocol/core.js';
 import { withCallLogging } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
-import { requestContext } from '../shared/observability/request-context.js';
 import { prepLog, scopeLog, resolveLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /**
@@ -192,60 +188,6 @@ export async function scopeNode(state: OpportunityState, deps: OpportunityGraphD
           }
         } catch (err) {
           scopeLog.warn('Failed to load intent index scores', { triggerIntentId: state.triggerIntentId, error: err });
-        }
-      } else if (state.searchQuery?.trim()) {
-        // Chat path: score query against target indexes in parallel
-        try {
-          const indexer = new IntentIndexer();
-          const scopeAgentTimings: DebugMetaAgent[] = [];
-          const scorableIndexes = targetNetworks.filter(ti => ti.title !== 'Unknown');
-          const scoringPromises = scorableIndexes.map(async (ti) => {
-            const ctx = await deps.database.getNetworkMemberContext(ti.networkId, state.userId);
-            if (!ctx?.indexPrompt?.trim() && !ctx?.memberPrompt?.trim()) {
-              return { networkId: ti.networkId, score: 1.0 };
-            }
-            const _indexerStart = Date.now();
-            const traceEmitter = requestContext.getStore()?.traceEmitter;
-            traceEmitter?.({ type: "agent_start", name: "intent-networker" });
-            let result: IntentIndexingResult | null;
-            try {
-              result = await indexer.invoke(
-                state.searchQuery!,
-                ctx?.indexPrompt ?? null,
-                ctx?.memberPrompt ?? null,
-              );
-            } catch {
-              return { networkId: ti.networkId, score: 1.0 };
-            } finally {
-              const _indexerDuration = Date.now() - _indexerStart;
-              traceEmitter?.({ type: "agent_end", name: "intent-networker", durationMs: _indexerDuration, summary: `Scored index ${ti.networkId}` });
-              scopeAgentTimings.push({ name: 'intent.indexer', durationMs: _indexerDuration });
-            }
-            if (!result) return { networkId: ti.networkId, score: 1.0 };
-            const score = ctx?.indexPrompt && ctx?.memberPrompt
-              ? result.indexScore * 0.6 + result.memberScore * 0.4
-              : ctx?.indexPrompt ? result.indexScore : result.memberScore;
-            return { networkId: ti.networkId, score };
-          });
-          const results = await Promise.all(scoringPromises);
-          for (const { networkId, score } of results) {
-            indexRelevancyScores[networkId] = score;
-          }
-          // Accumulate indexer timings into graph state
-          if (scopeAgentTimings.length > 0) {
-            return {
-              targetNetworks,
-              indexRelevancyScores,
-              agentTimings: scopeAgentTimings,
-              trace: [{
-                node: "scope",
-                detail: `Searching ${targetNetworks.length} index(es): ${targetNetworks.map(i => `${i.title} (${i.memberCount})`).join(', ')}`,
-                data: { totalMembers: targetNetworks.reduce((sum, i) => sum + i.memberCount, 0) },
-              }],
-            };
-          }
-        } catch (err) {
-          scopeLog.warn('Failed to score query against indexes', { error: err });
         }
       }
 

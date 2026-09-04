@@ -3,24 +3,22 @@
  * tables, operators, DTO types, and cross-adapter helper functions.
  * No dependency on lib/protocol. Imported by every database/*.adapter.ts file.
  */
-import type { NegotiationPauseReason } from './conversation.database.adapter';
 import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm/sql';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
 import { normalizeEmbedding } from '../lib/embedding/vector';
 import { normalizeTelegramSocialValue } from '../lib/telegram/socials';
-import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
-import type { Conversation, ConversationParticipant, ConversationSession, Message, Task, Artifact } from '../schemas/conversation.schema';
+import type { User, NotificationPreferences, OnboardingState } from '../schemas/database.schema';
+import type { Conversation, ConversationParticipant, ConversationSession, Message } from '../schemas/conversation.schema';
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
-import { NetworkMembershipEvents } from '../events/network_membership.event';
 
 // Re-export the import surface so domain adapter files import everything from one module.
-export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log, NetworkMembershipEvents };
+export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log };
 export { canActorSeeOpportunity } from './opportunity.visibility';
 export { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not };
-export type { User, NotificationPreferences, OnboardingState, TelegramPrefs, Conversation, ConversationParticipant, ConversationSession, Message, Task, Artifact, Id };
+export type { User, NotificationPreferences, OnboardingState, Conversation, ConversationParticipant, ConversationSession, Message, Id };
 export const logger = log.lib.from('database.adapter');
 
 export function detectSocialLabel(value: string): string {
@@ -112,8 +110,6 @@ export interface IntentListRow {
    * the UI surface orphaned intents instead of hiding the assignment outcome.
    */
   networks: { id: string; title: string }[];
-  /** Count of pending intent-scoped questions awaiting the user for this intent. */
-  pendingQuestionCount: number;
   /**
    * Count of distinct `pending` opportunities awaiting this owner that are
    * attributed to this signal by `detection.triggeredBy` or the owner's
@@ -122,26 +118,6 @@ export interface IntentListRow {
   waitingOpportunityCount: number;
   /** True while a fresh intent has not completed its first discovery run. */
   warming: boolean;
-  /**
-   * The signal's agent asked its owner something and is still waiting: the
-   * newest message in the signal's DM is an agent question offering canned
-   * replies. Derived per read from the conversation itself — answering (by
-   * typing or by tapping a chip) is what clears it.
-   */
-  awaitingReply: boolean;
-  discoveryProgress?: {
-    status: 'queued' | 'running' | 'retrying' | 'completed' | 'failed' | 'blocked' | 'unknown';
-    attempt: number;
-    maxAttempts: number;
-    assignedCommunityCount: number;
-    processedCommunityCount: number;
-    possibleOverlapCount: number;
-    conversationsStartedCount: number;
-    queuedAt: Date | null;
-    startedAt: Date | null;
-    completedAt: Date | null;
-    updatedAt: Date | null;
-  };
 }
 // UserIdentity shape (aligned with `@indexnetwork/protocol`'s UserIdentity; defined
 // locally to honor the adapter layering rule of not importing protocol interfaces).
@@ -161,7 +137,7 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, discoveryMatchCandidates, userNotificationSettings, sessions, userSocials } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, negotiations, negotiationTurns, userNotificationSettings, sessions, userSocials } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
@@ -209,7 +185,7 @@ export async function buildProfileWithIdFromUser(userId: string): Promise<(UserI
  * Persist a profile draft's identity to the canonical `users` table (WS8 / IND-365).
  * The `user_profiles` table was dropped; identity (name/bio/location) lives on `users`
  * (`name`/`intro`<-bio/`location`), while skills/interests/narrative are derived from
- * premises + the global user_context and have no column to persist. Empty identity
+ * the global user_context and have no column to persist. Empty identity
  * fields are skipped so a partial draft never clobbers existing identity.
  *
  * @param userId - The user whose identity to update.
@@ -316,123 +292,6 @@ export function ownIntentsListWhere(
   return and(...conditions);
 }
 
-/**
- * Database adapter for intent CRUD (Intent Graph).
- */
-export type ChatScopeType = 'network' | 'intent';
-/**
- * Value of `conversations.persona`.
- *
- * - `personal` — the one live chat persona (PersonalAgent). The retired
- *   signal/negotiator/onboarding ids were collapsed into it by migration.
- * - `telegram` — Telegram notification transcript. Not a chat persona: nothing
- *   drives a turn in it, it only collects delivered notifications.
- * - `orchestrator` — retired pre-personafication default. No new rows are
- *   written with it; existing ones stay readable.
- */
-export type ChatPersonaId =
-  | 'personal'
-  | 'telegram'
-  | 'orchestrator';
-
-export interface ChatSession {
-  id: string;
-  userId: string;
-  title: string | null;
-  /** Persona this session is persisted under (e.g. 'personal'). */
-  persona: string;
-  /** Legacy network alias. Prefer scopeType/scopeId for new code. */
-  networkId: string | null;
-  /** Canonical focused scope for this orchestrator chat, when persisted. */
-  scopeType: ChatScopeType | null;
-  /** Canonical focused scope id. Network scope uses a network id; intent scope uses an intent id. */
-  scopeId: string | null;
-  shareToken: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ChatMessage {
-  id: string;
-  sessionId: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  routingDecision: Record<string, unknown> | null;
-  subgraphResults: Record<string, unknown> | null;
-  tokenCount: number | null;
-  interrupted?: boolean | null;
-  /** Structured questions rendered by the chat question widget. */
-  decisionQuestions?: unknown[] | null;
-  /** True only after an explicit structured-question submission. */
-  decisionQuestionsSubmitted?: boolean | null;
-  createdAt: Date;
-}
-
-/** Shape stored inside conversation_metadata.metadata for agent-chat sessions. */
-export interface ChatConversationMeta {
-  title?: string | null;
-  /** Legacy network alias retained for existing clients and session rows. */
-  networkId?: string | null;
-  /** Canonical focused scope for this orchestrator chat. */
-  scopeType?: ChatScopeType | null;
-  /** Canonical focused scope id. */
-  scopeId?: string | null;
-  shareToken?: string | null;
-  [key: string]: unknown;
-}
-
-/** Shape stored inside messages.metadata for agent-chat messages. */
-export interface ChatMessageMeta {
-  routingDecision?: Record<string, unknown> | null;
-  subgraphResults?: Record<string, unknown> | null;
-  tokenCount?: number | null;
-  traceEvents?: unknown;
-  debugMeta?: unknown;
-  /**
-   * Legacy draft opportunities retained so historical chat cards survive
-   * session reload; the frontend rehydrates these into message.streamingDrafts.
-   */
-  streamingDrafts?: unknown;
-  /** Legacy discovery cards retained for historical chat-message rendering. */
-  discoveries?: unknown;
-  /** Set to true when the assistant message was partially generated before a steer interrupt. */
-  interrupted?: boolean;
-  /** Structured questions rendered by the chat question widget. */
-  decisionQuestions?: unknown[];
-  /** Set only after the principal explicitly submits this question form. */
-  decisionQuestionsSubmitted?: boolean;
-  [key: string]: unknown;
-}
-
-export interface CreateSessionInput {
-  id: string;
-  userId: string;
-  title?: string;
-  /** Persona this session is persisted under. Required — there is no default. */
-  persona: ChatPersonaId;
-  /** Legacy network alias. Prefer scopeType/scopeId for new code. */
-  networkId?: string;
-  scopeType?: ChatScopeType;
-  scopeId?: string;
-}
-
-export interface CreateMessageInput {
-  id: string;
-  sessionId: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  routingDecision?: Record<string, unknown>;
-  subgraphResults?: Record<string, unknown>;
-  tokenCount?: number;
-  interrupted?: boolean;
-  /** Structured questions for an agent message; stored in messages.metadata. */
-  questions?: unknown[];
-}
-
-/**
- * Lazy getter for the ConversationDatabaseAdapter singleton.
- * Avoids circular reference since conversationDatabaseAdapter is instantiated after chatDatabaseAdapter.
- */
 export interface OpportunityRow {
   id: string;
   detection: schema.OpportunityDetection;
@@ -440,7 +299,7 @@ export interface OpportunityRow {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -454,7 +313,7 @@ export interface CreateOpportunityInput {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status?: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  status?: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
   metadata?: Record<string, unknown> | null;
 }
@@ -582,56 +441,6 @@ export interface ResolvedParticipant {
   ownerName?: string | null;
 }
 
-/**
- * IND-610: owner-only projection of the outreach-gate decision.
- *
- * `source` keeps the provenance honest — the card that renders this must not
- * claim screen-node evidence it does not have:
- * - `screen`  — `tasks.metadata.screenDecision`. READ-ONLY HISTORY: the
- *   outreach gate that wrote it is gone, but existing task rows carry it.
- * - `outcome` — the negotiation-outcome artifact's `reasoning`, written when
- *   the agent refuses on its opening turn (IND-564). The only live source.
- */
-export interface ProjectedScreenDecision {
-  source: 'screen' | 'outcome';
-  decision: 'reach_out' | 'pass';
-  reasoning: string;
-  /** Screen-node evidence on historical rows; null when the decision came from the outcome. */
-  counterpartyPremiseFit: string | null;
-  intentAlignment: string | null;
-  screenedAt: string | null;
-}
-
-export interface NegotiationLifecycleSummary {
-  taskId: string;
-  state: 'submitted' | 'working' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed' | 'paused';
-  statusTimestamp: Date | null;
-  opportunityId: string | null;
-  opportunityStatus: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' | null;
-  /** Whether the authenticated owner, rather than their counterpart, started the chat. */
-  acceptedByViewer: boolean;
-  turnCount: number;
-  maxTurns: number | null;
-  signalCount: number;
-  outcome: { hasOpportunity: boolean; reason: string | null } | null;
-  /**
-   * Set only when `state === 'paused'`. `payload` is private to the seat that
-   * paused (`pausedBy`) — every other viewer sees `reason` only, the same
-   * privacy rule `negotiation.tools.ts`'s `pauseFor` applies A2A-side.
-   */
-  pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
-  updatedAt: Date;
-  /**
-   * IND-610: the owner-facing "did not reach out" decision, named-field
-   * projected from the negotiation-outcome artifact's `reasoning` (an
-   * opening-turn refusal) or, on historical rows, from
-   * `tasks.metadata.screenDecision`. Populated only when the caller has
-   * independently verified the viewer is the negotiation's initiator — never
-   * the raw metadata blob.
-   */
-  screenDecision?: ProjectedScreenDecision | null;
-}
-
 /** Summary returned by getConversationsForUser. */
 export interface ConversationSummary {
   id: string;
@@ -639,83 +448,21 @@ export interface ConversationSummary {
   createdAt: Date;
   updatedAt: Date;
   participants: ResolvedParticipant[];
-  /** The task session that produced the latest message, when it has one. */
-  lastMessage: { parts: unknown[]; senderId: string; createdAt: Date; taskId: string | null } | null;
+  lastMessage: { parts: unknown[]; senderId: string; createdAt: Date } | null;
   metadata: Record<string, unknown> | null;
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
   unreadCount: number;
-  /**
-   * Present only when negotiation lifecycle projection was requested. The one
-   * task session that represents this conversation to the viewer: the most
-   * latest task for the conversation.
-   */
-  negotiation?: NegotiationLifecycleSummary | null;
-  /**
-   * Viewer-scoped opportunities with an addressable negotiation task. Unlike
-   * `negotiation`, this is not limited to one session per conversation.
-   */
-  negotiationOpportunities?: Array<{
-    intentId: string;
-    opportunityId: string;
-    title: string;
-    taskId: string;
-    state: NegotiationLifecycleSummary['state'];
-    opportunityStatus: NegotiationLifecycleSummary['opportunityStatus'];
-    acceptedByViewer: boolean;
-    turnCount: number;
-    maxTurns: number | null;
-    signalCount: number;
-    outcome: NegotiationLifecycleSummary['outcome'];
-    updatedAt: Date;
-  }>;
 }
 
 /**
  * Database adapter for the A2A-aligned conversation tables.
  *
  * @remarks
- * Covers conversations, participants, messages, tasks, artifacts, and metadata.
+ * Covers conversations, participants, messages, and metadata.
  * Uses Drizzle ORM against the `conversations` family of tables.
  */
 
 // ── De-duplicated query helpers (formerly copy-pasted across adapters) ──
-export async function readPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[] | null;
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  }>> {
-    const conditions: ReturnType<typeof eq>[] = [
-      eq(schema.premises.userId, userId),
-      isNull(schema.premises.deletedAt),
-    ];
-    if (status) {
-      conditions.push(eq(schema.premises.status, status));
-    }
-    const rows = await db
-      .select()
-      .from(schema.premises)
-      .where(and(...conditions))
-      .orderBy(desc(schema.premises.createdAt));
-    return rows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
-      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt ?? null,
-    }));
-  }
-
 export async function upsertIntentNetworkAssignment(
     intentId: string,
     networkId: string,

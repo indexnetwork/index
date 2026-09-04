@@ -2,10 +2,7 @@ import { betterAuth } from "better-auth";
 import { magicLink, bearer, jwt, mcp } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
-import { log } from "../log";
 import { resolveClassConfig } from "../limiter/config";
-
-const logger = log.server.from("betterauth");
 
 export const API_URL =
   process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`;
@@ -18,8 +15,6 @@ export const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
 export interface AuthDbContract {
   /** Returns a configured adapter object for Better Auth's `database` option. */
   createDrizzleAdapter(): unknown;
-  /** Ensures the user has a personal negotiator agent row. Idempotent. */
-  ensureNegotiatorAgent(userId: string): Promise<string | null>;
 }
 
 /**
@@ -68,30 +63,6 @@ export function createAuth(deps: AuthDeps) {
   return betterAuth({
     baseURL: API_URL,
     database: authDb.createDrizzleAdapter(),
-    databaseHooks: {
-      session: {
-        create: {
-          after: async (session) => {
-            try {
-              await authDb.ensureNegotiatorAgent(session.userId);
-            } catch (err) {
-              logger.error('Failed to ensure negotiator agent on sign-in', { userId: session.userId, error: err });
-            }
-          },
-        },
-      },
-      user: {
-        create: {
-          after: async (user) => {
-            try {
-              await authDb.ensureNegotiatorAgent(user.id);
-            } catch (err) {
-              logger.error('Failed to ensure negotiator agent on registration', { userId: user.id, error: err });
-            }
-          },
-        },
-      },
-    },
     basePath: "/api/auth",
     /**
      * Backing store for Better Auth's rate-limit counters. Injected via

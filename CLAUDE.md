@@ -43,7 +43,7 @@ workflow live further down this file. There is no `docs/` directory — it was d
 | `apps/web` | Vite + React Router SPA. `src/app` routes, `components`, `contexts`, `hooks`, `lib`; `src/services/*.ts` are typed API clients, not business logic. |
 | `apps/mac` | Swift WKWebView shell (`Sources/`) around a self-contained React bundle (`src/`). |
 | `packages/cli`, `claude-plugin`, `hermes-plugin` | Clients over the HTTP/MCP API. `protocol`, `cli`, `claude-plugin`, `hermes-plugin` are subtree-mirrored to public repos on every push to `dev`/`main`; their `package.json` deps must be pinned exactly (`bun run check:subtree-parity`). |
-| `packages/a2a`, `packages/agent` | `@indexnetwork/a2a` — Agent2Agent negotiation client/server with an LLM negotiator; `@indexnetwork/agent` — a host-run personal agent over it (depends on a2a via `file:../a2a`, so build a2a first). Both subtree-mirrored to private repos under the same pinning rule. |
+| `packages/agent` | `@indexnetwork/agent` — the host-run personal agent: one identity, `for(intent)`, a tool loop that suspends on `ask_user`. Knows nothing about Index; the host injects its operations as tools. Subtree-mirrored to `indexnetwork/agent` under the same pinning rule. |
 
 ### API layering (`services/api/src`, enforced by `eslint-plugin-boundaries` in `eslint.config.mjs`)
 
@@ -82,11 +82,10 @@ workflow live further down this file. There is no `docs/` directory — it was d
 
 ## Tests
 
-The repository keeps five specs, all in `packages/protocol`, and nothing else:
-`src/capabilities/tests/{intents,negotiations.e2e,personal-agent.e2e}.spec.ts` and
-`src/internal/{opportunities/tests/opportunity.graph,premises/tests/premise.decomposer}.spec.ts`.
-Everything else was deleted on 2026-08-28 because the suite cost more to maintain than it
-returned.
+The repository keeps two specs, both in `packages/protocol`, and nothing else:
+`src/capabilities/tests/intents.spec.ts` and
+`src/internal/opportunities/tests/opportunity.graph.spec.ts`.
+Everything else was deleted because the suite cost more to maintain than it returned.
 
 - **Do not add tests unless asked.** A missing spec is not a gap to fill, and "I added a
   test for this" is not a bonus — it is unrequested scope.
@@ -120,7 +119,7 @@ bun run typecheck                            # Type-check without emitting
 bun run db:generate                          # Generate migrations after schema edits
 bun run db:migrate                           # Apply pending migrations
 bun run db:studio                            # Drizzle Studio
-bun run db:seed:sandbox -- --confirm --minimal  # Seed protocol_sandbox, five-person market
+bun run db:seed -- --confirm                 # Seed networks, admin accounts, system negotiator
 
 # apps/web
 bun run dev | build | start | lint
@@ -167,8 +166,7 @@ Two Neon projects: **Protocol-dev-europe** (`patient-pine-89907813`) for local
 development, and **Protocol** (`shiny-cloud-34341469`) whose branches are `production`
 (**never touch**), `dev` (the Railway dev environment, database `protocol_prod`), and
 `local-dev`. On `local-dev`, `protocol_prod` is a real-data copy and `protocol_sandbox` is
-the curated synthetic sandbox — `protocol_sandbox` is the safe default for
-`.env.development`.
+the disposable one — `protocol_sandbox` is the safe default for `.env.development`.
 
 Schema lives in `services/api/src/schemas/database.schema.ts`; the Drizzle client in
 `services/api/src/lib/drizzle/drizzle.ts`. To change the schema:

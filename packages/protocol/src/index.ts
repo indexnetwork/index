@@ -34,11 +34,8 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 
 export type { McpAuthResolver } from "./platform/auth/ports.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/discovery/cache.js";
-export type { ChatSummaryReader } from "./platform/chat/ports.js";
-export type { NegotiationSummaryReader } from "./platform/negotiation/summary.js";
-export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
 export type {
-  ChatGraphCompositeDatabase,
+  CompositeToolDatabase,
   UserDatabase,
   SystemDatabase,
   OpportunityGraphDatabase,
@@ -47,7 +44,6 @@ export type {
   RadarGraphDatabase,
   IntentGraphDatabase,
   HydeGraphDatabase,
-  PremiseGraphDatabase,
   Opportunity,
   OpportunityActor,
   OpportunityStatus,
@@ -56,45 +52,22 @@ export type {
   CreateOpportunityData,
   IntentLifecycleStatus,
   TransitionLifecycleResult,
-  IntentProposalRecord,
-  ReviseIntentProposalInput,
-  ConfirmProposalResult,
+  NegotiationContextDatabase,
+  NegotiationContextRecord,
+  NegotiationContextOutcome,
+  NegotiationContextTurn,
 } from "./platform/database.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/discovery/embedder.js";
 export type { IntentFollowUp } from "./platform/runtime/follow-up.js";
 export type { Scraper } from "./platform/discovery/scraper.js";
 export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/runtime/observability.js";
-export type { AgentDispatcher } from "./internal/shared/interfaces/agent-dispatcher.interface.js";
 export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
 export { ChatContextDigestSchema, type ChatContextDigest } from "./protocol/schemas/chat-context.schema.js";
-export {
-  QuestionBlockSchema,
-  QuestionBlockQuestionSchema,
-  parseQuestionMessage,
-  serializeQuestionMessage,
-} from "./protocol/question-block.schema.js";
-export type { ParsedQuestionMessage, QuestionBlock, QuestionBlockQuestion } from "./protocol/question-block.schema.js";
-export {
-  questionBlockFixture,
-  questionMessageFixture,
-  questionProseFixture,
-} from "./protocol/question-block.fixture.js";
-export {
-  QuestionPurposeSchema,
-  QuestionStrategySchema,
-  UnderspecificationTypeSchema,
-} from "./protocol/question.js";
-export type {
-  Question,
-  QuestionPurpose,
-  QuestionRecoverySnapshot,
-  QuestionStrategy,
-  QuestionVoidedReason,
-  UnderspecificationType,
-} from "./protocol/question.js";
+export { UnderspecificationTypeSchema } from "./protocol/schemas/underspecification.schema.js";
+export type { UnderspecificationType } from "./protocol/schemas/underspecification.schema.js";
 export { McpApiKeyMetadataSchema } from "./platform/auth/mcp.js";
 export type {
   McpAuthInput,
@@ -102,19 +75,10 @@ export type {
 } from "./platform/auth/mcp.js";
 export type { DiscoveryNegotiation } from "./protocol/schemas/discovery-question.schema.js";
 export type { NetworkAssignmentMetadata } from "./protocol/schemas/network-assignment.schema.js";
-export type { IntentIndexingResult } from "./protocol/core.js";
 export type { HydeTargetCorpus, Lens } from "./protocol/core.js";
 export type { DebugMetaAgent } from "./protocol/core.js";
-export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./internal/shared/assignment/network-assignment.policy.js";
 export { NEGOTIATION_MAX_TURNS_AMBIENT } from "./protocol/core.js";
 
-// ─── Personal agent chat ─────────────────────────────────────────────────────
-
-export { ChatGraphFactory } from "./internal/chat/chat.graph.js";
-export { PERSONAL_AGENT_PERSONA_ID, createPersonalAgentPersona } from "./internal/chat/personal-agent.persona.js";
-export type { PersonalAgentPersonaOptions } from "./internal/chat/personal-agent.persona.js";
-export { buildAgentSelfIntroduction } from "./internal/chat/agent-identity.prompt.js";
-export type { AgentIdentityOptions } from "./internal/chat/agent-identity.prompt.js";
 export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
 // ─── Networks ─────────────────────────────────────────────────────────────────
 // The whole capability behind one class: the community lifecycle graph, the
@@ -122,43 +86,28 @@ export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
 
 export { Networks } from "./capabilities/networks.js";
 export type {
-  IntentNetworkIndexer,
   NetworksDeps,
   NetworkToolDeps,
 } from "./capabilities/networks.js";
-export { Negotiations } from "./capabilities/negotiations.js";
-export type { NegotiationsDeps } from "./capabilities/negotiations.js";
 
 // ─── Intents ──────────────────────────────────────────────────────────────────
 // The whole capability behind one class: lifecycle graph, verification,
-// network indexing, guided intake, and the agent-facing tools.
+// payload clarification, and the agent-facing tools.
 
 export { Intents } from "./capabilities/intents.js";
 export type {
-  FollowUpPlan,
-  FollowUpPlanInput,
-  IntakeAnswer,
-  IntakePack,
-  IntakePackInput,
-  IntakePackQuestion,
-  IntakePackQuestionOption,
-  IntakeRound,
-  IntentIndexerOutput,
+  ClarifyAnswer,
+  ClarifyInput,
+  ClarifyQuestion,
+  ClarifyQuestionOption,
+  ClarifyResult,
   IntentsDeps,
   IntentToolDeps,
-  SynthesisInput,
-  SynthesisResult,
 } from "./capabilities/intents.js";
-
-export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
-export { ChatTitleGenerator } from "./internal/chat/chat.title.generator.js";
-export { ChatInterruptClassifier } from "./internal/chat/chat.interrupt.classifier.js";
-export { ChatSummarizer } from "./internal/chat/chat.summarizer.js";
 export { HydeGenerator } from "./internal/discovery/hyde.generator.js";
-export { SuggestionGenerator } from "./internal/chat/chat.suggester.js";
 export { LensInferrer } from "./internal/discovery/lens.inferrer.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
@@ -185,122 +134,12 @@ export type {
   McpCapabilityPolicyOptions,
 } from "./internal/mcp/mcp.authorization-policy.js";
 
-// ─── Negotiation compatibility exports ─────────────────────────────────────
+// ─── Negotiation thread reading ────────────────────────────────────────────
 /**
- * negotiation — the capability's sole cross-capability surface.
- *
- * Anything outside this capability imports from here and nowhere else.
+ * The negotiation thread is read-only in this package: the turn schemas below
+ * describe rows a previous release wrote, and the opportunity surfaces read
+ * them for Radar and presentation. Nothing in the protocol authors a turn.
  */
-export { createNegotiationTools } from "./internal/negotiations/negotiation.tools.js";
-export { buildLifecycleNarration, parkLifecycleLabel } from "./internal/negotiations/negotiation.lifecycle-narration.js";
-export type { NegotiationLifecycleNarration, NegotiationParkNarration } from "./internal/negotiations/negotiation.lifecycle-narration.js";
-export { buildFallbackDigest, NegotiationSummarizer } from "./internal/negotiations/negotiation.summarizer.js";
-export { NegotiationGraphFactory } from "./internal/negotiations/negotiation.graph.js";
-export type {
-  NegotiationGraphInput,
-  NegotiationGraphResult,
-  NegotiationGraphDeps,
-  NegotiationGraphLike,
-} from "./internal/negotiations/negotiation.graph.js";
-export type { NegotiationTurnAuthor, NegotiationTurnAuthorInput } from "./internal/negotiations/negotiation.turn-author.js";
-export {
-  NEGOTIATION_CONTINUE_VERBS,
-  NEGOTIATION_PAUSE_REASONS,
-  NegotiationTurnSchema,
-  NegotiationContinueTurnSchema,
-  NegotiationPauseTurnSchema,
-  NegotiationAuthoredTurnSchema,
-  NegotiationOpeningTurnSchema,
-  NegotiationVerdictSchema,
-  isPauseTurn,
-} from "./internal/negotiations/negotiation.turn.js";
-export type {
-  NegotiationTurn,
-  NegotiationContinueVerb,
-  NegotiationPauseReason,
-  NegotiationPauseTurn,
-  NegotiationContinueTurn,
-  NegotiationAuthoredTurn,
-  NegotiationVerdict,
-  NegotiationNeedsPrincipalPayload,
-  NegotiationReadyForVerdictPayload,
-} from "./internal/negotiations/negotiation.turn.js";
-export { negotiationRoundReflectJobId, maybeEnqueueRoundReflect } from "./internal/negotiations/negotiation.round-reflect.js";
-export type {
-  NegotiationRoundReflectJobData,
-  NegotiationRoundReflectCheck,
-  NegotiationRoundReflectEnqueueFn,
-} from "./internal/negotiations/negotiation.round-reflect.js";
-export { foldNegotiationRoundLog } from "./internal/negotiations/negotiation.round-log.js";
-export type {
-  NegotiationRoundLogEvent,
-  NegotiationRoundLogOpenedEvent,
-  NegotiationRoundLogStoppedEvent,
-  NegotiationRoundLogResumedEvent,
-  NegotiationRoundLogFoldResult,
-} from "./internal/negotiations/negotiation.round-log.js";
-// ─── PersonalAgent (AgentGraph) ─────────────────────────────────────────────
-/**
- * One persona, three scopes, routed on the shape of the invoke input. The
- * host implements the ports (signal DM, dossier, act ledger, reply
- * transport, the owner's accept path) and wires ONE graph.
- */
-export { PersonalAgentGraphFactory, chunkReplyText, KICKOFF_STALE_AFTER_MS } from "./internal/agents/personal-agent/agent.graph.js";
-export type { PersonalAgentGraphLike } from "./internal/agents/personal-agent/agent.graph.js";
-export { PersonalAgentModel, renderPersonalAgentTurn, normalizeMessageQuestions, validateDecidedAct } from "./internal/agents/personal-agent/agent.judgment.js";
-export { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, PERSONAL_AGENT_SYSTEM_PROMPT_VERSION } from "./internal/agents/personal-agent/agent.prompt.js";
-export type {
-  PersonalAgentInput,
-  PersonalAgentResult,
-  PersonalAgentScope,
-  PersonalAgentIntentEventKind,
-  PersonalAgentDeps,
-  PersonalAgentDecidedAct,
-  PersonalAgentExecutedAct,
-  PersonalAgentNonDurableObservation,
-  PersonalAgentJudgment,
-  PersonalAgentTurnContext,
-  PersonalAgentThreadEntry,
-  PersonalAgentPausedNegotiation,
-  PersonalAgentBriefInput,
-  PersonalAgentNegotiationTurnInput,
-  PersonalAgentMatch,
-  PersonalAgentDossierEntry,
-  PersonalAgentDossierPort,
-  PersonalAgentLedgerPort,
-  PersonalAgentConversationPort,
-  PersonalAgentReplyStreamPort,
-  PersonalAgentActivity,
-  PersonalAgentActivityPort,
-  PersonalAgentOpportunityPort,
-  PersonalAgentIdentityPort,
-} from "./internal/agents/personal-agent/agent.types.js";
-
-export { NegotiationInsightsGenerator } from "./internal/negotiations/insight.generator.js";
-export type { NegotiationDigest } from "./internal/negotiations/insight.generator.js";
-export { NegotiationReflector } from "./internal/negotiations/negotiation.reflect.js";
-export type {
-  ChatReflectionInput,
-  DistilledMemory,
-  NegotiationReflectionInput,
-  NegotiationReflectJobData,
-  ReflectEnqueueFn,
-  ReflectionTranscriptEntry,
-} from "./internal/negotiations/negotiation.reflect.js";
-export type { NegotiatorMemoryEntry } from "./internal/negotiations/negotiation.memory.js";
-export type { NegotiationToolDeps } from "./internal/negotiations/negotiation.tools.port.js";
-export type {
-  NegotiationGraphDatabase,
-  NegotiationTaskRow,
-  NegotiationTaskMetadata,
-  NegotiationSeatBinding,
-  NegotiationTaskState,
-  NegotiationMessageRow,
-  NegotiationRoundLogDatabase,
-  NegotiationRoundLogEventKind,
-  NegotiationRoundLogEventRecord,
-} from "./platform/database/negotiation.js";
-
 // ─── Opportunity compatibility exports ─────────────────────────────────────
 /**
  * opportunity — the capability's sole cross-capability surface.
@@ -310,32 +149,19 @@ export type {
  * list is the union of the facades it replaces, so the contract is unchanged.
  */
 export {
-  getOrCreateDeliveryCardBatch,
-} from "./internal/opportunities/delivery-card.cache.js";
-export {
   OpportunityGraphFactory,
 } from "./internal/opportunities/opportunity.graph.js";
 export type {
   OpportunityGraphThresholdOverrides,
 } from "./internal/opportunities/opportunity.graph.js";
-export type { MatchesReadyFn } from "./internal/opportunities/opportunity.graph.shared.js";
 export {
   pairKeyOf,
-} from "./internal/opportunities/opportunity.candidates.js";
+} from "./internal/opportunities/opportunity.counterparties.js";
 export type { OpportunityEvidence } from "./protocol/schemas/network-assignment.schema.js";
-export {
-  matchRefId,
-  opportunityRef,
-} from "./internal/agents/personal-agent/agent.types.js";
 export type {
-  PersonalAgentMatchRef,
-} from "./internal/agents/personal-agent/agent.types.js";
-export type {
-  CreateAndOpenResult,
-  CreateDiscoveryMatchCandidateData,
-  DiscoveryMatchCandidate,
-  DiscoveryMatchCandidateStatus,
-} from "./internal/opportunities/opportunity.candidates.js";
+  CreateIntentCounterpartyData,
+  OpenedNegotiation,
+} from "./internal/opportunities/opportunity.counterparties.js";
 export {
   opportunityOwnerActionForStatus,
 } from "./internal/opportunities/opportunity.owner-approval.js";
@@ -391,7 +217,6 @@ export {
 } from "./internal/opportunities/opportunity.labels.js";
 export {
   buildApiChatCardPresentationCacheKey,
-  buildDeliveryCardPresentationCacheKey,
   buildRadarCardPresentationCacheKey,
 } from "./internal/opportunities/opportunity.presentation.js";
 export {
@@ -414,22 +239,6 @@ export {
   selectByComposition,
   validateOpportunityActors,
 } from "./internal/opportunities/opportunity.utils.js";
-export {
-  NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES,
-  NEGOTIATION_EVIDENCE_QUESTIONS_MODE,
-} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.env.js";
-export {
-  NegotiationEvidenceMiner,
-} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.miner.js";
-export {
-  runNegotiationEvidenceShadow,
-} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.shadow.js";
-export type {
-  RawEvidenceOutcome,
-  RawEvidenceOwnerAnswer,
-  RawEvidenceSegment,
-  RawEvidenceTurn,
-} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.types.js";
 export {
   isOutcomeQuestionsActivated,
   OUTCOME_MAX_CANDIDATES,

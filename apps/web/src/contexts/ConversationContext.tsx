@@ -2,7 +2,9 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { apiClient } from '@/lib/api';
 import { getJwtToken } from '@/lib/auth-client';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useConversations } from '@/contexts/APIContext';
 import type { ConversationSummary, ConversationMessage } from '@/services/conversation';
+import type { NegotiationSummary } from '@/services/negotiations';
 import { log } from '@/lib/logger';
 
 const logger = log.context.from('ConversationContext');
@@ -16,74 +18,30 @@ interface ConversationSessionHistoryState {
   loadingPrevious: boolean;
 }
 
-/** IND-570: Per-session opportunity attribution, keyed by sessionId. */
-export interface SessionOpportunityInfo {
-  opportunityId: string;
-  status: string | null;
-}
-
-/**
- * Live flip of the `questionRegenerationPending` signal for one signal scope,
- * published on the conversation SSE channel by the question-message
- * regeneration queue: true at enqueue, false when the job finishes and the
- * negotiator DM content is current.
- */
-export interface QuestionRegenerationEvent {
-  intentId: string;
-  pending: boolean;
-}
-
-/** A completed durable PersonalAgent turn for one of the owner's intents. */
-export interface PersonalAgentTurnCompletedEvent {
-  intentId: string;
-}
-
 /** A persisted message received on the authenticated conversation SSE channel. */
 export interface ConversationMessageEvent {
   conversationId: string;
   message: ConversationMessage;
 }
 
-/** An owner-visible discovery-progress write; fetch the intent for its data. */
-export interface IntentDiscoveryProgressEvent {
-  intentId: string;
-}
-
-/** An owner-scoped invalidation for an intent-owned view. */
-export interface IntentInvalidationEvent {
-  intentId: string;
-}
-
 interface ConversationContextType {
   conversations: ConversationSummary[];
-  negotiations: ConversationSummary[];
+  negotiations: NegotiationSummary[];
   messages: Map<string, ConversationMessage[]>;
   sessionHistory: Map<string, ConversationSessionHistoryState>;
   /** IND-570: Per-session opportunity attribution, keyed by sessionId. */
-  sessionOpportunityMap: Map<string, SessionOpportunityInfo>;
   isConnected: boolean;
   loadMessages: (conversationId: string, opts?: { limit?: number; before?: string }) => Promise<void>;
-  loadSessionHistory: (conversationId: string, opts?: { taskId?: string; beforeSessionId?: string }) => Promise<void>;
-  loadPreviousSessionMessages: (conversationId: string, taskId?: string) => Promise<void>;
+  loadSessionHistory: (conversationId: string, opts?: { beforeSessionId?: string }) => Promise<void>;
+  loadPreviousSessionMessages: (conversationId: string) => Promise<void>;
   sendMessage: (conversationId: string, parts: unknown[]) => Promise<ConversationMessage | null>;
   refreshConversations: () => Promise<void>;
   refreshNegotiations: () => Promise<void>;
   markConversationRead: (conversationId: string) => Promise<void>;
   hideConversation: (conversationId: string) => Promise<void>;
-  getOrCreateDM: (peerUserId: string) => Promise<ConversationSummary>;
-  /**
-   * Subscribe to live question-regeneration flips from the SSE stream.
-   * Returns the unsubscribe function.
-   */
-  subscribeQuestionRegeneration: (handler: (event: QuestionRegenerationEvent) => void) => () => void;
-  /** Subscribe to durable PersonalAgent completion signals from the SSE stream. */
-  subscribePersonalAgentTurnCompleted: (handler: (event: PersonalAgentTurnCompletedEvent) => void) => () => void;
+  getOrCreateDm: (peerUserId: string) => Promise<ConversationSummary>;
   /** Subscribe to persisted conversation messages from the SSE stream. */
   subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
-  /** Subscribe to owner-scoped discovery-progress invalidations. */
-  subscribeIntentDiscoveryProgress: (handler: (event: IntentDiscoveryProgressEvent) => void) => () => void;
-  /** Subscribe to owner-scoped intent invalidations. */
-  subscribeIntentInvalidation: (handler: (event: IntentInvalidationEvent) => void) => () => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
@@ -93,11 +51,11 @@ const ConversationContext = createContext<ConversationContextType | null>(null);
  */
 export function ConversationProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuthContext();
+  const conversationService = useConversations();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [negotiations, setNegotiations] = useState<ConversationSummary[]>([]);
+  const [negotiations, setNegotiations] = useState<NegotiationSummary[]>([]);
   const [messages, setMessages] = useState<Map<string, ConversationMessage[]>>(new Map());
   const [sessionHistory, setSessionHistory] = useState<Map<string, ConversationSessionHistoryState>>(new Map());
-  const [sessionOpportunityMap, setSessionOpportunityMap] = useState<Map<string, SessionOpportunityInfo>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,31 +65,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const refreshConversationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const refreshNegotiationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const questionRegenerationHandlersRef = useRef(new Set<(event: QuestionRegenerationEvent) => void>());
-  const personalAgentTurnCompletedHandlersRef = useRef(new Set<(event: PersonalAgentTurnCompletedEvent) => void>());
   const conversationMessageHandlersRef = useRef(new Set<(event: ConversationMessageEvent) => void>());
-  const intentDiscoveryProgressHandlersRef = useRef(new Set<(event: IntentDiscoveryProgressEvent) => void>());
-  const intentInvalidationHandlersRef = useRef(new Set<(event: IntentInvalidationEvent) => void>());
-
-  const subscribeQuestionRegeneration = useCallback(
-    (handler: (event: QuestionRegenerationEvent) => void) => {
-      questionRegenerationHandlersRef.current.add(handler);
-      return () => {
-        questionRegenerationHandlersRef.current.delete(handler);
-      };
-    },
-    [],
-  );
-
-  const subscribePersonalAgentTurnCompleted = useCallback(
-    (handler: (event: PersonalAgentTurnCompletedEvent) => void) => {
-      personalAgentTurnCompletedHandlersRef.current.add(handler);
-      return () => {
-        personalAgentTurnCompletedHandlersRef.current.delete(handler);
-      };
-    },
-    [],
-  );
 
   const subscribeConversationMessage = useCallback(
     (handler: (event: ConversationMessageEvent) => void) => {
@@ -141,38 +75,21 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     [],
   );
 
-  const subscribeIntentDiscoveryProgress = useCallback(
-    (handler: (event: IntentDiscoveryProgressEvent) => void) => {
-      intentDiscoveryProgressHandlersRef.current.add(handler);
-      return () => { intentDiscoveryProgressHandlersRef.current.delete(handler); };
-    },
-    [],
-  );
-
-  const subscribeIntentInvalidation = useCallback(
-    (handler: (event: IntentInvalidationEvent) => void) => {
-      intentInvalidationHandlersRef.current.add(handler);
-      return () => { intentInvalidationHandlersRef.current.delete(handler); };
-    },
-    [],
-  );
-
-  // --- REST helpers (use apiClient directly, same pattern as AIChatContext) ---
+  // --- REST helpers (conversation calls go through the typed client) ---
 
   const refreshConversations = useCallback(async () => {
     try {
-      const data = await apiClient.get<{ conversations: ConversationSummary[] }>('/conversations');
-      setConversations(data.conversations);
+      setConversations(await conversationService.getConversations());
     } catch (err) {
       logger.error('Failed to fetch conversations', { error: err });
     }
-  }, []);
+  }, [conversationService]);
   useEffect(() => { refreshConversationsRef.current = refreshConversations; }, [refreshConversations]);
 
   const refreshNegotiations = useCallback(async () => {
     try {
-      const data = await apiClient.get<{ conversations: ConversationSummary[] }>('/conversations/negotiations');
-      setNegotiations(data.conversations);
+      const data = await apiClient.get<{ negotiations: NegotiationSummary[] }>('/negotiations');
+      setNegotiations(data.negotiations);
     } catch (err) {
       logger.error('Failed to fetch negotiations', { error: err });
     }
@@ -181,48 +98,32 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
   const loadMessages = useCallback(async (conversationId: string, opts?: { limit?: number; before?: string }) => {
     try {
-      const params = new URLSearchParams();
-      if (opts?.limit) params.set('limit', String(opts.limit));
-      if (opts?.before) params.set('before', opts.before);
-      const qs = params.toString();
-      const data = await apiClient.get<{ messages: ConversationMessage[] }>(
-        `/conversations/${conversationId}/messages${qs ? `?${qs}` : ''}`
-      );
+      const { messages: loaded } = await conversationService.getMessages(conversationId, opts);
       setMessages((prev) => {
         const next = new Map(prev);
         const existing = next.get(conversationId) ?? [];
         if (opts?.before) {
-          const olderIds = new Set(data.messages.map((m: ConversationMessage) => m.id));
+          const olderIds = new Set(loaded.map((m) => m.id));
           next.set(
             conversationId,
-            [...data.messages, ...existing.filter((m) => !olderIds.has(m.id))]
+            [...loaded, ...existing.filter((m) => !olderIds.has(m.id))]
           );
         } else {
-          next.set(conversationId, data.messages);
+          next.set(conversationId, loaded);
         }
         return next;
       });
     } catch (err) {
       logger.error('Failed to load messages', { error: err });
     }
-  }, []);
+  }, [conversationService]);
 
   const loadSessionHistory = useCallback(async (
     conversationId: string,
-    opts?: { taskId?: string; beforeSessionId?: string },
+    opts?: { beforeSessionId?: string },
   ) => {
     try {
-      const params = new URLSearchParams({ sessionHistory: 'true' });
-      if (opts?.taskId) params.set('taskId', opts.taskId);
-      if (opts?.beforeSessionId) params.set('beforeSessionId', opts.beforeSessionId);
-      const data = await apiClient.get<{
-        messages: ConversationMessage[];
-        sessionId: string | null;
-        hasPreviousSession: boolean;
-        previousSessionCursor: string | null;
-        sessionOpportunityId: string | null;
-        sessionOpportunityStatus: string | null;
-      }>(`/conversations/${conversationId}/messages?${params.toString()}`);
+      const data = await conversationService.getSessionHistory(conversationId, opts);
       setMessages((previous) => {
         const next = new Map(previous);
         const existing = next.get(conversationId) ?? [];
@@ -247,14 +148,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         });
         return next;
       });
-      // IND-570: store per-session opportunity attribution keyed by sessionId.
-      if (data.sessionId && data.sessionOpportunityId) {
-        setSessionOpportunityMap((previous) => {
-          const next = new Map(previous);
-          next.set(data.sessionId!, { opportunityId: data.sessionOpportunityId!, status: data.sessionOpportunityStatus });
-          return next;
-        });
-      }
     } catch (error) {
       logger.error('Failed to load conversation session history', { error, conversationId });
       setSessionHistory((previous) => {
@@ -264,9 +157,9 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         return next;
       });
     }
-  }, []);
+  }, [conversationService]);
 
-  const loadPreviousSessionMessages = useCallback(async (conversationId: string, taskId?: string) => {
+  const loadPreviousSessionMessages = useCallback(async (conversationId: string) => {
     const current = sessionHistory.get(conversationId);
     if (!current?.hasPreviousSession || !current.previousSessionCursor || current.loadingPrevious) return;
     setSessionHistory((previous) => {
@@ -275,7 +168,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       if (history) next.set(conversationId, { ...history, loadingPrevious: true });
       return next;
     });
-    await loadSessionHistory(conversationId, { taskId, beforeSessionId: current.previousSessionCursor });
+    await loadSessionHistory(conversationId, { beforeSessionId: current.previousSessionCursor });
   }, [loadSessionHistory, sessionHistory]);
 
   const sendMessage = useCallback(async (conversationId: string, parts: unknown[]): Promise<ConversationMessage | null> => {
@@ -317,21 +210,18 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     });
 
     try {
-      const data = await apiClient.post<{ message: ConversationMessage }>(
-        `/conversations/${conversationId}/messages`,
-        { parts }
-      );
+      const sent = await conversationService.sendMessage(conversationId, parts);
       // Replace optimistic message with real one
       setMessages((prev) => {
         const next = new Map(prev);
         const existing = next.get(conversationId) || [];
         next.set(
           conversationId,
-          existing.map((m) => (m.id === optimisticId ? data.message : m))
+          existing.map((m) => (m.id === optimisticId ? sent : m))
         );
         return next;
       });
-      return data.message;
+      return sent;
     } catch (err) {
       logger.error('Failed to send message', { error: err });
       // Roll back optimistic update (messages + conversation sidebar)
@@ -351,7 +241,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       }
       return null;
     }
-  }, [user]);
+  }, [conversationService, user]);
 
   const markConversationRead = useCallback(async (conversationId: string) => {
     // Clear locally before the request returns so nav/sidebar badges respond
@@ -359,20 +249,17 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     setConversations((prev) => prev.map((conversation) => (
       conversation.id === conversationId ? { ...conversation, unreadCount: 0 } : conversation
     )));
-    setNegotiations((prev) => prev.map((conversation) => (
-      conversation.id === conversationId ? { ...conversation, unreadCount: 0 } : conversation
-    )));
 
     try {
-      await apiClient.post(`/conversations/${conversationId}/read`);
+      await conversationService.markConversationRead(conversationId);
     } catch (err) {
       logger.error('Failed to mark conversation read', { conversationId, error: err });
     }
-  }, []);
+  }, [conversationService]);
 
   const hideConversation = useCallback(async (conversationId: string) => {
     try {
-      await apiClient.delete(`/conversations/${conversationId}`);
+      await conversationService.hideConversation(conversationId);
       setConversations((prev) => prev.filter((c) => c.id !== conversationId));
       setMessages((prev) => {
         const next = new Map(prev);
@@ -387,21 +274,18 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     } catch (err) {
       logger.error('Failed to hide conversation', { error: err });
     }
-  }, []);
+  }, [conversationService]);
 
-  const getOrCreateDM = useCallback(async (peerUserId: string): Promise<ConversationSummary> => {
-    const data = await apiClient.post<{ conversation: ConversationSummary }>(
-      '/conversations/dm',
-      { peerUserId }
-    );
+  const getOrCreateDm = useCallback(async (peerUserId: string): Promise<ConversationSummary> => {
+    const conversation = await conversationService.getOrCreateDm(peerUserId);
     // Add to list if not already present
     setConversations((prev) => {
-      const existingIndex = prev.findIndex((c) => c.id === data.conversation.id);
-      if (existingIndex < 0) return [data.conversation, ...prev];
-      return prev.map((conversation, index) => index === existingIndex ? data.conversation : conversation);
+      const existingIndex = prev.findIndex((c) => c.id === conversation.id);
+      if (existingIndex < 0) return [conversation, ...prev];
+      return prev.map((existing, index) => index === existingIndex ? conversation : existing);
     });
-    return data.conversation;
-  }, []);
+    return conversation;
+  }, [conversationService]);
 
   // --- SSE connection ---
 
@@ -480,37 +364,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                 conversationId: convId,
                 message: msg,
               }));
-              break;
-            }
-            case 'question_regeneration': {
-              // Question-message regeneration flip for one signal scope. Fan
-              // out to the mounted negotiator DM (if any); no inbox state to
-              // touch — the negotiator conversation is not an H2H summary.
-              const intentId = data.intentId as string | undefined;
-              if (!intentId) break;
-              const regenerationEvent: QuestionRegenerationEvent = {
-                intentId,
-                pending: Boolean(data.pending),
-              };
-              questionRegenerationHandlersRef.current.forEach((handler) => handler(regenerationEvent));
-              break;
-            }
-            case 'intent_discovery_progress': {
-              const intentId = data.intentId as string | undefined;
-              if (!intentId) break;
-              intentDiscoveryProgressHandlersRef.current.forEach((handler) => handler({ intentId }));
-              break;
-            }
-            case 'intent_invalidated': {
-              const intentId = data.intentId as string | undefined;
-              if (!intentId) break;
-              intentInvalidationHandlersRef.current.forEach((handler) => handler({ intentId }));
-              break;
-            }
-            case 'personal_agent_turn_completed': {
-              const intentId = data.intentId as string | undefined;
-              if (!intentId) break;
-              personalAgentTurnCompletedHandlersRef.current.forEach((handler) => handler({ intentId }));
               break;
             }
           }
@@ -597,7 +450,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         negotiations,
         messages,
         sessionHistory,
-        sessionOpportunityMap,
         isConnected,
         loadMessages,
         loadSessionHistory,
@@ -607,12 +459,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         refreshNegotiations,
         markConversationRead,
         hideConversation,
-        getOrCreateDM,
-        subscribeQuestionRegeneration,
-        subscribePersonalAgentTurnCompleted,
+        getOrCreateDm,
         subscribeConversationMessage,
-        subscribeIntentDiscoveryProgress,
-        subscribeIntentInvalidation,
       }}
     >
       {children}

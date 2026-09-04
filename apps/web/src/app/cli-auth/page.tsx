@@ -51,8 +51,7 @@ function CliAuthPage() {
           return;
         }
 
-        // Mint a non-web API-key principal so CLI chat keeps compatibility
-        // orchestrator behavior without creating a session-JWT web bypass.
+        // Mint a non-web API-key principal without creating a session-JWT web bypass.
         const credential = await apiClient.post<{ key: string; id: string; expiresAt: string }>(
           "/auth/cli-credential",
           buildCliCredentialCreateBody(authRequest),

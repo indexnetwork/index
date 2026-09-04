@@ -10,25 +10,6 @@ import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResul
 // Re-export all types for backward compatibility
 export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
 
-export interface UptakeQuestion {
-  id: string;
-  title: string;
-  prompt: string;
-  options: Array<{ label: string; description: string }>;
-  multiSelect: boolean;
-}
-
-export interface UptakeAcceptanceAdvisoryBody {
-  error: string;
-  advisory: {
-    code: "unresolved_uptake_questions";
-    advisoryOnly: true;
-    opportunityId: string;
-    questions: UptakeQuestion[];
-    acknowledgedUptakeQuestionIds: string[];
-  };
-}
-
 /** HTTP error retaining a parsed structured response for JSON/advisory clients. */
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly response?: unknown) {
@@ -134,18 +115,12 @@ export class ApiClient {
     return (await res.json()) as OpportunityDetail;
   }
 
-  /** Update an opportunity status over REST, optionally acknowledging uptake questions on acceptance. */
+  /** Update an opportunity status over REST. */
   async updateOpportunityStatus(
     id: string,
     status: "accepted" | "rejected",
-    acknowledgedUptakeQuestionIds?: string[],
   ): Promise<Record<string, unknown>> {
-    const res = await this.patch(`/api/opportunities/${id}/status`, {
-      status,
-      ...(status === "accepted" && acknowledgedUptakeQuestionIds
-        ? { acknowledgedUptakeQuestionIds }
-        : {}),
-    });
+    const res = await this.patch(`/api/opportunities/${id}/status`, { status });
     return await res.json() as Record<string, unknown>;
   }
 
@@ -180,27 +155,6 @@ export class ApiClient {
     return body.intent;
   }
 
-  /**
-   * Confirm a proposed intent, persisting it as an active signal.
-   *
-   * `create_intent` returns a proposal (for interactive approval); this turns
-   * that proposal into a real intent.
-   *
-   * @param proposalId - The proposal ID from the create_intent result.
-   * @param description - The proposed signal description.
-   * @param networkId - Optional network to scope the intent to.
-   * @returns The created intent's ID.
-   * @throws Error on auth failure or network error.
-   */
-  async confirmIntent(proposalId: string, description: string, networkId?: string): Promise<{ intentId: string }> {
-    const res = await this.post("/api/intents/confirm", {
-      proposalId,
-      description,
-      ...(networkId ? { networkId } : {}),
-    });
-    const body = (await res.json()) as { intentId: string };
-    return body;
-  }
 
   async updateIntent(intentId: string, description: string): Promise<ToolResult> {
     return this.callTool("update_intent", { intentId, description });

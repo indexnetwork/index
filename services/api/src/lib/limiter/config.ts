@@ -1,4 +1,4 @@
-export type LimiterClass = 'auth_write' | 'read' | 'write' | 'intake_synthesis' | 'mcp_http';
+export type LimiterClass = 'auth_write' | 'read' | 'write' | 'intent_llm' | 'mcp_http';
 
 export interface ClassConfig {
   /** Maximum requests allowed per `windowSec`. */
@@ -12,10 +12,10 @@ const CLASS_PER_MINUTE: Record<LimiterClass, number> = {
   auth_write:       100,
   read:             1200,
   write:            600,
-  // Routes that launch a background LLM synthesis plus a full intent-graph run
-  // and write a durable proposal row per call. The generic write budget lets one
-  // user start 600 of those a minute, so these get their own much tighter class.
-  intake_synthesis: 20,
+  // Routes that run a model call per request (signal clarification, and the
+  // intent graph behind create). The generic write budget lets one user start
+  // 600 of those a minute, so these get their own much tighter class.
+  intent_llm:       20,
   mcp_http:         240,
 };
 
@@ -29,6 +29,6 @@ export const CLASS_CONFIG: Record<LimiterClass, ClassConfig> = {
   auth_write:       resolveClassConfig('auth_write'),
   read:             resolveClassConfig('read'),
   write:            resolveClassConfig('write'),
-  intake_synthesis: resolveClassConfig('intake_synthesis'),
+  intent_llm:       resolveClassConfig('intent_llm'),
   mcp_http:         resolveClassConfig('mcp_http'),
 };

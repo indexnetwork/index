@@ -3,7 +3,7 @@ import type { Id, OpportunityStatus } from '../../platform/database.js';
 import type { Lens } from '../../platform/discovery/embedder.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
-import type { DiscoveryMatchCandidate } from '../../platform/database.js';
+import type { OpenedNegotiation } from '../../platform/database.js';
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -46,10 +46,6 @@ export interface TargetNetwork {
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
   candidateIntentId?: Id<'intents'>;
-  /** Source premise that produced this candidate, when premise-grounded. */
-  sourcePremiseId?: Id<'premises'>;
-  /** Candidate premise that matched this candidate (set for premise-based matches). */
-  candidatePremiseId?: Id<'premises'>;
   /** Source context that produced this candidate, when context-grounded. */
   sourceContextId?: string;
   /** Candidate context that matched this candidate (set for user_context-based matches). */
@@ -231,7 +227,7 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** Per-index relevancy scores for dedup tie-breaking. Background path: from intent_indexes. Chat path: transient from IntentIndexer. */
+  /** Per-index relevancy scores for dedup tie-breaking, read from intent_indexes. */
   indexRelevancyScores: Annotation<Record<string, number>>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),
@@ -255,12 +251,6 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => null,
   }),
 
-  /** User's active premises with embeddings (from prep). Used for premise-to-premise discovery path D. */
-  sourcePremises: Annotation<Array<{ premiseId: Id<'premises'>; embedding: number[] }>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
   /** User context embeddings per network (from prep). Used for discovery. */
   sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; text: string; embedding: number[] }>>({
     reducer: (curr, next) => next ?? curr,
@@ -271,18 +261,6 @@ export const OpportunityGraphState = Annotation.Root({
   resolvedIntentInIndex: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
-  }),
-
-  /** Create-intent signal: when true, tool should return createIntentSuggested so agent can auto-call create_intent. */
-  createIntentSuggested: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /** Suggested description for create_intent when createIntentSuggested is true. */
-  suggestedIntentDescription: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
   }),
 
   /** HyDE embeddings per lens label (from discovery) */
@@ -317,8 +295,8 @@ export const OpportunityGraphState = Annotation.Root({
 
   // ─── Output Fields (Overwrite per turn) ───
 
-  /** Pairs discovery recorded this run. Discovery creates no opportunities. */
-  candidatesEmitted: Annotation<DiscoveryMatchCandidate[]>({
+  /** The pairs that became an opportunity and a negotiation this run. */
+  opened: Annotation<OpenedNegotiation[]>({
     reducer: (curr, next) => next,
     default: () => [],
   }),

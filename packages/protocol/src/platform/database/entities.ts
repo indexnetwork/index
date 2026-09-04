@@ -14,19 +14,17 @@ import type { OpportunityEvidence } from '../../protocol/schemas/network-assignm
 /** Branded string ID for type-safe entity references (keyed by Drizzle table name). */
 export type Id<T extends string = string> = string & { readonly __table?: T };
 
-// ─── Discovery match candidates ──────────────────────────────────────────────
-
-export type DiscoveryMatchCandidateStatus = 'pending' | 'opened' | 'superseded' | 'expired';
+// ─── Intent counterparties ───────────────────────────────────────────────────
 
 /**
- * A pair discovery found, before anyone reached out.
+ * A pair discovery scored and is about to open.
  *
- * Discovery does not create opportunities; it records the pair, keyed by
- * `pairKey`. The uniqueness of that key IS the dedup — both principals'
- * discovery runs converge on one row instead of racing to persist two
- * opportunities between the same two people.
+ * This is a payload, not a stored entity: discovery hands the host the pair and
+ * the host writes the opportunity and its negotiation. `pairKey` is what makes
+ * that idempotent — both principals' runs produce the same key, so the second
+ * one through finds the first one's negotiation instead of opening a second.
  */
-export interface CreateDiscoveryMatchCandidateData {
+export interface CreateIntentCounterpartyData {
   pairKey: string;
   networkId: Id<'networks'>;
   intentA: Id<'intents'>;
@@ -38,35 +36,16 @@ export interface CreateDiscoveryMatchCandidateData {
   evidence: OpportunityEvidence[];
 }
 
-export interface DiscoveryMatchCandidate extends CreateDiscoveryMatchCandidateData {
-  id: string;
-  status: DiscoveryMatchCandidateStatus;
-  createdAt: Date;
-  /** Set once this candidate became a row. */
-  openedOpportunityId?: Id<'opportunities'> | null;
-  /** Resolved for the reader: the party on the other side of the pair. */
-  counterpartName?: string;
-}
-
 /**
- * What materializing a candidate reports back.
- *
- * There is no error case because there is no throw: this is called below the
- * kickoff round bump, where a throw would be retried into a second strategy
- * message and a second round.
+ * A pair that just became an opportunity with a negotiation beside it. The
+ * initiator is side A — whichever side's discovery run reached the pair first —
+ * and it owes the first turn.
  */
-export type CreateAndOpenResult =
-  | { status: 'created' | 'existing'; opportunityId: string }
-  | { status: 'raced' | 'failed'; reason: string };
-
-export interface OnboardingProfileSeed {
-  source: 'experiment_signup' | 'experiment_csv_import';
-  networkId: string;
-  capturedAt: string;
-  name?: string;
-  bio?: string;
-  location?: string;
-  socials?: { label: string; value: string }[];
+export interface OpenedNegotiation {
+  opportunityId: Id<'opportunities'>;
+  negotiationId: string;
+  initiatorUserId: Id<'users'>;
+  initiatorIntentId: Id<'intents'>;
 }
 
 export interface NetworkAssignmentContext {
@@ -95,7 +74,6 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
-  profileSeeds?: OnboardingProfileSeed[];
 }
 
 /** Single social-link row from the user_socials table. */
@@ -121,8 +99,6 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
-  /** Which premise grounded this match, when the match was premise-grounded. */
-  premise?: Id<'premises'>;
   role: string;
   /**
    * ISO-8601 timestamp set the first time this actor advanced the opportunity's
@@ -338,45 +314,6 @@ export type TransitionLifecycleResult =
   | { kind: 'conflict'; status: IntentLifecycleStatus | null; archived: boolean };
 
 /**
- * A durable, owner-scoped intent proposal record — the verified analysis
- * produced before a user approves persistence. `analysis` is host-opaque:
- * the graph never inspects it, only compares/replaces it wholesale.
- */
-export interface IntentProposalRecord {
-  id: string;
-  userId: string;
-  description: string;
-  networkId: string | null;
-  status: 'pending' | 'consumed' | 'rejected';
-  expiresAt: Date;
-  consumedIntentId: string | null;
-}
-
-/** Replace a still-pending proposal's verified payload (owner-edited description). */
-export interface ReviseIntentProposalInput {
-  proposalId: string;
-  userId: string;
-  expectedDescription: string;
-  expectedNetworkId: string | null;
-  description: string;
-  /** Host-validated verifier analysis; opaque to the graph. */
-  analysis: unknown;
-}
-
-/**
- * Result of atomically confirming a proposal into a persisted intent.
- */
-export type ConfirmProposalResult =
-  | { kind: 'created'; intent: CreatedIntent }
-  | { kind: 'replay'; intent: { id: string; archivedAt: Date | null } }
-  | { kind: 'missing' }
-  | { kind: 'expired' }
-  | { kind: 'consumed' }
-  | { kind: 'payload_mismatch' }
-  | { kind: 'analysis_missing' }
-  | { kind: 'membership_required' };
-
-/**
  * Options for vector similarity search.
  */
 export interface SimilarIntentSearchOptions {
@@ -410,51 +347,6 @@ export interface NetworkMembership {
   autoAssign: boolean;
   /** When the user joined the network */
   joinedAt: Date;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PREMISE TYPES
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export interface PremiseAssertion {
-  text: string;
-  tier: 'assertive' | 'contextual';
-  summary?: string;
-}
-
-export interface PremiseProvenance {
-  source: 'explicit' | 'enrichment' | 'integration' | 'onboarding';
-  sourceId?: string;
-  confidence: number;
-  timestamp: string;
-}
-
-export interface PremiseAnalysis {
-  speechActType: 'DECLARATIVE' | 'ASSERTIVE';
-  felicityAuthority: number;
-  felicitySincerity: number;
-  felicityClarity: number;
-  semanticEntropy: number;
-}
-
-export interface PremiseValidity {
-  validFrom?: string;
-  validUntil?: string;
-  volatile: boolean;
-}
-
-export interface PremiseRecord {
-  id: string;
-  userId: string;
-  assertion: PremiseAssertion;
-  provenance: PremiseProvenance;
-  analysis: PremiseAnalysis | null;
-  validity: PremiseValidity;
-  embedding: number[] | null;
-  status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-  createdAt: Date;
-  updatedAt: Date;
-  retractedAt: Date | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -587,7 +479,7 @@ export interface CreateHydeDocumentData {
 // OPPORTUNITY TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type OpportunityStatus = 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
 
 /**
  * Minimal opportunity lifecycle evidence used to narrate an agent negotiation.

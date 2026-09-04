@@ -16,19 +16,17 @@ import { log } from '@/lib/logger';
 
 const logger = log.page.from('networks/[id]');
 
-export type TabValue = 'overview' | 'settings' | 'access' | 'integrations';
+export type TabValue = 'overview' | 'settings' | 'access';
 
 const URL_TO_TAB: Record<string, TabValue> = {
   settings: 'settings',
   contacts: 'access',
-  integrations: 'integrations',
 };
 
 const TAB_TO_URL: Record<TabValue, string | undefined> = {
   overview: undefined,
   settings: 'settings',
   access: 'contacts',
-  integrations: 'integrations',
 };
 
 export interface NetworkDetailProps {
@@ -216,7 +214,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
               {isOwner ? (
                 <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
                   <Tabs.List className="flex border-b border-gray-200 mb-8">
-                    {(['overview', 'settings', 'access', 'integrations'] as const).map((tab) => (
+                    {(['overview', 'settings', 'access'] as const).map((tab) => (
                       <Tabs.Trigger
                         key={tab}
                         value={tab}
@@ -235,9 +233,6 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
                   </Tabs.Content>
                   <Tabs.Content value="access">
                     <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="access" />
-                  </Tabs.Content>
-                  <Tabs.Content value="integrations">
-                    <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="integrations" />
                   </Tabs.Content>
                 </Tabs.Root>
               ) : (

@@ -35,13 +35,10 @@ function printResult(result: { ok: boolean; error?: string }, opts: GlobalOpts) 
 async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
   try {
     const tables = [
-      'frame_centroid_snapshots',
-      'cross_network_yield_snapshots',
-      'frame_drift_observation_runs',
       'intent_networks',
-      'artifacts',
       'messages',
-      'tasks',
+      'negotiation_turns',
+      'negotiations',
       'conversation_metadata',
       'conversation_participants',
       'conversations',
@@ -50,10 +47,8 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
       'hyde_documents',
       'intents',
       'agent_permissions',
-      'agent_transports',
       'agents',
       'apikey',
-      'network_integrations',
       'network_members',
       'networks',
       'users',

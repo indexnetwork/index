@@ -30,8 +30,6 @@ function permissionLabel(action: string): string {
   switch (action) {
     case 'manage:identity':
       return 'Identity';
-    case 'manage:premises':
-      return 'Premises';
     case 'manage:intents':
       return 'Signals';
     case 'manage:networks':

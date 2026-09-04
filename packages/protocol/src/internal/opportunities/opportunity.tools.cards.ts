@@ -62,25 +62,6 @@ export function buildProfileUrl(
 }
 
 /**
- * Build the deep-link to an opportunity's A2A negotiation trace
- * (`/chat/:conversationId`) so users can see *what negotiation led to* the
- * surfaced opportunity (EDG-50/EDG-51). Returns `undefined` when `frontendUrl`
- * is unset or there is no negotiation conversation to link to.
- *
- * The `?link_preview=false` hint mirrors `buildProfileUrl` — chat-gateway
- * runtimes (e.g. Telegram delivery) strip link previews when it is present.
- * Trailing slashes on `frontendUrl` are stripped before concatenation.
- */
-export function buildNegotiationUrl(
-  conversationId: string | undefined,
-  frontendUrl: string | undefined,
-): string | undefined {
-  if (!frontendUrl || !conversationId) return undefined;
-  const base = frontendUrl.replace(/\/+$/, "");
-  return `${base}/chat/${conversationId}?link_preview=false`;
-}
-
-/**
  * Build the agent-facing deep link for an opportunity — the canonical
  * `https://index.network/o/<id>` universal link. Returns `undefined` when
  * `frontendUrl` is unset or there is no opportunity id.
@@ -241,30 +222,3 @@ export function buildMinimalOpportunityCard(
     status: opp.status ?? "negotiating",
   };
 }
-
-/**
- * Stable, retry-classified error codes for `confirm_opportunity_delivery`.
- *
- * The plain `error()` envelope only carries a human message, which forced
- * callers (the Hermes digest sweep) to treat every failure — permanent or
- * transient — as retryable, and made "already delivered but never confirmed"
- * impossible to distinguish from "opportunity deleted". Each code carries an
- * explicit `retryable` flag so deterministic callers can retry transient
- * failures and drop permanent ones instead of re-spamming the ledger.
- */
-export type ConfirmDeliveryErrorCode =
-  | "unauthenticated"
-  | "ledger_unavailable"
-  | "invalid_opportunity_id"
-  | "opportunity_not_found"
-  | "not_authorized"
-  | "confirm_failed";
-
-export function confirmDeliveryError(
-  code: ConfirmDeliveryErrorCode,
-  retryable: boolean,
-  message: string,
-): string {
-  return JSON.stringify({ success: false, error: message, code, retryable });
-}
-

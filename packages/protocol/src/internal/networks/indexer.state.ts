@@ -1,29 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 
-import type { IntentIndexingResult } from "../../protocol/core.js";
 import type { DebugMetaAgent } from "../../protocol/core.js";
-
-/**
- * Intent payload and metadata loaded for network evaluation.
- * Loaded from the database before LLM-based assignment scoring.
- */
-export interface IntentForIndexing {
-  id: string;
-  payload: string;
-  userId: string;
-  sourceType: string | null;
-  sourceId: string | null;
-}
-
-/**
- * Index and member prompts for a single network (user must be member with autoAssign).
- * Used by the evaluated assignment path in IntentNetworkGraphFactory.
- */
-export interface IndexMemberContext {
-  networkId: string;
-  indexPrompt: string | null;
-  memberPrompt: string | null;
-}
 
 /**
  * Result of executing an assignment decision.
@@ -42,31 +19,23 @@ export interface AssignmentResult {
  *
  * ## Signal assignment policy
  *
- * Two assignment paths, selected via `skipEvaluation`:
- * - `true` (direct / manual_override): writes the link immediately with a fixed
- *   score of 1 and mode `manual_override`.  No LLM call.
- * - `false` (automatic / evaluated): loads intent + network context, calls the
- *   injected indexer, then applies `buildNetworkAssignmentDecision` to produce
- *   the threshold / metadata. A no-prompt fast path skips the LLM when both
- *   prompts are absent.
- *
- * The indexer is injected as a constructor argument — communities never imports
- * signals internals directly.
+ * There is none: a link exists because its owner asked for it, so the assign
+ * node writes the row at score 1 with mode `manual_override`. No LLM call.
  *
  * Flow:
  * START → router → {
- *   create: assignNode (direct or evaluated) → END
+ *   create: assignNode → END
  *   read: readNode → END
  *   delete: unassignNode → END
  * }
  */
 export const IntentNetworkGraphState = Annotation.Root({
-  // --- Core Inputs (from ChatGraph via ToolContext) ---
+  // --- Core Inputs (from ToolContext) ---
 
   /** User performing the action. Always required. */
   userId: Annotation<string>,
 
-  /** Target network for assign/read-by-network. From ChatGraph or tool arg. */
+  /** Target network for assign/read-by-network. From ToolContext or tool arg. */
   networkId: Annotation<string | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,
@@ -84,48 +53,7 @@ export const IntentNetworkGraphState = Annotation.Root({
     default: () => 'read' as const,
   }),
 
-  // --- Create Mode Controls ---
-
-  /**
-   * When true, skip LLM evaluation and assign directly (manual_override).
-   * When false, run IntentIndexer evaluation (automatic mode).
-   */
-  skipEvaluation: Annotation<boolean>({
-    reducer: (_, next) => next,
-    default: () => true,
-  }),
-
   // --- Intermediate State (populated by nodes during graph execution) ---
-
-  /** Intent payload and metadata.  Null if intent not found. */
-  intent: Annotation<IntentForIndexing | null>({
-    reducer: (_, next) => next,
-    default: () => null,
-  }),
-
-  /** Network + member context.  Null if user not eligible. */
-  indexContext: Annotation<IndexMemberContext | null>({
-    reducer: (_, next) => next,
-    default: () => null,
-  }),
-
-  /** LLM evaluation result from IntentIndexer.  Null if evaluation was skipped. */
-  evaluation: Annotation<IntentIndexingResult | null>({
-    reducer: (_, next) => next,
-    default: () => null,
-  }),
-
-  /** Final decision: should intent be in this network? */
-  shouldAssign: Annotation<boolean | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
-
-  /** Final score used for decision (0–1). */
-  finalScore: Annotation<number | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
 
   /** Result of the assignment persistence operation. */
   assignmentResult: Annotation<AssignmentResult | null>({

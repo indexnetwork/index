@@ -123,47 +123,6 @@ window.IndexApp = (function () {
     });
   }
 
-  // ---- generation-fenced Hermes runtime bridge (kept for native recovery) ---
-
-  function hasHermesRuntimeBridge() {
-    return !!(window.webkit && window.webkit.messageHandlers
-      && window.webkit.messageHandlers.hermesRuntime);
-  }
-
-  function runtimeRequestId() {
-    if (window.crypto && typeof window.crypto.randomUUID === "function") {
-      return window.crypto.randomUUID();
-    }
-    return `runtime-${Math.random().toString(36).slice(2)}-${performance.now()}`;
-  }
-
-  const hermesRuntimeBridge = window.IndexApi.createHermesRuntimeBridge({
-    createRequestId: runtimeRequestId,
-    postMessage:(message) => {
-      if (!hasHermesRuntimeBridge()) throw new Error("no native Hermes runtime bridge");
-      window.webkit.messageHandlers.hermesRuntime.postMessage(message);
-    },
-  });
-
-  // Swift emits this credential-free callback only after dequeueing the request
-  // on its trusted serial queue. Only then does JS start the execution timeout.
-  window.__indexHermesRuntimeProgress = function (progress) {
-    hermesRuntimeBridge.receiveProgress(progress);
-  };
-
-  // Late replies after timeout/abort are consumed as unknown and cannot settle
-  // a later request because the production bridge already removed the waiter.
-  window.__indexHermesRuntimeResult = function (result) {
-    hermesRuntimeBridge.receive(result);
-  };
-
-  function hermesRuntime(command, payload, options) {
-    if (!hasHermesRuntimeBridge()) {
-      return Promise.reject(new Error("no native Hermes runtime bridge"));
-    }
-    return hermesRuntimeBridge.request(command, payload || {}, options || {});
-  }
-
   // Swift publishes only an authentication-state boolean, never credential material.
   const authSubscribers = new Set();
   window.__indexAuthChanged = function (authenticated) {
@@ -226,13 +185,13 @@ window.IndexApp = (function () {
     const features = meR.ok ? (meR.value.features || {}) : {};
     const intents = intentR.ok ? normalizeList(intentR.value, "intents") : [];
 
-    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks: [], intents, questions: [], radarItems: [] });
+    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks: [], intents, radarItems: [] });
     return {
       snapshot,
       me: mapMe(user),
       networks: [],
       features,
-      raw: { user, features, networks: [], intents, questions: [], radarItems: [] },
+      raw: { user, features, networks: [], intents, radarItems: [] },
     };
   }
 
@@ -319,7 +278,6 @@ window.IndexApp = (function () {
       members: (n._count && n._count.members) || n.memberCount || 0,
       role,
       joined,
-      hasMasterKey: n.hasMasterKey === true,
       hidden: n.hidden === true,
       privacy: joinPolicy === "anyone" ? "public" : "private",
       joinPolicy,
@@ -360,45 +318,6 @@ window.IndexApp = (function () {
   }
 
   // ---- bounded native SSE -------------------------------------------------
-
-  // POST /chat/stream. There is one server persona, so the request names no
-  // persona field. Resolves with
-  // the session id (from the X-Session-Id response header) once the stream ends.
-  // onSession fires as soon as headers arrive, so mid-stream events (e.g.
-  // user_question) can be resolved against the conversation right away.
-  async function streamChat({ message, sessionId, scopeType, scopeId, onEvent, onSession, signal }) {
-    // A half-supplied scope is a caller bug, not a request to drop the scope.
-    // This used to send `if (scopeType && scopeId)`, so a null scopeId silently
-    // downgraded the turn to unscoped — which this app has no surface for
-    // (the API answers a scopeless api-key turn with 403).
-    // Fail here, where the caller is named, rather than at the server.
-    if (Boolean(scopeType) !== Boolean(scopeId)) {
-      throw new Error(
-        `streamChat needs scopeType and scopeId together (got scopeType=${JSON.stringify(scopeType)}, scopeId=${JSON.stringify(scopeId)})`,
-      );
-    }
-
-    const body = { message };
-    if (sessionId) body.sessionId = sessionId;
-    if (scopeType) { body.scopeType = scopeType; body.scopeId = scopeId; }
-
-    let immediateSession = sessionId || null;
-    const receive = (event) => {
-      if (event && event.type === "native_headers") {
-        immediateSession = event.headers && event.headers["x-session-id"] || immediateSession;
-        if (immediateSession && onSession) { try { onSession(immediateSession); } catch (e) { /* ignore */ } }
-        return;
-      }
-      if (onEvent) onEvent(event);
-    };
-    const response = await nativeAPIBridge.request(
-      { kind:"sse", method:"POST", path:"/chat/stream", body },
-      { signal, onEvent:receive, timeoutMs:300000 },
-    );
-    const resolvedSession = response.headers["x-session-id"] || immediateSession || null;
-    if (resolvedSession && resolvedSession !== immediateSession && onSession) { try { onSession(resolvedSession); } catch (e) { /* ignore */ } }
-    return resolvedSession;
-  }
 
   // GET /conversations/stream, live inbox events. Returns an abort handle.
   function streamInbox(onEvent) {
@@ -551,10 +470,6 @@ window.IndexApp = (function () {
     return parseMcpResult(result);
   }
 
-  async function createIntent(description) {
-    return mcpCall("create_intent", { description, autoApprove: true });
-  }
-
   async function registerAgent(input) {
     const payload = await mcpCall("register_agent", {
       name: input.name,
@@ -567,22 +482,6 @@ window.IndexApp = (function () {
       || null;
     if (!agent) throw new Error((payload && payload.error) || "registration failed");
     return agent;
-  }
-
-  // Chat turns embed proposals as ```intent_proposal fenced JSON blocks, the
-  // same format the web app and CLI confirm through POST /intents/confirm.
-  function parseIntentProposals(text) {
-    if (!text) return [];
-    const out = [];
-    const re = /```intent_proposal\s*\n([\s\S]*?)\n```/g;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      try {
-        const p = JSON.parse(m[1]);
-        if (p && p.proposalId && p.description) out.push(p);
-      } catch (e) { /* skip malformed block */ }
-    }
-    return out;
   }
 
   // MCP tool results carry a content[] array; the structured payload lives in
@@ -618,13 +517,9 @@ window.IndexApp = (function () {
     detectHarnesses,
     setupHermes,
     teardownHermes,
-    hermesRuntime,
     onAuthChanged,
     onDeepLink,
-    createIntent,
     registerAgent,
-    parseIntentProposals,
-    streamChat,
     streamInbox,
     notify,
     setNotifyPrefs,

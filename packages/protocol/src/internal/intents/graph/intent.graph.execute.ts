@@ -2,15 +2,10 @@
  * Intent graph, stage 4 and the read fast path.
  */
 
-import { VerifiedIntent, ExecutionResult, ConfirmOutcome, TransitionOutcome, ConfirmIntentAction, TransitionIntentAction } from "./intent.graph.state.js";
-import { normalizeIntentDescription } from "../intent.proposal.js";
+import { VerifiedIntent, ExecutionResult, TransitionOutcome, TransitionIntentAction } from "./intent.graph.state.js";
+import { buildManualAssignmentMetadata } from "../../shared/assignment/network-assignment.policy.js";
 import { timed } from "../../shared/observability/performance.js";
-import { enforceIntentActionBoundary, generateIntentEmbedding, isExplicitUpdateRequest, isVague, logger, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
-
-/** Zero-vector embedding fallback, matching {@link generateIntentEmbedding}'s dimensionality. */
-const ZERO_EMBEDDING_DIMS = 2000;
-
-const VALID_PROPOSAL_EDIT_CLASSIFICATIONS = new Set(['COMMISSIVE', 'DIRECTIVE', 'DECLARATION']);
+import { enforceIntentActionBoundary, generateIntentEmbedding, normalizeIntentDescription, isExplicitUpdateRequest, logger, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 
     /**
      * Node 4: Executor
@@ -30,7 +25,6 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
     logger.verbose('Executing actions', { count: actions.length });
     const results: ExecutionResult[] = [];
     let transitionResult: TransitionOutcome | undefined;
-    let confirmResult: ConfirmOutcome | undefined;
     const scopeEnvelope = state.scopeType && state.scopeId
       ? { scopeType: state.scopeType, scopeId: state.scopeId }
       : {};
@@ -42,7 +36,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
     }
 
     for (const action of actions) {
-      const actionType = action.type.toLowerCase() as 'create' | 'update' | 'expire' | 'transition' | 'confirm';
+      const actionType = action.type.toLowerCase() as 'create' | 'update' | 'expire' | 'transition';
       try {
         if (actionType === 'create') {
           const createAction = action as {
@@ -82,8 +76,15 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             speechActType: toSpeechActType(matchedVerifiedIntent?.verification?.classification),
           });
 
-          results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
-          logger.verbose('Created intent', { intentId: created.id });
+          const linkedNetworkIds = await linkIntentToNetworks(deps, state, created.id);
+          results.push({
+            actionType: 'create',
+            success: true,
+            intentId: created.id,
+            payload: sanitizedPayload,
+            linkedNetworkIds,
+          });
+          logger.verbose('Created intent', { intentId: created.id, linkedNetworkIds });
 
           deps.intentFollowUp?.generateHyde({
             intentId: created.id,
@@ -235,16 +236,6 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             error: outcome.kind !== 'success' ? outcome.kind : undefined,
           });
 
-        } else if (actionType === 'confirm') {
-          const confirmAction = action as ConfirmIntentAction;
-          const outcome = await executeConfirmAction(state, deps, confirmAction);
-          confirmResult = outcome;
-          results.push({
-            actionType: 'confirm',
-            success: outcome.kind === 'created' || outcome.kind === 'replay',
-            intentId: 'intentId' in outcome ? outcome.intentId : undefined,
-            error: outcome.kind !== 'created' && outcome.kind !== 'replay' ? outcome.kind : undefined,
-          });
         }
       } catch (error) {
         logger.error('Failed to execute action', { actionType: action.type, error });
@@ -257,93 +248,49 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
       }
     }
 
-    return { executionResults: results, transitionResult, confirmResult };
+    return { executionResults: results, transitionResult };
   });
 }
 
 /**
- * Confirm a stored proposal into a persisted intent. An owner-edited
- * description (differs from the stored proposal) is re-verified and made
- * authoritative before confirmation continues; an unchanged description
- * skips straight to the atomic confirm. HyDE admission is awaited (unlike
- * the fire-and-forget enqueue on a plain create): a failure here means the
- * intent was saved but is not yet indexed, which the caller must retry.
+ * Link a freshly created intent to exactly the networks the caller named.
+ *
+ * Nothing is scored or inferred: each id must still be an accepted membership,
+ * which {@link IntentGraphDatabase.assignIntentToNetworkIfMember} checks while
+ * holding the membership row. A network the caller no longer belongs to is
+ * skipped and logged rather than failing the create.
+ *
+ * @returns The subset of ids that ended up linked.
  */
-async function executeConfirmAction(
-  state: IntentState,
+async function linkIntentToNetworks(
   deps: IntentGraphDeps,
-  action: ConfirmIntentAction,
-): Promise<ConfirmOutcome> {
-  const { proposalId, description, networkId } = action;
+  state: IntentState,
+  intentId: string,
+): Promise<string[]> {
+  const requested = state.networkIds ?? [];
+  if (requested.length === 0) return [];
 
-  const proposal = await deps.database.getProposalForOwner(proposalId, state.userId);
-  if (!proposal) return { kind: 'missing' };
-  // Check the network scope before touching description/verification at all:
-  // a caller confirming into the wrong network must never revise the stored
-  // proposal on its way to being rejected.
-  if (proposal.networkId !== (networkId ?? null)) return { kind: 'payload_mismatch' };
-
-  let effectiveDescription = proposal.description;
-  if (proposal.description !== description) {
-    if (proposal.status !== 'pending') return { kind: 'consumed' };
-    if (proposal.expiresAt.getTime() <= Date.now()) return { kind: 'expired' };
-
-    const profileContext = (await deps.database.getUserContext(state.userId, null))?.text ?? '';
-    const verdict = await deps.verifier.invoke(description, profileContext);
-    const valid = VALID_PROPOSAL_EDIT_CLASSIFICATIONS.has(verdict.classification)
-      && !isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity);
-    if (!valid) return { kind: 'proposal_edit_rejected' };
-
-    const analysis = {
-      verifierOutput: verdict,
-      combinedScore: Math.min(
-        verdict.felicity_scores.authority,
-        verdict.felicity_scores.sincerity,
-        verdict.felicity_scores.clarity,
-      ),
-    };
-    await deps.database.revisePendingProposal({
-      proposalId: proposal.id,
-      userId: state.userId,
-      expectedDescription: proposal.description,
-      expectedNetworkId: proposal.networkId,
-      description,
-      analysis,
-    });
-    // A revision lost to a concurrent writer (null return) is resolved by the
-    // authoritative check inside confirmProposalIntent below, same as any
-    // other race on this proposal.
-    effectiveDescription = description;
-  }
-
-  const embedding = (await generateIntentEmbedding(deps, effectiveDescription)) ?? new Array(ZERO_EMBEDDING_DIMS).fill(0);
-  const confirmation = await deps.database.confirmProposalIntent({
-    proposalId,
-    userId: state.userId,
-    description: effectiveDescription,
-    ...(networkId ? { networkId } : {}),
-    embedding,
+  const metadata = buildManualAssignmentMetadata({
+    resourceType: 'intent',
+    source: 'intent-create',
+    createdAt: new Date().toISOString(),
   });
-
-  if (confirmation.kind !== 'created' && confirmation.kind !== 'replay') {
-    if (confirmation.kind === 'membership_required') {
-      return { kind: 'membership_required', networkId: proposal.networkId ?? networkId ?? '' };
-    }
-    return { kind: confirmation.kind };
-  }
-
-  const intentId = confirmation.intent.id;
-  try {
-    await deps.intentFollowUp?.generateHyde({
+  const linked: string[] = [];
+  for (const networkId of requested) {
+    const outcome = await deps.database.assignIntentToNetworkIfMember(
+      state.userId,
       intentId,
-      userId: state.userId,
-      ...(proposal.networkId ? { scopeType: 'network' as const, scopeId: proposal.networkId } : {}),
-    });
-    return { kind: confirmation.kind, intentId };
-  } catch (err) {
-    logger.error('Intent admission enqueue failed after confirmation persistence', { intentId, error: err });
-    return { kind: 'admission_enqueue_failed', intentId };
+      networkId,
+      metadata.finalScore,
+      metadata.metadata,
+    );
+    if (outcome.kind === 'assigned' || outcome.kind === 'already_assigned') {
+      linked.push(networkId);
+    } else {
+      logger.warn('Intent network link rejected', { intentId, networkId, outcome: outcome.kind });
+    }
   }
+  return linked;
 }
 
     /**

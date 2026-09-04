@@ -5,12 +5,11 @@ import { useNotifications } from '@/contexts/NotificationContext';
 
 import SettingsTab from '@/components/settings/SettingsTab';
 import AccessTab from '@/components/settings/AccessTab';
-import IntegrationsTab from '@/components/settings/IntegrationsTab';
 
 interface NetworkSettingsPanelProps {
   index: Network;
   onDeleted?: () => void;
-  activeTab: 'settings' | 'access' | 'integrations';
+  activeTab: 'settings' | 'access';
 }
 
 export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: NetworkSettingsPanelProps) {
@@ -44,18 +43,6 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
         networkId={index.id}
         networkService={indexesService}
         onUpdated={updateIndex}
-        success={success}
-        error={error}
-        info={info}
-      />
-    );
-  }
-
-  if (activeTab === 'integrations') {
-    return (
-      <IntegrationsTab
-        network={currentIndex}
-        networkId={index.id}
         success={success}
         error={error}
         info={info}

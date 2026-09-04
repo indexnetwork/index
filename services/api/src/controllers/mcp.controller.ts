@@ -1,8 +1,7 @@
 /**
  * MCP HTTP Handler — wires the MCP server factory to the Streamable HTTP transport.
  * This is the MCP composition root: its request-local adapter/service wiring
- * lives here. The process-wide PersonalAgent and Negotiation graphs come from
- * the host graph composition root.
+ * lives here.
  */
 
 import { jwtVerify, createRemoteJWKSet } from 'jose';
@@ -10,39 +9,26 @@ import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelconte
 
 import { cacheAdapter, hydeCacheAdapter } from '../adapters/cache.adapter';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
-import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
+import { chatDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
-import { chatSessionAdapter } from '../adapters/chat-session.adapter';
-import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
-import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
-import { chatSessionService } from '../services/chat.service';
-import { ChatSummaryService } from '../services/chat-summary.service';
-import { NegotiationSummaryService } from '../services/negotiation-summary.service';
-import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
-import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
-import { userService } from '../services/user.service';
-import { matchesReadyBestEffort, negotiationGraph } from '../lib/negotiation/negotiation-graph';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
-import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createPersonalAgentPersona, PERSONAL_AGENT_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
+import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, CompositeToolDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
-import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
-import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
 
@@ -54,11 +40,6 @@ type McpToolDeps = ToolDeps & {
 // MCP COMPOSITION ROOT (was protocol-init.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
-const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
-const negotiationSummaryService = new NegotiationSummaryService();
-const agentDispatcher = new AgentDispatcherImpl(agentService);
-
 const apiBaseUrl = resolveProtocolBaseUrl();
 
 const protocolDeps = {
@@ -68,65 +49,24 @@ const protocolDeps = {
   cache: cacheAdapter,
   hydeCache: hydeCacheAdapter,
   intentFollowUp: intentIndexing,
-  intentProposalStore: intentProposalDatabaseAdapter,
-  chatSession: chatSessionAdapter,
-  chatSummary: chatSummaryService,
-  negotiationSummary: negotiationSummaryService,
   enricher: enricherAdapter,
-  negotiationDatabase: conversationDatabaseAdapter,
-  // The one fully-wired composition (reflectEnqueue included) — chat/MCP
-  // tool.factory.ts must use this instead of building its own reflect-less
-  // instance, or the all-paused -> reflect trigger is silently lost on
-  // every negotiation opened through this surface.
-  negotiationGraph,
-  // The same hand-off discovery uses. `tool.factory` builds its own
-  // OpportunityGraph from this field; unset, its matches_ready edge ends at
-  // END and a chat-run discovery persists matches nobody is ever woken for.
-  matchesReady: matchesReadyBestEffort,
-  createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
+  createUserDatabase: (db: CompositeToolDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
-  createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>
+  createSystemDatabase: (db: CompositeToolDatabase, userId: string, scope: string[], emb?: Embedder) =>
     createSystemDatabase(db as ChatDatabaseAdapter, userId, scope, emb),
   agentDatabase: agentDatabaseAdapter,
   grantDefaultSystemPermissions: (userId: string) =>
     agentService.grantDefaultSystemPermissions(userId),
-  agentDispatcher,
-  chatMessageWriter: new ChatMessageWriterAdapter(chatSessionService),
-  deliveryLedger: opportunityDeliveryService,
   // IND-593: authoritative owner-proof verifier/consumer for opportunity state
   // changes. Shared process-wide with the MCP toolDeps and the REST issuance
-  // route; threaded into chat tools by the protocol chat factory.
+  // route.
   opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
-  // #1471: host bridge for the negotiator persona's `reject_opportunity` /
-  // `accept_opportunity` tools — the owner's VERDICT lane, which had no lever
-  // in chat before. Registered only in intent-pinned negotiator sessions; the
-  // orchestrator registry never sees it.
+  // #1471: host bridge for the `reject_opportunity` / `accept_opportunity`
+  // tools — the owner's VERDICT lane.
   negotiatorVerdictTools: negotiatorVerdictToolsHost,
 };
-
-const chatSessionReader = {
-  getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
-  // Intent-pinned DMs are excluded: a signal's DM transcript belongs to its
-  // signal surface, never to a generic MCP session reader.
-  listSessions: (userId: string, limit?: number) =>
-    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit ?? 25, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
-  getSession: (userId: string, sessionId: string, messageLimit?: number) =>
-    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit ?? 50, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
-};
-/**
- * Composition-root chat factory. Signal is the product's primary chat persona,
- * so it is the one this factory carries; every other persona (onboarding,
- * negotiator) is derived from it via `withPersona`, sharing the
- * persona-neutral runtime and all injected deps. There is no default persona —
- * the retired orchestrator used to be it.
- */
-// The runtime has no default persona; this base factory just carries the deps.
-// Every chat surface derives a sibling factory bound to the client's own agent
-// identity (`ChatSessionService.get*GraphFactory`), so the nameless persona
-// here never drives a turn.
-export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, createPersonalAgentPersona());
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)
@@ -147,7 +87,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     followUp: protocolDeps.intentFollowUp,
   });
   const intentGraph = intents.createGraph();
-  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -157,10 +96,8 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
-    undefined, undefined, matchesReadyBestEffort,
-    protocolDeps.agentDispatcher,
   ).createGraph();
-  const networks = new Networks({ database, indexer: intents });
+  const networks = new Networks({ database });
   const indexGraph = networks.createGraph();
   const networkMembershipGraph = networks.createMembershipGraph();
   const intentIndexGraph = networks.createAssignmentGraph();
@@ -171,7 +108,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     networkMembership: networkMembershipGraph,
     intentIndex: intentIndexGraph,
     opportunity: opportunityGraph,
-    premise: premiseGraph,
   };
 
   return compiledGraphs;
@@ -188,7 +124,6 @@ const JWKS = createRemoteJWKSet(
 function parseApiKeyMetadata(raw: string | null | undefined): {
   agentId?: string;
   enrollmentCapable?: boolean;
-  isDeliveryAgent?: boolean;
 } {
   if (!raw) {
     return {};
@@ -200,7 +135,6 @@ function parseApiKeyMetadata(raw: string | null | undefined): {
     return {
       ...(parsed.data.agentId ? { agentId: parsed.data.agentId } : {}),
       ...(parsed.data.enrollmentCapable === true ? { enrollmentCapable: true } : {}),
-      ...(parsed.data.isDeliveryAgent === true ? { isDeliveryAgent: true } : {}),
     };
   } catch {
     return {};
@@ -213,84 +147,7 @@ type ApiKeyPrincipalRow = {
   metadata?: string | null;
 };
 
-type TelegramSocial = {
-  userId?: string;
-  label: string;
-  value: string;
-};
-
-type TelegramHandleMismatch = {
-  reason: 'authenticated_user_handle_mismatch' | 'handle_belongs_to_other_user';
-  ownerUserId?: string;
-};
-
 type ResolvedMcpIdentity = McpResolvedIdentity;
-
-function normalizeTelegramHeader(raw: string | null | undefined): string | null {
-  const trimmed = raw
-    ?.trim()
-    .replace(/^@/, '')
-    // Case-insensitive to match the SQL normalization in
-    // EnrichmentDatabaseAdapter.findTelegramHandleOwners; otherwise a stored
-    // `HTTPS://T.ME/<handle>` would pass the SQL filter but fail this JS
-    // re-check, bypassing the mismatch/ownership guard.
-    .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//i, '')
-    .split(/[/?#]/)[0];
-
-  if (!trimmed) return null;
-  if (!/^[A-Za-z0-9_]{5,32}$/.test(trimmed)) return null;
-  return trimmed;
-}
-
-export function telegramHandleFromRequest(request: Request): string | null {
-  return normalizeTelegramHeader(
-    request.headers.get('x-index-telegram-username') ??
-    request.headers.get('x-index-telegram-handle'),
-  );
-}
-
-function telegramHandleFromAuthInput(input: McpAuthInput): string | undefined {
-  return normalizeTelegramHeader(input.telegramUsername ?? input.telegramHandle) ?? undefined;
-}
-
-function normalizeTelegramHandleForComparison(raw: string): string | null {
-  return normalizeTelegramHeader(raw)?.toLowerCase() ?? null;
-}
-
-export function findTelegramHandleMismatch(params: {
-  userId: string;
-  telegramHandle: string;
-  authenticatedUserSocials: TelegramSocial[];
-  matchingTelegramSocials: TelegramSocial[];
-}): TelegramHandleMismatch | null {
-  const requested = normalizeTelegramHandleForComparison(params.telegramHandle);
-  if (!requested) return null;
-
-  const authenticatedTelegramHandles = params.authenticatedUserSocials
-    .filter((social) => social.label === 'telegram')
-    .map((social) => normalizeTelegramHandleForComparison(social.value))
-    .filter((value): value is string => value !== null);
-
-  if (
-    authenticatedTelegramHandles.length > 0 &&
-    !authenticatedTelegramHandles.some((handle) => handle === requested)
-  ) {
-    return { reason: 'authenticated_user_handle_mismatch' };
-  }
-
-  const otherOwner = params.matchingTelegramSocials.find((social) => (
-    social.userId !== undefined &&
-    social.userId !== params.userId &&
-    social.label === 'telegram' &&
-    normalizeTelegramHandleForComparison(social.value) === requested
-  ));
-
-  if (otherOwner?.userId) {
-    return { reason: 'handle_belongs_to_other_user', ownerUserId: otherOwner.userId };
-  }
-
-  return null;
-}
 
 export function resolveMcpApiKeyPrincipal(
   row: ApiKeyPrincipalRow,
@@ -299,27 +156,15 @@ export function resolveMcpApiKeyPrincipal(
   userId: string;
   agentId?: string;
   enrollmentCapable?: boolean;
-  isDeliveryAgent?: boolean;
 } | null {
-  // Check the raw metadata before the canonical MCP schema parses (and strips)
-  // unknown fields. Audience is deliberately outside MCP's capability schema.
-  if (isHermesNegotiatorAudience(row.metadata)) {
-    throw new Error('Hermes negotiator credentials are not accepted by MCP');
-  }
   const metadata = parseApiKeyMetadata(row.metadata);
 
-  // Negotiation-only Hermes credentials are REST principals and have no MCP
-  // capability profile. Reject them before owner identity resolution can
-  // collapse the credential into a broad owner principal.
-  // Agent keys must additionally carry BOTH principal columns (the adapter
+  // Agent keys must carry BOTH principal columns (the adapter
   // mints them with referenceId === userId); a missing side signals a
   // cross-wired/tampered agent key. Divergence between populated columns is
   // rejected for every key by resolveApiKeyUserId below.
   if (metadata.agentId && (!row.userId || !row.referenceId)) {
     throw new Error('Agent API key principal mismatch');
-  }
-  if (metadata.isDeliveryAgent && !metadata.agentId) {
-    throw new Error('Delivery API key principal mismatch');
   }
 
   const userId = resolveApiKeyUserId(row, sessionUserId);
@@ -329,102 +174,7 @@ export function resolveMcpApiKeyPrincipal(
     userId,
     ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
     ...(!metadata.agentId && metadata.enrollmentCapable ? { enrollmentCapable: true } : {}),
-    ...(metadata.agentId && metadata.isDeliveryAgent ? { isDeliveryAgent: true } : {}),
   };
-}
-
-/**
- * Distinguishes Telegram identity verification (infrastructure) failures from
- * auth (token / API-key) failures. A handle that simply belongs to someone
- * else is not one of these: that skips the binding and the request proceeds.
- * The auth resolver's per-path catch blocks
- * reclassify unknown errors (e.g. "API key authentication failed"); rethrowing
- * this type unchanged keeps the client-facing reason accurate and avoids
- * muddling auth alerting.
- */
-class TelegramIdentityError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options);
-    this.name = 'TelegramIdentityError';
-  }
-}
-
-/**
- * Data access used by Telegram identity binding, injectable so the binding
- * policy can be tested without a database.
- */
-export interface TelegramBindingPort {
-  getUserSocials(userId: string): Promise<TelegramSocial[]>;
-  findTelegramHandleOwners(handle: string): Promise<TelegramSocial[]>;
-  setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void>;
-}
-
-const defaultTelegramBindingPort: TelegramBindingPort = {
-  getUserSocials: (userId) => chatDatabaseAdapter.getUserSocials(userId),
-  findTelegramHandleOwners: (handle) => chatDatabaseAdapter.findTelegramHandleOwners(handle),
-  setSocials: (userId, socials) => userService.setSocials(userId, socials),
-};
-
-export async function finalizeMcpIdentity(
-  telegramHandle: string | undefined,
-  identity: ResolvedMcpIdentity,
-  port: TelegramBindingPort = defaultTelegramBindingPort,
-): Promise<ResolvedMcpIdentity> {
-  // Telegram identity binding: any client may send the
-  // x-index-telegram-username/-handle headers (the Hermes plugin sends one
-  // whenever INDEX_TELEGRAM_USERNAME is set), so header presence is only a
-  // request to bind, never a claim of identity. Binding is additive and
-  // optional: a handle we cannot attribute to the authenticated user is
-  // skipped, not rejected.
-  if (!telegramHandle) return identity;
-
-  let existingSocials: TelegramSocial[];
-  let matchingTelegramSocials: TelegramSocial[];
-  try {
-    existingSocials = await port.getUserSocials(identity.userId);
-    matchingTelegramSocials = await port.findTelegramHandleOwners(telegramHandle);
-  } catch (err) {
-    logger.warn('Failed to verify Telegram MCP handle', {
-      userId: identity.userId,
-      telegramHandle,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    throw new TelegramIdentityError('Telegram handle verification failed', { cause: err });
-  }
-
-  const mismatch = findTelegramHandleMismatch({
-    userId: identity.userId,
-    telegramHandle,
-    authenticatedUserSocials: existingSocials,
-    matchingTelegramSocials,
-  });
-  if (mismatch) {
-    // Non-fatal: the caller is already authenticated as themselves and simply
-    // gets no Telegram binding. Failing the request instead would let one
-    // misconfigured INDEX_TELEGRAM_USERNAME break every MCP call for a
-    // deployment, and skipping the write gives up nothing security-wise.
-    logger.warn('Telegram MCP handle mismatch — skipping identity binding', {
-      userId: identity.userId,
-      telegramHandle,
-      reason: mismatch.reason,
-      ownerUserId: mismatch.ownerUserId,
-    });
-    return identity;
-  }
-
-  try {
-    const merged = mergeTelegramHandleIntoSocials(existingSocials, telegramHandle);
-    if (!merged) return identity;
-
-    await port.setSocials(identity.userId, merged);
-  } catch (err) {
-    logger.warn('Failed to persist Telegram MCP handle', {
-      userId: identity.userId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  return identity;
 }
 
 const authResolver: McpAuthResolver = {
@@ -436,11 +186,10 @@ const authResolver: McpAuthResolver = {
         // JWT path
         try {
           const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
-          if (typeof payload.id === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.id, isSessionAuth: true, networkScopeId: null });
-          if (typeof payload.sub === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.sub, isSessionAuth: true, networkScopeId: null });
+          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null };
+          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null };
           throw new Error('JWT payload missing user ID');
         } catch (err) {
-          if (err instanceof TelegramIdentityError) throw err;
           const msg = err instanceof Error ? err.message : String(err);
           const isTransport = msg.includes('fetch') || msg.includes('ECONNREFUSED') ||
             msg.includes('timeout') || msg.includes('NetworkError');
@@ -456,10 +205,9 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: data.userId, isSessionAuth: true, networkScopeId: null });
+            if (data?.userId) return { userId: data.userId, isSessionAuth: true, networkScopeId: null };
           }
         } catch (err) {
-          if (err instanceof TelegramIdentityError) throw err;
           const msg = err instanceof Error ? err.message : String(err);
           throw new Error(`MCP token lookup failed: ${msg}`, { cause: err });
         }
@@ -527,21 +275,19 @@ const authResolver: McpAuthResolver = {
             const networkScopeId = principal.agentId
               ? await resolveAgentNetworkScopeById(principal.agentId)
               : null;
-            return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
+            return {
               userId: principal.userId,
               ...(principal.agentId ? { agentId: principal.agentId } : {}),
               ...(principal.enrollmentCapable ? { enrollmentCapable: true } : {}),
-              ...(principal.isDeliveryAgent ? { isDeliveryAgent: true } : {}),
               networkScopeId,
-            });
+            };
           }
         }
 
         if (sessionUserId) {
-          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: sessionUserId, networkScopeId: null });
+          return { userId: sessionUserId, networkScopeId: null };
         }
       } catch (err) {
-        if (err instanceof TelegramIdentityError) throw err;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === 'Invalid API key') {
           throw err;
@@ -566,8 +312,6 @@ const authResolver: McpAuthResolver = {
         return scheme?.toLowerCase() === 'bearer' && token ? token : undefined;
       })(),
       apiKey: request.headers.get('x-api-key') ?? undefined,
-      telegramHandle: request.headers.get('x-index-telegram-handle') ?? undefined,
-      telegramUsername: request.headers.get('x-index-telegram-username') ?? undefined,
     };
     const { userId } = await authResolver.resolveIdentity(input);
     return userId;
@@ -619,21 +363,12 @@ function createMcpServerInstance(): McpServer {
     embedder: protocolDeps.embedder,
     cache: protocolDeps.cache,
     enricher: protocolDeps.enricher,
-    negotiationDatabase: protocolDeps.negotiationDatabase,
-    negotiationGraph,
-    matchesReady: protocolDeps.matchesReady,
-    agentDispatcher: protocolDeps.agentDispatcher,
     // #1471: owner-verdict host behind reject/accept_opportunity (the Radar
     // Skip/Start-Chat path). Registered on the MCP surface only; the
     // capability matrix confines verdicts to session-authenticated owners.
     negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
-    chatSession: protocolDeps.chatSession,
-    chatSummary: protocolDeps.chatSummary,
-    negotiationSummary: protocolDeps.negotiationSummary,
-    chatMessageWriter: protocolDeps.chatMessageWriter,
-    deliveryLedger: protocolDeps.deliveryLedger,
     opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,
     reportToolError: (error, report) => captureAppException(error, {
       subsystem: report.subsystem ?? 'protocol',
@@ -648,7 +383,6 @@ function createMcpServerInstance(): McpServer {
     mcpRateLimiter: (input) => checkMcpRateLimit(input),
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
-    intentProposalStore: protocolDeps.intentProposalStore,
     graphs,
   };
 

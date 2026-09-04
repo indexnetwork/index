@@ -40,11 +40,16 @@ export class NotificationDeliveryService {
       viewer: viewerIdentity,
       counterpart: counterpartIdentity,
     });
+    const recipientActor = opportunity.actors.find(({ userId }) => userId === recipientId);
     return {
       type: 'opportunity.new',
       id: opportunity.id,
       title: projection.headline,
       body: projection.summary,
+      data: {
+        opportunityId: opportunity.id,
+        intentId: recipientActor?.intent ?? null,
+      },
     };
   }
 

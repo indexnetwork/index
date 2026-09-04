@@ -3,13 +3,50 @@ import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, Crea
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
-import { intentProposalAnalysisSchema, mapProposalAnalysisToIntent } from '../lib/intent/intent-proposal';
-import { intentProposalDatabaseAdapter, type ReviseIntentProposalInput } from './intent-proposal.database.adapter';
-import type { IntentProposalRow } from '../schemas/database.schema';
+import { publishNotificationStreamEvent, type IntentLifecycleWireStatus } from '../lib/notification-stream-events';
+import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 
 
-/** Scope type of the per-signal DM the personal agent speaks into. */
-const PERSONAL_INTENT_SCOPE_TYPE = 'personal-intent';
+const LIFECYCLE_WIRE_COPY: Record<IntentLifecycleWireStatus, { title: string; body: string }> = {
+  ACTIVE: { title: 'Signal resumed', body: 'Discovery is running for this signal again.' },
+  PAUSED: { title: 'Signal paused', body: 'Discovery and negotiations are on hold.' },
+  ARCHIVED: { title: 'Signal removed', body: 'This signal is no longer active.' },
+};
+
+/**
+ * Tell a signal's owner that its effective state changed, so an agent holding
+ * the seat stops or resumes work without waiting for a poll.
+ *
+ * Called after the writing transaction commits and never inside it: a failed
+ * publish must not roll back a transition that already happened, so delivery
+ * errors are logged and swallowed.
+ *
+ * @param userId - The signal owner, whose channel carries the frame.
+ * @param intentId - The signal whose state changed.
+ * @param status - Its effective state as agents see it.
+ * @param lifecycleVersionMs - Monotonic version, letting agents order frames.
+ */
+async function publishIntentLifecycle(
+  userId: string,
+  intentId: string,
+  status: IntentLifecycleWireStatus,
+  lifecycleVersionMs: number,
+): Promise<void> {
+  try {
+    await publishNotificationStreamEvent(userId, {
+      type: 'intent.lifecycle',
+      id: `${intentId}:${lifecycleVersionMs}`,
+      ...LIFECYCLE_WIRE_COPY[status],
+      data: { intentId, status, lifecycleVersionMs },
+    });
+  } catch (error: unknown) {
+    logger.error('Failed to publish intent lifecycle event', {
+      intentId,
+      status,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 export class IntentDatabaseAdapter {
   /**
@@ -22,7 +59,7 @@ export class IntentDatabaseAdapter {
     const text = [profile.identity.bio, profile.identity.name, profile.identity.location]
       .map((s) => s?.trim()).filter(Boolean).join(' ');
     if (!text) return null;
-    return { id: userId, text, embedding: [] as number[], premiseHash: '', generatedAt: new Date() };
+    return { id: userId, text, embedding: [] as number[], generatedAt: new Date() };
   }
 
   async getActiveIntents(userId: string): Promise<ActiveIntentRow[]> {
@@ -95,140 +132,6 @@ export class IntentDatabaseAdapter {
       logger.error('IntentDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
-  }
-
-  /**
-   * Atomically confirm one proposal with optional network assignment.
-   * The durable proposal row is locked before its owner, expiry, exact payload,
-   * verifier output, and current membership are checked. Intent insertion,
-   * optional assignment, and proposal consumption commit together.
-   *
-   * @param input - Client binding plus the server-generated embedding.
-   * @returns A discriminated confirmation result.
-   */
-  async confirmProposalIntent(
-    input: {
-      proposalId: string;
-      userId: string;
-      description: string;
-      networkId?: string;
-      embedding: number[];
-    },
-  ): Promise<
-    | { kind: 'created'; intent: CreatedIntentRow }
-    | { kind: 'replay'; intent: { id: string; archivedAt: Date | null } }
-    | { kind: 'missing' }
-    | { kind: 'expired' }
-    | { kind: 'consumed' }
-    | { kind: 'payload_mismatch' }
-    | { kind: 'analysis_missing' }
-    | { kind: 'membership_required' }
-  > {
-    return db.transaction(async (tx) => {
-      const [proposal] = await tx
-        .select()
-        .from(schema.intentProposals)
-        .where(eq(schema.intentProposals.id, input.proposalId))
-        .limit(1)
-        .for('update');
-      if (!proposal || proposal.userId !== input.userId) return { kind: 'missing' } as const;
-
-      const payloadMatches = proposal.description === input.description
-        && proposal.networkId === (input.networkId ?? null);
-      if (!payloadMatches) return { kind: 'payload_mismatch' } as const;
-
-      if (proposal.status === 'consumed') {
-        if (!proposal.consumedIntentId) return { kind: 'consumed' } as const;
-        const [intent] = await tx
-          .select({ id: schema.intents.id, archivedAt: schema.intents.archivedAt })
-          .from(schema.intents)
-          .where(and(
-            eq(schema.intents.id, proposal.consumedIntentId),
-            eq(schema.intents.userId, input.userId),
-          ))
-          .limit(1);
-        return intent ? { kind: 'replay', intent } as const : { kind: 'consumed' } as const;
-      }
-      if (proposal.status !== 'pending') return { kind: 'consumed' } as const;
-      if (proposal.expiresAt.getTime() <= Date.now()) return { kind: 'expired' } as const;
-
-      const parsedAnalysis = intentProposalAnalysisSchema.safeParse(proposal.analysis);
-      if (!parsedAnalysis.success) return { kind: 'analysis_missing' } as const;
-      const mappedAnalysis = mapProposalAnalysisToIntent(parsedAnalysis.data);
-
-      if (proposal.networkId) {
-        const [membership] = await tx
-          .select({ networkId: schema.networkMembers.networkId })
-          .from(schema.networkMembers)
-          .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
-          .where(and(
-            eq(schema.networkMembers.networkId, proposal.networkId),
-            eq(schema.networkMembers.userId, input.userId),
-            isNull(schema.networkMembers.deletedAt),
-            isNull(schema.networks.deletedAt),
-            sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
-          ))
-          .limit(1)
-          .for('update');
-        if (!membership) return { kind: 'membership_required' } as const;
-      }
-
-      const [created] = await tx.insert(schema.intents)
-        .values({
-          userId: input.userId,
-          payload: proposal.description,
-          embedding: input.embedding,
-          sourceType: 'discovery_form',
-          sourceId: proposal.id,
-          ...mappedAnalysis,
-        })
-        .returning({
-          id: schema.intents.id,
-          payload: schema.intents.payload,
-          summary: schema.intents.summary,
-          isIncognito: schema.intents.isIncognito,
-          createdAt: schema.intents.createdAt,
-          updatedAt: schema.intents.updatedAt,
-          userId: schema.intents.userId,
-        });
-      if (!created) throw new Error('Insert did not return a row');
-
-      if (proposal.networkId) {
-        await tx.insert(schema.intentNetworks).values({
-          intentId: created.id,
-          networkId: proposal.networkId,
-          relevancyScore: null,
-        });
-      }
-
-      await tx
-        .update(schema.intentProposals)
-        .set({
-          status: 'consumed',
-          consumedAt: new Date(),
-          consumedIntentId: created.id,
-        })
-        .where(eq(schema.intentProposals.id, proposal.id));
-
-      return { kind: 'created', intent: created } as const;
-    });
-  }
-
-  /**
-   * Resolve a durable proposal without exposing records owned by another user.
-   * Delegates to {@link IntentProposalDatabaseAdapter} — the single source of
-   * truth for the intent_proposals table's read/write surface.
-   */
-  async getProposalForOwner(proposalId: string, userId: string): Promise<IntentProposalRow | null> {
-    return intentProposalDatabaseAdapter.getProposalForOwner(proposalId, userId);
-  }
-
-  /**
-   * Atomically replace the verified payload of a still-pending owner proposal.
-   * Delegates to {@link IntentProposalDatabaseAdapter}.
-   */
-  async revisePendingProposal(input: ReviseIntentProposalInput): Promise<IntentProposalRow | null> {
-    return intentProposalDatabaseAdapter.revisePendingProposal(input);
   }
 
   async updateIntent(intentId: string, data: UpdateIntentInput): Promise<CreatedIntentRow | null> {
@@ -319,7 +222,7 @@ export class IntentDatabaseAdapter {
     | { kind: 'stale' }
     | { kind: 'conflict'; status: IntentLifecycleStatus | null; archived: boolean }
   > {
-    return db.transaction(async (tx) => {
+    const outcome = await db.transaction(async (tx) => {
       const rows = await tx
         .select({
           id: schema.intents.id,
@@ -407,6 +310,11 @@ export class IntentDatabaseAdapter {
         lifecycleVersionMs: updated.updatedAt.getTime(),
       } as const;
     });
+
+    if (outcome.kind === 'success' && outcome.changed) {
+      await publishIntentLifecycle(input.userId, outcome.id, outcome.status, outcome.lifecycleVersionMs);
+    }
+    return outcome;
   }
 
   /**
@@ -448,9 +356,11 @@ export class IntentDatabaseAdapter {
         updatedAt: schema.intents.updatedAt,
       });
     if (compensated) {
+      const lifecycleVersionMs = compensated.updatedAt.getTime();
+      await publishIntentLifecycle(input.userId, input.intentId, 'PAUSED', lifecycleVersionMs);
       return {
         status: compensated.status as IntentLifecycleStatus,
-        lifecycleVersionMs: compensated.updatedAt.getTime(),
+        lifecycleVersionMs,
       };
     }
 
@@ -475,8 +385,13 @@ export class IntentDatabaseAdapter {
       const [archived] = await db.update(schema.intents)
         .set({ archivedAt: new Date(), updatedAt: new Date() })
         .where(eq(schema.intents.id, intentId))
-        .returning({ id: schema.intents.id });
+        .returning({
+          id: schema.intents.id,
+          userId: schema.intents.userId,
+          updatedAt: schema.intents.updatedAt,
+        });
       if (!archived) return { success: false, error: 'Intent not found' };
+      await publishIntentLifecycle(archived.userId, archived.id, 'ARCHIVED', archived.updatedAt.getTime());
       return { success: true };
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.archiveIntent error', { error: error instanceof Error ? error.message : String(error) });
@@ -502,6 +417,7 @@ export class IntentDatabaseAdapter {
         ne(schema.opportunities.status, 'expired'),
       ))
       .returning({ id: schema.opportunities.id });
+    await negotiationDatabaseAdapter.closeForOpportunities(result.map((row) => row.id));
     for (const row of result) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return result.length;
   }
@@ -612,10 +528,8 @@ export class IntentDatabaseAdapter {
       db.select({ count: count() }).from(schema.intents).where(where),
     ]);
 
-    const { rows: withExtras, totalWaitingOpportunities } = await this.attachIntentExtras(rows, userId, false);
+    const { rows: withExtras, totalWaitingOpportunities } = await this.attachIntentExtras(rows, userId);
     return {
-      // Progress is intentionally a single-signal owner detail contract; keep
-      // the existing list payload stable and inexpensive for dashboards.
       rows: withExtras,
       total: Number(totalResult[0]?.count ?? 0),
       totalWaitingOpportunities,
@@ -624,128 +538,40 @@ export class IntentDatabaseAdapter {
 
   /**
    * Enrich a page of intent list rows with their registered networks, the
-   * per-intent counts the UI surfaces (pending questions, waiting
-   * opportunities), the fresh-intent discovery state, and whether the signal's
-   * own agent is holding an unanswered question. Runs the grouped queries in
-   * parallel and joins in memory, so it stays O(1) round-trips regardless of
-   * page size.
+   * per-intent waiting-opportunity count the UI surfaces and the fresh-intent
+   * discovery state. Runs the grouped queries in parallel and joins in memory,
+   * so it stays O(1) round-trips regardless of page size.
    *
    * @param rows - The paginated base intent rows to enrich.
    * @param userId - Owner, used to scope the waiting-opportunity actor match.
-   * @returns The rows with `networks`, `pendingQuestionCount`,
-   *   `waitingOpportunityCount` and `awaitingReply` populated (empty/zero/false
-   *   when none), plus a deduplicated total of waiting opportunities across
-   *   the page's signals.
+   * @returns The rows with `networks` and `waitingOpportunityCount` populated
+   *   (empty/zero when none), plus a deduplicated total of waiting
+   *   opportunities across the page's signals.
    */
   private async attachIntentExtras(
-    rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming' | 'awaitingReply'> & {
+    rows: (Omit<IntentListRow, 'networks' | 'waitingOpportunityCount' | 'warming'> & {
       /** Stamped by the discovery queue on first successful discovery (IND-482). */
       firstDiscoverySucceededAt: Date | null;
     })[],
     userId: string,
-    includeDiscoveryProgress = true,
   ): Promise<{ rows: IntentListRow[]; totalWaitingOpportunities: number }> {
     if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0 };
     const intentIds = rows.map(r => r.id);
     const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [networks, countResult, progress, awaitingReply] = await Promise.all([
+    const [networks, countResult] = await Promise.all([
       this.networksByIntent(intentIds),
       this.countsByIntent(intentIds, userId),
-      includeDiscoveryProgress ? this.discoveryProgressByIntent(intentIds, userId) : Promise.resolve(new Map()),
-      this.awaitingReplyByIntent(intentIds, userId),
     ]);
     return {
       rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
         ...r,
         networks: networks.get(r.id) ?? [],
-        pendingQuestionCount: countResult.byIntent.get(r.id)?.questions ?? 0,
         waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
-        awaitingReply: awaitingReply.has(r.id),
         warming: r.createdAt > warmingCutoff
           && firstDiscoverySucceededAt == null,
-        ...(includeDiscoveryProgress ? { discoveryProgress: progress.get(r.id) ?? {
-          // Legacy signals have no durable worker row. Do not infer a run from
-          // freshness; report the absence honestly, except known historical success.
-          status: firstDiscoverySucceededAt ? 'completed' : 'unknown',
-          attempt: 0, maxAttempts: 3, assignedCommunityCount: (networks.get(r.id) ?? []).length,
-          processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
-          queuedAt: null, startedAt: null, completedAt: firstDiscoverySucceededAt, updatedAt: null,
-        }} : {}),
       })),
       totalWaitingOpportunities: countResult.totalWaitingOpportunities,
     };
-  }
-
-  /**
-   * The signals whose agent is waiting on the owner: the newest message in the
-   * signal's ('personal-intent', intentId) DM is agent-authored AND carries
-   * structured decision questions, so it is a question nobody has answered
-   * yet. A later owner message makes the newest row theirs and clears the flag.
-   *
-   * Derived, never stored: there is no "answered" bit to drift out of sync,
-   * and one DISTINCT ON read covers the whole page.
-   *
-   * @param intentIds - The page's signals
-   * @param userId - Owner, scoping the DM lookup
-   * @returns The subset of ids whose DM is waiting on an answer
-   */
-  private async awaitingReplyByIntent(intentIds: string[], userId: string): Promise<Set<string>> {
-    const waiting = new Set<string>();
-    if (intentIds.length === 0) return waiting;
-    const rows = await db
-      .selectDistinctOn([schema.chatSessionScopes.scopeId], {
-        intentId: schema.chatSessionScopes.scopeId,
-        role: schema.messages.role,
-        metadata: schema.messages.metadata,
-      })
-      .from(schema.chatSessionScopes)
-      .innerJoin(
-        schema.messages,
-        eq(schema.messages.conversationId, schema.chatSessionScopes.conversationId),
-      )
-      .where(and(
-        eq(schema.chatSessionScopes.userId, userId),
-        eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
-        inArray(schema.chatSessionScopes.scopeId, intentIds),
-      ))
-      .orderBy(
-        schema.chatSessionScopes.scopeId,
-        desc(schema.messages.createdAt),
-        desc(schema.messages.id),
-      );
-    for (const row of rows) {
-      if (row.role !== 'agent') continue;
-      const decisionQuestions = (row.metadata as { decisionQuestions?: unknown } | null)?.decisionQuestions;
-      if (Array.isArray(decisionQuestions) && decisionQuestions.length > 0) waiting.add(row.intentId);
-    }
-    return waiting;
-  }
-
-  private async discoveryProgressByIntent(intentIds: string[], userId: string): Promise<Map<string, NonNullable<IntentListRow['discoveryProgress']>>> {
-    const result = new Map<string, NonNullable<IntentListRow['discoveryProgress']>>();
-    if (!intentIds.length) return result;
-    const rows = await db.select().from(schema.intentDiscoveryProgress).where(and(
-      inArray(schema.intentDiscoveryProgress.intentId, intentIds),
-      eq(schema.intentDiscoveryProgress.userId, userId),
-    ));
-    for (const row of rows) {
-      // A worker heartbeat is the durable row's update time. Do not present a
-      // retained/dead BullMQ job as active after a worker crash or redelivery
-      // gap; its precise state is no longer knowable.
-      const stale = (row.status === 'queued' || row.status === 'running')
-        && Date.now() - row.updatedAt.getTime() > 30 * 60 * 1000;
-      result.set(row.intentId, {
-        status: stale ? 'unknown' : row.status === 'succeeded' ? 'completed' : row.status === 'failed'
-          ? (row.attempt < row.maxAttempts ? 'retrying' : 'failed') : row.status,
-        attempt: row.attempt, maxAttempts: row.maxAttempts,
-        assignedCommunityCount: row.assignedCommunityCount,
-        processedCommunityCount: row.processedCommunityCount,
-        possibleOverlapCount: row.possibleOverlapCount,
-        conversationsStartedCount: row.conversationsStartedCount,
-        queuedAt: row.queuedAt, startedAt: row.startedAt, completedAt: row.completedAt, updatedAt: row.updatedAt,
-      });
-    }
-    return result;
   }
 
 
@@ -777,72 +603,43 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Per-intent counts of pending intent-scoped questions and opportunities
-   * awaiting the viewer. The opportunity query also returns one deduplicated
-   * total across every requested signal. Every requested ID is present in the
-   * returned map (zero when it has none).
+   * Per-intent counts of opportunities awaiting the viewer. The query also
+   * returns one deduplicated total across every requested signal. Every
+   * requested ID is present in the returned map (zero when it has none).
    */
   private async countsByIntent(
     intentIds: string[],
     userId: string,
   ): Promise<{
-    byIntent: Map<string, { questions: number; opportunities: number }>;
+    byIntent: Map<string, { opportunities: number }>;
     totalWaitingOpportunities: number;
   }> {
-    const byIntent = new Map<string, { questions: number; opportunities: number }>();
+    const byIntent = new Map<string, { opportunities: number }>();
     if (intentIds.length === 0) return { byIntent, totalWaitingOpportunities: 0 };
-    for (const id of intentIds) byIntent.set(id, { questions: 0, opportunities: 0 });
+    for (const id of intentIds) byIntent.set(id, { opportunities: 0 });
     const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
 
-    const [questionRows, oppRows] = await Promise.all([
-      // Mirror the intent-scoped pending-questions filter used on the detail
-      // page: pending, not expired, actor-owned
-      // by the user, attributed to the intent via intent-mode sourceId or
-      // triggeredBy. (The opportunity-sourced branch is omitted — rare and
-      // expensive.) Group key is the attributed intent id.
-      db.execute(sql`
-        SELECT key AS intent_id, COUNT(*)::int AS cnt
-        FROM (
-          SELECT CASE
-            WHEN ${schema.questions.detection}->>'mode' = 'intent'
-              AND ${schema.questions.detection}->>'sourceType' = 'intent'
-              THEN ${schema.questions.detection}->>'sourceId'
-            ELSE ${schema.questions.detection}->>'triggeredBy'
-          END AS key
-          FROM ${schema.questions}
-          WHERE ${schema.questions.status} = 'pending'
-            AND (${schema.questions.expiresAt} IS NULL OR ${schema.questions.expiresAt} > NOW())
-            AND ${schema.questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
-        ) sub
-        WHERE key IN (${idList})
-        GROUP BY key
-      `) as unknown as Array<{ intent_id: string; cnt: number }>,
-      db.execute(sql`
-        WITH matching AS (
-          SELECT DISTINCT
-            ${schema.opportunities.id} AS opportunity_id,
-            requested.intent_id
-          FROM ${schema.opportunities}
-          CROSS JOIN LATERAL jsonb_array_elements(${schema.opportunities.actors}) AS actor
-          CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
-          WHERE ${schema.opportunities.status} = 'pending'
-            AND actor->>'userId' = ${userId}
-            AND actor->>'actedAt' IS NULL
-            AND (
-              ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id
-              OR actor->>'intent' = requested.intent_id
-            )
-        )
-        SELECT intent_id, COUNT(DISTINCT opportunity_id)::int AS cnt
-        FROM matching
-        GROUP BY GROUPING SETS ((intent_id), ())
-      `) as unknown as Array<{ intent_id: string | null; cnt: number }>,
-    ]);
+    const oppRows = await db.execute(sql`
+      WITH matching AS (
+        SELECT DISTINCT
+          ${schema.opportunities.id} AS opportunity_id,
+          requested.intent_id
+        FROM ${schema.opportunities}
+        CROSS JOIN LATERAL jsonb_array_elements(${schema.opportunities.actors}) AS actor
+        CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
+        WHERE ${schema.opportunities.status} = 'pending'
+          AND actor->>'userId' = ${userId}
+          AND actor->>'actedAt' IS NULL
+          AND (
+            ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id
+            OR actor->>'intent' = requested.intent_id
+          )
+      )
+      SELECT intent_id, COUNT(DISTINCT opportunity_id)::int AS cnt
+      FROM matching
+      GROUP BY GROUPING SETS ((intent_id), ())
+    `) as unknown as Array<{ intent_id: string | null; cnt: number }>;
 
-    for (const r of questionRows) {
-      const entry = byIntent.get(r.intent_id);
-      if (entry) entry.questions = Number(r.cnt);
-    }
     let totalWaitingOpportunities = 0;
     for (const r of oppRows) {
       if (r.intent_id == null) {
@@ -920,24 +717,6 @@ export class IntentDatabaseAdapter {
       .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
       .limit(1);
     return row.length > 0;
-  }
-
-  /**
-   * Finds an intent by sourceId and userId (e.g. for idempotent proposal confirmation).
-   * @param sourceId - The source identifier (e.g. proposalId from chat).
-   * @param userId - The owning user's ID.
-   * @returns The intent id if found, otherwise null.
-   * @throws May throw database/query errors.
-   */
-  async getIntentBySourceId(sourceId: string, userId: string): Promise<{ id: string; archivedAt: Date | null } | null> {
-    const rows = await db.select({ id: schema.intents.id, archivedAt: schema.intents.archivedAt })
-      .from(schema.intents)
-      .where(and(
-        eq(schema.intents.sourceId, sourceId),
-        eq(schema.intents.userId, userId),
-      ))
-      .limit(1);
-    return rows[0] ?? null;
   }
 
   /**

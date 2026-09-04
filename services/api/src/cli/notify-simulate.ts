@@ -8,7 +8,6 @@
  * Usage:
  *   bun run notify:simulate opportunity --user <email> [--counterpart <email>]
  *   bun run notify:simulate message --user <email> [--counterpart <email>] [--text "..."]
- *   bun run notify:simulate question --user <email> [--title "..."] [--body "..."]
  *
  * Prerequisites: local API + Redis sharing this DB; seeded users (bun run db:seed).
  */
@@ -20,15 +19,13 @@ dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', '.env.develop
 
 const COMMONS_NETWORK_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c';
 
-type Command = 'opportunity' | 'message' | 'question';
+type Command = 'opportunity' | 'message';
 
 interface ParsedArgs {
   command: Command | null;
   userEmail: string | null;
   counterpartEmail: string | null;
   text: string | null;
-  title: string | null;
-  body: string | null;
   help: boolean;
 }
 
@@ -43,16 +40,11 @@ Commands:
                 NotificationDeliveryService (SSE + snapshot).
   message       Insert a real conversation message from a counterpart so the
                 production conversation SSE publishes type:message.
-  question      SIMULATION ONLY — publishes a question.new frame directly.
-                No production emitter exists; SSE clients only (snapshot
-                pollers never see it). Shape follows desktop client expectations.
 
 Options:
   --user <email>          Recipient (required)
-  --counterpart <email>   Other party / message sender (default: a seeded tester)
+  --counterpart <email>   Other party / message sender (default: any other user)
   --text <string>         Message body (message command)
-  --title <string>        Question title (question command)
-  --body <string>         Question body (question command)
   --help                  Show this help
 `);
 }
@@ -64,8 +56,6 @@ function parseArgs(argv: string[]): ParsedArgs {
     userEmail: null,
     counterpartEmail: null,
     text: null,
-    title: null,
-    body: null,
     help: false,
   };
 
@@ -87,16 +77,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       out.text = args[++i] ?? null;
       continue;
     }
-    if (arg === '--title') {
-      out.title = args[++i] ?? null;
-      continue;
-    }
-    if (arg === '--body') {
-      out.body = args[++i] ?? null;
-      continue;
-    }
     if (!arg.startsWith('-') && !out.command) {
-      if (arg === 'opportunity' || arg === 'message' || arg === 'question') {
+      if (arg === 'opportunity' || arg === 'message') {
         out.command = arg;
         continue;
       }
@@ -132,8 +114,6 @@ async function main(): Promise<void> {
     publishNotificationStreamEvent,
   } = await import('../lib/notification-stream-events');
   const { NotificationDeliveryService } = await import('../services/notification-delivery.service');
-  const { TESTER_PERSONAS } = await import('./test-data');
-  type NotificationStreamEvent = import('../lib/notification-stream-events').NotificationStreamEvent;
 
   async function resolveUserByEmail(email: string): Promise<{ id: string; email: string; name: string | null }> {
     const [row] = await db
@@ -159,17 +139,6 @@ async function main(): Promise<void> {
       return counterpart;
     }
 
-    for (const persona of TESTER_PERSONAS) {
-      const [row] = await db
-        .select({ id: users.id, email: users.email, name: users.name })
-        .from(users)
-        .where(eq(users.email, persona.email))
-        .limit(1);
-      if (row?.email && row.id !== recipientId) {
-        return { id: row.id, email: row.email, name: row.name };
-      }
-    }
-
     const [fallback] = await db
       .select({ id: users.id, email: users.email, name: users.name })
       .from(users)
@@ -183,32 +152,6 @@ async function main(): Promise<void> {
 
   try {
     const recipient = await resolveUserByEmail(args.userEmail);
-
-    if (args.command === 'question') {
-      const id = crypto.randomUUID();
-      const title = args.title ?? 'A quick question for you';
-      const body = args.body ?? 'Does this opportunity still look relevant, or should I look elsewhere?';
-      // Production NotificationStreamEventType is opportunity.new only. Cast via
-      // unknown is intentional: this command simulates the desktop-expected
-      // question.new shape that no server emitter publishes today.
-      const event = {
-        type: 'question.new',
-        id,
-        title,
-        body,
-      } as unknown as NotificationStreamEvent;
-
-      await publishNotificationStreamEvent(recipient.id, event);
-
-      console.log('Published simulated question.new (NOT a production emitter)');
-      console.log('  id:', id);
-      console.log('  channel:', notificationStreamChannel(recipient.id));
-      console.log('  recipient:', recipient.email, `(${recipient.id})`);
-      console.log('  title:', title);
-      console.log('  body:', body);
-      console.log('  note: SSE only — /notifications/snapshot will not include this');
-      return;
-    }
 
     const counterpart = await resolveCounterpart(recipient.id, args.counterpartEmail);
 

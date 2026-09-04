@@ -437,10 +437,8 @@ function signalStatus(intent) {
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  // Consolidated count: pending questions + awaiting opportunities (same
-  // number as the Hermes and web dashboards). Demo data carries only
-  // `questions`, hence the fallback.
-  const pending = intent.pending ?? intent.questions ?? 0;
+  // Opportunities awaiting you (same number as the Hermes and web dashboards).
+  const pending = intent.pending ?? 0;
   const hasQ = pending > 0;
   const statusLabel = signalStatus(intent);
   // the blink is the signal working. only the states that are actually running
@@ -492,23 +490,22 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
         </span>
       </div>
 
-      {/* pending questions + awaiting opportunities, the hero */}
+      {/* awaiting opportunities, the hero */}
       <QCount n={pending} muted={!hasQ}/>
     </button>
   );
 }
 
 /* ---------- Pending hero count ---------- */
-// One consolidated, unlabeled number: pending questions + awaiting
-// opportunities, matching the Hermes and web dashboards. The tooltip carries
-// the explanation the label used to.
+// One unlabeled number: opportunities awaiting you, matching the Hermes and
+// web dashboards. The tooltip carries the explanation the label used to.
 function QCount({ n, muted }) {
   if (muted) {
     return null;
   }
   return (
     <span
-      title={`${n} waiting on you — pending questions and opportunities`}
+      title={`${n} waiting on you — pending opportunities`}
       style={{
         display:"flex", alignItems:"baseline", justifyContent:"center",
         padding:"3px 8px",

@@ -2,9 +2,7 @@ import type { ConversationSummary } from '@/services/conversation';
 
 /**
  * Returns whether a conversation belongs in the human-to-human Messages list.
- *
- * Participant topology is canonical: persona cannot distinguish these rows
- * because ordinary H2H conversations also inherit the `orchestrator` default.
+ * Participant topology is the only signal: two users and no agent.
  */
 export function isVisibleH2HConversation(
   conversation: Pick<ConversationSummary, 'participants'>,

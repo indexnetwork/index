@@ -29,7 +29,6 @@ export function getRateLimitInfo(req: Request): RateLimitInfo | undefined {
  * than via JWT. Kept as defense-in-depth for future token shapes.
  */
 const SYSTEM_AGENT_USER_IDS = new Set<string>([
-  SYSTEM_AGENT_IDS.chatOrchestrator,
   SYSTEM_AGENT_IDS.negotiator,
 ]);
 

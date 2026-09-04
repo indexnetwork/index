@@ -23,7 +23,7 @@ import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '.
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import type { McpAuthorizationObserver, McpCapabilityDecision, McpCapabilityPolicyOptions, McpCapabilitySubject, McpPolicyAgentSnapshot } from './mcp.authorization-policy.js';
-import { buildMcpAuthorizationDenialEvent, McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpActivityCaller, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
+import { buildMcpAuthorizationDenialEvent, McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
 
 const logger = protocolLogger('McpServer');
 
@@ -49,14 +49,12 @@ const mcpToolMetadataCache = new Map<string, McpToolRegistrationMetadata[]>();
  * the cached metadata set is automatically invalidated.
  */
 export function getMcpToolMetadataCacheKey(deps: Pick<ToolDeps,
-  'chatSession' | 'agentDatabase' | 'agentDispatcher'
+  'agentDatabase'
 >): string {
   // Contact tools are omitted from the MCP surface entirely (IND-596), so no
   // Request-scoped input can change the MCP tool set.
   return [
-    `chat:${deps.chatSession ? '1' : '0'}`,
     `agent:${deps.agentDatabase ? '1' : '0'}`,
-    `negotiation:${deps.agentDispatcher ? '1' : '0'}`,
   ].join('|');
 }
 
@@ -296,7 +294,7 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `${nameStep}\n` +
     `2. Call research_profile(...) with any identity hints the user gives (name, LinkedIn, GitHub, X, Telegram, website). Present the suggested profile and confirm it with the user in conversation.\n` +
     `${communityStep}\n` +
-    `4. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted. Discovery is optional after that, never mandatory.`
+    `4. Ask what the user is looking for and call create_intent(description="...", networkIds=[...]) so the first signal is persisted. Discovery is optional after that, never mandatory.`
   );
 }
 
@@ -347,9 +345,6 @@ NEVER dump raw JSON or expose IDs (except actionable ones like conversationId). 
 
 # Authentication & Opportunity Lifecycle
 API key in \`x-api-key\` header. Opportunities: draft → pending → accepted/rejected. Agent acceptance ≠ owner approval. Only call update_opportunity with accepted after explicit user confirmation.
-
-# Paused Negotiations
-A negotiation can PAUSE while its opportunity still reads \`negotiating\` — opportunity status never answers "is anything waiting on the user?". list_negotiations/get_negotiation annotate a paused negotiation with \`pause\` (\`reason\`, plus the private question/recommendation \`payload\` when this user's own side is the one paused). There is no separate answer tool: resuming means submitting the next turn via respond_to_negotiation, same as any other turn.
 
 # Tool Guidance
 Read each tool's description for usage rules (when, prerequisites, follow-ups). Tools contain workflow patterns.
@@ -423,8 +418,6 @@ export function createMcpServer(
   const extractAuthInput = (httpReq: Request): McpAuthInput => ({
     bearerToken: extractBearerToken(httpReq),
     apiKey: httpReq.headers.get('x-api-key') ?? undefined,
-    telegramHandle: httpReq.headers.get('x-index-telegram-handle') ?? undefined,
-    telegramUsername: httpReq.headers.get('x-index-telegram-username') ?? undefined,
   });
 
   const getAuthenticatedRequest = (httpReq: Request): Promise<AuthenticatedMcpRequest> => {
@@ -496,11 +489,6 @@ export function createMcpServer(
         identity: authenticated.identity,
         agent: authenticated.agent,
       });
-      // Bind the typed resolved caller context so tools with
-      // permission-projected output (read_activity_summary) can apply the
-      // centralized projection without re-deriving principal state.
-      context.mcpCaller = resolveMcpActivityCaller(subject);
-
       return {
         ...authenticated,
         context,
