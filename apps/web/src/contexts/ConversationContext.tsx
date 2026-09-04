@@ -66,6 +66,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const refreshNegotiationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conversationMessageHandlersRef = useRef(new Set<(event: ConversationMessageEvent) => void>());
+  const pendingOptimisticIdsRef = useRef(new Set<string>());
 
   const subscribeConversationMessage = useCallback(
     (handler: (event: ConversationMessageEvent) => void) => {
@@ -178,6 +179,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     }
     // Optimistic update
     const optimisticId = crypto.randomUUID();
+    pendingOptimisticIdsRef.current.add(optimisticId);
     const optimistic: ConversationMessage = {
       id: optimisticId,
       conversationId,
@@ -211,19 +213,23 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
     try {
       const sent = await conversationService.sendMessage(conversationId, parts);
-      // Replace optimistic message with real one
+      pendingOptimisticIdsRef.current.delete(optimisticId);
+      // SSE may already have replaced the optimistic row with `sent`. Drop the
+      // placeholder if it remains; do not append `sent` a second time.
       setMessages((prev) => {
         const next = new Map(prev);
         const existing = next.get(conversationId) || [];
-        next.set(
-          conversationId,
-          existing.map((m) => (m.id === optimisticId ? sent : m))
-        );
+        if (existing.some((m) => m.id === sent.id)) {
+          next.set(conversationId, existing.filter((m) => m.id !== optimisticId));
+        } else {
+          next.set(conversationId, existing.map((m) => (m.id === optimisticId ? sent : m)));
+        }
         return next;
       });
       return sent;
     } catch (err) {
       logger.error('Failed to send message', { error: err });
+      pendingOptimisticIdsRef.current.delete(optimisticId);
       // Roll back optimistic update (messages + conversation sidebar)
       setMessages((prev) => {
         const next = new Map(prev);
@@ -321,12 +327,19 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
             case 'message': {
               const msg = data.message as ConversationMessage;
               const convId = data.conversationId as string;
-              // Append message to the conversation's message list
               setMessages((prev) => {
                 const next = new Map(prev);
                 const existing = next.get(convId) || [];
-                // Deduplicate by id (in case we already have it from optimistic update)
                 if (existing.some((m) => m.id === msg.id)) return prev;
+                const pendingIdx = existing.findIndex((m) =>
+                  pendingOptimisticIdsRef.current.has(m.id) && m.senderId === msg.senderId
+                );
+                if (pendingIdx >= 0) {
+                  const merged = [...existing];
+                  merged[pendingIdx] = msg;
+                  next.set(convId, merged);
+                  return next;
+                }
                 next.set(convId, [...existing, msg]);
                 return next;
               });
