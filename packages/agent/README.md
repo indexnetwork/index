@@ -140,6 +140,36 @@ hands the arguments to the host, which supplies the result by resuming. That
 is all `askUserTool()` is — anything else needing a human or another system
 can work the same way.
 
+### Inbox and tick
+
+Unattended, the run is the unit of work, not the event. Every event for an
+intent lands in that intent's `Inbox` and waits; a run reads the whole
+batch in one context, so the same question from three counterparties is
+one question, and a settled match can end the rest.
+
+```ts
+import { Inbox } from "@indexnetwork/agent";
+
+const inbox = new Inbox(agent.for(intent), {
+  onResult: (r) => { if (r.end === "needs-input") postToParty(r.pending!) },  // your channel
+  onError: (e) => log(e),
+});
+const stop = inbox.start();          // ticks every TICK_MS
+
+inbox.push({ kind: "negotiation.turn", opportunityId, turnIndex });   // waits for the tick
+inbox.push({ kind: "message.new", messageId, text: "aggregates are fine" });   // runs now
+```
+
+Two triggers, nothing else. A **tick** runs if the inbox is non-empty;
+events that land during a run wait for the next one. **The party replied**
+runs at once — a human is waiting — and whatever else is queued rides
+along; if a run is in flight, the reply's run follows it. A run that
+throws puts its events back, and they go out on the next tick.
+
+The inbox holds only the queue. The question is on the negotiation record
+and the message is in the DM, so a fresh inbox in a new process picks up
+from the next event.
+
 ### Knowing the time
 
 The agent is told today's date, so "next Tuesday" can be resolved rather
