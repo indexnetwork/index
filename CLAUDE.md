@@ -43,6 +43,7 @@ workflow live further down this file. There is no `docs/` directory — it was d
 | `apps/web` | Vite + React Router SPA. `src/app` routes, `components`, `contexts`, `hooks`, `lib`; `src/services/*.ts` are typed API clients, not business logic. |
 | `apps/mac` | Swift WKWebView shell (`Sources/`) around a self-contained React bundle (`src/`). |
 | `packages/cli`, `claude-plugin`, `hermes-plugin` | Clients over the HTTP/MCP API. `protocol`, `cli`, `claude-plugin`, `hermes-plugin` are subtree-mirrored to public repos on every push to `dev`/`main`; their `package.json` deps must be pinned exactly (`bun run check:subtree-parity`). |
+| `packages/agent` | `@indexnetwork/agent` — the host-run personal agent: one identity, `for(intent)`, a tool loop that suspends on `ask_user`. Knows nothing about Index; the host injects its operations as tools. Subtree-mirrored to `indexnetwork/agent` under the same pinning rule. |
 
 ### API layering (`services/api/src`, enforced by `eslint-plugin-boundaries` in `eslint.config.mjs`)
 

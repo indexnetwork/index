@@ -58,7 +58,6 @@ export async function runLoop(options: LoopOptions): Promise<RunResult> {
     messages.push({ role: "user", content: options.input });
   }
 
-  const open = () => [...context.negotiations.values()];
   let lastText = "";
 
   for (let step = 0; step < options.maxSteps; step++) {
@@ -70,7 +69,7 @@ export async function runLoop(options: LoopOptions): Promise<RunResult> {
     const calls = assistant.tool_calls ?? [];
     if (calls.length === 0) {
       record({ kind: "message", content: lastText });
-      return { output: lastText, steps, end: "done", messages, negotiations: open() };
+      return { output: lastText, steps, end: "done", messages };
     }
 
     let pending: PendingQuestion | undefined;
@@ -109,12 +108,11 @@ export async function runLoop(options: LoopOptions): Promise<RunResult> {
         end: "needs-input",
         pending,
         messages,
-        negotiations: open(),
       };
     }
   }
 
-  return { output: lastText, steps, end: "max-steps", messages, negotiations: open() };
+  return { output: lastText, steps, end: "max-steps", messages };
 }
 
 /**

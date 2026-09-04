@@ -38,6 +38,7 @@ export const MIRRORED_PACKAGE_DIRS = [
   'packages/cli',
   'packages/claude-plugin',
   'packages/hermes-plugin',
+  'packages/agent',
 ] as const;
 
 /** Dependency fields a mirror install resolves when building the package. */

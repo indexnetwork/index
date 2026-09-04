@@ -1,7 +1,7 @@
 {
   "name": "@indexnetwork/agent",
   "version": "0.1.0",
-  "description": "A host-run personal agent: one identity, scopeable to an intent, that can ask its party questions and negotiate over A2A via @indexnetwork/a2a.",
+  "description": "A host-run personal agent: one identity, scopeable to an intent, that can stop to ask its party a question.",
   "license": "MIT",
   "type": "module",
   "private": true,
@@ -18,14 +18,10 @@
     "dist"
   ],
   "scripts": {
-    "stress": "bun run dev/stress.ts",
     "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target node --format esm --packages external && tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "check": "bun run typecheck && bun run test && bun run build"
-  },
-  "dependencies": {
-    "@indexnetwork/a2a": "file:../a2a"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",
