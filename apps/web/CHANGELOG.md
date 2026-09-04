@@ -8,6 +8,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- `'personal'` from the `Agent.type` union, which is now `'external' | 'system'`.
+  The API no longer has a personal agent type; the "Personal Agents" section on
+  `/agents` already listed `external` rows.
 - **The network Integrations tab** and the `/networks/:id/integrations` URL,
   along with `IntegrationsTab`, `services/integrations.ts`, `useGmailConnect`,
   the `/oauth/callback` route and the Composio toolkit icons. Google login is

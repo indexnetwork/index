@@ -31,7 +31,6 @@
     "lint:mac-universal-links": "eslint --config apps/mac/eslint.config.mjs apps/mac/eslint.config.mjs apps/mac/api/deeplink.mjs apps/mac/src/ui/app.jsx",
     "check:subtree-parity": "bun scripts/check-subtree-package-parity.ts",
     "db:setup:local": "bash scripts/setup-local-testdb.sh",
-    "db:seed:sandbox": "cd services/api && bun run db:seed:sandbox",
     "db:playground:reset": "bun scripts/playground-reset.ts",
     "db:playground:resume": "cd services/api && bun src/cli/resume-playground-intents.ts",
     "sync:lockfile-versions": "bun scripts/sync-lockfile-versions.ts",

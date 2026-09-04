@@ -20,16 +20,6 @@ export const messageRoleEnum = pgEnum('message_role', ['user', 'agent']);
 export const conversations = pgTable('conversations', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   dmPair: text('dm_pair'),
-  /**
-   * Chat persona driving this conversation's agent loop (H2A sessions only;
-   * ignored for H2H DMs and A2A negotiation conversations). Plain text —
-   * deliberately not a pg enum so future personas need no enum migration.
-   *
-   * Every H2A writer names its persona explicitly. The default exists only for
-   * the rows where the column is meaningless (DMs, negotiation conversations)
-   * and is the neutral sentinel 'none'.
-   */
-  persona: text('persona').notNull().default('none'),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

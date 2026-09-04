@@ -118,7 +118,7 @@ bun run typecheck                            # Type-check without emitting
 bun run db:generate                          # Generate migrations after schema edits
 bun run db:migrate                           # Apply pending migrations
 bun run db:studio                            # Drizzle Studio
-bun run db:seed:sandbox -- --confirm --minimal  # Seed protocol_sandbox, five-person market
+bun run db:seed -- --confirm                 # Seed networks, admin accounts, system negotiator
 
 # apps/web
 bun run dev | build | start | lint
@@ -165,8 +165,7 @@ Two Neon projects: **Protocol-dev-europe** (`patient-pine-89907813`) for local
 development, and **Protocol** (`shiny-cloud-34341469`) whose branches are `production`
 (**never touch**), `dev` (the Railway dev environment, database `protocol_prod`), and
 `local-dev`. On `local-dev`, `protocol_prod` is a real-data copy and `protocol_sandbox` is
-the curated synthetic sandbox — `protocol_sandbox` is the safe default for
-`.env.development`.
+the disposable one — `protocol_sandbox` is the safe default for `.env.development`.
 
 Schema lives in `services/api/src/schemas/database.schema.ts`; the Drizzle client in
 `services/api/src/lib/drizzle/drizzle.ts`. To change the schema:

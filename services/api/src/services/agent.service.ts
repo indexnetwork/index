@@ -44,8 +44,8 @@ export class AgentService {
       throw new Error('Agent name is required');
     }
 
-    // User-registered agents are external poller runtimes — delegates of the
-    // user's personal negotiator, authenticated via API key (IND-410).
+    // User-registered agents are external poller runtimes authenticated via
+    // API key.
     const agent = await this.db.createAgent({
       ownerId,
       name: cleanName,
@@ -66,18 +66,6 @@ export class AgentService {
       transports: [],
       permissions: [permission],
     });
-  }
-
-  /**
-   * Resolve the user's personal negotiator agent row (`type='personal'`),
-   * provisioning it when missing — `ensureNegotiatorAgent` is idempotent.
-   * Returns null for missing users, which callers treat as
-   * "negotiator not available" (404-equivalent).
-   */
-  async getNegotiatorAgent(userId: string): Promise<AgentRow | null> {
-    const agentId = await this.db.ensureNegotiatorAgent(userId);
-    if (!agentId) return null;
-    return this.db.getAgent(agentId);
   }
 
   async getById(agentId: string, userId: string): Promise<AgentWithRelations> {

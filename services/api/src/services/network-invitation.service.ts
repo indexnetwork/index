@@ -68,11 +68,6 @@ class NetworkInvitationService {
     const email = params.email.toLowerCase().trim();
 
     const { user, created } = await this.findOrCreateUser(email, params.name);
-    // Fire-and-forget: nothing in the invite path reads the negotiator row, and the
-    // ensure-on-signin hook covers the user again at first login (IND-410).
-    void agentDatabaseAdapter.ensureNegotiatorAgent(user.id).catch((err) => {
-      logger.warn('ensureNegotiatorAgent failed during ensureMembership', { userId: user.id, error: err });
-    });
     const { alreadyMember } = await this.joinNetwork(user.id, params.networkId);
 
     const agentId = await this.findScopedAgentId(user.id, params.networkId);

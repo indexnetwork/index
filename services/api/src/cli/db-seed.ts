@@ -1,33 +1,24 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import path from 'path';
-import { writeFile } from 'node:fs/promises';
 import { and, eq, sql } from 'drizzle-orm/sql';
 
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
-import { agentPermissions, agents, networkMembers, networks, users, userSocials } from '../schemas/database.schema';
+import { agentPermissions, agents, networkMembers, networks, users } from '../schemas/database.schema';
 import { SYSTEM_AGENT_IDS } from '../adapters/agent.database.adapter';
-import { agentTokenAdapter } from '../adapters/agent-token.adapter';
 import { setLevel } from '../lib/log';
-import { intentService } from '../services/intent.service';
 import type { Id } from '../types/common.types';
 
-
-import { TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
-
-/** Minimal account shape for user creation (real or synthetic). */
+/** Minimal account shape for user creation. */
 interface SeedAccount {
   email: string;
   name: string;
-  linkedin?: string | null;
-  github?: string | null;
-  x?: string | null;
-  website?: string | null;
 }
 
+/** First account owns every seeded network; the rest join as members. */
 const SYSTEM_ADMIN_ACCOUNTS: SeedAccount[] = [
   { email: 'yanki@index.network', name: 'Yanki' },
   { email: 'seref@index.network', name: 'Seref' },
@@ -43,21 +34,6 @@ const SYSTEM_AGENT_DEFS = [
   },
 ] as const;
 
-const PERSONAL_AGENT_ACTIONS = [
-  'manage:identity',
-  'manage:intents',
-  'manage:networks',
-  'manage:opportunities',
-] as const;
-
-interface SeedApiKeyRecord {
-  name: string;
-  email: string;
-  userId: string;
-  agentId: string;
-  apiKey: string;
-}
-
 // ── Index definitions ───────────────────────────────────────────────────────
 
 interface NetworkDef {
@@ -67,9 +43,6 @@ interface NetworkDef {
   prompt: string | null;
   joinPolicy: 'anyone' | 'invite_only';
 }
-
-/** Use full persona list from test-data (up to TESTER_PERSONAS_MAX). */
-const DB_SEED_TESTER_PERSONAS = TESTER_PERSONAS;
 
 const SEED_INDEXES: NetworkDef[] = [
   // General-purpose indexes (null prompts = auto-assign, no LLM evaluation)
@@ -165,29 +138,16 @@ const SEED_INDEXES: NetworkDef[] = [
 
 // ── CLI flags ───────────────────────────────────────────────────────────────
 
-const PERSONAS_DEFAULT = 10;
-
 type GlobalOpts = {
   silent?: boolean;
   confirm?: boolean;
-  /** Number of tester personas to seed (0–TESTER_PERSONAS_MAX). Default PERSONAS_DEFAULT. */
-  personas: number;
 };
 
 function parseArgs(): GlobalOpts {
   const args = process.argv.slice(2);
-  let personas = PERSONAS_DEFAULT;
-  const personasArg = args.find((a) => a.startsWith('--personas='));
-  if (personasArg) {
-    const value = parseInt(personasArg.split('=')[1], 10);
-    if (!Number.isNaN(value)) {
-      personas = Math.max(0, Math.min(TESTER_PERSONAS_MAX, value));
-    }
-  }
   return {
     silent: args.includes('--silent'),
     confirm: args.includes('--confirm'),
-    personas,
   };
 }
 
@@ -195,7 +155,6 @@ function parseArgs(): GlobalOpts {
 
 async function createUser(account: SeedAccount): Promise<{ id: string }> {
   const normalizedEmail = account.email.toLowerCase().trim();
-  let userId: string;
   try {
     const [user] = await db
       .insert(users)
@@ -206,46 +165,32 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
         onboarding: { completedAt: new Date().toISOString() },
       })
       .returning({ id: users.id });
-    userId = user!.id;
+    return { id: user!.id };
   } catch {
     const [byEmail] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${normalizedEmail}`).limit(1);
     if (byEmail) return byEmail;
     throw new Error(`createUser failed for ${normalizedEmail}: insert failed and no existing user found by email`);
   }
-
-  const socialRows: { userId: string; label: string; value: string }[] = [];
-  if (account.linkedin) socialRows.push({ userId, label: 'linkedin', value: account.linkedin });
-  if (account.github) socialRows.push({ userId, label: 'github', value: account.github });
-  if (account.x) socialRows.push({ userId, label: 'twitter', value: account.x });
-  if (account.website) socialRows.push({ userId, label: 'custom', value: account.website });
-  if (socialRows.length > 0) {
-    await db.insert(userSocials).values(socialRows);
-  }
-
-  return { id: userId };
 }
 
 /**
- * Create or get users for the given accounts and ensure they are members of all seed indexes.
- * @param accounts - List of accounts (real or synthetic).
- * @param options.ownerIndex - Index in this array that receives 'owner' on all networks; others get 'member'. Omit for all 'member'.
+ * Create or get users for the given accounts and ensure they are members of all
+ * seed indexes. The first account receives 'owner' on every network.
+ *
+ * @param accounts - List of accounts to provision.
+ * @returns The created or existing user rows, in input order.
  */
-async function ensureUsersAndMemberships(
-  accounts: SeedAccount[],
-  options: { ownerIndex?: number } = {}
-): Promise<{ id: string }[]> {
-  const { ownerIndex } = options;
+async function ensureUsersAndMemberships(accounts: SeedAccount[]): Promise<{ id: string }[]> {
   const createdUsers: { id: string }[] = [];
   for (const [i, account] of accounts.entries()) {
     const user = await createUser(account);
     createdUsers.push(user);
-    const role = ownerIndex !== undefined && i === ownerIndex ? 'owner' : 'member';
     for (const idx of SEED_INDEXES) {
       try {
         await db.insert(networkMembers).values({
           networkId: idx.id,
           userId: user.id,
-          permissions: role === 'owner' ? ['owner'] : ['member'],
+          permissions: i === 0 ? ['owner'] : ['member'],
           prompt: null,
           autoAssign: true,
         });
@@ -288,13 +233,9 @@ async function ensureAgentPermission(agentId: string, userId: string, actions: s
 // ── Seed logic ──────────────────────────────────────────────────────────────
 
 async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
-  const opts = parseArgs();
-  const { silent, personas: personasLimit } = opts;
-  const personasToSeed = personasLimit === 0 ? [] : DB_SEED_TESTER_PERSONAS.slice(0, personasLimit);
+  const { silent } = parseArgs();
 
   try {
-    if (!silent) console.log('Seeding indexes and users...');
-    if (!silent && DB_SEED_TESTER_PERSONAS.length > 0) console.log(`  Personas to seed: ${personasToSeed.length} (--personas=${personasLimit}, max ${TESTER_PERSONAS_MAX})`);
     if (!silent) console.log('Creating indexes...');
 
     // Create all networks
@@ -323,53 +264,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     const adminUsers = await ensureUsersAndMemberships(SYSTEM_ADMIN_ACCOUNTS);
     if (!silent) console.log(`  System admin users: ${adminUsers.length} ready`);
 
-    if (!silent) console.log(`Creating synthetic persona users (1..${personasToSeed.length})...`);
-    // Synthetic tester personas (first is owner of all networks); count controlled by --personas
-    const personaAccounts: SeedAccount[] = personasToSeed.map((p) => ({
-      email: p.email,
-      name: p.name,
-      linkedin: p.linkedin ?? null,
-      github: p.github ?? null,
-      x: p.x ?? null,
-      website: p.website ?? null,
-    }));
-    const personaUsers = await ensureUsersAndMemberships(personaAccounts, { ownerIndex: 0 });
-    if (!silent) console.log(`  Persona users: ${personaUsers.length} ready`);
-
-    // Create intents with embedding + HyDE inline (no intent graph, no opportunity discovery)
-    if (!silent) console.log('Creating intents (embed + HyDE, no opportunity matching)...');
-    let intentsProcessed = 0;
-    let intentFailures = 0;
-    for (let i = 0; i < personaUsers.length && i < personasToSeed.length; i++) {
-      const userId = personaUsers[i].id;
-      const persona = personasToSeed[i];
-      if (!silent) console.log(`  Persona ${i + 1}/${personaUsers.length}: ${persona.name} — intents 1..${persona.intents.length}`);
-      for (const intentText of persona.intents) {
-        try {
-          await intentService.createIntentForSeed(userId, intentText);
-          intentsProcessed++;
-        } catch (err) {
-          intentFailures++;
-          if (!silent) {
-            console.warn(`  Intent failed for ${persona.name}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`);
-          }
-        }
-      }
-    }
-
-    if (!silent) {
-      console.log(`  ${personaUsers.length} synthetic tester users ready`);
-      console.log(`  ${intentsProcessed} intents created (embed + HyDE, no opportunities)${intentFailures > 0 ? ` (${intentFailures} failed)` : ''}`);
-      console.log('\nIndexes:');
-      for (const idx of SEED_INDEXES) {
-        const label = idx.prompt ? `prompt: "${idx.prompt}"` : 'no prompt (auto-assign)';
-        console.log(`  ${idx.title} [${idx.joinPolicy}] -- ${label}`);
-      }
-      console.log('\nNote: Seed does not run opportunity discovery (no matching between test users).');
-    }
-
     const systemOwner = adminUsers[0];
-    const seededUsers = [...adminUsers, ...personaUsers];
     if (systemOwner) {
       for (const systemAgent of SYSTEM_AGENT_DEFS) {
         await db.insert(agents).values({
@@ -382,7 +277,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
           metadata: {},
         }).onConflictDoNothing();
 
-        for (const user of seededUsers) {
+        for (const user of adminUsers) {
           await ensureAgentPermission(systemAgent.id, user.id, [...systemAgent.actions]);
         }
       }
@@ -392,53 +287,12 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
       }
     }
 
-    // ── Personal agents + API keys for persona users ──────────────────────────
-    if (!silent) console.log('Creating personal agents and API keys for persona users...');
-    const apiKeyRecords: SeedApiKeyRecord[] = [];
-
-    for (let i = 0; i < personaUsers.length && i < personasToSeed.length; i++) {
-      const user = personaUsers[i];
-      const persona = personasToSeed[i];
-
-      // Create personal agent
-      const agentId = crypto.randomUUID();
-      await db.insert(agents).values({
-        id: agentId,
-        ownerId: user.id,
-        name: `${persona.name}'s Agent`,
-        description: `Personal agent for ${persona.name}`,
-        type: 'external',
-        status: 'active',
-        metadata: {},
-      }).onConflictDoNothing();
-
-      // Grant full permissions
-      await ensureAgentPermission(agentId, user.id, [...PERSONAL_AGENT_ACTIONS]);
-
-      // Create API key (plaintext returned only here)
-      const tokenResult = await agentTokenAdapter.create(user.id, {
-        name: `${persona.name}'s API Key`,
-        agentId,
-      });
-
-      apiKeyRecords.push({
-        name: persona.name,
-        email: persona.email,
-        userId: user.id,
-        agentId,
-        apiKey: tokenResult.key,
-      });
-
-      if (!silent) console.log(`  Agent ${i + 1}/${personaUsers.length}: ${persona.name}`);
-    }
-
-    // Write API keys to file
-    const keyFilePath = path.resolve(process.cwd(), '.seed-api-keys.json');
-    await writeFile(keyFilePath, JSON.stringify(apiKeyRecords, null, 2), 'utf-8');
-
     if (!silent) {
-      console.log(`  ${apiKeyRecords.length} personal agents created with API keys`);
-      console.log(`  API keys written to: ${keyFilePath}`);
+      console.log('\nIndexes:');
+      for (const idx of SEED_INDEXES) {
+        const label = idx.prompt ? `prompt: "${idx.prompt}"` : 'no prompt (auto-assign)';
+        console.log(`  ${idx.title} [${idx.joinPolicy}] -- ${label}`);
+      }
     }
 
     return { ok: true };

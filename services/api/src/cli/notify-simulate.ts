@@ -43,7 +43,7 @@ Commands:
 
 Options:
   --user <email>          Recipient (required)
-  --counterpart <email>   Other party / message sender (default: a seeded tester)
+  --counterpart <email>   Other party / message sender (default: any other user)
   --text <string>         Message body (message command)
   --help                  Show this help
 `);
@@ -114,7 +114,6 @@ async function main(): Promise<void> {
     publishNotificationStreamEvent,
   } = await import('../lib/notification-stream-events');
   const { NotificationDeliveryService } = await import('../services/notification-delivery.service');
-  const { TESTER_PERSONAS } = await import('./test-data');
 
   async function resolveUserByEmail(email: string): Promise<{ id: string; email: string; name: string | null }> {
     const [row] = await db
@@ -138,17 +137,6 @@ async function main(): Promise<void> {
         throw new Error('--counterpart must be a different user than --user');
       }
       return counterpart;
-    }
-
-    for (const persona of TESTER_PERSONAS) {
-      const [row] = await db
-        .select({ id: users.id, email: users.email, name: users.name })
-        .from(users)
-        .where(eq(users.email, persona.email))
-        .limit(1);
-      if (row?.email && row.id !== recipientId) {
-        return { id: row.id, email: row.email, name: row.name };
-      }
     }
 
     const [fallback] = await db

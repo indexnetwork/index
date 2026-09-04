@@ -205,7 +205,7 @@ const McpPolicyAgentPermissionSchema = z.object({
 export const McpPolicyAgentSnapshotSchema = z.object({
   id: z.string().min(1),
   ownerId: z.string().min(1),
-  type: z.enum(['personal', 'external', 'system']),
+  type: z.enum(['external', 'system']),
   status: z.enum(['active', 'inactive']),
   permissions: z.array(McpPolicyAgentPermissionSchema),
 }).strict();
@@ -228,7 +228,7 @@ export const McpCapabilitySubjectSchema = z.object({
   profile: McpPrincipalProfileSchema,
   userId: z.string().min(1),
   agentId: z.string().min(1).optional(),
-  agentType: z.enum(['personal', 'external', 'system']).optional(),
+  agentType: z.enum(['external', 'system']).optional(),
   networkScopeId: z.string().min(1).nullable(),
   permissions: z.array(McpPermissionActionSchema),
 }).strict();

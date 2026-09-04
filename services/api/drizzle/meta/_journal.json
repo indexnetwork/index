@@ -1177,6 +1177,20 @@
       "when": 1788484800002,
       "tag": "0170_drop_discovery_match_candidates",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1788484800004,
+      "tag": "0171_drop_conversation_persona",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1788484800006,
+      "tag": "0172_drop_personal_agent_type",
+      "breakpoints": true
     }
   ]
 }

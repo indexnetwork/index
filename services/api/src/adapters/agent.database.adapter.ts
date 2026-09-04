@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm/sql';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime-errors';
@@ -8,12 +8,11 @@ import { log } from '../lib/log';
 const logger = log.lib.from('agent.database.adapter');
 
 /**
- * Agent type semantics (IND-410):
- * - `personal`: the user's own negotiator — one active row per user, auto-provisioned.
- * - `external`: a registered third-party poller runtime (delegate of the negotiator).
+ * Agent type semantics:
+ * - `external`: a registered third-party poller runtime.
  * - `system`: seeded builtin agents.
  */
-export type AgentType = 'personal' | 'external' | 'system';
+export type AgentType = 'external' | 'system';
 export type AgentStatus = 'active' | 'inactive';
 export type TransportChannel = 'mcp';
 export type PermissionScope = 'global' | 'node' | 'network';
@@ -73,7 +72,6 @@ export interface CreateAgentInput {
   ownerId: string;
   name: string;
   description?: string | null;
-  /** Required: an accidental default-typed create would collide with the one-personal-per-owner unique index. */
   type: AgentType;
   status?: AgentStatus;
   metadata?: Record<string, unknown>;
@@ -125,7 +123,6 @@ export interface AgentRegistryStore {
     targetAgentId: string | null;
     disableTargetAgentId?: string;
   }): Promise<AgentWithRelations | null>;
-  ensureNegotiatorAgent(userId: string): Promise<string | null>;
 }
 
 export const SYSTEM_AGENT_IDS: AgentSystemIds = {
@@ -234,8 +231,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
   }
 
   async listAgentsForUser(userId: string): Promise<AgentWithRelations[]> {
-    // Personal negotiator rows are excluded: they carry no API key or transports and
-    // get their own surfaces (sidebar chat, memory panel) — not the agents page.
     const [ownedRows, permittedRows] = await Promise.all([
       db
         .select({ id: schema.agents.id })
@@ -244,7 +239,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           and(
             eq(schema.agents.ownerId, userId),
             isNull(schema.agents.deletedAt),
-            ne(schema.agents.type, 'personal'),
           ),
         ),
       db
@@ -266,7 +260,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           and(
             inArray(schema.agents.id, agentIds),
             isNull(schema.agents.deletedAt),
-            ne(schema.agents.type, 'personal'),
           ),
         ),
       db
@@ -580,68 +573,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   getSystemAgentIds(): AgentSystemIds {
     return SYSTEM_AGENT_IDS;
-  }
-
-  /**
-   * Ensure the user has a personal negotiator agent row (one per user).
-   * Idempotent — safe to call on every sign-in. A missing user row is skipped
-   * rather than provisioned.
-   *
-   * @param userId - The user to provision a negotiator for
-   * @returns The negotiator agent id, or null when the user is missing
-   */
-  async ensureNegotiatorAgent(userId: string): Promise<string | null> {
-    const findExisting = () =>
-      db
-        .select({ id: schema.agents.id })
-        .from(schema.agents)
-        .where(
-          and(
-            eq(schema.agents.ownerId, userId),
-            eq(schema.agents.type, 'personal'),
-            isNull(schema.agents.deletedAt),
-          ),
-        )
-        .limit(1);
-
-    // Fast path: already provisioned.
-    const [existing] = await findExisting();
-    if (existing) {
-      return existing.id;
-    }
-
-    const [user] = await db
-      .select({ name: schema.users.name })
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .limit(1);
-
-    if (!user) {
-      return null;
-    }
-
-    const firstName = (user.name ?? '').trim().split(/\s+/)[0] ?? '';
-    const name = firstName ? `${firstName}'s Negotiator` : 'Your Negotiator';
-
-    await db
-      .insert(schema.agents)
-      .values({
-        ownerId: userId,
-        name,
-        description: 'Negotiates on your behalf across the network.',
-        type: 'personal',
-        status: 'active',
-        metadata: {},
-      })
-      .onConflictDoNothing();
-
-    // Re-query rather than trusting RETURNING — a concurrent sign-in may have won
-    // the insert race (onConflictDoNothing returns no row in that case).
-    const [row] = await findExisting();
-    if (row) {
-      logger.info('Ensured negotiator agent', { userId, agentId: row.id });
-    }
-    return row?.id ?? null;
   }
 
   /**

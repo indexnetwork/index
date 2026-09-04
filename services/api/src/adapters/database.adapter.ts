@@ -16,8 +16,6 @@ export { ConversationDatabaseAdapter } from './conversation.database.adapter';
 
 // ── Public helpers + DTO types ──
 export type {
-  ChatSession, ChatMessage, ChatConversationMeta, ChatMessageMeta,
-  CreateSessionInput, CreateMessageInput,
   ResolvedParticipant, ConversationSummary,
 } from './database.shared';
 

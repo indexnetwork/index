@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.103.0",
+  "version": "0.104.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -16,7 +16,6 @@
     "db:apply-schema": "bun ./src/cli/db-apply-schema.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "bun ./src/cli/db-seed.ts",
-    "db:seed:sandbox": "bun ./src/cli/db-seed-sandbox.ts",
     "notify:simulate": "bun ./src/cli/notify-simulate.ts",
     "db:flush": "bun ./src/cli/db-flush.ts",
     "db:clear-negotiations": "NODE_ENV=development bun ./src/cli/db-clear-negotiations.ts",
@@ -25,8 +24,7 @@
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:backfill-intent-networks": "bun ./src/cli/backfill-intent-networks.ts",
     "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
-    "maintenance:reenqueue-orphaned-discovery": "bun ./src/cli/reenqueue-orphaned-discovery.ts",
-    "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts"
+    "maintenance:reenqueue-orphaned-discovery": "bun ./src/cli/reenqueue-orphaned-discovery.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",

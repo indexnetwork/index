@@ -10,6 +10,30 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Removed
+- **`conversations.persona` and the dead H2A chat-session API.** The column
+  labelled which in-process agent loop owned a conversation; every one of those
+  loops is gone and the surviving writers (H2H DMs, agent DMs, negotiation
+  conversations) all left it at `'none'`. `createChatSession`, `getChatSession`,
+  `getUserChatSessions`, `listChatSessionSummaries`, `getChatSessionDetail`,
+  `getChatSessionByShareToken`, `createChatMessage`, `getChatSessionMessages`,
+  `getChatSessionMetadata` and the rest of that block are deleted, along with
+  `ChatPersonaId`, `ChatSession`, `ChatMessage`, `ChatConversationMeta`,
+  `ChatMessageMeta`, `CreateSessionInput`, `CreateMessageInput` and the
+  `X-Chat-Persona` CORS header. Conversation listings key off participant
+  topology. Migration `0171` drops the column.
+- **`agents.type = 'personal'`.** The auto-provisioned `{First}'s Negotiator` row
+  is gone with `ensureNegotiatorAgent`, `getNegotiatorAgent`, the Better Auth
+  sign-in/registration hooks, the invite-path call and
+  `uniq_agents_personal_per_owner`. Migration `0172` deletes the rows and
+  recreates `agent_type` as `('external','system')`. User-registered agents were
+  already `external`.
+- **The seed-persona fixtures.** `sandbox-personas.ts`, `db-seed-sandbox.ts`,
+  `test-data.ts`, `opportunity-three-user-test.ts`, the `db:seed:sandbox` and
+  `test:opportunity-three-user` scripts. `db:seed` now creates only the networks,
+  the three admin accounts (the first owns every network) and the system
+  negotiator — no tester users, intents, agent API keys or `.seed-api-keys.json`.
+  `notify:simulate` without `--counterpart` falls back to any other user.
+  **Break:** local `protocol_sandbox` no longer comes with a curated market.
 - **The experiment service and master-key signup.** `POST /networks/:id/signup`,
   `/signup/lookup`, `/master-key`, `/rotate-master-key`, `/members/import` and
   `/members/import/parse` are gone, along with `ExperimentService`,
@@ -23,7 +47,7 @@ section before promoting to `main`).
   notification preference adapters and the notification event are removed. MCP
   authentication no longer reads `x-telegram-handle` / `x-telegram-username` or
   binds a handle to an account. Telegram on a user profile stays as a social
-  link, and `chat_persona` keeps its `telegram` enum value.
+  link.
 - **Composio Slack and Gmail.** `integration.controller.ts`,
   `integration.service.ts`, `integration.adapter.ts`, `lib/composio/`, the
   `@composio/core` and `@composio/langchain` dependencies and `COMPOSIO_API_KEY`

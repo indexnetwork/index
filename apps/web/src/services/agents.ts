@@ -25,7 +25,7 @@ export interface Agent {
   ownerId: string;
   name: string;
   description: string | null;
-  type: 'personal' | 'external' | 'system';
+  type: 'external' | 'system';
   status: 'active' | 'inactive';
   notifyOnOpportunity: boolean;
   dailySummaryEnabled: boolean;

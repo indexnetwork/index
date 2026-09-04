@@ -20,6 +20,17 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 47.0.0 - 2026-09-03
+
+### Removed
+
+- **BREAKING: `'personal'` is no longer an agent type.** `AgentRecord.type` and
+  `CreateAgentInput.type` are now `'external' | 'system'`. The `personal` row was
+  the auto-provisioned per-user negotiator behind the in-process negotiation
+  loop; nothing reads it since that loop was deleted. Hosts must delete their
+  `personal` rows and shrink their own enum — user-registered agents are
+  `external`.
+
 ## 46.0.0 - 2026-09-03
 
 ### Removed

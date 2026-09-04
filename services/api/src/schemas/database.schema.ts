@@ -10,7 +10,7 @@ export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
-export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'system']);
+export const agentTypeEnum = pgEnum('agent_type', ['external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
@@ -581,11 +581,6 @@ export const agents = pgTable('agents', {
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
   lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
-  // One active personal negotiator row per owner. External (poller) and system
-  // rows are unconstrained.
-  uniquePersonalPerOwner: uniqueIndex('uniq_agents_personal_per_owner')
-    .on(table.ownerId)
-    .where(sql`${table.type} = 'personal' AND ${table.deletedAt} IS NULL`),
   uniqueHermesInstallation: uniqueIndex('uniq_agents_hermes_installation')
     .on(table.ownerId, table.runtimeKind, table.installationId)
     .where(sql`${table.type} = 'external' AND ${table.runtimeKind} = 'hermes' AND ${table.installationId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
