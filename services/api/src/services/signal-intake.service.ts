@@ -9,7 +9,7 @@
 
 import crypto from 'crypto';
 
-import { Intents, type IntakeAnswer, type IntakePackQuestion, type IntakeRound } from '@indexnetwork/protocol';
+import { Intents, type IntakePackQuestion, type IntakeRound } from '@indexnetwork/protocol';
 
 import { chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { signalIntakePackAdapter } from '../adapters/signal-intake-pack.database.adapter';
@@ -183,7 +183,7 @@ export class SignalIntakeService {
   ): Promise<{ questions: IntakePackQuestion[]; total: number }> {
     const started = Date.now();
     const { maxQuestions } = this.deps.intakeConfig?.() ?? getSignalIntakeConfig();
-    const { brief, question: round1 } = await this.getOrCreatePack(userId);
+    const { brief } = await this.getOrCreatePack(userId);
     const remaining = Math.max(0, maxQuestions - input.rounds.length);
     if (remaining === 0) {
       logger.info('signal_intake_stage', {

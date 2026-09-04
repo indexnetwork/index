@@ -5,7 +5,7 @@
  * Events are sent as Server-Sent Events (SSE) with JSON payloads.
  */
 
-import type { Question, QuestionStrategy } from "../../protocol/question.js";
+import type { Question } from "../../protocol/question.js";
 import type { DebugMetaAgent } from "../../protocol/core.js";
 export type { DebugMetaAgent } from "../../protocol/core.js";
 

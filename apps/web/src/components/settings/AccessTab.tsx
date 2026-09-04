@@ -7,9 +7,7 @@ import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/Tooltip';
-import { useAuthenticatedAPI } from '@/lib/api';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { createUsersService } from '@/services/users';
 import { Member } from '@/services/networks';
 import { validateFile } from '@/lib/file-validation';
 import { parseCsvText, type ImportRow, type ParsedCsvResult } from '@/lib/csv-import';
@@ -40,9 +38,7 @@ export default function AccessTab({
   info: _info,
 }: AccessTabProps) {
   const navigate = useNavigate();
-  const api = useAuthenticatedAPI();
   const { user: currentUser } = useAuthContext();
-  const usersService = createUsersService(api);
 
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(network.permissions?.joinPolicy === 'anyone');
   const [members, setMembers] = useState<Member[]>([]);

@@ -5,7 +5,7 @@
  * Events are sent as Server-Sent Events (SSE) with JSON payloads.
  */
 
-import type { Question, QuestionStrategy } from "@indexnetwork/protocol";
+import type { Question } from "@indexnetwork/protocol";
 
 // Event type discriminator
 export type ChatStreamEventType =

@@ -2,7 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import { BaseMessage } from "@langchain/core/messages";
 import { InferredIntent } from "../intent.inferrer.js";
 import { SemanticVerifierOutput } from "../intent.verifier.js";
-import { IntentReconcilerOutput, NormalizedIntentAction } from "../intent.reconciler.js";
+import { NormalizedIntentAction } from "../intent.reconciler.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
 import type { ToolScopeType } from '../../shared/agent/tool.scope.js';
 import type { IntentLifecycleStatus } from "../../../platform/database.js";

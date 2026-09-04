@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useLocation, useNavigate } from "react-router";
-import { ArrowUp, Pencil, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users, MessageSquare } from "lucide-react";
+import { ArrowUp, Pencil, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
 import { useAIChat } from "@/contexts/AIChatContext";
@@ -11,7 +11,8 @@ import InlineDiscoveryCard from "@/components/chat/InlineDiscoveryCard";
 import { DecisionQuestions } from "@/components/DecisionQuestions";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
-import AssistantMessageContent, { parseAllBlocks } from "@/components/chat/AssistantMessageContent";
+import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
+import { parseAllBlocks } from "@/components/chat/message-blocks";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
@@ -22,13 +23,10 @@ import remarkGfm from "remark-gfm";
 import { useNetworkFilter } from "@/contexts/IndexFilterContext";
 import { useNetworksState } from "@/contexts/IndexesContext";
 import { apiClient } from "@/lib/api";
-import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
+import { useSuggestions } from "@/hooks/useSuggestions";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
-import { log } from "@/lib/logger";
-
-const logger = log.ui.from("ChatContent");
 
 const CHAT_INPUT_PLACEHOLDER = "What's on your mind?";
 

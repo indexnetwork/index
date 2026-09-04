@@ -129,12 +129,12 @@ export const RADAR_SOFT_TARGETS = {
  * Assumes the opportunity already passed isActionableForViewer or is expired.
  *
  * @param opp - Opportunity with actors and status
- * @param viewerId - The viewing user's ID
+ * @param _viewerId - Unused; retained for call-site compatibility
  * @returns Feed category
  */
 export function classifyOpportunity(
   opp: { actors: Array<{ userId: string; role: string }>; status: string },
-  viewerId: string
+  _viewerId: string
 ): FeedCategory {
   if (opp.status === 'expired') return 'expired';
   return 'connection';

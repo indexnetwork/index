@@ -207,7 +207,7 @@ export async function scopeNode(state: OpportunityState, deps: OpportunityGraphD
             const _indexerStart = Date.now();
             const traceEmitter = requestContext.getStore()?.traceEmitter;
             traceEmitter?.({ type: "agent_start", name: "intent-networker" });
-            let result: IntentIndexingResult | null = null;
+            let result: IntentIndexingResult | null;
             try {
               result = await indexer.invoke(
                 state.searchQuery!,

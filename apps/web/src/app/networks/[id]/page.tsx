@@ -18,13 +18,13 @@ const logger = log.page.from('networks/[id]');
 
 export type TabValue = 'overview' | 'settings' | 'access' | 'integrations';
 
-export const URL_TO_TAB: Record<string, TabValue> = {
+const URL_TO_TAB: Record<string, TabValue> = {
   settings: 'settings',
   contacts: 'access',
   integrations: 'integrations',
 };
 
-export const TAB_TO_URL: Record<TabValue, string | undefined> = {
+const TAB_TO_URL: Record<TabValue, string | undefined> = {
   overview: undefined,
   settings: 'settings',
   access: 'contacts',

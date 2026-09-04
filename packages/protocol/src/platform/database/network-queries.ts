@@ -5,7 +5,6 @@
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
 import type { NetworkAssignmentMetadata } from '../../protocol/schemas/network-assignment.schema.js';
 import type { ActiveIntent, AssignmentNetworkMembership, Id, IndexMemberDetails, IndexedIntentDetails, IntentNetworkFinalAssignmentResult, NetworkAssignmentContext, OwnedIndex, UpdateIndexSettingsData } from './entities.js';
-import type { Database } from '../database.js';
 
 /** Network assignment and owner-only index operations. */
 export interface DatabaseNetworkQueries {

@@ -7,13 +7,6 @@ export type HermesActivationState = 'active' | 'revoked';
 
 export type HermesCredentialAudience = typeof HERMES_NEGOTIATOR_AUDIENCE;
 
-/** The negotiator audience uses the stricter scheduled-negotiation protocol. */
-export function isDedicatedHermesNegotiationAudience(
-  audience: HermesCredentialAudience | null,
-): audience is HermesCredentialAudience {
-  return audience === HERMES_NEGOTIATOR_AUDIENCE;
-}
-
 /** Prepared installations rotate through setup; credentials may never be perpetual. */
 export const HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 

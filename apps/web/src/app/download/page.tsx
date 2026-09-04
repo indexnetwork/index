@@ -7,7 +7,7 @@ import "./download.css";
  * notarized build is published (IND-616); until then the Mac card stays visible
  * with a disabled action rather than linking at nothing.
  */
-export const MAC_APP_DOWNLOAD_URL: string =
+const MAC_APP_DOWNLOAD_URL: string =
   import.meta.env.VITE_MAC_APP_DOWNLOAD_URL || "";
 
 /**
@@ -15,14 +15,14 @@ export const MAC_APP_DOWNLOAD_URL: string =
  * no way to know it from the URL without fetching the file, so it is supplied
  * at build time next to the URL above, and simply omitted when absent.
  */
-export const MAC_APP_DOWNLOAD_SIZE: string =
+const MAC_APP_DOWNLOAD_SIZE: string =
   import.meta.env.VITE_MAC_APP_DOWNLOAD_SIZE || "";
 
 /**
  * Hermes Desktop plugin-install deeplink. Override with
  * `VITE_HERMES_INSTALL_URL` for staging or docs links.
  */
-export const HERMES_INSTALL_URL: string =
+const HERMES_INSTALL_URL: string =
   import.meta.env.VITE_HERMES_INSTALL_URL ||
   "hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1";
 

@@ -29,7 +29,7 @@ export function createEnrichmentTools(
       telegram: z.string().optional(),
       websites: z.array(z.string()).optional(),
     }).strict(),
-    handler: async ({ context, query }) => {
+    handler: async ({ query }) => {
       const user = await deps.userDb.getUser();
       if (!user) return error("User not found.");
 

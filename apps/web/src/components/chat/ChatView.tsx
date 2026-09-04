@@ -48,7 +48,6 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   } = useConversation();
 
   const [conversationId, setConversationId] = useState<string | null>(initialGroupId ?? null);
-  const [conversationSummary, setConversationSummary] = useState<ReturnType<typeof useConversation>['conversations'][number] | null>(null);
   const [messageText, setMessageText] = useState(autoSend ? '' : (initialMessage ?? ''));
   const hasAutoSentRef = useRef(false);
   const hasFiredFirstMessageRef = useRef(false);
@@ -68,7 +67,6 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     if (prevUserIdRef.current !== userId) {
       prevUserIdRef.current = userId;
       setConversationId(null);
-      setConversationSummary(null);
       setMessagesLoading(true);
       setContextLoading(true);
       setAcceptedOpportunities([]);
@@ -82,15 +80,12 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     () => (conversationId ? allMessages.get(conversationId) ?? [] : []),
     [conversationId, allMessages],
   );
+  const conversationSummary = conversationId
+    ? conversations.find((conversation) => conversation.id === conversationId) ?? null
+    : null;
   const via = conversationSummary?.via ?? [];
   const latestVia = via[0] ?? null;
   const history = conversationId ? sessionHistory.get(conversationId) : undefined;
-
-  useEffect(() => {
-    if (!conversationId) return;
-    const summary = conversations.find((conversation) => conversation.id === conversationId);
-    if (summary) setConversationSummary(summary);
-  }, [conversationId, conversations]);
 
   useEffect(() => {
     if (!conversationId || (conversationSummary?.unreadCount ?? 0) <= 0) return;
@@ -141,7 +136,6 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         const conv = await getOrCreateDM(userId);
         if (!mounted) return;
         const cid = initialGroupId ?? conv.id;
-        setConversationSummary(conv);
         if (cid && !conversationId) setConversationId(cid);
       } catch (err) {
         logger.error('DM init error', { error: err });

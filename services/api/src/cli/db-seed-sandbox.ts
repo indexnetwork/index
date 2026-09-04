@@ -6,7 +6,7 @@ import { v5 as uuidv5 } from 'uuid';
 
 import { CREDENTIAL_PROVIDER_ID, hashCredentialPassword } from '../lib/betterauth/credential-password';
 
-import { SANDBOX_E2E_CASES, SANDBOX_MINIMAL_PERSONAS, SANDBOX_TWENTY_PERSONAS, SANDBOX_SEED_PASSWORD, type SandboxPersona } from './sandbox-personas';
+import { SANDBOX_MINIMAL_PERSONAS, SANDBOX_TWENTY_PERSONAS, SANDBOX_SEED_PASSWORD, type SandboxPersona } from './sandbox-personas';
 
 const SANDBOX_DATABASE = 'protocol_sandbox';
 const FIXTURE_NAMESPACE = 'd52db0f7-f03d-4f65-a20d-dcc16a890a21';

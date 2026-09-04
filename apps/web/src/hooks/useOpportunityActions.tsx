@@ -29,7 +29,7 @@ export function useOpportunityActions({
 }: UseOpportunityActionsOptions = {}) {
   const navigate = useNavigate();
   const opportunitiesService = useOpportunities();
-  const { error: showError, success: showSuccess } = useNotifications();
+  const { error: showError } = useNotifications();
   const { refreshConversations } = useConversation();
 
   const [opportunityStatusMap, setOpportunityStatusMap] = useState<

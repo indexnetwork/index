@@ -14,15 +14,10 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { DefineTool } from "../shared/agent/tool.helpers.js";
 import type { OpportunityToolDeps } from "./opportunity.tools.port.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
-import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
-import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { OpportunityPresenter, gatherPresenterContext, getSafePresentationOrSkip, narratorRemarkFromReasoning, safeFallbackSummary, stripUuids, type PresenterDatabase } from "./opportunity.presentation.js";
-import { buildOpportunityPresentation } from "./opportunity.presentation.js";
-import { loadNegotiationContext } from "./negotiation-context.loader.js";
+import { focusedIntentId, focusedNetworkId } from "../shared/agent/tool.scope.js";
 import { admitOpportunityUpdate } from "./opportunity.update-admission.js";
-import { opportunityOwnerActionForStatus, type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from "./opportunity.owner-approval.js";
+import { opportunityOwnerActionForStatus } from "./opportunity.owner-approval.js";
 import { ownerApprovalProvenanceFor } from "./opportunity.owner-provenance.js";
-import { selectOpportunityFeed } from "./opportunity.feed-selection.js";
 
 export { buildOpportunityPresentation } from "./opportunity.presentation.js";
 
@@ -33,13 +28,7 @@ import { confirmDeliveryError, logger, ownerApprovalDenial } from "./opportunity
 export { attachOpportunityAppLink, attachProfileLink, buildMinimalOpportunityCard, buildNegotiationUrl, buildOpportunityAppUrl, buildProfileUrl } from "./opportunity.tools.cards.js";
 
 export function createOpportunityTools(defineTool: DefineTool, deps: OpportunityToolDeps) {
-  const { database, userDb, systemDb, graphs, cache } = deps;
-  const createOpportunityPresenter =
-    (deps.opportunityPresentation?.createPresenter as (() => OpportunityPresenter) | undefined) ??
-    (() => new OpportunityPresenter());
-  const gatherOpportunityPresenterContext =
-    (deps.opportunityPresentation?.gatherPresenterContext as typeof gatherPresenterContext | undefined) ??
-    gatherPresenterContext;
+  const { systemDb } = deps;
   const listOpportunities = createListOpportunitiesTool(defineTool, deps);
 
   const updateOpportunity = defineTool({

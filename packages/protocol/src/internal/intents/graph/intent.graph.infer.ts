@@ -2,14 +2,10 @@
  * Intent graph, stages 0-1: load the user's signals, then infer new ones.
  */
 
-import { VerifiedIntent, ExecutionResult, type IntentValidationFailure } from "./intent.graph.state.js";
-import { DEFAULT_SPECIFICITY_WARNING, normalizeIntentDescription } from "../intent.proposal.js";
-import type { NormalizedIntentAction } from "../intent.reconciler.js";
-import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
-import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isExplicitUpdateRequest, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { isExplicitUpdateRequest, logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 
 /**
  * Validate that the input shape selects exactly one route. Returns an error

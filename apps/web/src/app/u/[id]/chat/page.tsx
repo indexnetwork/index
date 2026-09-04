@@ -56,7 +56,7 @@ export default function ChatPage() {
       }
     };
     fetchData();
-  }, [id!, isAuthenticated, authLoading, usersService]);
+  }, [id, isAuthenticated, authLoading, usersService]);
 
   const handleFirstMessageSent = async () => {
     if (!pendingOpportunityId || opportunityAcceptedRef.current) return;

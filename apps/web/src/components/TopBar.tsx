@@ -43,10 +43,6 @@ export default function TopBar() {
   const isSettingsView = pathname?.startsWith('/settings');
 
   useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
         setUserDropdownOpen(false);
@@ -211,9 +207,13 @@ export default function TopBar() {
         </div>
       </div>
 
-      {/* Mobile menu */}
+      {/* Mobile menu. Any click inside it either navigates or signs out, so the
+          container closes the menu instead of an effect watching the route. */}
       {mobileMenuOpen && (
-        <div className="lg:hidden border-t border-gray-100 px-4 py-2 flex flex-col gap-1">
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          className="lg:hidden border-t border-gray-100 px-4 py-2 flex flex-col gap-1"
+        >
           {navItems}
           <button onClick={() => navigate('/settings')} className={navItemClass(!!isSettingsView) + ' text-left'}>
             Settings

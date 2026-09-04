@@ -385,7 +385,7 @@ export async function checkPresenterCacheNode(state: RadarState, deps: RadarGrap
   });
 }
 
-export function shouldGenerateCards(state: RadarState, deps: RadarGraphDeps): string {
+export function shouldGenerateCards(state: RadarState, _deps: RadarGraphDeps): string {
   if (state.uncachedOpportunities.length > 0) {
     return 'generate';
   }
@@ -446,13 +446,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           ? preferredActor
           : (actorWithProfile ?? preferredActor);
         const otherUser = otherActor ? userMap.get(otherActor.userId) ?? null : null;
-        const counterparts = opportunity.actors.filter((a) => a.userId !== state.userId);
-        // Deduplicate by userId — actors array can contain multiple rows per user
-        // (e.g. from different intents), which would produce repeated names.
-        const uniqueCounterpartIds = [...new Set(counterparts.map((a) => a.userId))];
-        const participantNames = uniqueCounterpartIds
-          .map((uid) => userMap.get(uid)?.name ?? 'Unknown')
-          .sort();
         let userName = otherUser?.name ?? 'Unknown';
         // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
         if ((userName === 'Unknown' || !userName?.trim()) && otherActor?.userId && db.getProfile) {

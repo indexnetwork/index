@@ -352,7 +352,10 @@ export default function NetworksPage() {
         uploadIndexImage={indexesService.uploadIndexImage}
       />
 
+      {/* Keyed so each open remounts the form with fresh state seeded from
+          `initial`, instead of the modal resetting itself in an effect. */}
       <RequestNetworkModal
+        key={requestModalOpen ? (editingRequest?.id ?? 'new') : 'closed'}
         open={requestModalOpen}
         onOpenChange={(open) => {
           setRequestModalOpen(open);

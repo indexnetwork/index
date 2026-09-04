@@ -14,7 +14,7 @@ import { Timed } from "../shared/observability/performance.js";
 import { HydeSourceFrameSchema, sanitizeHydeSourceFrame, type HydeSourceFrame } from './hyde.frame.js';
 
 export type { HydeTargetCorpus, Lens } from "../../protocol/core.js";
-import type { HydeTargetCorpus, Lens } from "../../protocol/core.js";
+import type { Lens } from "../../protocol/core.js";
 
 export interface LensInferenceInput {
   /** Intent payload or search query. */

@@ -5,10 +5,8 @@
  * visible in one line.
  */
 
-import type { Opportunity } from './entities.js';
 import type { NegotiationGraphDatabase } from './negotiation.js';
 import type { Database } from '../database.js';
-import type { SystemDatabase, UserDatabase } from './port.js';
 
 
 /**

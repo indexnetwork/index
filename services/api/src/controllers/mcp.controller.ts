@@ -21,7 +21,6 @@ import { enricherAdapter } from '../adapters/enricher.adapter';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import db from '../lib/drizzle/drizzle';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
@@ -141,7 +140,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
 
   logger.info('Compiling MCP graphs (first call, will be cached)');
 
-  const { database, embedder, scraper } = protocolDeps;
+  const { database, embedder } = protocolDeps;
   const intents = new Intents({
     database,
     embedder,

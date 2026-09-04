@@ -1,6 +1,6 @@
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 
-import { readPremisesForUser, schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, isNull, normalizeTelegramSocialValue, not, persistProfileIdentityToUser, sql } from './database.shared';
+import { readPremisesForUser, schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, normalizeTelegramSocialValue, persistProfileIdentityToUser, sql } from './database.shared';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 
 export class EnrichmentDatabaseAdapter {

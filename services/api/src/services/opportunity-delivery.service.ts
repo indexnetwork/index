@@ -26,8 +26,6 @@ import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 import { conversations } from '../schemas/conversation.schema';
 import { agents, opportunities, opportunityDeliveries, userSocials, users } from '../schemas/database.schema';
 
-const logger = log.service.from('OpportunityDeliveryService');
-
 const RESERVATION_TTL_SECONDS = 60;
 const CHANNEL = 'openclaw';
 const TRIGGER_PENDING = 'pending_pickup';

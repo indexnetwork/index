@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { authClient, getJwtToken } from './auth-client';
 
@@ -221,18 +221,13 @@ export const apiClient = new APIClient();
 export function useAuthenticatedAPI() {
   const session = authClient.useSession();
 
-  // Use a ref to hold the current session, so the callback doesn't depend on session object reference.
-  // This prevents unnecessary recreations when session refreshes but auth state doesn't change.
-  const sessionRef = useRef(session.data?.session);
-  sessionRef.current = session.data?.session;
-
   // Only depend on whether we're authenticated (boolean), not the session object itself.
   // This keeps the callback stable across session refreshes.
   const isAuthenticated = !!session.data?.session;
 
   const makeAuthenticatedRequest = useCallback(async <T>(requestFn: () => Promise<T>): Promise<T> => {
     try {
-      if (!sessionRef.current) {
+      if (!isAuthenticated) {
         throw new APIError('Authentication system not ready', 401);
       }
       return await requestFn();

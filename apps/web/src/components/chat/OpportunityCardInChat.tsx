@@ -269,9 +269,6 @@ export default function OpportunityCard({
     navigate(`/u/${card.userId}`);
   };
 
-  const handleSecondPartyClick = () => {
-  };
-
   const handleNarratorClick = () => {
     if (card.narratorChip?.userId) {
       navigate(`/u/${card.narratorChip.userId}`);

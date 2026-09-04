@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { Controller, Delete, Get, Patch, Put, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Delete, Get, Patch, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';

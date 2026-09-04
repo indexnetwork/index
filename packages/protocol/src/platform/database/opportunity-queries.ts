@@ -4,7 +4,6 @@
 
 import type { OutcomeOutbox } from './capabilities.js';
 import type { CreateDiscoveryMatchCandidateData, CreateHydeDocumentData, CreateOpportunityData, DiscoveryMatchCandidate, HydeDocument, HydeSourceType, IntentScopedOpportunityPersistenceResult, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
-import type { Database } from '../database.js';
 
 /** HyDE document and opportunity persistence operations. */
 export interface DatabaseOpportunityQueries {

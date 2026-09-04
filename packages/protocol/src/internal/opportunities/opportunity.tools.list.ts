@@ -7,29 +7,25 @@
 
 import { z } from "zod";
 
-import { requestContext } from "../shared/observability/request-context.js";
 
 
 import type { DefineTool } from "../shared/agent/tool.helpers.js";
 import type { OpportunityToolDeps } from "./opportunity.tools.port.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
-import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { OpportunityPresenter, gatherPresenterContext, getSafePresentationOrSkip, narratorRemarkFromReasoning, safeFallbackSummary, stripUuids, type PresenterDatabase } from "./opportunity.presentation.js";
+import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
+import { OpportunityPresenter, gatherPresenterContext, stripUuids, type PresenterDatabase } from "./opportunity.presentation.js";
 import { buildOpportunityPresentation } from "./opportunity.presentation.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
-import { admitOpportunityUpdate } from "./opportunity.update-admission.js";
-import { opportunityOwnerActionForStatus, type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from "./opportunity.owner-approval.js";
-import { ownerApprovalProvenanceFor } from "./opportunity.owner-provenance.js";
 import { selectOpportunityFeed } from "./opportunity.feed-selection.js";
 
 
-import { buildMinimalOpportunityCard, CHAT_DISPLAY_LIMIT, attachOpportunityAppLink, attachProfileLink, buildNegotiationUrl, buildProfileUrl } from "./opportunity.tools.cards.js";
-import { logger, stripLeadingNarratorName } from "./opportunity.tools.cards.js";
+import { CHAT_DISPLAY_LIMIT, attachOpportunityAppLink, attachProfileLink, buildNegotiationUrl } from "./opportunity.tools.cards.js";
+import { logger } from "./opportunity.tools.cards.js";
 
 /** Builds the `list_opportunities` tool against the host's capabilities. */
 export function createListOpportunitiesTool(defineTool: DefineTool, deps: OpportunityToolDeps) {
-  const { database, userDb, systemDb, graphs, cache } = deps;
+  const { database } = deps;
   const createOpportunityPresenter =
     (deps.opportunityPresentation?.createPresenter as (() => OpportunityPresenter) | undefined) ??
     (() => new OpportunityPresenter());

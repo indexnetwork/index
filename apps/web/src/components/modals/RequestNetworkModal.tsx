@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,25 +19,19 @@ interface RequestNetworkModalProps {
   initial?: NetworkRequest | null;
 }
 
+/**
+ * The caller mounts this with a key that changes whenever the modal opens, so
+ * the form seeds itself from `initial` instead of resetting through an effect.
+ */
 export default function RequestNetworkModal({ open, onOpenChange, onSubmit, initial }: RequestNetworkModalProps) {
-  const [name, setName] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [expectedSize, setExpectedSize] = useState('');
-  const [notes, setNotes] = useState('');
+  const [name, setName] = useState(initial?.title ?? '');
+  const [purpose, setPurpose] = useState(initial?.purpose ?? '');
+  const [expectedSize, setExpectedSize] = useState(initial?.expectedSize ?? '');
+  const [notes, setNotes] = useState(initial?.notes ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<NetworkRequest | null>(null);
 
   const isEdit = !!initial;
-
-  useEffect(() => {
-    if (open) {
-      setName(initial?.title ?? '');
-      setPurpose(initial?.purpose ?? '');
-      setExpectedSize(initial?.expectedSize ?? '');
-      setNotes(initial?.notes ?? '');
-      setSubmitted(null);
-    }
-  }, [open, initial]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Avatar from 'boring-avatars';
-import { apiUrl } from '@/lib/api';
+import { resolveNetworkImageSrc } from '@/lib/network-image';
 
 interface NetworkAvatarProps {
   id?: string;
@@ -9,17 +9,6 @@ interface NetworkAvatarProps {
   size: number;
   className?: string;
   rounded?: 'full' | 'sm';
-}
-
-export function resolveNetworkImageSrc(imageUrl: string): string {
-  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-    return imageUrl;
-  }
-  if (imageUrl.startsWith('/api/storage/')) {
-    return apiUrl(imageUrl);
-  }
-  const cleanPath = imageUrl.startsWith('/') ? imageUrl.slice(1) : imageUrl;
-  return apiUrl(`/api/storage/${cleanPath}`);
 }
 
 function BoringFallback({ id, title, size, rounded, className }: { id?: string; title?: string; size: number; rounded: 'full' | 'sm'; className?: string }) {
@@ -35,14 +24,15 @@ function BoringFallback({ id, title, size, rounded, className }: { id?: string; 
   );
 }
 
-export default function NetworkAvatar({ id, title, imageUrl, size, className = '', rounded = 'full' }: NetworkAvatarProps) {
+/**
+ * Renders the network image, falling back to the generated avatar when it
+ * fails to load. Mounted with `key={imageUrl}` so a new image clears the
+ * previous failure instead of needing an effect to reset it.
+ */
+function NetworkImage({ id, title, imageUrl, size, className, rounded }: NetworkAvatarProps & { imageUrl: string; className: string; rounded: 'full' | 'sm' }) {
   const [imgError, setImgError] = useState(false);
 
-  useEffect(() => {
-    setImgError(false);
-  }, [imageUrl]);
-
-  if (!imageUrl || imgError) {
+  if (imgError) {
     return <BoringFallback id={id} title={title} size={size} rounded={rounded} className={className} />;
   }
 
@@ -62,5 +52,23 @@ export default function NetworkAvatar({ id, title, imageUrl, size, className = '
         onError={() => setImgError(true)}
       />
     </div>
+  );
+}
+
+export default function NetworkAvatar({ id, title, imageUrl, size, className = '', rounded = 'full' }: NetworkAvatarProps) {
+  if (!imageUrl) {
+    return <BoringFallback id={id} title={title} size={size} rounded={rounded} className={className} />;
+  }
+
+  return (
+    <NetworkImage
+      key={imageUrl}
+      id={id}
+      title={title}
+      imageUrl={imageUrl}
+      size={size}
+      className={className}
+      rounded={rounded}
+    />
   );
 }

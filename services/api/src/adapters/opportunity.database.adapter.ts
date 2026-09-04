@@ -5,7 +5,7 @@ import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, comput
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
 import { acquireNegotiationAttemptLock, qualifyingActiveNegotiationTaskWhere } from './negotiation-attempt.atomic';
 import { runTasklessNegotiationReactivation } from './negotiation-reactivation.atomic';
-import { exactEvidencePoolWhere, exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
+import { exactEvidencePoolWhere, exactLivePoolWhere } from './poolquery.shared';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
@@ -768,14 +768,6 @@ export class OpportunityDatabaseAdapter {
     const conditions = [visibilityGuard];
     // Draft visibility: when explicit statuses are requested, the caller decides;
     // otherwise exclude drafts unless a conversationId scopes them to one session.
-    const hasExplicitStatuses = (options?.statuses?.length ?? 0) > 0 || !!options?.status;
-    if (!hasExplicitStatuses) {
-      if (options?.conversationId == null) {
-      } else {
-        conditions.push(
-        );
-      }
-    }
     if (options?.status && !options?.statuses?.length) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.networkId) {
       // Network scope gate (two clauses):

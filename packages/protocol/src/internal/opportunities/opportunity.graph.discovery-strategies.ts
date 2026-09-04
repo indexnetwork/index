@@ -11,7 +11,6 @@ import type { Id } from '../../platform/database.js';
 import type { CandidateMatch } from './opportunity.state.js';
 import type { LensEmbedding } from '../../platform/discovery/embedder.js';
 import { getModelName } from '../shared/agent/model.config.js';
-import { selectHydeDocumentsForGeneration, HYDE_FRAME_GENERATION_VERSION } from '../shared/hyde-documents.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from './opportunity.evidence.js';
 import { withMultiSignalBonus } from './opportunity.similarity.js';
 import { buildDiscovererContext, discoveryLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
@@ -132,18 +131,6 @@ export function collectHydeResults(
     }));
   }
   return collected;
-}
-
-/** Keep the highest-similarity candidate per composite key. */
-function dedupeBestBy(candidates: CandidateMatch[], keyOf: (c: CandidateMatch) => string): CandidateMatch[] {
-  const byKey = new Map<string, CandidateMatch>();
-  for (const c of candidates) {
-    const key = keyOf(c);
-    if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
-      byKey.set(key, c);
-    }
-  }
-  return Array.from(byKey.values());
 }
 
 /** Bonus fraction per additional strategy that surfaced the same candidate. */

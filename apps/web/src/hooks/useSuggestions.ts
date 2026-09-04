@@ -43,7 +43,6 @@ export function useSuggestions({
   contextSuggestions,
   hasMessages = false,
   intentId,
-  networkId,
   enabled = true,
 }: UseSuggestionsOptions = {}): UseSuggestionsResult {
   const [fetchedSuggestions, setFetchedSuggestions] = useState<Suggestion[]>([]);
@@ -73,7 +72,7 @@ export function useSuggestions({
     }
 
     setFetchedSuggestions(STATIC_SUGGESTIONS);
-  }, [intentId, networkId, enabled]);
+  }, [intentId, enabled]);
 
   useEffect(() => {
     fetchSuggestions();

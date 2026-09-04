@@ -7,8 +7,7 @@
  */
 
 import type { ScopeMembership } from '../../protocol/core.js';
-import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
-import type { NetworkAssignmentMetadata, OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
+import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
 
 // ─── Inlined types (previously imported from outside the protocol lib) ───────
 

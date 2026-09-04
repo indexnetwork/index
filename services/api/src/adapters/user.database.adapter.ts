@@ -1,4 +1,4 @@
-import { BasicUserInfo, NewsletterUserData, NotificationPreferences, TelegramPrefs, User, UserWithGraph, and, db, eq, inArray, isNull, sessions, sql, userNotificationSettings, userSocials, users } from './database.shared';
+import { BasicUserInfo, NewsletterUserData, NotificationPreferences, TelegramPrefs, User, UserWithGraph, db, eq, inArray, sessions, sql, userNotificationSettings, userSocials, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 

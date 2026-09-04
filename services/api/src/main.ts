@@ -58,23 +58,15 @@ import { negotiationReflect } from './lib/negotiation/reflect';
 import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
 import { personalAgentService } from './services/personal-agent.service';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
-import db from './lib/drizzle/drizzle';
 import { premiseCascade } from './lib/premise/cascade';
 import { background } from './lib/background';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
-import { opportunityService } from './services/opportunity.service';
-import { Intents, PremiseGraphFactory, setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
+import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
-import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
-import { chatDatabaseAdapter } from './adapters/database.adapter';
-import { embedderAdapter } from './adapters/embedder.adapter';
-import { intentService } from './services/intent.service';
-import { userService } from './services/user.service';
 import { publishNotificationStreamEvent } from './lib/notification-stream-events';
 
 // Wire the protocol library's logging into the rich API logger (context colors,

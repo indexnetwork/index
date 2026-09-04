@@ -4,7 +4,6 @@
 
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
 import type { ActiveIntent, ActiveNetworkMembershipPair, ArchiveResult, ConfirmProposalResult, CreateIntentData, CreatedIntent, IntentLifecycleStatus, IntentProposalRecord, IntentRecord, NetworkMembership, OnboardingState, ReviseIntentProposalInput, SimilarIntent, SimilarIntentSearchOptions, TransitionLifecycleResult, UpdateIntentData, UserRecord, UserSocial } from './entities.js';
-import type { Database } from '../database.js';
 
 /** Profile, intent-lifecycle and retrieval operations. */
 export interface DatabaseIdentityQueries {
