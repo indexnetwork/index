@@ -37,9 +37,9 @@ const myMembersInFlight = new Map<string, Promise<{ members: Member[] }>>();
 const myMembersRecent = new Map<string, { data: { members: Member[] }; timestamp: number }>();
 
 export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
-  // Get all networks with pagination
-  getNetworks: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network>> => {
-    const response = await api.get<APIResponse<Network>>(`/networks?page=${page}&limit=${limit}`);
+  // Get all networks the signed-in user is a member of
+  getNetworks: async (): Promise<PaginatedResponse<Network>> => {
+    const response = await api.get<APIResponse<Network>>('/networks');
     return {
       data: response.networks || [],
       pagination: response.pagination || { current: 1, total: 0, count: 0, totalCount: 0 }

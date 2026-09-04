@@ -28,11 +28,11 @@ export interface IndexedIntent {
   summary?: string;
   hydeDocumentId?: string;
   hydeEmbedding?: number[];
-  indexes: Id<'networks'>[];
+  networks: Id<'networks'>[];
 }
 
 /**
- * Target index for search (from scope node)
+ * Target network for search (from scope node)
  */
 export interface TargetNetwork {
   networkId: Id<'networks'>;
@@ -221,7 +221,7 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** Target indexes to search within (from scope) */
+  /** Target networks to search within (from scope) */
   targetNetworks: Annotation<TargetNetwork[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],

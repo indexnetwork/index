@@ -5,7 +5,7 @@ import Header from "@/components/Header";
 import TopBar from "@/components/TopBar";
 import ChatSidebar from "@/components/ChatSidebar";
 import { NetworkFilterProvider } from "@/contexts/IndexFilterContext";
-import { NetworksProvider } from "@/contexts/IndexesContext";
+import { NetworksProvider } from "@/contexts/NetworksContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 

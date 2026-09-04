@@ -9,7 +9,7 @@ import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
 import NetworkOverviewPanel from '@/components/NetworkOverviewPanel';
 import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNetworks } from '@/contexts/APIContext';
 import { Network } from '@/lib/types';
 import { log } from '@/lib/logger';
@@ -38,7 +38,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const params = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { indexes } = useNetworksState();
+  const { networks } = useNetworksState();
   const indexesService = useNetworks();
 
   const networkId = networkIdOverride || (params.id as string);
@@ -76,7 +76,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
 
   useEffect(() => {
     const loadNetwork = async () => {
-      const existingNetwork = indexes?.find(idx => idx.id === networkId);
+      const existingNetwork = networks?.find(n => n.id === networkId);
       if (existingNetwork) {
         const ownerStatus = await checkOwnership(networkId, existingNetwork);
         setNetwork(existingNetwork);
@@ -101,12 +101,12 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
     if (networkId) {
       loadNetwork();
     }
-  }, [networkId, indexes, indexesService, checkOwnership]);
+  }, [networkId, networks, indexesService, checkOwnership]);
 
   useEffect(() => {
     const updateNetworkFromContext = async () => {
-      if (network && indexes && !isCheckingOwnership.current) {
-        const updated = indexes.find(idx => idx.id === network.id);
+      if (network && networks && !isCheckingOwnership.current) {
+        const updated = networks.find(n => n.id === network.id);
         if (updated && JSON.stringify(updated) !== JSON.stringify(network)) {
           isCheckingOwnership.current = true;
           try {
@@ -125,7 +125,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
       }
     };
     updateNetworkFromContext();
-  }, [indexes, network, checkOwnership, user?.id, isOwner]);
+  }, [networks, network, checkOwnership, user?.id, isOwner]);
 
   // Redirect invalid tab slugs and non-owner tab access to the base path
   useEffect(() => {

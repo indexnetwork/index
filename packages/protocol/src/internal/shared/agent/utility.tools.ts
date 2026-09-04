@@ -117,19 +117,19 @@ export function createUtilityTools(
 
 - **Users**: People on the platform. Authenticated via API key (X-API-Key header) for MCP/external agents, or session-based (Better Auth) for the web app.
 - **Profiles**: A user's identity — name, bio, skills, interests, location, social links. Generated from account data or social URLs via enrichment. One profile per user.
-- **Indexes** (also called "networks"): Communities or groups where members share intents and discover opportunities. Each has a title, optional prompt (purpose description), join policy (anyone or invite_only), and an owner.
-- **Network Members**: Junction between Users and Indexes. Tracks permissions (owner, member), join date, auto-assign setting, and optional member prompt.
+- **Networks**: Communities or groups where members share intents and discover opportunities. Each has a title, optional prompt (purpose description), join policy (anyone or invite_only), and an owner.
+- **Network Members**: Junction between Users and Networks. Tracks permissions (owner, member), join date, auto-assign setting, and optional member prompt.
 - **Intents**: Signals of interest/need — what a user is looking for (e.g. "Looking for a React developer in Berlin"). Each has a description (payload), summary, confidence score (0-1), inferenceType (explicit/implicit), source tracking, and vector embedding.
-- **IntentNetworks**: Many-to-many junction between Intents and Indexes. An intent can be in multiple indexes. Has a relevancyScore (0-1) indicating how well the intent fits the index's purpose.
+- **IntentNetworks**: Many-to-many junction between Intents and Networks. An intent can be in multiple networks. Has a relevancyScore (0-1) indicating how well the intent fits the network's purpose.
 - **Opportunities**: Discovered connections between users based on complementary intents within shared networks. Have actors with roles (party), status lifecycle, match reasoning, confidence score, and presentation data.
 
 ### Key Relationships
 - Users → Profiles (1:1)
-- Users → Indexes (many:many via Network Members)
+- Users → Networks (many:many via Network Members)
 - Users → Intents (1:many, user owns intents)
-- Intents → Indexes (many:many via IntentNetworks with relevancyScore)
+- Intents → Networks (many:many via IntentNetworks with relevancyScore)
 - Opportunities → Users (many:many via actors with roles)
-- Opportunities → Indexes (scoped to shared network context)`,
+- Opportunities → Networks (scoped to shared network context)`,
 
         intents: `## Intent Lifecycle
 
@@ -137,7 +137,7 @@ Intents are the core unit of discovery — they represent what users are seeking
 
 1. **Creation** (create_intent): User describes what they're looking for and names the networks to share it in. The system runs inference (extracting structured intents from free text) and verification (checking specificity, speech-act type), then persists the intent and links it to those networks.
 2. **Confidence & Classification**: Each intent gets a confidence score (0-1), inferenceType (explicit = user stated directly, implicit = system inferred), and speech act classification (commissive, directive, assertive).
-3. **Index Assignment**: Links are explicit. An intent is shared in exactly the networks named at creation, and later linked or unlinked with create_intent_index / delete_intent_index.
+3. **Network Assignment**: Links are explicit. An intent is shared in exactly the networks named at creation, and later linked or unlinked with create_intent_index / delete_intent_index.
 4. **Discovery Trigger**: Creating an intent triggers background opportunity detection — the system searches for other users in shared networks whose intents complement this one.
 5. **Source Tracking**: Intents track their origin via sourceType (integration, discovery_form, enrichment) and sourceId.
 6. **Update** (update_intent): Re-processes through inference/verification and recalculates embeddings. Network links are unchanged.
@@ -170,20 +170,20 @@ Opportunities represent discovered connections between users — potential match
 4. update_opportunity(opportunityId, status="pending") → sends to other party
 5. Other party sees opportunity → calls update_opportunity(status="accepted" or "rejected")`,
 
-        indexes: `## Index Mechanics
+        networks: `## Network Mechanics
 
-Indexes (also called "networks") are communities where members share what they're looking for and the system discovers connections between them.
+Networks are communities where members share what they're looking for and the system discovers connections between them.
 
-- **Purpose prompt**: Each index has an optional prompt describing its purpose (e.g. "AI/ML co-founders in Berlin"). This prompt is used by the intent indexer to evaluate whether an intent belongs in this community. Networks without prompts accept all intents (relevancyScore defaults to 1.0).
+- **Purpose prompt**: Each network has an optional prompt describing its purpose (e.g. "AI/ML co-founders in Berlin"). This prompt is used by the intent indexer to evaluate whether an intent belongs in this community. Networks without prompts accept all intents (relevancyScore defaults to 1.0).
 - **Join policy**: "anyone" (open — any user can self-join) or "invite_only" (only the owner can add members).
-- **Membership**: Members can see all intents in the index. The **auto-assign** setting on a membership means new intents by that user are automatically evaluated against the index.
+- **Membership**: Members can see all intents in the network. The **auto-assign** setting on a membership means new intents by that user are automatically evaluated against the network.
 - **Owner permissions**: Network owners can update settings (title, prompt, joinPolicy), add/remove members, and delete the network (if sole member).
-- **Discovery scope**: Opportunities are discovered within index boundaries — the system matches intents of members who share at least one index.
+- **Discovery scope**: Opportunities are discovered within network boundaries — the system matches intents of members who share at least one network.
 
-### Index Workflow
+### Network Workflow
 1. create_network(title, prompt) → creates new community, you become owner
 2. create_network_membership(networkId, userId) → invite members
-3. Members create intents → auto-assigned to the index based on prompt
+3. Members create intents → auto-assigned to the network based on prompt
 4. Members' approved signals are matched in the background; list_opportunities only reviews persisted results`,
 
         profiles: `## Profile System
@@ -211,7 +211,7 @@ Discovery is the process of finding meaningful connections between users based o
 
 ### How Discovery Works
 1. **Trigger**: Runs automatically when an approved signal is created or refined.
-2. **Pipeline**: Preparation (gather user context) → Scope (determine which indexes to search) → Candidate retrieval (semantic matching via HyDE embeddings) → Evaluation (LLM scores relevance and complementarity) → Ranking → Persist as opportunities.
+2. **Pipeline**: Preparation (gather user context) → Scope (determine which networks to search) → Candidate retrieval (semantic matching via HyDE embeddings) → Evaluation (LLM scores relevance and complementarity) → Ranking → Persist as opportunities.
 3. **Semantic matching**: Uses HyDE (Hypothetical Document Embeddings) to find candidate intents that complement the source. This goes beyond keyword matching — it understands conceptual relationships.
 4. **Evaluation**: An LLM evaluator agent scores each candidate match on relevance, complementarity, and actionability. Low-scoring matches are filtered out.
 5. **Results**: Persisted as draft opportunities with roles, reasoning, and confidence scores.
@@ -221,7 +221,7 @@ Discovery is the process of finding meaningful connections between users based o
 ### Discovery Best Practices
 - More specific intents produce more relevant matches
 - Richer profiles improve matching quality
-- Scope to a specific index (networkId) for more targeted results
+- Scope to a specific network (networkId) for more targeted results
 - After discovery returns no results, suggest creating an intent to attract future matches`,
 
         workflows: `## Common Tool Workflows
@@ -260,9 +260,9 @@ Discovery is the process of finding meaningful connections between users based o
 - Base URL: protocol.index.network/mcp
 
 ### Key Constraints
-- Users can only read their own intents globally, or intents in indexes they belong to
+- Users can only read their own intents globally, or intents in networks they belong to
 - Users can only read profiles of people in shared networks
-- Network-scoped operations are restricted to that index
+- Network-scoped operations are restricted to that network
 - Only network owners can update settings, add/remove members (for invite_only networks)
 
 ### Rate Limits & Best Practices

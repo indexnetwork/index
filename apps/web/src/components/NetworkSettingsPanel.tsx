@@ -1,6 +1,6 @@
 import { Network } from '@/lib/types';
 import { useNetworks } from '@/contexts/APIContext';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 
 import SettingsTab from '@/components/settings/SettingsTab';
@@ -14,10 +14,10 @@ interface NetworkSettingsPanelProps {
 
 export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: NetworkSettingsPanelProps) {
   const indexesService = useNetworks();
-  const { indexes, updateIndex, removeIndex } = useNetworksState();
+  const { networks, updateNetwork, removeNetwork } = useNetworksState();
   const { success, error, info } = useNotifications();
 
-  const currentIndex = indexes?.find(idx => idx.id === index.id) || index;
+  const currentIndex = networks?.find(n => n.id === index.id) || index;
 
   if (activeTab === 'settings') {
     return (
@@ -26,10 +26,10 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
         networkId={index.id}
         updateNetwork={indexesService.updateNetwork}
         uploadImage={indexesService.uploadIndexImage}
-        onUpdated={updateIndex}
+        onUpdated={updateNetwork}
         onDeleted={onDeleted}
         deleteNetwork={indexesService.deleteNetwork}
-        onRemoved={removeIndex}
+        onRemoved={removeNetwork}
         success={success}
         error={error}
       />
@@ -42,7 +42,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
         network={currentIndex}
         networkId={index.id}
         networkService={indexesService}
-        onUpdated={updateIndex}
+        onUpdated={updateNetwork}
         success={success}
         error={error}
         info={info}

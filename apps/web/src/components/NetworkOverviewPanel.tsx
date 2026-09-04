@@ -4,7 +4,7 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAuthenticatedAPI } from '@/lib/api';
@@ -23,7 +23,7 @@ interface NetworkOverviewPanelProps {
 
 export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
   const navigate = useNavigate();
-  const { removeIndex } = useNetworksState();
+  const { removeNetwork } = useNetworksState();
   const { success, error } = useNotifications();
   const { setSelectedNetworkIds } = useNetworkFilter();
   const api = useAuthenticatedAPI();
@@ -76,7 +76,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
     try {
       setIsLeaving(true);
       await api.post(`/networks/${index.id}/leave`, {});
-      removeIndex(index.id);
+      removeNetwork(index.id);
       success(`Left ${index.title}`);
       setLeaveConfirmation(false);
       onLeft?.();
