@@ -34,13 +34,13 @@ export class ConversationController {
    */
   @Get('')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async listConversations(_req: Request, user: AuthenticatedUser) {
+  async getConversations(_req: Request, user: AuthenticatedUser) {
     try {
       const conversations = await this.conversationService.getConversations(user.id);
       return Response.json({ conversations });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('listConversations failed', { userId: user.id, error: message });
+      logger.error('getConversations failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -263,7 +263,7 @@ export class ConversationController {
    */
   @Post('/dm')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async getOrCreateDM(req: Request, user: AuthenticatedUser) {
+  async getOrCreateDm(req: Request, user: AuthenticatedUser) {
     let body: { peerUserId?: string };
     try {
       body = (await req.json()) as { peerUserId?: string };
@@ -276,7 +276,7 @@ export class ConversationController {
     }
 
     try {
-      const conversation = await this.conversationService.getOrCreateDM(user.id, body.peerUserId);
+      const conversation = await this.conversationService.getOrCreateDm(user.id, body.peerUserId);
       // Return the same viewer-scoped summary shape as GET /conversations so
       // a thread opened directly can render match provenance immediately.
       const summary = (await this.conversationService.getConversations(user.id))
@@ -284,7 +284,7 @@ export class ConversationController {
       return Response.json({ conversation: summary ?? conversation });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('getOrCreateDM failed', { userId: user.id, error: message });
+      logger.error('getOrCreateDm failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -407,7 +407,7 @@ export class ConversationController {
    */
   @Get('/stream')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async stream(_req: Request, user: AuthenticatedUser) {
+  async subscribe(_req: Request, user: AuthenticatedUser) {
     const encoder = new TextEncoder();
     const { onMessage, cleanup } = this.conversationService.subscribe(user.id);
     let keepaliveInterval: ReturnType<typeof setInterval> | null = null;

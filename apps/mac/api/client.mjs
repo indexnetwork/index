@@ -485,7 +485,6 @@ export function createIndexApiClient(options = {}) {
 
     conversations: {
       list: (options = {}) => request('/conversations', options),
-      negotiations: (options = {}) => request('/conversations/negotiations', options),
       messages: (conversationId, query = {}, options = {}) => request(
         `/conversations/${encodeURIComponent(conversationId)}/messages${toQueryString(query)}`,
         options,

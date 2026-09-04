@@ -42,7 +42,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     loadSessionHistory,
     loadPreviousSessionMessages,
     sessionHistory,
-    getOrCreateDM,
+    getOrCreateDm,
     markConversationRead,
     hideConversation,
   } = useConversation();
@@ -133,7 +133,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     let mounted = true;
     const init = async () => {
       try {
-        const conv = await getOrCreateDM(userId);
+        const conv = await getOrCreateDm(userId);
         if (!mounted) return;
         const cid = initialGroupId ?? conv.id;
         if (cid && !conversationId) setConversationId(cid);
@@ -146,7 +146,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
 
     init();
     return () => { mounted = false; };
-  }, [userId, initialGroupId, getOrCreateDM, conversationId]);
+  }, [userId, initialGroupId, getOrCreateDm, conversationId]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
@@ -173,7 +173,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         if (conversationId) {
           await conversationSend(conversationId, [{ text }]);
         } else {
-          const conv = await getOrCreateDM(userId);
+          const conv = await getOrCreateDm(userId);
           setConversationId(conv.id);
           await conversationSend(conv.id, [{ text }]);
           loadSessionHistory(conv.id);
@@ -189,7 +189,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         setSending(false);
       }
     })();
-  }, [autoSend, contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDM, userId, loadSessionHistory, onFirstMessageSent]);
+  }, [autoSend, contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDm, userId, loadSessionHistory, onFirstMessageSent]);
 
   const handleSend = useCallback(async () => {
     if (!messageText.trim() || sending) return;
@@ -200,7 +200,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       if (conversationId) {
         await conversationSend(conversationId, [{ text }]);
       } else {
-        const conv = await getOrCreateDM(userId);
+        const conv = await getOrCreateDm(userId);
         setConversationId(conv.id);
         await conversationSend(conv.id, [{ text }]);
         loadSessionHistory(conv.id);
@@ -216,7 +216,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     } finally {
       setSending(false);
     }
-  }, [conversationId, userId, messageText, sending, conversationSend, getOrCreateDM, loadSessionHistory, onFirstMessageSent]);
+  }, [conversationId, userId, messageText, sending, conversationSend, getOrCreateDm, loadSessionHistory, onFirstMessageSent]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }

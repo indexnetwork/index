@@ -27,17 +27,19 @@ export interface ConversationMessage {
   createdAt: string;
 }
 
+/** One session slice of a conversation's history, with a cursor to the previous session. */
+export interface ConversationSessionHistory {
+  messages: ConversationMessage[];
+  sessionId: string | null;
+  hasPreviousSession: boolean;
+  previousSessionCursor: string | null;
+}
+
 export const createConversationService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   /** List all conversations for the authenticated user. */
   getConversations: async (): Promise<ConversationSummary[]> => {
     const response = await api.get<{ conversations: ConversationSummary[] }>('/conversations');
     return response.conversations;
-  },
-
-  /** Create a new conversation. */
-  createConversation: async (participants: { participantId: string; participantType: 'user' | 'agent' }[], metadata?: Record<string, unknown>): Promise<ConversationSummary> => {
-    const response = await api.post<{ conversation: ConversationSummary }>('/conversations', { participants, metadata });
-    return response.conversation;
   },
 
   /**
@@ -54,6 +56,16 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
     return response.messages;
   },
 
+  /**
+   * Get one session's messages for a conversation, newest session first.
+   * `beforeSessionId` pages back to the session preceding that cursor.
+   */
+  getSessionHistory: async (conversationId: string, opts?: { beforeSessionId?: string }): Promise<ConversationSessionHistory> => {
+    const params = new URLSearchParams({ sessionHistory: 'true' });
+    if (opts?.beforeSessionId) params.set('beforeSessionId', opts.beforeSessionId);
+    return api.get<ConversationSessionHistory>(`/conversations/${conversationId}/messages?${params.toString()}`);
+  },
+
   /** Send a message to a conversation. */
   sendMessage: async (conversationId: string, parts: unknown[], opts?: { metadata?: Record<string, unknown> }): Promise<ConversationMessage> => {
     const response = await api.post<{ message: ConversationMessage }>(`/conversations/${conversationId}/messages`, { parts, metadata: opts?.metadata });
@@ -61,7 +73,7 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   },
 
   /** Get or create a DM conversation with a peer user. */
-  getOrCreateDM: async (peerUserId: string): Promise<ConversationSummary> => {
+  getOrCreateDm: async (peerUserId: string): Promise<ConversationSummary> => {
     const response = await api.post<{ conversation: ConversationSummary }>('/conversations/dm', { peerUserId });
     return response.conversation;
   },

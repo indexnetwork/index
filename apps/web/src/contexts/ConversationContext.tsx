@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { apiClient } from '@/lib/api';
 import { getJwtToken } from '@/lib/auth-client';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useConversations } from '@/contexts/APIContext';
 import type { ConversationSummary, ConversationMessage } from '@/services/conversation';
 import type { NegotiationSummary } from '@/services/negotiations';
 import { log } from '@/lib/logger';
@@ -38,7 +39,7 @@ interface ConversationContextType {
   refreshNegotiations: () => Promise<void>;
   markConversationRead: (conversationId: string) => Promise<void>;
   hideConversation: (conversationId: string) => Promise<void>;
-  getOrCreateDM: (peerUserId: string) => Promise<ConversationSummary>;
+  getOrCreateDm: (peerUserId: string) => Promise<ConversationSummary>;
   /** Subscribe to persisted conversation messages from the SSE stream. */
   subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
 }
@@ -50,6 +51,7 @@ const ConversationContext = createContext<ConversationContextType | null>(null);
  */
 export function ConversationProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuthContext();
+  const conversationService = useConversations();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [negotiations, setNegotiations] = useState<NegotiationSummary[]>([]);
   const [messages, setMessages] = useState<Map<string, ConversationMessage[]>>(new Map());
@@ -73,16 +75,15 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     [],
   );
 
-  // --- REST helpers (use apiClient directly, same pattern as AIChatContext) ---
+  // --- REST helpers (conversation calls go through the typed client) ---
 
   const refreshConversations = useCallback(async () => {
     try {
-      const data = await apiClient.get<{ conversations: ConversationSummary[] }>('/conversations');
-      setConversations(data.conversations);
+      setConversations(await conversationService.getConversations());
     } catch (err) {
       logger.error('Failed to fetch conversations', { error: err });
     }
-  }, []);
+  }, [conversationService]);
   useEffect(() => { refreshConversationsRef.current = refreshConversations; }, [refreshConversations]);
 
   const refreshNegotiations = useCallback(async () => {
@@ -97,45 +98,32 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
   const loadMessages = useCallback(async (conversationId: string, opts?: { limit?: number; before?: string }) => {
     try {
-      const params = new URLSearchParams();
-      if (opts?.limit) params.set('limit', String(opts.limit));
-      if (opts?.before) params.set('before', opts.before);
-      const qs = params.toString();
-      const data = await apiClient.get<{ messages: ConversationMessage[] }>(
-        `/conversations/${conversationId}/messages${qs ? `?${qs}` : ''}`
-      );
+      const loaded = await conversationService.getMessages(conversationId, opts);
       setMessages((prev) => {
         const next = new Map(prev);
         const existing = next.get(conversationId) ?? [];
         if (opts?.before) {
-          const olderIds = new Set(data.messages.map((m: ConversationMessage) => m.id));
+          const olderIds = new Set(loaded.map((m) => m.id));
           next.set(
             conversationId,
-            [...data.messages, ...existing.filter((m) => !olderIds.has(m.id))]
+            [...loaded, ...existing.filter((m) => !olderIds.has(m.id))]
           );
         } else {
-          next.set(conversationId, data.messages);
+          next.set(conversationId, loaded);
         }
         return next;
       });
     } catch (err) {
       logger.error('Failed to load messages', { error: err });
     }
-  }, []);
+  }, [conversationService]);
 
   const loadSessionHistory = useCallback(async (
     conversationId: string,
     opts?: { beforeSessionId?: string },
   ) => {
     try {
-      const params = new URLSearchParams({ sessionHistory: 'true' });
-      if (opts?.beforeSessionId) params.set('beforeSessionId', opts.beforeSessionId);
-      const data = await apiClient.get<{
-        messages: ConversationMessage[];
-        sessionId: string | null;
-        hasPreviousSession: boolean;
-        previousSessionCursor: string | null;
-      }>(`/conversations/${conversationId}/messages?${params.toString()}`);
+      const data = await conversationService.getSessionHistory(conversationId, opts);
       setMessages((previous) => {
         const next = new Map(previous);
         const existing = next.get(conversationId) ?? [];
@@ -169,7 +157,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         return next;
       });
     }
-  }, []);
+  }, [conversationService]);
 
   const loadPreviousSessionMessages = useCallback(async (conversationId: string) => {
     const current = sessionHistory.get(conversationId);
@@ -222,21 +210,18 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     });
 
     try {
-      const data = await apiClient.post<{ message: ConversationMessage }>(
-        `/conversations/${conversationId}/messages`,
-        { parts }
-      );
+      const sent = await conversationService.sendMessage(conversationId, parts);
       // Replace optimistic message with real one
       setMessages((prev) => {
         const next = new Map(prev);
         const existing = next.get(conversationId) || [];
         next.set(
           conversationId,
-          existing.map((m) => (m.id === optimisticId ? data.message : m))
+          existing.map((m) => (m.id === optimisticId ? sent : m))
         );
         return next;
       });
-      return data.message;
+      return sent;
     } catch (err) {
       logger.error('Failed to send message', { error: err });
       // Roll back optimistic update (messages + conversation sidebar)
@@ -256,7 +241,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       }
       return null;
     }
-  }, [user]);
+  }, [conversationService, user]);
 
   const markConversationRead = useCallback(async (conversationId: string) => {
     // Clear locally before the request returns so nav/sidebar badges respond
@@ -266,15 +251,15 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     )));
 
     try {
-      await apiClient.post(`/conversations/${conversationId}/read`);
+      await conversationService.markConversationRead(conversationId);
     } catch (err) {
       logger.error('Failed to mark conversation read', { conversationId, error: err });
     }
-  }, []);
+  }, [conversationService]);
 
   const hideConversation = useCallback(async (conversationId: string) => {
     try {
-      await apiClient.delete(`/conversations/${conversationId}`);
+      await conversationService.hideConversation(conversationId);
       setConversations((prev) => prev.filter((c) => c.id !== conversationId));
       setMessages((prev) => {
         const next = new Map(prev);
@@ -289,21 +274,18 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     } catch (err) {
       logger.error('Failed to hide conversation', { error: err });
     }
-  }, []);
+  }, [conversationService]);
 
-  const getOrCreateDM = useCallback(async (peerUserId: string): Promise<ConversationSummary> => {
-    const data = await apiClient.post<{ conversation: ConversationSummary }>(
-      '/conversations/dm',
-      { peerUserId }
-    );
+  const getOrCreateDm = useCallback(async (peerUserId: string): Promise<ConversationSummary> => {
+    const conversation = await conversationService.getOrCreateDm(peerUserId);
     // Add to list if not already present
     setConversations((prev) => {
-      const existingIndex = prev.findIndex((c) => c.id === data.conversation.id);
-      if (existingIndex < 0) return [data.conversation, ...prev];
-      return prev.map((conversation, index) => index === existingIndex ? data.conversation : conversation);
+      const existingIndex = prev.findIndex((c) => c.id === conversation.id);
+      if (existingIndex < 0) return [conversation, ...prev];
+      return prev.map((existing, index) => index === existingIndex ? conversation : existing);
     });
-    return data.conversation;
-  }, []);
+    return conversation;
+  }, [conversationService]);
 
   // --- SSE connection ---
 
@@ -477,7 +459,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         refreshNegotiations,
         markConversationRead,
         hideConversation,
-        getOrCreateDM,
+        getOrCreateDm,
         subscribeConversationMessage,
       }}
     >

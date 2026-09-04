@@ -43,7 +43,7 @@ export class ConversationService {
    * @param conversationId - Conversation ID
    * @throws Error if the user is not a participant
    */
-  async verifyParticipant(userId: string, conversationId: string): Promise<void> {
+  private async verifyParticipant(userId: string, conversationId: string): Promise<void> {
     const ok = await this.db.isParticipant(conversationId, userId)
       || await this.db.isParticipant(conversationId, `agent:${userId}`);
     if (!ok) throw new Error('Forbidden: not a participant in this conversation');
@@ -56,15 +56,6 @@ export class ConversationService {
    */
   async createConversation(participants: { participantId: string; participantType: 'user' | 'agent' }[]) {
     return this.db.createConversation(participants);
-  }
-
-  /**
-   * Retrieves a conversation by ID, including its participants.
-   * @param conversationId - Conversation ID
-   * @returns The conversation with participants, or null if not found
-   */
-  async getConversation(conversationId: string) {
-    return this.db.getConversation(conversationId);
   }
 
   /**
@@ -82,7 +73,7 @@ export class ConversationService {
    * @param userB - Second user ID
    * @returns The existing or newly created conversation
    */
-  async getOrCreateDM(userA: string, userB: string) {
+  async getOrCreateDm(userA: string, userB: string) {
     return this.db.getOrCreateDM(userA, userB);
   }
 

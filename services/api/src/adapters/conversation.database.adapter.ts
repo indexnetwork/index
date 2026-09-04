@@ -1,4 +1,4 @@
-import { buildProfileFromUser, schema, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, Message, ResolvedParticipant, SYSTEM_AGENT_ID, and, asc, count, db, desc, eq, gt, inArray, intents, isNull, lt, ne, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
+import { buildProfileFromUser, schema, Conversation, ConversationSession, ConversationSummary, Message, ResolvedParticipant, SYSTEM_AGENT_ID, and, asc, count, db, desc, eq, gt, inArray, intents, isNull, lt, ne, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { log } from '../lib/log';
@@ -94,30 +94,6 @@ export class ConversationDatabaseAdapter {
     if (rows.length === 0) return null;
     if (rows.length > 1) return { ambiguous: true };
     return { id: rows[0].id };
-  }
-
-  /**
-   * Retrieves a conversation by ID with its participants.
-   * @param id - Conversation ID
-   * @returns Conversation with participants, or null if not found
-   */
-  async getConversation(
-    id: string,
-  ): Promise<(Conversation & { participants: ConversationParticipant[] }) | null> {
-    const [conv] = await db
-      .select()
-      .from(schema.conversations)
-      .where(eq(schema.conversations.id, id))
-      .limit(1);
-
-    if (!conv) return null;
-
-    const participants = await db
-      .select()
-      .from(schema.conversationParticipants)
-      .where(eq(schema.conversationParticipants.conversationId, id));
-
-    return { ...conv, participants };
   }
 
   /**
