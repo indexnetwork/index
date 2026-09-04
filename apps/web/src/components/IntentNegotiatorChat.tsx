@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { useConversations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
-import type { ConversationMessage } from "@/services/conversation";
+import { AGENT_DM_ID, type ConversationMessage } from "@/services/conversation";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/logger";
 
@@ -59,11 +59,12 @@ export default function IntentNegotiatorChat({ intentId }: { intentId: string })
     let active = true;
     (async () => {
       try {
-        const conversation = await conversationsService.getOrCreateAgentDm();
-        const loaded = await conversationsService.getMessages(conversation.id, { intentId });
+        // The read creates the DM on first use and names it, which is what the
+        // live filter below needs — the owner never addresses it by id.
+        const loaded = await conversationsService.getMessages(AGENT_DM_ID, { intentId });
         if (!active) return;
-        setConversationId(conversation.id);
-        setMessages(loaded);
+        setConversationId(loaded.conversationId);
+        setMessages(loaded.messages);
       } catch (error) {
         if (active) logger.error("Failed to load agent DM", { error, intentId });
       } finally {

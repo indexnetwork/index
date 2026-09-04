@@ -1,6 +1,4 @@
-import { z } from 'zod';
-
-import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { ConversationService } from '../services/conversation.service';
@@ -9,11 +7,6 @@ import { log } from '../lib/log';
 type RouteParams = Record<string, string>;
 
 const logger = log.controller.from('conversation');
-
-const agentMessageSchema = z.object({
-  text: z.string().trim().min(1).max(4000),
-  intentId: z.string().uuid(),
-});
 
 /**
  * HTTP controller for conversation REST API endpoints.
@@ -41,39 +34,6 @@ export class ConversationController {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('getConversations failed', { userId: user.id, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /**
-   * POST /conversations/agent-messages — the agent posts a question into its
-   * owner's agent DM, tagged with the signal it belongs to.
-   *
-   * @param req - Must include `text` and `intentId`.
-   * @param user - The owner, resolved from the agent's own bound key.
-   * @returns JSON with the conversation id and the created message.
-   */
-  @Post('/agent-messages')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async sendAgentMessage(req: Request, user: AuthenticatedUser) {
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-
-    const parsed = agentMessageSchema.safeParse(body);
-    if (!parsed.success) {
-      return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid message' }, { status: 400 });
-    }
-
-    try {
-      const result = await this.conversationService.sendAgentMessage(user.id, parsed.data.text, parsed.data.intentId);
-      return Response.json(result, { status: 201 });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error('sendAgentMessage failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -163,7 +123,9 @@ export class ConversationController {
         });
       }
       const messages = await this.conversationService.getMessages(conversationId, { limit, before, intentId, userId: user.id });
-      return Response.json({ messages });
+      // The id is echoed because `agent` resolves to a conversation the caller
+      // has no other way to name.
+      return Response.json({ conversationId, messages });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.startsWith('Forbidden')) {
@@ -207,7 +169,12 @@ export class ConversationController {
 
   /**
    * POST /conversations/:id/messages — send a message in a conversation.
-   * Accepts full UUID or short ID prefix.
+   * Accepts `agent`, a full UUID, or a short ID prefix.
+   *
+   * An agent-bound API key writing into its owner's agent DM speaks as the
+   * agent, and must say which signal it is speaking about; every other
+   * credential speaks as the authenticated user. A session token therefore
+   * cannot post as the agent.
    *
    * @param req - Must include `parts` array in JSON body; optional `metadata`
    * @param user - Authenticated user from AuthGuard
@@ -239,10 +206,21 @@ export class ConversationController {
       return Response.json({ error: 'parts array is required' }, { status: 400 });
     }
 
+    const asAgent = await resolveApiKeyAgentId(req) !== null
+      && await this.conversationService.isAgentDm(conversationId);
+
+    if (asAgent && typeof body.metadata?.intentId !== 'string') {
+      return Response.json({ error: 'metadata.intentId is required' }, { status: 400 });
+    }
+
     try {
-      const msg = await this.conversationService.sendMessage(
-        conversationId, user.id, 'user', body.parts, { metadata: body.metadata }
-      );
+      const msg = asAgent
+        ? await this.conversationService.sendAgentMessage(
+          conversationId, body.parts, { metadata: body.metadata }
+        )
+        : await this.conversationService.sendMessage(
+          conversationId, user.id, 'user', body.parts, { metadata: body.metadata }
+        );
       return Response.json({ message: msg }, { status: 201 });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -285,31 +263,6 @@ export class ConversationController {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('getOrCreateDm failed', { userId: user.id, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /**
-   * POST /conversations/agent-dm — get or create the caller's agent DM.
-   *
-   * One conversation per owner: the thread the agent posts its questions into
-   * and the owner answers in.
-   *
-   * @param _req - The HTTP request object (unused)
-   * @param user - Authenticated user from AuthGuard
-   * @returns JSON with the viewer-scoped conversation summary
-   */
-  @Post('/agent-dm')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async getOrCreateAgentDm(_req: Request, user: AuthenticatedUser) {
-    try {
-      const conversation = await this.conversationService.getOrCreateAgentDm(user.id);
-      const summary = (await this.conversationService.getConversations(user.id))
-        .find((candidate) => candidate.id === conversation.id);
-      return Response.json({ conversation: summary ?? conversation });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error('getOrCreateAgentDm failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }

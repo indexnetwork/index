@@ -2,6 +2,9 @@
  * Conversation service — typed API client for the conversations endpoints.
  */
 
+/** Well-known conversation id for the caller's own agent DM. */
+export const AGENT_DM_ID = 'agent';
+
 export interface ConversationSummary {
   id: string;
   participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
@@ -45,15 +48,17 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   /**
    * Get messages for a conversation. `intentId` filters the agent DM to the
    * messages tagged with that signal, and nothing else.
+   *
+   * The resolved id comes back with them: `AGENT_DM_ID` is the only way to
+   * address the caller's own agent DM, and this is where it becomes a real one.
    */
-  getMessages: async (conversationId: string, opts?: { limit?: number; before?: string; intentId?: string }): Promise<ConversationMessage[]> => {
+  getMessages: async (conversationId: string, opts?: { limit?: number; before?: string; intentId?: string }): Promise<{ conversationId: string; messages: ConversationMessage[] }> => {
     const params = new URLSearchParams();
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.before) params.set('before', opts.before);
     if (opts?.intentId) params.set('intentId', opts.intentId);
     const qs = params.toString();
-    const response = await api.get<{ messages: ConversationMessage[] }>(`/conversations/${conversationId}/messages${qs ? `?${qs}` : ''}`);
-    return response.messages;
+    return api.get<{ conversationId: string; messages: ConversationMessage[] }>(`/conversations/${conversationId}/messages${qs ? `?${qs}` : ''}`);
   },
 
   /**
@@ -75,12 +80,6 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   /** Get or create a DM conversation with a peer user. */
   getOrCreateDm: async (peerUserId: string): Promise<ConversationSummary> => {
     const response = await api.post<{ conversation: ConversationSummary }>('/conversations/dm', { peerUserId });
-    return response.conversation;
-  },
-
-  /** Get or create the caller's agent DM — one conversation per owner. */
-  getOrCreateAgentDm: async (): Promise<ConversationSummary> => {
-    const response = await api.post<{ conversation: ConversationSummary }>('/conversations/agent-dm', {});
     return response.conversation;
   },
 

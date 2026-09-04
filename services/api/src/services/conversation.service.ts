@@ -6,6 +6,9 @@ import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
 
 const logger = log.service.from('ConversationService');
 
+/** Well-known conversation id for the caller's own agent DM. */
+export const AGENT_DM_ID = 'agent';
+
 /**
  * Manages conversation lifecycle, messaging, and DM deduplication.
  *
@@ -21,12 +24,21 @@ export class ConversationService {
   constructor(private db: ConversationDatabaseAdapter = conversationDatabaseAdapter) {}
 
   /**
-   * Resolve a conversation identifier (full UUID or short prefix) to a full UUID.
-   * @param idOrPrefix - Full UUID or short hex prefix
+   * Resolve a conversation identifier to a full UUID.
+   *
+   * `agent` is the caller's own agent DM, created on first use: the owner has
+   * exactly one, so it needs no id to address.
+   *
+   * @param idOrPrefix - `agent`, a full UUID, or a short hex prefix
    * @param userId - The user ID (for participant scoping)
    * @returns Resolved ID, or error object with status
    */
   async resolveId(idOrPrefix: string, userId: string): Promise<{ id: string } | { error: string; status: number }> {
+    if (idOrPrefix === AGENT_DM_ID) {
+      const conversation = await this.db.getOrCreateAgentDm(userId);
+      return { id: conversation.id };
+    }
+
     const result = await this.db.resolveConversationId(idOrPrefix, userId);
     if (!result) {
       return { error: 'Conversation not found', status: 404 };
@@ -78,13 +90,16 @@ export class ConversationService {
   }
 
   /**
-   * The owner's single agent DM, created on first use.
+   * True when the conversation is an owner's agent DM.
    *
-   * @param userId - The owner.
-   * @returns Their agent DM.
+   * The agent is a participant of that thread and of nothing else, so its
+   * membership is what identifies the thread.
+   *
+   * @param conversationId - Conversation ID
+   * @returns Whether the agent speaks in this conversation
    */
-  async getOrCreateAgentDm(userId: string) {
-    return this.db.getOrCreateAgentDm(userId);
+  async isAgentDm(conversationId: string): Promise<boolean> {
+    return this.db.isParticipant(conversationId, SYSTEM_AGENT_ID);
   }
 
   /**
@@ -118,7 +133,7 @@ export class ConversationService {
   }
 
   /**
-   * The agent posts a question into its owner's agent DM.
+   * The agent speaks in its owner's agent DM.
    *
    * Questions only — outcomes live in Radar. One DM per owner carries every
    * signal, so the `intentId` tag is what keeps the message on its own: it is
@@ -126,22 +141,17 @@ export class ConversationService {
    * `createMessage` publishes the message on their conversation channel, which
    * is where the question gets answered.
    *
-   * @param userId - The owner whose agent is speaking.
-   * @param text - The question.
-   * @param intentId - The signal it belongs to.
-   * @returns The conversation it landed in and the created message.
+   * @param conversationId - The owner's agent DM.
+   * @param parts - Message content parts.
+   * @param opts - Metadata, carrying the `intentId` tag.
+   * @returns The created message.
    */
-  async sendAgentMessage(userId: string, text: string, intentId: string) {
-    const conversation = await this.db.getOrCreateAgentDm(userId);
-    const message = await this.db.createMessage({
-      conversationId: conversation.id,
-      senderId: SYSTEM_AGENT_ID,
-      role: 'agent',
-      parts: [{ kind: 'text', text }],
-      metadata: { intentId },
-    });
-
-    return { conversationId: conversation.id, message };
+  async sendAgentMessage(
+    conversationId: string,
+    parts: unknown[],
+    opts?: { metadata?: Record<string, unknown> },
+  ) {
+    return this.sendMessage(conversationId, SYSTEM_AGENT_ID, 'agent', parts, opts);
   }
 
   /**

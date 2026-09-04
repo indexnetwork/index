@@ -98,7 +98,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
   const loadMessages = useCallback(async (conversationId: string, opts?: { limit?: number; before?: string }) => {
     try {
-      const loaded = await conversationService.getMessages(conversationId, opts);
+      const { messages: loaded } = await conversationService.getMessages(conversationId, opts);
       setMessages((prev) => {
         const next = new Map(prev);
         const existing = next.get(conversationId) ?? [];
