@@ -47,7 +47,7 @@ export default function ChatSidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { user } = useAuthContext();
-  const { conversations, isConnected, refreshConversations, hideConversation } = useConversation();
+  const { conversations, refreshConversations, hideConversation } = useConversation();
 
   // Background revalidation flag. The ConversationProvider prefetches both
   // lists on auth, so cached data renders immediately; this only gates the
@@ -116,15 +116,6 @@ export default function ChatSidebar() {
         </h2>
       </div>
       <div className="flex-1 overflow-y-auto px-4 pt-4 lg:pt-4">
-        <div className="flex items-center justify-end mb-3">
-          <span
-            data-testid="chat-connection-dot"
-            role="status"
-            title={isConnected ? 'live' : 'reconnecting…'}
-            aria-label={isConnected ? 'live' : 'reconnecting…'}
-            className={`h-1.5 w-1.5 flex-none rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-gray-400'}`}
-          />
-        </div>
         {recentChats.length === 0 && refreshing ? (
           renderSkeleton()
         ) : recentChats.length === 0 ? (
