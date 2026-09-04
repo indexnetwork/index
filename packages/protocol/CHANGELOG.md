@@ -48,6 +48,12 @@ pin a supported release, use `latest`.
   indexer graph are removed, and so is the threshold scoring behind them. A signal
   reaches exactly the networks its owner names on create or links afterwards with
   `create_intent_index`.
+- **BREAKING: agents no longer have transports.** `AgentTransportRecord`,
+  `CreateTransportInput` and the `AgentDatabase` methods `createTransport`,
+  `deleteTransport`, `recordTransportFailure` and `recordTransportSuccess` are
+  removed, and `AgentWithRelations` no longer carries a `transports` array. No
+  delivery loop ever read the rows. Hosts can drop their `agent_transports`
+  storage.
 - `createIntentSuggested` and `suggestedIntentDescription` from the opportunity
   graph state. Nothing routed on them.
 

@@ -87,7 +87,7 @@ export class OwnerControlRequiredError extends Error {
  *
  * Use for endpoints where a leaked agent API key must not be able to act:
  * account deletion and agent-management writes (create/update/delete agents,
- * tokens, permissions, transports). Re-walling those keeps leaked-key blast
+ * tokens, permissions). Re-walling those keeps leaked-key blast
  * radius at "act as the user in the product" — a key must never be able to
  * mint successor credentials (which would survive rotation of the leaked
  * key) or destroy the account. See IND-384.

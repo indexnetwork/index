@@ -782,38 +782,6 @@ export class ChatDatabaseAdapter {
       .where(and(eq(intents.id, intentId), isNull(intents.firstDiscoverySucceededAt)));
   }
 
-  /**
-   * Persist aggregate-only worker lifecycle data; safe to expose to the owner.
-   *
-   * The four count columns are optional and omitted-means-unchanged: a run
-   * boundary that does not know a tally (queued/running, or the graph-injection
-   * test path that returns no summary) must not overwrite the last known one
-   * with a zero.
-   */
-  async recordIntentDiscoveryProgress(input: {
-    intentId: string; userId: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked'; attempt: number;
-    assignedCommunityCount?: number; processedCommunityCount?: number; possibleOverlapCount?: number; conversationsStartedCount?: number;
-  }): Promise<void> {
-    const now = new Date();
-    const counts = {
-      ...(input.assignedCommunityCount != null ? { assignedCommunityCount: input.assignedCommunityCount } : {}),
-      ...(input.processedCommunityCount != null ? { processedCommunityCount: input.processedCommunityCount } : {}),
-      ...(input.possibleOverlapCount != null ? { possibleOverlapCount: input.possibleOverlapCount } : {}),
-      ...(input.conversationsStartedCount != null ? { conversationsStartedCount: input.conversationsStartedCount } : {}),
-    };
-    const timestamps = {
-      ...(input.status === 'queued' ? { queuedAt: now, completedAt: null, startedAt: null } : {}),
-      ...(input.status === 'running' ? { startedAt: now } : {}),
-      ...(input.status === 'succeeded' || input.status === 'blocked' ? { completedAt: now } : {}),
-    };
-    await db.insert(schema.intentDiscoveryProgress).values({
-      intentId: input.intentId, userId: input.userId, status: input.status, attempt: input.attempt,
-      ...counts, ...timestamps, updatedAt: now,
-    }).onConflictDoUpdate({ target: schema.intentDiscoveryProgress.intentId, set: {
-      status: input.status, attempt: input.attempt, ...counts, updatedAt: now, ...timestamps,
-    }});
-  }
-
   async getNetworkMemberContext(networkId: string, userId: string) {
     const rows = await db
       .select({

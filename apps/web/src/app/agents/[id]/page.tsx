@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import * as Dialog from "@radix-ui/react-dialog";
-import { Loader2, ArrowLeft, Bot, KeyRound, Shield, Plus, Trash2, Copy, Check, ChevronDown, ChevronRight, Send } from "lucide-react";
+import { Loader2, ArrowLeft, Bot, KeyRound, Shield, Plus, Trash2, Copy, Check, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -12,7 +11,6 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import UserAvatar from "@/components/UserAvatar";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import { AlphaBadge } from "@/components/AlphaBadge";
@@ -43,88 +41,6 @@ function formatDate(dateStr: string | null): string {
 
 function maskKey(start: string): string {
   return start ? `${start}${"*".repeat(24)}` : "Unavailable";
-}
-
-const DEFAULT_TEST_MESSAGE = [
-  "🔔 New opportunity: AI-Assisted Developer Tooling",
-  "",
-  "Alice Park (user:00000000-0000-0000-0000-000000000001) is building an LLM-powered code review tool & looking for early design partners with TypeScript expertise.",
-  "",
-  "Relevance: strong overlap with your signals around developer experience & LLM integrations.",
-].join("\n");
-
-function SendTestMessageDialog({
-  agentId,
-  open,
-  onOpenChange,
-}: {
-  agentId: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const agentsService = useAgents();
-  const { success, error } = useNotifications();
-  const [content, setContent] = useState(DEFAULT_TEST_MESSAGE);
-  const [sending, setSending] = useState(false);
-
-  async function handleSend() {
-    if (!content.trim() || sending) return;
-    setSending(true);
-    try {
-      await agentsService.sendTestMessage(agentId, content.trim());
-      success("Sent — should arrive in your agent within ~30s");
-      onOpenChange(false);
-    } catch (err) {
-      error(
-        "Failed to send test message",
-        err instanceof Error ? err.message : undefined,
-      );
-    } finally {
-      setSending(false);
-    }
-  }
-
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-          <Dialog.Title className="text-lg font-bold text-gray-900 mb-2">
-            Send test message
-          </Dialog.Title>
-          <Dialog.Description className="text-sm text-gray-600 mb-4">
-            Tests the full delivery pipeline: the default content includes a
-            headline, user reference, and multi-line structure so you can verify
-            bold, links, and HTML formatting render correctly. Edit if needed.
-          </Dialog.Description>
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={6}
-            disabled={sending}
-            className="w-full mb-4 font-mono text-sm"
-          />
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={sending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSend} disabled={sending || !content.trim()}>
-              {sending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-1" />
-              ) : (
-                <Send className="w-4 h-4 mr-1" />
-              )}
-              {sending ? "Sending..." : "Send"}
-            </Button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
 }
 
 function NotificationsSection({
@@ -707,7 +623,6 @@ export default function AgentDetailPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabValue>("overview");
-  const [testMessageOpen, setTestMessageOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -779,7 +694,6 @@ export default function AgentDetailPage() {
   }
 
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
-  const canSendTestMessage = agent.type === "external";
 
   return (
     <ClientLayout>
@@ -807,26 +721,7 @@ export default function AgentDetailPage() {
             }`}>
               {agent.status}
             </span>
-            {canSendTestMessage && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setTestMessageOpen(true)}
-                className="ml-auto"
-              >
-                <Send className="w-3.5 h-3.5 mr-1" />
-                Send test message
-              </Button>
-            )}
           </div>
-
-          {canSendTestMessage && (
-            <SendTestMessageDialog
-              agentId={agent.id}
-              open={testMessageOpen}
-              onOpenChange={setTestMessageOpen}
-            />
-          )}
 
           <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
             <Tabs.List className="flex border-b border-gray-200 mb-6">

@@ -1,15 +1,5 @@
 import { useAuthenticatedAPI } from '../lib/api';
 
-export interface AgentTransport {
-  id: string;
-  agentId: string;
-  channel: 'mcp';
-  config: Record<string, unknown>;
-  priority: number;
-  active: boolean;
-  failureCount: number;
-}
-
 export interface AgentPermission {
   id: string;
   agentId: string;
@@ -31,7 +21,6 @@ export interface Agent {
   dailySummaryEnabled: boolean;
   handleNegotiations: boolean;
   metadata: Record<string, unknown>;
-  transports: AgentTransport[];
   permissions: AgentPermission[];
   createdAt: string;
   updatedAt: string;
@@ -85,24 +74,6 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
     await api.delete<void>(`/agents/${agentId}`);
   },
 
-  addTransport: async (
-    agentId: string,
-    channel: 'mcp',
-    config?: Record<string, unknown>,
-    priority?: number,
-  ): Promise<AgentTransport> => {
-    const response = await api.post<{ transport: AgentTransport }>(`/agents/${agentId}/transports`, {
-      channel,
-      config,
-      priority,
-    });
-    return response.transport;
-  },
-
-  removeTransport: async (agentId: string, transportId: string): Promise<void> => {
-    await api.delete<void>(`/agents/${agentId}/transports/${transportId}`);
-  },
-
   grantPermission: async (
     agentId: string,
     actions: string[],
@@ -133,10 +104,5 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
 
   revokeToken: async (agentId: string, tokenId: string): Promise<void> => {
     await api.delete<void>(`/agents/${agentId}/tokens/${tokenId}`);
-  },
-
-  sendTestMessage: async (agentId: string, content: string): Promise<{ id: string }> => {
-    const response = await api.post<{ id: string }>(`/agents/${agentId}/test-messages`, { content });
-    return response;
   },
 });

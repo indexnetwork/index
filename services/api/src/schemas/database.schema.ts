@@ -12,9 +12,7 @@ export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FU
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
-export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
-export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
 export const negotiationOutcomeEnum = pgEnum('negotiation_outcome', ['agreed', 'declined', 'closed']);
 export const negotiationTurnActionEnum = pgEnum('negotiation_turn_action', ['propose', 'counter', 'accept', 'decline']);
 
@@ -435,29 +433,6 @@ export const networkMembers = pgTable('network_members', {
   pk: primaryKey({ columns: [table.networkId, table.userId] }),
 }));
 
-/**
- * Owner-visible, aggregate-only observability for the ordinary discovery
- * worker. Unlike BullMQ retention this survives completed, failed and stale
- * jobs and deliberately has no error payload or candidate-level data.
- */
-export const intentDiscoveryProgress = pgTable('intent_discovery_progress', {
-  intentId: text('intent_id').primaryKey().references(() => intents.id, { onDelete: 'cascade' }),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  status: intentDiscoveryProgressStatusEnum('status').notNull().default('queued'),
-  attempt: integer('attempt').notNull().default(0),
-  maxAttempts: integer('max_attempts').notNull().default(3),
-  assignedCommunityCount: integer('assigned_community_count').notNull().default(0),
-  processedCommunityCount: integer('processed_community_count').notNull().default(0),
-  possibleOverlapCount: integer('possible_overlap_count').notNull().default(0),
-  conversationsStartedCount: integer('conversations_started_count').notNull().default(0),
-  queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  userUpdatedIdx: index('intent_discovery_progress_user_updated_idx').on(table.userId, table.updatedAt),
-}));
-
 export const intentNetworks = pgTable('intent_networks', {
   intentId: text('intent_id').notNull().references(() => intents.id),
   networkId: text('network_id').notNull().references(() => networks.id),
@@ -505,20 +480,6 @@ export const agents = pgTable('agents', {
     .where(sql`${table.type} = 'external' AND ${table.handleNegotiations} = true AND ${table.deletedAt} IS NULL`),
 }));
 
-export const agentTransports = pgTable('agent_transports', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
-  channel: transportChannelEnum('channel').notNull(),
-  config: jsonb('config').$type<Record<string, unknown>>().default({}),
-  priority: integer('priority').notNull().default(0),
-  active: boolean('active').notNull().default(true),
-  failureCount: integer('failure_count').notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  agentIdIdx: index('agent_transports_agent_id_idx').on(table.agentId),
-}));
-
 export const agentPermissions = pgTable('agent_permissions', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
@@ -535,35 +496,6 @@ export const agentPermissions = pgTable('agent_permissions', {
     .on(table.agentId, table.userId)
     .where(sql`${table.scope} = 'global'`),
 }));
-
-export const agentTestMessages = pgTable(
-  'agent_test_messages',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    agentId: text('agent_id')
-      .notNull()
-      .references(() => agents.id, { onDelete: 'cascade' }),
-    requestedByUserId: text('requested_by_user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    content: text('content').notNull(),
-    reservationToken: text('reservation_token'),
-    reservedAt: timestamp('reserved_at', { withTimezone: true }),
-    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (t) => ({
-    byAgent: index('idx_agent_test_messages_agent_pending').on(
-      t.agentId,
-      t.reservedAt,
-    ),
-  }),
-);
-
-export type AgentTestMessage = typeof agentTestMessages.$inferSelect;
-export type NewAgentTestMessage = typeof agentTestMessages.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Lens B outcome feedback events (IND-434)
@@ -703,15 +635,7 @@ export const agentsRelations = relations(agents, ({ one, many }) => ({
     fields: [agents.ownerId],
     references: [users.id],
   }),
-  transports: many(agentTransports),
   permissions: many(agentPermissions),
-}));
-
-export const agentTransportsRelations = relations(agentTransports, ({ one }) => ({
-  agent: one(agents, {
-    fields: [agentTransports.agentId],
-    references: [agents.id],
-  }),
 }));
 
 export const agentPermissionsRelations = relations(agentPermissions, ({ one }) => ({
@@ -745,8 +669,6 @@ export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
 export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
-export type AgentTransport = typeof agentTransports.$inferSelect;
-export type NewAgentTransport = typeof agentTransports.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
 export type Negotiation = typeof negotiations.$inferSelect;

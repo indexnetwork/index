@@ -2,8 +2,8 @@
  * agents/domain — pure agent entity types.
  *
  * These are the core value-objects for the participant-agents capability:
- * agent records, transport channels, permission grants, and the well-known
- * system agent ID constants.
+ * agent records, permission grants, and the well-known system agent ID
+ * constants.
  *
  * No application logic, no LLM calls, no cross-capability imports.
  *
@@ -23,16 +23,6 @@ export interface AgentRecord {
   updatedAt: Date;
 }
 
-export interface AgentTransportRecord {
-  id: string;
-  agentId: string;
-  channel: 'mcp';
-  config: Record<string, unknown>;
-  priority: number;
-  active: boolean;
-  failureCount: number;
-}
-
 export interface AgentPermissionRecord {
   id: string;
   agentId: string;
@@ -44,7 +34,6 @@ export interface AgentPermissionRecord {
 }
 
 export interface AgentWithRelations extends AgentRecord {
-  transports: AgentTransportRecord[];
   permissions: AgentPermissionRecord[];
 }
 
@@ -54,13 +43,6 @@ export interface CreateAgentInput {
   description?: string;
   type: 'external' | 'system';
   metadata?: Record<string, unknown>;
-}
-
-export interface CreateTransportInput {
-  agentId: string;
-  channel: 'mcp';
-  config?: Record<string, unknown>;
-  priority?: number;
 }
 
 export interface GrantPermissionInput {

@@ -1,4 +1,4 @@
-import { agentDatabaseAdapter, type AgentPermissionRow, type AgentRegistryStore, type AgentScope, type AgentRow, type AgentTransportRow, type AgentWithRelations, type PermissionScope, type TransportChannel } from '../adapters/agent.database.adapter';
+import { agentDatabaseAdapter, type AgentPermissionRow, type AgentRegistryStore, type AgentScope, type AgentRow, type AgentWithRelations, type PermissionScope } from '../adapters/agent.database.adapter';
 import { agentTokenAdapter, type AgentTokenStore } from '../adapters/agent-token.adapter';
 import { userDatabaseAdapter } from '../adapters/database.adapter';
 import { log } from '../lib/log';
@@ -30,7 +30,7 @@ export type AgentServiceStore = AgentRegistryStore;
  * AgentService
  *
  * Business logic for the agent registry. Owns validation and authorization
- * rules around agent CRUD, transports, and permissions.
+ * rules around agent CRUD and permissions.
  */
 export class AgentService {
   constructor(
@@ -63,7 +63,6 @@ export class AgentService {
     logger.info('Created external agent with default permissions', { agentId: agent.id, ownerId });
     return this.sanitizeAgent({
       ...agent,
-      transports: [],
       permissions: [permission],
     });
   }
@@ -191,36 +190,6 @@ export class AgentService {
 
     await this.db.deleteAgent(agentId);
     logger.info('Deleted agent', { agentId, userId });
-  }
-
-  async addTransport(
-    agentId: string,
-    userId: string,
-    channel: TransportChannel,
-    config?: Record<string, unknown>,
-    priority?: number,
-  ): Promise<AgentTransportRow> {
-    const agent = await this.requireOwnedAgent(agentId, userId);
-    if (agent.type === 'system') {
-      throw new Error('System agents cannot be modified');
-    }
-
-    const transport = await this.db.createTransport({ agentId, channel, config, priority });
-    return this.sanitizeTransport(transport);
-  }
-
-  async removeTransport(agentId: string, transportId: string, userId: string): Promise<void> {
-    const agent = await this.requireOwnedAgentWithRelations(agentId, userId);
-    if (agent.type === 'system') {
-      throw new Error('System agents cannot be modified');
-    }
-
-    const transport = agent.transports.find((item) => item.id === transportId);
-    if (!transport) {
-      throw new Error('Transport not found');
-    }
-
-    await this.db.deleteTransport(transportId);
   }
 
   async grantPermission(
@@ -394,10 +363,6 @@ export class AgentService {
     return agent;
   }
 
-  private sanitizeTransport(transport: AgentTransportRow): AgentTransportRow {
-    return transport;
-  }
-
   private sanitizeAgent(agent: AgentWithRelations, viewerId?: string): AgentWithRelations {
     const isOwner = viewerId === undefined || agent.ownerId === viewerId;
     // Owners of non-system agents see every permission; everyone else (and any
@@ -406,7 +371,6 @@ export class AgentService {
 
     return {
       ...agent,
-      transports: agent.transports.map((transport) => this.sanitizeTransport(transport)),
       permissions: keepAllPermissions
         ? agent.permissions
         : agent.permissions.filter((permission) => permission.userId === viewerId),

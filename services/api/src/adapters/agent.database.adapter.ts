@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm/sql';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime-errors';
@@ -14,7 +14,6 @@ const logger = log.lib.from('agent.database.adapter');
  */
 export type AgentType = 'external' | 'system';
 export type AgentStatus = 'active' | 'inactive';
-export type TransportChannel = 'mcp';
 export type PermissionScope = 'global' | 'node' | 'network';
 
 export interface AgentScope {
@@ -40,18 +39,6 @@ export interface AgentRow {
   updatedAt: Date;
 }
 
-export interface AgentTransportRow {
-  id: string;
-  agentId: string;
-  channel: TransportChannel;
-  config: Record<string, unknown>;
-  priority: number;
-  active: boolean;
-  failureCount: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface AgentPermissionRow {
   id: string;
   agentId: string;
@@ -63,7 +50,6 @@ export interface AgentPermissionRow {
 }
 
 export interface AgentWithRelations extends AgentRow {
-  transports: AgentTransportRow[];
   permissions: AgentPermissionRow[];
 }
 
@@ -75,14 +61,6 @@ export interface CreateAgentInput {
   type: AgentType;
   status?: AgentStatus;
   metadata?: Record<string, unknown>;
-}
-
-export interface CreateTransportInput {
-  agentId: string;
-  channel: TransportChannel;
-  config?: Record<string, unknown>;
-  priority?: number;
-  active?: boolean;
 }
 
 export interface GrantPermissionInput {
@@ -107,10 +85,6 @@ export interface AgentRegistryStore {
   ): Promise<AgentRow | null>;
   deleteAgent(agentId: string): Promise<void>;
   listAgentsForUser(userId: string): Promise<AgentWithRelations[]>;
-  createTransport(input: CreateTransportInput): Promise<AgentTransportRow>;
-  deleteTransport(transportId: string): Promise<void>;
-  recordTransportFailure(transportId: string): Promise<void>;
-  recordTransportSuccess(transportId: string): Promise<void>;
   grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow>;
   upsertGlobalPermission(input: { agentId: string; userId: string; actions: string[] }): Promise<AgentPermissionRow>;
   revokePermission(permissionId: string): Promise<void>;
@@ -132,8 +106,7 @@ export const SYSTEM_AGENT_IDS: AgentSystemIds = {
 /**
  * AgentDatabaseAdapter
  *
- * Database adapter for agent registry CRUD, transport management, and
- * permission queries.
+ * Database adapter for agent registry CRUD and permission queries.
  */
 export class AgentDatabaseAdapter implements AgentRegistryStore {
   async createAgent(input: CreateAgentInput): Promise<AgentRow> {
@@ -170,19 +143,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       return null;
     }
 
-    const [transportRows, permissionRows] = await Promise.all([
-      db
-        .select()
-        .from(schema.agentTransports)
-        .where(eq(schema.agentTransports.agentId, agentId))
-        .orderBy(desc(schema.agentTransports.priority)),
-      db
-        .select()
-        .from(schema.agentPermissions)
-        .where(eq(schema.agentPermissions.agentId, agentId)),
-    ]);
+    const permissionRows = await db
+      .select()
+      .from(schema.agentPermissions)
+      .where(eq(schema.agentPermissions.agentId, agentId));
 
-    return this.mapAgentWithRelations(agent, transportRows, permissionRows);
+    return this.mapAgentWithRelations(agent, permissionRows);
   }
 
   async updateAgent(
@@ -217,11 +183,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         })
         .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)));
 
-      await tx
-        .update(schema.agentTransports)
-        .set({ active: false, updatedAt: new Date() })
-        .where(eq(schema.agentTransports.agentId, agentId));
-
       await tx.delete(schema.apikeys).where(
         sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${agentId}`,
       );
@@ -252,7 +213,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       return [];
     }
 
-    const [agentRows, transportRows, permissionRows] = await Promise.all([
+    const [agentRows, permissionRows] = await Promise.all([
       db
         .select()
         .from(schema.agents)
@@ -264,66 +225,11 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         ),
       db
         .select()
-        .from(schema.agentTransports)
-        .where(inArray(schema.agentTransports.agentId, agentIds))
-        .orderBy(desc(schema.agentTransports.priority)),
-      db
-        .select()
         .from(schema.agentPermissions)
         .where(inArray(schema.agentPermissions.agentId, agentIds)),
     ]);
 
-    return this.mapAgentsWithRelations(agentRows, transportRows, permissionRows);
-  }
-
-  async createTransport(input: CreateTransportInput): Promise<AgentTransportRow> {
-    const [row] = await db
-      .insert(schema.agentTransports)
-      .values({
-        agentId: input.agentId,
-        channel: input.channel,
-        config: input.config ?? {},
-        priority: input.priority ?? 0,
-        active: input.active ?? true,
-      })
-      .returning();
-
-    logger.info('Created agent transport', { agentId: input.agentId, transportId: row.id, channel: row.channel });
-    return this.toTransportRow(row);
-  }
-
-  async deleteTransport(transportId: string): Promise<void> {
-    await db.delete(schema.agentTransports).where(eq(schema.agentTransports.id, transportId));
-    logger.info('Deleted agent transport', { transportId });
-  }
-
-  async recordTransportFailure(transportId: string): Promise<void> {
-    const [row] = await db
-      .update(schema.agentTransports)
-      .set({
-        failureCount: sql`${schema.agentTransports.failureCount} + 1`,
-        active: sql`CASE WHEN ${schema.agentTransports.failureCount} + 1 >= 10 THEN false ELSE ${schema.agentTransports.active} END`,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.agentTransports.id, transportId))
-      .returning();
-
-    if (row && !row.active) {
-      logger.warn('Auto-deactivated transport after repeated failures', {
-        transportId,
-        failureCount: row.failureCount,
-      });
-    }
-  }
-
-  async recordTransportSuccess(transportId: string): Promise<void> {
-    await db
-      .update(schema.agentTransports)
-      .set({
-        failureCount: 0,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.agentTransports.id, transportId));
+    return this.mapAgentsWithRelations(agentRows, permissionRows);
   }
 
   /**
@@ -624,16 +530,13 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   private mapAgentsWithRelations(
     agentRows: Array<typeof schema.agents.$inferSelect>,
-    transportRows: Array<typeof schema.agentTransports.$inferSelect>,
     permissionRows: Array<typeof schema.agentPermissions.$inferSelect>,
   ): AgentWithRelations[] {
-    const transportsByAgent = this.groupTransportsByAgent(transportRows);
     const permissionsByAgent = this.groupPermissionsByAgent(permissionRows);
 
     return agentRows
       .map((row) => ({
         ...this.toAgentRow(row),
-        transports: transportsByAgent.get(row.id) ?? [],
         permissions: permissionsByAgent.get(row.id) ?? [],
       }))
       .sort((left, right) => {
@@ -647,28 +550,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   private mapAgentWithRelations(
     agent: AgentRow,
-    transportRows: Array<typeof schema.agentTransports.$inferSelect>,
     permissionRows: Array<typeof schema.agentPermissions.$inferSelect>,
   ): AgentWithRelations {
     return {
       ...agent,
-      transports: transportRows.map((row) => this.toTransportRow(row)),
       permissions: permissionRows.map((row) => this.toPermissionRow(row)),
     };
-  }
-
-  private groupTransportsByAgent(
-    rows: Array<typeof schema.agentTransports.$inferSelect>,
-  ): Map<string, AgentTransportRow[]> {
-    const result = new Map<string, AgentTransportRow[]>();
-
-    for (const row of rows) {
-      const current = result.get(row.agentId) ?? [];
-      current.push(this.toTransportRow(row));
-      result.set(row.agentId, current);
-    }
-
-    return result;
   }
 
   private groupPermissionsByAgent(
@@ -700,24 +587,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       dailySummaryEnabled: row.dailySummaryEnabled,
       handleNegotiations: row.handleNegotiations,
       lastDailySummaryAt: row.lastDailySummaryAt ?? null,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
-  }
-
-  private toTransportRow(
-    row: typeof schema.agentTransports.$inferSelect,
-  ): AgentTransportRow {
-    const config = ((row.config ?? {}) as Record<string, unknown>);
-
-    return {
-      id: row.id,
-      agentId: row.agentId,
-      channel: row.channel,
-      config,
-      priority: row.priority,
-      active: row.active,
-      failureCount: row.failureCount,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

@@ -8,14 +8,14 @@
  * participant-agents capability's dedicated ports layer.
  */
 
-import type { AgentRecord, AgentTransportRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput } from "./agent.types.js";
+import type { AgentRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, GrantPermissionInput } from "./agent.types.js";
 
 /**
  * Database adapter interface for agent registry operations.
  *
- * Handles CRUD for agents, their transports, and permission grants.
- * Implemented by the host application (backend) and injected into the
- * protocol layer via constructor injection at the composition root.
+ * Handles CRUD for agents and permission grants. Implemented by the host
+ * application (backend) and injected into the protocol layer via constructor
+ * injection at the composition root.
  */
 export interface AgentDatabase {
   /**
@@ -33,7 +33,7 @@ export interface AgentDatabase {
   getAgent(agentId: string): Promise<AgentRecord | null>;
 
   /**
-   * Retrieves an agent along with its transports and permissions.
+   * Retrieves an agent along with its permissions.
    * @param agentId - The agent UUID.
    * @returns The agent with relations, or null if not found.
    */
@@ -51,7 +51,7 @@ export interface AgentDatabase {
   ): Promise<AgentRecord | null>;
 
   /**
-   * Deletes an agent and its associated transports and permissions.
+   * Deletes an agent and its associated permissions.
    * @param agentId - The agent UUID.
    */
   deleteAgent(agentId: string): Promise<void>;
@@ -59,34 +59,9 @@ export interface AgentDatabase {
   /**
    * Lists all agents owned by a user, including their relations.
    * @param userId - The owner's user ID.
-   * @returns Array of agents with transports and permissions.
+   * @returns Array of agents with permissions.
    */
   listAgentsForUser(userId: string): Promise<AgentWithRelations[]>;
-
-  /**
-   * Creates a transport channel for an agent.
-   * @param input - Transport creation parameters.
-   * @returns The persisted transport record.
-   */
-  createTransport(input: CreateTransportInput): Promise<AgentTransportRecord>;
-
-  /**
-   * Deletes a transport channel.
-   * @param transportId - The transport UUID.
-   */
-  deleteTransport(transportId: string): Promise<void>;
-
-  /**
-   * Increments the failure counter for a transport channel.
-   * @param transportId - The transport UUID.
-   */
-  recordTransportFailure(transportId: string): Promise<void>;
-
-  /**
-   * Resets the failure counter for a transport channel after a successful delivery.
-   * @param transportId - The transport UUID.
-   */
-  recordTransportSuccess(transportId: string): Promise<void>;
 
   /**
    * Grants a permission to an agent for a given user and scope.

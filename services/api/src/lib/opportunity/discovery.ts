@@ -34,7 +34,7 @@ export interface DiscoveryJobData {
 
 export type DiscoveryDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded' | 'recordIntentDiscoveryProgress'
+  'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded'
 >;
 
 export interface DiscoveryDeps {
@@ -71,16 +71,10 @@ export class IntentDiscovery {
   }
 
   /**
-   * Record the run as queued, then trigger the scan in the background,
-   * unbounded — one call per trigger, no cap, no retry, no dedup.
+   * Trigger the scan in the background, unbounded — one call per trigger, no
+   * cap, no retry, no dedup.
    */
   async start(data: DiscoveryJobData): Promise<void> {
-    const assignedCommunityCount = (await this.getValidDiscoveryNetworkIds(
-      data.intentId,
-      data.userId,
-      data.networkIds,
-    )).length;
-    await this.recordProgress(data, 'queued', 0, assignedCommunityCount);
     background('discovery', () => this.runDiscover(data));
   }
 
@@ -101,9 +95,6 @@ export class IntentDiscovery {
       if (release) {
         try {
           await this.handleDiscover(data);
-        } catch (error) {
-          await this.recordProgress(data, 'failed', 1);
-          throw error;
         } finally {
           await release();
         }
@@ -116,7 +107,6 @@ export class IntentDiscovery {
           userId: data.userId,
           waitedMs: this.maxSameIntentWaitMs,
         });
-        await this.recordProgress(data, 'failed', 1);
         throw new Error(`Gave up waiting for the same-intent discovery lock for ${data.intentId} after ${this.maxSameIntentWaitMs}ms`);
       }
       this.logger.info('Discovery already running for intent; waiting to retry', {
@@ -127,23 +117,6 @@ export class IntentDiscovery {
       });
       await delay(this.sameIntentDeferDelayMs);
     }
-  }
-
-  private async recordProgress(
-    data: DiscoveryJobData,
-    status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked',
-    attempt: number,
-    assignedCommunityCount?: number,
-    /** Run tallies, known only at a successful boundary; omitted leaves the stored counts alone. */
-    counts?: { processedCommunityCount: number; possibleOverlapCount: number; conversationsStartedCount: number },
-  ): Promise<void> {
-    const record = (this.database as Partial<DiscoveryDatabase>).recordIntentDiscoveryProgress;
-    // A rolling deploy may run before its adapter has
-    // been updated. Production adapters always provide this.
-    if (!record) return;
-    await record.call(this.database, {
-      intentId: data.intentId, userId: data.userId, status, attempt, assignedCommunityCount, ...counts,
-    });
   }
 
   private async handleDiscover(data: DiscoveryJobData): Promise<void> {
@@ -180,7 +153,6 @@ export class IntentDiscovery {
     // scope is narrowing-only. Any empty intersection must stop before the graph
     // or the evidence shadow can observe an unscoped run.
     if (validNetworkIds.length === 0) {
-      await this.recordProgress(data, 'blocked', 0, 0);
       this.logger.warn('Intent has no valid discovery networks, skipping fail-closed', {
         intentId,
         userId,
@@ -188,8 +160,6 @@ export class IntentDiscovery {
       });
       return;
     }
-
-    await this.recordProgress(data, 'running', 1, validNetworkIds.length);
 
     this.logger.info('Starting discovery', { intentId, userId, networkIds: validNetworkIds });
 
@@ -202,10 +172,7 @@ export class IntentDiscovery {
       triggerIntentId: intentId,
     });
 
-    // The graph's own summary is the only honest source for the owner-visible
-    // tallies; it is null when the caller injected a graph (test path), in
-    // which case the success write carries no counts at all.
-    const summary = await runOpportunityDiscovery({
+    await runOpportunityDiscovery({
       graphDb: this.graphDb,
       deps: this.deps,
       invokeOpts,
@@ -245,16 +212,6 @@ export class IntentDiscovery {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    await this.recordProgress(data, 'succeeded', 1, stampNetworkIds.length, summary ? {
-      // The graph runs once across every valid network, so "processed" is the
-      // set that was still valid at the success stamp — there is no per-community
-      // boundary observable from here.
-      processedCommunityCount: stampNetworkIds.length,
-      possibleOverlapCount: summary.candidatesFound,
-      // Each created opportunity enqueues a negotiation run, so this is a count
-      // of conversations the run actually started.
-      conversationsStartedCount: summary.opportunitiesCreated,
-    } : undefined);
   }
 
   /** Resolve the assignment + current-membership intersection used for both admission and stamping. */

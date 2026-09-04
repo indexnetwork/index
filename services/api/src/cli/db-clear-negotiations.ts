@@ -40,7 +40,6 @@ async function readCounts(): Promise<Counts> {
     UNION ALL SELECT 'negotiations', count(*)::text FROM negotiations
     UNION ALL SELECT 'negotiation_turns', count(*)::text FROM negotiation_turns
     UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM opportunity_outcome_events
-    UNION ALL SELECT 'intent_discovery_progress', count(*)::text FROM intent_discovery_progress
     UNION ALL SELECT 'agent_participant_convs', count(*)::text FROM conversations c
       WHERE EXISTS (
         SELECT 1 FROM conversation_participants p
@@ -67,7 +66,6 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
     await tx.execute(sql`DELETE FROM opportunity_outcome_events`);
     // negotiations (and their turns) cascade from the opportunity.
     await tx.execute(sql`DELETE FROM opportunities`);
-    await tx.execute(sql`DELETE FROM intent_discovery_progress`);
   });
   return readCounts();
 }

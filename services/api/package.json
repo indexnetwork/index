@@ -22,8 +22,7 @@
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
-    "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
-    "maintenance:reenqueue-orphaned-discovery": "bun ./src/cli/reenqueue-orphaned-discovery.ts"
+    "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",

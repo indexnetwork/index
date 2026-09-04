@@ -47,7 +47,6 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
       'hyde_documents',
       'intents',
       'agent_permissions',
-      'agent_transports',
       'agents',
       'apikey',
       'network_members',

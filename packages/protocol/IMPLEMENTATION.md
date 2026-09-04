@@ -79,7 +79,7 @@ The package defines interfaces — your application provides the concrete implem
 
 | Interface | Responsibility |
 |---|---|
-| `AgentDatabase` | Agent registry CRUD (agents, transports, permissions) |
+| `AgentDatabase` | Agent registry CRUD (agents, permissions) |
 | `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
 
 All interfaces are exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`.
