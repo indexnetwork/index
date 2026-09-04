@@ -9,6 +9,17 @@ import { signalService, type ClarifyAnswer, type ClarifyQuestion } from "@/servi
 /** The opening question: whatever is answered here becomes the signal. */
 const OPENING_PROMPT = "Who are you trying to reach, and why?";
 
+/**
+ * Whole signals rather than categories, so picking one hands clarify the same
+ * kind of material typing would.
+ */
+const OPENING_OPTIONS = [
+  { label: "want to meet cool ai people in nyc", description: "" },
+  { label: "have a new business idea, want honest feedback from others", description: "" },
+  { label: "looking for a cool open-source project to contribute to", description: "" },
+  { label: "want to find a co-founder who's actually shipped something", description: "" },
+];
+
 /** How many clarifying questions follow the opening one. Caps the loop. */
 const MAX_FOLLOW_UPS = 2;
 /** The opening question plus the follow-ups. */
@@ -142,7 +153,7 @@ export default function NewSignalPage() {
           <Question
             key={question ? question.prompt : "opening"}
             prompt={question ? question.prompt : OPENING_PROMPT}
-            options={question ? question.options : []}
+            options={question ? question.options : OPENING_OPTIONS}
             multiSelect={question ? question.multiSelect : false}
             first={!question}
             onAnswer={answer}
@@ -185,40 +196,43 @@ function Question({
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">{first ? "First" : "Next"}</p>
       <h2 className="mt-3 text-2xl font-semibold leading-tight text-[#041729] sm:text-3xl">{prompt}</h2>
       {multiSelect && <p className="mt-2 text-sm text-gray-500">Choose all that apply.</p>}
-      {options.length > 0 && (
-        <div className="mt-6 grid gap-3">
-          {options.map((option) => {
-            const checked = selected.includes(option.label);
-            return (
-              <button
-                key={option.label}
-                type="button"
-                aria-pressed={checked}
-                onClick={() => toggleOption(option.label)}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  checked
-                    ? "border-[#041729] bg-[#041729] text-white"
-                    : "border-gray-200 bg-white text-gray-800 hover:border-gray-400"
-                }`}
-              >
-                <span className="block text-sm font-medium">{option.label}</span>
-                {option.description && (
-                  <span className={`mt-1 block text-xs ${checked ? "text-gray-200" : "text-gray-500"}`}>
-                    {option.description}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
       <textarea
         value={freeText}
         onChange={(event) => setFreeText(event.target.value)}
         rows={first ? 4 : 2}
-        placeholder={first ? "A founder building in climate hardware, ideally in Berlin…" : "Or tell me in your own words"}
-        className="mt-4 w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10"
+        placeholder={first ? "Type what you’re looking for…" : "Tell me in your own words"}
+        className="mt-6 w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10"
       />
+      {options.length > 0 && (
+        <>
+          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Or pick one</p>
+          <div className="mt-3 grid gap-3">
+            {options.map((option) => {
+              const checked = selected.includes(option.label);
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  aria-pressed={checked}
+                  onClick={() => toggleOption(option.label)}
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${
+                    checked
+                      ? "border-[#041729] bg-[#041729] text-white"
+                      : "border-gray-200 bg-white text-gray-800 hover:border-gray-400"
+                  }`}
+                >
+                  <span className="block text-sm font-medium">{option.label}</span>
+                  {option.description && (
+                    <span className={`mt-1 block text-xs ${checked ? "text-gray-200" : "text-gray-500"}`}>
+                      {option.description}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
       <button
         type="button"
         disabled={text.length === 0}

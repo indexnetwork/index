@@ -6,12 +6,19 @@
 // the payload. Then you confirm what was written and it goes out everywhere.
 
 // The opening prompt: the user's first answer IS the signal, handed to the
-// agent to clarify. No suggestion chips — whatever they type drives it.
+// agent to clarify. The examples are whole signals rather than categories, so
+// picking one hands clarify the same kind of material typing would.
 const INTENT_STEP = {
   id: "intent",
   kind: "ask",
   prompt: "who are you trying to meet right now?",
   placeholder: "type what you're looking for…",
+  examples: [
+    "want to meet cool ai people in nyc",
+    "have a new business idea, want honest feedback from others",
+    "looking for a cool open-source project to contribute to",
+    "want to find a co-founder who's actually shipped something",
+  ],
 };
 
 // How many clarifying questions follow the opening prompt. Caps the loop and
