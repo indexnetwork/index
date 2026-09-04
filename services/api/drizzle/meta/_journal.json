@@ -1163,6 +1163,20 @@
       "when": 1788478579548,
       "tag": "0168_drop_chat_session_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1788484800000,
+      "tag": "0169_drop_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1788484800002,
+      "tag": "0170_drop_discovery_match_candidates",
+      "breakpoints": true
     }
   ]
 }

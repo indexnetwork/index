@@ -6,9 +6,9 @@ It is now **wired into the mac app**: `scripts/assemble.py` inlines `client.mjs`
 
 ## Role
 
-- Own calls to `services/api` (`/api/auth/me`, `/api/intents/list`, `/api/opportunities/radar`, `/api/questions`, conversations, etc.).
+- Own calls to `services/api` (`/api/auth/me`, `/api/intents/list`, `/api/opportunities/radar`, conversations, etc.).
 - Keep endpoint paths aligned with the decorated controllers in `services/api/src/controllers` and the `/api` global prefix in `services/api/src/main.ts`.
-- Convert backend DTOs into the existing prototype shapes (`INTENTS`, people/opportunity cards, clarifiers).
+- Convert backend DTOs into the existing prototype shapes (`INTENTS`, people/opportunity cards).
 - Keep auth/token handling isolated from UI components.
 - Preserve fake-data fallback in the app for signed-out browser preview.
 
@@ -34,7 +34,6 @@ The client base URL includes `/api`, matching the global prefix applied in `serv
 - `network.controller.ts`: `GET /networks`, `GET /networks/:id/overview`, `GET /networks/:id/my-intents`, `POST /networks`, `POST /networks/:id/join`, `POST /networks/:id/leave`
 - `intent.controller.ts`: `POST /intents/list`, `GET /intents/:id`, `PATCH /intents/:id/archive`, `PATCH /intents/:id/status`
 - `opportunity.controller.ts`: `GET /opportunities`, `GET /opportunities/radar` (incl. `scopeType=intent`), `GET /opportunities/chat-context`, `GET /opportunities/:id`, `GET /opportunities/:id/invite-message`, `PATCH /opportunities/:id/status` (incl. intent scope), `POST /opportunities/:id/start-chat` (incl. intent scope)
-- `question.controller.ts`: `GET /questions` (incl. `scopeType=intent`, `conversationId`, `mode`), `POST /questions/:id/answer`, `POST /questions/:id/dismiss`
 - `conversation.controller.ts`: `GET /conversations`, `GET /conversations/negotiations`, `GET /conversations/:id/messages`, `POST /conversations/:id/messages`, `POST /conversations/dm`, `PATCH /conversations/:id/metadata`, `DELETE /conversations/:id`
 - `agent.controller.ts`: `GET /agents` (read-only; management writes are session-only)
 - `tool.controller.ts`: `POST /tools/:toolName` (`client.tools.invoke`; used for the onboarding-allowed `preview_user_context` / `confirm_user_context`)
@@ -48,8 +47,8 @@ Matches the web app's lazy contract:
 
 | Phase | Calls | Notes |
 |-------|-------|-------|
-| **Boot** (`loadSnapshot`) | `GET /auth/me`, `POST /intents/list` (page 1, limit 100) | Blocking; `PEOPLE`, `CLARIFIERS`, and `NETWORKS` start empty |
+| **Boot** (`loadSnapshot`) | `GET /auth/me`, `POST /intents/list` (page 1, limit 100) | Blocking; `PEOPLE` and `NETWORKS` start empty |
 | **Networks** (`loadNetworks`) | `GET /networks` | Background after boot; updates `env.networks` and `window.INDEX_DATA.NETWORKS` |
-| **Intent open** (`refreshRadar`) | scoped `GET /questions` (pending + answered), `GET /opportunities/radar` (skeleton then full) | Per selected intent; same `RADAR_STATUSES` as web |
+| **Intent open** (`refreshRadar`) | `GET /opportunities/radar` (skeleton then full) | Per selected intent; same `RADAR_STATUSES` as web |
 
-Intent row badges use server `pendingQuestionCount + waitingOpportunityCount`. Deep links to opportunities fall back to `GET /opportunities/:id` when the card is not yet in loaded radar.
+Intent row badges use server `waitingOpportunityCount`. Deep links to opportunities fall back to `GET /opportunities/:id` when the card is not yet in loaded radar.

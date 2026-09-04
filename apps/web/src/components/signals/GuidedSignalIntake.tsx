@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Loader2, Send } from "lucide-react";
 
-import type { AnswerBody, QuestionPayload } from "@/services/questions";
+import type { IntakeAnswerBody, QuestionPayload } from "@/services/intake";
 
 export type GuidedProposal = {
   proposalId: string;
@@ -26,7 +26,7 @@ export function GuidedQuestion({
   disabled,
 }: {
   question: { id: string; payload: QuestionPayload };
-  onAnswer: (body: AnswerBody) => Promise<void>;
+  onAnswer: (body: IntakeAnswerBody) => Promise<void>;
   disabled: boolean;
 }) {
   const [selected, setSelected] = useState<string[]>([]);

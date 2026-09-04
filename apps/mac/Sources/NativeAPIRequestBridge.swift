@@ -266,8 +266,6 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/opportunities/[^/?]+(?:/invite-message)?$"#),
         ("PATCH", #"^/opportunities/[^/?]+/status$"#),
         ("POST", #"^/opportunities/[^/?]+/start-chat$"#),
-        ("GET", #"^/questions(?:\?.*)?$"#),
-        ("POST", #"^/questions/[^/?]+/(?:answer|dismiss)$"#),
         ("POST", #"^/enrichment/enrich$"#),
         ("POST", #"^/auth/onboarding/confirm-profile$"#),
         ("POST", #"^/auth/onboarding/complete$"#),
@@ -656,12 +654,6 @@ final class NativeAPIRequestBridge {
                     && (item["scopeId"] == nil || uuidIdentifier(item["scopeId"]))
                     && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
             }
-        case let value where value.range(of: #"^/questions/[^/?]+/answer$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["selectedOptions"], optional: ["freeText"]) { item in
-                boundedStringArray(item["selectedOptions"], maximumItems: 20) && optionalString(item, "freeText", maximum: 65_536)
-            }
-        case let value where value.range(of: #"^/questions/[^/?]+/dismiss$"#, options: .regularExpression) != nil:
-            return keysAllowed(body, allowed: [])
         case "/enrichment/enrich":
             return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "websites"])
         case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
@@ -760,7 +752,6 @@ final class NativeAPIRequestBridge {
         case "/opportunities/radar":
             allowed = ["statuses", "presentation", "limit", "offset", "scopeType", "scopeId", "noCache"]
         case "/opportunities/chat-context": allowed = ["peerUserId"]
-        case "/questions": allowed = ["status", "sourceId", "scopeType", "scopeId", "limit", "offset"]
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
             allowed = ["limit", "before", "after"]
         default: return false

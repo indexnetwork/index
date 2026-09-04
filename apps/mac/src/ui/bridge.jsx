@@ -185,13 +185,13 @@ window.IndexApp = (function () {
     const features = meR.ok ? (meR.value.features || {}) : {};
     const intents = intentR.ok ? normalizeList(intentR.value, "intents") : [];
 
-    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks: [], intents, questions: [], radarItems: [] });
+    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks: [], intents, radarItems: [] });
     return {
       snapshot,
       me: mapMe(user),
       networks: [],
       features,
-      raw: { user, features, networks: [], intents, questions: [], radarItems: [] },
+      raw: { user, features, networks: [], intents, radarItems: [] },
     };
   }
 

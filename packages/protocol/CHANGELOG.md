@@ -20,6 +20,38 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 46.0.0 - 2026-09-03
+
+### Removed
+
+- **BREAKING: the question surface is gone.** `Question`, `QuestionPurpose`,
+  `QuestionPurposeSchema`, `QuestionStrategy`, `QuestionStrategySchema`,
+  `QuestionRecoverySnapshot` and `QuestionVoidedReason` are removed along with
+  `question.ts`, and so are the question-block exports (`QuestionBlockSchema`,
+  `QuestionBlockQuestionSchema`, `QuestionBlock`, `QuestionBlockQuestion`,
+  `ParsedQuestionMessage`, `parseQuestionMessage`, `serializeQuestionMessage`,
+  `questionBlockFixture`, `questionMessageFixture`, `questionProseFixture`).
+  The durable question system was retired generator-first; nothing produced,
+  stored or rendered these shapes any more. Hosts can drop their `questions`
+  storage with them.
+- `UnderspecificationTypeSchema` and `UnderspecificationType` now come straight
+  from `protocol/schemas/underspecification.schema.ts`. The exported names and
+  types are unchanged; only the (never-contractual) internal module moved.
+
+## 46.0.0 - 2026-09-03
+
+### Removed
+
+- **BREAKING: `upsertDiscoveryMatchCandidates` and `openCandidates` are replaced
+  by `openCounterparties(pairs)`.** Discovery no longer stages a scored pair
+  before opening it: it hands the host the pair and the host writes the
+  opportunity and its negotiation in one transaction, keyed on `pairKey`. Hosts
+  can drop their candidates table; the pair-uniqueness it enforced belongs on
+  the negotiation.
+- **BREAKING: `DiscoveryMatchCandidate`, `CreateDiscoveryMatchCandidateData` and
+  `DiscoveryMatchCandidateStatus` are gone.** `CreateIntentCounterpartyData`
+  replaces the create shape as a call payload rather than a stored entity.
+
 ## 45.0.0 - 2026-09-03
 
 ### Added

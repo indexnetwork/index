@@ -111,8 +111,6 @@ export interface IntentListRow {
    * the UI surface orphaned intents instead of hiding the assignment outcome.
    */
   networks: { id: string; title: string }[];
-  /** Count of pending intent-scoped questions awaiting the user for this intent. */
-  pendingQuestionCount: number;
   /**
    * Count of distinct `pending` opportunities awaiting this owner that are
    * attributed to this signal by `detection.triggeredBy` or the owner's
@@ -153,7 +151,7 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, discoveryMatchCandidates, negotiations, negotiationTurns, userNotificationSettings, sessions, userSocials } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, negotiations, negotiationTurns, userNotificationSettings, sessions, userSocials } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
@@ -350,10 +348,6 @@ export interface ChatMessage {
   subgraphResults: Record<string, unknown> | null;
   tokenCount: number | null;
   interrupted?: boolean | null;
-  /** Structured questions rendered by the chat question widget. */
-  decisionQuestions?: unknown[] | null;
-  /** True only after an explicit structured-question submission. */
-  decisionQuestionsSubmitted?: boolean | null;
   createdAt: Date;
 }
 
@@ -386,10 +380,6 @@ export interface ChatMessageMeta {
   discoveries?: unknown;
   /** Set to true when the assistant message was partially generated before a steer interrupt. */
   interrupted?: boolean;
-  /** Structured questions rendered by the chat question widget. */
-  decisionQuestions?: unknown[];
-  /** Set only after the principal explicitly submits this question form. */
-  decisionQuestionsSubmitted?: boolean;
   [key: string]: unknown;
 }
 
@@ -414,8 +404,6 @@ export interface CreateMessageInput {
   subgraphResults?: Record<string, unknown>;
   tokenCount?: number;
   interrupted?: boolean;
-  /** Structured questions for an agent message; stored in messages.metadata. */
-  questions?: unknown[];
 }
 
 /**

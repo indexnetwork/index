@@ -94,8 +94,11 @@ function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabase {
   });
 
   return {
-    upsertDiscoveryMatchCandidates: async (items: unknown[]) => items.map((item, i) => ({
-      ...(item as object), id: `cand-${i}`, status: 'pending', createdAt: new Date(),
+    openCounterparties: async (pairs) => pairs.map((pair, i) => ({
+      opportunityId: `opp-${i}` as Id<'opportunities'>,
+      negotiationId: `neg-${i}`,
+      initiatorUserId: pair.userA,
+      initiatorIntentId: pair.intentA,
     })),
     getProfile: async () => null,
     createOpportunity: async (data) => ({ ...emptyOpportunity('fixture-opportunity'), ...data }),
@@ -378,7 +381,7 @@ describe('Opportunity Graph', () => {
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('join');
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
       expect(hydeSpy).not.toHaveBeenCalled();
       expect(searchSpy).not.toHaveBeenCalled();
     });
@@ -397,7 +400,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.error).toBeUndefined();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
   });
 
@@ -468,7 +471,7 @@ describe('Opportunity Graph', () => {
 
       expect(searchSpy).not.toHaveBeenCalled();
       expect(result.error).toContain('not available');
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
     test('when trigger intent has no active assigned network, graph discovery fails closed', async () => {
@@ -486,7 +489,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(searchSpy).not.toHaveBeenCalled();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
     test('when indexScope is explicitly empty, discovery fails closed', async () => {
@@ -503,7 +506,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(searchSpy).not.toHaveBeenCalled();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
     test('when indexScope provided, the vector search is intersected and networks outside it are excluded', async () => {
@@ -547,9 +550,9 @@ describe('Opportunity Graph', () => {
       });
 
       expect(searchSpy.mock.calls[0]?.[1]?.minScore).toBe(0.42);
-      // Every candidate that clears retrieval is persisted directly now —
+      // Every candidate that clears retrieval is opened directly now —
       // no evaluator score floor.
-      expect(result.candidatesEmitted).toHaveLength(1);
+      expect(result.opened).toHaveLength(1);
       expect(result.trace).toContainEqual(expect.objectContaining({
         node: 'threshold_filter',
         detail: expect.stringContaining('above 0.42'),
@@ -692,7 +695,7 @@ describe('Opportunity Graph', () => {
           t.node === 'candidate' && t.data?.userId === 'b0000000-0000-4000-8000-000000000002'
       );
       expect(candidateTraceEntries.length).toBe(1);
-      expect(result.candidatesEmitted.length).toBe(1);
+      expect(result.opened.length).toBe(1);
     });
 
     test('dedup prefers candidate from index with higher relevancy score on equal similarity', async () => {
@@ -817,7 +820,7 @@ describe('Opportunity Graph', () => {
       const { compiledGraph, mockDb } = createMockGraph({
         explainerResult: { reasoning: 'Alice and Bob will both be at Edge Esmeralda.' },
       });
-      const createSpy = spyOn(mockDb, 'upsertDiscoveryMatchCandidates');
+      const createSpy = spyOn(mockDb, 'openCounterparties');
 
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
@@ -826,7 +829,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).not.toHaveBeenCalled();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
     test('removes inactive candidate pairs before evaluation and pagination', async () => {
@@ -846,7 +849,7 @@ describe('Opportunity Graph', () => {
       expect(explainerSpy).not.toHaveBeenCalled();
       expect(result.candidates).toEqual([]);
       expect(result.evaluatedOpportunities).toEqual([]);
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
 
@@ -869,13 +872,14 @@ describe('Opportunity Graph', () => {
 
       expect(assignmentRead).toBeGreaterThanOrEqual(2);
       expect(createIfEligible).not.toHaveBeenCalled();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
 
 
-    test('when discovery returns an intent candidate, a candidate is emitted', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph();
+    test('when discovery returns an intent candidate, a pair is opened', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const openSpy = spyOn(mockDb, 'openCounterparties');
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
           type: 'intent' as const,
@@ -893,16 +897,17 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.candidatesEmitted.length).toBe(1);
-      // Both seats on one row: either principal's agent can open it.
-      expect(result.candidatesEmitted[0].userA).toBe('a0000000-0000-4000-8000-000000000001');
-      expect(result.candidatesEmitted[0].userB).toBe('b0000000-0000-4000-8000-000000000002');
-      expect(result.candidatesEmitted[0].intentB).toBe('intent-bob');
+      expect(result.opened.length).toBe(1);
+      // Both seats on one pair: either principal's run reaches the same key.
+      const [pair] = openSpy.mock.calls[0]![0];
+      expect(pair!.userA).toBe('a0000000-0000-4000-8000-000000000001');
+      expect(pair!.userB).toBe('b0000000-0000-4000-8000-000000000002');
+      expect(pair!.intentB).toBe('intent-bob');
     });
 
-    test('carries typed opportunity evidence onto the candidate', async () => {
+    test('carries typed opportunity evidence onto the pair', async () => {
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const upsertSpy = spyOn(mockDb, 'upsertDiscoveryMatchCandidates');
+      const upsertSpy = spyOn(mockDb, 'openCounterparties');
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
           type: 'intent' as const,
@@ -941,7 +946,8 @@ describe('Opportunity Graph', () => {
     test('sorts by score and applies limit', async () => {
       // Score is derived from discovery similarity now — the higher-similarity
       // candidate (c, 0.9) should outrank the lower one (bob, 0.8).
-      const { compiledGraph, mockEmbedder } = createMockGraph();
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const openSpy = spyOn(mockDb, 'openCounterparties');
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.8, matchedVia: 'mirror' as const, networkId: 'idx-1' },
         { type: 'intent' as const, id: 'intent-alice', userId: 'c0000000-0000-4000-8000-000000000003', score: 0.9, matchedVia: 'reciprocal' as const, networkId: 'idx-1' },
@@ -953,8 +959,8 @@ describe('Opportunity Graph', () => {
         options: { limit: 1 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.candidatesEmitted.length).toBe(1);
-      expect(result.candidatesEmitted[0].userB).toBe('c0000000-0000-4000-8000-000000000003');
+      expect(result.opened.length).toBe(1);
+      expect(openSpy.mock.calls[0]![0][0]!.userB).toBe('c0000000-0000-4000-8000-000000000003');
     });
   });
 
@@ -1000,7 +1006,8 @@ describe('Opportunity Graph', () => {
 
   describe('Full flow with new API', () => {
     test('invoke with userId, searchQuery, options returns opportunities with correct shape', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph();
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const openSpy = spyOn(mockDb, 'openCounterparties');
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
           type: 'intent' as const,
@@ -1018,18 +1025,18 @@ describe('Opportunity Graph', () => {
         options: { limit: 5 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.candidatesEmitted).toBeDefined();
-      expect(Array.isArray(result.candidatesEmitted)).toBe(true);
-      if (result.candidatesEmitted.length > 0) {
-        const candidate = result.candidatesEmitted[0];
-        // A candidate is a pair, not a row: two seats, one network, one key.
-        expect(candidate.pairKey).toBeDefined();
-        expect(candidate.networkId).toBeDefined();
-        expect(candidate.reasoning).toBeDefined();
-        expect(candidate.userA).toBeDefined();
-        expect(candidate.userB).toBeDefined();
-        expect(candidate.intentA).toBeDefined();
-        expect(candidate.intentB).toBeDefined();
+      expect(result.opened).toBeDefined();
+      expect(Array.isArray(result.opened)).toBe(true);
+      if (result.opened.length > 0) {
+        // A counterparty is a pair: two seats, one network, one key.
+        const pair = openSpy.mock.calls[0]![0][0]!;
+        expect(pair.pairKey).toBeDefined();
+        expect(pair.networkId).toBeDefined();
+        expect(pair.reasoning).toBeDefined();
+        expect(pair.userA).toBeDefined();
+        expect(pair.userB).toBeDefined();
+        expect(pair.intentA).toBeDefined();
+        expect(pair.intentB).toBeDefined();
       }
     });
 
@@ -1043,7 +1050,7 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
       expect(result.candidates).toEqual([]);
     });
 
@@ -1052,7 +1059,8 @@ describe('Opportunity Graph', () => {
 
   describe('targetUserId filtering', () => {
     test('when targetUserId is set, only candidates matching that user are returned', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph();
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const openSpy = spyOn(mockDb, 'openCounterparties');
       // Return two candidates: b0000000-0000-4000-8000-000000000002 and c0000000-0000-4000-8000-000000000003
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
@@ -1080,10 +1088,11 @@ describe('Opportunity Graph', () => {
         options: {},
       });
 
-      // Only c0000000-0000-4000-8000-000000000003 should be evaluated and persisted
-      expect(result.candidatesEmitted.length).toBe(1);
-      expect(result.candidatesEmitted[0].userA).toBe('a0000000-0000-4000-8000-000000000001');
-      expect(result.candidatesEmitted[0].userB).toBe('c0000000-0000-4000-8000-000000000003');
+      // Only c0000000-0000-4000-8000-000000000003 should be evaluated and opened
+      expect(result.opened.length).toBe(1);
+      const pair = openSpy.mock.calls[0]![0][0]!;
+      expect(pair.userA).toBe('a0000000-0000-4000-8000-000000000001');
+      expect(pair.userB).toBe('c0000000-0000-4000-8000-000000000003');
     });
 
     test('when targetUserId is not set, all candidates proceed to evaluation', async () => {
@@ -1114,7 +1123,7 @@ describe('Opportunity Graph', () => {
       });
 
       // Both candidates should proceed (no filtering) — at least 1 opportunity
-      expect(result.candidatesEmitted.length).toBeGreaterThanOrEqual(1);
+      expect(result.opened.length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -1538,7 +1547,7 @@ const EXPECTED_NODE_TRACE_NAMES = [
   'opportunity-resolve',
   'opportunity-discovery',
   'opportunity-ranking',
-  'opportunity-emit-candidates',
+  'opportunity-emit-counterparties',
 ];
 
 describe('Opportunity Graph — Trace Events', () => {

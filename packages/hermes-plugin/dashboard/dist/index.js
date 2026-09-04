@@ -1,8 +1,8 @@
 /**
  * Index Network Hermes dashboard.
  *
- * Intent-centric layout: each intent owns its pending questions and
- * its opportunities ("radar"), in a master-detail view. The selected intent
+ * Intent-centric layout: each intent owns its opportunities ("radar"),
+ * in a master-detail view. The selected intent
  * is mirrored into the URL hash so browser Back/Forward navigate between
  * intents. Data loads through the plugin backend, which reuses native Hermes
  * tool handlers so connector authority and protocol visibility rules stay
@@ -651,156 +651,6 @@
     return React.createElement("div", { className: className }, children);
   }
 
-  function letterFor(index) {
-    return String.fromCharCode(65 + index);
-  }
-
-  function OptionRow(props) {
-    const className = props.selected ? "index-dashboard__qopt index-dashboard__qopt--selected" : "index-dashboard__qopt";
-    return React.createElement("button", { type: "button", className: className, onClick: props.onToggle },
-      React.createElement("span", { className: "index-dashboard__qletter", "aria-hidden": "true" }, props.letter),
-      React.createElement("span", { className: "index-dashboard__qopt-text" },
-        React.createElement("span", { className: "index-dashboard__qopt-label" }, props.label),
-        props.description ? React.createElement("span", { className: "index-dashboard__qopt-desc" }, " — " + props.description) : null,
-      ),
-    );
-  }
-
-  function QuestionCard(props) {
-    const question = props.question;
-    const options = Array.isArray(question.options) ? question.options : [];
-    const hasOptions = options.length > 0;
-    const selectedState = React.useState([]);
-    const selected = selectedState[0];
-    const setSelected = selectedState[1];
-    const otherState = React.useState(false);
-    const otherSelected = otherState[0];
-    const setOtherSelected = otherState[1];
-    const freeTextState = React.useState("");
-    const freeText = freeTextState[0];
-    const setFreeText = freeTextState[1];
-    const showFreeText = otherSelected || !hasOptions;
-    const canSubmit = hasOptions
-      ? selected.length > 0 || (otherSelected && freeText.trim().length > 0)
-      : freeText.trim().length > 0;
-
-    function toggleOption(label) {
-      setOtherSelected(false);
-      setSelected(function (current) {
-        if (question.multiSelect) {
-          return current.indexOf(label) >= 0
-            ? current.filter(function (item) { return item !== label; })
-            : current.concat([label]);
-        }
-        return current.indexOf(label) >= 0 ? [] : [label];
-      });
-    }
-
-    function toggleOther() {
-      setOtherSelected(function (prev) {
-        const next = !prev;
-        if (next) setSelected([]);
-        return next;
-      });
-    }
-
-    function submit(event) {
-      event.preventDefault();
-      if (!canSubmit) return;
-      const sendOther = otherSelected || !hasOptions;
-      props.onSubmit(question, sendOther ? [] : selected, sendOther ? freeText : "");
-    }
-
-    return React.createElement("form", { className: "index-dashboard__question", onSubmit: submit },
-      React.createElement("p", { className: "index-dashboard__question-prompt" }, question.prompt || question.title || "Question"),
-      hasOptions
-        ? React.createElement("div", { className: "index-dashboard__question-options" },
-          options.map(function (option, index) {
-            const label = String(option.label || "");
-            return React.createElement(OptionRow, {
-              key: label,
-              letter: letterFor(index),
-              label: label,
-              description: option.description,
-              selected: selected.indexOf(label) >= 0,
-              onToggle: function () { toggleOption(label); },
-            });
-          }),
-          React.createElement(OptionRow, {
-            letter: letterFor(options.length),
-            label: "Other…",
-            description: "",
-            selected: otherSelected,
-            onToggle: toggleOther,
-          }),
-        )
-        : null,
-      showFreeText
-        ? React.createElement("textarea", {
-          className: "index-dashboard__textarea",
-          onChange: function (event) { setFreeText(event.target.value); },
-          placeholder: hasOptions ? "Type your own answer…" : "Write your answer…",
-          rows: 3,
-          value: freeText,
-        })
-        : null,
-      React.createElement("div", { className: "index-dashboard__question-actions" },
-        React.createElement(Button, { type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md", onClick: function () { props.onSkip(question); } }, "Skip"),
-        React.createElement(Button, { type: "submit", size: "sm", className: "index-dashboard__btn-md", disabled: !canSubmit }, "Submit"),
-      ),
-    );
-  }
-
-  // Mac-app parity: an answered question stays visible as a settled record —
-  // hairline frame, muted prompt, and the given answer quoted under a strong
-  // rule — instead of vanishing (a dismissed one fades and keeps no quote).
-  function AnsweredQuestionCard(props) {
-    const record = props.record;
-    const question = record.question || {};
-    return React.createElement("div", {
-      className: "index-dashboard__question index-dashboard__question--done"
-        + (record.dismissed ? " index-dashboard__question--dismissed" : ""),
-    },
-      React.createElement("div", { className: "index-dashboard__qdone-status" }, record.dismissed ? "dismissed" : "✓ answered"),
-      React.createElement("p", { className: "index-dashboard__question-prompt" }, question.prompt || question.title || "Question"),
-      record.dismissed ? null : React.createElement("div", { className: "index-dashboard__qdone-answer" },
-        React.createElement("span", { className: "index-dashboard__qdone-label" }, "you said"),
-        React.createElement("span", { className: "index-dashboard__qdone-text" }, record.choice),
-      ),
-    );
-  }
-
-  function QuestionList(props) {
-    const section = props.section || {};
-    const answered = Array.isArray(props.answered) ? props.answered : [];
-    const answeredIds = {};
-    answered.forEach(function (record) { answeredIds[record.question.id] = true; });
-    // A stale summary can still list an already-answered question as pending;
-    // the local record wins so the form never resurfaces.
-    const questions = (Array.isArray(section.items) ? section.items : []).filter(function (question) {
-      return !answeredIds[question.id];
-    });
-    if (section.error) {
-      return React.createElement("div", { className: "index-dashboard__error" }, section.error);
-    }
-    const cards = questions.map(function (question) {
-      return React.createElement(QuestionCard, { key: question.id, question: question, onSubmit: props.onSubmit, onSkip: props.onSkip });
-    }).concat(answered.map(function (record) {
-      return React.createElement(AnsweredQuestionCard, { key: record.question.id, record: record });
-    }));
-    if (props.actionError) {
-      return React.createElement("div", { className: "index-dashboard__stack" },
-        React.createElement("div", { className: "index-dashboard__error" }, props.actionError),
-        cards.length === 0 ? React.createElement(EmptyState, null, "No pending questions right now.") : null,
-        cards,
-      );
-    }
-    if (cards.length === 0) {
-      return React.createElement(EmptyState, null, "No pending questions right now.");
-    }
-    return React.createElement("div", { className: "index-dashboard__stack" }, cards);
-  }
-
   // Mirrors plugin_api.py _STATUS_BUCKET: raw status -> display bucket.
   // Rejected is hidden (null bucket), matching the mac app: those are mostly
   // agent-side filtering decisions, and listing them reads as user rejection.
@@ -1064,9 +914,9 @@
     );
   }
 
-  // One consolidated, unlabeled number per row: pending questions + awaiting
-  // opportunities. Every surface (Hermes web/desktop, mac app) shows this same
-  // sum so counts stay consistent.
+  // One consolidated, unlabeled number per row: awaiting opportunities. Every
+  // surface (Hermes web/desktop, mac app) shows this same count so they stay
+  // consistent.
   function PendingBadge(count) {
     if (!count) return null;
     return React.createElement(BadgeText, null, formatCount(count));
@@ -2326,17 +2176,15 @@
     }, [armed]);
     if (!intent) {
       return React.createElement("div", { className: "index-dashboard__detail" },
-        React.createElement(EmptyState, null, "Select an intent to see its questions and radar."),
+        React.createElement(EmptyState, null, "Select an intent to see its radar."),
       );
     }
     const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
-    const questionSection = { items: intent.questions || [] };
     const allOpps = Array.isArray(intent.opportunities) ? intent.opportunities : [];
     const visibleOpps = allOpps.filter(function (opp) {
       return bucketForStatus(opp.status) === selectedBucket;
     });
     const radarEmpty = "No matches here yet.";
-    const questionsLoading = !!props.questionsLoading;
     const radarLoading = !!props.radarLoading;
     return React.createElement("div", { className: "index-dashboard__detail" },
       React.createElement(DetailHead, {
@@ -2371,12 +2219,8 @@
         })(),
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
-      React.createElement(Panel, { primary: true, title: "Questions", count: intent.questionCount, description: "Answer pending follow-ups for this intent." },
-        questionsLoading
-          ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading questions…")
-          : React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
-      ),
-        React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
+        React.createElement(Panel, { title: "Radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
+          props.actionError ? React.createElement("div", { className: "index-dashboard__error" }, props.actionError) : null,
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
           radarLoading && !allOpps.length
             ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
@@ -3514,9 +3358,6 @@
     const intentDetailsState = useState({});
     const intentDetails = intentDetailsState[0];
     const setIntentDetails = intentDetailsState[1];
-    const questionsLoadingState = useState(false);
-    const questionsLoading = questionsLoadingState[0];
-    const setQuestionsLoading = questionsLoadingState[1];
     const radarLoadingState = useState(false);
     const radarLoading = radarLoadingState[0];
     const setRadarLoading = radarLoadingState[1];
@@ -3532,11 +3373,6 @@
     const actionErrorState = useState(null);
     const actionError = actionErrorState[0];
     const setActionError = actionErrorState[1];
-    // Question id -> settled record ({ question, choice, dismissed, intentId }).
-    // Session-local, like the Mac app's answered clarifiers in the feed.
-    const answeredState = useState({});
-    const answeredMap = answeredState[0];
-    const setAnsweredMap = answeredState[1];
     const actingState = useState(null);
     const actingId = actingState[0];
     const setActingId = actingState[1];
@@ -3604,13 +3440,9 @@
     function mergeIntentDetail(baseIntent, detail) {
       if (!baseIntent) return null;
       const opps = (detail && detail.opportunities) || [];
-      const questions = (detail && detail.questions) || [];
       const statusCounts = statusCountsFromOpportunities(opps);
       return Object.assign({}, baseIntent, {
-        questions: questions,
-        answeredQuestions: (detail && detail.answeredQuestions) || [],
         opportunities: opps,
-        questionCount: questions.length,
         opportunityCount: statusCounts.pending || 0,
         totalOpportunityCount: opps.length,
         statusCounts: statusCounts,
@@ -3619,13 +3451,9 @@
 
     function loadIntentDetail(intentId, passive) {
       if (!intentId) return Promise.resolve();
-      if (!passive) {
-        setQuestionsLoading(true);
-        setRadarLoading(true);
-      }
+      if (!passive) setRadarLoading(true);
       const seq = Date.now();
       const radarPath = API + "/intents/" + encodeURIComponent(intentId) + "/radar";
-      const questionsPath = API + "/intents/" + encodeURIComponent(intentId) + "/questions";
 
       function mergeDetail(patch) {
         if (selectedIdRef.current !== intentId) return;
@@ -3636,24 +3464,6 @@
           });
         });
       }
-
-      const questionsPromise = fetchPluginJSON(questionsPath)
-        .then(function (payload) {
-          if (selectedIdRef.current !== intentId) return;
-          let questions = [];
-          let answeredQuestions = [];
-          if (payload && payload.pending !== undefined) {
-            questions = payload.pending || [];
-            answeredQuestions = payload.answered || [];
-          } else if (payload && payload.questions) {
-            questions = payload.questions;
-          }
-          mergeDetail({ questions: questions, answeredQuestions: answeredQuestions });
-        })
-        .catch(function () { /* keep prior detail on failure */ })
-        .finally(function () {
-          if (selectedIdRef.current === intentId && !passive) setQuestionsLoading(false);
-        });
 
       const skeletonPromise = passive
         ? Promise.resolve(null)
@@ -3677,7 +3487,7 @@
           if (selectedIdRef.current === intentId && !passive) setRadarLoading(false);
         });
 
-      return Promise.all([questionsPromise, skeletonPromise, radarPromise]);
+      return Promise.all([skeletonPromise, radarPromise]);
     }
 
     function load() {
@@ -3738,71 +3548,6 @@
       ctl.messages.classList.toggle("index-dashboard__hdr-account--dot", !!hasUnread);
     }, [hasUnread]);
 
-    // Mac-app parity: the card flips into a settled record immediately (the
-    // Mac app updates its feed before the API call returns); a failed write
-    // restores the form and surfaces the error.
-    function recordAnswer(question, extra) {
-      setActionError(null);
-      setAnsweredMap(function (prev) {
-        const next = Object.assign({}, prev);
-        next[question.id] = Object.assign({ question: question, intentId: selectedId }, extra);
-        return next;
-      });
-    }
-
-    function unrecordAnswer(questionId) {
-      setAnsweredMap(function (prev) {
-        const next = Object.assign({}, prev);
-        delete next[questionId];
-        return next;
-      });
-    }
-
-    function submitQuestion(question, selectedOptions, freeText) {
-      const choice = (selectedOptions && selectedOptions.length
-        ? selectedOptions.join(", ")
-        : String(freeText || "")).trim() || "answered";
-      recordAnswer(question, { choice: choice, dismissed: false });
-      fetchPluginJSON(API + "/questions/" + encodeURIComponent(question.id) + "/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedOptions: selectedOptions, freeText: freeText }),
-      })
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Question answer could not be saved.");
-          }
-          load().then(function () {
-            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
-          });
-        })
-        .catch(function (err) {
-          unrecordAnswer(question.id);
-          setActionError(err && err.message ? err.message : String(err));
-        });
-    }
-
-    function skipQuestion(question) {
-      recordAnswer(question, { choice: "", dismissed: true });
-      fetchPluginJSON(API + "/questions/" + encodeURIComponent(question.id) + "/dismiss", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Question could not be skipped.");
-          }
-          load().then(function () {
-            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
-          });
-        })
-        .catch(function (err) {
-          unrecordAnswer(question.id);
-          setActionError(err && err.message ? err.message : String(err));
-        });
-    }
-
     // Open (or resolve) the in-dashboard DM for an opportunity via the same
     // start-chat endpoint the Mac app uses; the backend resolves the counterpart.
     function openOpportunityChat(opportunity) {
@@ -3828,12 +3573,11 @@
         .finally(function () { setActingId(null); });
     }
 
-    function opportunityAction(opportunity, action, onPayload, acknowledgedIds) {
+    function opportunityAction(opportunity, action, onPayload) {
       const opportunityId = opportunity && opportunity.opportunityId;
       if (!opportunityId) return;
       const body = {};
       if (opportunity.intentScopeId) { body.scopeType = "intent"; body.scopeId = opportunity.intentScopeId; }
-      if (acknowledgedIds && acknowledgedIds.length) body.acknowledgedUptakeQuestionIds = acknowledgedIds;
       setActingId(opportunityId);
       setActionError(null);
       fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(opportunityId) + "/" + action, {
@@ -3842,22 +3586,6 @@
         body: JSON.stringify(body),
       })
         .then(function (payload) {
-          if (payload && payload.success === false && payload.advisory && payload.advisory.code === "unresolved_uptake_questions") {
-            var questions = Array.isArray(payload.advisory.questions) ? payload.advisory.questions : [];
-            var warning = questions.map(function (question) {
-              return (question.title ? question.title + ": " : "") + (question.prompt || "Question " + question.id);
-            }).join("\n\n");
-            var proceed = window.confirm(
-              "Please answer or dismiss these questions before connecting:\n\n" + warning +
-              "\n\nContinue anyway without answering?"
-            );
-            if (proceed) {
-              opportunityAction(opportunity, action, onPayload, questions.map(function (question) { return question.id; }));
-            } else {
-              setActionError("Acceptance is still pending. Answer or dismiss the listed questions, or choose Continue anyway.");
-            }
-            return;
-          }
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "That action could not be completed.");
           }
@@ -4218,26 +3946,8 @@
       )
       : null;
 
-    // Settled records = the server-backed answered questions from the summary
-    // (server-scoped per intent, oldest first — identical to the Mac app),
-    // then this session's local flips the summary hasn't caught up with yet
-    // (skips and just-given answers), appended as the newest records.
-    const answeredForSelected = (function () {
-      if (!selectedIntent) return [];
-      const server = (selectedIntent.answeredQuestions || []).map(function (question) {
-        return { question: question, choice: question.answerText || "answered", dismissed: false };
-      });
-      const seen = {};
-      server.forEach(function (record) { seen[record.question.id] = true; });
-      const local = Object.keys(answeredMap).map(function (id) { return answeredMap[id]; })
-        .filter(function (record) {
-          return record.intentId === selectedIntent.id && !seen[record.question.id];
-        });
-      return server.concat(local);
-    })();
-
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, questionsLoading: questionsLoading, radarLoading: radarLoading, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },

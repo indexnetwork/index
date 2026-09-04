@@ -6,8 +6,7 @@ import { WherePicker } from "@/components/signals/WherePicker";
 import { useNetworksState } from "@/contexts/IndexesContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiClient } from "@/lib/api";
-import { intakeService, type IntakeAnswerBody, type IntakeProposalResponse, type IntakeRound } from "@/services/intake";
-import type { QuestionPayload } from "@/services/questions";
+import { intakeService, type IntakeAnswerBody, type IntakeProposalResponse, type IntakeRound, type QuestionPayload } from "@/services/intake";
 
 type Stage = "who" | "followup" | "where" | "clarify" | "proposal";
 

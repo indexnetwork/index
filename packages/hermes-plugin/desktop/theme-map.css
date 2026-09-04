@@ -224,10 +224,9 @@
   height: 1.2rem;
 }
 
-/* Gadget-style actions on opportunity cards and question cards: square mono
-   buttons in ink color (Mac-app flavored), primary inverted to an ink fill. */
-.index-network-desktop-page .index-dashboard__opp-btns .idx-btn,
-.index-network-desktop-page .index-dashboard__question-actions .idx-btn {
+/* Gadget-style actions on opportunity cards: square mono buttons in ink color
+   (Mac-app flavored), primary inverted to an ink fill. */
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn {
   border-radius: 0;
   border: 1px solid var(--ui-text-primary, #000);
   background: transparent;
@@ -238,18 +237,15 @@
   padding: 0.25rem 0.75rem;
 }
 
-.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid,
-.index-network-desktop-page .index-dashboard__question-actions .idx-btn--solid {
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid {
   background: var(--ui-text-primary, #000);
   color: var(--ui-bg-editor, #fff);
 }
 
-.index-network-desktop-page .index-dashboard__opp-btns .idx-btn:hover:not(:disabled),
-.index-network-desktop-page .index-dashboard__question-actions .idx-btn:hover:not(:disabled) {
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn:hover:not(:disabled) {
   background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));
 }
 
-.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid:hover:not(:disabled),
-.index-network-desktop-page .index-dashboard__question-actions .idx-btn--solid:hover:not(:disabled) {
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid:hover:not(:disabled) {
   background: var(--ui-text-secondary, #333);
 }

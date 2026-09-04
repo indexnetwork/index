@@ -30,7 +30,7 @@ import { routingLog, withNodeTrace, type OpportunityGraphDeps, type OpportunityG
 import { prepNode, prepTraceSummary, resolveNode, resolveTraceSummary, scopeNode, scopeTraceSummary } from "./opportunity.graph.prep.js";
 import { discoveryNode, discoveryTraceSummary } from "./opportunity.graph.discovery.js";
 import { evaluationNode, rankingNode, rankingTraceSummary } from "./opportunity.graph.evaluation.js";
-import { emitCandidatesNode, emitCandidatesTraceSummary } from "./opportunity.graph.emit-candidates.js";
+import { emitCounterpartiesNode, emitCounterpartiesTraceSummary } from "./opportunity.graph.emit-counterparties.js";
 
 export type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
 export {
@@ -108,7 +108,7 @@ export class OpportunityGraphFactory {
       .addNode('discovery', withNodeTrace("opportunity-discovery", (s: OpportunityState) => discoveryNode(s, deps), discoveryTraceSummary))
       .addNode('evaluation', (s: OpportunityState) => evaluationNode(s, deps))
       .addNode('ranking', withNodeTrace("opportunity-ranking", (s: OpportunityState) => rankingNode(s), rankingTraceSummary))
-      .addNode('emitCandidates', withNodeTrace("opportunity-emit-candidates", (s: OpportunityState) => emitCandidatesNode(s, deps), emitCandidatesTraceSummary))
+      .addNode('emitCounterparties', withNodeTrace("opportunity-emit-counterparties", (s: OpportunityState) => emitCounterpartiesNode(s, deps), emitCounterpartiesTraceSummary))
 
       .addEdge(START, 'prep')
 
@@ -130,11 +130,11 @@ export class OpportunityGraphFactory {
         [END]: END,
       })
 
-      // Discovery → Ranking → EmitCandidates. The run persists candidates and
-      // stops there; nothing here INSERTs an opportunity.
+      // Discovery → Ranking → EmitCounterparties. The terminal stage opens
+      // every scored pair into an opportunity and its negotiation.
       .addEdge('evaluation', 'ranking')
-      .addEdge('ranking', 'emitCandidates')
-      .addEdge('emitCandidates', END)
+      .addEdge('ranking', 'emitCounterparties')
+      .addEdge('emitCounterparties', END)
       .compile();
   }
 }

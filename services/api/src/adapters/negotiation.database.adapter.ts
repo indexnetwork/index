@@ -5,10 +5,37 @@
  * Index is the server for every negotiation. Both seats read the same rows and
  * append against them; there is no wire between agents and nothing to mirror.
  */
-import { and, asc, count, db, desc, eq, inArray, intents, isNull, negotiations, negotiationTurns, opportunities, or, users } from './database.shared';
+import { and, asc, count, db, desc, eq, inArray, intents, isNull, logger, negotiations, negotiationTurns, networkMembers, opportunities, or, sql, users } from './database.shared';
+
+import { publishNotificationStreamEvent } from '../lib/notification-stream-events';
 
 export type NegotiationTurnAction = 'propose' | 'counter' | 'accept' | 'decline';
 export type NegotiationOutcome = 'agreed' | 'declined' | 'closed';
+
+/**
+ * API-local structural twin of protocol's `CreateIntentCounterpartyData`.
+ * Adapters must not import protocol interfaces; TypeScript verifies
+ * compatibility where the opportunity port is composed.
+ */
+export interface IntentCounterpartyPair {
+  pairKey: string;
+  networkId: string;
+  intentA: string;
+  intentB: string;
+  userA: string;
+  userB: string;
+  score: number;
+  reasoning: string;
+  evidence: unknown[];
+}
+
+/** API-local structural twin of protocol's `OpenedNegotiation`. */
+export interface OpenedNegotiation {
+  opportunityId: string;
+  negotiationId: string;
+  initiatorUserId: string;
+  initiatorIntentId: string;
+}
 
 type NegotiationRow = typeof negotiations.$inferSelect;
 
@@ -82,9 +109,164 @@ function liveIntentWhere() {
 }
 
 /**
+ * Tell each initiator that discovery gave one of its signals something to work.
+ *
+ * One frame per signal rather than per negotiation: an agent woken by this
+ * re-reads its open negotiations anyway, so a frame per pair would be a burst
+ * that buys nothing.
+ *
+ * Runs after each pair's transaction has committed, and swallows delivery
+ * failures: an unannounced negotiation is still an opened one.
+ *
+ * @param opened - The negotiations this run newly opened.
+ */
+async function announceOpened(opened: OpenedNegotiation[]): Promise<void> {
+  const counts = new Map<string, { userId: string; intentId: string; count: number }>();
+  for (const item of opened) {
+    const key = `${item.initiatorUserId}\u0000${item.initiatorIntentId}`;
+    const group = counts.get(key);
+    if (group) group.count += 1;
+    else counts.set(key, { userId: item.initiatorUserId, intentId: item.initiatorIntentId, count: 1 });
+  }
+
+  for (const { userId, intentId, count: opportunityCount } of counts.values()) {
+    try {
+      await publishNotificationStreamEvent(userId, {
+        type: 'negotiation.opened',
+        id: `${intentId}:opened:${Date.now()}`,
+        title: 'Your turn',
+        body: opportunityCount === 1
+          ? 'A negotiation opened for your signal and is waiting on you.'
+          : `${opportunityCount} negotiations opened for your signal and are waiting on you.`,
+        data: { intentId, count: opportunityCount },
+      });
+    } catch (error: unknown) {
+      logger.error('Failed to publish opened negotiations event', {
+        intentId,
+        count: opportunityCount,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
+
+/**
  * Persistence for negotiation records and their turn logs.
  */
 export class NegotiationDatabaseAdapter {
+  /**
+   * Turn every pair discovery scored into an opportunity with a negotiation
+   * beside it, and report the ones newly opened.
+   *
+   * NEVER THROWS PER PAIR. One pair that cannot be opened — a revoked
+   * membership, a lost race — must not cost the rest of the run its results,
+   * so each is its own transaction and a failure is skipped rather than
+   * raised.
+   *
+   * @param pairs - The scored pairs to open.
+   * @returns One entry per pair that became a new opportunity.
+   */
+  async openCounterparties(pairs: IntentCounterpartyPair[]): Promise<OpenedNegotiation[]> {
+    const opened: OpenedNegotiation[] = [];
+    for (const pair of pairs) {
+      const result = await this.open(pair);
+      if (result) opened.push(result);
+    }
+    await announceOpened(opened);
+    return opened;
+  }
+
+  /**
+   * Open one pair.
+   *
+   * The advisory lock is on the PAIR. Both principals' discovery runs can reach
+   * this at the same moment; the second one through must find the first one's
+   * negotiation rather than write a second opportunity between the same two
+   * intents. The unique index on `pair_key` is the backstop.
+   *
+   * The initiator is side A — whichever side's run got here first. It owes the
+   * first turn, and that turn is the decision to pursue or drop.
+   *
+   * @param pair - The scored pair to materialize.
+   * @returns The opened negotiation, or null when it was already open or could not be opened.
+   */
+  private async open(pair: IntentCounterpartyPair): Promise<OpenedNegotiation | null> {
+    try {
+      return await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`opportunity-pair:${pair.pairKey}`}, 0)
+          )
+        `);
+
+        const [existing] = await tx.select({ id: negotiations.id }).from(negotiations)
+          .where(eq(negotiations.pairKey, pair.pairKey)).limit(1);
+        if (existing) return null;
+
+        // Both parties must still be on the network. The persist node used to
+        // hold this (createOpportunityIfNetworkEligible); the row is born here
+        // now, so the check belongs here — inside the same transaction, so a
+        // membership cannot be revoked between the check and the insert.
+        const members = await tx.select({ userId: networkMembers.userId })
+          .from(networkMembers)
+          .where(and(
+            eq(networkMembers.networkId, pair.networkId),
+            inArray(networkMembers.userId, [pair.userA, pair.userB]),
+          ));
+        const present = new Set(members.map((row) => row.userId));
+        if (!present.has(pair.userA) || !present.has(pair.userB)) return null;
+
+        const [row] = await tx.insert(opportunities).values({
+          detection: {
+            source: 'opportunity_graph',
+            createdBy: 'agent-opportunity-finder',
+            triggeredBy: pair.intentA,
+            timestamp: new Date().toISOString(),
+          },
+          actors: [
+            { networkId: pair.networkId, userId: pair.userA, role: 'party', intent: pair.intentA },
+            { networkId: pair.networkId, userId: pair.userB, role: 'party', intent: pair.intentB },
+          ],
+          interpretation: {
+            category: 'collaboration',
+            reasoning: pair.reasoning,
+            confidence: pair.score / 100,
+            signals: [{ type: 'intent_match', weight: pair.score / 100, detail: 'Match explainer' }],
+          },
+          context: { networkId: pair.networkId },
+          confidence: String(pair.score / 100),
+          // Born negotiating. There is no pre-kickoff state any more: the row
+          // exists because someone is opening it right now.
+          status: 'negotiating',
+          updatedAt: new Date(),
+          metadata: { evidence: pair.evidence ?? [] },
+        } as never).returning();
+        if (!row) return null;
+
+        const [negotiation] = await tx.insert(negotiations).values({
+          pairKey: pair.pairKey,
+          opportunityId: row.id,
+          initiatorUserId: pair.userA,
+          initiatorIntentId: pair.intentA,
+          responderUserId: pair.userB,
+          responderIntentId: pair.intentB,
+          awaitingUserId: pair.userA,
+          updatedAt: new Date(),
+        }).returning();
+        if (!negotiation) return null;
+
+        return {
+          opportunityId: row.id,
+          negotiationId: negotiation.id,
+          initiatorUserId: pair.userA,
+          initiatorIntentId: pair.intentA,
+        };
+      });
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * The caller's negotiations, newest first.
    *

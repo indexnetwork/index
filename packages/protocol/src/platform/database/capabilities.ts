@@ -19,9 +19,8 @@ export type CompositeToolDatabase = Pick<
   Database,
   | 'getProfile'
   // The MCP discovery path builds an OpportunityGraph too, and its terminal
-  // stage records candidates and opens them.
-  | 'upsertDiscoveryMatchCandidates'
-  | 'openCandidates'
+  // stage opens the pairs it scored.
+  | 'openCounterparties'
   | 'getActiveIntents'
   | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
@@ -111,8 +110,7 @@ export type CompositeToolDatabase = Pick<
 export type OpportunityGraphDatabase = Pick<
   Database,
   | 'getProfile'
-  | 'upsertDiscoveryMatchCandidates'
-  | 'openCandidates'
+  | 'openCounterparties'
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'

@@ -14,19 +14,17 @@ import type { OpportunityEvidence } from '../../protocol/schemas/network-assignm
 /** Branded string ID for type-safe entity references (keyed by Drizzle table name). */
 export type Id<T extends string = string> = string & { readonly __table?: T };
 
-// ─── Discovery match candidates ──────────────────────────────────────────────
-
-export type DiscoveryMatchCandidateStatus = 'pending' | 'opened' | 'superseded' | 'expired';
+// ─── Intent counterparties ───────────────────────────────────────────────────
 
 /**
- * A pair discovery found, before anyone reached out.
+ * A pair discovery scored and is about to open.
  *
- * Discovery does not create opportunities; it records the pair, keyed by
- * `pairKey`. The uniqueness of that key IS the dedup — both principals'
- * discovery runs converge on one row instead of racing to persist two
- * opportunities between the same two people.
+ * This is a payload, not a stored entity: discovery hands the host the pair and
+ * the host writes the opportunity and its negotiation. `pairKey` is what makes
+ * that idempotent — both principals' runs produce the same key, so the second
+ * one through finds the first one's negotiation instead of opening a second.
  */
-export interface CreateDiscoveryMatchCandidateData {
+export interface CreateIntentCounterpartyData {
   pairKey: string;
   networkId: Id<'networks'>;
   intentA: Id<'intents'>;
@@ -38,18 +36,10 @@ export interface CreateDiscoveryMatchCandidateData {
   evidence: OpportunityEvidence[];
 }
 
-export interface DiscoveryMatchCandidate extends CreateDiscoveryMatchCandidateData {
-  id: string;
-  status: DiscoveryMatchCandidateStatus;
-  createdAt: Date;
-  /** Set once this candidate became a row. */
-  openedOpportunityId?: Id<'opportunities'> | null;
-}
-
 /**
- * A candidate that just became an opportunity with a negotiation beside it.
- * The initiator is the side whose discovery run recorded the pair, and it owes
- * the first turn.
+ * A pair that just became an opportunity with a negotiation beside it. The
+ * initiator is side A — whichever side's discovery run reached the pair first —
+ * and it owes the first turn.
  */
 export interface OpenedNegotiation {
   opportunityId: Id<'opportunities'>;

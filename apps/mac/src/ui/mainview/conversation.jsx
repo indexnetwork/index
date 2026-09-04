@@ -27,7 +27,7 @@ function SignalAction({ label, active = false, onClick, danger = false }) {
   );
 }
 
-function ConversationPane({ profile, conversation, onAnswer, onDismiss, negotiatingPeople = [], onRespondPerson, paused = false, onTogglePause, onArchive }) {
+function ConversationPane({ profile, conversation, negotiatingPeople = [], onRespondPerson, paused = false, onTogglePause, onArchive }) {
   const scrollRef = useRef(null);
   // Archiving takes the signal off the hub and there's no way back to it from
   // here, so the first click arms the button and the second one commits. It
@@ -197,9 +197,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, negotiat
             .filter(it => it.kind === "clarifier" || it.kind === "user" || it.kind === "agent")
             .map((it) =>
               it.kind === "clarifier" ? (
-                <ClarifierCard key={it.id} item={it}
-                  onAnswer={(choice) => onAnswer(it, choice)}
-                  onDismiss={() => onDismiss(it)}/>
+                <ClarifierCard key={it.id} item={it}/>
               ) : it.kind === "user" ? (
                 <UserLine key={it.id}>{it.text}</UserLine>
               ) : (
@@ -354,7 +352,7 @@ function PersonQuestionCard({ person, onRespond }) {
   );
 }
 
-function ClarifierCard({ item, onAnswer, onDismiss }) {
+function ClarifierCard({ item }) {
   const collective = item.source === "collective" || item.source === "room";
   const meta = item.sourceMeta || {};
   const sourceLabel = collective
@@ -377,56 +375,41 @@ function ClarifierCard({ item, onAnswer, onDismiss }) {
   // the question steps back to secondary ink now that it's been dealt with,
   // and the answer is quoted under a black rule, the one black thing left,
   // because your words are the point of the card once it's resolved.
-  if (item.answered) {
-    return (
-      <div className="fade-up" style={{
-        border:"1px solid var(--ink-4)", background:"#fff",
-        padding:"11px 15px", display:"grid", gap:8,
-        opacity: item.dismissed ? 0.55 : 1,
-      }}>
-        <div style={{
-          display:"flex", alignItems:"center", gap:7, minWidth:0,
-          fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
-        }}>
-          {mark(16, { opacity:0.75 })}
-          <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", minWidth:0 }}>{sourceLabel}</span>
-          <div style={{ flex:1 }}/>
-          <span style={{ flex:"0 0 auto", letterSpacing:0.3 }}>
-            {item.dismissed ? "dismissed" : "✓ answered"}
-          </span>
-        </div>
-        <div style={{
-          fontFamily:"var(--mac-sans)", fontSize:13.5, fontWeight:400,
-          color:"var(--ink-2)", lineHeight:1.45, letterSpacing:-0.1,
-        }}>{item.text}</div>
-        {!item.dismissed && (
-          <div style={{
-            display:"grid", gap:3, minWidth:0,
-            borderLeft:"2px solid #000", paddingLeft:10,
-          }}>
-            <span style={{
-              fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
-            }}>you said</span>
-            <span style={{
-              fontFamily:"var(--mac-sans)", fontSize:13.5, color:"#000", lineHeight:1.4,
-            }}>{item.choice}</span>
-          </div>
-        )}
-      </div>
-    );
-  }
   return (
-    <QuestionCard
-      icon={mark(18)}
-      source={sourceLabel}
-      // the mark and the label already say whose agent this is, an "agent"
-      // tag next to "from katherine's agent" is just the word twice
-      tag={collective ? "collective" : null}
-      question={item.text}
-      chips={item.chips}
-      onChip={(c) => onAnswer(c)}
-      onWrite={(t) => onAnswer(t)}
-    />
+    <div className="fade-up" style={{
+      border:"1px solid var(--ink-4)", background:"#fff",
+      padding:"11px 15px", display:"grid", gap:8,
+      opacity: item.dismissed ? 0.55 : 1,
+    }}>
+      <div style={{
+        display:"flex", alignItems:"center", gap:7, minWidth:0,
+        fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
+      }}>
+        {mark(16, { opacity:0.75 })}
+        <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", minWidth:0 }}>{sourceLabel}</span>
+        <div style={{ flex:1 }}/>
+        <span style={{ flex:"0 0 auto", letterSpacing:0.3 }}>
+          {item.dismissed ? "dismissed" : "✓ answered"}
+        </span>
+      </div>
+      <div style={{
+        fontFamily:"var(--mac-sans)", fontSize:13.5, fontWeight:400,
+        color:"var(--ink-2)", lineHeight:1.45, letterSpacing:-0.1,
+      }}>{item.text}</div>
+      {!item.dismissed && (
+        <div style={{
+          display:"grid", gap:3, minWidth:0,
+          borderLeft:"2px solid #000", paddingLeft:10,
+        }}>
+          <span style={{
+            fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
+          }}>you said</span>
+          <span style={{
+            fontFamily:"var(--mac-sans)", fontSize:13.5, color:"#000", lineHeight:1.4,
+          }}>{item.choice}</span>
+        </div>
+      )}
+    </div>
   );
 }
 

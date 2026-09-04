@@ -388,8 +388,6 @@ function Toggle({ on, onClick, title, blurb }) {
 const NOTIFY_OPTIONS = [
   { id:"alignment", title:"an alignment surfaces",
     blurb:"index found someone worth meeting and wants to hand them over." },
-  { id:"question",  title:"a question comes up",
-    blurb:"someone on the other side needs an answer only you can give." },
   { id:"accepted",  title:"an intro is accepted",
     blurb:"someone said yes. the chat opens on both sides." },
   { id:"messages",  title:"a message arrives",
@@ -571,7 +569,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   // defaults only apply on a truly fresh install. `messages` predates neither:
   // older saves without it fall back to on, matching notificationEventAllowed.
   const [notify, setNotify] = useState({
-    alignment: true, question: true, accepted: true, digest: false, messages: true,
+    alignment: true, accepted: true, digest: false, messages: true,
     ...((window.INDEX_NATIVE && window.INDEX_NATIVE.notifyPrefs) || {}),
     ...(ME.notify || {}),
   });

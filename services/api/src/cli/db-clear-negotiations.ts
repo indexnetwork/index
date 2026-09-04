@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Dev-only wipe of all negotiation + opportunity product data for every user.
- * Also clears discovery-progress, pool/intent questions, and any conversation
- * that has an agent participant (H2A / A2A chat shells).
+ * Also clears discovery-progress and any conversation that has an agent
+ * participant (H2A / A2A chat shells).
  * Also resets each intent's negotiation-cycle state (batch id).
  * Keeps intents, users, HyDE, and profile data.
  *
@@ -41,11 +41,6 @@ async function readCounts(): Promise<Counts> {
     UNION ALL SELECT 'negotiation_turns', count(*)::text FROM negotiation_turns
     UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM opportunity_outcome_events
     UNION ALL SELECT 'intent_discovery_progress', count(*)::text FROM intent_discovery_progress
-    UNION ALL SELECT 'questions_intent', count(*)::text FROM questions WHERE detection->>'mode' = 'intent'
-    UNION ALL SELECT 'questions_nego_opp', count(*)::text FROM questions
-      WHERE detection->>'mode' IN ('negotiation', 'negotiation_inflight')
-         OR detection->'negotiation' IS NOT NULL
-         OR detection->>'sourceType' = 'opportunity'
     UNION ALL SELECT 'agent_participant_convs', count(*)::text FROM conversations c
       WHERE EXISTS (
         SELECT 1 FROM conversation_participants p
@@ -73,14 +68,6 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
     // negotiations (and their turns) cascade from the opportunity.
     await tx.execute(sql`DELETE FROM opportunities`);
     await tx.execute(sql`DELETE FROM intent_discovery_progress`);
-    await tx.execute(sql`
-      DELETE FROM questions
-      WHERE detection->>'mode' IN (
-            'negotiation', 'negotiation_inflight', 'intent'
-          )
-         OR detection->'negotiation' IS NOT NULL
-         OR detection->>'sourceType' = 'opportunity'
-    `);
   });
   return readCounts();
 }

@@ -1,11 +1,9 @@
 /**
- * A pair discovery found and has not yet opened.
+ * The counterparty side of a pair discovery scored.
  *
- * Discovery does not create opportunities. It records the pair, once, keyed by
- * {@link pairKeyOf}; opening one is a separate decision. The pair key IS the
- * dedup: both principals'
- * discovery runs converge on the same candidate instead of racing to persist
- * two opportunities between the same two people.
+ * Discovery does not stage the pair anywhere: it hands the host the pair and
+ * the host opens the opportunity and its negotiation. {@link pairKeyOf} is what
+ * keeps that idempotent across both principals' runs.
  */
 
 /**
@@ -22,8 +20,6 @@ export function pairKeyOf(networkId: string, intentA: string, intentB: string): 
 }
 
 export type {
-  CreateDiscoveryMatchCandidateData,
-  DiscoveryMatchCandidate,
-  DiscoveryMatchCandidateStatus,
+  CreateIntentCounterpartyData,
   OpenedNegotiation,
 } from '../../platform/database.js';

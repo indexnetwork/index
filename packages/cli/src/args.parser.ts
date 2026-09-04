@@ -50,8 +50,6 @@ export interface ParsedCommand {
   details?: string;
   /** ISO date string for --since filter (e.g. negotiation list). */
   since?: string;
-  /** Explicit uptake question IDs acknowledged on opportunity acceptance retry. */
-  acknowledgeUptake?: string[];
 }
 
 const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
@@ -174,12 +172,6 @@ export function parseArgs(args: string[]): ParsedCommand {
       i += 2;
     } else if (arg === "--since") {
       result.since = args[i + 1];
-      i += 2;
-    } else if (arg === "--acknowledge-uptake") {
-      result.acknowledgeUptake = (args[i + 1] ?? "")
-        .split(",")
-        .map((id) => id.trim())
-        .filter(Boolean);
       i += 2;
     } else if (arg.startsWith("--")) {
       // Skip unknown flags

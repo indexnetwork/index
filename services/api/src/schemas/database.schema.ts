@@ -14,7 +14,6 @@ export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'syst
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
-export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 export const negotiationOutcomeEnum = pgEnum('negotiation_outcome', ['agreed', 'declined', 'closed']);
@@ -364,37 +363,6 @@ export const opportunities = pgTable('opportunities', {
   statusIdx: index('opportunities_status_idx').on(table.status),
 }));
 
-export const discoveryMatchCandidateStatusEnum = pgEnum('discovery_match_candidate_status', [
-  'pending', 'opened', 'superseded', 'expired',
-]);
-
-/**
- * A pair discovery found, before anyone reached out. One row per pair — the
- * unique `pair_key` is what stops both principals' discovery runs from
- * producing two opportunities between the same two people.
- */
-export const discoveryMatchCandidates = pgTable('discovery_match_candidates', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  pairKey: text('pair_key').notNull(),
-  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
-  intentA: text('intent_a').notNull().references(() => intents.id, { onDelete: 'cascade' }),
-  intentB: text('intent_b').notNull().references(() => intents.id, { onDelete: 'cascade' }),
-  userA: text('user_a').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  userB: text('user_b').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  score: numeric('score').notNull(),
-  reasoning: text('reasoning').notNull(),
-  evidence: jsonb('evidence').$type<import('@indexnetwork/protocol').OpportunityEvidence[]>().notNull().default([]),
-  status: discoveryMatchCandidateStatusEnum('status').notNull().default('pending'),
-  /** Set when this candidate became a row, by `openCandidates`. */
-  openedOpportunityId: text('opened_opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  pairKeyIdx: uniqueIndex('discovery_match_candidates_pair_key_idx').on(table.pairKey),
-  intentAIdx: index('discovery_match_candidates_intent_a_idx').on(table.intentA),
-  intentBIdx: index('discovery_match_candidates_intent_b_idx').on(table.intentB),
-}));
-
 /**
  * The negotiation between the two seats of one opportunity. Index is the
  * server: both seats read this record and take turns against it, and Index
@@ -402,6 +370,12 @@ export const discoveryMatchCandidates = pgTable('discovery_match_candidates', {
  */
 export const negotiations = pgTable('negotiations', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  /**
+   * Stable identity of the two-intent pair, from the protocol's `pairKeyOf`.
+   * Unique: both principals' discovery runs converge here instead of opening
+   * two negotiations between the same two intents.
+   */
+  pairKey: text('pair_key').notNull(),
   opportunityId: text('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
   initiatorUserId: text('initiator_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   initiatorIntentId: text('initiator_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
@@ -414,6 +388,7 @@ export const negotiations = pgTable('negotiations', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
+  pairKeyIdx: uniqueIndex('negotiations_pair_key_idx').on(table.pairKey),
   opportunityIdx: uniqueIndex('negotiations_opportunity_id_idx').on(table.opportunityId),
   initiatorIntentIdx: index('negotiations_initiator_intent_idx').on(table.initiatorIntentId),
   responderIntentIdx: index('negotiations_responder_intent_idx').on(table.responderIntentId),
@@ -436,81 +411,6 @@ export const negotiationTurns = pgTable('negotiation_turns', {
 }, (table) => ({
   orderIdx: uniqueIndex('negotiation_turns_negotiation_turn_idx').on(table.negotiationId, table.turnIndex),
 }));
-
-export interface QuestionDetection {
-  mode: 'intent' | 'chat';
-  /** Internal generation purpose; stripped from public API responses. */
-  purpose?: import('@indexnetwork/protocol').QuestionPurpose;
-  sourceType: string;
-  sourceId: string;
-  triggeredBy?: string;
-  timestamp: string;
-  /** Generation strategy — persisted as metadata, not exposed on read. */
-  strategy?: import('@indexnetwork/protocol').QuestionStrategy;
-  /** QUD repair category — persisted as metadata, not exposed on read. */
-  underspecificationType?: import('@indexnetwork/protocol').UnderspecificationType | null;
-  /** ID of the assistant message that triggered this question. */
-  messageId?: string;
-  /** Durable conversation-session binding for verified in-chat rendering. */
-  sessionId?: string;
-  /** Post-discovery intent recovery snapshot. Never exposed publicly. */
-  recovery?: import('@indexnetwork/protocol').QuestionRecoverySnapshot;
-  /** Internal reason a question was voided after drift or retirement. */
-  voidedReason?: import('@indexnetwork/protocol').QuestionVoidedReason;
-}
-
-export interface QuestionActor {
-  userId: string;
-  networkId?: string;
-  role: 'subject';
-}
-
-export interface QuestionAnswer {
-  selectedOptions: string[];
-  freeText?: string;
-  answeredBy: string;
-  answeredAt: string;
-}
-
-export const questions = pgTable('questions', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  detection: jsonb('detection').$type<QuestionDetection>().notNull(),
-  actors: jsonb('actors').$type<QuestionActor[]>().notNull(),
-  payload: jsonb('payload').$type<import('@indexnetwork/protocol').Question>().notNull(),
-  status: questionStatusEnum('status').notNull().default('pending'),
-  answer: jsonb('answer').$type<QuestionAnswer>(),
-  conversationId: text('conversation_id'),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  statusIdx: index('questions_status_idx').on(table.status),
-  conversationIdx: index('questions_conversation_id_idx').on(table.conversationId),
-  // Durable negotiation-family idempotency across every lifecycle status.
-  // Ordinal preserves the existing up-to-two-card generator cardinality.
-  negotiationProvenanceUnique: uniqueIndex('questions_negotiation_provenance_uniq')
-    .on(
-      sql`(${table.detection}->'negotiation'->>'recipientUserId')`,
-      sql`(${table.detection}->'negotiation'->>'recipientIntentId')`,
-      sql`(${table.detection}->'negotiation'->>'opportunityId')`,
-      sql`COALESCE(${table.detection}->'negotiation'->>'taskId', '')`,
-      sql`(${table.detection}->'negotiation'->>'purpose')`,
-      sql`(${table.detection}->'negotiation'->>'questionOrdinal')`,
-    )
-    .where(sql`${table.detection}->'negotiation'->>'version' = '1'`),
-  // One recovery refinement per recipient + intent + material fingerprint
-  // across every status and expiry state. Advisory locking is the application
-  // gate; this expression index is the final cross-worker race guard.
-  recoveryRecipientIntentFingerprintUnique: uniqueIndex('questions_recovery_recipient_intent_fingerprint_uniq')
-    .on(
-      sql`(${table.actors}->0->>'userId')`,
-      sql`(${table.detection}->>'sourceId')`,
-      sql`(${table.detection}->'recovery'->>'intentFingerprint')`,
-    )
-    .where(sql`${table.detection}->>'purpose' = 'recovery' AND ${table.detection}->>'mode' = 'intent' AND ${table.detection}->>'sourceType' = 'intent'`),
-}));
-
-export type QuestionRow = typeof questions.$inferSelect;
-export type NewQuestionRow = typeof questions.$inferInsert;
 
 export interface IntentProposalVerifierOutputRecord {
   reasoning: string;

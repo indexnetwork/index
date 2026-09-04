@@ -15,9 +15,8 @@
  * fields are never trusted by either path — the binding below is always
  * derived from the resolved tool context.
  *
- * A2A negotiation approvals, agent self-acknowledgment
- * (`acknowledgedUptakeQuestionIds`), and server-generated advisory/challenge
- * values are explicitly NOT substitutes for owner authorization.
+ * A2A negotiation approvals and server-generated advisory/challenge values are
+ * explicitly NOT substitutes for owner authorization.
  */
 
 /** Owner-gated opportunity actions. `expired` is a system transition and is not gated. */

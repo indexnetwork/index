@@ -27,7 +27,7 @@ API_EXPORTS = [
     "mapIndexSnapshot", "mapIntents", "mapIntent", "applyMappedIntentStatus",
     "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",
-    "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
+    "mapOpportunityStatusToPrototype", "mapEventSummary",
     "sameRadarPeople", "applyRadarPeople",
     "parseDeepLink", "isIndexDeepLink",
     "NOTIFIED_ENTITIES_KEY", "MAX_NOTIFIED_ENTITIES",

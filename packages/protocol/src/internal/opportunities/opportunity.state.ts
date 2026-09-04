@@ -3,7 +3,7 @@ import type { Id, OpportunityStatus } from '../../platform/database.js';
 import type { Lens } from '../../platform/discovery/embedder.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
-import type { DiscoveryMatchCandidate, OpenedNegotiation } from '../../platform/database.js';
+import type { OpenedNegotiation } from '../../platform/database.js';
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -307,13 +307,7 @@ export const OpportunityGraphState = Annotation.Root({
 
   // ─── Output Fields (Overwrite per turn) ───
 
-  /** Pairs discovery recorded this run. */
-  candidatesEmitted: Annotation<DiscoveryMatchCandidate[]>({
-    reducer: (curr, next) => next,
-    default: () => [],
-  }),
-
-  /** The subset that became an opportunity and a negotiation this run. */
+  /** The pairs that became an opportunity and a negotiation this run. */
   opened: Annotation<OpenedNegotiation[]>({
     reducer: (curr, next) => next,
     default: () => [],

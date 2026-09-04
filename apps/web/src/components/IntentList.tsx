@@ -23,11 +23,6 @@ interface BaseIntent {
    */
   waitingOpportunityCount?: number;
   /**
-   * Count of pending intent-scoped questions awaiting the user. Rendered as a
-   * notification badge on the row. Undefined/0 renders nothing.
-   */
-  pendingQuestionCount?: number;
-  /**
    * Lifecycle status (ACTIVE|PAUSED|FULFILLED|EXPIRED). A badge renders only for
    * non-default (non-ACTIVE) values; undefined or ACTIVE renders nothing — the
    * enum is vestigial today, so this is forward-looking. See EDG-53.
@@ -214,20 +209,7 @@ export default function IntentList<T extends BaseIntent>({
                 </div>
               </div>
 
-              {/* Right side: pending-question badge — the most important action,
-                  so it carries the strongest treatment (solid). Only rendered
-                  when there's something to answer; no zero state. + hover actions */}
               <div className="flex items-center gap-2 shrink-0">
-                {(intent.pendingQuestionCount ?? 0) > 0 && (
-                  <span
-                    className="flex items-center gap-1 text-xs font-semibold font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#4091BB] text-white"
-                    title={`${intent.pendingQuestionCount} ${intent.pendingQuestionCount === 1 ? 'question' : 'questions'} to answer`}
-                  >
-                    <MessageSquare className="w-3 h-3" />
-                    {intent.pendingQuestionCount} to answer
-                  </span>
-                )}
-
                 {/* Open source (link-sourced signals only) */}
                 {onOpenIntentSource && canOpenSource && (
                   <button

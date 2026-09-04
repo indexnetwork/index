@@ -69,31 +69,8 @@ export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
 export { ChatContextDigestSchema, type ChatContextDigest } from "./protocol/schemas/chat-context.schema.js";
-export {
-  QuestionBlockSchema,
-  QuestionBlockQuestionSchema,
-  parseQuestionMessage,
-  serializeQuestionMessage,
-} from "./protocol/question-block.schema.js";
-export type { ParsedQuestionMessage, QuestionBlock, QuestionBlockQuestion } from "./protocol/question-block.schema.js";
-export {
-  questionBlockFixture,
-  questionMessageFixture,
-  questionProseFixture,
-} from "./protocol/question-block.fixture.js";
-export {
-  QuestionPurposeSchema,
-  QuestionStrategySchema,
-  UnderspecificationTypeSchema,
-} from "./protocol/question.js";
-export type {
-  Question,
-  QuestionPurpose,
-  QuestionRecoverySnapshot,
-  QuestionStrategy,
-  QuestionVoidedReason,
-  UnderspecificationType,
-} from "./protocol/question.js";
+export { UnderspecificationTypeSchema } from "./protocol/schemas/underspecification.schema.js";
+export type { UnderspecificationType } from "./protocol/schemas/underspecification.schema.js";
 export { McpApiKeyMetadataSchema } from "./platform/auth/mcp.js";
 export type {
   McpAuthInput,
@@ -191,14 +168,12 @@ export type {
 } from "./internal/opportunities/opportunity.graph.js";
 export {
   pairKeyOf,
-} from "./internal/opportunities/opportunity.candidates.js";
+} from "./internal/opportunities/opportunity.counterparties.js";
 export type { OpportunityEvidence } from "./protocol/schemas/network-assignment.schema.js";
 export type {
-  CreateDiscoveryMatchCandidateData,
-  DiscoveryMatchCandidate,
-  DiscoveryMatchCandidateStatus,
+  CreateIntentCounterpartyData,
   OpenedNegotiation,
-} from "./internal/opportunities/opportunity.candidates.js";
+} from "./internal/opportunities/opportunity.counterparties.js";
 export {
   opportunityOwnerActionForStatus,
 } from "./internal/opportunities/opportunity.owner-approval.js";

@@ -3,7 +3,7 @@
  */
 
 import type { OutcomeOutbox } from './capabilities.js';
-import type { CreateDiscoveryMatchCandidateData, CreateHydeDocumentData, CreateOpportunityData, DiscoveryMatchCandidate, HydeDocument, HydeSourceType, IntentScopedOpportunityPersistenceResult, OpenedNegotiation, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
+import type { CreateHydeDocumentData, CreateIntentCounterpartyData, CreateOpportunityData, HydeDocument, HydeSourceType, IntentScopedOpportunityPersistenceResult, OpenedNegotiation, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
 
 /** HyDE document and opportunity persistence operations. */
 export interface DatabaseOpportunityQueries {
@@ -86,24 +86,15 @@ export interface DatabaseOpportunityQueries {
   createOpportunity(data: CreateOpportunityData): Promise<Opportunity>;
 
   /**
-   * Record the pairs discovery found. Upsert on `pairKey`: a pair both sides
-   * discovered stays one row, which is what makes persist-time dedup
-   * unnecessary.
-   */
-  upsertDiscoveryMatchCandidates(
-    items: CreateDiscoveryMatchCandidateData[],
-  ): Promise<DiscoveryMatchCandidate[]>;
-
-  /**
-   * Turn every one of these candidates into an opportunity with a negotiation
+   * Turn every pair discovery scored into an opportunity with a negotiation
    * record beside it, and hand back the ones that were newly opened.
    *
    * There is no open decision to make: whether a match is worth pursuing is
-   * the initiator's first turn. Candidates already opened by the counterparty's
-   * discovery run are skipped, so the result is exactly the set the caller
-   * still owes a `negotiation.turn`.
+   * the initiator's first turn. Implementations key on `pairKey`, so a pair the
+   * counterparty's run already opened is skipped and the result is exactly the
+   * set the caller still owes a `negotiation.turn`.
    */
-  openCandidates(candidateIds: string[]): Promise<OpenedNegotiation[]>;
+  openCounterparties(pairs: CreateIntentCounterpartyData[]): Promise<OpenedNegotiation[]>;
 
   /**
    * Atomically create only while every actor still has an active membership on

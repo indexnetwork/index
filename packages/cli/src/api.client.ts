@@ -10,25 +10,6 @@ import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResul
 // Re-export all types for backward compatibility
 export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
 
-export interface UptakeQuestion {
-  id: string;
-  title: string;
-  prompt: string;
-  options: Array<{ label: string; description: string }>;
-  multiSelect: boolean;
-}
-
-export interface UptakeAcceptanceAdvisoryBody {
-  error: string;
-  advisory: {
-    code: "unresolved_uptake_questions";
-    advisoryOnly: true;
-    opportunityId: string;
-    questions: UptakeQuestion[];
-    acknowledgedUptakeQuestionIds: string[];
-  };
-}
-
 /** HTTP error retaining a parsed structured response for JSON/advisory clients. */
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly response?: unknown) {
@@ -134,18 +115,12 @@ export class ApiClient {
     return (await res.json()) as OpportunityDetail;
   }
 
-  /** Update an opportunity status over REST, optionally acknowledging uptake questions on acceptance. */
+  /** Update an opportunity status over REST. */
   async updateOpportunityStatus(
     id: string,
     status: "accepted" | "rejected",
-    acknowledgedUptakeQuestionIds?: string[],
   ): Promise<Record<string, unknown>> {
-    const res = await this.patch(`/api/opportunities/${id}/status`, {
-      status,
-      ...(status === "accepted" && acknowledgedUptakeQuestionIds
-        ? { acknowledgedUptakeQuestionIds }
-        : {}),
-    });
+    const res = await this.patch(`/api/opportunities/${id}/status`, { status });
     return await res.json() as Record<string, unknown>;
   }
 

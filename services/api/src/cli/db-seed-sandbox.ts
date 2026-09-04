@@ -170,20 +170,7 @@ async function main(): Promise<void> {
           .where(fixtureActorPredicate);
         const fixtureOpportunityIds = fixtureOpportunities.map((opportunity) => opportunity.id);
 
-        await tx.delete(schema.questions).where(sql`EXISTS (
-          SELECT 1
-          FROM jsonb_array_elements(${schema.questions.actors}) AS actor
-          WHERE actor->>'userId' IN (${sql.join(fixtureUserIds.map((id) => sql`${id}`), sql`, `)})
-             OR NOT EXISTS (
-               SELECT 1 FROM ${schema.users}
-               WHERE ${schema.users.id} = actor->>'userId'
-             )
-        )`);
         if (fixtureOpportunityIds.length > 0) {
-          await tx.delete(schema.questions).where(sql`
-            ${schema.questions.detection}->'negotiation'->>'opportunityId'
-            IN (${sql.join(fixtureOpportunityIds.map((id) => sql`${id}`), sql`, `)})
-          `);
           await tx.delete(schema.opportunityOutcomeEvents)
             .where(inArray(schema.opportunityOutcomeEvents.opportunityId, fixtureOpportunityIds));
           await tx.delete(schema.opportunities).where(inArray(schema.opportunities.id, fixtureOpportunityIds));

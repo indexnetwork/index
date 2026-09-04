@@ -478,33 +478,6 @@ export function createIndexApiClient(options = {}) {
       ),
     },
 
-    questions: {
-      pending: (filters = {}, options = {}) => request(
-        `/questions${toQueryString({ status: 'pending', ...filters })}`,
-        options,
-      ),
-      pendingForIntent: (intentId, filters = {}, options = {}) => request(
-        `/questions${toQueryString({ status: 'pending', ...filters, scopeType: 'intent', scopeId: intentId })}`,
-        options,
-      ),
-      answered: (filters = {}, options = {}) => request(
-        `/questions${toQueryString({ status: 'answered', ...filters })}`,
-        options,
-      ),
-      answeredForIntent: (intentId, filters = {}, options = {}) => request(
-        `/questions${toQueryString({ status: 'answered', ...filters, scopeType: 'intent', scopeId: intentId })}`,
-        options,
-      ),
-      answer: (questionId, body, options = {}) => request(
-        `/questions/${encodeURIComponent(questionId)}/answer`,
-        { ...options, method: 'POST', body },
-      ),
-      dismiss: (questionId, options = {}) => request(
-        `/questions/${encodeURIComponent(questionId)}/dismiss`,
-        { ...options, method: 'POST', body: {} },
-      ),
-    },
-
     enrichment: {
       // Public profile prefill (Parallel lookup). Optional body hints merge with account defaults.
       trigger: (hints = {}, options = {}) => request('/enrichment/enrich', { ...options, method: 'POST', body: hints }),

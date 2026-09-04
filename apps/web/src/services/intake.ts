@@ -1,7 +1,24 @@
 /** Client for the deterministic /intents/intake funnel. */
 
 import { APIError, apiClient } from "@/lib/api";
-import type { QuestionPayload } from "@/services/questions";
+
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+/** One rendered intake question. */
+export interface QuestionPayload {
+  title: string;
+  prompt: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+  /**
+   * Optional provenance line rendered as a muted chip above the prompt.
+   * Aggregate counts only.
+   */
+  evidence?: string;
+}
 
 /** One answered intake round. */
 export interface IntakeAnswerBody {

@@ -45,7 +45,7 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 |---|---|
 | **Public API** | `createToolRegistry`, model config helpers, tool/runtime helpers (`ResolvedToolContext`, `ToolDeps`, `invokeToolRuntime`, …), `requestContext`. |
 | **Interfaces** | Every port you implement to inject infrastructure (databases, embedder, cache, scraper, integration, …). |
-| **Shared schemas** | Zod schemas + inferred types that cross the boundary (questions, identity, network-assignment, chat-context, …). |
+| **Shared schemas** | Zod schemas + inferred types that cross the boundary (underspecification, identity, network-assignment, chat-context, …). |
 | **Graph factories** | `*GraphFactory` classes (`OpportunityGraphFactory`, `HydeGraphFactory`, `RadarGraphFactory`). |
 | **Intents** | `Intents` — the whole signal capability as one class (lifecycle graph, verification, network indexing, guided intake, tools) plus `IntentsDeps` and the intake/indexer types. Replaced the six separate intent exports in 18.0.0. |
 | **Agents** | Structured LLM agents (`OpportunityEvaluator`, …). |

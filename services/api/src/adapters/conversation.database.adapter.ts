@@ -1601,7 +1601,6 @@ export class ConversationDatabaseAdapter {
     if (data.subgraphResults) msgMeta.subgraphResults = data.subgraphResults;
     if (data.tokenCount !== undefined) msgMeta.tokenCount = data.tokenCount;
     if (data.interrupted) msgMeta.interrupted = true;
-    if (data.questions?.length) msgMeta.decisionQuestions = data.questions;
 
     const message = await this.insertMessageWithConversationSession({
       id: data.id,
@@ -1724,8 +1723,6 @@ export class ConversationDatabaseAdapter {
         subgraphResults: (meta.subgraphResults as Record<string, unknown>) ?? null,
         tokenCount: typeof meta.tokenCount === 'number' ? meta.tokenCount : null,
         interrupted: meta.interrupted ?? null,
-        decisionQuestions: Array.isArray(meta.decisionQuestions) ? meta.decisionQuestions : null,
-        decisionQuestionsSubmitted: meta.decisionQuestionsSubmitted ?? null,
         createdAt: msg.createdAt,
       };
     });
@@ -1759,52 +1756,6 @@ export class ConversationDatabaseAdapter {
       .limit(1);
 
     return !!participant;
-  }
-
-  /**
-   * Records an explicit principal submission for structured questions.  This
-   * deliberately lives on the question message rather than being inferred
-   * from later transcript traffic: background agent updates are not answers.
-   */
-  async markDecisionQuestionsSubmitted(
-    conversationId: string,
-    messageIds: string[],
-  ): Promise<boolean> {
-    const uniqueIds = [...new Set(messageIds)];
-    if (uniqueIds.length === 0) return false;
-
-    return db.transaction(async (tx) => {
-      const rows = await tx
-        .select({ id: schema.messages.id, role: schema.messages.role, metadata: schema.messages.metadata })
-        .from(schema.messages)
-        .where(and(
-          eq(schema.messages.conversationId, conversationId),
-          inArray(schema.messages.id, uniqueIds),
-        ))
-        .for('update');
-
-      if (rows.length !== uniqueIds.length) return false;
-
-      const updates = rows.map((row) => {
-        const metadata = (row.metadata ?? {}) as ChatMessageMeta;
-        if (
-          row.role !== 'agent'
-          || !Array.isArray(metadata.decisionQuestions)
-          || metadata.decisionQuestions.length === 0
-          || metadata.decisionQuestionsSubmitted
-        ) return null;
-        return { id: row.id, metadata: { ...metadata, decisionQuestionsSubmitted: true } };
-      });
-      if (updates.some((update) => update === null)) return false;
-
-      for (const update of updates) {
-        await tx
-          .update(schema.messages)
-          .set({ metadata: update!.metadata })
-          .where(eq(schema.messages.id, update!.id));
-      }
-      return true;
-    });
   }
 
   /**

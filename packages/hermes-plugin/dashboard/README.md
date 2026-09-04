@@ -8,7 +8,7 @@ The tab displays connection status. When no `INDEX_API_KEY` is configured, the l
 
 ## Scope
 
-The dashboard exposes intent and question work, opportunities, networks, profile context, and bounded conversation SSE.
+The dashboard exposes intent work, opportunities, networks, profile context, and bounded conversation SSE.
 
 The dashboard bundle is generated. Build it from the package root with:
 

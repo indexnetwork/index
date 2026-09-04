@@ -22,7 +22,6 @@ interface HomeIntent {
   createdAt: string;
   sourceType?: "integration" | "discovery_form" | "enrichment";
   waitingOpportunityCount?: number;
-  pendingQuestionCount?: number;
   status?: string;
   warming?: boolean;
 }

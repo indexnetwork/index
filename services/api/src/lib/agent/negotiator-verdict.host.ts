@@ -63,11 +63,6 @@ interface ListedOpportunity {
 
 /** Injectable seams; production resolves the real service. */
 export interface NegotiatorVerdictHostDeps {
-  /** This signal's pairs discovery found and nobody has opened yet. */
-  listPendingCandidates?: (
-    userId: string,
-    intentId: string,
-  ) => Promise<Array<{ id: string; createdAt: Date; counterpartName?: string }>>;
   listOpportunities?: (
     userId: string,
     options: { statuses: OpportunityStatus[]; scopeType: 'intent'; scopeId: string },

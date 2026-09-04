@@ -17,17 +17,6 @@ interface ConversationSessionHistoryState {
   loadingPrevious: boolean;
 }
 
-/**
- * Live flip of the `questionRegenerationPending` signal for one signal scope,
- * published on the conversation SSE channel by the question-message
- * regeneration queue: true at enqueue, false when the job finishes and the
- * negotiator DM content is current.
- */
-export interface QuestionRegenerationEvent {
-  intentId: string;
-  pending: boolean;
-}
-
 /** A persisted message received on the authenticated conversation SSE channel. */
 export interface ConversationMessageEvent {
   conversationId: string;
@@ -50,11 +39,6 @@ interface ConversationContextType {
   markConversationRead: (conversationId: string) => Promise<void>;
   hideConversation: (conversationId: string) => Promise<void>;
   getOrCreateDM: (peerUserId: string) => Promise<ConversationSummary>;
-  /**
-   * Subscribe to live question-regeneration flips from the SSE stream.
-   * Returns the unsubscribe function.
-   */
-  subscribeQuestionRegeneration: (handler: (event: QuestionRegenerationEvent) => void) => () => void;
   /** Subscribe to persisted conversation messages from the SSE stream. */
   subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
 }
@@ -79,18 +63,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const refreshConversationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const refreshNegotiationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const questionRegenerationHandlersRef = useRef(new Set<(event: QuestionRegenerationEvent) => void>());
   const conversationMessageHandlersRef = useRef(new Set<(event: ConversationMessageEvent) => void>());
-
-  const subscribeQuestionRegeneration = useCallback(
-    (handler: (event: QuestionRegenerationEvent) => void) => {
-      questionRegenerationHandlersRef.current.add(handler);
-      return () => {
-        questionRegenerationHandlersRef.current.delete(handler);
-      };
-    },
-    [],
-  );
 
   const subscribeConversationMessage = useCallback(
     (handler: (event: ConversationMessageEvent) => void) => {
@@ -411,19 +384,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               }));
               break;
             }
-            case 'question_regeneration': {
-              // Question-message regeneration flip for one signal scope. Fan
-              // out to the mounted negotiator DM (if any); no inbox state to
-              // touch — the negotiator conversation is not an H2H summary.
-              const intentId = data.intentId as string | undefined;
-              if (!intentId) break;
-              const regenerationEvent: QuestionRegenerationEvent = {
-                intentId,
-                pending: Boolean(data.pending),
-              };
-              questionRegenerationHandlersRef.current.forEach((handler) => handler(regenerationEvent));
-              break;
-            }
           }
         } catch {
           // Ignore parse errors (e.g. keepalive comments)
@@ -518,7 +478,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         markConversationRead,
         hideConversation,
         getOrCreateDM,
-        subscribeQuestionRegeneration,
         subscribeConversationMessage,
       }}
     >

@@ -1,13 +1,12 @@
 """Index Network Hermes dashboard plugin backend.
 
 Mounted at /api/plugins/index-network/ by Hermes dashboard only in full mode. The routes reuse
-the plugin's native Index tool handlers so dashboard visibility and
-question-answer writes stay scoped to the API-key-authenticated principal.
+the plugin's native Index tool handlers so dashboard visibility and writes stay
+scoped to the API-key-authenticated principal.
 
-The dashboard is intent-centric: each intent carries its own pending and
-answered questions (server-scoped per intent, the Mac app's queries) and its
-own opportunities ("radar"). Opportunities not tied to an intent land in a
-"general" bucket. Networks are returned separately for the Networks view.
+The dashboard is intent-centric: each intent carries its own opportunities
+("radar"). Opportunities not tied to an intent land in a "general" bucket.
+Networks are returned separately for the Networks view.
 """
 
 from __future__ import annotations
@@ -88,7 +87,6 @@ full_router = APIRouter()
 router = APIRouter()
 _INTENT_PAGE_SIZE = 100
 _MAX_INTENT_PAGES = 10
-_QUESTION_LIMIT = 10
 _PREVIEW_CHARS = 240
 
 # Maps raw opportunity status values to the radar status strip buckets.
@@ -220,80 +218,6 @@ def _call_tool(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, 
     return tools._api_request("POST", f"/tools/{quote(tool_name, safe='')}", {"query": args or {}})
 
 
-def _flatten_rest_question(question: dict[str, Any]) -> dict[str, Any] | None:
-    """Flatten a REST `GET /questions` row (detection/payload nesting) into the flat
-    shape `_question_item` expects."""
-    question_id = _text(question.get("id"))
-    if not question_id:
-        return None
-    detection = question.get("detection") if isinstance(question.get("detection"), dict) else {}
-    payload = question.get("payload") if isinstance(question.get("payload"), dict) else {}
-    flat: dict[str, Any] = {
-        "id": question_id,
-        "title": payload.get("title"),
-        "prompt": payload.get("prompt"),
-        "options": payload.get("options"),
-        "multiSelect": payload.get("multiSelect"),
-        "mode": detection.get("mode"),
-        "sourceType": detection.get("sourceType"),
-        "sourceId": detection.get("sourceId"),
-    }
-    if question.get("createdAt"):
-        flat["createdAt"] = question.get("createdAt")
-    if question.get("expiresAt"):
-        flat["expiresAt"] = question.get("expiresAt")
-    answer = question.get("answer") if isinstance(question.get("answer"), dict) else {}
-    if answer:
-        chosen = [option.strip() for option in _list(answer.get("selectedOptions")) if isinstance(option, str) and option.strip()]
-        flat["answerText"] = ", ".join(chosen) or _text(answer.get("freeText"))
-        if answer.get("answeredAt"):
-            flat["answeredAt"] = _text(answer.get("answeredAt"))
-    return flat
-
-
-def _call_questions_by_intent(
-    status: str, intent_ids: list[str]
-) -> tuple[dict[str, list[dict[str, Any]]], str | None]:
-    """Fetch each intent's questions with the server's intent scope
-    (`GET /questions?status=...&scopeType=intent&scopeId=...`).
-
-    This is the same canonical query the Mac app issues — the server resolves
-    triggeredBy, opportunity, and negotiation linkage that client-side grouping
-    cannot replicate — so both surfaces show identical questions. Pending keeps
-    server order; answered records sort oldest-first (Mac feed order)."""
-
-    def fetch(intent_id: str) -> tuple[list[dict[str, Any]], str | None]:
-        payload = tools._api_request(
-            "GET", f"/questions?status={status}&scopeType=intent&scopeId={quote(intent_id, safe='')}"
-        )
-        error = _section_error(payload)
-        if error:
-            return [], error
-        records: list[dict[str, Any]] = []
-        for question in _list(payload.get("questions")):
-            if not isinstance(question, dict):
-                continue
-            flat = _flatten_rest_question(question)
-            item = _question_item(flat) if flat is not None else None
-            if item is None:
-                continue
-            if flat.get("answerText") is not None:
-                item["answerText"] = _text(flat.get("answerText"))
-            if flat.get("answeredAt"):
-                item["answeredAt"] = _text(flat.get("answeredAt"))
-            records.append(item)
-        if status == "answered":
-            records.sort(key=lambda record: record.get("answeredAt", ""))
-        return records, None
-
-    if not intent_ids:
-        return {}, None
-    with ThreadPoolExecutor(max_workers=min(4, len(intent_ids))) as pool:
-        results = list(pool.map(fetch, intent_ids))
-    error = next((err for _records, err in results if err), None)
-    return {intent_id: records for intent_id, (records, _err) in zip(intent_ids, results)}, error
-
-
 def _web_url() -> str:
     """Return the credential-free public Index origin for outbound links."""
     return tools._app_base_url()
@@ -303,15 +227,12 @@ def _update_opportunity(
     opportunity_id: str,
     status: str,
     scope_id: str | None = None,
-    acknowledged_uptake_question_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Accept/skip an opportunity over REST (`PATCH /opportunities/:id/status`), matching the Mac app."""
     body: dict[str, Any] = {"status": status}
     if scope_id:
         body["scopeType"] = "intent"
         body["scopeId"] = scope_id
-    if acknowledged_uptake_question_ids:
-        body["acknowledgedUptakeQuestionIds"] = acknowledged_uptake_question_ids
     return tools._api_request("PATCH", f"/opportunities/{quote(opportunity_id, safe='')}/status", body)
 
 
@@ -322,29 +243,6 @@ def _start_chat(opportunity_id: str, scope_id: str | None = None) -> dict[str, A
         body["scopeType"] = "intent"
         body["scopeId"] = scope_id
     return tools._api_request("POST", f"/opportunities/{quote(opportunity_id, safe='')}/start-chat", body)
-
-
-def _uptake_advisory(payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Surface the `unresolved_uptake_questions` advisory the UI needs for a continue-anyway retry.
-
-    The REST status route returns it as HTTP 409 `{error, advisory}`, so it arrives under
-    `details.advisory` from `_api_request`.
-    """
-    for candidate in (
-        payload.get("advisory"),
-        payload.get("details", {}).get("advisory") if isinstance(payload.get("details"), dict) else None,
-    ):
-        if isinstance(candidate, dict) and candidate.get("code") == "unresolved_uptake_questions":
-            return candidate
-    return None
-
-
-def _call_answer_question(question_id: str, answer: dict[str, Any]) -> dict[str, Any]:
-    return tools._api_request("POST", f"/questions/{quote(question_id, safe='')}/answer", answer)
-
-
-def _call_dismiss_question(question_id: str) -> dict[str, Any]:
-    return tools._api_request("POST", f"/questions/{quote(question_id, safe='')}/dismiss")
 
 
 def _resolve_user_id() -> str | None:
@@ -535,48 +433,6 @@ def _section_error(payload: dict[str, Any]) -> str | None:
     if payload.get("success") is not False:
         return None
     return _text(payload.get("error"), "Index request failed.")
-
-
-def _normalize_question_options(value: Any) -> list[dict[str, str]]:
-    options: list[dict[str, str]] = []
-    for option in _list(value):
-        if isinstance(option, str):
-            label = _text(option)
-            if label:
-                options.append({"label": label, "description": ""})
-            continue
-        if not isinstance(option, dict):
-            continue
-        label = _text(option.get("label"))
-        if not label:
-            continue
-        options.append({"label": label, "description": _text(option.get("description"))})
-    return options
-
-
-def _question_item(question: dict[str, Any]) -> dict[str, Any] | None:
-    question_id = _text(question.get("id"))
-    if not question_id:
-        return None
-    mode = _text(question.get("mode"))
-    source_type = _text(question.get("sourceType"))
-    meta_parts = [part for part in (mode, source_type) if part]
-    item: dict[str, Any] = {
-        "id": question_id,
-        "title": _text(question.get("title"), "Question"),
-        "prompt": _text(question.get("prompt")),
-        "options": _normalize_question_options(question.get("options")),
-        "multiSelect": bool(question.get("multiSelect")),
-    }
-    if mode:
-        item["mode"] = mode
-    if question.get("createdAt"):
-        item["createdAt"] = _text(question.get("createdAt"))
-    if question.get("expiresAt"):
-        item["expiresAt"] = _text(question.get("expiresAt"))
-    if meta_parts:
-        item["meta"] = " · ".join(meta_parts)
-    return item
 
 
 def _opportunity_networks(opp: dict[str, Any], network_titles: dict[str, str]) -> list[str]:
@@ -829,7 +685,7 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
         "title": title,
         "lifecycleStatus": lifecycle,
         "status": "paused" if lifecycle == "PAUSED" else "live",
-        "pendingCount": _count(intent.get("pendingQuestionCount")) + _count(intent.get("waitingOpportunityCount")),
+        "pendingCount": _count(intent.get("waitingOpportunityCount")),
     }
 
 
@@ -855,32 +711,6 @@ def _radar_item(card: dict[str, Any], intent_id: str | None = None) -> dict[str,
     if card.get("presentationPending") is True:
         item["presentationPending"] = True
     return item
-
-
-def _fetch_scoped_questions(intent_id: str, status: str) -> tuple[list[dict[str, Any]], str | None]:
-    """Fetch one intent's questions via the web/Mac scoped query."""
-    payload = tools._api_request(
-        "GET", f"/questions?status={status}&scopeType=intent&scopeId={quote(intent_id, safe='')}"
-    )
-    error = _section_error(payload)
-    if error:
-        return [], error
-    records: list[dict[str, Any]] = []
-    for question in _list(payload.get("questions")):
-        if not isinstance(question, dict):
-            continue
-        flat = _flatten_rest_question(question)
-        item = _question_item(flat) if flat is not None else None
-        if item is None:
-            continue
-        if flat.get("answerText") is not None:
-            item["answerText"] = _text(flat.get("answerText"))
-        if flat.get("answeredAt"):
-            item["answeredAt"] = _text(flat.get("answeredAt"))
-        records.append(item)
-    if status == "answered":
-        records.sort(key=lambda record: record.get("answeredAt", ""))
-    return records, None
 
 
 def _bootstrap_payload() -> dict[str, Any]:
@@ -912,31 +742,10 @@ def _bootstrap_payload() -> dict[str, Any]:
     }
 
 
-def _sanitize_answer_payload(body: Any) -> tuple[dict[str, Any] | None, str | None]:
-    if not isinstance(body, dict):
-        return None, "Answer body must be an object."
-    selected_options = body.get("selectedOptions")
-    if not isinstance(selected_options, list) or not all(isinstance(option, str) for option in selected_options):
-        return None, "selectedOptions must be an array of strings."
-    answer: dict[str, Any] = {"selectedOptions": [option.strip() for option in selected_options if option.strip()]}
-    free_text = body.get("freeText")
-    if free_text is not None:
-        if not isinstance(free_text, str):
-            return None, "freeText must be a string."
-        free_text = free_text.strip()
-        if free_text:
-            answer["freeText"] = free_text
-    if not answer["selectedOptions"] and not answer.get("freeText"):
-        return None, "Choose an option or add a free-text answer."
-    return answer, None
-
-
 def _build_dashboard(
     intents_payload: dict[str, Any],
     opps_live: list[dict[str, Any]],
     opps_extra: list[dict[str, Any]],
-    pending_by_intent: dict[str, list[dict[str, Any]]],
-    answered_by_intent: dict[str, list[dict[str, Any]]],
     network_titles: dict[str, str],
     current_user_id: str | None = None,
 ) -> dict[str, Any]:
@@ -950,8 +759,6 @@ def _build_dashboard(
             existing = {
                 "id": intent_id,
                 "title": title or "Untitled intent",
-                "questions": [],
-                "answeredQuestions": [],
                 "opportunities": [],
                 "networks": [],
                 "statusCounts": _empty_status_counts(),
@@ -979,10 +786,10 @@ def _build_dashboard(
         )
         obj = ensure(intent_id, title)
         obj["lifecycleStatus"] = _text(intent.get("status"), "ACTIVE").upper()
-        # Consolidated row badge: pending questions + awaiting opportunities,
-        # taken verbatim from the server list counts so every surface (Hermes
-        # web/desktop, mac app, web app) shows the same number.
-        obj["pendingCount"] = _count(intent.get("pendingQuestionCount")) + _count(intent.get("waitingOpportunityCount"))
+        # Row badge: opportunities awaiting the user, taken verbatim from the
+        # server list count so every surface (Hermes web/desktop, mac app, web
+        # app) shows the same number.
+        obj["pendingCount"] = _count(intent.get("waitingOpportunityCount"))
 
     known_ids = set(intents.keys())
     seen_opp_ids: set[str] = set()
@@ -1029,23 +836,10 @@ def _build_dashboard(
     for opp in opps_extra:
         place_opportunity(opp)
 
-    # Questions are server-scoped per intent (see _call_questions_by_intent),
-    # identical to the Mac app's queries: pending render as answer forms,
-    # answered as settled records that survive reloads. There is no client-side
-    # grouping, so the general questions bucket is always empty.
-    general: list[dict[str, Any]] = []
-    for intent_id, records in pending_by_intent.items():
-        if intent_id in intents:
-            intents[intent_id]["questions"] = records
-    for intent_id, records in answered_by_intent.items():
-        if intent_id in intents:
-            intents[intent_id]["answeredQuestions"] = records
-
     general_total_opportunity_count = sum(general_status_counts.values())
     general_actionable_opportunity_count = general_status_counts.get("pending", 0)
     totals = {
         "intents": 0,
-        "questions": len(general),
         # Sidebar/header opportunity counts represent cards the viewer can act on now,
         # matching RadarGraph rather than historical radar totals.
         "opportunities": general_actionable_opportunity_count,
@@ -1058,10 +852,8 @@ def _build_dashboard(
         counts = intent["statusCounts"]
         total_opportunity_count = sum(counts.values())
         actionable_opportunity_count = counts.get("pending", 0)
-        question_count = len(intent["questions"])
         intent["opportunityCount"] = actionable_opportunity_count
         intent["totalOpportunityCount"] = total_opportunity_count
-        intent["questionCount"] = question_count
         intent["networks"] = intent["networks"][:4]
         # Row status mirrors the mac app's real-data behavior: its mapper
         # (apps/mac/api/mappers.mjs) hardcodes matches/pipeline to zero, so the
@@ -1069,7 +861,6 @@ def _build_dashboard(
         # demo data — real rows are only ever paused or live.
         intent["status"] = "paused" if intent["lifecycleStatus"] == "PAUSED" else "live"
         totals["intents"] += 1
-        totals["questions"] += question_count
         totals["opportunities"] += actionable_opportunity_count
         totals["totalOpportunities"] += total_opportunity_count
         for bucket, value in counts.items():
@@ -1083,13 +874,11 @@ def _build_dashboard(
     return {
         "intents": ordered_intents,
         "general": {
-            "questions": general,
             "opportunities": general_opportunities,
             "statusCounts": general_status_counts,
-            "questionCount": len(general),
             "opportunityCount": general_actionable_opportunity_count,
             "totalOpportunityCount": general_total_opportunity_count,
-            "count": len(general) + general_actionable_opportunity_count,
+            "count": general_actionable_opportunity_count,
         },
         "negotiations": {"items": negotiations, "count": len(negotiations)},
         "totals": totals,
@@ -1202,36 +991,6 @@ def summary() -> dict[str, Any]:
     return _bootstrap_payload()
 
 
-@full_router.get("/intents/{intent_id}/questions")
-def intent_questions(intent_id: str, status: str = "") -> dict[str, Any]:
-    """Pending and/or answered questions for one intent (web intent page parity).
-
-    Without ``status``, returns both lists in one response (parallel upstream fetches).
-    With ``status=pending|answered``, returns a single ``questions`` list (legacy).
-    """
-    intent_id = _text(intent_id)
-    if not intent_id:
-        return {"success": False, "error": "An intent id is required."}
-    normalized = _text(status).lower()
-    if not normalized:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            pending_future = pool.submit(_fetch_scoped_questions, intent_id, "pending")
-            answered_future = pool.submit(_fetch_scoped_questions, intent_id, "answered")
-            pending_records, pending_error = pending_future.result()
-            answered_records, answered_error = answered_future.result()
-        if pending_error:
-            return {"success": False, "error": pending_error}
-        if answered_error:
-            return {"success": False, "error": answered_error}
-        return {"success": True, "pending": pending_records, "answered": answered_records}
-    if normalized not in ("pending", "answered"):
-        return {"success": False, "error": "status must be pending or answered."}
-    records, error = _fetch_scoped_questions(intent_id, normalized)
-    if error:
-        return {"success": False, "error": error}
-    return {"success": True, "questions": records}
-
-
 @full_router.get("/intents/{intent_id}/radar")
 def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
     """Intent-scoped radar cards via GET /opportunities/radar (web intent page parity)."""
@@ -1270,27 +1029,6 @@ def networks_home() -> dict[str, Any]:
         "success": True,
         "networks": _normalize_networks(networks_payload, discover_payload, current_user_id or None),
     }
-
-
-@full_router.post("/questions/{question_id}/answer")
-def answer_question(question_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Submit an answer for a pending Index question owned by this API-key principal."""
-    answer, validation_error = _sanitize_answer_payload(body)
-    if validation_error:
-        return {"success": False, "error": validation_error}
-    payload = _call_answer_question(question_id, answer or {})
-    if payload.get("success") is False:
-        return payload
-    return {"success": True}
-
-
-@full_router.post("/questions/{question_id}/dismiss")
-def dismiss_question(question_id: str) -> dict[str, Any]:
-    """Skip (dismiss) a pending Index question owned by this API-key principal."""
-    payload = _call_dismiss_question(question_id)
-    if payload.get("success") is False:
-        return payload
-    return {"success": True}
 
 
 @full_router.post("/networks/{network_id}/join")
@@ -1686,31 +1424,13 @@ def accept_opportunity(
     opportunity_id: str,
     body: dict[str, Any] | None = Body(default=None),
 ) -> dict[str, Any]:
-    """Accept an opportunity via REST `PATCH /opportunities/:id/status` → status=accepted.
-
-    Preserves the `unresolved_uptake_questions` advisory so the dashboard can offer a
-    continue-anyway retry with acknowledged question IDs.
-    """
+    """Accept an opportunity via REST `PATCH /opportunities/:id/status` → status=accepted."""
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
         return {"success": False, "error": "An opportunity id is required."}
-    acknowledged = body.get("acknowledgedUptakeQuestionIds") if isinstance(body, dict) else None
-    if acknowledged is not None and (
-        not isinstance(acknowledged, list)
-        or any(not isinstance(question_id, str) or not question_id.strip() for question_id in acknowledged)
-    ):
-        return {"success": False, "error": "acknowledgedUptakeQuestionIds must be an array of non-empty strings."}
-    acknowledged_ids = list(dict.fromkeys(question_id.strip() for question_id in (acknowledged or [])))
     scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
-    payload = _update_opportunity(opportunity_id, "accepted", scope_id or None, acknowledged_ids)
+    payload = _update_opportunity(opportunity_id, "accepted", scope_id or None)
     if payload.get("success") is False:
-        advisory = _uptake_advisory(payload)
-        if advisory is not None:
-            return {
-                "success": False,
-                "error": _text(payload.get("error")) or "Resolve pending uptake questions.",
-                "advisory": advisory,
-            }
         return payload
     return {"success": True, "status": "accepted"}
 
@@ -2261,7 +1981,7 @@ def _notification_stream():
 
 @full_router.get("/notifications/stream")
 def notifications_stream():
-    """SSE proxy for realtime notification events (questions, opportunities)."""
+    """SSE proxy for realtime notification events (opportunities)."""
     if StreamingResponse is None:
         return {"success": False, "error": "Streaming is not available in this environment."}
     return StreamingResponse(

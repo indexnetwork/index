@@ -677,19 +677,18 @@ export class IntentDatabaseAdapter {
 
   /**
    * Enrich a page of intent list rows with their registered networks, the
-   * per-intent counts the UI surfaces (pending questions, waiting
-   * opportunities) and the fresh-intent discovery state. Runs the grouped
-   * queries in parallel and joins in memory, so it stays O(1) round-trips
-   * regardless of page size.
+   * per-intent waiting-opportunity count the UI surfaces and the fresh-intent
+   * discovery state. Runs the grouped queries in parallel and joins in memory,
+   * so it stays O(1) round-trips regardless of page size.
    *
    * @param rows - The paginated base intent rows to enrich.
    * @param userId - Owner, used to scope the waiting-opportunity actor match.
-   * @returns The rows with `networks`, `pendingQuestionCount` and
-   *   `waitingOpportunityCount` populated (empty/zero when none), plus a
-   *   deduplicated total of waiting opportunities across the page's signals.
+   * @returns The rows with `networks` and `waitingOpportunityCount` populated
+   *   (empty/zero when none), plus a deduplicated total of waiting
+   *   opportunities across the page's signals.
    */
   private async attachIntentExtras(
-    rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming'> & {
+    rows: (Omit<IntentListRow, 'networks' | 'waitingOpportunityCount' | 'warming'> & {
       /** Stamped by the discovery queue on first successful discovery (IND-482). */
       firstDiscoverySucceededAt: Date | null;
     })[],
@@ -708,7 +707,6 @@ export class IntentDatabaseAdapter {
       rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
         ...r,
         networks: networks.get(r.id) ?? [],
-        pendingQuestionCount: countResult.byIntent.get(r.id)?.questions ?? 0,
         waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
         warming: r.createdAt > warmingCutoff
           && firstDiscoverySucceededAt == null,
@@ -781,72 +779,43 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Per-intent counts of pending intent-scoped questions and opportunities
-   * awaiting the viewer. The opportunity query also returns one deduplicated
-   * total across every requested signal. Every requested ID is present in the
-   * returned map (zero when it has none).
+   * Per-intent counts of opportunities awaiting the viewer. The query also
+   * returns one deduplicated total across every requested signal. Every
+   * requested ID is present in the returned map (zero when it has none).
    */
   private async countsByIntent(
     intentIds: string[],
     userId: string,
   ): Promise<{
-    byIntent: Map<string, { questions: number; opportunities: number }>;
+    byIntent: Map<string, { opportunities: number }>;
     totalWaitingOpportunities: number;
   }> {
-    const byIntent = new Map<string, { questions: number; opportunities: number }>();
+    const byIntent = new Map<string, { opportunities: number }>();
     if (intentIds.length === 0) return { byIntent, totalWaitingOpportunities: 0 };
-    for (const id of intentIds) byIntent.set(id, { questions: 0, opportunities: 0 });
+    for (const id of intentIds) byIntent.set(id, { opportunities: 0 });
     const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
 
-    const [questionRows, oppRows] = await Promise.all([
-      // Mirror the intent-scoped pending-questions filter used on the detail
-      // page: pending, not expired, actor-owned
-      // by the user, attributed to the intent via intent-mode sourceId or
-      // triggeredBy. (The opportunity-sourced branch is omitted — rare and
-      // expensive.) Group key is the attributed intent id.
-      db.execute(sql`
-        SELECT key AS intent_id, COUNT(*)::int AS cnt
-        FROM (
-          SELECT CASE
-            WHEN ${schema.questions.detection}->>'mode' = 'intent'
-              AND ${schema.questions.detection}->>'sourceType' = 'intent'
-              THEN ${schema.questions.detection}->>'sourceId'
-            ELSE ${schema.questions.detection}->>'triggeredBy'
-          END AS key
-          FROM ${schema.questions}
-          WHERE ${schema.questions.status} = 'pending'
-            AND (${schema.questions.expiresAt} IS NULL OR ${schema.questions.expiresAt} > NOW())
-            AND ${schema.questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
-        ) sub
-        WHERE key IN (${idList})
-        GROUP BY key
-      `) as unknown as Array<{ intent_id: string; cnt: number }>,
-      db.execute(sql`
-        WITH matching AS (
-          SELECT DISTINCT
-            ${schema.opportunities.id} AS opportunity_id,
-            requested.intent_id
-          FROM ${schema.opportunities}
-          CROSS JOIN LATERAL jsonb_array_elements(${schema.opportunities.actors}) AS actor
-          CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
-          WHERE ${schema.opportunities.status} = 'pending'
-            AND actor->>'userId' = ${userId}
-            AND actor->>'actedAt' IS NULL
-            AND (
-              ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id
-              OR actor->>'intent' = requested.intent_id
-            )
-        )
-        SELECT intent_id, COUNT(DISTINCT opportunity_id)::int AS cnt
-        FROM matching
-        GROUP BY GROUPING SETS ((intent_id), ())
-      `) as unknown as Array<{ intent_id: string | null; cnt: number }>,
-    ]);
+    const oppRows = await db.execute(sql`
+      WITH matching AS (
+        SELECT DISTINCT
+          ${schema.opportunities.id} AS opportunity_id,
+          requested.intent_id
+        FROM ${schema.opportunities}
+        CROSS JOIN LATERAL jsonb_array_elements(${schema.opportunities.actors}) AS actor
+        CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
+        WHERE ${schema.opportunities.status} = 'pending'
+          AND actor->>'userId' = ${userId}
+          AND actor->>'actedAt' IS NULL
+          AND (
+            ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id
+            OR actor->>'intent' = requested.intent_id
+          )
+      )
+      SELECT intent_id, COUNT(DISTINCT opportunity_id)::int AS cnt
+      FROM matching
+      GROUP BY GROUPING SETS ((intent_id), ())
+    `) as unknown as Array<{ intent_id: string | null; cnt: number }>;
 
-    for (const r of questionRows) {
-      const entry = byIntent.get(r.intent_id);
-      if (entry) entry.questions = Number(r.cnt);
-    }
     let totalWaitingOpportunities = 0;
     for (const r of oppRows) {
       if (r.intent_id == null) {

@@ -1,9 +1,8 @@
 import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
-import { discoveryCandidateAdapter, type DiscoveryCandidateDatabaseAdapter } from './discovery-candidate.database.adapter';
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
-import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from './negotiation.database.adapter';
 import { IntentEvents } from '../events/intent.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { toPublicNetworkPermissions } from '../lib/network-permissions';
@@ -2235,14 +2234,11 @@ export class ChatDatabaseAdapter {
     await this.softDeleteNetwork(networkId);
   }
 
-  // Discovery candidates (delegate to DiscoveryCandidateDatabaseAdapter)
-  async upsertDiscoveryMatchCandidates(
-    items: Parameters<DiscoveryCandidateDatabaseAdapter['upsertDiscoveryMatchCandidates']>[0],
+  // Discovery counterparties (delegate to NegotiationDatabaseAdapter)
+  async openCounterparties(
+    pairs: Parameters<NegotiationDatabaseAdapter['openCounterparties']>[0],
   ) {
-    return discoveryCandidateAdapter.upsertDiscoveryMatchCandidates(items);
-  }
-  async openCandidates(candidateIds: string[]) {
-    return discoveryCandidateAdapter.openCandidates(candidateIds);
+    return negotiationDatabaseAdapter.openCounterparties(pairs);
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)

@@ -9,7 +9,7 @@ import { NetworksProvider } from "@/contexts/IndexesContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
-const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/questions'];
+const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents'];
 const publicRoutes = ['/c'];
 // /l is chrome-free web invite join; /index stays app-only public join.
 const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe'];

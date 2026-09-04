@@ -161,7 +161,7 @@ The intent and community graphs are the exceptions: they are reached through the
 
 | Factory | Workflow |
 |---|---|
-| `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, emit candidates. Creates no opportunities — the host database must implement `upsertDiscoveryMatchCandidates` and `listPendingCandidatesForIntent`; candidates become opportunities only through the host's own REST/MCP writes. |
+| `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, open counterparties. The host database must implement `openCounterparties`, which turns each scored pair into an opportunity and its negotiation record, keyed on `pairKey` so both principals' runs converge on one. |
 | `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 
