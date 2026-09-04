@@ -20,6 +20,18 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 48.1.0 - 2026-09-04
+
+### Changed
+
+- **`read_docs` speaks networks, not indexes.** The topic key `indexes` is now
+  `networks` and its section is rewritten in network terms, so `topic=indexes`
+  no longer resolves to a section and falls back to the summary. MCP callers are
+  unaffected: that surface already served `communities-networks`.
+- **Opportunity-graph log payloads renamed.** `targetIndexesCount` is
+  `targetNetworksCount` and the `indexes` key is `networks`, alongside the
+  surrounding trace strings. Log-scraping dashboards need updating.
+
 ## 48.0.0 - 2026-09-04
 
 ### Added

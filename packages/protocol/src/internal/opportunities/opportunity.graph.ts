@@ -118,7 +118,7 @@ export class OpportunityGraphFactory {
         [END]: END,
       })
 
-      // Conditional routing: early exit if no target indexes
+      // Conditional routing: early exit if no target networks
       .addConditionalEdges('scope', shouldContinueAfterScope, {
         resolve: 'resolve',
         [END]: END,
@@ -150,11 +150,11 @@ function shouldContinueAfterPrep(state: OpportunityState): string {
 }
 
 /**
- * After scope: check if we have target indexes.
+ * After scope: check if we have target networks.
  */
 function shouldContinueAfterScope(state: OpportunityState): string {
   if (state.error || state.targetNetworks.length === 0) {
-    routingLog.verbose('No target indexes - ending early');
+    routingLog.verbose('No target networks - ending early');
     return END;
   }
   routingLog.verbose('Continuing to resolve');

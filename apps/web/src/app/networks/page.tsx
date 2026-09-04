@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworks, useNetworkRequests } from '@/contexts/APIContext';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { Network as NetworkType } from '@/lib/types';
 import type { NetworkRequest, NetworkRequestInput } from '@/services/networkRequests';
 import { log } from '@/lib/logger';
@@ -24,7 +24,7 @@ export default function NetworksPage() {
   const { success, error } = useNotifications();
   const indexesService = useNetworks();
   const networkRequestsService = useNetworkRequests();
-  const { indexes: rawIndexes, loading: indexesLoading, addIndex } = useNetworksState();
+  const { networks: rawNetworks, loading: networksLoading, addNetwork } = useNetworksState();
 
   // Staff capability is decided by the server (covers STAFF_EMAILS and mixed-case
   // addresses), not inferred from the email on the client.
@@ -89,7 +89,7 @@ export default function NetworksPage() {
     }
   }, [networkRequestsService, loadRequests, success, error]);
 
-  const allNetworks = (rawIndexes || []).filter(Boolean).sort((a, b) =>
+  const allNetworks = (rawNetworks || []).filter(Boolean).sort((a, b) =>
     (a.title || '').localeCompare(b.title || ''),
   );
 
@@ -112,7 +112,7 @@ export default function NetworksPage() {
       if (result.alreadyMember) {
         success('You are already a member of this network');
       } else {
-        addIndex(result.network);
+        addNetwork(result.network);
         success('Joined network successfully');
       }
       await loadPublicNetworks();
@@ -132,7 +132,7 @@ export default function NetworksPage() {
         imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy,
       });
-      addIndex(newIndex);
+      addNetwork(newIndex);
       setCreateNetworkModalOpen(false);
       navigate(`/networks/${newIndex.id}`);
       success('Network created successfully');
@@ -140,7 +140,7 @@ export default function NetworksPage() {
       logger.error('Error creating network', { error: err });
       error('Failed to create network');
     }
-  }, [indexesService, addIndex, navigate, success, error]);
+  }, [indexesService, addNetwork, navigate, success, error]);
 
   return (
     <ClientLayout>
@@ -250,7 +250,7 @@ export default function NetworksPage() {
                   </div>
                 )}
 
-                {indexesLoading ? (
+                {networksLoading ? (
                   <div className="flex justify-center py-16">
                     <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
                   </div>

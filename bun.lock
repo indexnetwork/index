@@ -19,7 +19,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.66.0",
+      "version": "0.66.1",
       "dependencies": {
         "@indexnetwork/protocol": "workspace:*",
         "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -97,7 +97,7 @@
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "48.0.0",
+      "version": "48.1.0",
       "dependencies": {
         "@langchain/core": "1.1.48",
         "@langchain/langgraph": "1.4.12",

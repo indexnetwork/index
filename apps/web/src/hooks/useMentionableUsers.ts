@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNetworkService } from '@/services/networks';
 import { log } from '@/lib/logger';
 
@@ -28,7 +28,7 @@ export function useMentionableUsers({
 }: UseMentionableUsersOptions = {}): UseMentionableUsersResult {
   const [users, setUsers] = useState<MentionableUser[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const { indexes, loading: indexesLoading } = useNetworksState();
+  const { networks, loading: networksLoading } = useNetworksState();
   const indexService = useNetworkService();
   const fetchedRef = useRef(false);
   const cacheRef = useRef<Map<string, MentionableUser>>(new Map());
@@ -40,7 +40,7 @@ export function useMentionableUsers({
       return;
     }
 
-    if (indexesLoading) return;
+    if (networksLoading) return;
 
     // Avoid duplicate fetches
     if (fetchedRef.current) return;
@@ -70,21 +70,21 @@ export function useMentionableUsers({
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, indexService, indexesLoading]);
+  }, [enabled, indexService, networksLoading]);
 
   // Stable signature of network IDs so joins/leaves trigger refetch even when length is unchanged
-  const indexesSignature =
-    indexes.length === 0
+  const networksSignature =
+    networks.length === 0
       ? ''
-      : [...indexes]
-          .map((i) => i.id)
+      : [...networks]
+          .map((n) => n.id)
           .sort()
           .join(',');
 
   useEffect(() => {
-    fetchedRef.current = false; // Reset when indexes change so we refetch after join/leave
+    fetchedRef.current = false; // Reset when networks change so we refetch after join/leave
     fetchAllMembers();
-  }, [fetchAllMembers, indexesSignature, indexesLoading]);
+  }, [fetchAllMembers, networksSignature, networksLoading]);
 
   // Search function for react-mentions async data fetching
   const searchUsers = useCallback(

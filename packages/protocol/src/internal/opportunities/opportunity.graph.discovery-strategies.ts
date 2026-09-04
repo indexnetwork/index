@@ -67,15 +67,15 @@ export async function runQueryHydeDiscovery(ctx: DiscoveryStrategyContext): Prom
   const lensEmbeddings = toLensEmbeddings(hydeEmbeddings, lenses);
   const all: CandidateMatch[] = [];
   await Promise.all(
-    state.targetNetworks.map(async (targetIndex) => {
+    state.targetNetworks.map(async (targetNetwork) => {
       const results = await deps.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
-        indexScope: [targetIndex.networkId],
+        indexScope: [targetNetwork.networkId],
         excludeUserId: discoveryUserId,
         limitPerStrategy,
         limit: perIndexLimit,
         minScore: deps.retrievalMinSimilarity,
       });
-      all.push(...collectHydeResults(results, targetIndex.networkId));
+      all.push(...collectHydeResults(results, targetNetwork.networkId));
     })
   );
   discoveryLog.verbose('searchWithHydeEmbeddings raw results', { total: all.length });
