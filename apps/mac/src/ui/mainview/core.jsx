@@ -164,7 +164,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // accepted/missed tabs stay empty. `rejected` is deliberately excluded:
     // most rejections are agent-side filtering, not user decisions, so
     // showing them implies choices the user never made.
-    const radarStatuses = "pending,negotiating,stalled,accepted,expired";
+    const radarStatuses = "pending,negotiating,accepted,expired";
     const applyRadar = (radarR) => {
       if (!radarR) return;
       const items = window.IndexApp.normalizeList(radarR, "items");
