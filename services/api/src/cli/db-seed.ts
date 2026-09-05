@@ -34,7 +34,7 @@ const SYSTEM_AGENT_DEFS = [
   },
 ] as const;
 
-// ── Index definitions ───────────────────────────────────────────────────────
+// ── Network definitions ───────────────────────────────────────────────────────
 
 interface NetworkDef {
   id: Id<'networks'>;
@@ -44,8 +44,8 @@ interface NetworkDef {
   joinPolicy: 'anyone' | 'invite_only';
 }
 
-const SEED_INDEXES: NetworkDef[] = [
-  // General-purpose indexes (null prompts = auto-assign, no LLM evaluation)
+const SEED_NETWORKS: NetworkDef[] = [
+  // General-purpose networks (null prompts = auto-assign, no LLM evaluation)
   {
     id: '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c',
     title: 'Commons',
@@ -61,7 +61,7 @@ const SEED_INDEXES: NetworkDef[] = [
     joinPolicy: 'invite_only',
   },
 
-  // Categorical indexes (prompts describe what the community is for)
+  // Categorical networks (prompts describe what the community is for)
   {
     id: 'aaaaaaaa-0001-4000-8000-000000000001',
     title: 'Stack',
@@ -91,7 +91,7 @@ const SEED_INDEXES: NetworkDef[] = [
     joinPolicy: 'anyone',
   },
 
-  // Non-business / lifestyle indexes
+  // Non-business / lifestyle networks
   {
     id: 'aaaaaaaa-0005-4000-8000-000000000005',
     title: 'Atelier',
@@ -175,7 +175,7 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
 
 /**
  * Create or get users for the given accounts and ensure they are members of all
- * seed indexes. The first account receives 'owner' on every network.
+ * seed networks. The first account receives 'owner' on every network.
  *
  * @param accounts - List of accounts to provision.
  * @returns The created or existing user rows, in input order.
@@ -185,7 +185,7 @@ async function ensureUsersAndMemberships(accounts: SeedAccount[]): Promise<{ id:
   for (const [i, account] of accounts.entries()) {
     const user = await createUser(account);
     createdUsers.push(user);
-    for (const idx of SEED_INDEXES) {
+    for (const idx of SEED_NETWORKS) {
       try {
         await db.insert(networkMembers).values({
           networkId: idx.id,
@@ -236,11 +236,11 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
   const { silent } = parseArgs();
 
   try {
-    if (!silent) console.log('Creating indexes...');
+    if (!silent) console.log('Creating networks...');
 
     // Create all networks
-    for (let i = 0; i < SEED_INDEXES.length; i++) {
-      const idx = SEED_INDEXES[i];
+    for (let i = 0; i < SEED_NETWORKS.length; i++) {
+      const idx = SEED_NETWORKS[i];
       try {
         await db.insert(networks).values({
           id: idx.id,
@@ -252,13 +252,13 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
             invitationLink: null,
           },
         });
-        if (!silent) console.log(`  Index ${i + 1}/${SEED_INDEXES.length}: ${idx.title} — created`);
+        if (!silent) console.log(`  Network ${i + 1}/${SEED_NETWORKS.length}: ${idx.title} — created`);
       } catch {
-        if (!silent) console.log(`  Index ${i + 1}/${SEED_INDEXES.length}: ${idx.title} — already exists`);
+        if (!silent) console.log(`  Network ${i + 1}/${SEED_NETWORKS.length}: ${idx.title} — already exists`);
       }
     }
 
-    if (!silent) console.log(`  ${SEED_INDEXES.length} indexes ready`);
+    if (!silent) console.log(`  ${SEED_NETWORKS.length} networks ready`);
 
     if (!silent) console.log('Ensuring system admin users...');
     const adminUsers = await ensureUsersAndMemberships(SYSTEM_ADMIN_ACCOUNTS);
@@ -288,8 +288,8 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     }
 
     if (!silent) {
-      console.log('\nIndexes:');
-      for (const idx of SEED_INDEXES) {
+      console.log('\nNetworks:');
+      for (const idx of SEED_NETWORKS) {
         const label = idx.prompt ? `prompt: "${idx.prompt}"` : 'no prompt (auto-assign)';
         console.log(`  ${idx.title} [${idx.joinPolicy}] -- ${label}`);
       }

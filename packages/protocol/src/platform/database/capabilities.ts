@@ -22,8 +22,8 @@ export type CompositeToolDatabase = Pick<
   // stage opens the pairs it scored.
   | 'openCounterparties'
   | 'getActiveIntents'
-  | 'getActiveIntentsAcrossIndexes'
-  | 'getIntentsInIndexForMember'
+  | 'getActiveIntentsAcrossNetworks'
+  | 'getIntentsInNetworkForMember'
   | 'getUser'
   | 'updateUser'
   | 'getUserSocials'
@@ -33,7 +33,7 @@ export type CompositeToolDatabase = Pick<
   | 'createIntent'
   | 'updateIntent'
   | 'archiveIntent'
-  | 'deleteIntentIndexAssociations'
+  | 'deleteIntentNetworkAssociations'
   | 'expireOpportunitiesByIntentActor'
   | 'transitionIntentLifecycle'
   | 'compensateFailedResume'
@@ -56,9 +56,9 @@ export type CompositeToolDatabase = Pick<
   | 'getHydeDocumentsForSource'
   | 'saveHydeDocument'
   | 'getIntent'
-  // NetworkGraph subgraph requirements (index created intents in user's indexes)
-  | 'getPublicIndexesNotJoined'
-  | 'getUserIndexIds'
+  // NetworkGraph subgraph requirements (assign created intents to user's networks)
+  | 'getPublicNetworksNotJoined'
+  | 'getUserNetworkIds'
   | 'getAssignmentNetworkMembershipsForUser'
   | 'getAssignmentNetworkIdsForUser'
   | 'getNetworkMemberships'
@@ -69,29 +69,29 @@ export type CompositeToolDatabase = Pick<
   | 'getIntentForIndexing'
   | 'getNetworkMemberContext'
   | 'getNetworkAssignmentContext'
-  | 'isIntentAssignedToIndex'
+  | 'isIntentAssignedToNetwork'
   | 'assignIntentToNetwork'
   | 'assignIntentToNetworkIfMember'
-  | 'unassignIntentFromIndex'
+  | 'unassignIntentFromNetwork'
   | 'getNetworkIdsForIntent'
-  | 'getIntentIndexScores'
-  // Index Ownership Operations (owner-only)
-  | 'getOwnedIndexes'
-  | 'isIndexOwner'
+  | 'getIntentNetworkScores'
+  // Network Ownership Operations (owner-only)
+  | 'getOwnedNetworks'
+  | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getNetworkMembersForOwner'
   | 'getNetworkMembersForMember'
-  | 'getMembersFromUserIndexes'
+  | 'getMembersFromUserNetworks'
   | 'getNetworkIntentsForOwner'
   | 'getNetworkIntentsForMember'
-  | 'updateIndexSettings'
+  | 'updateNetworkSettings'
   | 'softDeleteNetwork'
   | 'deleteProfile'
   | 'getProfileByUserId'
   | 'createNetwork'
   | 'getNetworkMemberCount'
   | 'addMemberToNetwork'
-  | 'removeMemberFromIndex'
+  | 'removeMemberFromNetwork'
   // User context text for discovery in OpportunityGraph
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
@@ -99,7 +99,7 @@ export type CompositeToolDatabase = Pick<
 
 /**
  * Database interface for Opportunity Graph operations.
- * Includes prep/scope (network membership, intents, index details), persist (create, dedupe),
+ * Includes prep/scope (network membership, intents, network details), persist (create, dedupe),
  * and CRUD operations (read, update status, send).
  *
  * Access layer: SystemDatabase (cross-user opportunity operations)
@@ -115,14 +115,14 @@ export type OpportunityGraphDatabase = Pick<
   | 'updateOpportunityStatusIfNetworkEligible'
   | 'opportunityExistsBetweenActors'
   | 'findOpportunitiesByActors'
-  | 'getUserIndexIds'
+  | 'getUserNetworkIds'
   | 'getNetworkMemberships'
   | 'getActiveNetworkMembershipPairs'
   | 'getActiveIntents'
   | 'getNetworkIdsForIntent'
   | 'getNetwork'
   | 'getNetworkMemberCount'
-  | 'getIntentIndexScores'
+  | 'getIntentNetworkScores'
   | 'getNetworkMemberContext'
   | 'getNetworkAssignmentContext'
   // Read/update/send modes
@@ -131,7 +131,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'updateOpportunityStatus'
   | 'stampOpportunityActorAction'
   | 'isNetworkMember'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'getUser'
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
@@ -164,7 +164,7 @@ export type OpportunityControllerDatabase = Pick<
   | 'opportunityExistsBetweenActors'
   | 'findOpportunitiesByActors'
   | 'acceptSiblingOpportunities'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getUser'
   | 'getNetwork'
@@ -184,15 +184,15 @@ export type OpportunityControllerDatabase = Pick<
 /**
  * Database interface narrowed for Intent Graph operations.
  * Provides state population (getActiveIntents), action execution (create/update/archive),
- * and read operations (query intents; getIntentsInIndexForMember for network-scoped reads).
+ * and read operations (query intents; getIntentsInNetworkForMember for network-scoped reads).
  *
  * Access layer: UserDatabase (mutations on own intents) + SystemDatabase (network-scoped reads)
  */
 export type IntentGraphDatabase = Pick<
   Database,
   | 'getActiveIntents'
-  | 'getActiveIntentsAcrossIndexes'
-  | 'getIntentsInIndexForMember'
+  | 'getActiveIntentsAcrossNetworks'
+  | 'getIntentsInNetworkForMember'
   | 'createIntent'
   | 'updateIntent'
   | 'archiveIntent'
@@ -203,7 +203,7 @@ export type IntentGraphDatabase = Pick<
   // Create action links the new intent to exactly the networks the caller named.
   | 'assignIntentToNetworkIfMember'
   // Archive action's full cleanup (network associations, referencing opportunities)
-  | 'deleteIntentIndexAssociations'
+  | 'deleteIntentNetworkAssociations'
   | 'expireOpportunitiesByIntentActor'
   // Status transition action (pause/resume)
   | 'transitionIntentLifecycle'
@@ -212,31 +212,31 @@ export type IntentGraphDatabase = Pick<
 
 /**
  * Database interface narrowed for Network Graph CRUD operations.
- * Handles create, read, update, delete of indexes (communities).
+ * Handles create, read, update, delete of networks (communities).
  *
  * Access layer: UserDatabase (CRUD on own networks and memberships)
  */
 export type NetworkGraphDatabase = Pick<
   Database,
   | 'getNetworkMemberships'
-  | 'getOwnedIndexes'
-  | 'getPublicIndexesNotJoined'
-  | 'isIndexOwner'
+  | 'getOwnedNetworks'
+  | 'getPublicNetworksNotJoined'
+  | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getNetwork'
   | 'createNetwork'
   | 'addMemberToNetwork'
-  | 'updateIndexSettings'
+  | 'updateNetworkSettings'
   | 'softDeleteNetwork'
   | 'getNetworkMemberCount'
 >;
 
 /**
- * Database interface narrowed for Intent Index Graph operations.
- * Provides intent/index context and assignment for intent–index evaluation.
+ * Database interface narrowed for Intent Network Graph operations.
+ * Provides intent/network context and assignment for intent–network evaluation.
  * (Migrated from the old NetworkGraphDatabase.)
  *
- * Access layer: UserDatabase (own intent assignment) + SystemDatabase (index context)
+ * Access layer: UserDatabase (own intent assignment) + SystemDatabase (network context)
  */
 export type IntentNetworkGraphDatabase = Pick<
   Database,
@@ -244,15 +244,15 @@ export type IntentNetworkGraphDatabase = Pick<
   | 'getNetworkMemberContext'
   | 'getNetworkAssignmentContext'
   | 'getNetwork'
-  | 'isIntentAssignedToIndex'
+  | 'isIntentAssignedToNetwork'
   | 'assignIntentToNetworkIfMember'
-  | 'unassignIntentFromIndex'
+  | 'unassignIntentFromNetwork'
   | 'getIntent'
   | 'isNetworkMember'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'getNetworkIdsForIntent'
   | 'getNetworkIntentsForMember'
-  | 'getIntentsInIndexForMember'
+  | 'getIntentsInNetworkForMember'
 >;
 
 /**
@@ -264,10 +264,10 @@ export type IntentNetworkGraphDatabase = Pick<
 export type NetworkMembershipGraphDatabase = Pick<
   Database,
   | 'isNetworkMember'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'getNetworkWithPermissions'
   | 'addMemberToNetwork'
-  | 'removeMemberFromIndex'
+  | 'removeMemberFromNetwork'
   | 'getNetworkMembersForMember'
 >;
 
@@ -284,7 +284,7 @@ export type HydeGraphDatabase = Pick<
 
 /**
  * Database interface for Radar Graph (opportunity radar view).
- * Load opportunities, enrich with profile/index, and support presenter context.
+ * Load opportunities, enrich with profile/network, and support presenter context.
  *
  * Access layer: UserDatabase (own opportunities and profile)
  */

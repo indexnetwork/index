@@ -43,7 +43,7 @@ SEMANTIC GOVERNANCE RULES (Donnellan's Distinction):
 
 ACTIONS:
 - CREATE: If an Inferred Goal does NOT match any Active Intent, CREATE it.
-- UPDATE: If an Inferred Goal matches an Active Intent but offers a better/different description, UPDATE it. When the match is an exact duplicate (same goal, no change needed), still output an UPDATE action with that Active Intent's id and the same payload—this allows the caller to link the intent to an index (e.g. add it to a community).
+- UPDATE: If an Inferred Goal matches an Active Intent but offers a better/different description, UPDATE it. When the match is an exact duplicate (same goal, no change needed), still output an UPDATE action with that Active Intent's id and the same payload—this allows the caller to link the intent to a network (e.g. add it to a community).
   CRITICAL UPDATE MERGE RULES:
   * When UPDATING an intent, you MUST PRESERVE all existing details from the Active Intent.
   * Only MODIFY or ADD the specific aspects mentioned in the Inferred Intent.
@@ -65,7 +65,7 @@ ACTIONS:
   * When in doubt, CREATE a new intent rather than risk a compound.
 - EXPIRE: If an Inferred Tombstone matches an Active Intent (semantically), EXPIRE it.
 - CONFLICT RESOLUTION: If a NEW Goal contradicts an Active Intent, EXPIRE the old and CREATE the new.
-- DEDUPLICATION: Use Donnellan's Distinction above to merge duplicates. For duplicates, output UPDATE (not an empty list) so the intent can be linked to an index.
+- DEDUPLICATION: Use Donnellan's Distinction above to merge duplicates. For duplicates, output UPDATE (not an empty list) so the intent can be linked to a network.
 
 Output a list of specific actions to apply.
 IMPORTANT: The type field MUST be exactly one of: "create", "update", "expire" (lowercase).

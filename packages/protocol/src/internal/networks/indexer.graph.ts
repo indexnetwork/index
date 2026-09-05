@@ -13,7 +13,7 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
 /**
  * Factory class to build and compile the Intent–Network (indexer) Graph.
  *
- * Handles CRUD for the intent_indexes junction table:
+ * Handles CRUD for the intent_networks junction table:
  * - create: Link an intent to a network
  * - read: List intent–network links (by intentId or by networkId)
  * - delete: Unlink an intent from a network
@@ -141,14 +141,14 @@ export async function assignNode(state: IntentNetworkState, deps: IntentNetworkG
       }
       const [isMember, isOwner] = await Promise.all([
         deps.database.isNetworkMember(networkId, state.userId),
-        deps.database.isIndexOwner(networkId, state.userId),
+        deps.database.isNetworkOwner(networkId, state.userId),
       ]);
       if (!isMember && !isOwner) {
         return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "You are not a member of that network." } };
       }
 
       // Check if already assigned
-      const alreadyAssigned = await deps.database.isIntentAssignedToIndex(intentId, networkId);
+      const alreadyAssigned = await deps.database.isIntentAssignedToNetwork(intentId, networkId);
       if (alreadyAssigned) {
         return { agentTimings: agentTimingsAccum, mutationResult: { success: true, message: "That intent is already in this network." } };
       }
@@ -200,7 +200,7 @@ export async function readNode(state: IntentNetworkState, deps: IntentNetworkGra
         if (intent.userId !== state.userId) {
           return { readResult: { links: [], count: 0, mode: "check_link" }, error: "You can only check links for your own intents." };
         }
-        const isLinked = await deps.database.isIntentAssignedToIndex(intentId, networkId);
+        const isLinked = await deps.database.isIntentAssignedToNetwork(intentId, networkId);
         return {
           readResult: {
             links: isLinked ? [{ intentId, networkId }] : [],
@@ -241,7 +241,7 @@ export async function readNode(state: IntentNetworkState, deps: IntentNetworkGra
 
       const [isMember, isOwner] = await Promise.all([
         deps.database.isNetworkMember(networkId, state.userId),
-        deps.database.isIndexOwner(networkId, state.userId),
+        deps.database.isNetworkOwner(networkId, state.userId),
       ]);
       if (!isMember && !isOwner) {
         return {
@@ -271,7 +271,7 @@ export async function readNode(state: IntentNetworkState, deps: IntentNetworkGra
       }
 
       // Specific user's intents in the network
-      const intents = await deps.database.getIntentsInIndexForMember(state.queryUserId, networkId);
+      const intents = await deps.database.getIntentsInNetworkForMember(state.queryUserId, networkId);
       return {
         readResult: {
           links: intents.map((i) => ({
@@ -317,18 +317,18 @@ export async function unassignNode(state: IntentNetworkState, deps: IntentNetwor
       }
       const [isMember, isOwner] = await Promise.all([
         deps.database.isNetworkMember(networkId, state.userId),
-        deps.database.isIndexOwner(networkId, state.userId),
+        deps.database.isNetworkOwner(networkId, state.userId),
       ]);
       if (!isMember && !isOwner) {
         return { mutationResult: { success: false, error: "You are not a member of that network." } };
       }
 
-      const assigned = await deps.database.isIntentAssignedToIndex(intentId, networkId);
+      const assigned = await deps.database.isIntentAssignedToNetwork(intentId, networkId);
       if (!assigned) {
         return { mutationResult: { success: true, message: "That intent is not in this network." } };
       }
 
-      await deps.database.unassignIntentFromIndex(intentId, networkId);
+      await deps.database.unassignIntentFromNetwork(intentId, networkId);
       return { mutationResult: { success: true, message: "Intent removed from the network." } };
     } catch (err) {
       logger.error("Unassign failed", { error: err });

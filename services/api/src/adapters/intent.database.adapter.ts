@@ -399,7 +399,7 @@ export class IntentDatabaseAdapter {
     }
   }
 
-  async deleteIntentIndexAssociations(intentId: string): Promise<void> {
+  async deleteIntentNetworkAssociations(intentId: string): Promise<void> {
     await db.delete(schema.intentNetworks)
       .where(eq(schema.intentNetworks.intentId, intentId));
   }
@@ -422,11 +422,11 @@ export class IntentDatabaseAdapter {
     return result.length;
   }
 
-  async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
+  async getIntentsInNetworkForMember(userId: string, networkNameOrId: string): Promise<ActiveIntentRow[]> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let networkId: string | null;
 
-    if (uuidRegex.test(indexNameOrId.trim())) {
+    if (uuidRegex.test(networkNameOrId.trim())) {
       const membership = await db
         .select({ networkId: schema.networkMembers.networkId })
         .from(schema.networkMembers)
@@ -434,7 +434,7 @@ export class IntentDatabaseAdapter {
         .where(
           and(
             eq(schema.networkMembers.userId, userId),
-            eq(schema.networkMembers.networkId, indexNameOrId.trim()),
+            eq(schema.networkMembers.networkId, networkNameOrId.trim()),
             isNull(schema.networks.deletedAt)
           )
         )
@@ -454,7 +454,7 @@ export class IntentDatabaseAdapter {
             isNull(schema.networks.deletedAt)
           )
         );
-      const needle = indexNameOrId.trim().toLowerCase();
+      const needle = networkNameOrId.trim().toLowerCase();
       const match = memberships.find(
         (m) => (m.networkTitle ?? '').toLowerCase() === needle || (m.networkTitle ?? '').toLowerCase().includes(needle)
       );
@@ -492,7 +492,7 @@ export class IntentDatabaseAdapter {
         relevancyScore: r.relevancyScore != null ? Number(r.relevancyScore) : null,
       }));
     } catch (error: unknown) {
-      logger.error('IntentDatabaseAdapter.getIntentsInIndexForMember error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('IntentDatabaseAdapter.getIntentsInNetworkForMember error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -720,7 +720,7 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Associates an intent with an index (inserts intent_indexes row).
+   * Associates an intent with an index (inserts intent_networks row).
    * @param intentId - The intent identifier.
    * @param networkId - The network identifier.
    * @returns Promise that resolves when the row is inserted.
@@ -924,9 +924,9 @@ export class IntentDatabaseAdapter {
     }));
   }
 
-  async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
+  async getActiveIntentsAcrossNetworks(userId: string, networkIds: string[]) {
     try {
-      if (indexIds.length === 0) return [];
+      if (networkIds.length === 0) return [];
 
       const rows = await db
         .selectDistinctOn([schema.intents.id], {
@@ -940,14 +940,14 @@ export class IntentDatabaseAdapter {
         .where(
           and(
             activeOwnIntentsWhere(userId),
-            inArray(schema.intentNetworks.networkId, indexIds),
+            inArray(schema.intentNetworks.networkId, networkIds),
           ),
         )
         .orderBy(schema.intents.id, desc(schema.intents.createdAt));
 
       return rows;
     } catch (error: unknown) {
-      logger.error('IntentDatabaseAdapter.getActiveIntentsAcrossIndexes error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('IntentDatabaseAdapter.getActiveIntentsAcrossNetworks error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }

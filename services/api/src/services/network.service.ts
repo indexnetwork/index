@@ -7,12 +7,12 @@ const logger = log.service.from("NetworkService");
 /**
  * NetworkService
  *
- * Manages index/community operations.
+ * Manages network/community operations.
  * Uses ChatDatabaseAdapter for database operations.
  *
  * RESPONSIBILITIES:
  * - List networks for users
- * - Get single index details
+ * - Get single network details
  * - Manage network memberships
  */
 export class NetworkService {
@@ -27,23 +27,23 @@ export class NetworkService {
   }
 
   /**
-   * Create a new index with the requesting user as owner.
+   * Create a new network with the requesting user as owner.
    */
   async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; metadata?: Record<string, unknown> }) {
     const validatedMetadata = validateNetworkMetadata(data.metadata ?? {});
-    logger.verbose('Creating index', { userId, title: data.title });
+    logger.verbose('Creating network', { userId, title: data.title });
     const index = await this.adapter.createNetwork({
       ...data,
       metadata: validatedMetadata,
     });
     // Add the creating user as the owner
     await this.adapter.addMemberToNetwork(index.id, userId, 'owner');
-    // Fetch the full index details with user and member count
-    const fullIndex = await this.adapter.getNetworkDetail(index.id, userId);
-    if (!fullIndex) {
+    // Fetch the full network details with user and member count
+    const fullNetwork = await this.adapter.getNetworkDetail(index.id, userId);
+    if (!fullNetwork) {
       throw new Error('Failed to create network');
     }
-    return fullIndex;
+    return fullNetwork;
   }
 
   /**
@@ -51,41 +51,41 @@ export class NetworkService {
    */
   async getPublicNetworkById(networkId: string) {
     logger.verbose('Getting public network by id', { networkId });
-    return this.adapter.getPublicIndexDetail(networkId);
+    return this.adapter.getPublicNetworkDetail(networkId);
   }
 
   /**
    * Get a single network by ID with owner info and member count.
-   * Only members of the index can view it.
+   * Only members of the network can view it.
    */
   async getNetworkById(networkId: string, userId: string) {
-    logger.verbose('Getting index by id', { networkId });
+    logger.verbose('Getting network by id', { networkId });
     return this.adapter.getNetworkDetail(networkId, userId);
   }
 
   /**
-   * Update index settings (title, prompt, permissions). Owner-only.
+   * Update network settings (title, prompt, permissions). Owner-only.
    */
   async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
-    logger.verbose('Updating index', { networkId, userId });
+    logger.verbose('Updating network', { networkId, userId });
     const validatedMetadata = data.metadata !== undefined
       ? validateNetworkMetadata(data.metadata)
       : undefined;
     const validatedContextInjection = data.contextInjection !== undefined
       ? ContextInjectionSchema.parse(data.contextInjection)
       : undefined;
-    return this.adapter.updateIndexSettings(networkId, userId, { ...data, metadata: validatedMetadata, contextInjection: validatedContextInjection });
+    return this.adapter.updateNetworkSettings(networkId, userId, { ...data, metadata: validatedMetadata, contextInjection: validatedContextInjection });
   }
 
   /**
-   * Update index permissions. Owner-only.
+   * Update network permissions. Owner-only.
    */
   async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; contextInjection?: { discovery: boolean } }) {
     const validatedContextInjection = data.contextInjection !== undefined
       ? ContextInjectionSchema.parse(data.contextInjection)
       : undefined;
     logger.verbose('Updating permissions', { networkId, userId });
-    return this.adapter.updateIndexSettings(networkId, userId, {
+    return this.adapter.updateNetworkSettings(networkId, userId, {
       ...data,
       contextInjection: validatedContextInjection,
     });
@@ -105,7 +105,7 @@ export class NetworkService {
   }
 
   /**
-   * Add a member to an index. Owner-only.
+   * Add a member to a network. Owner-only.
    */
   async addMember(networkId: string, userId: string, requestingUserId: string, role: 'owner' | 'member' = 'member') {
     logger.verbose('Adding member', { networkId, userId, role });
@@ -114,7 +114,7 @@ export class NetworkService {
 
   /**
    * Update a member's role (owner ↔ member). Owner-only.
-   * @throws Error if the index is personal, member not found, or last owner.
+   * @throws Error if the network is personal, member not found, or last owner.
    */
   async updateMemberRole(networkId: string, targetUserId: string, requestingUserId: string, role: 'owner' | 'member') {
     logger.verbose('Updating member role', { networkId, targetUserId, role });
@@ -122,7 +122,7 @@ export class NetworkService {
   }
 
   /**
-   * Remove a member from an index. Owner-only.
+   * Remove a member from a network. Owner-only.
    */
   async removeMember(networkId: string, memberId: string, userId: string) {
     logger.verbose('Removing member', { networkId, memberId, userId });
@@ -139,16 +139,16 @@ export class NetworkService {
    * it still resolves after the network is soft-deleted.
    */
   async deleteNetwork(networkId: string, userId: string) {
-    logger.verbose('Deleting index', { networkId, userId });
+    logger.verbose('Deleting network', { networkId, userId });
 
-    const isOwner = await this.adapter.isIndexOwner(networkId, userId);
+    const isOwner = await this.adapter.isNetworkOwner(networkId, userId);
     if (!isOwner) throw new Error('Access denied: Not an owner of this network');
-    await this.adapter.deleteIndexForOwner(networkId, userId);
+    await this.adapter.deleteNetworkForOwner(networkId, userId);
     await this.adapter.softDeleteProvisionedCohort(networkId);
   }
 
   /**
-   * Get members of an index. Only owners can call this.
+   * Get members of a network. Only owners can call this.
    */
   async getMembersForOwner(networkId: string, userId: string) {
     logger.verbose('Getting members for owner', { networkId, userId });
@@ -169,8 +169,8 @@ export class NetworkService {
    * Used for mentionable users / @mentions.
    */
   async getMembersFromMyNetworks(userId: string) {
-    logger.verbose('Getting members from user indexes', { userId });
-    const raw = await this.adapter.getMembersFromUserIndexes(userId);
+    logger.verbose('Getting members from user networks', { userId });
+    const raw = await this.adapter.getMembersFromUserNetworks(userId);
     return raw.map(m => ({
       id: m.userId,
       name: m.name,
@@ -194,29 +194,29 @@ export class NetworkService {
    */
   async getPublicNetworks(userId: string) {
     logger.verbose('Getting public networks for user', { userId });
-    return this.adapter.getPublicIndexesNotJoined(userId);
+    return this.adapter.getPublicNetworksNotJoined(userId);
   }
 
   /**
-   * Get an index by its invitation share code (public, no auth required).
+   * Get a network by its invitation share code (public, no auth required).
    * @param code - The invitation share code from the URL
-   * @returns The index with owner info and member count, or null if not found
+   * @returns The network with owner info and member count, or null if not found
    */
   async getNetworkByShareCode(code: string) {
-    logger.verbose('Getting index by share code');
+    logger.verbose('Getting network by share code');
     return this.adapter.getNetworkByShareCode(code);
   }
 
   /**
-   * Accept an invitation to join an index using the invitation code.
+   * Accept an invitation to join a network using the invitation code.
    * @param code - The invitation share code
    * @param userId - The authenticated user accepting the invitation
-   * @returns The index, membership info, and whether user was already a member
-   * @throws Error if the invitation code is invalid or the index is not found
+   * @returns The network, membership info, and whether user was already a member
+   * @throws Error if the invitation code is invalid or the network is not found
    */
   async acceptInvitation(code: string, userId: string) {
     logger.verbose('Accepting invitation', { userId });
-    return this.adapter.acceptIndexInvitation(code, userId);
+    return this.adapter.acceptNetworkInvitation(code, userId);
   }
 
   /**
@@ -229,10 +229,10 @@ export class NetworkService {
   }
 
   /**
-   * Leave an index. Members (non-owners) can leave.
+   * Leave a network. Members (non-owners) can leave.
    */
   async leaveNetwork(networkId: string, userId: string) {
-    logger.verbose('Leaving index', { networkId, userId });
+    logger.verbose('Leaving network', { networkId, userId });
     await this.adapter.leaveNetwork(networkId, userId);
   }
 
@@ -276,9 +276,9 @@ export class NetworkService {
    * @param idOrKey - UUID or human-readable key
    * @returns The network UUID, or null if not found
    */
-  async resolveIndexId(idOrKey: string): Promise<string | null> {
+  async resolveNetworkId(idOrKey: string): Promise<string | null> {
     logger.verbose('Resolving network ID or key', { idOrKey });
-    return this.adapter.resolveIndexId(idOrKey);
+    return this.adapter.resolveNetworkId(idOrKey);
   }
 
   /**
@@ -289,8 +289,8 @@ export class NetworkService {
    * @param userId - The user ID to check
    * @returns `true` if the user is an owner, `false` otherwise
    */
-  async isIndexOwner(networkId: string, userId: string): Promise<boolean> {
-    return this.adapter.isIndexOwner(networkId, userId);
+  async isNetworkOwner(networkId: string, userId: string): Promise<boolean> {
+    return this.adapter.isNetworkOwner(networkId, userId);
   }
 
 }

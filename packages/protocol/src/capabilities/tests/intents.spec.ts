@@ -41,8 +41,8 @@ class FakeIntentHost {
   readonly database = {
     getUser: async (id: string) => ({ id, name: "Alice", email: "alice@example.com", socials: [] }),
     getActiveIntents: async () => this.active(),
-    getActiveIntentsAcrossIndexes: async () => this.active(),
-    getIntentsInIndexForMember: async () => this.active(),
+    getActiveIntentsAcrossNetworks: async () => this.active(),
+    getIntentsInNetworkForMember: async () => this.active(),
     getNetworkIntentsForMember: async () => this.active().map((intent) => ({ ...intent, userId: USER_ID, userName: "Alice" })),
     isNetworkMember: async () => true,
     createIntent: async (data: CreateIntentData) => {
@@ -79,7 +79,7 @@ class FakeIntentHost {
       this.links.push({ intentId, networkId });
       return { kind: "assigned" as const };
     },
-    deleteIntentIndexAssociations: async () => {},
+    deleteIntentNetworkAssociations: async () => {},
     expireOpportunitiesByIntentActor: async () => 0,
   } as unknown as IntentGraphDatabase;
 

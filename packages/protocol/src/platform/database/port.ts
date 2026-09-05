@@ -8,7 +8,7 @@
 
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
 import type { NetworkAssignmentMetadata } from '../../protocol/schemas/network-assignment.schema.js';
-import type { ActiveIntent, ArchiveResult, CreateHydeDocumentData, CreateIntentData, CreateOpportunityData, CreatedIntent, HydeDocument, HydeSourceType, Id, IndexMemberDetails, IndexedIntentDetails, IntentRecord, NetworkAssignmentContext, NetworkMembership, OnboardingState, Opportunity, OpportunityQueryOptions, OpportunityStatus, OwnedIndex, SimilarIntent, SimilarIntentSearchOptions, UpdateIndexSettingsData, UpdateIntentData, UserRecord, UserSocial } from './entities.js';
+import type { ActiveIntent, ArchiveResult, CreateHydeDocumentData, CreateIntentData, CreateOpportunityData, CreatedIntent, HydeDocument, HydeSourceType, Id, IntentRecord, NetworkAssignmentContext, NetworkIntentDetails, NetworkMemberDetails, NetworkMembership, OnboardingState, Opportunity, OpportunityQueryOptions, OpportunityStatus, OwnedNetwork, SimilarIntent, SimilarIntentSearchOptions, UpdateIntentData, UpdateNetworkSettingsData, UserRecord, UserSocial } from './entities.js';
 // ═══════════════════════════════════════════════════════════════════════════════
 // USER DATABASE INTERFACE (Own Resources Only)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -17,7 +17,7 @@ import type { ActiveIntent, ArchiveResult, CreateHydeDocumentData, CreateIntentD
  * Context-bound database for accessing the authenticated user's own resources.
  * Created with authUserId bound at construction; no userId parameter needed on methods.
  *
- * **NOT network-scoped**: Returns ALL of the user's own resources regardless of index.
+ * **NOT network-scoped**: Returns ALL of the user's own resources regardless of network.
  * This is critical for the IntentReconciler which needs the full picture for deduplication.
  *
  * Use via `createUserDatabase(db, authUserId)` factory function.
@@ -55,7 +55,7 @@ export interface UserDatabase {
   // Intent Operations (own only, ALL intents - not network-scoped)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Get ALL active intents for the authenticated user (not index-filtered). */
+  /** Get ALL active intents for the authenticated user (not network-filtered). */
   getActiveIntents(): Promise<ActiveIntent[]>;
 
   /**
@@ -82,7 +82,7 @@ export interface UserDatabase {
   /** Find similar intents among the user's own intents (for deduplication). */
   findSimilarIntents(embedding: number[], options?: SimilarIntentSearchOptions): Promise<SimilarIntent[]>;
 
-  /** Get intent fields for indexing (own intent). */
+  /** Get intent fields for network assignment (own intent). */
   getIntentForIndexing(intentId: string): Promise<{
     id: string;
     payload: string;
@@ -94,7 +94,7 @@ export interface UserDatabase {
   /** Associate an intent with networks. */
   associateIntentWithNetworks(intentId: string, networkIds: string[]): Promise<void>;
 
-  /** Assign an intent to an index. */
+  /** Assign an intent to a network. */
   assignIntentToNetwork(
     intentId: string,
     networkId: string,
@@ -102,14 +102,14 @@ export interface UserDatabase {
     assignmentMetadata?: NetworkAssignmentMetadata,
   ): Promise<void>;
 
-  /** Unassign an intent from an index. */
-  unassignIntentFromIndex(intentId: string, networkId: string): Promise<void>;
+  /** Unassign an intent from a network. */
+  unassignIntentFromNetwork(intentId: string, networkId: string): Promise<void>;
 
   /** Get network IDs for an intent. */
   getNetworkIdsForIntent(intentId: string): Promise<string[]>;
 
-  /** Check if intent is assigned to index. */
-  isIntentAssignedToIndex(intentId: string, networkId: string): Promise<boolean>;
+  /** Check if intent is assigned to network. */
+  isIntentAssignedToNetwork(intentId: string, networkId: string): Promise<boolean>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Network Membership Operations (own memberships only)
@@ -119,25 +119,25 @@ export interface UserDatabase {
   getNetworkMemberships(): Promise<NetworkMembership[]>;
 
   /** Get network IDs with auto-assign enabled for the authenticated user. */
-  getUserIndexIds(): Promise<string[]>;
+  getUserNetworkIds(): Promise<string[]>;
 
-  /** Get indexes owned by the authenticated user. */
-  getOwnedIndexes(): Promise<OwnedIndex[]>;
+  /** Get networks owned by the authenticated user. */
+  getOwnedNetworks(): Promise<OwnedNetwork[]>;
 
   /** Get a specific network membership for the authenticated user. */
   getNetworkMembership(networkId: string): Promise<NetworkMembership | null>;
 
-  /** Get index + member context for the authenticated user (for auto-assign). */
+  /** Get network + member context for the authenticated user (for auto-assign). */
   getNetworkMemberContext(networkId: string): Promise<NetworkAssignmentContext | null>;
 
-  /** Get index + member context for the authenticated user without auto-assign gating. */
+  /** Get network + member context for the authenticated user without auto-assign gating. */
   getNetworkAssignmentContext?(networkId: string): Promise<NetworkAssignmentContext | null>;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Index CRUD Operations (owner operations on own indexes)
+  // Network CRUD Operations (owner operations on own networks)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Create a new index (user becomes owner). */
+  /** Create a new network (user becomes owner). */
   createNetwork(data: {
     title: string;
     prompt?: string | null;
@@ -151,18 +151,18 @@ export interface UserDatabase {
     permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null };
   }>;
 
-  /** Update index settings (owner only). */
-  updateIndexSettings(networkId: string, data: UpdateIndexSettingsData): Promise<OwnedIndex>;
+  /** Update network settings (owner only). */
+  updateNetworkSettings(networkId: string, data: UpdateNetworkSettingsData): Promise<OwnedNetwork>;
 
   /** Soft-delete a network (owner only). */
   softDeleteNetwork(networkId: string): Promise<void>;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Public Network Discovery (joinable indexes the user is not a member of)
+  // Public Network Discovery (joinable networks the user is not a member of)
   // ─────────────────────────────────────────────────────────────────────────────
 
   /** Get public networks (joinPolicy 'anyone') that the user has not joined. */
-  getPublicIndexesNotJoined(): Promise<{
+  getPublicNetworksNotJoined(): Promise<{
     networks: Array<{
       id: string;
       title: string;
@@ -214,19 +214,19 @@ export interface UserDatabase {
 
 /**
  * Context-bound database for LLM/system operations that access cross-user resources.
- * Created with authUserId + indexScope[]; validates membership before access.
+ * Created with authUserId + networkScope[]; validates membership before access.
  *
  * **Network-scoped**: All cross-user operations are restricted to users/resources
- * within the bound indexScope[]. This prevents the LLM from accessing arbitrary users' data.
+ * within the bound networkScope[]. This prevents the LLM from accessing arbitrary users' data.
  *
- * Use via `createSystemDatabase(db, authUserId, indexScope)` factory function.
+ * Use via `createSystemDatabase(db, authUserId, networkScope)` factory function.
  */
 export interface SystemDatabase {
   /** The bound authenticated user ID */
   readonly authUserId: string;
 
-  /** The indexes the authenticated user has access to (determines cross-user scope) */
-  readonly indexScope: string[];
+  /** The networks the authenticated user has access to (determines cross-user scope) */
+  readonly networkScope: string[];
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Profile Operations (any user in scope)
@@ -242,24 +242,24 @@ export interface SystemDatabase {
   // Intent Operations (cross-user within shared networks)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Get all intents in an index (cross-user, requires membership). */
-  getIntentsInIndex(networkId: string, options?: { limit?: number; offset?: number }): Promise<IndexedIntentDetails[]>;
+  /** Get all intents in a network (cross-user, requires membership). */
+  getIntentsInNetwork(networkId: string, options?: { limit?: number; offset?: number }): Promise<NetworkIntentDetails[]>;
 
-  /** Get a specific user's intents in an index (requires shared membership). */
-  getUserIntentsInIndex(userId: string, networkId: string): Promise<ActiveIntent[]>;
+  /** Get a specific user's intents in a network (requires shared membership). */
+  getUserIntentsInNetwork(userId: string, networkId: string): Promise<ActiveIntent[]>;
 
   /**
-   * Get the caller's own active intents across a set of indexes.
+   * Get the caller's own active intents across a set of networks.
    * Returns intents owned by `userId` that are linked (via intent_networks)
-   * to at least one of `indexIds`. Used by network-scoped agents to honor
-   * indexScope without falling back to global getActiveIntents (which would
-   * include intents in indexes outside scope).
+   * to at least one of `networkIds`. Used by network-scoped agents to honor
+   * networkScope without falling back to global getActiveIntents (which would
+   * include intents in networks outside scope).
    *
    * @param userId - The intent owner (always the caller).
-   * @param indexIds - The set of network IDs to filter on. Empty → empty result.
-   * @returns Active intents owned by userId in any of indexIds, deduped by intent id.
+   * @param networkIds - The set of network IDs to filter on. Empty → empty result.
+   * @returns Active intents owned by userId in any of networkIds, deduped by intent id.
    */
-  getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]): Promise<ActiveIntent[]>;
+  getActiveIntentsAcrossNetworks(userId: string, networkIds: string[]): Promise<ActiveIntent[]>;
 
   /** Get a single intent by ID (if in scope). */
   getIntent(intentId: string): Promise<IntentRecord | null>;
@@ -268,32 +268,32 @@ export interface SystemDatabase {
   findSimilarIntentsInScope(embedding: number[], options?: SimilarIntentSearchOptions): Promise<SimilarIntent[]>;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Network Membership Operations (any index in scope)
+  // Network Membership Operations (any network in scope)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Check if a user is a member of an index. */
+  /** Check if a user is a member of a network. */
   isNetworkMember(networkId: string, userId: string): Promise<boolean>;
 
-  /** Check if a user is an owner of an index. */
-  isIndexOwner(networkId: string, userId: string): Promise<boolean>;
+  /** Check if a user is an owner of a network. */
+  isNetworkOwner(networkId: string, userId: string): Promise<boolean>;
 
-  /** Get all members of an index (requires membership). */
-  getNetworkMembers(networkId: string): Promise<IndexMemberDetails[]>;
+  /** Get all members of a network (requires membership). */
+  getNetworkMembers(networkId: string): Promise<NetworkMemberDetails[]>;
 
   /** Get all members across all networks in scope (deduplicated). */
   getMembersFromScope(): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]>;
 
-  /** Add a user to an index (requires ownership or 'anyone' policy). */
+  /** Add a user to a network (requires ownership or 'anyone' policy). */
   addMemberToNetwork(networkId: string, userId: string, role: 'owner' | 'member'): Promise<{ success: boolean; alreadyMember?: boolean }>;
 
-  /** Remove a user from an index (requires ownership). Cannot remove the owner. */
-  removeMemberFromIndex(networkId: string, userId: string): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }>;
+  /** Remove a user from a network (requires ownership). Cannot remove the owner. */
+  removeMemberFromNetwork(networkId: string, userId: string): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }>;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Index Operations (any index in scope)
+  // Network Operations (any network in scope)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Get index info by ID with core fields (requires scope). */
+  /** Get network info by ID with core fields (requires scope). */
   getNetwork(networkId: string): Promise<{
     id: string;
     title: string;
@@ -303,10 +303,10 @@ export interface SystemDatabase {
     permissions?: Record<string, unknown> | null;
   } | null>;
 
-  /** Get index with permissions (requires scope). */
+  /** Get network with permissions (requires scope). */
   getNetworkWithPermissions(networkId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null>;
 
-  /** Get member count for an index (requires scope). */
+  /** Get member count for a network (requires scope). */
   getNetworkMemberCount(networkId: string): Promise<number>;
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -322,7 +322,7 @@ export interface SystemDatabase {
   /** Get an opportunity by ID (for system processing). */
   getOpportunity(id: string): Promise<Opportunity | null>;
 
-  /** Get opportunities for an index (requires membership). */
+  /** Get opportunities for a network (requires membership). */
   getOpportunitiesForNetwork(networkId: string, options?: OpportunityQueryOptions): Promise<Opportunity[]>;
 
   /** Update an opportunity's status (system-level). */
@@ -336,7 +336,7 @@ export interface SystemDatabase {
     acceptedBy?: string,
   ): Promise<Opportunity | null>;
 
-  /** Check if opportunity exists between actors in an index. */
+  /** Check if opportunity exists between actors in a network. */
   opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean>;
 
   /** Find opportunities by actor IDs with optional include/exclude status filters. */
@@ -384,7 +384,7 @@ export interface SystemDatabase {
 // Access control relationship to UserDatabase/SystemDatabase:
 // - IntentGraphDatabase → maps to UserDatabase (mutations) + SystemDatabase (reads)
 // - OpportunityGraphDatabase → maps to SystemDatabase (cross-user operations)
-// - NetworkGraphDatabase → maps to UserDatabase (own indexes)
+// - NetworkGraphDatabase → maps to UserDatabase (own networks)
 // - IntentNetworkGraphDatabase → maps to both (own intent ↔ shared network)
 // - NetworkMembershipGraphDatabase → maps to SystemDatabase (cross-user)
 // - HydeGraphDatabase → maps to both (own HyDE vs cross-user matching)

@@ -160,7 +160,7 @@ function renderHelp(): void {
     helpRowDim(cmdLW, "example", 'index intent create "looking for a CTO"'),
     "",
     helpRowCmd(cmdLW, "intent", "list · show · create · update · archive"),
-    helpRowCont(cmdLW, "link · unlink · links"),
+    helpRowCont(cmdLW, "add-to-network · remove-from-network"),
     helpRowCmd(cmdLW, "negotiation", "list · show"),
     "",
     helpRowCmd(cmdLW, "profile", "show · sync"),

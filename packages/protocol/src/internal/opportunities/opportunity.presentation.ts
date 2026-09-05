@@ -860,7 +860,7 @@ export interface PresenterInput {
   category: string;
   confidence: number;
   signalsSummary: string;
-  indexName: string;
+  networkName: string;
   viewerRole: string;
   opportunityStatus?: string;
   /** True when this opportunity was created via an explicit introduction (not automatic discovery). */
@@ -1022,7 +1022,7 @@ MATCH CONTEXT:
 - Confidence: ${input.confidence}
 - Why we matched: ${input.matchReasoning}
 - Signals: ${input.signalsSummary}
-COMMUNITY: ${input.indexName}
+COMMUNITY: ${input.networkName}
 Viewer's role in this opportunity: ${input.viewerRole}
 
 Produce headline, personalizedSummary (2-3 sentences in "you" language), suggestedAction, and greeting.
@@ -1122,7 +1122,7 @@ MATCH CONTEXT:
 - Why we matched: ${input.matchReasoning}
 - Signals: ${input.signalsSummary}
 - ${mutualHint}
-COMMUNITY: ${input.indexName}
+COMMUNITY: ${input.networkName}
 Viewer's role in this opportunity: ${input.viewerRole}
 Opportunity status: ${input.opportunityStatus ?? "pending"}
 
@@ -1329,12 +1329,12 @@ export async function gatherPresenterContext(
     otherPartyIds = [displayCounterpartUserId];
   }
 
-  const contextIndexId = opportunity.context?.networkId;
+  const contextNetworkId = opportunity.context?.networkId;
 
   // Viewer's profile + intents, plus the other party's profile.
-  const [viewerProfile, indexRecord, ...otherProfiles] = await Promise.all([
+  const [viewerProfile, networkRecord, ...otherProfiles] = await Promise.all([
     database.getProfile(viewerId),
-    contextIndexId ? database.getNetwork(contextIndexId) : Promise.resolve(null),
+    contextNetworkId ? database.getNetwork(contextNetworkId) : Promise.resolve(null),
     ...otherPartyIds.map((uid) => database.getProfile(uid)),
   ]);
 
@@ -1406,7 +1406,7 @@ export async function gatherPresenterContext(
         ? interp.confidence
         : parseFloat(String(interp.confidence ?? 0)) || 0,
     signalsSummary,
-    indexName: indexRecord?.title ?? contextIndexId ?? "",
+    networkName: networkRecord?.title ?? contextNetworkId ?? "",
     viewerRole: myActor.role ?? "party",
   };
 

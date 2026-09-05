@@ -50,7 +50,7 @@ export interface OpenedNegotiation {
 
 export interface NetworkAssignmentContext {
   networkId: string;
-  indexPrompt: string | null;
+  networkPrompt: string | null;
   memberPrompt: string | null;
 }
 
@@ -161,7 +161,7 @@ export interface ActiveIntent {
   summary: string | null;
   /** When the intent was created */
   createdAt: Date;
-  /** Relevancy score for this intent in its index context (0.0–1.0, null if not scored) */
+  /** Relevancy score for this intent in its network context (0.0–1.0, null if not scored) */
   relevancyScore?: number | null;
 }
 
@@ -325,7 +325,7 @@ export interface SimilarIntentSearchOptions {
 
 /**
  * Represents a user's membership in an index with full details.
- * Used for displaying network memberships in chat (index_query).
+ * Used for displaying network memberships in chat (network_query).
  */
 export interface ActiveNetworkMembershipPair {
   userId: string;
@@ -338,7 +338,7 @@ export interface NetworkMembership {
   /** Display title of the index */
   networkTitle: string;
   /** Index description/prompt (what the community is about) */
-  indexPrompt: string | null;
+  networkPrompt: string | null;
   /** Member's permissions in this network */
   permissions: string[];
   /** Member's custom prompt (overrides network prompt for their intents) */
@@ -350,18 +350,18 @@ export interface NetworkMembership {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// INDEX OWNERSHIP TYPES
+// NETWORK OWNERSHIP TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Represents an index owned by the user with full details.
+ * Represents a network owned by the user with full details.
  */
-export interface OwnedIndex {
+export interface OwnedNetwork {
   /** Network ID */
   id: string;
   /** Display title */
   title: string;
-  /** Index purpose/scope prompt */
+  /** Network purpose/scope prompt */
   prompt: string | null;
   /** Cover image URL */
   imageUrl: string | null;
@@ -370,9 +370,9 @@ export interface OwnedIndex {
     joinPolicy: 'anyone' | 'invite_only';
     invitationLink: { code: string } | null;
   };
-  /** When the index was created */
+  /** When the network was created */
   createdAt: Date;
-  /** When the index was last updated */
+  /** When the network was last updated */
   updatedAt: Date;
   /** Member count */
   memberCount: number;
@@ -387,7 +387,7 @@ export interface OwnedIndex {
 /**
  * Member details visible to network owners (and optionally to members with privacy rules).
  */
-export interface IndexMemberDetails {
+export interface NetworkMemberDetails {
   /** User ID */
   userId: string;
   /** User's display name */
@@ -412,7 +412,7 @@ export interface IndexMemberDetails {
 /**
  * Intent details visible to network owners.
  */
-export interface IndexedIntentDetails {
+export interface NetworkIntentDetails {
   /** Intent ID */
   id: string;
   /** Intent payload/description */
@@ -425,14 +425,14 @@ export interface IndexedIntentDetails {
   userName: string;
   /** When the intent was created */
   createdAt: Date;
-  /** Relevancy score for this intent in its index context (0.0–1.0, null if not scored) */
+  /** Relevancy score for this intent in its network context (0.0–1.0, null if not scored) */
   relevancyScore?: number | null;
 }
 
 /**
- * Options for updating index settings.
+ * Options for updating network settings.
  */
-export interface UpdateIndexSettingsData {
+export interface UpdateNetworkSettingsData {
   /** New title (optional) */
   title?: string;
   /** New prompt (optional) */

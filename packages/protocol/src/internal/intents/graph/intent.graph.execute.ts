@@ -157,7 +157,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
           logger.verbose('Archived intent', { intentId: expireAction.id });
           if (result.success) {
             try {
-              await deps.database.deleteIntentIndexAssociations(expireAction.id);
+              await deps.database.deleteIntentNetworkAssociations(expireAction.id);
             } catch (err) {
               logger.error('Failed to delete intent-network associations', { intentId: expireAction.id, error: err });
             }
@@ -310,18 +310,18 @@ export async function queryNode(state: IntentState, deps: IntentGraphDeps) {
 
     try {
       // Scope-aware default: caller's intents across all reachable networks.
-      // Triggered when the tool layer passed indexScope and did not pick a
+      // Triggered when the tool layer passed networkScope and did not pick a
       // specific networkId or queryUserId — i.e. "my intents" in a chat
-      // where the agent's reach is more than one index.
+      // where the agent's reach is more than one network.
       if (
         !state.queryUserId &&
         !state.networkId &&
-        state.indexScope &&
-        state.indexScope.length > 0
+        state.networkScope &&
+        state.networkScope.length > 0
       ) {
-        const intents = await deps.database.getActiveIntentsAcrossIndexes(
+        const intents = await deps.database.getActiveIntentsAcrossNetworks(
           state.userId,
-          state.indexScope,
+          state.networkScope,
         );
         if (intents.length === 0) {
           return {
@@ -346,26 +346,26 @@ export async function queryNode(state: IntentState, deps: IntentGraphDeps) {
       }
 
       // When allUserIntents is true, ignore network scope and return all
-      const effectiveIndexId = state.allUserIntents ? undefined : state.networkId;
+      const effectiveNetworkId = state.allUserIntents ? undefined : state.networkId;
 
-      if (effectiveIndexId) {
+      if (effectiveNetworkId) {
         // Verify membership
-        const isMember = await deps.database.isNetworkMember(effectiveIndexId, state.userId);
+        const isMember = await deps.database.isNetworkMember(effectiveNetworkId, state.userId);
         if (!isMember) {
           return {
             readResult: {
               count: 0,
               intents: [],
-              message: "Index not found or you are not a member.",
+              message: "Network not found or you are not a member.",
             },
           };
         }
 
         // Network-scoped read
         if (!state.queryUserId) {
-          // All intents in the index (any member can see)
+          // All intents in the network (any member can see)
           const intents = await deps.database.getNetworkIntentsForMember(
-            effectiveIndexId,
+            effectiveNetworkId,
             state.userId,
             { limit: 50, offset: 0 }
           );
@@ -375,14 +375,14 @@ export async function queryNode(state: IntentState, deps: IntentGraphDeps) {
                 count: 0,
                 intents: [],
                 message: "No intents in this network yet.",
-                networkId: effectiveIndexId,
+                networkId: effectiveNetworkId,
               },
             };
           }
           return {
             readResult: {
               count: intents.length,
-              networkId: effectiveIndexId,
+              networkId: effectiveNetworkId,
               intents: intents.map((i) => ({
                 id: i.id,
                 description: i.payload,
@@ -395,11 +395,11 @@ export async function queryNode(state: IntentState, deps: IntentGraphDeps) {
           };
         }
 
-        // Specific user's intents in the index
+        // Specific user's intents in the network
         const effectiveUserId = state.queryUserId;
-        const intents = await deps.database.getIntentsInIndexForMember(
+        const intents = await deps.database.getIntentsInNetworkForMember(
           effectiveUserId,
-          effectiveIndexId
+          effectiveNetworkId
         );
         if (intents.length === 0) {
           return {
@@ -410,7 +410,7 @@ export async function queryNode(state: IntentState, deps: IntentGraphDeps) {
                 effectiveUserId === state.userId
                   ? "You don't have any intents in this network yet."
                   : "No intents for that user in this network.",
-              networkId: effectiveIndexId,
+              networkId: effectiveNetworkId,
             },
           };
         }
@@ -419,7 +419,7 @@ export async function queryNode(state: IntentState, deps: IntentGraphDeps) {
         return {
           readResult: {
             count: intents.length,
-            networkId: effectiveIndexId,
+            networkId: effectiveNetworkId,
             intents: intents.map((i) => ({
               id: i.id,
               description: i.payload,

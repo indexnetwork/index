@@ -417,7 +417,7 @@ export class NetworkOpportunityController {
    */
   @Get('/:networkId/opportunities')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async listForIndex(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async listForNetwork(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {
       return Response.json({ error: 'Missing network id' }, { status: 400 });

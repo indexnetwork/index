@@ -62,20 +62,20 @@ export interface ResolvedToolContext {
   scopeType?: ToolScopeType;
   /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
   scopeId?: string;
-  indexName?: string;
-  /** True when chat is network-scoped and the user owns the index. */
+  networkName?: string;
+  /** True when chat is network-scoped and the user owns the network. */
   isOwner?: boolean;
   // Rich identity context for prompt/tool orchestration.
   user: UserRecord;
   userProfile: IdentityContext;
   userNetworks: NetworkMembership[];
   /**
-   * @deprecated indexScope is legacy concrete network reach. New code should derive reach
+   * @deprecated networkScope is legacy concrete network reach. New code should derive reach
    * from `scopeType`/`scopeId` plus `userNetworks` via `tool.scope.ts`.
    * Removed after call sites are migrated in this plan.
    */
-  indexScope: string[];
-  scopedIndex?: {
+  networkScope: string[];
+  scopedNetwork?: {
     id: string;
     title: string;
     prompt: string | null;
@@ -118,8 +118,8 @@ interface ToolContextBindings {
   scopeType?: ToolScopeType;
   /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
   scopeId?: string;
-  /** @deprecated indexScope is legacy; use `scopeType`/`scopeId`, retained until wiring phases migrate call sites. */
-  indexScope?: string[];
+  /** @deprecated networkScope is legacy; use `scopeType`/`scopeId`, retained until wiring phases migrate call sites. */
+  networkScope?: string[];
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
   sessionId?: string;
 
@@ -142,7 +142,7 @@ interface ToolContextBindings {
   /** Factory for user-scoped database access. */
   createUserDatabase: (db: CompositeToolDatabase, userId: string) => UserDatabase;
   /** Factory for system-scoped database access. */
-  createSystemDatabase: (db: CompositeToolDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
+  createSystemDatabase: (db: CompositeToolDatabase, userId: string, networkScope: string[], embedder?: Embedder) => SystemDatabase;
   /** Optional runtime LLM config. Pass to override env vars for API key, model, etc. */
   modelConfig?: ModelConfig;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
@@ -174,7 +174,7 @@ interface ToolContextBindings {
 /** Per-request chat identity, scope, and adapter inputs. */
 export type ChatToolRequest = Pick<ToolContextBindings,
   'userId' | 'userDb' | 'systemDb' | 'networkId' | 'scopeType' | 'scopeId'
-  | 'indexScope' | 'sessionId'
+  | 'networkScope' | 'sessionId'
 >;
 
 /** Host-owned bindings injected into a chat request at the composition boundary. */
@@ -204,12 +204,12 @@ export { ChatContextAccessError } from "../../../platform/runtime/errors.js";
 
 /**
  * Resolve the canonical context used by chat tools and system prompt.
- * This preloads user identity, profile, network memberships, and scoped index role.
+ * This preloads user identity, profile, network memberships, and scoped network role.
  */
 export async function resolveChatContext(params: {
   database: Pick<
     CompositeToolDatabase,
-    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isIndexOwner" | "isNetworkMember" | "getUserContext"
+    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isNetworkOwner" | "isNetworkMember" | "getUserContext"
   >;
   userId: string;
   networkId?: string;
@@ -242,23 +242,23 @@ export async function resolveChatContext(params: {
     );
   }
 
-  let scopedIndex: ResolvedToolContext["scopedIndex"] = undefined;
+  let scopedNetwork: ResolvedToolContext["scopedNetwork"] = undefined;
   let scopedMembershipRole: ResolvedToolContext["scopedMembershipRole"] = undefined;
   let isOwner = false;
-  let indexName: string | undefined;
+  let networkName: string | undefined;
 
   if (networkId) {
-    const [index, isMember, owner] = await Promise.all([
+    const [network, isMember, owner] = await Promise.all([
       database.getNetwork(networkId),
       database.isNetworkMember(networkId, userId),
-      database.isIndexOwner(networkId, userId),
+      database.isNetworkOwner(networkId, userId),
     ]);
 
-    if (!index) {
+    if (!network) {
       throw new ChatContextAccessError(
-        "Index not found",
+        "Network not found",
         404,
-        "INDEX_NOT_FOUND"
+        "NETWORK_NOT_FOUND"
       );
     }
 
@@ -266,22 +266,22 @@ export async function resolveChatContext(params: {
       throw new ChatContextAccessError(
         "You are not a member of this network",
         403,
-        "INDEX_MEMBERSHIP_REQUIRED"
+        "NETWORK_MEMBERSHIP_REQUIRED"
       );
     }
 
-    let membership = userNetworks.find((m) => m.networkId === index.id);
+    let membership = userNetworks.find((m) => m.networkId === network.id);
     if (membership === undefined) {
-      membership = (await database.getNetworkMembership(index.id, userId)) ?? undefined;
+      membership = (await database.getNetworkMembership(network.id, userId)) ?? undefined;
     }
-    scopedIndex = {
-      id: index.id,
-      title: index.title,
-      prompt: membership?.indexPrompt ?? null,
-      permissions: index.permissions ?? {},
+    scopedNetwork = {
+      id: network.id,
+      title: network.title,
+      prompt: membership?.networkPrompt ?? null,
+      permissions: network.permissions ?? {},
     };
     isOwner = owner;
-    indexName = index.title;
+    networkName = network.title;
     scopedMembershipRole = owner ? "owner" : "member";
   }
 
@@ -304,13 +304,13 @@ export async function resolveChatContext(params: {
     userEmail,
     networkId,
     ...scope,
-    indexName,
+    networkName,
     isOwner,
     user,
     userProfile,
     userNetworks,
-    indexScope: allowedNetworkIds,
-    scopedIndex,
+    networkScope: allowedNetworkIds,
+    scopedNetwork,
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
     hasName,
@@ -423,9 +423,9 @@ interface ToolDepsBindings {
   opportunityOperations?: OpportunityOperations;
   graphs: {
     intent: CompiledGraph;
-    index: CompiledGraph;
+    network: CompiledGraph;
     networkMembership: CompiledGraph;
-    intentIndex: CompiledGraph;
+    intentNetwork: CompiledGraph;
     opportunity: CompiledGraph;
   };
   /**
@@ -514,7 +514,7 @@ export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
  * Resolves an array of network IDs to their display titles.
  * Skips any IDs that don't resolve (deleted or invalid networks).
  */
-export async function resolveIndexNames(
+export async function resolveNetworkNames(
   database: { getNetwork(id: string): Promise<{ id: string; title: string } | null> },
   networkIds: string[]
 ): Promise<string[]> {
@@ -522,7 +522,7 @@ export async function resolveIndexNames(
   const results = await Promise.all(
     networkIds.map(id => database.getNetwork(id))
   );
-  return results.filter(Boolean).map(idx => idx!.title);
+  return results.filter(Boolean).map(network => network!.title);
 }
 
 /**

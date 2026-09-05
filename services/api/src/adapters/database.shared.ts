@@ -130,7 +130,7 @@ export interface UserIdentity {
 export interface NetworkMembershipRow {
   networkId: string;
   networkTitle: string;
-  indexPrompt: string | null;
+  networkPrompt: string | null;
   permissions: string[];
   memberPrompt: string | null;
   autoAssign: boolean;

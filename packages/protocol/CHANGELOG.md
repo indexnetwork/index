@@ -20,6 +20,63 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 49.0.0 - 2026-09-04
+
+### Removed
+
+- **BREAKING — the three intent↔network MCP tools were renamed.** External agents
+  must switch tool names; there is no alias or compatibility shim.
+  - `create_intent_index` → `add_intent_to_network`
+  - `read_intent_indexes` → `list_intent_networks`
+  - `delete_intent_index` → `remove_intent_from_network`
+
+### Changed
+
+- **BREAKING — host interfaces no longer call a network an "index".** The domain
+  renamed indexes to networks, but the ports a host implements still said
+  `Index`, so a host had to speak both vocabularies. Every such member is renamed
+  in place. Hosts must rename their implementations:
+  - `Database`/`UserDatabase`/`SystemDatabase` methods: `getOwnedIndexes` →
+    `getOwnedNetworks`, `getUserIndexIds` → `getUserNetworkIds`,
+    `getPublicIndexesNotJoined` → `getPublicNetworksNotJoined`,
+    `getMembersFromUserIndexes` → `getMembersFromUserNetworks`,
+    `getActiveIntentsAcrossIndexes` → `getActiveIntentsAcrossNetworks`,
+    `getIntentsInIndex` → `getIntentsInNetwork`, `getUserIntentsInIndex` →
+    `getUserIntentsInNetwork`, `getIntentsInIndexForMember` →
+    `getIntentsInNetworkForMember`, `getIntentIndexScores` →
+    `getIntentNetworkScores`, `deleteIntentIndexAssociations` →
+    `deleteIntentNetworkAssociations`, `isIntentAssignedToIndex` →
+    `isIntentAssignedToNetwork`, `unassignIntentFromIndex` →
+    `unassignIntentFromNetwork`, `isIndexOwner` → `isNetworkOwner`,
+    `removeMemberFromIndex` → `removeMemberFromNetwork`, `updateIndexSettings` →
+    `updateNetworkSettings`.
+  - Entity types: `OwnedIndex` → `OwnedNetwork`, `IndexMemberDetails` →
+    `NetworkMemberDetails`, `IndexedIntentDetails` → `NetworkIntentDetails`,
+    `UpdateIndexSettingsData` → `UpdateNetworkSettingsData`. The
+    `NetworkMembership.indexPrompt` field is now `networkPrompt`.
+  - Scope plumbing: `indexScope` is `networkScope` everywhere it appears —
+    `SystemDatabase.indexScope`, the `createSystemDatabase` /
+    `ScopedDepsFactory.create` third argument, `HydeSearchOptions.indexScope`,
+    `ChatToolRequest.indexScope`, and the intent/opportunity graph state channels.
+  - Tool context: `ResolvedToolContext.indexName`/`scopedIndex` are `networkName`/
+    `scopedNetwork`; `ToolRequestContext.indexName` is `networkName`.
+  - Graph registry keys: `graphs.index` → `graphs.network` and
+    `graphs.intentIndex` → `graphs.intentNetwork`. Their trace name changed from
+    `index` to `network`.
+  - `ChatContextAccessError.code` values `INDEX_NOT_FOUND` and
+    `INDEX_MEMBERSHIP_REQUIRED` are now `NETWORK_NOT_FOUND` and
+    `NETWORK_MEMBERSHIP_REQUIRED`.
+  - `resolveIndexNames` → `resolveNetworkNames`;
+    `DiscoveryNegotiation.indexContext` → `networkContext`.
+  - Presenter context: the `indexName` field returned by `gatherPresenterContext`
+    is `networkName`, which also fixes `focusedNetworkLabel` reading a field that
+    no longer existed and falling back to the network id.
+- Agent-facing tool descriptions, scope-refusal messages, and `read_docs`
+  guidance now say "network" or "community" wherever they said "index".
+- The intent assignment pipeline keeps its verb naming (`getIntentForIndexing`,
+  `indexer.graph.ts`, `IndexedIntent`): those describe assigning a signal, not
+  the community noun.
+
 ## 48.1.0 - 2026-09-04
 
 ### Changed

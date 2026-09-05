@@ -5,24 +5,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { validateFiles } from '@/lib/file-validation';
-import NetworkAvatar from '@/components/IndexAvatar';
+import NetworkAvatar from '@/components/NetworkAvatar';
 import { log } from '@/lib/logger';
 
-const logger = log.ui.from('CreateIndexModal');
+const logger = log.ui.from('CreateNetworkModal');
 
 interface CreateNetworkModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (index: {
+  onSubmit: (network: {
     name: string;
     prompt?: string;
     imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
   }) => Promise<void>;
-  uploadIndexImage?: (file: File) => Promise<string>;
+  uploadNetworkImage?: (file: File) => Promise<string>;
 }
 
-export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploadIndexImage }: CreateNetworkModalProps) {
+export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploadNetworkImage }: CreateNetworkModalProps) {
   const [name, setName] = useState('');
   const [prompt, setPrompt] = useState('');
   const [joinPolicy, setJoinPolicy] = useState<'anyone' | 'invite_only'>('invite_only');
@@ -70,8 +70,8 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
     setIsSubmitting(true);
     try {
       let imageUrl: string | null = null;
-      if (imageFile && uploadIndexImage) {
-        imageUrl = await uploadIndexImage(imageFile);
+      if (imageFile && uploadNetworkImage) {
+        imageUrl = await uploadNetworkImage(imageFile);
       }
       const submitData: Parameters<typeof onSubmit>[0] = {
         name: name.trim(),
@@ -83,7 +83,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
       resetForm();
       onOpenChange(false);
     } catch (error) {
-      logger.error('Error creating index', { error });
+      logger.error('Error creating network', { error });
     } finally {
       setIsSubmitting(false);
     }
@@ -117,8 +117,8 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
                 <button
                   type="button"
                   aria-label="Upload network image"
-                  onClick={() => uploadIndexImage && fileInputRef.current?.click()}
-                  disabled={isSubmitting || !uploadIndexImage}
+                  onClick={() => uploadNetworkImage && fileInputRef.current?.click()}
+                  disabled={isSubmitting || !uploadNetworkImage}
                   className="relative flex-shrink-0 group cursor-pointer disabled:cursor-not-allowed"
                 >
                   <div className="w-[72px] h-[72px] rounded-full overflow-hidden">

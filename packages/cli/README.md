@@ -70,8 +70,8 @@ index intent show <id>                      # Show full signal details
 index intent create "Looking for a CTO"     # Create from natural language
 index intent update <id> "revised text"     # Update a signal (runs full pipeline)
 index intent archive <id>                   # Archive a signal
-index intent link <id> <network-id>         # Link a signal to a network
-index intent unlink <id> <network-id>       # Unlink a signal from a network
+index intent add-to-network <id> <network-id>      # Add a signal to a network
+index intent remove-from-network <id> <network-id> # Remove a signal from a network
 ```
 
 ### `index negotiation`

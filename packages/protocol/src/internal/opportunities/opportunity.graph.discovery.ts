@@ -21,7 +21,7 @@ type TraceEntry = { node: string; detail?: string; data?: Record<string, unknown
 // Search limits - fixed values for candidate retrieval
 // (The options.limit controls final output, not search pool)
 const LIMIT_PER_STRATEGY = 80;
-const PER_INDEX_LIMIT = 160;
+const PER_NETWORK_LIMIT = 160;
 
 /**
  * Node 3: Discovery
@@ -65,7 +65,7 @@ export async function discoveryNode(state: OpportunityState, deps: OpportunityGr
         deps,
         discoveryUserId,
         limitPerStrategy: LIMIT_PER_STRATEGY,
-        perIndexLimit: PER_INDEX_LIMIT,
+        perNetworkLimit: PER_NETWORK_LIMIT,
       };
 
       if (state.discoverySource === 'context') {
@@ -303,10 +303,10 @@ async function discoverFromIntent(
     await Promise.all(
       state.targetNetworks.map(async (targetNetwork) => {
         const results = await deps.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
-          indexScope: [targetNetwork.networkId],
+          networkScope: [targetNetwork.networkId],
           excludeUserId: discoveryUserId,
           limitPerStrategy: ctx.limitPerStrategy,
-          limit: ctx.perIndexLimit,
+          limit: ctx.perNetworkLimit,
           minScore,
         });
         found.push(...collectHydeResults(results, targetNetwork.networkId));
@@ -315,12 +315,12 @@ async function discoverFromIntent(
     return found;
   };
 
-  const byUserAndIndex = new Map<string, CandidateMatch>();
+  const byUserAndNetwork = new Map<string, CandidateMatch>();
   const mergeIntoPool = (found: CandidateMatch[]) => {
     for (const c of found) {
       const key = `${c.candidateUserId}:${c.networkId}:intent:${c.candidateIntentId}`;
-      if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
-        byUserAndIndex.set(key, c);
+      if (!byUserAndNetwork.has(key) || c.similarity > (byUserAndNetwork.get(key)?.similarity ?? 0)) {
+        byUserAndNetwork.set(key, c);
       }
     }
   };
@@ -330,13 +330,13 @@ async function discoverFromIntent(
   // The similarity floor can be what keeps a small network under the match
   // floor, not a genuine lack of members. Re-run without it once when the
   // deduped pool doesn't have enough distinct users yet.
-  const distinctUsers = new Set(Array.from(byUserAndIndex.values()).map((c) => c.candidateUserId)).size;
+  const distinctUsers = new Set(Array.from(byUserAndNetwork.values()).map((c) => c.candidateUserId)).size;
   const toppedUp = distinctUsers < DISCOVERY_MIN_MATCHES;
   if (toppedUp) {
     mergeIntoPool(await searchAllNetworks(0));
   }
 
-  const candidates = Array.from(byUserAndIndex.values());
+  const candidates = Array.from(byUserAndNetwork.values());
   discoveryLog.verbose('Intent-path discovery complete', { candidatesFound: candidates.length, toppedUp });
   const usedLenses = Object.keys(hydeEmbeddings);
 

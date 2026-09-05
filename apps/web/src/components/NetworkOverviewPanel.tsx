@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
 import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useNetworkFilter } from '@/contexts/IndexFilterContext';
+import { useNetworkFilter } from '@/contexts/NetworkFilterContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
 import { log } from '@/lib/logger';
@@ -14,20 +14,20 @@ import { log } from '@/lib/logger';
 const logger = log.ui.from('NetworkOverviewPanel');
 
 interface NetworkOverviewPanelProps {
-  index: Network;
+  network: Network;
   isOwner: boolean;
   onLeft?: () => void;
   onLeaveRequest?: boolean;
   onLeaveRequestHandled?: () => void;
 }
 
-export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
+export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
   const navigate = useNavigate();
   const { removeNetwork } = useNetworksState();
   const { success, error } = useNotifications();
   const { setSelectedNetworkIds } = useNetworkFilter();
   const api = useAuthenticatedAPI();
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
 
   // The parent can also ask for the dialog via `onLeaveRequest`; both sources
   // are combined during render rather than mirrored into state by an effect.
@@ -55,7 +55,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
   useEffect(() => {
     const loadOverview = async () => {
       try {
-        const overview = await indexesService.getNetworkOverview(index.id);
+        const overview = await networksService.getNetworkOverview(network.id);
         setIntents(overview.intents);
         setUserContext(overview.userContext);
       } catch (err) {
@@ -65,7 +65,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
       }
     };
     loadOverview();
-  }, [index.id, indexesService]);
+  }, [network.id, networksService]);
 
   const handleOpenIntent = useCallback((intent: { id: string }) => {
     setSelectedNetworkIds([]);
@@ -75,9 +75,9 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
   const handleLeaveNetwork = async () => {
     try {
       setIsLeaving(true);
-      await api.post(`/networks/${index.id}/leave`, {});
-      removeNetwork(index.id);
-      success(`Left ${index.title}`);
+      await api.post(`/networks/${network.id}/leave`, {});
+      removeNetwork(network.id);
+      success(`Left ${network.title}`);
       setLeaveConfirmation(false);
       onLeft?.();
     } catch (err) {
@@ -135,7 +135,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
           <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Leave &apos;{index.title}&apos;?</AlertDialog.Title>
+            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Leave &apos;{network.title}&apos;?</AlertDialog.Title>
             <AlertDialog.Description className="text-sm text-gray-600 mb-4">
               You will lose access to this network. You can rejoin later if the network is public or if you receive a new invitation.
             </AlertDialog.Description>

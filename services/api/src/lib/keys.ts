@@ -2,7 +2,7 @@
  * Key generation and validation utilities for human-readable identifiers.
  *
  * Keys are URL-safe, kebab-case strings used as alternatives to UUIDs
- * for users and indexes.
+ * for users and networks.
  */
 
 /** Reserved words that cannot be used as keys. */

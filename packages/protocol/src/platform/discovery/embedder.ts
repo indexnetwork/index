@@ -17,7 +17,7 @@ export interface LensEmbedding {
 /** Options for searchWithHydeEmbeddings (network scope, limits, min score). */
 export interface HydeSearchOptions {
   /** Network IDs to scope the search (members / assigned intents only). */
-  indexScope: string[];
+  networkScope: string[];
   /** Exclude this user ID from results (e.g. source intent owner). */
   excludeUserId?: string;
   /** Max results per lens before merge (default 10). */
@@ -108,7 +108,7 @@ export interface Embedder extends EmbeddingGenerator, VectorStore {
    * then merge, deduplicate by userId, and rank (boost for multiple lens matches).
    *
    * @param lensEmbeddings - Array of lens embeddings to search with
-   * @param options - indexScope, excludeUserId, limits, minScore
+   * @param options - networkScope, excludeUserId, limits, minScore
    * @returns Deduplicated, ranked candidates (intent) with scores
    */
   searchWithHydeEmbeddings(

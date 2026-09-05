@@ -274,7 +274,7 @@ export const IntentGraphState = Annotation.Root({
    * returns the caller's own intents across all networks in this set (scope-aware
    * default path). Derived by the tool layer from the scope envelope plus memberships.
    */
-  indexScope: Annotation<string[] | undefined>({
+  networkScope: Annotation<string[] | undefined>({
     reducer: (_curr, next) => next,
     default: () => undefined,
   }),

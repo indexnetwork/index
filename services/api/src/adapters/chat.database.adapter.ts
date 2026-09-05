@@ -55,7 +55,7 @@ export class ChatDatabaseAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Chat Graph Methods (Profiles, Intents, Indexes)
+  // Chat Graph Methods (Profiles, Intents, Networks)
   // ─────────────────────────────────────────────────────────────────────────────
 
   async getProfile(userId: string): Promise<UserIdentity | null> {
@@ -106,11 +106,11 @@ export class ChatDatabaseAdapter {
       .limit(limit);
   }
 
-  async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
+  async getIntentsInNetworkForMember(userId: string, networkNameOrId: string): Promise<ActiveIntentRow[]> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let networkId: string | null;
 
-    if (uuidRegex.test(indexNameOrId.trim())) {
+    if (uuidRegex.test(networkNameOrId.trim())) {
       const membership = await db
         .select({ networkId: schema.networkMembers.networkId })
         .from(schema.networkMembers)
@@ -118,7 +118,7 @@ export class ChatDatabaseAdapter {
         .where(
           and(
             eq(schema.networkMembers.userId, userId),
-            eq(schema.networkMembers.networkId, indexNameOrId.trim()),
+            eq(schema.networkMembers.networkId, networkNameOrId.trim()),
             isNull(schema.networks.deletedAt)
           )
         )
@@ -138,7 +138,7 @@ export class ChatDatabaseAdapter {
             isNull(schema.networks.deletedAt)
           )
         );
-      const needle = indexNameOrId.trim().toLowerCase();
+      const needle = networkNameOrId.trim().toLowerCase();
       const match = memberships.find(
         (m) => (m.networkTitle ?? '').toLowerCase() === needle || (m.networkTitle ?? '').toLowerCase().includes(needle)
       );
@@ -169,7 +169,7 @@ export class ChatDatabaseAdapter {
         );
       return result;
     } catch (error: unknown) {
-      logger.error('ChatDatabaseAdapter.getIntentsInIndexForMember error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('ChatDatabaseAdapter.getIntentsInNetworkForMember error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -325,7 +325,7 @@ export class ChatDatabaseAdapter {
         .select({
           networkId: schema.networkMembers.networkId,
           networkTitle: schema.networks.title,
-          indexPrompt: schema.networks.prompt,
+          networkPrompt: schema.networks.prompt,
           permissions: schema.networkMembers.permissions,
           memberPrompt: schema.networkMembers.prompt,
           autoAssign: schema.networkMembers.autoAssign,
@@ -353,7 +353,7 @@ export class ChatDatabaseAdapter {
         .select({
           networkId: schema.networkMembers.networkId,
           networkTitle: schema.networks.title,
-          indexPrompt: schema.networks.prompt,
+          networkPrompt: schema.networks.prompt,
           permissions: schema.networkMembers.permissions,
           memberPrompt: schema.networkMembers.prompt,
           autoAssign: schema.networkMembers.autoAssign,
@@ -516,7 +516,7 @@ export class ChatDatabaseAdapter {
     // when a network has multiple owners. Keep the first encounter only.
     const uniqueRows = [...new Map(rows.map(r => [r.id, r])).values()];
 
-    const indexesWithCounts = await Promise.all(
+    const networksWithCounts = await Promise.all(
       uniqueRows.map(async (row) => {
         const [memberCount] = await db
           .select({ count: count() })
@@ -550,9 +550,9 @@ export class ChatDatabaseAdapter {
       })
     );
 
-    const totalCount = indexesWithCounts.length;
+    const totalCount = networksWithCounts.length;
     return {
-      networks: indexesWithCounts,
+      networks: networksWithCounts,
       pagination: {
         current: 1,
         total: totalCount > 0 ? 1 : 0,
@@ -564,12 +564,12 @@ export class ChatDatabaseAdapter {
 
   /** Get networks that both users share membership in. */
   async getSharedNetworks(currentUserId: string, targetUserId: string): Promise<{ id: string; title: string; _count: { members: number } }[]> {
-    const currentUserIndexIds = db
+    const currentUserNetworkIds = db
       .select({ networkId: schema.networkMembers.networkId })
       .from(schema.networkMembers)
       .where(eq(schema.networkMembers.userId, currentUserId));
 
-    const targetUserIndexIds = db
+    const targetUserNetworkIds = db
       .select({ networkId: schema.networkMembers.networkId })
       .from(schema.networkMembers)
       .where(eq(schema.networkMembers.userId, targetUserId));
@@ -585,8 +585,8 @@ export class ChatDatabaseAdapter {
       .where(
         and(
           isNull(schema.networks.deletedAt),
-          inArray(schema.networks.id, currentUserIndexIds),
-          inArray(schema.networks.id, targetUserIndexIds),
+          inArray(schema.networks.id, currentUserNetworkIds),
+          inArray(schema.networks.id, targetUserNetworkIds),
         )
       )
       .groupBy(schema.networks.id, schema.networks.title);
@@ -601,13 +601,13 @@ export class ChatDatabaseAdapter {
   /**
    * Get public networks that the user has not joined (for discovery).
    */
-  async getPublicIndexesNotJoined(userId: string) {
-    const userIndexIds = await db
+  async getPublicNetworksNotJoined(userId: string) {
+    const userNetworkIds = await db
       .select({ networkId: schema.networkMembers.networkId })
       .from(schema.networkMembers)
       .where(eq(schema.networkMembers.userId, userId));
 
-    const excludeIds = userIndexIds.map(r => r.networkId);
+    const excludeIds = userNetworkIds.map(r => r.networkId);
 
     const whereConditions = [
       isNull(schema.networks.deletedAt),
@@ -619,7 +619,7 @@ export class ChatDatabaseAdapter {
       whereConditions.push(notInArray(schema.networks.id, excludeIds));
     }
 
-    const publicIndexes = await db
+    const publicNetworks = await db
       .select({
         id: schema.networks.id,
         title: schema.networks.title,
@@ -633,7 +633,7 @@ export class ChatDatabaseAdapter {
       .orderBy(desc(schema.networks.createdAt));
 
     const result = [];
-    for (const row of publicIndexes) {
+    for (const row of publicNetworks) {
       const permissions = toPublicNetworkPermissions(row.permissions);
       if (permissions.joinPolicy !== 'anyone') continue;
 
@@ -685,7 +685,7 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  async getUserIndexIds(userId: string): Promise<string[]> {
+  async getUserNetworkIds(userId: string): Promise<string[]> {
     try {
       const result = await db
         .select({ networkId: schema.networkMembers.networkId })
@@ -700,7 +700,7 @@ export class ChatDatabaseAdapter {
         );
       return result.map((r) => r.networkId);
     } catch (error: unknown) {
-      logger.error('ChatDatabaseAdapter.getUserIndexIds error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('ChatDatabaseAdapter.getUserNetworkIds error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -786,7 +786,7 @@ export class ChatDatabaseAdapter {
     const rows = await db
       .select({
         networkId: networks.id,
-        indexPrompt: networks.prompt,
+        networkPrompt: networks.prompt,
         memberPrompt: networkMembers.prompt,
       })
       .from(networks)
@@ -834,7 +834,7 @@ export class ChatDatabaseAdapter {
     const rows = await db
       .select({
         networkId: networks.id,
-        indexPrompt: networks.prompt,
+        networkPrompt: networks.prompt,
         memberPrompt: networkMembers.prompt,
       })
       .from(networks)
@@ -851,7 +851,7 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
-  async isIntentAssignedToIndex(intentId: string, networkId: string): Promise<boolean> {
+  async isIntentAssignedToNetwork(intentId: string, networkId: string): Promise<boolean> {
     const rows = await db
       .select({ networkId: intentNetworks.networkId })
       .from(intentNetworks)
@@ -893,8 +893,8 @@ export class ChatDatabaseAdapter {
   // The Intent Graph's archive/transition/confirm actions reach these through
   // this composite adapter when compiled for chat/MCP tools; delegate straight
   // to IntentDatabaseAdapter, the single implementation of each.
-  deleteIntentIndexAssociations(intentId: string): ReturnType<IntentDatabaseAdapter['deleteIntentIndexAssociations']> {
-    return this.intentAdapter.deleteIntentIndexAssociations(intentId);
+  deleteIntentNetworkAssociations(intentId: string): ReturnType<IntentDatabaseAdapter['deleteIntentNetworkAssociations']> {
+    return this.intentAdapter.deleteIntentNetworkAssociations(intentId);
   }
 
   expireOpportunitiesByIntentActor(intentId: string): ReturnType<IntentDatabaseAdapter['expireOpportunitiesByIntentActor']> {
@@ -913,7 +913,7 @@ export class ChatDatabaseAdapter {
     return this.intentAdapter.compensateFailedResume(input);
   }
 
-  async getIntentIndexScores(intentId: string): Promise<Array<{
+  async getIntentNetworkScores(intentId: string): Promise<Array<{
     networkId: string;
     relevancyScore: number | null;
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata | null;
@@ -933,7 +933,7 @@ export class ChatDatabaseAdapter {
     }));
   }
 
-  async unassignIntentFromIndex(intentId: string, networkId: string): Promise<void> {
+  async unassignIntentFromNetwork(intentId: string, networkId: string): Promise<void> {
     await db
       .delete(intentNetworks)
       .where(
@@ -987,7 +987,7 @@ export class ChatDatabaseAdapter {
     return this.hydeAdapter.getStaleHydeDocuments(threshold);
   }
 
-  async getOwnedIndexes(userId: string) {
+  async getOwnedNetworks(userId: string) {
     const ownerRows = await db
       .select({
         networkId: networkMembers.networkId,
@@ -1093,7 +1093,7 @@ export class ChatDatabaseAdapter {
     return result;
   }
 
-  async isIndexOwner(networkId: string, userId: string): Promise<boolean> {
+  async isNetworkOwner(networkId: string, userId: string): Promise<boolean> {
     const rows = await db
       .select({ userId: networkMembers.userId })
       .from(networkMembers)
@@ -1109,7 +1109,7 @@ export class ChatDatabaseAdapter {
   }
 
   async getNetworkMembersForOwner(networkId: string, requestingUserId: string) {
-    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this network');
     }
@@ -1160,19 +1160,19 @@ export class ChatDatabaseAdapter {
     }));
   }
 
-  async getMembersFromUserIndexes(userId: Id<'users'>): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]> {
-    // Indexes the user is a member of (non-deleted)
-    const myIndexRows = await db
+  async getMembersFromUserNetworks(userId: Id<'users'>): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]> {
+    // Networks the user is a member of (non-deleted)
+    const myNetworkRows = await db
       .select({ networkId: networkMembers.networkId })
       .from(networkMembers)
       .innerJoin(networks, eq(networkMembers.networkId, networks.id))
       .where(
         and(eq(networkMembers.userId, userId), isNull(networks.deletedAt))
       );
-    const myIndexIds = myIndexRows.map((r) => r.networkId);
-    if (myIndexIds.length === 0) return [];
+    const myNetworkIds = myNetworkRows.map((r) => r.networkId);
+    if (myNetworkIds.length === 0) return [];
 
-    // All members from those indexes, joined with users; dedupe by userId
+    // All members from those networks, joined with users; dedupe by userId
     const rows = await db
       .select({
         userId: networkMembers.userId,
@@ -1184,7 +1184,7 @@ export class ChatDatabaseAdapter {
       .innerJoin(networks, eq(networkMembers.networkId, networks.id))
       .where(
         and(
-          inArray(networkMembers.networkId, myIndexIds),
+          inArray(networkMembers.networkId, myNetworkIds),
           isNull(networks.deletedAt),
           isNull(users.deletedAt),
           isNull(networkMembers.deletedAt),
@@ -1203,7 +1203,7 @@ export class ChatDatabaseAdapter {
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
   ) {
-    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this network');
     }
@@ -1373,9 +1373,9 @@ export class ChatDatabaseAdapter {
     }));
   }
 
-  async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
+  async getActiveIntentsAcrossNetworks(userId: string, networkIds: string[]) {
     try {
-      if (indexIds.length === 0) return [];
+      if (networkIds.length === 0) return [];
 
       const rows = await db
         .selectDistinctOn([intents.id], {
@@ -1389,31 +1389,31 @@ export class ChatDatabaseAdapter {
         .where(
           and(
             activeOwnIntentsWhere(userId),
-            inArray(intentNetworks.networkId, indexIds),
+            inArray(intentNetworks.networkId, networkIds),
           ),
         )
         .orderBy(intents.id, desc(intents.createdAt));
 
       return rows;
     } catch (error: unknown) {
-      logger.error('ChatDatabaseAdapter.getActiveIntentsAcrossIndexes error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('ChatDatabaseAdapter.getActiveIntentsAcrossNetworks error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
 
-  async updateIndexSettings(
+  async updateNetworkSettings(
     networkId: string,
     requestingUserId: string,
     data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
   ) {
-    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this network');
     }
 
     const [existing] = await db.select().from(networks).where(eq(networks.id, networkId)).limit(1);
     if (!existing) {
-      throw new Error('Index not found');
+      throw new Error('Network not found');
     }
 
     const updateData: Record<string, unknown> = { updatedAt: new Date() };
@@ -1449,7 +1449,7 @@ export class ChatDatabaseAdapter {
   /**
    * Re-select a network after a settings/permissions mutation and map it to the
    * canonical settings DTO (owner info, permissions, member/intent counts).
-   * Shared by {@link updateIndexSettings} and {@link regenerateInvitationLink}.
+   * Shared by {@link updateNetworkSettings} and {@link regenerateInvitationLink}.
    * @param networkId - The network to load
    * @returns The canonical network settings DTO
    * @throws Error if the network cannot be found after the update
@@ -1482,7 +1482,7 @@ export class ChatDatabaseAdapter {
       .limit(1);
 
     if (!updatedRow) {
-      throw new Error('Index not found after update');
+      throw new Error('Network not found after update');
     }
     const [memberCountResult, intentCountResult] = await Promise.all([
       db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt))),
@@ -1516,14 +1516,14 @@ export class ChatDatabaseAdapter {
    * @throws Error if the caller is not an owner or the network does not exist
    */
   async regenerateInvitationLink(networkId: string, requestingUserId: string) {
-    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this network');
     }
 
     const [existing] = await db.select().from(networks).where(eq(networks.id, networkId)).limit(1);
     if (!existing) {
-      throw new Error('Index not found');
+      throw new Error('Network not found');
     }
 
     const currentPerms = (existing.permissions as schema.NetworkPermissionsState | null) ?? {
@@ -1641,9 +1641,9 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Find an index by its key (human-readable identifier).
-   * @param key - The index's key
-   * @returns Index record or null
+   * Find a network by its key (human-readable identifier).
+   * @param key - The network's key
+   * @returns Network record or null
    */
   async getNetworkByKey(key: string) {
     const rows = await db.select()
@@ -1711,8 +1711,8 @@ export class ChatDatabaseAdapter {
     role: 'owner' | 'member'
   ): Promise<{ success: boolean; alreadyMember?: boolean }> {
     let memberPrompt: string | null = null;
-    const [indexRow] = await db.select({ prompt: networks.prompt }).from(networks).where(eq(networks.id, networkId)).limit(1);
-    if (indexRow) memberPrompt = indexRow.prompt;
+    const [networkRow] = await db.select({ prompt: networks.prompt }).from(networks).where(eq(networks.id, networkId)).limit(1);
+    if (networkRow) memberPrompt = networkRow.prompt;
 
     const finalPermissions = role === 'owner' ? ['owner'] : ['member'];
     const result = await db.insert(networkMembers).values({
@@ -1726,12 +1726,12 @@ export class ChatDatabaseAdapter {
     return { success: true, alreadyMember: result.length === 0 };
   }
 
-  async removeMemberFromIndex(
+  async removeMemberFromNetwork(
     networkId: string,
     userId: string
   ): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }> {
     // Check if user is the owner - owners cannot be removed
-    const isOwner = await this.isIndexOwner(networkId, userId);
+    const isOwner = await this.isNetworkOwner(networkId, userId);
     if (isOwner) {
       return { success: false, wasOwner: true };
     }
@@ -1767,7 +1767,7 @@ export class ChatDatabaseAdapter {
    * @param idOrKey - UUID or human-readable key
    * @returns The network UUID, or null if not found
    */
-  async resolveIndexId(idOrKey: string): Promise<string | null> {
+  async resolveNetworkId(idOrKey: string): Promise<string | null> {
     const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrKey);
     if (isFullUuid) {
       return idOrKey;
@@ -1788,14 +1788,14 @@ export class ChatDatabaseAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Index Detail & Member Management (with access control)
+  // Network Detail & Member Management (with access control)
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
    * Get a single network with owner info and member count.
    * Checks that the requesting user is a member; throws "Access denied" if not.
    */
-  async getPublicIndexDetail(networkId: string) {
+  async getPublicNetworkDetail(networkId: string) {
     const rows = await db
       .select({
         id: networks.id,
@@ -1843,9 +1843,9 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Get an index by its invitation link code (public access, no auth required).
+   * Get a network by its invitation link code (public access, no auth required).
    * @param code - The invitation link code from the URL
-   * @returns The index with owner info, member count, and joinPolicy, or null if not found
+   * @returns The network with owner info, member count, and joinPolicy, or null if not found
    */
   async getNetworkByShareCode(code: string) {
     const rows = await db
@@ -1886,19 +1886,19 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Accept an invitation to join an index using the invitation code.
+   * Accept an invitation to join a network using the invitation code.
    * @param code - The invitation link code
    * @param userId - The authenticated user accepting the invitation
-   * @returns The index, membership details, and alreadyMember flag
-   * @throws Error if the code is invalid or the index is not found
+   * @returns The network, membership details, and alreadyMember flag
+   * @throws Error if the code is invalid or the network is not found
    */
-  async acceptIndexInvitation(code: string, userId: string) {
-    const index = await this.getNetworkByShareCode(code);
-    if (!index) {
+  async acceptNetworkInvitation(code: string, userId: string) {
+    const network = await this.getNetworkByShareCode(code);
+    if (!network) {
       throw new Error('Invalid or expired invitation link');
     }
 
-    const result = await this.addMemberToNetwork(index.id, userId, 'member');
+    const result = await this.addMemberToNetwork(network.id, userId, 'member');
 
     const [memberRow] = await db
       .select({
@@ -1911,11 +1911,11 @@ export class ChatDatabaseAdapter {
       })
       .from(networkMembers)
       .innerJoin(users, eq(networkMembers.userId, users.id))
-      .where(and(eq(networkMembers.networkId, index.id), eq(networkMembers.userId, userId)))
+      .where(and(eq(networkMembers.networkId, network.id), eq(networkMembers.userId, userId)))
       .limit(1);
 
     return {
-      index,
+      network,
       membership: memberRow
         ? {
             id: memberRow.userId,
@@ -1984,7 +1984,7 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Add a member to an index. Owner-only.
+   * Add a member to a network. Owner-only.
    * Throws "Access denied" if the requesting user is not an owner.
    */
   async addMemberForOwner(
@@ -1993,7 +1993,7 @@ export class ChatDatabaseAdapter {
     requestingUserId: string,
     role: 'owner' | 'member' = 'member'
   ) {
-    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Only owners can add members');
     }
@@ -2025,7 +2025,7 @@ export class ChatDatabaseAdapter {
     requestingUserId: string,
     role: 'owner' | 'member'
   ) {
-    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Only owners can change member roles');
     }
@@ -2100,18 +2100,18 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Remove a member from an index. Owner-only.
-   * Checks isIndexOwner internally; throws "Access denied" if not owner.
+   * Remove a member from a network. Owner-only.
+   * Checks isNetworkOwner internally; throws "Access denied" if not owner.
    * Prevents self-removal. Throws "Member not found" if member doesn't exist.
    */
   async removeMemberForOwner(networkId: string, memberUserId: string, requestingUserId: string) {
-    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this network');
     }
 
     if (memberUserId === requestingUserId) {
-      throw new Error('Cannot remove yourself from the index');
+      throw new Error('Cannot remove yourself from the network');
     }
 
     const deleted = await db
@@ -2128,17 +2128,17 @@ export class ChatDatabaseAdapter {
    * Join a public network (anyone can join if joinPolicy is 'anyone').
    */
   async joinPublicNetwork(networkId: string, userId: string) {
-    const [index] = await db
+    const [network] = await db
       .select({ permissions: networks.permissions, deletedAt: networks.deletedAt })
       .from(networks)
       .where(eq(networks.id, networkId))
       .limit(1);
 
-    if (!index || index.deletedAt) {
-      throw new Error('Index not found');
+    if (!network || network.deletedAt) {
+      throw new Error('Network not found');
     }
 
-    const perms = (index.permissions as { joinPolicy?: string } | null);
+    const perms = (network.permissions as { joinPolicy?: string } | null);
     if (perms?.joinPolicy !== 'anyone') {
       throw new Error('This network is not public');
     }
@@ -2147,11 +2147,11 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Leave an index. Members (non-owners) can leave an index.
-   * Owners cannot leave their own index.
+   * Leave a network. Members (non-owners) can leave an index.
+   * Owners cannot leave their own network.
    */
   async leaveNetwork(networkId: string, userId: string) {
-    const isOwner = await this.isIndexOwner(networkId, userId);
+    const isOwner = await this.isNetworkOwner(networkId, userId);
     if (isOwner) {
       throw new Error('Cannot leave a network you own. Delete the network instead.');
     }
@@ -2168,10 +2168,10 @@ export class ChatDatabaseAdapter {
 
   /**
    * Soft-delete a network. Owner-only.
-   * Checks isIndexOwner internally; throws "Access denied" if not owner.
+   * Checks isNetworkOwner internally; throws "Access denied" if not owner.
    */
-  async deleteIndexForOwner(networkId: string, requestingUserId: string) {
-    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+  async deleteNetworkForOwner(networkId: string, requestingUserId: string) {
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this network');
     }
@@ -2423,17 +2423,17 @@ export class ChatDatabaseAdapter {
 
 
   /**
-   * Bulk-add users as members to a specific index.
+   * Bulk-add users as members to a specific network.
    * Skips users that are already members (onConflictDoNothing).
-   * @param networkId - The target index
+   * @param networkId - The target network
    * @param userIds - User IDs to add as members
    */
-  async addMembersBulkToIndex(networkId: string, userIds: string[]): Promise<void> {
+  async addMembersBulkToNetwork(networkId: string, userIds: string[]): Promise<void> {
     if (userIds.length === 0) return;
 
     let memberPrompt: string | null = null;
-    const [indexRow] = await db.select({ prompt: schema.networks.prompt }).from(schema.networks).where(eq(schema.networks.id, networkId)).limit(1);
-    if (indexRow) memberPrompt = indexRow.prompt;
+    const [networkRow] = await db.select({ prompt: schema.networks.prompt }).from(schema.networks).where(eq(schema.networks.id, networkId)).limit(1);
+    if (networkRow) memberPrompt = networkRow.prompt;
 
     const values = userIds.map(userId => ({
       networkId,

@@ -98,15 +98,15 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     database, embedder, compiledHydeGraph,
   ).createGraph();
   const networks = new Networks({ database });
-  const indexGraph = networks.createGraph();
+  const networkGraph = networks.createGraph();
   const networkMembershipGraph = networks.createMembershipGraph();
-  const intentIndexGraph = networks.createAssignmentGraph();
+  const intentNetworkGraph = networks.createAssignmentGraph();
 
   compiledGraphs = {
     intent: intentGraph,
-    index: indexGraph,
+    network: networkGraph,
     networkMembership: networkMembershipGraph,
-    intentIndex: intentIndexGraph,
+    intentNetwork: intentNetworkGraph,
     opportunity: opportunityGraph,
   };
 

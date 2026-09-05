@@ -25,7 +25,7 @@ export interface LensEmbedding {
 }
 
 export interface HydeSearchOptions {
-  indexScope: string[];
+  networkScope: string[];
   excludeUserId?: string;
   limitPerStrategy?: number;
   limit?: number;
@@ -243,7 +243,7 @@ export class EmbedderAdapter {
           'db.operation': 'vector_search',
           'search.strategy': 'hyde',
           'search.lens_count': lensEmbeddings.length,
-          'search.index_scope_count': options.indexScope.length,
+          'search.network_scope_count': options.networkScope.length,
           'search.limit': options.limit ?? 80,
         },
       },
@@ -256,14 +256,14 @@ export class EmbedderAdapter {
     options: HydeSearchOptions
   ): Promise<HydeCandidate[]> {
     const {
-      indexScope,
+      networkScope,
       excludeUserId,
       limitPerStrategy = 40,
       limit = 80,
       minScore = 0.40,
     } = options;
 
-    const filter = { indexScope, excludeUserId };
+    const filter = { networkScope, excludeUserId };
 
     const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
@@ -287,18 +287,18 @@ export class EmbedderAdapter {
 
   private async searchIntentsForHyde(
     embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
+    filter: { networkScope: string[]; excludeUserId?: string },
     limit: number,
     minScore: number,
     lens: string
   ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
+    if (filter.networkScope?.length === 0) return [];
     const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentNetworks } = schema;
 
     const conditions = [
-      inArray(intentNetworks.networkId, filter.indexScope),
+      inArray(intentNetworks.networkId, filter.networkScope),
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
       isNull(intents.archivedAt),
       or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
@@ -372,8 +372,8 @@ export class EmbedderAdapter {
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];
 
-    const scopedIndexes =
-      filter?.indexScope && Array.isArray(filter.indexScope) ? (filter.indexScope as string[]) : null;
+    const scopedNetworks =
+      filter?.networkScope && Array.isArray(filter.networkScope) ? (filter.networkScope as string[]) : null;
 
     const selection = {
       id: intents.id,
@@ -383,7 +383,7 @@ export class EmbedderAdapter {
       similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
     };
 
-    const results = scopedIndexes
+    const results = scopedNetworks
       ? await db
           .select(selection)
           .from(intents)
@@ -396,7 +396,7 @@ export class EmbedderAdapter {
           .innerJoin(schema.users, eq(intents.userId, schema.users.id))
           .where(and(
             ...baseConditions,
-            inArray(intentNetworks.networkId, scopedIndexes),
+            inArray(intentNetworks.networkId, scopedNetworks),
             isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt),
           ))

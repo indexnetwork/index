@@ -92,10 +92,10 @@ export class S3StorageAdapter {
   }
 
   /**
-   * Upload an index (network) image to S3.
+   * Upload a network image to S3.
    * @returns The S3 object key (e.g., index-images/userId/uuid.ext)
    */
-  async uploadIndexImage(
+  async uploadNetworkImage(
     buffer: Buffer,
     userId: string,
     extension: string,

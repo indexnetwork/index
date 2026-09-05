@@ -67,7 +67,7 @@ Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled p
 | File | Tools |
 |------|-------|
 | `internal/enrichment/enrichment.tools.ts` | `research_profile` |
-| `internal/intents/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
+| `internal/intents/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `add_intent_to_network`, `list_intent_networks`, `remove_intent_from_network` |
 | `internal/networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `internal/opportunities/opportunity.tools.ts` | `list_opportunities`, `update_opportunity` |
 | `internal/agents/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
@@ -88,7 +88,7 @@ The system models human collaboration through a linguistic and information-theor
 |---------|-------------|
 | **User** | Session-authenticated identity with many intents and network memberships. Presentation identity lives on `users`; semantic discovery uses intents and user contexts. |
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
-| **Index** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share an index. |
+| **Network** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share a network. |
 | **Opportunity** | A **semantic intersection**: the point where a candidate's user context or intent satisfies the propositional content of a source intent. Scored by the Opportunity Evaluator using **valency** (argument-role fit) and **constraint satisfaction**. Presented with dual descriptions per **Grice's Maxim of Relation** — one framed for the source, one for the candidate. |
 | **HyDE** | Hypothetical Document Embeddings. Lens-based: the `LensInferrer` derives 1–N free-text **lenses** (search perspectives, e.g. "SF-based early-stage investor"). The live search corpus is intents. The encoder acts as a dense bottleneck filtering hallucinated specifics and retaining the semantic signal. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
@@ -119,7 +119,7 @@ sequenceDiagram
     participant HG as HyDE Graph
 
     User->>Host: "I'm looking for a React co-founder"
-    Host->>CI: create_intent({content: "Looking for React co-founder", indexId})
+    Host->>CI: create_intent({content: "Looking for React co-founder", networkId})
 
     CI->>IC: Check semantic entropy
     Note over IC: Entropy acceptable — commissive act, specific enough
@@ -133,7 +133,7 @@ sequenceDiagram
 
     IG-->>CI: intent created (felicitous)
     CI->>CO: Auto-triggers discovery
-    CO->>OG: invoke(userId, sourceText, indexId)
+    CO->>OG: invoke(userId, sourceText, networkId)
 
     OG->>HG: Generate HyDE docs
     Note over HG: Lens → intents: complementary goal ("join as co-founder on React project")
@@ -203,8 +203,8 @@ Handled by the **HyDE Graph** and **Enrichment Graph**. The pipeline is **lens-b
 ### Opportunity Discovery
 
 Handled by the **Opportunity Graph**:
-1. **Prep**: Load user's indexed intents and HyDE documents.
-2. **Scope**: Determine target indexes (single or all).
+1. **Prep**: Load user's active intents and HyDE documents.
+2. **Scope**: Determine target networks (single or all).
 3. **Discovery**: HyDE-driven vector search within network scope, against candidate intents.
 4. **Evaluation**: `OpportunityEvaluator` scores each candidate pair via **valency** (does the candidate fill the argument slot of the source's goal verb?) and **constraint satisfaction** (does the candidate's constitutive context match all extracted constraints?). Assigns role: Agent, Patient, or Peer.
 5. **Presentation**: `OpportunityPresenter` generates two descriptions per Grice's Maxim of Relation — one from the source's frame, one from the candidate's frame.
@@ -212,7 +212,7 @@ Handled by the **Opportunity Graph**:
 
 ## Key Invariants
 
-- **Network-scoped discovery**: Opportunities only arise between intents sharing an index
+- **Network-scoped discovery**: Opportunities only arise between intents sharing a network
 - **Specific Indefinites only**: Underspecified (high-entropy) intents do not enter the graph — they trigger elaboration
 - **Felicity-gated persistence**: Only intents classified as `felicitous` are persisted as active
 - **Dual synthesis**: Each opportunity has descriptions framed for both actors (Grice's Maxim of Relation)
@@ -248,7 +248,3 @@ Core tables the protocol interfaces read/write:
 - **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`
 - **Opportunities & discovery**: `opportunities`, `hyde_documents`, `opportunity_discovery_runs`, `enrichment_tool_runs`
 - **Agents**: `agents`, `agent_permissions`, `apikey`
-
-> Terminology note: "index" and "network" refer to the same concept. The product
-> surface says *index*; the current schema and most tool names use **network**
-> (`networks`, `network_members`, `intent_networks`).

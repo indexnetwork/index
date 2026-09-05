@@ -30,8 +30,8 @@ const ASYNC_CANDIDATE_TIMEOUT_MS = 50_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
 
 const FAST_TOOLS = new Set([
-  "create_intent_index",
-  "delete_intent_index",
+  "add_intent_to_network",
+  "remove_intent_from_network",
   "search_intents",
   "read_networks",
   "update_network",

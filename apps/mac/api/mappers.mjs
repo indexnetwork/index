@@ -38,7 +38,7 @@ export function mapEventSummary(input = {}) {
     name: selected?.title || DEFAULT_EVENT.name,
     venue: DEFAULT_EVENT.venue,
     neighborhood: selected?.prompt || DEFAULT_EVENT.neighborhood,
-    doors: networks.length ? `${networks.length} indexes joined` : DEFAULT_EVENT.doors,
+    doors: networks.length ? `${networks.length} networks joined` : DEFAULT_EVENT.doors,
     attending: memberCount,
   };
 }
@@ -199,11 +199,11 @@ export function mapPeopleFromOpportunities(opportunities = []) {
     name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
     blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
     detail: opportunity.presentation?.description || opportunity.interpretation?.summary || '',
-    location: opportunity.index?.title || '',
+    location: opportunity.network?.title || '',
     arrived: 0,
     distance: opportunity.updatedAt ? `updated ${relativeAge(opportunity.updatedAt)}` : '',
     mutuals: 0,
-    signals: compact([opportunity.category, opportunity.index?.title]),
+    signals: compact([opportunity.category, opportunity.network?.title]),
     overlap: compact([opportunity.interpretation?.summary]),
     score: typeof opportunity.confidence === 'number' ? opportunity.confidence : null,
     status: mapOpportunityStatusToPrototype(opportunity.status),

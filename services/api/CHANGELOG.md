@@ -9,6 +9,17 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: opportunity payloads name the community `network`, not `index`.**
+  `GET /opportunities` and friends return `network: { id, title }` where they
+  returned `index`, and `POST /networks/invitation/:code/accept` returns
+  `network` instead of `index`. The debug snapshot key `indexes` is `networks`.
+- The host implements the renamed protocol ports (`getOwnedNetworks`,
+  `isNetworkOwner`, `updateNetworkSettings`, …) and the renamed intent↔network
+  MCP tools; `@indexnetwork/protocol` 49.0.0 is required.
+- `networks.key`'s unique index is renamed `indexes_key_unique` →
+  `networks_key_unique` (migration `0175`).
+
 ### Added
 - **`POST /intents/clarify`** — one stateless clarification round. Send
   `{ payload, answers? }`, get back `{ payload, questions }`. Nothing is stored;

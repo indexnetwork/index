@@ -21,7 +21,7 @@ export interface DiscoveryStrategyContext {
   deps: OpportunityGraphDeps;
   discoveryUserId: string;
   limitPerStrategy: number;
-  perIndexLimit: number;
+  perNetworkLimit: number;
 }
 
 /** Trace payload the query-HyDE path produces alongside its candidates. */
@@ -36,7 +36,7 @@ export interface QueryHydeDiscoveryResult {
  * text, then search every target network with the resulting lens embeddings.
  */
 export async function runQueryHydeDiscovery(ctx: DiscoveryStrategyContext): Promise<QueryHydeDiscoveryResult | null> {
-  const { state, deps, discoveryUserId, limitPerStrategy, perIndexLimit } = ctx;
+  const { state, deps, discoveryUserId, limitPerStrategy, perNetworkLimit } = ctx;
   const searchText = state.searchQuery?.trim() ?? '';
   const lensInput = {
     profileContext: buildDiscovererContext(state.sourceProfile, state.indexedIntents),
@@ -69,10 +69,10 @@ export async function runQueryHydeDiscovery(ctx: DiscoveryStrategyContext): Prom
   await Promise.all(
     state.targetNetworks.map(async (targetNetwork) => {
       const results = await deps.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
-        indexScope: [targetNetwork.networkId],
+        networkScope: [targetNetwork.networkId],
         excludeUserId: discoveryUserId,
         limitPerStrategy,
-        limit: perIndexLimit,
+        limit: perNetworkLimit,
         minScore: deps.retrievalMinSimilarity,
       });
       all.push(...collectHydeResults(results, targetNetwork.networkId));

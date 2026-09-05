@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { ChevronLeft, Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
 import * as Tabs from '@radix-ui/react-tabs';
 
-import NetworkAvatar from '@/components/IndexAvatar';
+import NetworkAvatar from '@/components/NetworkAvatar';
 import ClientLayout from '@/components/ClientLayout';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
 import NetworkOverviewPanel from '@/components/NetworkOverviewPanel';
@@ -39,7 +39,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { networks } = useNetworksState();
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
 
   const networkId = networkIdOverride || (params.id as string);
   // Splat route (*) captures the tab segment; avoids remounts between tab navigations
@@ -66,13 +66,13 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
 
   const checkOwnership = useCallback(async (networkId: string, networkData?: Network) => {
     try {
-      const memberSettings = await indexesService.getCurrentUserMemberSettings(networkId);
+      const memberSettings = await networksService.getCurrentUserMemberSettings(networkId);
       return memberSettings.isOwner;
     } catch (err) {
       logger.error('Error loading member settings', { error: err });
       return networkData?.user ? user?.id === networkData.user.id : false;
     }
-  }, [indexesService, user?.id]);
+  }, [networksService, user?.id]);
 
   useEffect(() => {
     const loadNetwork = async () => {
@@ -86,7 +86,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
       }
 
       try {
-        const fetchedNetwork = await indexesService.getNetwork(networkId);
+        const fetchedNetwork = await networksService.getNetwork(networkId);
         const ownerStatus = await checkOwnership(networkId, fetchedNetwork);
         setNetwork(fetchedNetwork);
         setIsOwner(ownerStatus);
@@ -101,7 +101,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
     if (networkId) {
       loadNetwork();
     }
-  }, [networkId, networks, indexesService, checkOwnership]);
+  }, [networkId, networks, networksService, checkOwnership]);
 
   useEffect(() => {
     const updateNetworkFromContext = async () => {
@@ -226,17 +226,17 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
                   </Tabs.List>
 
                   <Tabs.Content value="overview">
-                    <NetworkOverviewPanel index={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
+                    <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
                   </Tabs.Content>
                   <Tabs.Content value="settings">
-                    <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="settings" />
+                    <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="settings" />
                   </Tabs.Content>
                   <Tabs.Content value="access">
-                    <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="access" />
+                    <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="access" />
                   </Tabs.Content>
                 </Tabs.Root>
               ) : (
-                <NetworkOverviewPanel index={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
+                <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
               )}
             </>
           ) : null}

@@ -144,12 +144,12 @@ export class StorageController {
   }
 
   /**
-   * Upload an index/network image to S3.
+   * Upload a network image to S3.
    * POST /api/storage/index-images
    */
   @Post('/index-images')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async uploadIndexImage(req: Request, user: AuthenticatedUser): Promise<Response | object> {
+  async uploadNetworkImage(req: Request, user: AuthenticatedUser): Promise<Response | object> {
     let parsed: ParsedFile;
     try {
       parsed = await parseMultipartFile(req, 'image', FILE_SIZE_LIMITS.AVATAR);
@@ -170,27 +170,27 @@ export class StorageController {
 
     try {
       const ext = path.extname(filename).replace('.', '');
-      const imageUrl = await this.storage.uploadIndexImage(buffer, user.id, ext, mimeType);
+      const imageUrl = await this.storage.uploadNetworkImage(buffer, user.id, ext, mimeType);
 
-      logger.info('Index image uploaded', { userId: user.id, imageUrl });
+      logger.info('Network image uploaded', { userId: user.id, imageUrl });
 
-      return { message: 'Index image uploaded successfully', imageUrl };
+      return { message: 'Network image uploaded successfully', imageUrl };
     } catch (err) {
-      logger.error('Index image upload failed', {
+      logger.error('Network image upload failed', {
         userId: user.id,
         error: err instanceof Error ? err.message : String(err),
       });
-      return Response.json({ error: 'Failed to upload index image' }, { status: 500 });
+      return Response.json({ error: 'Failed to upload network image' }, { status: 500 });
     }
   }
 
   /**
-   * Serve index image (public, streams from S3).
+   * Serve network image (public, streams from S3).
    * GET /api/storage/index-images/:userId/:filename
    */
   @Get('/index-images/:userId/:filename')
   @UseGuards(RateLimit('read'))
-  async serveIndexImage(
+  async serveNetworkImage(
     _req: Request,
     _user: unknown,
     params: { userId: string; filename: string }
