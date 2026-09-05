@@ -20,6 +20,18 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 50.0.0 - 2026-09-05
+
+### Removed
+
+- **BREAKING — drop the IND-593 owner-approval proof port.** `update_opportunity`
+  send/accept/reject is an ordinary tool call gated by existing MCP/session auth.
+  Removed `ownerApprovalProof` from the public schema, plus
+  `OpportunityOwnerApprovalAuthority` and related public types,
+  `bindOwnerApprovalProvenance`, and `opportunityOwnerActionForStatus`. Owner
+  verdict tools (`accept_opportunity` / `reject_opportunity`) still require a
+  host-bound session (`context.isSessionAuth`).
+
 ## 49.0.1 - 2026-09-05
 
 ### Changed

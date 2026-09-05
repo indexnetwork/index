@@ -97,7 +97,7 @@ server.
 import { createMcpServer, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from "@indexnetwork/protocol";
 
 const server = createMcpServer(
-  deps,                // ToolDeps + the opportunity owner-approval port
+  deps,                // ToolDeps
   authResolver,        // McpAuthResolver
   scopedDepsFactory,   // ScopedDepsFactory — builds per-user scoped userDb/systemDb
   CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS,

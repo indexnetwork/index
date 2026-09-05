@@ -9,7 +9,6 @@ import { createOpportunityVerdictTools } from "../../opportunities/opportunity.v
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
 import { createAgentTools } from '../../agents/agent.tools.js';
-import type { OpportunityOwnerApprovalDeps } from '../../opportunities/opportunity.tools.port.js';
 import { isToolAllowedInScope, type ToolScopeEnvelope } from './tool.scope.js';
 import { protocolLogger } from '../observability/protocol.logger.js';
 import { requestContext } from '../observability/request-context.js';
@@ -39,10 +38,7 @@ export interface CreateToolRegistryOptions {
  * @param options - Surface profile selecting the MCP-restricted or full REST set.
  * @returns Map of tool name to raw tool definition.
  */
-/** Complete registry composition with the opportunity-local owner-proof port. */
-export type ToolRegistryDeps = ToolDeps & OpportunityOwnerApprovalDeps;
-
-export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRegistryOptions = {}): ToolRegistry {
+export function createToolRegistry(deps: ToolDeps, options: CreateToolRegistryOptions = {}): ToolRegistry {
   const registry: ToolRegistry = new Map();
   const isMcpSurface = options.surface === 'mcp';
 
@@ -98,9 +94,9 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   createUtilityTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
   createAgentTools(dt, deps);
   // The MCP owner-verdict tools. MCP-only, deliberately — the REST Tool API's
-  // API-key principals must never gain an owner-verdict lever (IND-593: the
-  // capability matrix admits verdicts for session humans only, and the
-  // verdict handler re-checks the host-bound provenance).
+  // API-key principals must never gain an owner-verdict lever. The capability
+  // matrix admits verdicts for session humans only; the handler re-checks
+  // `context.isSessionAuth`.
   if (isMcpSurface) {
     createOpportunityVerdictTools(dt, deps);
   }

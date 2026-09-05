@@ -44,6 +44,10 @@ section before promoting to `main`).
   request, so the generic write budget was far too loose for them.
 
 ### Removed
+- **BREAKING — drop opportunity owner-approval proofs.** Remove
+  `POST /api/opportunities/:id/owner-approvals`, the Redis challenge store, HMAC
+  signing, and `OPPORTUNITY_OWNER_APPROVAL_SECRET`. `update_opportunity` is an
+  ordinary MCP/tool call. Requires protocol 50.0.0.
 - **BREAKING: `/intents/intake/*`, `POST /intents/confirm`, `POST /intents/reject`
   and `POST /intents/proposals/status`.** The guided intake funnel and the
   propose-then-confirm handshake are replaced by clarify-then-create.

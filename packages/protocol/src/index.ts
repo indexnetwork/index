@@ -163,23 +163,6 @@ export type {
   OpenedNegotiation,
 } from "./internal/opportunities/opportunity.counterparties.js";
 export {
-  opportunityOwnerActionForStatus,
-} from "./internal/opportunities/opportunity.owner-approval.js";
-export type {
-  OpportunityOwnerAction,
-  OpportunityOwnerApprovalAttestation,
-  OpportunityOwnerApprovalAuthority,
-  OpportunityOwnerApprovalBinding,
-  OpportunityOwnerApprovalChallenge,
-  OpportunityOwnerApprovalDenialReason,
-  OpportunityOwnerApprovalVerdict,
-  OpportunityOwnerInteractionProvenance,
-  OpportunityOwnerInteractionSurface,
-} from "./internal/opportunities/opportunity.owner-approval.js";
-export {
-  bindOwnerApprovalProvenance,
-} from "./internal/opportunities/opportunity.owner-provenance.js";
-export {
   gatherPresenterContext,
   OpportunityPresenter,
 } from "./internal/opportunities/opportunity.presentation.js";

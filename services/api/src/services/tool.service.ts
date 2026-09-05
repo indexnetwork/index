@@ -9,19 +9,14 @@ import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '.
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, ToolDeps } from '@indexnetwork/protocol';
 import { intentIndexing } from '../lib/intent/indexing';
-import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 
 import { log } from '../lib/log';
 
 const logger = log.service.from('ToolService');
-
-type ToolServiceDeps = ToolDeps & {
-  opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
-};
 
 
 /**
@@ -49,7 +44,7 @@ export class ToolService {
     userDb: ToolDeps['userDb'],
     systemDb: ToolDeps['systemDb'],
     graphs: ToolDeps['graphs'],
-  ): ToolServiceDeps {
+  ): ToolDeps {
     return {
       database,
       userDb,
@@ -58,10 +53,6 @@ export class ToolService {
       embedder: this.embedder,
       cache: this.cache,
       enricher: { enrichUserProfile },
-      // IND-593: direct authenticated-owner tool calls (REST tool controller /
-      // CLI) traverse the owner-approval boundary via host attestation. Own
-      // authority instance over the store shared with the MCP composition.
-      opportunityOwnerApproval: getDirectOpportunityOwnerApprovalAuthority(),
       graphs,
     };
   }
@@ -73,9 +64,6 @@ export class ToolService {
    * @param userId - Authenticated user ID
    * @param toolName - Name of the tool to invoke (e.g. "read_intents")
    * @param query - Tool input object (validated against tool schema)
-   * @param options - Trusted, server-derived request provenance from the
-   *   controller seam. `sessionAuthenticated` must reflect the authenticated
-   *   request's auth kind (AuthGuard session vs API key) — never caller input.
    * @returns Parsed tool result
    * @throws ChatContextAccessError if user/network context is invalid
    * @throws Error if tool not found or validation fails
@@ -84,7 +72,6 @@ export class ToolService {
     userId: string,
     toolName: string,
     query: Record<string, unknown> = {},
-    options: { sessionAuthenticated?: boolean } = {},
   ): Promise<unknown> {
     logger.verbose('Invoking tool', { userId, toolName });
 
@@ -92,14 +79,6 @@ export class ToolService {
 
     // Resolve user context
     const context = await resolveChatContext({ database, userId });
-    // IND-593 trusted provenance seam: mark this context as a direct
-    // authenticated owner session ONLY from the controller-derived auth kind.
-    // API-key (CLI/agent) callers stay unmarked and cannot attest owner
-    // authority at the opportunity owner-approval boundary.
-    bindOwnerApprovalProvenance(context, {
-      surface: 'rest',
-      sessionAuthenticated: options.sessionAuthenticated === true,
-    });
 
     // Get or compile graphs (cached across requests — graphs are stateless)
     const graphs = this.getOrCompileGraphs(database);

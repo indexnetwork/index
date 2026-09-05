@@ -16,14 +16,13 @@ import { intentIndexing } from '../lib/intent/indexing';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
-import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
 import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, CompositeToolDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, CompositeToolDatabase, McpAuthInput, McpResolvedIdentity, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -31,10 +30,6 @@ import { captureAppException } from '../lib/sentry';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 
 const logger = log.server.from('mcp');
-
-type McpToolDeps = ToolDeps & {
-  opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
-};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MCP COMPOSITION ROOT (was protocol-init.ts)
@@ -57,10 +52,6 @@ const protocolDeps = {
   agentDatabase: agentDatabaseAdapter,
   grantDefaultSystemPermissions: (userId: string) =>
     agentService.grantDefaultSystemPermissions(userId),
-  // IND-593: authoritative owner-proof verifier/consumer for opportunity state
-  // changes. Shared process-wide with the MCP toolDeps and the REST issuance
-  // route.
-  opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
   // #1471: host bridge for the `reject_opportunity` / `accept_opportunity`
@@ -355,7 +346,7 @@ function createMcpServerInstance(): McpServer {
   const userDb = protocolDeps.createUserDatabase(protocolDeps.database, 'system');
   const systemDb = protocolDeps.createSystemDatabase(protocolDeps.database, 'system', []);
 
-  const toolDeps: McpToolDeps = {
+  const toolDeps: ToolDeps = {
     database: protocolDeps.database,
     userDb,
     systemDb,
@@ -369,7 +360,6 @@ function createMcpServerInstance(): McpServer {
     negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
-    opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,
     reportToolError: (error, report) => captureAppException(error, {
       subsystem: report.subsystem ?? 'protocol',
       operation: report.operation,

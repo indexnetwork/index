@@ -2,8 +2,7 @@
  * Host bridge for the `reject_opportunity` and `accept_opportunity` tools.
  *
  * The owner passes a VERDICT on a counterparty. `update_opportunity` cannot
- * serve — its admission blocks `negotiating` outright, and the IND-593
- * owner-approval boundary fails closed there by design.
+ * serve — its admission blocks `negotiating` outright.
  *
  * Positions, never ids. The prompt lists this signal's actionable
  * counterparties, numbered; the tool takes the number; the host owns the

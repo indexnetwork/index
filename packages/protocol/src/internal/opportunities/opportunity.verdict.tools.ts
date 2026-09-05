@@ -4,27 +4,23 @@ import type { DefineTool, ResolvedToolContext, ToolDeps } from '../shared/agent/
 import { success, error } from '../shared/agent/tool.helpers.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import type { NegotiatorVerdictInput, NegotiatorVerdictResult } from '../../platform/negotiation/verdict.js';
-import { ownerApprovalProvenanceFor } from './opportunity.owner-provenance.js';
 
 /**
  * Owner verdict tools on the MCP surface (`reject_opportunity` /
  * `accept_opportunity`, #1471 one surface over).
  *
  * `update_opportunity` cannot serve the verdict: it refuses a `negotiating`
- * pairing outright and its IND-593 proof flow is built for agent-mediated
- * writes. These tools go through the verdict host instead: a numbered
+ * pairing outright. These tools go through the verdict host instead: a numbered
  * counterparty mapping, the same Radar Skip/Start-Chat service call
  * underneath, and the same outcome hooks (question retirement, DM resolution,
  * contact memberships) in its wake.
  *
- * Admission is exactly the class IND-593 admits for a direct owner
- * interaction: a SESSION-AUTHENTICATED principal, proven by the host-bound
- * owner-approval provenance (`bindOwnerApprovalProvenance`, mcp.server.ts) —
- * never a caller-supplied field. The capability matrix already hides these
- * tools from every agent principal (`human_only`); this handler check is the
- * fail-closed second layer, so a mis-listed surface still refuses. API-key
- * agents are refused, deliberately: a verdict is the owner's own gate, and the
- * boundary is the feature.
+ * Admission is a SESSION-AUTHENTICATED principal (`context.isSessionAuth`,
+ * bound by the host in mcp.server.ts) — never a caller-supplied field. The
+ * capability matrix already hides these tools from every agent principal
+ * (`human_only`); this handler check is the fail-closed second layer, so a
+ * mis-listed surface still refuses. API-key agents are refused, deliberately:
+ * a verdict is the owner's own gate, and the boundary is the feature.
  *
  * Positions, never ids — the host resolves the number against the same
  * oldest-first enumeration the DM prompt renders, and the executed result
@@ -80,12 +76,11 @@ export function createOpportunityVerdictTools(defineTool: DefineTool, deps: Tool
     execute: (userId: string, input: NegotiatorVerdictInput) => Promise<NegotiatorVerdictResult>,
   ): Promise<string> => {
     try {
-      // Fail-closed owner boundary (IND-593 class): only the host-bound
-      // provenance of a session-authenticated principal admits a verdict.
-      // The capability matrix already refuses agent principals; this refusal
-      // stands even if the tool is ever listed on a surface without it.
-      const provenance = ownerApprovalProvenanceFor(context);
-      if (context.agentId || provenance?.sessionAuthenticated !== true) {
+      // Fail-closed owner boundary: only a session-authenticated principal
+      // admits a verdict. The capability matrix already refuses agent
+      // principals; this refusal stands even if the tool is ever listed on a
+      // surface without it.
+      if (context.agentId || context.isSessionAuth !== true) {
         return error('Owner verdicts require the owner\'s own authenticated session. This principal cannot pass one.');
       }
       const result = await execute(context.userId, {

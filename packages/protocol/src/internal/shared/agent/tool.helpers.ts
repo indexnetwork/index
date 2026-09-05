@@ -92,6 +92,8 @@ export interface ResolvedToolContext {
   isMcp?: boolean;
   /** Agent ID when the request originates from an API key linked to an agent. */
   agentId?: string;
+  /** True when the host bound an authenticated owner session (never an API key). */
+  isSessionAuth?: boolean;
 }
 
 /**

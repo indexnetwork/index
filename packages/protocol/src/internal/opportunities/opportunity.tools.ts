@@ -16,14 +16,11 @@ import type { OpportunityToolDeps } from "./opportunity.tools.port.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { focusedIntentId, focusedNetworkId } from "../shared/agent/tool.scope.js";
 import { admitOpportunityUpdate } from "./opportunity.update-admission.js";
-import { opportunityOwnerActionForStatus } from "./opportunity.owner-approval.js";
-import { ownerApprovalProvenanceFor } from "./opportunity.owner-provenance.js";
 
 export { buildOpportunityPresentation } from "./opportunity.presentation.js";
 
 import { updateOpportunityStatus } from "./opportunity.graph.modes.js";
 import { createListOpportunitiesTool } from "./opportunity.tools.list.js";
-import { ownerApprovalDenial } from "./opportunity.tools.cards.js";
 
 export { attachOpportunityAppLink, attachProfileLink, buildMinimalOpportunityCard, buildOpportunityAppUrl, buildProfileUrl } from "./opportunity.tools.cards.js";
 
@@ -43,10 +40,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
       "- `expired`: Mark as expired (typically done by the system after timeout).\n\n" +
       "**When to use:** After list_opportunities returns persisted opportunity cards. " +
       "The user clicks 'Send' (pending), 'Accept', or 'Reject' on the card, and the agent calls this tool.\n\n" +
-      "**Owner approval (agents):** Agent-driven send/accept/reject transitions require an explicit owner-issued approval proof. " +
-      "Call without ownerApprovalProof first: the denial returns an approval challenge (interactionId, expiresAt) bound to the exact opportunity, action, owner, and agent. " +
-      "Relay that challenge to the owner for explicit approval, then retry once with the issued ownerApprovalProof. " +
-      "Proofs are single-use and expire; negotiation approvals and advisory values are never substitutes.\n\n" +
       "**Returns:** Confirmation with the new status and notification details (who was notified).",
     querySchema: z.object({
       opportunityId: z
@@ -57,15 +50,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         .describe(
           "New status: 'pending' = send the draft to the other party, 'accepted' = accept the connection, " +
           "'rejected' = decline, 'expired' = mark as timed out.",
-        ),
-      ownerApprovalProof: z
-        .string()
-        .min(1)
-        .optional()
-        .describe(
-          "Opaque owner-issued approval proof for this exact transition (agents only). Obtained after the owner " +
-          "explicitly approves the interaction challenge returned by a proof-less call. The opportunity, action, " +
-          "owner, agent, and interaction binding is always derived server-side; only this token is presented.",
         ),
       scopeType: z
         .enum(['intent'])
@@ -110,39 +94,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         selectedIntentScope: effectiveIntentScope,
       });
       if (admission.kind === 'denied') return error(admission.message);
-
-      // IND-593 owner-approval boundary: every owner-gated transition
-      // (send/accept/reject) requires an explicit owner-issued, fresh,
-      // atomically single-use proof before any graph/state persistence. The
-      // binding is derived ONLY from the resolved context and validated input —
-      // caller-controlled identity or proof-binding fields are never trusted.
-      // Registered agents present the opaque proof token; direct authenticated
-      // owners traverse the same boundary via host attestation. Fail closed
-      // when no authority is wired.
-      const ownerAction = opportunityOwnerActionForStatus(query.status);
-      if (ownerAction) {
-        const authority = deps.opportunityOwnerApproval;
-        if (!authority) {
-          return ownerApprovalDenial(opportunityId, ownerAction, { kind: 'denied', reason: 'missing' });
-        }
-        const directProvenance = ownerApprovalProvenanceFor(context);
-        const verdict = context.agentId
-          ? await authority.consumeAgentProof(query.ownerApprovalProof, {
-              opportunityId,
-              action: ownerAction,
-              ownerId: context.userId,
-              agentId: context.agentId,
-            })
-          : directProvenance
-            ? await authority.attestOwnerInteraction({
-                opportunityId,
-                action: ownerAction,
-                ownerId: context.userId,
-                provenance: directProvenance,
-              })
-            : { kind: 'denied' as const, reason: 'untrusted_provenance' as const };
-        if (verdict.kind === 'denied') return ownerApprovalDenial(opportunityId, ownerAction, verdict);
-      }
 
       const _updateGraphStart = Date.now();
       const _updateTraceEmitter = requestContext.getStore()?.traceEmitter;

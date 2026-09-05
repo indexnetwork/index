@@ -2,8 +2,7 @@
  * Card rendering and link minting for the opportunity tools.
  *
  * These are the pieces both `list_opportunities` and the mutation tools reach
- * for: the deep links, the minimal fallback card, and the small guards that
- * shape tool error payloads.
+ * for: the deep links and the minimal fallback card.
  */
 
 
@@ -11,7 +10,6 @@
 
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { narratorRemarkFromReasoning, safeFallbackSummary } from "./opportunity.presentation.js";
-import { type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from "./opportunity.owner-approval.js";
 
 
 export function stripLeadingNarratorName(remark: string, narratorName: string): string {
@@ -116,31 +114,6 @@ export function attachOpportunityAppLink(
 ): void {
   const appUrl = buildOpportunityAppUrl(card.opportunityId, opts.frontendUrl);
   if (appUrl) card.appUrl = appUrl;
-}
-
-/**
- * IND-593: stable fail-closed denial for the owner-approval boundary. The
- * `missing` reason carries the fresh, server-derived interaction challenge the
- * owner must explicitly approve; all other reasons carry no challenge.
- */
-export function ownerApprovalDenial(
-  opportunityId: string,
-  action: OpportunityOwnerAction,
-  verdict: Extract<OpportunityOwnerApprovalVerdict, { kind: 'denied' }>,
-): string {
-  return JSON.stringify({
-    success: false,
-    error: `Owner approval required for this opportunity ${action} (${verdict.reason}).`,
-    approval: {
-      code: "owner_approval_required",
-      reason: verdict.reason,
-      opportunityId,
-      action,
-      ...(verdict.challenge
-        ? { interactionId: verdict.challenge.interactionId, expiresAt: verdict.challenge.expiresAt }
-        : {}),
-    },
-  });
 }
 
 /**

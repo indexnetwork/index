@@ -55,7 +55,6 @@ const envSchema = z.object({
 
   // 2. Authentication
   BETTER_AUTH_SECRET: requiredUnlessTest,
-  OPPORTUNITY_OWNER_APPROVAL_SECRET: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   TRUSTED_ORIGINS: z.string().optional(),
