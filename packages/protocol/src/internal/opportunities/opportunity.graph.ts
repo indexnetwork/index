@@ -5,7 +5,7 @@
  * Flow: Prep → Scope → Resolve → Discovery → Evaluation → Ranking → EmitCandidates → MatchesReady → END
  *
  * Key Constraints:
- * - Opportunities only between intents sharing the same index
+ * - Opportunities only between intents sharing the same network
  * - Both intents must have hyde documents for semantic matching
  * - Non-indexed intents cannot participate in discovery
  *

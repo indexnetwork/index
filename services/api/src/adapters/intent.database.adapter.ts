@@ -720,7 +720,7 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Associates an intent with an index (inserts intent_networks row).
+   * Associates an intent with a network (inserts intent_networks row).
    * @param intentId - The intent identifier.
    * @param networkId - The network identifier.
    * @returns Promise that resolves when the row is inserted.

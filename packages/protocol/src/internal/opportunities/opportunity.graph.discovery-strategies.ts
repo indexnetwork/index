@@ -81,8 +81,8 @@ export async function runQueryHydeDiscovery(ctx: DiscoveryStrategyContext): Prom
   discoveryLog.verbose('searchWithHydeEmbeddings raw results', { total: all.length });
   const byKey = new Map<string, CandidateMatch>();
   for (const c of all) {
-    // Dedup by candidateUserId + intent, NOT by indexId. Including indexId
-    // caused the same user to appear once per index they belong to.
+    // Dedup by candidateUserId + intent, NOT by networkId. Including networkId
+    // caused the same user to appear once per network they belong to.
     const key = `${c.candidateUserId}:intent:${c.candidateIntentId}`;
     if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
       byKey.set(key, c);

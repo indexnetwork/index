@@ -311,7 +311,7 @@ export function createIndexApiClient(options = {}) {
       },
       /** @param {string} dataUrl data:image/... from PicturePicker */
       uploadNetworkImage: async (dataUrl, options = {}) => {
-        const r = await uploadDataUrl('/storage/index-images', dataUrl, 'image', 'network', options);
+        const r = await uploadDataUrl('/storage/network-images', dataUrl, 'image', 'network', options);
         return /** @type {string} */ (r.imageUrl);
       },
     },

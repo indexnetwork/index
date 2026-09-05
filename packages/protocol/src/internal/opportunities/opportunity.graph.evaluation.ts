@@ -353,7 +353,7 @@ async function evaluateCandidatePool(
 
   return { evaluatedOpportunities, trace: traceEntries };
 }
-/** Dedup by userId — when same similarity, prefer index with highest relevancyScore. */
+/** Dedup by userId — when same similarity, prefer network with highest relevancyScore. */
 function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: OpportunityState): CandidateMatch[] {
   const bestByUser = new Map<string, CandidateMatch>();
   for (const c of sortedCandidates) {
@@ -363,7 +363,7 @@ function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: Oppor
     } else if (c.similarity > existing.similarity) {
       bestByUser.set(c.candidateUserId, c);
     } else if (c.similarity === existing.similarity) {
-      // Tie-break: prefer index with higher relevancy score
+      // Tie-break: prefer network with higher relevancy score
       const cScore = state.networkRelevancyScores[c.networkId] ?? 0;
       const existingScore = state.networkRelevancyScores[existing.networkId] ?? 0;
       if (cScore > existingScore) {

@@ -7,6 +7,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Network picture upload forwards to `POST /storage/network-images`, following
+  the Index API's rename of that route from `/storage/index-images`. Requires an
+  API at 0.107.0 or newer.
+
 ### Removed
 - **The `hasMasterKey` network field.** The dashboard no longer forwards it and
   the network detail always shows visibility and the invitation link, matching

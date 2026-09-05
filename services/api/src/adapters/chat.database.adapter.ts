@@ -2147,7 +2147,7 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Leave a network. Members (non-owners) can leave an index.
+   * Leave a network. Members (non-owners) can leave.
    * Owners cannot leave their own network.
    */
   async leaveNetwork(networkId: string, userId: string) {

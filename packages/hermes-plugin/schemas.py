@@ -11,7 +11,7 @@ INDEX_READ_INTENTS = {
         "server. Use this when the user asks what they are looking for, what "
         "signals they have, or what members of a specific network/community are "
         "seeking. With no parameters, returns the caller's own active intents. "
-        "Pass networkId to browse intents in an Index the caller can access; "
+        "Pass networkId to browse intents in a network the caller can access; "
         "pass userId to filter to one user where the network scope allows it."
     ),
     "parameters": {

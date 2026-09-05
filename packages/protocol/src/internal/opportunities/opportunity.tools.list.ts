@@ -61,7 +61,7 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
       const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
       const scopedNetworkLabel = focusedNetworkLabel(context);
 
-      // Strict scope enforcement: when chat is network-scoped, only allow that index
+      // Strict scope enforcement: when chat is network-scoped, only allow that network
       if (
         scopedNetworkId &&
         query.networkId?.trim() &&

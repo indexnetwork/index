@@ -198,7 +198,7 @@ export interface DatabaseOpportunityQueries {
   ): Promise<Opportunity[]>;
 
   /**
-   * Get opportunities in an index (for index admins).
+   * Get opportunities in a network (for network admins).
    *
    * @param networkId - Network ID
    * @param options - Optional filters and pagination
@@ -271,7 +271,7 @@ export interface DatabaseOpportunityQueries {
   ): Promise<{ created: Opportunity; expired: Opportunity[] } | null>;
 
   /**
-   * Check if an opportunity already exists between the given actors in the index (deduplication).
+   * Check if an opportunity already exists between the given actors in the network (deduplication).
    *
    * @param actorIds - Array of user IDs that would be actors
    * @param networkId - Network ID
@@ -334,7 +334,7 @@ export interface DatabaseOpportunityQueries {
   expireOpportunitiesByIntent(intentId: string): Promise<number>;
 
   /**
-   * Expire opportunities for a user removed from an index.
+   * Expire opportunities for a user removed from a network.
    *
    * @param networkId - Network ID
    * @param userId - User ID that was removed
