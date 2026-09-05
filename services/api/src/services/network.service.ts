@@ -250,10 +250,9 @@ export class NetworkService {
 
   /**
    * Compose the /networks overview payload for the current member: their intents
-   * in the network and their per-network user_context. Members only: membership
-   * is asserted up front so neither current-user scoped read runs for a
-   * non-member. Intents go through the honest, uncapped
-   * getNetworkIntentsForMemberOwn. See EDG-53.
+   * in the network. Members only: membership is asserted up front so the
+   * current-user scoped read does not run for a non-member. Intents go through
+   * the honest, uncapped getNetworkIntentsForMemberOwn.
    */
   async getNetworkOverview(networkId: string, userId: string) {
     logger.verbose('Getting network overview', { networkId, userId });
@@ -261,14 +260,8 @@ export class NetworkService {
     if (!isMember) {
       throw new Error('Access denied: Not a member of this network');
     }
-    const [intents, userContext] = await Promise.all([
-      this.adapter.getNetworkIntentsForMemberOwn(networkId, userId),
-      this.adapter.getUserContext(userId, networkId),
-    ]);
-    return {
-      intents,
-      userContext: userContext ? { text: userContext.text, generatedAt: userContext.generatedAt } : null,
-    };
+    const intents = await this.adapter.getNetworkIntentsForMemberOwn(networkId, userId);
+    return { intents };
   }
 
   /**

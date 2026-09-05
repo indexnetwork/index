@@ -487,8 +487,7 @@ export class NetworkController {
   }
 
   /**
-   * Get the current user's overview for a network: their intents and
-   * per-network user_context. Members only.
+   * Get the current user's overview for a network: their intents. Members only.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/overview')

@@ -50,14 +50,12 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
     userName: string;
   }[]>([]);
   const [overviewLoading, setOverviewLoading] = useState(true);
-  const [userContext, setUserContext] = useState<{ text: string; generatedAt: string } | null>(null);
 
   useEffect(() => {
     const loadOverview = async () => {
       try {
         const overview = await networksService.getNetworkOverview(network.id);
         setIntents(overview.intents);
-        setUserContext(overview.userContext);
       } catch (err) {
         logger.error('Error loading network overview', { error: err });
       } finally {
@@ -91,28 +89,6 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
   return (
     <>
       <div className="space-y-8">
-        <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-            Your Context
-          </p>
-          {overviewLoading ? (
-            <div
-              role="status"
-              className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg"
-            >
-              Loading your network context…
-            </div>
-          ) : userContext && userContext.text.trim().length > 0 ? (
-            <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{userContext.text}</p>
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-              <p>Your context for this network is still being generated</p>
-            </div>
-          )}
-        </div>
-
         <div>
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
