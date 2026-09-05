@@ -167,7 +167,7 @@ export interface ActiveIntent {
 
 /**
  * Input data for creating a new intent.
- * Supports the full intent pipeline including embedding and index association.
+ * Supports the full intent pipeline including embedding and network association.
  */
 export interface CreateIntentData {
   /** The user who owns this intent */
@@ -219,7 +219,7 @@ export interface UpdateIntentData {
   embedding?: number[];
   /** Updated incognito status */
   isIncognito?: boolean;
-  /** Updated index associations (replaces existing) */
+  /** Updated network associations (replaces existing) */
   networkIds?: string[];
   /** Semantic entropy from verifier (0 specific -> 1 vague) */
   semanticEntropy?: number | null;
@@ -324,7 +324,7 @@ export interface SimilarIntentSearchOptions {
 }
 
 /**
- * Represents a user's membership in an index with full details.
+ * Represents a user's membership in a network with full details.
  * Used for displaying network memberships in chat (network_query).
  */
 export interface ActiveNetworkMembershipPair {
@@ -333,11 +333,11 @@ export interface ActiveNetworkMembershipPair {
 }
 
 export interface NetworkMembership {
-  /** Unique identifier of the index */
+  /** Unique identifier of the network */
   networkId: string;
-  /** Display title of the index */
+  /** Display title of the network */
   networkTitle: string;
-  /** Index description/prompt (what the community is about) */
+  /** Network description/prompt (what the community is about) */
   networkPrompt: string | null;
   /** Member's permissions in this network */
   permissions: string[];

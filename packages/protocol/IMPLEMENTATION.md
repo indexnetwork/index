@@ -203,23 +203,22 @@ community tools.
 import { Networks } from "@indexnetwork/protocol";
 
 const networks = new Networks({
-  database,          // community, roster, and assignment persistence
-  indexer: intents,  // an `Intents` instance — scores a signal against a community
+  database, // community, roster, and assignment persistence
 });
 ```
 
-Both dependencies are optional; each method names what it requires, so a host
+The dependency is optional; each method names what it requires, so a host
 that only registers tools can construct `new Networks()` with nothing.
 
 | Method | Purpose |
 |---|---|
 | `createGraph()` | Compile the community lifecycle graph — create, read, update, delete. Requires `database` |
 | `createMembershipGraph()` | Compile the roster graph — add, list, remove members. Requires `database` |
-| `createAssignmentGraph()` | Compile signal↔community assignment, direct or model-evaluated. Requires `database` and `indexer` |
+| `createAssignmentGraph()` | Compile signal↔community assignment — link and unlink. Requires `database` |
 | `Networks.createTools(defineTool, deps)` | Register the agent-facing community tools |
 
-Assignment takes an `Intents` instance as its evaluator — the `indexer`
-dependency is narrowed to the single `indexIntent` method it calls.
+Assignment applies no scoring policy: a link exists because the signal's owner
+asked for it, so the row is written at score 1 with `mode: manual_override`.
 
 ## MCP server
 

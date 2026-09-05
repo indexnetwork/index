@@ -41,7 +41,7 @@ output with `setLoggerFactory()`. The package does not implement
 | HyDE | `internal/discovery/hyde.graph.ts` | Infer search lenses, generate hypothetical documents per lens/corpus, and embed them (cache-aware) |
 | Network | `internal/networks/network.graph.ts` | Manage network CRUD |
 | Network Membership | `internal/networks/membership.graph.ts` | Manage network member join/leave |
-| Intent Indexer | `internal/networks/indexer.graph.ts` | Evaluate and assign/unassign intents to indexes |
+| Intent Indexer | `internal/networks/indexer.graph.ts` | Assign and unassign intents to networks at the owner's request |
 | Radar | `internal/opportunities/radar/radar.graph.ts` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 
 ## Agents
@@ -52,7 +52,6 @@ output with `setLoggerFactory()`. The package does not implement
 | Intent Inferrer | `internal/intents/inference/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
 | Intent Reconciler | `internal/intents/inference/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
 | Intent Verifier | `internal/intents/verification/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
-| Intent Indexer | `internal/intents/indexing/intent.indexer.ts` | Intent Network graph — scores intent-network fit as relevancy score |
 | Network Recommender | `internal/networks/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
 | HyDE Generator | `internal/discovery/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
 | HyDE Strategies | `internal/discovery/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |

@@ -736,7 +736,7 @@ export function getSafePresentationOrSkip(
  *
  * Generates personalized, second-person explanations of why an opportunity
  * matters to the viewing user. Uses full opportunity data (interpretation,
- * actors, profiles, intents, index) to produce headline, personalizedSummary,
+ * actors, profiles, intents, network) to produce headline, personalizedSummary,
  * and suggestedAction for chat tools and user-facing surfaces.
  */
 
@@ -1306,7 +1306,7 @@ export function summarizeSignalsForPresenter(
 
 /**
  * Gather all context needed for the presenter from the database.
- * Fetches viewer profile, viewer intents, other party profile(s), and index in parallel.
+ * Fetches viewer profile, viewer intents, other party profile(s), and network in parallel.
  *
  * @param displayCounterpartUserId - When set (e.g. for a radar card), only this counterpart is included in otherPartyContext so the presenter writes about the person on the card.
  * @param focusedViewerIntentId - When set, include only that active intent in viewer context.

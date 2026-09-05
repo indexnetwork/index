@@ -73,7 +73,7 @@ export async function readOpportunities(
         };
       }
 
-      // Dedupe by counterpart set (same people = one row) so chat does not show "You and X" per index
+      // Dedupe by counterpart set (same people = one row) so chat does not show "You and X" per network
       const counterpartKey = (opp: (typeof list)[number]) =>
         opp.actors
           .filter((a: OpportunityActor) => a.userId !== request.userId)
@@ -103,7 +103,7 @@ export async function readOpportunities(
           const partyIds = otherParties.map((a: OpportunityActor) => a.userId);
           const idsToResolve = partyIds;
           // Use the counterpart's (non-viewer) networkId — it reflects where the match was found.
-          // actors[0] is typically the viewer with an arbitrary first-target-index value.
+          // actors[0] is typically the viewer with an arbitrary first-target-network value.
           const counterpartActor = opp.actors.find((a: OpportunityActor) => a.userId !== request.userId);
           const actorNetworkId = counterpartActor?.networkId ?? opp.actors[0]?.networkId;
           const [networkRecord, ...profileAndUserPairs] = await Promise.all([
