@@ -280,7 +280,7 @@ final class NativeAPIRequestBridge {
         ("PATCH", #"^/conversations/[^/?]+/metadata$"#),
         ("DELETE", #"^/conversations/[^/?]+$"#),
     ]
-    static let allowedUploadRoutes: Set<String> = ["/storage/avatars", "/storage/index-images"]
+    static let allowedUploadRoutes: Set<String> = ["/storage/avatars", "/storage/network-images"]
     static let allowedUploadMedia: [String: (mimeType: String, extensionName: String)] = [
         "data:image/jpeg;base64": ("image/jpeg", "jpg"),
         "data:image/png;base64": ("image/png", "png"),

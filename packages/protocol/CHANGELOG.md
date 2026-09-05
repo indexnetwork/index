@@ -20,6 +20,19 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 49.0.1 - 2026-09-05
+
+### Changed
+
+- Documentation only. TSDoc and inline comments across `platform/database/` and
+  `internal/opportunities/` no longer call a network an "index".
+  `IMPLEMENTATION.md` drops the removed `indexer` dependency from its `Networks`
+  example and describes `createAssignmentGraph()` as it behaves today: no
+  scoring policy, rows written at score 1 with `mode: manual_override`.
+  `src/README.md` drops the Intent Indexer agent row, whose file
+  (`internal/intents/indexing/intent.indexer.ts`) no longer exists. No public
+  surface change.
+
 ## 49.0.0 - 2026-09-04
 
 ### Removed

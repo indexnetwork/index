@@ -145,9 +145,9 @@ export class StorageController {
 
   /**
    * Upload a network image to S3.
-   * POST /api/storage/index-images
+   * POST /api/storage/network-images
    */
-  @Post('/index-images')
+  @Post('/network-images')
   @UseGuards(RateLimit('write'), AuthGuard)
   async uploadNetworkImage(req: Request, user: AuthenticatedUser): Promise<Response | object> {
     let parsed: ParsedFile;
@@ -186,16 +186,16 @@ export class StorageController {
 
   /**
    * Serve network image (public, streams from S3).
-   * GET /api/storage/index-images/:userId/:filename
+   * GET /api/storage/network-images/:userId/:filename
    */
-  @Get('/index-images/:userId/:filename')
+  @Get('/network-images/:userId/:filename')
   @UseGuards(RateLimit('read'))
   async serveNetworkImage(
     _req: Request,
     _user: unknown,
     params: { userId: string; filename: string }
   ): Promise<Response> {
-    const key = `index-images/${params.userId}/${params.filename}`;
+    const key = `network-images/${params.userId}/${params.filename}`;
     return this.servePublicFile(key);
   }
 

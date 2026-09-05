@@ -1613,7 +1613,7 @@ def upload_avatar(body: dict[str, Any] | None = Body(default=None)) -> dict[str,
 
 @full_router.post("/network-images")
 def upload_network_image(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Upload a network picture (data URL) to `POST /storage/index-images`.
+    """Upload a network picture (data URL) to `POST /storage/network-images`.
 
     Same data-URL → multipart pattern as `/profile/avatar`, field name `image`.
     """
@@ -1622,7 +1622,7 @@ def upload_network_image(body: dict[str, Any] | None = Body(default=None)) -> di
     if decode_error:
         return {"success": False, "error": decode_error}
     filename = f"network.{_AVATAR_EXTENSIONS.get(content_type, 'png')}"
-    payload = _api_multipart("/storage/index-images", "image", filename, content, content_type)
+    payload = _api_multipart("/storage/network-images", "image", filename, content, content_type)
     if payload.get("success") is False:
         return payload
     image_url = _text(payload.get("imageUrl"))

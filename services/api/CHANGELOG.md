@@ -10,6 +10,14 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: network images are stored under `network-images`, not
+  `index-images`.** `POST /api/storage/index-images` and
+  `GET /api/storage/index-images/:userId/:filename` are now
+  `/api/storage/network-images`, and uploads are keyed
+  `network-images/{userId}/{uuid}.{ext}`. This repairs network image upload from
+  the web app, which already posted to the new path and was getting a 404.
+  Images uploaded before this release keep their `index-images/` keys and no
+  longer resolve; there is no migration.
 - **BREAKING: opportunity payloads name the community `network`, not `index`.**
   `GET /opportunities` and friends return `network: { id, title }` where they
   returned `index`, and `POST /networks/invitation/:code/accept` returns
