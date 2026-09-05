@@ -1,13 +1,13 @@
 name: index-network
-version: 0.27.0
+version: 0.28.0
 description: Index Network Hermes plugin with native tools backed by Index MCP and REST APIs.
 provides_tools:
   - index_read_intents
   - index_research_profile
   - index_create_intent
   - index_update_intent
-  - index_create_intent_index
-  - index_read_intent_indexes
+  - index_add_intent_to_network
+  - index_list_intent_networks
   - index_search_intents
   - index_read_networks
   - index_read_network_memberships

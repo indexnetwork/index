@@ -90,11 +90,11 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       }
       return intent;
     },
-    associateIntentWithNetworks: async (intentId: string, indexIds: string[]) => {
+    associateIntentWithNetworks: async (intentId: string, networkIds: string[]) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      for (const networkId of indexIds) {
+      for (const networkId of networkIds) {
         await db.assignIntentToNetwork(intentId, networkId);
       }
     },
@@ -124,11 +124,11 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
           assignmentMetadata,
         )
       : Promise.resolve({ kind: 'intent_not_owned_or_not_found' } as const),
-    unassignIntentFromIndex: async (intentId: string, networkId: string) => {
+    unassignIntentFromNetwork: async (intentId: string, networkId: string) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      return db.unassignIntentFromIndex(intentId, networkId);
+      return db.unassignIntentFromNetwork(intentId, networkId);
     },
     getNetworkIdsForIntent: async (intentId: string) => {
       const intent = await db.getIntent(intentId);
@@ -136,30 +136,30 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
       return db.getNetworkIdsForIntent(intentId);
     },
-    isIntentAssignedToIndex: async (intentId: string, networkId: string) => {
+    isIntentAssignedToNetwork: async (intentId: string, networkId: string) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      return db.isIntentAssignedToIndex(intentId, networkId);
+      return db.isIntentAssignedToNetwork(intentId, networkId);
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Network Membership Operations
     // ─────────────────────────────────────────────────────────────────────────────
     getNetworkMemberships: () => db.getNetworkMemberships(authUserId),
-    getUserIndexIds: () => db.getUserIndexIds(authUserId),
-    getOwnedIndexes: () => db.getOwnedIndexes(authUserId),
+    getUserNetworkIds: () => db.getUserNetworkIds(authUserId),
+    getOwnedNetworks: () => db.getOwnedNetworks(authUserId),
     getNetworkMembership: (networkId: string) => db.getNetworkMembership(networkId, authUserId),
     getNetworkMemberContext: (networkId: string) => db.getNetworkMemberContext(networkId, authUserId),
     getNetworkAssignmentContext: (networkId: string) => db.getNetworkAssignmentContext(networkId, authUserId),
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Index CRUD Operations
+    // Network CRUD Operations
     // ─────────────────────────────────────────────────────────────────────────────
     createNetwork: (data: Parameters<ChatDatabaseAdapter['createNetwork']>[0]) => db.createNetwork(data),
-    updateIndexSettings: (networkId: string, data: Parameters<ChatDatabaseAdapter['updateIndexSettings']>[2]) => db.updateIndexSettings(networkId, authUserId, data),
+    updateNetworkSettings: (networkId: string, data: Parameters<ChatDatabaseAdapter['updateNetworkSettings']>[2]) => db.updateNetworkSettings(networkId, authUserId, data),
     softDeleteNetwork: async (networkId: string) => {
-      const isOwner = await db.isIndexOwner(networkId, authUserId);
+      const isOwner = await db.isNetworkOwner(networkId, authUserId);
       if (!isOwner) throw new Error('Access denied: not network owner');
       return db.softDeleteNetwork(networkId);
     },
@@ -167,7 +167,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     // ─────────────────────────────────────────────────────────────────────────────
     // Public Network Discovery
     // ─────────────────────────────────────────────────────────────────────────────
-    getPublicIndexesNotJoined: () => db.getPublicIndexesNotJoined(authUserId),
+    getPublicNetworksNotJoined: () => db.getPublicNetworksNotJoined(authUserId),
     joinPublicNetwork: (networkId: string) => db.joinPublicNetwork(networkId, authUserId),
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -207,14 +207,14 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
  *
  * @param db - The raw ChatDatabaseAdapter
  * @param authUserId - The authenticated user's ID
- * @param indexScope - Array of network IDs the user has access to
+ * @param networkScope - Array of network IDs the user has access to
  * @param embedder - Optional vector store for findSimilarIntentsInScope (pgvector search). When omitted, findSimilarIntentsInScope returns [].
- * @returns A SystemDatabase bound to authUserId and indexScope
+ * @returns A SystemDatabase bound to authUserId and networkScope
  */
 export function createSystemDatabase(
   db: ChatDatabaseAdapter,
   authUserId: string,
-  indexScope: string[],
+  networkScope: string[],
   embedder?: VectorStore,
 ) {
   /**
@@ -222,38 +222,38 @@ export function createSystemDatabase(
    * Throws if the network is not in scope.
    */
   const verifyScope = (networkId: string): void => {
-    if (!indexScope.includes(networkId)) {
-      throw new Error(`Access denied: index ${networkId} not in scope`);
+    if (!networkScope.includes(networkId)) {
+      throw new Error(`Access denied: network ${networkId} not in scope`);
     }
   };
 
   /**
-   * Verify that a user shares at least one index with the auth user.
-   * Returns true if they share an index, false otherwise.
+   * Verify that a user shares at least one network with the auth user.
+   * Returns true if they share a network, false otherwise.
    */
-  const verifySharedIndex = async (userId: string): Promise<boolean> => {
+  const verifySharedNetwork = async (userId: string): Promise<boolean> => {
     if (userId === authUserId) return true;
     const theirMemberships = await db.getNetworkMemberships(userId);
-    if (theirMemberships.some((m) => indexScope.includes(m.networkId))) return true;
+    if (theirMemberships.some((m) => networkScope.includes(m.networkId))) return true;
 
     return false;
   };
 
   return {
     authUserId,
-    indexScope,
+    networkScope,
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Profile Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
     getProfile: async (userId: string) => {
-      if (!(await verifySharedIndex(userId))) {
+      if (!(await verifySharedNetwork(userId))) {
         throw new Error('Access denied: no shared network with user');
       }
       return db.getProfile(userId);
     },
     getUser: async (userId: string) => {
-      if (!(await verifySharedIndex(userId))) {
+      if (!(await verifySharedNetwork(userId))) {
         throw new Error('Access denied: no shared network with user');
       }
       return db.getUser(userId);
@@ -262,24 +262,24 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     // Intent Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
-    getIntentsInIndex: async (networkId: string, options?: { limit?: number; offset?: number }) => {
+    getIntentsInNetwork: async (networkId: string, options?: { limit?: number; offset?: number }) => {
       verifyScope(networkId);
       return db.getNetworkIntentsForMember(networkId, authUserId, options);
     },
-    getUserIntentsInIndex: async (userId: string, networkId: string) => {
+    getUserIntentsInNetwork: async (userId: string, networkId: string) => {
       verifyScope(networkId);
-      return db.getIntentsInIndexForMember(userId, networkId);
+      return db.getIntentsInNetworkForMember(userId, networkId);
     },
-    getActiveIntentsAcrossIndexes: async (userId: string, indexIds: string[]) => {
+    getActiveIntentsAcrossNetworks: async (userId: string, networkIds: string[]) => {
       // Caller-only semantic: the method returns the *caller's own* intents.
       // Reject cross-user lookups at the systemDb boundary as defense-in-depth,
       // even though the tool layer always passes context.userId today.
       if (userId !== authUserId) {
-        throw new Error('Access denied: getActiveIntentsAcrossIndexes is caller-only');
+        throw new Error('Access denied: getActiveIntentsAcrossNetworks is caller-only');
       }
       // Filter to only IDs within scope before delegating.
-      const scopedIds = indexIds.filter((id) => indexScope.includes(id));
-      return db.getActiveIntentsAcrossIndexes(userId, scopedIds);
+      const scopedIds = networkIds.filter((id) => networkScope.includes(id));
+      return db.getActiveIntentsAcrossNetworks(userId, scopedIds);
     },
     /**
      * Retrieves an intent by ID without scope check.
@@ -288,7 +288,7 @@ export function createSystemDatabase(
      */
     getIntent: (intentId: string) => db.getIntent(intentId),
     findSimilarIntentsInScope: async (embedding: number[], options?: { limit?: number; threshold?: number }) => {
-      if (!embedder || indexScope.length === 0) {
+      if (!embedder || networkScope.length === 0) {
         return [] as SimilarIntent[];
       }
       const limit = options?.limit ?? 10;
@@ -296,7 +296,7 @@ export function createSystemDatabase(
       const results = await embedder.search<{ id: string; payload: string; summary: string | null; userId: string }>(
         embedding,
         'intents',
-        { limit, minScore: threshold, filter: { indexScope } }
+        { limit, minScore: threshold, filter: { networkScope } }
       );
       const intents = await Promise.all(results.map((r) => db.getIntent(r.item.id)));
       return results
@@ -329,31 +329,31 @@ export function createSystemDatabase(
      */
     isNetworkMember: (networkId: string, userId: string) => db.isNetworkMember(networkId, userId),
     /**
-     * Checks index ownership without scope check.
+     * Checks network ownership without scope check.
      * @remarks Intentionally unscoped -- used by agent graphs and tools that need to verify
      * ownership for any user (e.g. permission checks during graph execution).
      */
-    isIndexOwner: (networkId: string, userId: string) => db.isIndexOwner(networkId, userId),
+    isNetworkOwner: (networkId: string, userId: string) => db.isNetworkOwner(networkId, userId),
     getNetworkMembers: async (networkId: string) => {
       verifyScope(networkId);
       return db.getNetworkMembersForMember(networkId, authUserId);
     },
-    getMembersFromScope: () => db.getMembersFromUserIndexes(authUserId as Id<'users'>),
+    getMembersFromScope: () => db.getMembersFromUserNetworks(authUserId as Id<'users'>),
     /**
-     * Adds a member to an index without scope check.
+     * Adds a member to a network without scope check.
      * @remarks Intentionally unscoped -- used by join flows and invitation acceptance
      * that operate outside the caller's current network scope.
      */
     addMemberToNetwork: (networkId: string, userId: string, role: 'owner' | 'member') => db.addMemberToNetwork(networkId, userId, role),
     /**
-     * Removes a member from an index without scope check.
+     * Removes a member from a network without scope check.
      * @remarks Intentionally unscoped -- used by leave/kick flows and member removal
      * handlers that operate across user boundaries.
      */
-    removeMemberFromIndex: (networkId: string, userId: string) => db.removeMemberFromIndex(networkId, userId),
+    removeMemberFromNetwork: (networkId: string, userId: string) => db.removeMemberFromNetwork(networkId, userId),
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Index Operations (within scope)
+    // Network Operations (within scope)
     // ─────────────────────────────────────────────────────────────────────────────
     getNetwork: async (networkId: string) => {
       verifyScope(networkId);
@@ -402,17 +402,17 @@ export function createSystemDatabase(
     updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1], acceptedBy?: string) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
-      const opportunityIndexId = opportunity.context?.networkId;
-      if (!opportunityIndexId) throw new Error('Opportunity not found');
-      verifyScope(opportunityIndexId);
+      const opportunityNetworkId = opportunity.context?.networkId;
+      if (!opportunityNetworkId) throw new Error('Opportunity not found');
+      verifyScope(opportunityNetworkId);
       return acceptedBy ? db.updateOpportunityStatus(id, status, acceptedBy) : db.updateOpportunityStatus(id, status);
     },
     stampOpportunityActorAction: async (id: string, actorUserId: string, status: Parameters<ChatDatabaseAdapter['stampOpportunityActorAction']>[2], acceptedBy?: string) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
-      const opportunityIndexId = opportunity.context?.networkId;
-      if (!opportunityIndexId) throw new Error('Opportunity not found');
-      verifyScope(opportunityIndexId);
+      const opportunityNetworkId = opportunity.context?.networkId;
+      if (!opportunityNetworkId) throw new Error('Opportunity not found');
+      verifyScope(opportunityNetworkId);
       return db.stampOpportunityActorAction(id, actorUserId, status, acceptedBy);
     },
     opportunityExistsBetweenActors: (actorIds: string[], networkId: string) => {
@@ -430,7 +430,7 @@ export function createSystemDatabase(
     /**
      * Expires opportunities for a removed member without scope check.
      * @remarks Intentionally unscoped -- called by network membership removal event handlers
-     * that clean up opportunities when a member leaves or is kicked from an index.
+     * that clean up opportunities when a member leaves or is kicked from a network.
      */
     expireOpportunitiesForRemovedMember: (networkId: string, userId: string) => db.expireOpportunitiesForRemovedMember(networkId, userId),
     /**

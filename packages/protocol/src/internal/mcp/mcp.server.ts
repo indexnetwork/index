@@ -257,11 +257,11 @@ export const applyNetworkScopeToContext = (
   const bound = context.userNetworks.find((m) => m.networkId === networkScopeId);
   if (!bound) return;
 
-  context.indexName = bound.networkTitle;
-  context.scopedIndex = {
+  context.networkName = bound.networkTitle;
+  context.scopedNetwork = {
     id: bound.networkId,
     title: bound.networkTitle,
-    prompt: bound.indexPrompt ?? null,
+    prompt: bound.networkPrompt ?? null,
   };
   const isOwner = bound.permissions?.includes('owner') ?? false;
   context.scopedMembershipRole = isOwner ? 'owner' : 'member';
@@ -281,7 +281,7 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     : `1. Ask the user for their name and a short self-description.`;
 
   const communityStep = ctx.networkId
-    ? `3. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
+    ? `3. (Skipped — user is already in "${ctx.networkName ?? 'their community'}".)`
     : `3. Call read_networks() and let the user pick communities to join via create_network_membership(networkId=...).`;
 
   const allowedList = Array.from(ONBOARDING_ALLOWED).join(', ');

@@ -2,7 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 
 /**
  * Network Membership Graph State.
- * Handles CRUD operations for network memberships (index_members table).
+ * Handles CRUD operations for network memberships (network_members table).
  *
  * ## Membership authority policy
  *

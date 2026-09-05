@@ -33,7 +33,7 @@ export type DiscoveryOutcome = z.infer<typeof DiscoveryOutcomeSchema>;
 export const DiscoveryNegotiationSchema = z.object({
   counterpartyId: z.string(),
   counterpartyHint: z.string(),
-  indexContext: z.string(),
+  networkContext: z.string(),
   turns: z.array(DiscoveryTurnSchema),
   outcome: DiscoveryOutcomeSchema,
   seedAssessmentScore: z.number().optional(),

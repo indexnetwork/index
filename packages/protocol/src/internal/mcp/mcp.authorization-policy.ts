@@ -53,8 +53,8 @@ export const HERMES_AGENT_MCP_TOOL_PERMISSIONS = defineMcpToolPermissionMap({
   search_intents: { action: 'manage:intents', reach: 'network' },
   create_intent: { action: 'manage:intents', reach: 'network' },
   update_intent: { action: 'manage:intents', reach: 'network' },
-  read_intent_indexes: { action: 'manage:intents', reach: 'network' },
-  create_intent_index: { action: 'manage:intents', reach: 'network' },
+  list_intent_networks: { action: 'manage:intents', reach: 'network' },
+  add_intent_to_network: { action: 'manage:intents', reach: 'network' },
   read_networks: { action: 'manage:networks', reach: 'network' },
   read_network_memberships: { action: 'manage:networks', reach: 'network' },
   create_network: { action: 'manage:networks', reach: 'network' },
@@ -126,9 +126,9 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   create_intent: { access: 'permission', actions: ['manage:intents'], reach: 'network' },
   update_intent: { access: 'permission', actions: ['manage:intents'], reach: 'network' },
   delete_intent: { access: 'permission', actions: ['manage:intents'], reach: 'network' },
-  read_intent_indexes: { access: 'authenticated', reach: 'network' },
-  create_intent_index: { access: 'permission', actions: ['manage:intents'], reach: 'network' },
-  delete_intent_index: { access: 'permission', actions: ['manage:intents'], reach: 'network' },
+  list_intent_networks: { access: 'authenticated', reach: 'network' },
+  add_intent_to_network: { access: 'permission', actions: ['manage:intents'], reach: 'network' },
+  remove_intent_from_network: { access: 'permission', actions: ['manage:intents'], reach: 'network' },
 
   // Communities.
   read_networks: { access: 'authenticated', reach: 'network' },

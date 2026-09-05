@@ -489,7 +489,7 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
     try {
       let imageUrl = undefined;
       if (photoDirty && photo && /^data:/i.test(photo)) {
-        imageUrl = await client.storage.uploadIndexImage(photo);
+        imageUrl = await client.storage.uploadNetworkImage(photo);
       } else if (removePhoto) {
         imageUrl = null;
       }

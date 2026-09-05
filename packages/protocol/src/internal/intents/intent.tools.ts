@@ -12,13 +12,13 @@ import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, focusedNetw
 
 /** Host capabilities consumed by signal and intent tools. */
 export type IntentToolDeps = Pick<ToolRegistryCompositionDeps, "userDb" | "systemDb">
-  & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "intent" | "intentIndex"> };
+  & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "intent" | "intentNetwork"> };
 
 const logger = protocolLogger("ChatTools:Intent");
 
-/** When context is network-scoped, verifies the caller is still a member of that index. Returns error message or null. */
+/** When context is network-scoped, verifies the caller is still a member of that network. Returns error message or null. */
 async function ensureScopedMembership(
-  context: ToolScopeEnvelope & { indexName?: string; userId: string },
+  context: ToolScopeEnvelope & { networkName?: string; userId: string },
   systemDb: IntentToolDeps['systemDb']
 ): Promise<string | null> {
   const scopedNetworkId = focusedNetworkId(context);
@@ -106,13 +106,13 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       "Intents are the core unit of discovery — they represent what users are seeking and drive semantic matching for opportunities.\n\n" +
       "**Usage modes:**\n" +
       "- No parameters: returns the **caller's own** active intents. In a network-scoped chat the result is clamped to the bound network. In an unscoped chat the result spans all of the user's active intents. There is no implicit default to the scoped network — to browse the bound community's intents, pass `networkId` explicitly.\n" +
-      "- With networkId: returns **all members'** intents in that index (community browse path). Add userId to filter to one member.\n" +
-      "- With userId in an network-scoped chat: reads that member's intents in the bound network. The target user must be a member of that index.\n" +
+      "- With networkId: returns **all members'** intents in that network (community browse path). Add userId to filter to one member.\n" +
+      "- With userId in an network-scoped chat: reads that member's intents in the bound network. The target user must be a member of that network.\n" +
       "- With userId in an unscoped chat: only works for the current user (cannot read another user's global intents without an network scope).\n\n" +
       "**Workflow:** To explore what members of a network are looking for, first call read_network_memberships(networkId) to list members, " +
       "then read_intents(networkId) to see all intents in that community. " +
-      "Each intent includes: id, description (payload), summary, confidence (0-1), inferenceType (explicit/implicit), status, and linked indexes.\n\n" +
-      "**Returns:** Paginated list of intents with count. Use the intent IDs in subsequent calls to update_intent, delete_intent, or create_intent_index.",
+      "Each intent includes: id, description (payload), summary, confidence (0-1), inferenceType (explicit/implicit), status, and linked networks.\n\n" +
+      "**Returns:** Paginated list of intents with count. Use the intent IDs in subsequent calls to update_intent, delete_intent, or add_intent_to_network.",
     querySchema: z.object({
       networkId: z.string().optional().describe("Network UUID — filters intents to this network (community browse path: returns all members' intents). There is no implicit default in network-scoped chats; omit to get caller-owned intents across the reachable networks, or pass the scoped network UUID to browse community members. Get network IDs from read_networks."),
       userId: z.string().optional().describe("User ID — filters to this user's intents. In an network-scoped chat, this reads that member's intents in the bound network (no networkId required). In an unscoped chat, only the current user is allowed without networkId; cross-user reads require an network scope. Omit for caller-owned intents."),
@@ -126,7 +126,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       // Distinguish "explicit network browse" from "implicit scope-aware read"
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
       const explicitNetworkId = query.networkId?.trim();
       const explicitUserId = query.userId?.trim();
 
@@ -144,16 +144,16 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       // happen in a separate unscoped chat or a chat scoped to that network.
       if (scopedNetworkId && explicitNetworkId && explicitNetworkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only read intents from this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only read intents from this community.`
         );
       }
 
       // Cross-user read in scoped chat: target user must be a member of the scoped network
       if (scopedNetworkId && explicitUserId && explicitUserId !== context.userId) {
-        const isInScopedIndex = await deps.systemDb.isNetworkMember(scopedNetworkId, explicitUserId);
-        if (!isInScopedIndex) {
+        const isInScopedNetwork = await deps.systemDb.isNetworkMember(scopedNetworkId, explicitUserId);
+        if (!isInScopedNetwork) {
           return error(
-            `This chat is scoped to ${scopedIndexLabel}. You can only read intents from members of this community.`
+            `This chat is scoped to ${scopedNetworkLabel}. You can only read intents from members of this community.`
           );
         }
       }
@@ -167,15 +167,15 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       if (!scopedNetworkId && explicitNetworkId) {
         const callerIsMember = await deps.systemDb.isNetworkMember(explicitNetworkId, context.userId);
         if (!callerIsMember) {
-          return error("You can only read intents from indexes you are a member of.");
+          return error("You can only read intents from networks you are a member of.");
         }
       }
 
       // ── Choose the read mode ──
-      // 1. Explicit networkId (browse all members in that index) — pass networkId, optionally + queryUserId.
+      // 1. Explicit networkId (browse all members in that network) — pass networkId, optionally + queryUserId.
       // 2. Explicit userId in a scoped chat — read that user's intents in the bound network.
       // 3. Explicit userId in an unscoped chat — only self (cross-user rejected above); global "my intents".
-      // 4. Implicit (no explicit network/user) in scoped chat — pass indexScope, no networkId.
+      // 4. Implicit (no explicit network/user) in scoped chat — pass networkScope, no networkId.
       // 5. Implicit in unscoped chat — global getActiveIntents (caller's own).
       const graphInput: Record<string, unknown> = {
         userId: context.userId,
@@ -218,7 +218,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         graphInput.allUserIntents = true;
       } else if (scopedNetworkId) {
         // Scoped chat, implicit read: caller-only across reachable networks.
-        graphInput.indexScope = deriveAllowedNetworkIds({
+        graphInput.networkScope = deriveAllowedNetworkIds({
           memberships: context.userNetworks,
           scopeType: 'network',
           scopeId: scopedNetworkId,
@@ -275,7 +275,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       "**URL handling.** If the user pastes a URL describing the intent (e.g. a job posting), call scrape_url first with " +
       "objective=\"Extract key details for an intent\", synthesize a conceptual description, then pass that here. Exception: profile URLs " +
       "(LinkedIn, GitHub, X) are for research_profile, not scrape_url.\n\n" +
-      "**Returns:** The created intent id and the networks it was linked to. Use create_intent_index / delete_intent_index to change those links later.",
+      "**Returns:** The created intent id and the networks it was linked to. Use add_intent_to_network / remove_intent_from_network to change those links later.",
     querySchema: z.object({
       description: z.string().describe("A clear, specific description of what the user is looking for. Concept-based, not a raw URL. Vague descriptions are rejected — include what kind, what for, and/or timeframe."),
       networkIds: z.array(z.string()).optional().describe("Network UUIDs to link the intent to. Each must be a current membership. Defaults to the scoped network in a network-scoped chat, and to nothing otherwise."),
@@ -289,7 +289,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
 
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
 
       if (scopedIntentId) {
         return error("This chat is scoped to an existing selected intent. Update that intent instead of creating a different one here.");
@@ -301,7 +301,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       }
       if (scopedNetworkId && requestedNetworkIds.some((id) => id !== scopedNetworkId)) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only create intents in this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only create intents in this community.`
         );
       }
 
@@ -364,10 +364,10 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
     name: "update_intent",
     description:
       "Updates an existing intent's description. After updating, the system re-processes it through inference and verification, " +
-      "re-evaluates its index assignments, and makes the approved signal eligible for background matching.\n\n" +
+      "re-evaluates its network assignments, and makes the approved signal eligible for background matching.\n\n" +
       "**When to use:** When the user wants to refine or change what they're looking for — e.g. narrowing scope, adding specificity, " +
-      "or pivoting to a different need. Prefer updating over delete+create to preserve the intent's history and existing index links.\n\n" +
-      "**Returns:** Updated `intentId` and `description`, plus a confirmation message. The intent's embeddings and index relevancy scores are recalculated automatically.",
+      "or pivoting to a different need. Prefer updating over delete+create to preserve the intent's history and existing network links.\n\n" +
+      "**Returns:** Updated `intentId` and `description`, plus a confirmation message. The intent's embeddings and network relevancy scores are recalculated automatically.",
     querySchema: z.object({
       intentId: z.string().describe("The UUID of the intent to update. Get this from read_intents results."),
       description: z.string().describe("The updated description of what the user is looking for. Same guidelines as create_intent — should be clear and specific."),
@@ -395,15 +395,15 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       }
 
       const scopedNetworkId = focusedNetworkId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
 
-      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that index
+      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that network
       if (scopedNetworkId) {
         const db = deps.userDb;
         const intentNetworks = await db.getNetworkIdsForIntent(intentId);
         if (!intentNetworks.includes(scopedNetworkId)) {
           return error(
-            `This chat is scoped to ${scopedIndexLabel}. You can only update intents linked to this community.`
+            `This chat is scoped to ${scopedNetworkLabel}. You can only update intents linked to this community.`
           );
         }
       }
@@ -442,7 +442,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
     name: "delete_intent",
     description:
       "Archives (soft-deletes) an intent, removing it from active discovery. The intent is not permanently deleted — it is marked as archived " +
-      "and no longer participates in opportunity matching or index evaluation.\n\n" +
+      "and no longer participates in opportunity matching or network evaluation.\n\n" +
       "**When to use:** When the user's need has been fulfilled, is no longer relevant, or was created by mistake. " +
       "If the user wants to change the description instead, use update_intent to preserve history.\n\n" +
       "**Returns:** Confirmation that the intent was archived. Previously created opportunities from this intent remain but won't generate new ones.",
@@ -465,19 +465,19 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
 
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
 
       if (scopedIntentId && scopedIntentId !== intentId) {
         return error("This chat is scoped to one selected intent. You can only delete that intent here.");
       }
 
-      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that index
+      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that network
       if (scopedNetworkId) {
         const db = deps.userDb;
         const intentNetworks = await db.getNetworkIdsForIntent(intentId);
         if (!intentNetworks.includes(scopedNetworkId)) {
           return error(
-            `This chat is scoped to ${scopedIndexLabel}. You can only delete intents linked to this community.`
+            `This chat is scoped to ${scopedNetworkLabel}. You can only delete intents linked to this community.`
           );
         }
       }
@@ -503,17 +503,17 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // INTENT–INDEX JUNCTION (link / list / unlink)
+  // INTENT–NETWORK JUNCTION (add / list / remove)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const createIntentIndex = defineTool({
-    name: "create_intent_index",
+  const addIntentToNetwork = defineTool({
+    name: "add_intent_to_network",
     description:
-      "Manually links an intent to a network (community), making the approved signal eligible for background matching within that index. " +
-      "Normally intents are auto-assigned to relevant indexes on creation, but use this to explicitly add an intent to an additional index.\n\n" +
+      "Manually links an intent to a network (community), making the approved signal eligible for background matching within that network. " +
+      "Normally intents are auto-assigned to relevant networks on creation, but use this to explicitly add an intent to an additional network.\n\n" +
       "**When to use:** When the user wants to share an existing intent with a specific community they belong to, " +
       "or when auto-assignment missed a network the user considers relevant.\n\n" +
-      "**Returns:** Confirmation that the link was created. The intent will now appear in that index's intent list and participate in discovery within that community.",
+      "**Returns:** Confirmation that the link was created. The intent will now appear in that network's intent list and participate in discovery within that community.",
     querySchema: z.object({
       intentId: z.string().describe("The UUID of the intent to link. Get this from read_intents results."),
       networkId: z.string().optional().describe("The UUID of the network to link the intent to. Get this from read_networks. Defaults to the scoped network in network-scoped chats."),
@@ -523,7 +523,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       if (scopeErr) return error(scopeErr);
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() ?? "";
       const networkId = query.networkId?.trim() || scopedNetworkId || "";
       if (scopedIntentId && intentId !== scopedIntentId) {
@@ -533,21 +533,21 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         return error("Invalid ID format. Both must be UUIDs.");
       }
 
-      // Strict scope enforcement: when chat is network-scoped, only allow linking to that index
+      // Strict scope enforcement: when chat is network-scoped, only allow linking to that network
       if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only link intents to this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only link intents to this community.`
         );
       }
 
-      const _createIntentIndexGraphStart = Date.now();
-      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentIndex, {
+      const _addIntentToNetworkGraphStart = Date.now();
+      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentNetwork, {
         userId: context.userId,
         networkId,
         intentId,
         operationMode: 'create' as const,
       }));
-      const _createIntentIndexGraphMs = Date.now() - _createIntentIndexGraphStart;
+      const _addIntentToNetworkGraphMs = Date.now() - _addIntentToNetworkGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
@@ -555,7 +555,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
           return success({
             created: !alreadyExisted,
             message: result.mutationResult.message,
-            _graphTimings: [{ name: 'intent_network', durationMs: _createIntentIndexGraphMs, agents: result.agentTimings ?? [] }],
+            _graphTimings: [{ name: 'intent_network', durationMs: _addIntentToNetworkGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to link intent to network.");
@@ -564,29 +564,29 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
     },
   });
 
-  const readIntentIndexes = defineTool({
-    name: "read_intent_indexes",
+  const listIntentNetworks = defineTool({
+    name: "list_intent_networks",
     description:
-      "Reads the many-to-many links between intents and indexes. Use this to understand which intents are shared in which communities, " +
-      "and which indexes a specific intent belongs to.\n\n" +
+      "Reads the many-to-many links between intents and networks. Use this to understand which intents are shared in which communities, " +
+      "and which networks a specific intent belongs to.\n\n" +
       "**Usage modes:**\n" +
-      "- With networkId: lists all intents linked to that index. Add userId to filter to one member's intents in that index.\n" +
-      "- With intentId + networkId: checks whether a specific intent is linked to a specific index.\n" +
+      "- With networkId: lists all intents linked to that network. Add userId to filter to one member's intents in that network.\n" +
+      "- With intentId + networkId: checks whether a specific intent is linked to a specific network.\n" +
       "- intentId alone requires a networkId (the system won't reveal all networks an intent is in).\n\n" +
-      "**When to use:** To audit which intents are active in a community, verify an intent's index assignment before unlinking, " +
-      "or check if a newly created intent was auto-assigned to the expected index.\n\n" +
+      "**When to use:** To audit which intents are active in a community, verify an intent's network assignment before removing it, " +
+      "or check if a newly created intent was auto-assigned to the expected network.\n\n" +
       "**Returns:** List of intent-network links with relevancy scores (0-1, how well the intent fits the network's purpose).",
     querySchema: z.object({
-      intentId: z.string().optional().describe("Intent UUID — check if this specific intent is linked to the specified index. Must be combined with networkId."),
+      intentId: z.string().optional().describe("Intent UUID — check if this specific intent is linked to the specified network. Must be combined with networkId."),
       networkId: z.string().optional().describe("Network UUID — list all intents linked to this network. Get this from read_networks. Defaults to scoped network in network-scoped chats."),
-      userId: z.string().optional().describe("Filter results to this user's intents within the specified index. Omit to see all members' intents."),
+      userId: z.string().optional().describe("Filter results to this user's intents within the specified network. Omit to see all members' intents."),
     }),
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
       if (scopeErr) return error(scopeErr);
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() || scopedIntentId || undefined;
       let networkId = query.networkId?.trim() || scopedNetworkId || undefined;
       const queryUserId = query.userId?.trim() || undefined;
@@ -608,14 +608,14 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         return error("Provide networkId or intentId.");
       }
 
-      // Strict scope enforcement: when chat is network-scoped, only allow querying that index
+      // Strict scope enforcement: when chat is network-scoped, only allow querying that network
       if (scopedNetworkId && networkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only read intent links from this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only read intent links from this community.`
         );
       }
 
-      // When only intentId is provided, enforce scope - don't reveal all linked indexes
+      // When only intentId is provided, enforce scope - don't reveal all linked networks
       if (intentId && !networkId) {
         if (scopedNetworkId) {
           // When scoped, only check if intent is linked to the scoped network
@@ -628,36 +628,36 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         }
       }
 
-      const _readIntentIndexGraphStart = Date.now();
-      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentIndex, {
+      const _listIntentNetworksGraphStart = Date.now();
+      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentNetwork, {
         userId: context.userId,
         networkId,
         intentId,
         operationMode: 'read' as const,
         queryUserId,
       }));
-      const _readIntentIndexGraphMs = Date.now() - _readIntentIndexGraphStart;
+      const _listIntentNetworksGraphMs = Date.now() - _listIntentNetworksGraphStart;
 
       if (result.error) {
         return error(result.error);
       }
       if (result.readResult) {
-        return success({ ...result.readResult, _graphTimings: [{ name: 'intent_network', durationMs: _readIntentIndexGraphMs, agents: result.agentTimings ?? [] }] });
+        return success({ ...result.readResult, _graphTimings: [{ name: 'intent_network', durationMs: _listIntentNetworksGraphMs, agents: result.agentTimings ?? [] }] });
       }
       return error("Failed to fetch intent-network links.");
     },
   });
 
-  const deleteIntentIndex = defineTool({
-    name: "delete_intent_index",
+  const removeIntentFromNetwork = defineTool({
+    name: "remove_intent_from_network",
     description:
       "Removes the link between an intent and a network. The intent itself is NOT deleted — it just stops being visible in that community " +
-      "and is no longer eligible for background matching within that index. The intent may still be linked to other indexes.\n\n" +
+      "and is no longer eligible for background matching within that network. The intent may still be linked to other networks.\n\n" +
       "**When to use:** When the user wants to withdraw an intent from a specific community without archiving it entirely. " +
-      "Use read_intent_indexes first to verify the link exists.\n\n" +
+      "Use list_intent_networks first to verify the link exists.\n\n" +
       "**Returns:** Confirmation that the link was removed. To fully remove an intent, use delete_intent instead.",
     querySchema: z.object({
-      intentId: z.string().describe("The UUID of the intent to unlink. Get this from read_intents or read_intent_indexes."),
+      intentId: z.string().describe("The UUID of the intent to unlink. Get this from read_intents or list_intent_networks."),
       networkId: z.string().optional().describe("The UUID of the network to unlink from. Get this from read_networks. Defaults to the scoped network in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
@@ -665,7 +665,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       if (scopeErr) return error(scopeErr);
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() ?? "";
       const networkId = query.networkId?.trim() || scopedNetworkId || "";
       if (scopedIntentId && intentId !== scopedIntentId) {
@@ -675,28 +675,28 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         return error("Invalid ID format. Both must be UUIDs.");
       }
 
-      // Strict scope enforcement: when chat is network-scoped, only allow unlinking from that index
+      // Strict scope enforcement: when chat is network-scoped, only allow unlinking from that network
       if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only unlink intents from this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only unlink intents from this community.`
         );
       }
 
-      const _deleteIntentIndexGraphStart = Date.now();
-      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentIndex, {
+      const _removeIntentFromNetworkGraphStart = Date.now();
+      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentNetwork, {
         userId: context.userId,
         networkId,
         intentId,
         operationMode: 'delete' as const,
       }));
-      const _deleteIntentIndexGraphMs = Date.now() - _deleteIntentIndexGraphStart;
+      const _removeIntentFromNetworkGraphMs = Date.now() - _removeIntentFromNetworkGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
           return success({
             deleted: true,
             message: result.mutationResult.message,
-            _graphTimings: [{ name: 'intent_network', durationMs: _deleteIntentIndexGraphMs, agents: result.agentTimings ?? [] }],
+            _graphTimings: [{ name: 'intent_network', durationMs: _removeIntentFromNetworkGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to unlink.");
@@ -730,5 +730,5 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
     },
   });
 
-  return [readIntents, createIntent, updateIntent, deleteIntent, createIntentIndex, readIntentIndexes, deleteIntentIndex, searchIntents] as const;
+  return [readIntents, createIntent, updateIntent, deleteIntent, addIntentToNetwork, listIntentNetworks, removeIntentFromNetwork, searchIntents] as const;
 }

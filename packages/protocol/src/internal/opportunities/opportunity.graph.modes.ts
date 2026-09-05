@@ -43,23 +43,23 @@ export async function readOpportunities(
     });
 
     try {
-      let indexIdFilter: string | undefined;
+      let networkIdFilter: string | undefined;
       if (request.networkId) {
         const [isMember, isOwner] = await Promise.all([
           deps.database.isNetworkMember(request.networkId, request.userId),
-          deps.database.isIndexOwner(request.networkId, request.userId),
+          deps.database.isNetworkOwner(request.networkId, request.userId),
         ]);
         if (!isMember && !isOwner) {
           return {
             readResult: { count: 0, opportunities: [], message: 'Network not found or you are not a member.' },
           };
         }
-        indexIdFilter = request.networkId;
+        networkIdFilter = request.networkId;
       }
 
       const rawList = await deps.database.getOpportunitiesForUser(request.userId, {
         limit: 30,
-        ...(indexIdFilter ? { networkId: indexIdFilter } : {}),
+        ...(networkIdFilter ? { networkId: networkIdFilter } : {}),
       });
       const list = rawList.filter((opp) => opp.status !== 'expired');
 
@@ -105,9 +105,9 @@ export async function readOpportunities(
           // Use the counterpart's (non-viewer) networkId — it reflects where the match was found.
           // actors[0] is typically the viewer with an arbitrary first-target-index value.
           const counterpartActor = opp.actors.find((a: OpportunityActor) => a.userId !== request.userId);
-          const actorIndexId = counterpartActor?.networkId ?? opp.actors[0]?.networkId;
-          const [indexRecord, ...profileAndUserPairs] = await Promise.all([
-            actorIndexId ? deps.database.getNetwork(actorIndexId) : Promise.resolve(null),
+          const actorNetworkId = counterpartActor?.networkId ?? opp.actors[0]?.networkId;
+          const [networkRecord, ...profileAndUserPairs] = await Promise.all([
+            actorNetworkId ? deps.database.getNetwork(actorNetworkId) : Promise.resolve(null),
             ...idsToResolve.map(async (uid: string) => {
               const [profile, user] = await Promise.all([
                 deps.database.getProfile(uid),
@@ -123,7 +123,7 @@ export async function readOpportunities(
           const source = opp.detection?.source ? (OPPORTUNITY_SOURCE_LABEL[opp.detection.source] ?? opp.detection.source) : null;
           return {
             id: opp.id,
-            indexName: indexRecord?.title ?? (actorIndexId ?? ''),
+            networkName: networkRecord?.title ?? (actorNetworkId ?? ''),
             connectedWith,
             suggestedBy,
             reasoning: safeFallbackSummary(opp.interpretation?.reasoning, {

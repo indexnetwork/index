@@ -1205,6 +1205,13 @@
       "when": 1788484800008,
       "tag": "0174_drop_unused_agent_and_progress_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1788484800009,
+      "tag": "0175_rename_networks_key_unique",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- **Nothing in the frontend calls a network an "index" any more.**
+  `IndexAvatar`, `CreateIndexModal` and `IndexFilterContext` are `NetworkAvatar`,
+  `CreateNetworkModal` and `NetworkFilterContext`; `indexesService`,
+  `joinIndex`, `getSharedIndexes`, `discoverPublicIndexes`,
+  `getIndexByShareCode` and `uploadIndexImage` take their network names; the
+  network panels take a `network` prop. Routes are untouched.
 - **`/i/new` keeps its question-at-a-time shape on a two-call backend.** The
   opening question, up to two clarifying follow-ups and the confirmation gate
   are unchanged; underneath, each answer is folded back into the payload by

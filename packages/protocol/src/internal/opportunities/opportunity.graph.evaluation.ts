@@ -364,8 +364,8 @@ function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: Oppor
       bestByUser.set(c.candidateUserId, c);
     } else if (c.similarity === existing.similarity) {
       // Tie-break: prefer index with higher relevancy score
-      const cScore = state.indexRelevancyScores[c.networkId] ?? 0;
-      const existingScore = state.indexRelevancyScores[existing.networkId] ?? 0;
+      const cScore = state.networkRelevancyScores[c.networkId] ?? 0;
+      const existingScore = state.networkRelevancyScores[existing.networkId] ?? 0;
       if (cScore > existingScore) {
         bestByUser.set(c.candidateUserId, c);
       }

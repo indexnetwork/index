@@ -65,7 +65,7 @@ The package defines interfaces — your application provides the concrete implem
 
 | Interface | Responsibility |
 |---|---|
-| `CompositeToolDatabase` | Core data access (users, intents, indexes/networks, opportunities) |
+| `CompositeToolDatabase` | Core data access (users, intents, networks, opportunities) |
 | `UserDatabase` / `SystemDatabase` | Context-bound databases built by `createUserDatabase` / `createSystemDatabase` |
 | `Embedder` | Vector embeddings for semantic search |
 | `Scraper` | Web content extraction |
@@ -242,7 +242,7 @@ const server = createMcpServer(
   authResolver,
   {
     // Per-request factory for scoped user/system databases.
-    create: (userId, indexScope) => createScopedDeps(userId, indexScope),
+    create: (userId, networkScope) => createScopedDeps(userId, networkScope),
   },
 );
 ```

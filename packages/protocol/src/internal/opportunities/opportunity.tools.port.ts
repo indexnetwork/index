@@ -19,4 +19,4 @@ export type OpportunityToolDeps = Pick<ToolRegistryCompositionDeps,
   | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
   | "opportunityOperations"
 > & OpportunityOwnerApprovalDeps
-  & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "index" | "networkMembership" | "opportunity"> };
+  & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "network" | "networkMembership" | "opportunity"> };

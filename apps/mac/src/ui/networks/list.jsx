@@ -105,7 +105,7 @@ function Networks({ onClose, onOpenSignal }) {
     let photoOut = photo || undefined;
     if (client && photo && /^data:/i.test(photo)) {
       try {
-        imageUrl = await client.storage.uploadIndexImage(photo);
+        imageUrl = await client.storage.uploadNetworkImage(photo);
         photoOut = window.IndexApp.avatarUrl(imageUrl) || imageUrl;
       } catch (e) { /* keep the local data URL in the mirror */ }
     }
@@ -177,7 +177,7 @@ function Networks({ onClose, onOpenSignal }) {
     let imageUrl = input.imageUrl;
     if (input.photo && /^data:/i.test(input.photo)) {
       try {
-        imageUrl = await client.storage.uploadIndexImage(input.photo);
+        imageUrl = await client.storage.uploadNetworkImage(input.photo);
       } catch (e) { /* request still goes through without a picture */ }
     }
     const body = {

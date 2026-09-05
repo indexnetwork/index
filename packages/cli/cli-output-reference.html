@@ -538,7 +538,7 @@ body {
   <span class="bold">Updated</span>       <span class="c-gray">3/29/2026, 9:30:00 AM</span>
   <span class="bold">Archived</span>      <span class="c-gray">3/30/2026, 12:00:00 PM</span>
 
-  <span class="bold">Index Assignments</span>
+  <span class="bold">Networks</span>
   <span class="c-cyan">*</span> AI Research Collaborations<span class="c-gray"> (0.92)</span>
   <span class="c-cyan">*</span> Crypto & Identity<span class="c-gray"> (0.78)</span>
   <span class="c-gray">──────────────────────────────────────────────────</span></div>
@@ -562,13 +562,13 @@ body {
     </div>
 
     <div class="terminal">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent link &lt;id&gt; &lt;network-id&gt;</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Signal linked to network.</div>
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent add-to-network &lt;id&gt; &lt;network-id&gt;</span></div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Signal added to network.</div>
     </div>
 
     <div class="terminal">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent unlink &lt;id&gt; &lt;network-id&gt;</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Signal unlinked from network.</div>
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent remove-from-network &lt;id&gt; &lt;network-id&gt;</span></div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Signal removed from network.</div>
     </div>
 
     <div class="terminal full-width">
@@ -1098,8 +1098,8 @@ This domain is for use in illustrative examples in documents...
 <span class="c-green bold">+</span> Signal created.
 <span class="c-green bold">+</span> Signal updated.
 <span class="c-green bold">+</span> Signal f47ac10b archived.
-<span class="c-green bold">+</span> Signal linked to network.
-<span class="c-green bold">+</span> Signal unlinked from network.
+<span class="c-green bold">+</span> Signal added to network.
+<span class="c-green bold">+</span> Signal removed from network.
 <span class="c-green bold">+</span> Opportunity accepted.
 <span class="c-green bold">+</span> Opportunity rejected.
 <span class="c-green bold">+</span> Message sent (e5f6a7b8-c9d0-1234-ef01-56789abcdef0)
@@ -1194,9 +1194,9 @@ This domain is for use in illustrative examples in documents...
 <span class="c-orange">&gt; Creating a new signal...</span>            <span class="dim">create_intent</span>
 <span class="c-orange">&gt; Updating signal...</span>                  <span class="dim">update_intent</span>
 <span class="c-orange">&gt; Removing signal...</span>                  <span class="dim">delete_intent</span>
-<span class="c-orange">&gt; Saving signal to index...</span>           <span class="dim">create_intent_index</span>
-<span class="c-orange">&gt; Fetching signals in index...</span>        <span class="dim">read_intent_indexes</span>
-<span class="c-orange">&gt; Removing signal from index...</span>       <span class="dim">delete_intent_index</span>
+<span class="c-orange">&gt; Adding signal to network...</span>        <span class="dim">add_intent_to_network</span>
+<span class="c-orange">&gt; Fetching signals in network...</span>      <span class="dim">list_intent_networks</span>
+<span class="c-orange">&gt; Removing signal from network...</span>     <span class="dim">remove_intent_from_network</span>
 <span class="c-orange">&gt; Checking your indexes...</span>            <span class="dim">read_indexes</span>
 <span class="c-orange">&gt; Creating a new index...</span>             <span class="dim">create_index</span>
 <span class="c-orange">&gt; Updating index...</span>                   <span class="dim">update_index</span>

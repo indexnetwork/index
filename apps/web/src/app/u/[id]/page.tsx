@@ -39,7 +39,7 @@ export default function UserProfilePage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const usersService = useUsers();
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
 
   const [profileData, setProfileData] = useState<User | null>(null);
   const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);
@@ -61,7 +61,7 @@ export default function UserProfilePage() {
 
         if (isAuthenticated && user?.id && user.id !== id) {
           try {
-            const networks = await indexesService.getSharedIndexes(id!);
+            const networks = await networksService.getSharedNetworks(id!);
             setSharedNetworks(networks);
           } catch (err) {
             logger.error('Failed to fetch shared networks', { error: err });
@@ -78,7 +78,7 @@ export default function UserProfilePage() {
       }
     };
     fetchData();
-  }, [id, user?.id, isAuthenticated, authLoading, usersService, indexesService]);
+  }, [id, user?.id, isAuthenticated, authLoading, usersService, networksService]);
 
   if (authLoading || isLoading) {
     return (

@@ -7,28 +7,28 @@ import SettingsTab from '@/components/settings/SettingsTab';
 import AccessTab from '@/components/settings/AccessTab';
 
 interface NetworkSettingsPanelProps {
-  index: Network;
+  network: Network;
   onDeleted?: () => void;
   activeTab: 'settings' | 'access';
 }
 
-export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: NetworkSettingsPanelProps) {
-  const indexesService = useNetworks();
+export default function NetworkSettingsPanel({ network, onDeleted, activeTab }: NetworkSettingsPanelProps) {
+  const networksService = useNetworks();
   const { networks, updateNetwork, removeNetwork } = useNetworksState();
   const { success, error, info } = useNotifications();
 
-  const currentIndex = networks?.find(n => n.id === index.id) || index;
+  const currentNetwork = networks?.find(n => n.id === network.id) || network;
 
   if (activeTab === 'settings') {
     return (
       <SettingsTab
-        network={currentIndex}
-        networkId={index.id}
-        updateNetwork={indexesService.updateNetwork}
-        uploadImage={indexesService.uploadIndexImage}
+        network={currentNetwork}
+        networkId={network.id}
+        updateNetwork={networksService.updateNetwork}
+        uploadImage={networksService.uploadNetworkImage}
         onUpdated={updateNetwork}
         onDeleted={onDeleted}
-        deleteNetwork={indexesService.deleteNetwork}
+        deleteNetwork={networksService.deleteNetwork}
         onRemoved={removeNetwork}
         success={success}
         error={error}
@@ -39,9 +39,9 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   if (activeTab === 'access') {
     return (
       <AccessTab
-        network={currentIndex}
-        networkId={index.id}
-        networkService={indexesService}
+        network={currentNetwork}
+        networkId={network.id}
+        networkService={networksService}
         onUpdated={updateNetwork}
         success={success}
         error={error}

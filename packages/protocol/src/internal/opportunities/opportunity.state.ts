@@ -148,13 +148,13 @@ export const OpportunityGraphState = Annotation.Root({
   }),
 
   /**
-   * Optional set of indexes discovery may search within (e.g. a network-scoped
+   * Optional set of networks discovery may search within (e.g. a network-scoped
    * agent's reachable networks: the bound network).
    * The scope node intersects this with the user's actual memberships. Ignored
    * when `networkId` is set (single-network override). When unset, discovery
    * spans all of the user's networks.
    */
-  indexScope: Annotation<Id<'networks'>[] | undefined>({
+  networkScope: Annotation<Id<'networks'>[] | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
@@ -227,8 +227,8 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** Per-index relevancy scores for dedup tie-breaking, read from intent_indexes. */
-  indexRelevancyScores: Annotation<Record<string, number>>({
+  /** Per-network relevancy scores for dedup tie-breaking, read from intent_networks. */
+  networkRelevancyScores: Annotation<Record<string, number>>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),
   }),
@@ -257,8 +257,8 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** Resolved intent is in at least one target index (path A vs C). */
-  resolvedIntentInIndex: Annotation<boolean>({
+  /** Resolved intent is in at least one target network (path A vs C). */
+  resolvedIntentInNetwork: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
   }),
@@ -332,7 +332,7 @@ export const OpportunityGraphState = Annotation.Root({
     message?: string;
     opportunities: Array<{
       id: string;
-      indexName: string;
+      networkName: string;
       connectedWith: string[];
       suggestedBy: string | null;
       reasoning: string;

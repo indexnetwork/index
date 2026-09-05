@@ -77,7 +77,7 @@ export class ToolService {
    *   controller seam. `sessionAuthenticated` must reflect the authenticated
    *   request's auth kind (AuthGuard session vs API key) — never caller input.
    * @returns Parsed tool result
-   * @throws ChatContextAccessError if user/index context is invalid
+   * @throws ChatContextAccessError if user/network context is invalid
    * @throws Error if tool not found or validation fails
    */
   async invokeTool(
@@ -218,15 +218,15 @@ export class ToolService {
       compiledHydeGraph,
     ).createGraph();
     const networks = new Networks({ database });
-    const indexGraph = networks.createGraph();
+    const networkGraph = networks.createGraph();
     const networkMembershipGraph = networks.createMembershipGraph();
-    const intentIndexGraph = networks.createAssignmentGraph();
+    const intentNetworkGraph = networks.createAssignmentGraph();
 
     this.compiledGraphs = {
       intent: intentGraph,
-      index: indexGraph,
+      network: networkGraph,
       networkMembership: networkMembershipGraph,
-      intentIndex: intentIndexGraph,
+      intentNetwork: intentNetworkGraph,
       opportunity: opportunityGraph,
     };
 

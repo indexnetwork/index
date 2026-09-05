@@ -15,7 +15,7 @@ export interface AssignmentResult {
 
 /**
  * Intent Index Graph State.
- * Handles CRUD for the intent_indexes junction table (linking intents to networks).
+ * Handles CRUD for the intent_networks junction table (linking intents to networks).
  *
  * ## Signal assignment policy
  *

@@ -87,15 +87,15 @@ export function buildIntentPipelineHealthDiagnostic(input: {
   hasEmbedding: boolean;
   verificationAnalysis: ReturnType<typeof buildVerificationAnalysisDiagnostic>;
   hasHydeDocuments: boolean;
-  isInAtLeastOneIndex: boolean;
+  isInAtLeastOneNetwork: boolean;
 }) {
   return {
     hasEmbedding: input.hasEmbedding,
     hasHydeDocuments: input.hasHydeDocuments,
-    isInAtLeastOneIndex: input.isInAtLeastOneIndex,
+    isInAtLeastOneNetwork: input.isInAtLeastOneNetwork,
     verificationAnalysis: input.verificationAnalysis,
     missingVerificationAnalysis: input.verificationAnalysis.status !== 'complete',
-    missingAssignment: !input.isInAtLeastOneIndex,
+    missingAssignment: !input.isInAtLeastOneNetwork,
     missingHyde: !input.hasHydeDocuments,
   };
 }
@@ -103,7 +103,7 @@ export function buildIntentPipelineHealthDiagnostic(input: {
 export interface IntentAssignmentDiagnosticInput {
   networkId: string;
   networkTitle: string;
-  indexPrompt: string | null;
+  networkPrompt: string | null;
   relevancyScore: string | null;
   assignmentMetadata: NetworkAssignmentMetadata | null;
 }
@@ -121,7 +121,7 @@ export function buildIntentAssignmentDiagnostic(row: IntentAssignmentDiagnosticI
   return {
     networkId: row.networkId,
     networkTitle: row.networkTitle,
-    indexPrompt: row.indexPrompt,
+    networkPrompt: row.networkPrompt,
     relevancyScore: row.relevancyScore === null ? null : Number(row.relevancyScore),
     finalScore: metadata?.finalScore ?? null,
     promptPresence: metadata?.promptPresence ?? null,

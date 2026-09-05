@@ -29,7 +29,7 @@ export function useMentionableUsers({
   const [users, setUsers] = useState<MentionableUser[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { networks, loading: networksLoading } = useNetworksState();
-  const indexService = useNetworkService();
+  const networkService = useNetworkService();
   const fetchedRef = useRef(false);
   const cacheRef = useRef<Map<string, MentionableUser>>(new Map());
 
@@ -48,7 +48,7 @@ export function useMentionableUsers({
 
     setIsLoading(true);
     try {
-      const { members } = await indexService.getMyMembers();
+      const { members } = await networkService.getMyMembers();
 
       const userMap = new Map<string, MentionableUser>();
       for (const member of members) {
@@ -70,7 +70,7 @@ export function useMentionableUsers({
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, indexService, networksLoading]);
+  }, [enabled, networkService, networksLoading]);
 
   // Stable signature of network IDs so joins/leaves trigger refetch even when length is unchanged
   const networksSignature =

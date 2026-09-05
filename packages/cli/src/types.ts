@@ -52,7 +52,7 @@ export interface Intent {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
-  indexes?: Array<{ id: string; title: string; relevancyScore?: number }>;
+  networks?: Array<{ id: string; title: string; relevancyScore?: number }>;
 }
 
 /** Options for listing intents. */
@@ -146,7 +146,7 @@ export interface OpportunityDetail {
   otherParties?: OpportunityParty[];
   category?: string;
   confidence?: number;
-  index?: { id: string; title: string };
+  network?: { id: string; title: string };
   primaryActionLabel?: string;
   createdAt?: string;
   /** Present when the requested opportunity was superseded by this enriched opportunity. */
@@ -155,7 +155,7 @@ export interface OpportunityDetail {
 
 // ── Network types ───────────────────────────────────────────────────
 
-/** A network (index) as returned by the API. */
+/** A network as returned by the API. */
 export interface Network {
   id: string;
   key?: string | null;

@@ -571,7 +571,7 @@ export class NetworkController {
    */
   @Get('/public/:id')
   @UseGuards(RateLimit('read'))
-  async getPublicIndex(req: Request, _user: unknown, params: Record<string, string>) {
+  async getPublicNetwork(req: Request, _user: unknown, params: Record<string, string>) {
     await assertAgentNetworkScope(req, params.id);
     const network = await networkService.getPublicNetworkById(params.id);
     if (!network) {
@@ -613,7 +613,7 @@ export class NetworkController {
     if (!network) {
       throw Response.json({ error: 'Network not found' }, { status: 404 });
     }
-    const isOwner = await networkService.isIndexOwner(networkId, userId);
+    const isOwner = await networkService.isNetworkOwner(networkId, userId);
     if (!isOwner) {
       throw Response.json({ error: 'Owner-only operation' }, { status: 403 });
     }

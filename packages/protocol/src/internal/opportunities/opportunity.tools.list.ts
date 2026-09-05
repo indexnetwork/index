@@ -59,7 +59,7 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
     }),
     handler: async ({ context, query }) => {
       const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
 
       // Strict scope enforcement: when chat is network-scoped, only allow that index
       if (
@@ -68,13 +68,13 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
         query.networkId.trim() !== scopedNetworkId
       ) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only list opportunities from this community.`,
+          `This chat is scoped to ${scopedNetworkLabel}. You can only list opportunities from this community.`,
         );
       }
 
-      const effectiveIndexId =
+      const effectiveNetworkId =
         (scopedNetworkId || query.networkId?.trim()) ?? undefined;
-      if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
+      if (effectiveNetworkId && !UUID_REGEX.test(effectiveNetworkId)) {
         return error("Invalid network ID format.");
       }
 
@@ -101,7 +101,7 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
       const selection = await selectOpportunityFeed({
         reader: database,
         viewerId: context.userId,
-        networkId: effectiveIndexId,
+        networkId: effectiveNetworkId,
         intentScope: effectiveIntentScope,
         displayLimit: CHAT_DISPLAY_LIMIT,
         warn: (message, data) => logger.warn(message, data),

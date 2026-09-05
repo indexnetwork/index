@@ -178,7 +178,7 @@ export class OpportunityServiceEvents extends EventEmitter {
  * Emits opportunity events (created, expired) after transactional writes so subscribers see consistent state.
  *
  * RESPONSIBILITIES:
- * - List opportunities for users and indexes
+ * - List opportunities for users and networks
  * - Get and present individual opportunities
  * - Discover opportunities via HyDE graph
  * - Create manual opportunities
@@ -465,7 +465,7 @@ export class OpportunityService {
     const contextNetworkId = opp.context?.networkId;
     const actorNetworkId = otherActors[0]?.networkId ?? myActor?.networkId;
     const networkIdForDisplay = contextNetworkId ?? actorNetworkId;
-    const [indexRecord, ...userRecords] = await Promise.all([
+    const [networkRecord, ...userRecords] = await Promise.all([
       networkIdForDisplay ? this.db.getNetwork(networkIdForDisplay) : Promise.resolve(null),
       ...otherPartyIds.map((uid) => this.db.getUser(uid)),
     ]);
@@ -495,7 +495,7 @@ export class OpportunityService {
       otherParties,
       category: opp.interpretation.category,
       confidence: confidenceNum,
-      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
+      network: networkRecord ? { id: networkRecord.id, title: networkRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
       status: opp.status,
       primaryActionLabel: getPrimaryActionLabel(myActor.role),
       createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
@@ -829,7 +829,7 @@ export class OpportunityService {
   }
 
   /**
-   * Get opportunities for a specific index.
+   * Get opportunities for a specific network.
    *
    * @param networkId - The network ID
    * @param userId - User requesting (for authorization)
@@ -846,9 +846,9 @@ export class OpportunityService {
       offset?: number;
     }
   ) {
-    logger.verbose('Getting opportunities for index', { networkId, userId, options });
+    logger.verbose('Getting opportunities for network', { networkId, userId, options });
 
-    const isOwner = await this.db.isIndexOwner(networkId, userId);
+    const isOwner = await this.db.isNetworkOwner(networkId, userId);
     const isMember = await this.db.isNetworkMember(networkId, userId);
 
     if (!isOwner && !isMember) {
@@ -965,7 +965,7 @@ export class OpportunityService {
 
 
   /**
-   * Check if user has permission to create opportunities in an index.
+   * Check if user has permission to create opportunities in a network.
    *
    * @param creatorId - User creating the opportunity
    * @param parties - Parties involved
@@ -977,7 +977,7 @@ export class OpportunityService {
     parties: Array<{ userId: string }>,
     networkId: string
   ): Promise<{ allowed: boolean }> {
-    const isOwner = await this.db.isIndexOwner(networkId, creatorId);
+    const isOwner = await this.db.isNetworkOwner(networkId, creatorId);
     const isSelfIncluded = parties.some((p) => p.userId === creatorId);
 
     if (isOwner) return { allowed: true };

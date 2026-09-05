@@ -68,14 +68,14 @@ export interface DatabaseIdentityQueries {
   getActiveIntents(userId: string): Promise<ActiveIntent[]>;
 
   /**
-   * Get active intents that belong to the user and are assigned to a specific index.
-   * Caller must be a member of that index; only the user's own intents are returned.
+   * Get active intents that belong to the user and are assigned to a specific network.
+   * Caller must be a member of that network; only the user's own intents are returned.
    *
-   * @param userId - The user requesting (must be a member of the index)
-   * @param indexNameOrId - Network UUID or display name (e.g. "Commons")
-   * @returns Array of active intents in that index for the user, or empty if not a member / no match
+   * @param userId - The user requesting (must be a member of the network)
+   * @param networkNameOrId - Network UUID or display name (e.g. "Commons")
+   * @returns Array of active intents in that network for the user, or empty if not a member / no match
    */
-  getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntent[]>;
+  getIntentsInNetworkForMember(userId: string, networkNameOrId: string): Promise<ActiveIntent[]>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Post-Graph Operations (Action Execution)
@@ -83,7 +83,7 @@ export interface DatabaseIdentityQueries {
 
   /**
    * Creates a new intent with full processing pipeline.
-   * Handles summarization, embedding generation, and index association.
+   * Handles summarization, embedding generation, and network association.
    *
    * Called when the reconciler outputs a "create" action.
    *
@@ -174,7 +174,7 @@ export interface DatabaseIdentityQueries {
    * Deletes every intent–network association for an archived intent.
    * Called as part of the "expire" action's cleanup.
    */
-  deleteIntentIndexAssociations(intentId: string): Promise<void>;
+  deleteIntentNetworkAssociations(intentId: string): Promise<void>;
 
   /**
    * Expires every non-expired opportunity where this intent appears as an actor.
@@ -224,29 +224,29 @@ export interface DatabaseIdentityQueries {
   getIntentWithOwnership(intentId: string, userId: string): Promise<IntentRecord | null>;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Index Association Operations
+  // Network Association Operations
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
    * Gets Network IDs where the user has auto-assign membership enabled.
-   * Used for determining which indexes to associate new intents with.
+   * Used for determining which networks to associate new intents with.
    *
    * @param userId - The unique identifier of the user
    * @returns Array of network IDs
    *
    * @example
    * ```typescript
-   * const networkIds = await db.getUserIndexIds(userId);
+   * const networkIds = await db.getUserNetworkIds(userId);
    * if (networkIds.length > 0) {
    *   await db.associateIntentWithNetworks(intentId, networkIds);
    * }
    * ```
    */
-  getUserIndexIds(userId: string): Promise<string[]>;
+  getUserNetworkIds(userId: string): Promise<string[]>;
 
   /**
    * Retrieves all networks the user is a member of with full details.
-   * Used for displaying network memberships in chat (index_query).
+   * Used for displaying network memberships in chat.
    *
    * @param userId - The unique identifier of the user
    * @returns Array of network memberships with details
@@ -254,7 +254,7 @@ export interface DatabaseIdentityQueries {
   getNetworkMemberships(userId: string): Promise<NetworkMembership[]>;
 
   /**
-   * Get a single network membership by index and user.
+   * Get a single network membership by network and user.
    * Used when the preloaded memberships list may not contain this network (e.g. after isNetworkMember check).
    *
    * @param networkId - The network ID
@@ -272,7 +272,7 @@ export interface DatabaseIdentityQueries {
   ): Promise<ActiveNetworkMembershipPair[]>;
 
   /**
-   * Get index by ID with core fields. Used for opportunity presentation and context rendering.
+   * Get network by ID with core fields. Used for opportunity presentation and context rendering.
    */
   getNetwork(networkId: string): Promise<{
     id: string;
@@ -284,7 +284,7 @@ export interface DatabaseIdentityQueries {
   } | null>;
 
   /**
-   * Get index by ID with permissions (e.g. joinPolicy). Used by chat tools for create_index_membership.
+   * Get network by ID with permissions (e.g. joinPolicy). Used by chat tools for create_network_membership.
    */
   getNetworkWithPermissions(networkId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null>;
 

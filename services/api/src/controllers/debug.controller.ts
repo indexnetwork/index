@@ -31,7 +31,7 @@ export class DebugController {
 
   /**
    * Returns a full diagnostic snapshot for a single intent.
-   * Gathers the intent record, HyDE document stats, index assignments,
+   * Gathers the intent record, HyDE document stats, network assignments,
    * related opportunities, and a pipeline-health diagnosis object.
    * @param _req - Incoming request (unused beyond guard processing)
    * @param user - Authenticated user from AuthGuard
@@ -90,12 +90,12 @@ export class DebugController {
         ),
       );
 
-    // ── 3. Fetch index assignments with title and prompt ──────────────
-    const indexRows = await db
+    // ── 3. Fetch network assignments with title and prompt ──────────────
+    const networkRows = await db
       .select({
         networkId: intentNetworks.networkId,
         networkTitle: networks.title,
-        indexPrompt: networks.prompt,
+        networkPrompt: networks.prompt,
         relevancyScore: intentNetworks.relevancyScore,
         assignmentMetadata: intentNetworks.assignmentMetadata,
       })
@@ -129,7 +129,7 @@ export class DebugController {
       newestGeneratedAt: hydeStats?.newestGeneratedAt?.toISOString() ?? null,
     };
 
-    const indexAssignments = indexRows.map(buildIntentAssignmentDiagnostic);
+    const networkAssignments = networkRows.map(buildIntentAssignmentDiagnostic);
 
     // Aggregate opportunities by status
     const byStatus: Record<string, number> = {};
@@ -156,7 +156,7 @@ export class DebugController {
 
     // ── 6. Build diagnosis ────────────────────────────────────────────
     const hasHydeDocuments = (hydeStats?.count ?? 0) > 0;
-    const isInAtLeastOneIndex = indexRows.length > 0;
+    const isInAtLeastOneNetwork = networkRows.length > 0;
     const hasOpportunities = opportunityRows.length > 0;
     const verificationAnalysis = buildVerificationAnalysisDiagnostic(intent);
 
@@ -183,7 +183,7 @@ export class DebugController {
         hasEmbedding: intent.hasEmbedding,
         verificationAnalysis,
         hasHydeDocuments,
-        isInAtLeastOneIndex,
+        isInAtLeastOneNetwork,
       }),
       hasOpportunities,
       allOpportunitiesFilteredFromRadar,
@@ -194,7 +194,7 @@ export class DebugController {
       exportedAt: new Date().toISOString(),
       intent: intentResponse,
       hydeDocuments: hydeDocumentsResponse,
-      indexAssignments,
+      networkAssignments,
       opportunities: opportunitiesResponse,
       diagnosis,
     });
@@ -245,7 +245,7 @@ export class DebugController {
       : [];
     const withHydeDocuments = hydeIntentRows.length;
 
-    // Count active intents assigned to at least one index
+    // Count active intents assigned to at least one network
     const indexedIntentRows = activeIntents.length > 0
       ? await db
           .selectDistinct({ intentId: intentNetworks.intentId })
@@ -258,13 +258,13 @@ export class DebugController {
           )
       : [];
     const indexedIntentIds = new Set(indexedIntentRows.map((r) => r.intentId));
-    const inAtLeastOneIndex = indexedIntentIds.size;
+    const inAtLeastOneNetwork = indexedIntentIds.size;
 
-    // Orphaned = active but not in any index
+    // Orphaned = active but not in any network
     const orphaned = activeIntents.filter((i) => !indexedIntentIds.has(i.id)).length;
 
-    // ── 2. Fetch user's indexes (via networkMembers) ───────────────────────
-    const memberIndexRows = await db
+    // ── 2. Fetch user's networks (via networkMembers) ───────────────────────
+    const memberNetworkRows = await db
       .select({
         networkId: networkMembers.networkId,
         title: networks.title,
@@ -273,9 +273,9 @@ export class DebugController {
       .innerJoin(networks, eq(networkMembers.networkId, networks.id))
       .where(eq(networkMembers.userId, user.id));
 
-    // Count user's intents assigned to each index
-    const indexIntentCounts: Record<string, number> = {};
-    if (memberIndexRows.length > 0 && totalIntents > 0) {
+    // Count user's intents assigned to each network
+    const networkIntentCounts: Record<string, number> = {};
+    if (memberNetworkRows.length > 0 && totalIntents > 0) {
       const countRows = await db
         .select({
           networkId: intentNetworks.networkId,
@@ -289,7 +289,7 @@ export class DebugController {
               sql`, `,
             )})`,
             sql`${intentNetworks.networkId} IN (${sql.join(
-              memberIndexRows.map((r) => sql`${r.networkId}`),
+              memberNetworkRows.map((r) => sql`${r.networkId}`),
               sql`, `,
             )})`,
           ),
@@ -297,14 +297,14 @@ export class DebugController {
         .groupBy(intentNetworks.networkId);
 
       for (const row of countRows) {
-        indexIntentCounts[row.networkId] = row.count;
+        networkIntentCounts[row.networkId] = row.count;
       }
     }
 
-    const indexesResponse = memberIndexRows.map((r) => ({
+    const networksResponse = memberNetworkRows.map((r) => ({
       networkId: r.networkId,
       title: r.title,
-      userIntentsAssigned: indexIntentCounts[r.networkId] ?? 0,
+      userIntentsAssigned: networkIntentCounts[r.networkId] ?? 0,
     }));
 
     // ── 3. Fetch all opportunities for the user ──────────────────────────
@@ -365,7 +365,7 @@ export class DebugController {
     const hasActiveIntents = activeIntents.length > 0;
     const intentsHaveEmbeddings = hasActiveIntents && withEmbeddings > 0;
     const intentsHaveHydeDocuments = hasActiveIntents && withHydeDocuments > 0;
-    const intentsAreIndexed = hasActiveIntents && inAtLeastOneIndex > 0;
+    const intentsAreIndexed = hasActiveIntents && inAtLeastOneNetwork > 0;
     const hasOpportunities = opportunityRows.length > 0;
     const opportunitiesReachRadar = cardsReturned > 0;
 
@@ -381,7 +381,7 @@ export class DebugController {
       ).length;
       bottleneck = `${missingHyde} intents missing HyDE documents`;
     } else if (!intentsAreIndexed) {
-      bottleneck = `${orphaned} active intents not assigned to any index`;
+      bottleneck = `${orphaned} active intents not assigned to any network`;
     } else if (!hasOpportunities) {
       bottleneck = 'No opportunities discovered yet';
     } else if (!opportunitiesReachRadar) {
@@ -399,10 +399,10 @@ export class DebugController {
         },
         withEmbeddings,
         withHydeDocuments,
-        inAtLeastOneIndex,
+        inAtLeastOneNetwork,
         orphaned,
       },
-      indexes: indexesResponse,
+      networks: networksResponse,
       opportunities: {
         total: opportunityRows.length,
         byStatus: oppByStatus,

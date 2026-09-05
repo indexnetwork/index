@@ -1,5 +1,5 @@
 /**
- * Normalize a file extension to match the sanitization applied by S3StorageAdapter.uploadIndexImage.
+ * Normalize a file extension to match the sanitization applied by S3StorageAdapter.uploadNetworkImage.
  * Strips leading dot, lowercases, removes non-alphanumeric characters.
  */
 export function normalizeExtension(extension: string): string {

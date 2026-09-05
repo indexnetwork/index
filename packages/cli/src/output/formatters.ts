@@ -179,10 +179,10 @@ export function intentCard(intent: Intent): void {
     console.log(`  ${BOLD}Archived${RESET}      ${GRAY}${new Date(intent.archivedAt).toLocaleString()}${RESET}`);
   }
 
-  if (intent.indexes && intent.indexes.length > 0) {
+  if (intent.networks && intent.networks.length > 0) {
     console.log();
-    console.log(`  ${BOLD}Index Assignments${RESET}`);
-    for (const idx of intent.indexes) {
+    console.log(`  ${BOLD}Networks${RESET}`);
+    for (const idx of intent.networks) {
       const score = idx.relevancyScore !== undefined ? ` (${idx.relevancyScore.toFixed(2)})` : "";
       console.log(`  ${CYAN}*${RESET} ${idx.title}${GRAY}${score}${RESET}`);
     }
@@ -278,7 +278,7 @@ export function opportunityCard(opp: OpportunityDetail): void {
   const st = opp.status ?? "unknown";
   cardLine(`${BOLD}Status:${RESET}  ${statusColor(st)}${st}${RESET}`);
   if (opp.category) cardLine(`${BOLD}Category:${RESET}  ${opp.category}`);
-  if (opp.index?.title) cardLine(`${BOLD}Network:${RESET}  ${opp.index.title}`);
+  if (opp.network?.title) cardLine(`${BOLD}Network:${RESET}  ${opp.network.title}`);
   if (opp.confidence != null) cardLine(`${BOLD}Confidence:${RESET}  ${confidenceBar(opp.confidence)}`);
   if (opp.myRole) cardLine(`${BOLD}Your role:${RESET}  ${roleLabel(opp.myRole)}`);
 
