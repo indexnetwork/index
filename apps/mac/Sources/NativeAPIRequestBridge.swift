@@ -250,8 +250,12 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/auth/me$"#), ("PATCH", #"^/auth/profile/update$"#),
         ("GET", #"^/networks$"#), ("POST", #"^/networks$"#),
         ("GET", #"^/networks/discovery/public(?:\?.*)?$"#),
-        ("GET", #"^/networks/[^/?]+/(?:overview|my-intents)$"#),
+        ("GET", #"^/networks/[^/?]+/(?:overview|my-intents|members)$"#),
         ("POST", #"^/networks/[^/?]+/(?:join|leave)$"#),
+        ("POST", #"^/networks/[^/?]+/members(?:/invite)?$"#),
+        ("PATCH", #"^/networks/[^/?]+/members/[^/?]+$"#),
+        ("DELETE", #"^/networks/[^/?]+/members/[^/?]+$"#),
+        ("PATCH", #"^/networks/[^/?]+/(?:permissions|regenerate-invitation)$"#),
         ("GET", #"^/network-requests$"#), ("POST", #"^/network-requests$"#),
         ("PATCH", #"^/network-requests/[^/?]+$"#), ("DELETE", #"^/network-requests/[^/?]+$"#),
         ("GET", #"^/agents$"#),
@@ -591,8 +595,27 @@ final class NativeAPIRequestBridge {
                     && optionalString(item, "imageUrl", maximum: 2_048)
                     && (item["joinPolicy"] == nil || enumString(item["joinPolicy"], ["anyone", "invite_only"]))
             }
-        case let value where value.range(of: #"^/networks/[^/?]+/(?:join|leave)$"#, options: .regularExpression) != nil:
+        case let value where value.range(of: #"^/networks/[^/?]+/(?:join|leave|regenerate-invitation)$"#, options: .regularExpression) != nil:
             return keysAllowed(body, allowed: [])
+        // Invite is matched before the member-role route, which would otherwise
+        // claim `/members/invite` as a member id.
+        case let value where value.range(of: #"^/networks/[^/?]+/members/invite$"#, options: .regularExpression) != nil:
+            return exactTypedObject(body, required: ["email"], optional: ["name"]) { item in
+                boundedString(item["email"], maximum: 320) && optionalString(item, "name", maximum: 256)
+            }
+        case let value where value.range(of: #"^/networks/[^/?]+/members$"#, options: .regularExpression) != nil:
+            return exactTypedObject(body, required: ["userId"], optional: ["permissions"]) { item in
+                identifier(item["userId"])
+                    && (item["permissions"] == nil || validNetworkMemberPermissions(item["permissions"]))
+            }
+        case let value where value.range(of: #"^/networks/[^/?]+/members/[^/?]+$"#, options: .regularExpression) != nil:
+            return exactTypedObject(body, required: ["permissions"]) {
+                validNetworkMemberPermissions($0["permissions"])
+            }
+        case let value where value.range(of: #"^/networks/[^/?]+/permissions$"#, options: .regularExpression) != nil:
+            return exactTypedObject(body, required: ["joinPolicy"]) {
+                enumString($0["joinPolicy"], ["anyone", "invite_only"])
+            }
         case "/network-requests": return validNetworkRequest(body)
         case let value where value.range(of: #"^/network-requests/[^/?]+$"#, options: .regularExpression) != nil:
             return validNetworkRequest(body)
@@ -680,6 +703,11 @@ final class NativeAPIRequestBridge {
         default:
             return false
         }
+    }
+
+    private static func validNetworkMemberPermissions(_ value: NativeJSONValue?) -> Bool {
+        guard case .array(let values) = value, values.count == 1 else { return false }
+        return enumString(values[0], ["owner", "member"])
     }
 
     private static func validAgentPermissions(_ value: NativeJSONValue?) -> Bool {
