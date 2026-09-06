@@ -1,6 +1,6 @@
 # API Guards
 
-Guards are functions that run before a route handler to enforce authentication, authorization, feature gating, or rate limiting. They either return a value (passed to the handler) or throw to reject the request.
+Guards are functions that run before a route handler to enforce authentication, authorization, or feature gating. They either return a value (passed to the handler) or throw to reject the request.
 
 ## Guards
 
@@ -12,6 +12,3 @@ Accepts only a Better Auth session JWT (`Authorization: Bearer` or `?token=`) an
 
 ### `debug.guard.ts` — `DebugGuard`
 Environment-based gate for debug API endpoints. Allows requests only when `NODE_ENV === 'development'` or `ENABLE_DEBUG_API === 'true'`; otherwise throws a 404-mapped error.
-
-### `limiter.guard.ts` — `RateLimit(class)`
-Factory that returns a per-route-class rate-limiting guard, run before auth. Buckets requests by verified user id (hashed) or client IP, enforces the class's per-minute limit via Redis-backed storage (failing open on storage errors), stashes `RateLimitInfo` for response headers, and throws `RateLimiterError` (429) when the limit is exceeded; private/loopback IPs and system agents bypass limiting.

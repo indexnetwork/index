@@ -417,43 +417,6 @@ export function createMcpServer(
           const { userId } = identity;
           reportUserId = userId;
 
-          // Per-principal MCP throttle. Runs BEFORE any DB work so a throttled
-          // call short-circuits cheaply. The /mcp transport bypasses the
-          // controller-level RateLimit guard, so this is the only volume cap on
-          // tool calls — it stops an over-eager agent from cascading itself into
-          // provider rate limits.
-          if (deps.mcpRateLimiter) {
-            // Throttling is best-effort: never let a limiter failure (or a host
-            // implementation that throws instead of failing open) break tool
-            // dispatch. Treat any error as "allowed".
-            let decision: Awaited<ReturnType<NonNullable<typeof deps.mcpRateLimiter>>> | null = null;
-            try {
-              decision = await deps.mcpRateLimiter({
-                userId,
-                toolName,
-              });
-            } catch (rlErr) {
-              logger.warn('MCP rate limiter threw — failing open', {
-                toolName,
-                error: rlErr instanceof Error ? rlErr.message : String(rlErr),
-              });
-            }
-            if (decision && !decision.allowed) {
-              const retryAfterSec = decision.retryAfterSec ?? 60;
-              return {
-                content: [{
-                  type: 'text' as const,
-                  text: JSON.stringify({
-                    error: 'Rate limit exceeded',
-                    message: `Too many ${toolName} calls in a short period. Wait ${retryAfterSec}s before retrying.`,
-                    retryAfterSec,
-                  }),
-                }],
-                isError: true,
-              };
-            }
-          }
-
           reportContext = context;
 
           // Build per-request scoped databases via injected factory.

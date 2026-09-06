@@ -1,7 +1,6 @@
 import { ZodError } from 'zod';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { isStaff } from '../lib/staff';
@@ -22,7 +21,7 @@ export class NetworkController {
    * List networks the authenticated user is a member of.
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async list(_req: Request, user: AuthenticatedUser) {
     const result = await networkService.getNetworksForUser(user.id);
     logger.verbose('Networks listed for user', { userId: user.id, count: result.networks.length });
@@ -33,7 +32,7 @@ export class NetworkController {
    * Create a new network. Authenticated users only.
    */
   @Post('')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async create(req: Request, user: AuthenticatedUser) {
     const body = await req.json().catch(() => ({})) as {
       title?: string;
@@ -82,7 +81,7 @@ export class NetworkController {
    * Used for mentionable users (e.g. @mentions in chat).
    */
   @Get('/my-members')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getMyMembers(_req: Request, user: AuthenticatedUser) {
     const members = await networkService.getMembersFromMyNetworks(user.id);
     logger.verbose('My-network members listed', { userId: user.id, count: members.length });
@@ -93,7 +92,7 @@ export class NetworkController {
    * Get members of a network. Owner-only.
    */
   @Get('/:id/members')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getMembers(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const members = await networkService.getMembersForOwner(params.id, user.id);
@@ -116,7 +115,7 @@ export class NetworkController {
    * Add a member to a network. Owner-only.
    */
   @Post('/:id/members')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async addMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     const body = await req.json().catch(() => ({})) as { userId?: string; permissions?: string[] };
     if (!body.userId) {
@@ -151,7 +150,7 @@ export class NetworkController {
    * Accepts { permissions: ['owner'] } or { permissions: ['member'] }.
    */
   @Patch('/:id/members/:memberId')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async updateMemberRole(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     const body = await req.json().catch(() => ({})) as { permissions?: string[] };
     if (!body.permissions || !Array.isArray(body.permissions)) {
@@ -187,7 +186,7 @@ export class NetworkController {
    * Remove a member from a network. Owner-only.
    */
   @Delete('/:id/members/:memberId')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async removeMember(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await networkService.removeMember(params.id, params.memberId, user.id);
@@ -212,7 +211,7 @@ export class NetworkController {
    * Update a network (title, prompt, permissions). Owner-only.
    */
   @Put('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async update(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const body = await req.json().catch(() => ({})) as {
@@ -243,7 +242,7 @@ export class NetworkController {
    * Update network permissions. Owner-only.
    */
   @Patch('/:id/permissions')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async updatePermissions(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; contextInjection?: { discovery: boolean } };
@@ -266,7 +265,7 @@ export class NetworkController {
    * who are already in the network get neither a second row nor a second email.
    */
   @Post('/:id/members/invite')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async inviteMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await this.assertOwner(params.id, user.id);
@@ -312,7 +311,7 @@ export class NetworkController {
    * The previously shared link stops resolving once rotated.
    */
   @Patch('/:id/regenerate-invitation')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async regenerateInvitation(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const result = await networkService.regenerateInvitationLink(params.id, user.id);
@@ -341,7 +340,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/discovery/public')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getPublicNetworks(_req: Request, user: AuthenticatedUser) {
     const result = await networkService.getPublicNetworks(user.id);
     logger.verbose('Public networks listed for user', { userId: user.id, count: result.networks.length });
@@ -353,7 +352,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/shared/:userId')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getSharedNetworks(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     const networks = await networkService.getSharedNetworks(user.id, params.userId);
     logger.verbose('Shared networks fetched', { currentUserId: user.id, targetUserId: params.userId, count: networks.length });
@@ -364,7 +363,7 @@ export class NetworkController {
    * Delete (soft-delete) a network. Owner-only.
    */
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async delete(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await networkService.deleteNetwork(params.id, user.id);
@@ -384,7 +383,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Post('/:id/join')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async joinPublicNetwork(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const network = await networkService.joinPublicNetwork(params.id, user.id);
@@ -407,7 +406,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/member-settings')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getMemberSettings(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const settings = await networkService.getMemberSettings(params.id, user.id);
@@ -427,7 +426,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/overview')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getOverview(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const overview = await networkService.getNetworkOverview(params.id, user.id);
@@ -447,7 +446,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Post('/:id/leave')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async leaveNetwork(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await networkService.leaveNetwork(params.id, user.id);
@@ -471,7 +470,6 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/share/:code')
-  @UseGuards(RateLimit('read'))
   async getNetworkByShareCode(_req: Request, _user: unknown, params: Record<string, string>) {
     const network = await networkService.getNetworkByShareCode(params.code);
     if (!network) {
@@ -485,7 +483,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Post('/invitation/:code/accept')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async acceptInvitation(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const result = await networkService.acceptInvitation(params.code, user.id);
@@ -503,7 +501,6 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/public/:id')
-  @UseGuards(RateLimit('read'))
   async getPublicNetwork(_req: Request, _user: unknown, params: Record<string, string>) {
     const network = await networkService.getPublicNetworkById(params.id);
     if (!network) {
@@ -517,7 +514,7 @@ export class NetworkController {
    * IMPORTANT: This must come AFTER specific routes like /discovery/public and /:id/join.
    */
   @Get('/:id')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async get(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const network = await networkService.getNetworkById(params.id, user.id);

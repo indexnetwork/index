@@ -157,18 +157,6 @@ interface ToolContextBindings {
   apiBaseUrl?: string;
   /** Optional host-side error reporter for swallowed protocol/tool errors. */
   reportToolError?: (error: unknown, report: ToolErrorReport) => void;
-  /**
-   * Optional host-side per-principal MCP call throttle. Invoked once per MCP
-   * tool dispatch (after identity resolves, before any DB work). When the
-   * returned decision is `allowed: false`, the dispatch short-circuits with a
-   * rate-limit error carrying `retryAfterSec`. Absent in test contexts.
-   */
-  mcpRateLimiter?: (input: { userId: string; toolName: string }) => Promise<{
-    allowed: boolean;
-    retryAfterSec?: number;
-    limit?: number;
-    scope?: 'tool' | 'principal';
-  }>;
 }
 
 /** Per-request chat identity, scope, and adapter inputs. */
@@ -404,18 +392,6 @@ interface ToolDepsBindings {
   /** Optional host-side error reporter for swallowed protocol/tool errors. */
   reportToolError?: (error: unknown, report: ToolErrorReport) => void;
   /**
-   * Optional host-side per-principal MCP call throttle. Invoked once per MCP
-   * tool dispatch (after identity resolves, before any DB work). When the
-   * returned decision is `allowed: false`, the dispatch short-circuits with a
-   * rate-limit error carrying `retryAfterSec`. Absent in chat/test contexts.
-   */
-  mcpRateLimiter?: (input: { userId: string; toolName: string }) => Promise<{
-    allowed: boolean;
-    retryAfterSec?: number;
-    limit?: number;
-    scope?: 'tool' | 'principal';
-  }>;
-  /**
    * The non-discovery opportunity operations (`update_opportunity` and its
    * send variant). Defaults to the plain functions in
    * `opportunity.graph.modes.ts`; injected by tests to observe the call.
@@ -443,12 +419,12 @@ interface ToolDepsBindings {
  * ports may Pick from this type, but it is intentionally not a root export.
  */
 export type ToolRegistryCompositionDeps = Omit<ToolDepsBindings,
-  'embedder' | 'apiBaseUrl' | 'mcpRateLimiter'
+  'embedder' | 'apiBaseUrl'
 >;
 
 /** Runtime-only hooks retained for MCP and existing host composition. */
 type ToolRuntimeCompatibilityDeps = Pick<ToolDepsBindings,
-  'embedder' | 'apiBaseUrl' | 'mcpRateLimiter'
+  'embedder' | 'apiBaseUrl'
 >;
 
 /**

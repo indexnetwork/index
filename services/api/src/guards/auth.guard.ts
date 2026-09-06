@@ -131,8 +131,8 @@ export const isSessionAuthenticated = (req: Request): boolean =>
 
 /**
  * Resolve the owning user behind an `x-api-key` credential. Verification,
- * expiry, enablement and rate limiting all belong to the Better Auth apiKey
- * plugin; this only maps the verified key to the user it references.
+ * expiry and enablement all belong to the Better Auth apiKey plugin; this
+ * only maps the verified key to the user it references.
  *
  * @param req - The request carrying the credential, for provenance recording.
  * @param apiKey - The raw secret from the `x-api-key` header.

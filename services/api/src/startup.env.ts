@@ -102,8 +102,6 @@ const envSchema = z.object({
 
   // 9. MCP / tool runtime
 
-  // 10. Rate limiting
-
   // 11. Observability
   SENTRY_DSN: optionalUrl,
   SENTRY_ENVIRONMENT: z.string().optional(),

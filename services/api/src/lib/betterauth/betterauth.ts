@@ -2,8 +2,6 @@ import { betterAuth } from "better-auth";
 import { magicLink, bearer, jwt, mcp, deviceAuthorization } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
-import { resolveClassConfig } from "../limiter/config";
-
 export const API_URL =
   process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`;
 
@@ -19,8 +17,7 @@ export interface AuthDbContract {
 
 /**
  * Better Auth's `secondaryStorage` contract — a generic KV used by the
- * library for rate-limit counters (when `rateLimit.storage` is set to
- * `'secondary-storage'`) and for any other secondary-storage needs.
+ * library when a backing store is injected.
  */
 export interface AuthSecondaryStorage {
   get(key: string): Promise<string | null | undefined>;
@@ -37,9 +34,8 @@ export interface AuthDeps {
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
   /**
-   * Backing store for Better Auth's rate-limit counters. When omitted (no
-   * Redis configured), Better Auth falls back to its built-in in-memory
-   * rate limiter — suitable for local dev, not for multi-instance prod.
+   * Optional KV store for Better Auth. When omitted, Better Auth uses its
+   * built-in in-memory store.
    */
   secondaryStorage?: AuthSecondaryStorage;
 }
@@ -55,21 +51,13 @@ export interface AuthDeps {
 export function createAuth(deps: AuthDeps) {
   const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage } = deps;
 
-  // Snapshot auth_write config once so all customRules entries use a consistent
-  // value (resolveClassConfig reads env vars on every call).
-  const authWrite = resolveClassConfig("auth_write");
-  const authWriteRule = { window: authWrite.windowSec, max: authWrite.perMinute };
-
   return betterAuth({
     baseURL: API_URL,
     database: authDb.createDrizzleAdapter(),
     basePath: "/api/auth",
     /**
-     * Backing store for Better Auth's rate-limit counters. Injected via
-     * AuthDeps so this lib module stays free of direct adapter imports.
-     *
-     * Better Auth v1.6+ resolves `rateLimit.storage = 'secondary-storage'`
-     * against this top-level object (Pattern B in the rate-limiter plan).
+     * Injected via AuthDeps so this lib module stays free of direct adapter
+     * imports. Sessions stay in Postgres (`storeSessionInDatabase` below).
      */
     secondaryStorage,
     session: {
@@ -90,19 +78,7 @@ export function createAuth(deps: AuthDeps) {
       expiresIn: 60 * 60 * 24 * 30,
     },
     rateLimit: {
-      enabled: true,
-      // Route through secondaryStorage only when one was injected; otherwise
-      // Better Auth uses its built-in in-memory limiter (fine for local dev,
-      // not multi-instance safe).
-      ...(secondaryStorage ? { storage: "secondary-storage" as const } : {}),
-      customRules: {
-        "/sign-in/email":      authWriteRule,
-        "/sign-up/email":      authWriteRule,
-        "/sign-in/magic-link": authWriteRule,
-        "/forget-password":    authWriteRule,
-        "/reset-password":     authWriteRule,
-        "/verify-email":       authWriteRule,
-      },
+      enabled: false,
     },
     emailAndPassword: { enabled: process.env.NODE_ENV !== 'production' },
     user: {
@@ -133,8 +109,7 @@ export function createAuth(deps: AuthDeps) {
       // its default of off, so create/list/delete need the owner's own session:
       // a leaked key acts as the user in the product but cannot mint a
       // successor. The plugin's own throttle is disabled — it defaults to 10
-      // requests per key per day, and volume is already capped by the
-      // `RateLimit` guards and the MCP tool limiter.
+      // requests per key per day.
       apiKey({
         defaultKeyLength: 64,
         rateLimit: { enabled: false },

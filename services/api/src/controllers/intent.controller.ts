@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { Intents } from '@indexnetwork/protocol';
@@ -30,7 +29,7 @@ export class IntentController {
    * List intents with pagination and filters.
    */
   @Post('/list')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async list(req: Request, user: AuthenticatedUser) {
     const body = await req.json().catch(() => ({})) as {
       page?: number;
@@ -70,7 +69,7 @@ export class IntentController {
    * @returns The rewritten payload and the next questions.
    */
   @Post('/clarify')
-  @UseGuards(RateLimit('intent_llm'), AuthGuard)
+  @UseGuards(AuthGuard)
   async clarify(req: Request) {
     const raw = await req.json().catch(() => ({}));
     const parsed = ClarifySchema.safeParse(raw);
@@ -93,7 +92,7 @@ export class IntentController {
    * @returns The created intent id and the networks it was linked to.
    */
   @Post('')
-  @UseGuards(RateLimit('intent_llm'), AuthGuard)
+  @UseGuards(AuthGuard)
   async create(req: Request, user: AuthenticatedUser) {
     const raw = await req.json().catch(() => ({}));
     const parsed = CreateSchema.safeParse(raw);
@@ -136,7 +135,7 @@ export class IntentController {
    * @returns The authoritative monotonic visit timestamp.
    */
   @Post('/:id/visit')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(SessionOnlyGuard)
   async visit(_req: Request, user: AuthenticatedUser, params: { id: string }) {
     const resolved = await intentService.resolveId(params.id, user.id);
     if ('error' in resolved) {
@@ -153,7 +152,7 @@ export class IntentController {
    * Get a single intent by ID or short prefix.
    */
   @Get('/:id')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getById(_req: Request, user: AuthenticatedUser, params: { id: string }) {
     const resolved = await intentService.resolveId(params.id, user.id);
     if ('error' in resolved) {
@@ -185,7 +184,7 @@ export class IntentController {
    * @returns Idempotent lifecycle transition result.
    */
   @Patch('/:id/status')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async updateStatus(req: Request, user: AuthenticatedUser, params: { id: string }) {
     const raw = await req.json().catch(() => ({}));
     const parsed = StatusSchema.safeParse(raw);
@@ -245,7 +244,7 @@ export class IntentController {
    * Archive an intent by ID or short prefix.
    */
   @Patch('/:id/archive')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async archive(_req: Request, user: AuthenticatedUser, params: { id: string }) {
     const resolved = await intentService.resolveId(params.id, user.id);
     if ('error' in resolved) {

@@ -4,7 +4,6 @@ import { negotiationService, type SubmitTurnRejection } from '../services/negoti
 import { networkService } from '../services/network.service';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { isStaff } from '../lib/staff';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
@@ -54,7 +53,7 @@ export class NegotiationController {
    * @returns The caller's negotiations with `awaiting`, outcome and counterparty.
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async listNegotiations(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawIntentId = url.searchParams.get('intentId') ?? undefined;
@@ -100,7 +99,7 @@ export class NegotiationController {
    * @returns The opened record, or the existing one when the pair is already open.
    */
   @Post('/open')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async openNegotiation(req: Request, user: AuthenticatedUser) {
     if (!isStaff(user)) {
       return Response.json({ error: 'Opening a negotiation by hand is staff-only' }, { status: 403 });
@@ -155,7 +154,7 @@ export class NegotiationController {
    * @returns The record as this seat sees it, or 404 when it is not theirs.
    */
   @Get('/:opportunityId')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async readNegotiation(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const opportunityId = params?.opportunityId;
     if (!opportunityId) return Response.json({ error: 'Missing opportunityId' }, { status: 400 });
@@ -174,7 +173,7 @@ export class NegotiationController {
    * @returns The negotiation after the turn, or the refusal.
    */
   @Post('/:opportunityId/turns')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async submitTurn(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const opportunityId = params?.opportunityId;
     if (!opportunityId) return Response.json({ error: 'Missing opportunityId' }, { status: 400 });

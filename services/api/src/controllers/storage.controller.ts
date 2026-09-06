@@ -3,7 +3,6 @@ import path from 'path';
 import { Readable } from 'stream';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { StorageService } from '../services/storage.service';
 import { validateFileByMetadata, FILE_SIZE_LIMITS } from '../lib/uploads.config';
@@ -92,7 +91,7 @@ export class StorageController {
    * POST /api/storage/avatars
    */
   @Post('/avatars')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async uploadAvatar(req: Request, user: AuthenticatedUser): Promise<Response | object> {
     let parsed: ParsedFile;
     try {
@@ -133,7 +132,6 @@ export class StorageController {
    * GET /api/storage/avatars/:userId/:filename
    */
   @Get('/avatars/:userId/:filename')
-  @UseGuards(RateLimit('read'))
   async serveAvatar(
     _req: Request,
     _user: unknown,
@@ -148,7 +146,7 @@ export class StorageController {
    * POST /api/storage/network-images
    */
   @Post('/network-images')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async uploadNetworkImage(req: Request, user: AuthenticatedUser): Promise<Response | object> {
     let parsed: ParsedFile;
     try {
@@ -189,7 +187,6 @@ export class StorageController {
    * GET /api/storage/network-images/:userId/:filename
    */
   @Get('/network-images/:userId/:filename')
-  @UseGuards(RateLimit('read'))
   async serveNetworkImage(
     _req: Request,
     _user: unknown,

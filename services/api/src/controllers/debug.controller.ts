@@ -11,7 +11,6 @@ import { buildIntentAssignmentDiagnostic, buildIntentDebugRecord, buildIntentPip
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { DebugGuard } from '../guards/debug.guard';
-import { RateLimit } from '../guards/limiter.guard';
 
 type RouteParams = Record<string, string>;
 
@@ -39,7 +38,7 @@ export class DebugController {
    * @returns Diagnostic JSON payload
    */
   @Get('/intents/:id')
-  @UseGuards(RateLimit('read'), DebugGuard, AuthGuard)
+  @UseGuards(DebugGuard, AuthGuard)
   async getIntentDebug(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const intentId = params?.id;
     if (!intentId) {
@@ -209,7 +208,7 @@ export class DebugController {
    * @returns Diagnostic JSON payload for the user's radar view
    */
   @Get('/radar')
-  @UseGuards(RateLimit('read'), DebugGuard, AuthGuard)
+  @UseGuards(DebugGuard, AuthGuard)
   async getRadarDebug(_req: Request, user: AuthenticatedUser) {
     logger.verbose('Radar debug request', { userId: user.id });
 
@@ -438,7 +437,7 @@ export class DebugController {
    * @returns Diagnostic JSON payload for the chat session
    */
   @Get('/chat/:id')
-  @UseGuards(RateLimit('read'), DebugGuard, AuthGuard)
+  @UseGuards(DebugGuard, AuthGuard)
   async getChatDebug(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const sessionId = params?.id;
     if (!sessionId) {

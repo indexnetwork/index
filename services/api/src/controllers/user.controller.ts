@@ -1,7 +1,6 @@
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { userService } from '../services/user.service';
 import { negotiationService, type NegotiationView } from '../services/negotiation.service';
 
@@ -39,7 +38,7 @@ function toHistoryEntry(negotiation: NegotiationView) {
 export class UserController {
 
   @Get('/batch')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getBatch(req: Request, _user: AuthenticatedUser) {
     const url = new URL(req.url);
     const idsParam = url.searchParams.get('ids') ?? '';
@@ -80,7 +79,7 @@ export class UserController {
    * @returns JSON with negotiations array.
    */
   @Get('/:userId/negotiations')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getNegotiations(req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
     const url = new URL(req.url);
     const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 1), 50);
@@ -101,7 +100,6 @@ export class UserController {
   }
 
   @Get('/:userId')
-  @UseGuards(RateLimit('read'))
   async getUser(_req: Request, _user: unknown, params: { userId: string }) {
     logger.verbose('Get user requested', { userId: params.userId });
     const user = await userService.findByIdOrKey(params.userId);

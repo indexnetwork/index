@@ -25,9 +25,6 @@ import { NotificationService } from './services/notification.service';
 import { NotificationDeliveryService } from './services/notification-delivery.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
-import { RateLimiterError } from './lib/limiter/error';
-import { getRateLimitInfo } from './guards/limiter.guard';
-import { bindLimiterServer } from './lib/limiter/identifier';
 import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
@@ -167,7 +164,7 @@ function classifyRequestSubsystem(pathname: string): string {
 }
 
 // Cron jobs (newsletter, opportunity finder, HyDE) are registered above.
-const server = Bun.serve({
+Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors
   async fetch(req) {
@@ -325,25 +322,12 @@ const server = Bun.serve({
             const result = await handler.call(instance, req, guardResult, routeParams);
             logger.verbose('Handler invoked successfully');
 
-            // Attach ratelimit headers if available
-            const limiterInfo = getRateLimitInfo(req);
-            const limiterHeaders: Record<string, string> = limiterInfo
-              ? {
-                  'ratelimit-limit': String(limiterInfo.limit),
-                  'ratelimit-remaining': String(limiterInfo.remaining),
-                  'ratelimit-reset': String(Math.max(0, Math.ceil((limiterInfo.resetAt - Date.now()) / 1000))),
-                }
-              : {};
-
             // If result is a Response object, add CORS headers and return it.
             if (result instanceof Response) {
               setSpanHttpStatus(result.status);
               // Clone the response with CORS headers added
               const newHeaders = new Headers(result.headers);
               Object.entries(corsHeaders).forEach(([key, value]) => {
-                newHeaders.set(key, value);
-              });
-              Object.entries(limiterHeaders).forEach(([key, value]) => {
                 newHeaders.set(key, value);
               });
               return new Response(result.body, {
@@ -354,7 +338,7 @@ const server = Bun.serve({
             }
             // Otherwise assume JSON
             setSpanHttpStatus(200);
-            return Response.json(result, { headers: { ...corsHeaders, ...limiterHeaders } });
+            return Response.json(result, { headers: corsHeaders });
 
           } catch (error: unknown) {
             logger.error('Error handling request', {
@@ -367,10 +351,6 @@ const server = Bun.serve({
             if (error instanceof SessionRequiredError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-            }
-            if (error instanceof RateLimiterError) {
-              setSpanHttpStatus(429);
-              return new Response(error.toBody(), error.toResponseInit(corsHeaders));
             }
             // Map common auth errors
             if (
@@ -443,10 +423,6 @@ const server = Bun.serve({
     );
   },
 });
-
-// Bind the live server to the limiter so resolveClientIp can fall back to
-// the socket peer in environments where RAILWAY_ENVIRONMENT isn't set.
-bindLimiterServer(server);
 
 logger.info('Server running', { port: PORT });
 

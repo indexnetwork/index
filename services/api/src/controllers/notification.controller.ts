@@ -1,5 +1,4 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
 import type { NotificationDeliveryService } from '../services/notification-delivery.service';
 import type { NotificationService } from '../services/notification.service';
@@ -15,7 +14,7 @@ export class NotificationController {
   ) {}
 
   @Get('/stream')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async stream(_req: Request, user: AuthenticatedUser) {
     let subscription;
     try {
@@ -67,7 +66,7 @@ export class NotificationController {
   }
 
   @Get('/snapshot')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async snapshot(_req: Request, user: AuthenticatedUser) {
     const events = await this.notificationDeliveryService.snapshot(user.id);
     return Response.json({ events });

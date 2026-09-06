@@ -14,8 +14,6 @@ import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
 import { enricherAdapter } from '../adapters/enricher.adapter';
-import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
-import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
@@ -157,8 +155,8 @@ const authResolver: McpAuthResolver = {
     }
 
     if (input.apiKey) {
-      // The apiKey plugin owns verification: hashing, enablement, expiry and
-      // rate limiting. `referenceId` is the user the key names.
+      // The apiKey plugin owns verification: hashing, enablement and expiry.
+      // `referenceId` is the user the key names.
       const { auth } = await import('../lib/betterauth/auth.instance');
       try {
         const { valid, key } = await auth.api.verifyApiKey({ body: { key: input.apiKey } });
@@ -225,7 +223,6 @@ function createMcpServerInstance(): McpServer {
       context: report.context,
       userId: report.userId,
     }),
-    mcpRateLimiter: (input) => checkMcpRateLimit(input),
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
     graphs,
@@ -332,32 +329,6 @@ function rejectMcpContentLengthTooLarge(
   return null;
 }
 
-function mcpHttpRateLimitResponse(
-  decision: McpHttpThrottleDecision,
-  corsHeaders: Record<string, string>,
-): Response {
-  const retryAfterSeconds = decision.retryAfterSec ?? 60;
-  return new Response(
-    JSON.stringify({
-      error: 'Too Many Requests',
-      code: 'RATE_LIMITED',
-      class: 'mcp_http',
-      retryAfterSeconds,
-    }),
-    {
-      status: 429,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(decision.limit !== undefined ? { 'ratelimit-limit': String(decision.limit) } : {}),
-        'ratelimit-remaining': String(decision.remaining ?? 0),
-        'ratelimit-reset': String(retryAfterSeconds),
-        'retry-after': String(retryAfterSeconds),
-        ...corsHeaders,
-      },
-    },
-  );
-}
-
 async function enforceMcpRequestSize(
   req: Request,
   maxRequestBytes: number,
@@ -411,13 +382,7 @@ export async function mcpHandler(
   const contentLengthResponse = rejectMcpContentLengthTooLarge(req, maxRequestBytes, corsHeaders);
   if (contentLengthResponse) return contentLengthResponse;
 
-  // 2. Cheap HTTP-level limiter before body draining and MCP server allocation
-  const httpLimitDecision = await checkMcpHttpRateLimit(req);
-  if (!httpLimitDecision.allowed) {
-    return mcpHttpRateLimitResponse(httpLimitDecision, corsHeaders);
-  }
-
-  // 3. Reject unauthenticated requests at the HTTP level before they reach the MCP transport.
+  // 2. Reject unauthenticated requests at the HTTP level before they reach the MCP transport.
   // The transport catches errors and wraps them as HTTP 200 isError responses, which means
   // Claude Code never sees a 401 and never triggers OAuth. By checking here, we return a
   // proper HTTP 401 + WWW-Authenticate so Claude Code can initiate the OAuth flow.
@@ -436,7 +401,7 @@ export async function mcpHandler(
     );
   }
 
-  // 4. Drain and validate request body size
+  // 3. Drain and validate request body size
   const sizeCheckedRequest = await enforceMcpRequestSize(req, maxRequestBytes, corsHeaders);
   if (sizeCheckedRequest instanceof Response) return sizeCheckedRequest;
   req = sizeCheckedRequest;

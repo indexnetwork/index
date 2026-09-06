@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { enrichmentService } from '../services/enrichment.service';
 import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
@@ -20,7 +19,7 @@ const enrichBodySchema = z.object({
 @Controller('/enrichment')
 export class EnrichmentController {
   @Post('/enrich')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async enrich(req: Request, user: AuthenticatedUser) {
     const parsed = enrichBodySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

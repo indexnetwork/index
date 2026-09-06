@@ -265,7 +265,7 @@ Discovery is the process of finding meaningful connections between users based o
 - Network-scoped operations are restricted to that network
 - Only network owners can update settings, add/remove members (for invite_only networks)
 
-### Rate Limits & Best Practices
+### Best Practices
 - Avoid unnecessary read_intents/read_networks calls — cache results within a conversation
 - Use pagination (limit/page) for large result sets
 - Call read_docs once at the start to understand the domain`,

@@ -1,5 +1,4 @@
 import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { agentService } from '../services/agent.service';
 import { ConversationService } from '../services/conversation.service';
@@ -27,7 +26,7 @@ export class ConversationController {
    * @returns JSON with conversations array
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getConversations(_req: Request, user: AuthenticatedUser) {
     try {
       const conversations = await this.conversationService.getConversations(user.id);
@@ -47,7 +46,7 @@ export class ConversationController {
    * @returns JSON with created conversation
    */
   @Post('')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async createConversation(req: Request, user: AuthenticatedUser) {
     let body: { participants?: { participantId: string; participantType: 'user' | 'agent' }[] };
     try {
@@ -90,7 +89,7 @@ export class ConversationController {
    * @returns JSON with messages array
    */
   @Get('/:id/messages')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getMessages(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -142,7 +141,7 @@ export class ConversationController {
    * Accepts full UUID or short ID prefix.
    */
   @Post('/:id/read')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async markConversationRead(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -183,7 +182,7 @@ export class ConversationController {
    * @returns JSON with created message
    */
   @Post('/:id/messages')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async sendMessage(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -245,7 +244,7 @@ export class ConversationController {
    * @returns JSON with conversation
    */
   @Post('/dm')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getOrCreateDm(req: Request, user: AuthenticatedUser) {
     let body: { peerUserId?: string };
     try {
@@ -282,7 +281,7 @@ export class ConversationController {
    * @returns JSON with success status
    */
   @Patch('/:id/metadata')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async updateMetadata(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -329,7 +328,7 @@ export class ConversationController {
    * @returns JSON with success status
    */
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async hideConversation(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -364,7 +363,7 @@ export class ConversationController {
    * @returns SSE event stream
    */
   @Get('/stream')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async subscribe(_req: Request, user: AuthenticatedUser) {
     const encoder = new TextEncoder();
     const { onMessage, cleanup } = this.conversationService.subscribe(user.id);

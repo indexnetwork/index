@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Patch, Post, Delete, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
@@ -41,7 +40,6 @@ export class AuthController {
    * Returns the list of configured social auth providers (public, no auth required).
    */
   @Get('/providers')
-  @UseGuards(RateLimit('read'))
   async providers() {
     const providers: string[] = [];
     if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
@@ -55,7 +53,7 @@ export class AuthController {
    * Response shape: { user: User } for frontend APIResponse compatibility.
    */
   @Get('/me')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async me(_req: Request, user: AuthenticatedUser) {
     logger.verbose('Auth me requested', { userId: user.id });
     const fullUser = await userService.findWithGraph(user.id);
@@ -83,7 +81,7 @@ export class AuthController {
    * Response shape: { user: User } for frontend APIResponse compatibility.
    */
   @Patch('/profile/update')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async updateProfile(req: Request, user: AuthenticatedUser) {
     const parsed = updateProfileSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -112,7 +110,7 @@ export class AuthController {
   }
 
   @Post('/onboarding/confirm-profile')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async confirmOnboardingProfile(_req: Request, user: AuthenticatedUser) {
     try {
       const result = await onboardingService.confirmProfile(user.id);
@@ -124,7 +122,7 @@ export class AuthController {
   }
 
   @Post('/onboarding/complete')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async completeOnboarding(req: Request, user: AuthenticatedUser) {
     const parsed = completeOnboardingSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -144,7 +142,7 @@ export class AuthController {
    * Session-only: a leaked API key must not be able to destroy the account (IND-384).
    */
   @Delete('/account')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(SessionOnlyGuard)
   async deleteAccount(_req: Request, user: AuthenticatedUser) {
     logger.verbose('Account deletion requested', { userId: user.id });
     await userService.softDelete(user.id);
@@ -159,7 +157,7 @@ export class AuthController {
    * never hold another device's credential.
    */
   @Get('/devices')
-  @UseGuards(RateLimit('read'), SessionOnlyGuard)
+  @UseGuards(SessionOnlyGuard)
   async devices(_req: Request, user: AuthenticatedUser) {
     const devices = await userService.listDevices(user.id);
     return Response.json({ devices, currentId: user.sessionId ?? null });
@@ -170,7 +168,7 @@ export class AuthController {
    * the sessions that could revoke it.
    */
   @Post('/devices/revoke')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(SessionOnlyGuard)
   async revokeDevice(req: Request, user: AuthenticatedUser) {
     const parsed = revokeDeviceSchema.safeParse(await req.json());
     if (!parsed.success) {

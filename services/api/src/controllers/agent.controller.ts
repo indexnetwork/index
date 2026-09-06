@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { agentService } from '../services/agent.service';
@@ -82,7 +81,7 @@ export class AgentController {
     private readonly agents: typeof agentService = agentService,
   ) {}
   @Get('')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async list(_req: Request, user: AuthenticatedUser) {
     const agents = await this.agents.listForUser(user.id);
     logger.verbose('Listed agents', { userId: user.id, count: agents.length });
@@ -90,7 +89,7 @@ export class AgentController {
   }
 
   @Post('')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(SessionOnlyGuard)
   async create(req: Request, user: AuthenticatedUser) {
     const body = await parseBody(req, createAgentSchema);
     if (body instanceof Response) {
@@ -111,7 +110,7 @@ export class AgentController {
    * agent record it is acting as.
    */
   @Get('/me')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getMe(_req: Request, user: AuthenticatedUser) {
     try {
       const result = await this.agents.getMe(user.id);
@@ -122,7 +121,7 @@ export class AgentController {
   }
 
   @Get('/:id')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getById(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -138,7 +137,7 @@ export class AgentController {
   }
 
   @Patch('/:id')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(SessionOnlyGuard)
   async update(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -159,7 +158,7 @@ export class AgentController {
   }
 
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(SessionOnlyGuard)
   async remove(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {

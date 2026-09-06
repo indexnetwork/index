@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 
@@ -79,7 +78,7 @@ export class OpportunityController {
    * GET /opportunities — list opportunities for the authenticated user.
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async listOpportunities(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
@@ -121,7 +120,7 @@ export class OpportunityController {
    * @returns JSON with opportunity cards for the chat context
    */
   @Get('/chat-context')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getChatContext(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const peerUserId = url.searchParams.get('peerUserId');
@@ -143,7 +142,7 @@ export class OpportunityController {
    * GET /opportunities/radar — radar view: flat presenter-card list, optionally intent-scoped.
    */
   @Get('/radar')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getRadar(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const networkId = url.searchParams.get('networkId') ?? undefined;
@@ -192,7 +191,7 @@ export class OpportunityController {
    * Accepts full UUID or short ID prefix.
    */
   @Get('/:id')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getOpportunity(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -225,7 +224,7 @@ export class OpportunityController {
    * Accepts full UUID or short ID prefix.
    */
   @Patch('/:id/status')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async updateStatus(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -287,7 +286,7 @@ export class OpportunityController {
    *   counterpart, 403 for non-actors, 404 when the opp does not exist).
    */
   @Post('/:id/start-chat')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async startChat(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -335,7 +334,7 @@ export class NetworkOpportunityController {
    * GET /networks/:networkId/opportunities — list opportunities for a network (owner or member).
    */
   @Get('/:networkId/opportunities')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async listForNetwork(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {

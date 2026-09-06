@@ -20,6 +20,14 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 53.0.0 - 2026-09-06
+
+### Removed
+
+- **BREAKING — `mcpRateLimiter` is gone.** Hosts used to inject a per-principal
+  throttle on MCP tool dispatch. That hook is deleted; a tool call runs as soon
+  as identity resolves.
+
 ## 52.0.0 - 2026-09-06
 
 ### Removed

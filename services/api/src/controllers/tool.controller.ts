@@ -8,7 +8,6 @@ import { z } from 'zod';
 
 import { Controller, Post, Get, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { ToolService } from '../services/tool.service';
 import { ChatContextAccessError } from '@indexnetwork/protocol';
 import { log } from '../lib/log';
@@ -37,7 +36,7 @@ export class ToolController {
    * @returns Tool result as JSON
    */
   @Post('/:toolName')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async invoke(req: Request, user: AuthenticatedUser, params: { toolName: string }) {
     const { toolName } = params;
     logger.verbose('Tool invoke requested', { userId: user.id, toolName });
@@ -105,7 +104,7 @@ export class ToolController {
    * @returns Array of tool metadata
    */
   @Get('/')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async list(_req: Request, _user: AuthenticatedUser) {
     logger.verbose('Tool list requested');
 
