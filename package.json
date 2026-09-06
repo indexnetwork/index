@@ -34,6 +34,7 @@
     "db:setup:local": "bash scripts/setup-local-testdb.sh",
     "db:playground:reset": "bun scripts/playground-reset.ts",
     "db:playground:resume": "cd services/api && bun src/cli/resume-playground-intents.ts",
+    "agent:negotiate": "bun run --cwd packages/agent build && bun scripts/agent-negotiation.ts",
     "sync:lockfile-versions": "bun scripts/sync-lockfile-versions.ts",
     "check:lockfile-versions": "bun scripts/sync-lockfile-versions.ts --check",
     "pr:snapshot": "bun scripts/pr-snapshot.ts",
