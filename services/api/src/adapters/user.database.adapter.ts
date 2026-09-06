@@ -1,4 +1,4 @@
-import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, and, db, eq, inArray, isNull, sessions, userNotificationSettings, userSocials, users } from './database.shared';
+import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, db, eq, inArray, sessions, userNotificationSettings, userSocials, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 
@@ -47,19 +47,6 @@ export class UserDatabaseAdapter {
       ...u,
       socials: socialsByUser.get(u.id) ?? [],
     }));
-  }
-
-  /**
-   * Resolve addresses to the accounts that already hold them.
-   *
-   * Existing rows only: unlike the invitation path this never creates a user,
-   * so an address nobody owns is simply absent from the result.
-   */
-  async findByEmails(emails: string[]): Promise<Array<{ id: string; email: string; name: string }>> {
-    if (emails.length === 0) return [];
-    return db.select({ id: users.id, email: users.email, name: users.name })
-      .from(users)
-      .where(and(inArray(users.email, emails), isNull(users.deletedAt)));
   }
 
   /**

@@ -30,15 +30,6 @@ export class UserService {
     }
 
     /**
-     * Resolve addresses to accounts, for callers holding an email and needing
-     * an id. Never creates: an unknown address is absent from the result.
-     */
-    async findByEmails(emails: string[]) {
-        if (emails.length === 0) return [];
-        return this.db.findByEmails(emails);
-    }
-
-    /**
      * Resolves a full User Graph.
      *
      * Identity (name/bio/location) is sourced from the `users` row itself; the

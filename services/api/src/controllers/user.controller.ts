@@ -1,8 +1,7 @@
-import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
-import { isStaff } from '../lib/staff';
 import { userService } from '../services/user.service';
 import { negotiationService, type NegotiationView } from '../services/negotiation.service';
 
@@ -11,7 +10,6 @@ import { log } from '../lib/log';
 const logger = log.controller.from('user');
 
 const BATCH_MAX_IDS = 100;
-const LOOKUP_MAX_EMAILS = 100;
 
 /**
  * Projects one negotiation into the profile-history DTO.
@@ -81,41 +79,6 @@ export class UserController {
    * @param params - Route params containing userId.
    * @returns JSON with negotiations array.
    */
-  /**
-   * POST /users/lookup — turn addresses into ids.
-   *
-   * Staff only, and deliberately so: answering "does this address have an
-   * account" for anyone who asks is an enumeration oracle. It never creates a
-   * user, so an address nobody owns comes back absent rather than provisioned.
-   *
-   * @param req - Request with body `{ emails: string[] }`.
-   * @param user - Authenticated user from AuthGuard.
-   * @returns The id, email and name of each address that has an account.
-   */
-  @Post('/lookup')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async lookup(req: Request, user: AuthenticatedUser) {
-    if (!isStaff(user)) {
-      return Response.json({ error: 'Looking users up by email is staff-only' }, { status: 403 });
-    }
-
-    const body = await req.json().catch(() => ({})) as { emails?: unknown };
-    const emails = Array.isArray(body.emails)
-      ? [...new Set(
-          body.emails
-            .filter((entry): entry is string => typeof entry === 'string')
-            .map((entry) => entry.trim().toLowerCase())
-            .filter(Boolean),
-        )].slice(0, LOOKUP_MAX_EMAILS)
-      : [];
-    if (emails.length === 0) {
-      return Response.json({ users: [] });
-    }
-
-    logger.verbose('Lookup users by email requested', { count: emails.length });
-    return Response.json({ users: await userService.findByEmails(emails) });
-  }
-
   @Get('/:userId/negotiations')
   @UseGuards(RateLimit('read'), AuthGuard)
   async getNegotiations(req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
