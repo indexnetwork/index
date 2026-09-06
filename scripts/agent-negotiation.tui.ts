@@ -15,6 +15,9 @@ interface Pane {
   input?: TextareaRenderable;
   hint?: TextRenderable;
   choices?: ScrollBoxRenderable;
+  choiceRows: { box: BoxRenderable; label: TextRenderable; text: string }[];
+  choiceIndex: number;
+  editingReply: boolean;
   shownQuestion?: NegotiationDemo['pending'];
   ownerId?: string;
 }
@@ -31,7 +34,7 @@ export function mountNegotiationTui(renderer: CliRenderer, demo: NegotiationDemo
   const board = new BoxRenderable(renderer, { id: 'panes', flexDirection: 'row', flexGrow: 1, minHeight: 0, gap: 1 });
   root.add(board);
   const status = new TextRenderable(renderer, { id: 'session-status', content: demo.status, fg: COLORS.muted, height: 2, flexShrink: 0, wrapMode: 'word' });
-  const help = new TextRenderable(renderer, { content: ' Click/Tab: focus · Alt+1–9: option · Enter: custom reply · Ctrl+J: newline · PgUp/PgDn/wheel: scroll · Ctrl+C: quit + save', fg: COLORS.muted, height: 2, flexShrink: 0, wrapMode: 'word' });
+  const help = new TextRenderable(renderer, { content: ' Click/↑↓: select · Enter: confirm · Esc: choices · Tab: pane · Ctrl+J: newline · PgUp/PgDn/wheel: scroll · Ctrl+C: quit + save', fg: COLORS.muted, height: 2, flexShrink: 0, wrapMode: 'word' });
   root.add(status);
   root.add(help);
 
@@ -46,12 +49,16 @@ export function mountNegotiationTui(renderer: CliRenderer, demo: NegotiationDemo
     history.add(card);
   }
 
+  function focusControl(pane: Pane): void {
+    if (pane.choices?.visible && !pane.editingReply) pane.choices.focus();
+    else if (pane.input) pane.input.focus();
+    else pane.history.focus();
+  }
+
   function focus(index: number): void {
     selected = index;
-    const pane = panes[index];
-    if (pane.input) pane.input.focus();
-    else pane.history.focus();
     render();
+    focusControl(panes[index]);
   }
 
   for (let index = 0; index < 3; index++) {
@@ -70,7 +77,7 @@ export function mountNegotiationTui(renderer: CliRenderer, demo: NegotiationDemo
       contentOptions: { flexDirection: 'column' },
     });
     box.add(history);
-    const pane: Pane = { box, history, ownerId: principal?.id };
+    const pane: Pane = { box, history, ownerId: principal?.id, choiceRows: [], choiceIndex: 0, editingReply: true };
     panes.push(pane);
     if (principal) {
       append(history, 'Intent', principal.intent, COLORS.muted);
@@ -80,13 +87,19 @@ export function mountNegotiationTui(renderer: CliRenderer, demo: NegotiationDemo
       pane.choices = new ScrollBoxRenderable(renderer, {
         id: `choices-${principal.id}`, visible: false, height: 6, maxHeight: '30%', flexShrink: 0,
         scrollX: false, scrollY: true, contentOptions: { flexDirection: 'column' },
-        onMouseDown: (event) => { event.stopPropagation(); focus(index); },
+        onMouseDown: (event) => { event.stopPropagation(); pane.editingReply = false; focus(index); },
       });
       box.add(pane.choices);
       pane.input = new TextareaRenderable(renderer, {
         id: `reply-${principal.id}`, height: 5, flexShrink: 0, wrapMode: 'word',
         placeholder: `Custom reply as ${principal.name}…`, textColor: COLORS.text,
         backgroundColor: '#192230', focusedBackgroundColor: '#202e40', cursorColor: COLORS.focus,
+        onMouseDown: (event) => {
+          event.stopPropagation();
+          pane.editingReply = true;
+          pane.choiceIndex = pane.shownQuestion?.options?.length ?? 0;
+          focus(index);
+        },
         keyBindings: [
           { name: 'return', action: 'submit' },
           { name: 'return', shift: true, action: 'newline' },
@@ -127,33 +140,45 @@ export function mountNegotiationTui(renderer: CliRenderer, demo: NegotiationDemo
           pane.choices.remove(child);
           child.destroyRecursively();
         }
+        pane.choiceRows = [];
         const options = question?.options ?? [];
-        pane.choices.visible = options.length > 0;
-        pane.choices.height = Math.min(8, options.length * 3);
-        options.forEach((option, choiceIndex) => {
+        const labels = question ? [...options, 'Custom reply…'] : [];
+        pane.editingReply = options.length === 0 || Boolean(pane.input!.plainText);
+        pane.choiceIndex = pane.editingReply ? options.length : 0;
+        pane.choices.visible = Boolean(question);
+        pane.choices.height = Math.min(8, labels.length * 3);
+        labels.forEach((text, choiceIndex) => {
           const button = new BoxRenderable(renderer, {
             id: `option-${pane.ownerId}-${choiceIndex}`, width: '100%', flexShrink: 0,
-            paddingX: 1, marginBottom: 1, backgroundColor: '#202e40',
+            paddingX: 1, marginBottom: 1,
             onMouseDown: (event) => {
               event.stopPropagation();
-              // A removed button must never answer a later question for the same user.
-              if (demo.pending === question && demo.answer(pane.ownerId!, option)) pane.input!.clear();
+              if (demo.pending !== question) return;
+              pane.choiceIndex = choiceIndex;
+              pane.editingReply = choiceIndex === options.length;
               focus(index);
             },
           });
-          button.add(new TextRenderable(renderer, {
-            content: `${choiceIndex + 1}. ${option}`, fg: COLORS.answer, wrapMode: 'word', flexShrink: 0,
-          }));
+          const label = new TextRenderable(renderer, { content: text, wrapMode: 'word', flexShrink: 0 });
+          button.add(label);
+          pane.choiceRows.push({ box: button, label, text });
           pane.choices!.add(button);
         });
         pane.choices.scrollTo(0);
+        if (selected === index) focusControl(pane);
       }
+      pane.choiceRows.forEach((row, choiceIndex) => {
+        const highlighted = choiceIndex === pane.choiceIndex;
+        row.box.backgroundColor = highlighted ? '#355073' : '#192230';
+        row.label.fg = highlighted ? COLORS.text : COLORS.muted;
+        row.label.content = `${highlighted ? '›' : ' '} ${row.text}`;
+      });
       pane.box.title = principal ? ` H2A · ${principal.name}${pending ? ' · needs you' : ''} ` : ' A2A · negotiation ';
       pane.box.borderColor = selected === index ? COLORS.focus : pending ? COLORS.question : COLORS.border;
       pane.box.titleColor = pending ? COLORS.question : selected === index ? COLORS.focus : COLORS.muted;
       if (pane.hint) {
         pane.hint.content = pending
-          ? question?.options?.length ? 'Choose an option or send a custom reply.' : 'Your agent is waiting. Enter sends your reply.'
+          ? pane.editingReply ? 'Enter sends · Esc returns to choices.' : '↑/↓ choose · Enter confirms.'
           : demo.phase === 'settled' ? 'Negotiation ended. Scroll to review.' : 'Draft a reply; send only when asked.';
         pane.hint.fg = pending ? COLORS.question : COLORS.muted;
       }
@@ -163,15 +188,29 @@ export function mountNegotiationTui(renderer: CliRenderer, demo: NegotiationDemo
   }
 
   const onKey = (key: KeyEvent) => {
-    if ((key.meta || key.option) && /^[1-9]$/.test(key.name)) {
-      key.preventDefault();
-      const pane = panes[selected];
-      const question = demo.pending;
-      const option = question?.options?.[Number(key.name) - 1];
-      if (pane.ownerId && question?.ownerId === pane.ownerId && option !== undefined && demo.answer(pane.ownerId, option)) pane.input!.clear();
-    } else if (key.name === 'tab') {
+    const pane = panes[selected];
+    const question = demo.pending?.ownerId === pane.ownerId && pane.shownQuestion === demo.pending ? demo.pending : null;
+    if (key.name === 'tab') {
       key.preventDefault();
       focus((selected + (key.shift ? 2 : 1)) % 3);
+    } else if (question && key.name === 'escape' && pane.editingReply) {
+      key.preventDefault();
+      pane.editingReply = false;
+      focus(selected);
+    } else if (question && !pane.editingReply && (key.name === 'up' || key.name === 'down')) {
+      key.preventDefault();
+      pane.choiceIndex = Math.max(0, Math.min(pane.choiceRows.length - 1, pane.choiceIndex + (key.name === 'up' ? -1 : 1)));
+      render();
+      pane.choices!.scrollChildIntoView(`option-${pane.ownerId}-${pane.choiceIndex}`);
+    } else if (question && !pane.editingReply && key.name === 'return' && !key.ctrl && !key.shift && !key.meta) {
+      key.preventDefault();
+      const option = question.options?.[pane.choiceIndex];
+      if (option === undefined) {
+        pane.editingReply = true;
+      } else if (demo.answer(pane.ownerId!, option)) {
+        pane.input!.clear();
+      }
+      focus(selected);
     } else if (key.name === 'pageup' || key.name === 'pagedown') {
       key.preventDefault();
       const history = panes[selected].history;
@@ -195,8 +234,9 @@ Requires OPENROUTER_API_KEY and an interactive terminal. Uses real agents and an
 in-memory negotiation; no Index API keys, database, or server are used.
 
 Scenario: { "left": { "name", "intent", "instructions" }, "right": { ... } }
-Click either side to act as that user. Click an agent-provided option (or use
-Alt+1–9), or type a custom answer and press Enter. Only pending questions accept replies.
+Click either side to act as that user. Click or use Up/Down to highlight an
+agent-provided option, then Enter to confirm. Select Custom reply or click the
+text box to write your own answer. Esc returns from editing to the choices.
 Tab cycles panes; Ctrl+J adds a newline; mouse wheel or PgUp/PgDn scrolls history.
 Ctrl+C quits and saves a private Markdown transcript in a temporary directory.
 Rerun the command to start a fresh negotiation with an edited scenario.
