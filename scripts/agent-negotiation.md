@@ -1,4 +1,57 @@
-# Run an autonomous Index negotiation
+# Run an autonomous negotiation
+
+## Local three-pane TUI
+
+The local lab runs real `@indexnetwork/agent` instances against an in-memory
+negotiation. No Index API, database, frontend, or Index credentials are used.
+It shares the REST runner's prompts and host coordination in
+`agent-negotiation.session.ts`; `Agent.run()` still owns the model/tool loop,
+question suspension, and private conversation history.
+
+```bash
+# From this worktree. The env file supplies OPENROUTER_API_KEY.
+bun --env-file=.env.development run agent:tui scripts/agent-negotiation.scenario.json
+```
+
+Use a terminal at least 100 columns wide (120+ recommended):
+
+```text
+┌─ H2A · Alice ──────┬─ A2A · negotiation ──┬─ H2A · Bob ─────────┐
+│ Intent + mandate  │                     │ Intent + mandate   │
+│ Private questions │ Shared agent turns  │ Private questions  │
+│ Your answers      │                     │ Your answers       │
+├───────────────────┤     Read-only       ├────────────────────┤
+│ Reply as Alice…   │                     │ Reply as Bob…      │
+└───────────────────┴─────────────────────┴────────────────────┘
+```
+
+- Click a side pane to act as that user, or use **Tab / Shift+Tab** to change
+  focus. The focused pane has a blue border; a pending question is highlighted.
+- When the agent supplies suggested answers, **click an option** to send it,
+  or use **Alt+1–9** in that user's focused pane. Options come from
+  `ask_user.options`, not from a separate TUI questionnaire.
+- The text box always accepts a **custom reply**. **Enter** submits only to that
+  user's pending question. Empty, wrong-side, and duplicate replies are rejected;
+  unsent drafts stay in their own pane until you send an answer.
+- Open-ended questions with no options use the same text box. Both option
+  selections and custom replies are recorded in the private transcript and
+  resume the same agent; answering does not itself create a shared A2A turn.
+- **Ctrl+J** adds a newline. Mouse wheel or **PageUp / PageDown** scrolls the
+  selected transcript. The center pane cannot send messages.
+- Agents take turns autonomously. Settlement or failure stays on screen for
+  inspection. **Ctrl+C** cancels outstanding work, restores the terminal, and
+  prints the path of a private Markdown transcript containing all three panes'
+  conversations. It includes both users' private messages; do not share it as
+  if it were only the public negotiation.
+
+Copy and edit the scenario JSON to change both names, intents, and private
+instructions. Rerun the command for a fresh negotiation; there is no live
+scenario editor or restart recovery. You answer the fictional users' questions
+in the TUI—no canned human replies are supplied. The model may agree, decline,
+or ask questions; the host does not choose that outcome. Model calls incur
+normal OpenRouter usage. No live commitments are created by the local lab.
+
+## REST runner
 
 The standalone terminal host in `agent-negotiation.ts` injects real Index REST
 tools into two separate `@indexnetwork/agent` sessions. The API and agent library
