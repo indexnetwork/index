@@ -27,15 +27,22 @@ Use a terminal at least 100 columns wide (120+ recommended):
 
 - Click a side pane to act as that user, or use **Tab / Shift+Tab** to change
   focus. The focused pane has a blue border; a pending question is highlighted.
-- When the agent supplies suggested answers, **click an option** to send it,
-  or use **Alt+1–9** in that user's focused pane. Options come from
-  `ask_user.options`, not from a separate TUI questionnaire.
-- The text box always accepts a **custom reply**. **Enter** submits only to that
-  user's pending question. Empty, wrong-side, and duplicate replies are rejected;
-  unsent drafts stay in their own pane until you send an answer.
-- Open-ended questions with no options use the same text box. Both option
-  selections and custom replies are recorded in the private transcript and
-  resume the same agent; answering does not itself create a shared A2A turn.
+- The reply picker shows a **highlighted row with a `›` marker**. Click a
+  suggested answer or use **↑ / ↓** to select it, then **Enter** to confirm.
+  Clicking an answer only selects it—it does not immediately send it. No Alt
+  shortcuts or terminal modifier configuration are needed.
+- The last row is always **Custom reply…**. Select it and press **Enter**, or
+  click the text box, to write your own answer. **Esc** returns from the editor
+  to the picker. Arrow keys edit text normally while the editor is focused.
+- Suggestions come from `ask_user.options`. For an open-ended question with no
+  suggestions, the picker still shows **Custom reply…**, and the editor is
+  ready for typing. The TUI does not invent answers about the principal.
+- **Enter** submits only to that user's pending question. Empty, wrong-side,
+  and duplicate replies are rejected; unsent drafts stay in their own pane
+  until you send an answer.
+- Both selected options and custom replies are recorded in the private
+  transcript and resume the same agent; answering does not itself create a
+  shared A2A turn.
 - **Ctrl+J** adds a newline. Mouse wheel or **PageUp / PageDown** scrolls the
   selected transcript. The center pane cannot send messages.
 - Agents take turns autonomously. Settlement or failure stays on screen for
