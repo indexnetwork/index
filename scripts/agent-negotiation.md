@@ -34,9 +34,11 @@ Use a terminal at least 100 columns wide (120+ recommended):
 - The last row is always **Custom reply…**. Select it and press **Enter**, or
   click the text box, to write your own answer. **Esc** returns from the editor
   to the picker. Arrow keys edit text normally while the editor is focused.
-- Suggestions come from `ask_user.options`. For an open-ended question with no
-  suggestions, the picker still shows **Custom reply…**, and the editor is
-  ready for typing. The TUI does not invent answers about the principal.
+- Suggestions come from `ask_user.options`. The negotiation prompt and tool
+  schema request **2–4 suggested answers for every focused question**, including
+  neutral self-description categories when personal facts are missing. A choice
+  becomes a fact only after the principal confirms it; the TUI does not invent
+  answers. **Custom reply…** remains available even if a model omits suggestions.
 - **Enter** submits only to that user's pending question. Empty, wrong-side,
   and duplicate replies are rejected; unsent drafts stay in their own pane
   until you send an answer.
