@@ -10,6 +10,12 @@ export interface AuthenticatedUser {
   id: string;
   email: string | null;
   name: string;
+  /**
+   * The caller's own session, when it authenticated with a session token. The
+   * web app's JWT does not carry it, so this is set only for native devices —
+   * enough for a device list to mark the row the caller is looking from.
+   */
+  sessionId?: string;
 }
 
 const JWKS = createRemoteJWKSet(
@@ -65,6 +71,7 @@ const resolveSessionUser = async (req: Request): Promise<AuthenticatedUser> => {
     id: session.user.id,
     email: session.user.email ?? null,
     name: session.user.name,
+    sessionId: session.session.id,
   };
 };
 

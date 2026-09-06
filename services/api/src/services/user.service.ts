@@ -121,6 +121,26 @@ export class UserService {
         return this.db.updateNotificationPreferences(userId, preferences as import('../schemas/database.schema').NotificationPreferences);
     }
 
+    /**
+     * Lists the devices a user is signed in on, as session metadata.
+     * @param userId - The signed-in user
+     * @returns One entry per live session, newest first
+     */
+    async listDevices(userId: string) {
+        return this.db.listUserDevices(userId);
+    }
+
+    /**
+     * Signs one device out by deleting its session.
+     * @param userId - Owner of the session, scoping the delete
+     * @param sessionId - The session to revoke
+     * @returns Whether a session was revoked
+     */
+    async revokeDevice(userId: string, sessionId: string) {
+        logger.verbose('Revoking device session', { userId, sessionId });
+        return this.db.deleteUserSession(userId, sessionId);
+    }
+
 }
 
 export const userService = new UserService();

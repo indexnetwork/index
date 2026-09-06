@@ -1,4 +1,12 @@
-import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, db, eq, inArray, sessions, userNotificationSettings, userSocials, users } from './database.shared';
+import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, and, db, desc, eq, gt, inArray, sessions, userNotificationSettings, userSocials, users } from './database.shared';
+
+/** A live session presented as a device: metadata only, never the token. */
+export interface DeviceSession {
+  id: string;
+  userAgent: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+}
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 
@@ -193,6 +201,39 @@ export class UserDatabaseAdapter {
    */
   async deleteUserSessions(userId: string): Promise<void> {
     await db.delete(sessions).where(eq(sessions.userId, userId));
+  }
+
+  /**
+   * Lists a user's live sessions as device metadata. The session token is
+   * deliberately not selected: this feeds a settings list, and the native shell
+   * discards any response carrying credential material.
+   * @param userId - The user whose devices should be listed
+   * @returns One row per unexpired session, newest first
+   */
+  async listUserDevices(userId: string): Promise<DeviceSession[]> {
+    return db.select({
+      id: sessions.id,
+      userAgent: sessions.userAgent,
+      createdAt: sessions.createdAt,
+      expiresAt: sessions.expiresAt,
+    })
+      .from(sessions)
+      .where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, new Date())))
+      .orderBy(desc(sessions.createdAt));
+  }
+
+  /**
+   * Deletes one of a user's sessions, signing that device out.
+   * @param userId - Owner of the session, scoping the delete
+   * @param sessionId - The session to remove
+   * @returns Whether a session was removed
+   */
+  async deleteUserSession(userId: string, sessionId: string): Promise<boolean> {
+    const removed = await db.delete(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)))
+      .returning({ id: sessions.id });
+
+    return removed.length > 0;
   }
 
   /**

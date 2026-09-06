@@ -31,6 +31,10 @@ const completeOnboardingSchema = z.object({
   intentId: z.string().min(1).optional(),
 }).strict();
 
+const revokeDeviceSchema = z.object({
+  sessionId: z.string().min(1),
+}).strict();
+
 @Controller('/auth')
 export class AuthController {
   /**
@@ -144,6 +148,40 @@ export class AuthController {
   async deleteAccount(_req: Request, user: AuthenticatedUser) {
     logger.verbose('Account deletion requested', { userId: user.id });
     await userService.softDelete(user.id);
+    return Response.json({ success: true });
+  }
+
+  /**
+   * Lists the devices this account is signed in on.
+   *
+   * Better Auth's own `list-sessions` returns each session's token; this
+   * returns metadata only, so the list can be rendered by a client that must
+   * never hold another device's credential.
+   */
+  @Get('/devices')
+  @UseGuards(RateLimit('read'), SessionOnlyGuard)
+  async devices(_req: Request, user: AuthenticatedUser) {
+    const devices = await userService.listDevices(user.id);
+    return Response.json({ devices, currentId: user.sessionId ?? null });
+  }
+
+  /**
+   * Signs one device out. Session-only: an API key must not be able to evict
+   * the sessions that could revoke it.
+   */
+  @Post('/devices/revoke')
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async revokeDevice(req: Request, user: AuthenticatedUser) {
+    const parsed = revokeDeviceSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return Response.json({ error: 'sessionId is required' }, { status: 400 });
+    }
+
+    const revoked = await userService.revokeDevice(user.id, parsed.data.sessionId);
+    if (!revoked) {
+      return Response.json({ error: 'Device not found' }, { status: 404 });
+    }
+
     return Response.json({ success: true });
   }
 }

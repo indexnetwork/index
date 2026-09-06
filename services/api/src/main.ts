@@ -235,13 +235,18 @@ const server = Bun.serve({
       '/api/auth/api-key/',
       // Device authorization grant: /device/code and /device/approve are driven
       // by the owner's browser on /cli-auth, /device/token by the device itself.
-      '/api/auth/device',
+      // The trailing slash matters — a bare `/api/auth/device` prefix would also
+      // swallow our own /api/auth/devices list.
+      '/api/auth/device/',
       // MCP OAuth endpoints
       '/api/auth/mcp/',
       '/.well-known/oauth-authorization-server',
       '/.well-known/oauth-protected-resource',
     ];
-    const isBetterAuthRoute = betterAuthPaths.some(p => url.pathname.startsWith(p));
+    // The grant's claim step is the bare `/api/auth/device` with a user_code
+    // query, so it is matched exactly rather than by prefix.
+    const isBetterAuthRoute = betterAuthPaths.some(p => url.pathname.startsWith(p))
+      || url.pathname === '/api/auth/device';
     if (isBetterAuthRoute) {
       // better-call strips basePath via `pathname.split(basePath)`, which only works
       // for paths that contain the basePath string. Root-level /.well-known/* paths
