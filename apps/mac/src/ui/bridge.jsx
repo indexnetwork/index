@@ -72,18 +72,15 @@ window.IndexApp = (function () {
   }
   function login() { return post("login"); }
   let logoutInFlight = false;
+  // Signing out must not depend on the bridge answering a request first: it is
+  // the bridge that logout shuts down, so a failing call would leave the key in
+  // the Keychain with no way to retry. Swift always replies through
+  // __indexAuthChanged, which clears the in-flight latch.
   function logout() {
     if (!hasBridge()) return false;
     if (logoutInFlight) return true;
     logoutInFlight = true;
-    const api = getClient();
-    Promise.resolve(api ? api.auth.me() : null)
-      .then((response) => {
-        const user = response && (response.user || response);
-        return post("completeLogout", { ownerId: user && user.id ? user.id : null });
-      })
-      .catch(() => { logoutInFlight = false; });
-    return true;
+    return post("completeLogout");
   }
 
   // Swift answers a detectHarnesses post via window.__indexHarnessesDetected.

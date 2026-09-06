@@ -777,15 +777,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func logout(admittedGeneration: UInt64) {
-        guard currentOwnerCredential() != nil else { return }
-        notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
-        guard let bridge = nativeAPIBridge else { return }
+        // Reject new work and cancel in-flight tasks before the credential goes
+        // away. The drain is empty on purpose: deletion below must not wait for
+        // a cancelled stream to emit its terminal callback, or a logout could
+        // strand the app quarantined with a live key.
+        nativeAPIBridge?.beginQuarantine {}
+
         // Deleting a key server-side requires the owner's own browser session,
         // which this principal does not hold, so logout is local: drop the
         // Keychain item and tell the user to remove the key in web settings.
-        bridge.beginQuarantine { [weak self] in
-            try? self?.ownerCredentialStore?.deleteAndVerify()
+        var signedOut = true
+        if let store = ownerCredentialStore {
+            do { try store.deleteAndVerify() } catch { signedOut = false }
         }
+        guard signedOut else {
+            // The credential outlived the attempt. Reopen the bridge instead of
+            // leaving the app unable to either use or drop the key.
+            try? nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
+            notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration)
+            return
+        }
+        notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
     }
 
     private func currentOwnerCredential() -> OwnerCredentialRecord? {
