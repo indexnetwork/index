@@ -2,15 +2,17 @@ import Foundation
 import Network
 
 /// Single-use loopback callback for the /cli-auth v2 handshake. It admits
-/// exactly api_key/key_id/state and requires the one-time state to match.
+/// exactly device_code/state and requires the one-time state to match. The
+/// code is worthless without this app's own exchange call, so no long-lived
+/// credential ever travels through the browser.
 final class LoopbackAuthServer {
     private let expectedState: String
-    private let onResult: (Result<(apiKey: String, keyId: String), Error>) -> Void
+    private let onResult: (Result<String, Error>) -> Void
     private var listener: NWListener?
     private var timeout: DispatchWorkItem?
     private var finished = false
 
-    init(state: String, onResult: @escaping (Result<(apiKey: String, keyId: String), Error>) -> Void) {
+    init(state: String, onResult: @escaping (Result<String, Error>) -> Void) {
         self.expectedState = state
         self.onResult = onResult
     }
@@ -57,7 +59,7 @@ final class LoopbackAuthServer {
         listener = nil
     }
 
-    private func finish(_ result: Result<(apiKey: String, keyId: String), Error>) {
+    private func finish(_ result: Result<String, Error>) {
         if finished { return }
         finished = true
         stop()
@@ -91,23 +93,22 @@ final class LoopbackAuthServer {
         }
         let items = comps.queryItems ?? []
         let names = items.map(\.name)
-        guard items.count == 3, Set(names) == ["api_key", "key_id", "state"],
+        guard items.count == 2, Set(names) == ["device_code", "state"],
               names.allSatisfy({ name in names.filter { $0 == name }.count == 1 }) else {
             respond(conn, status: "400 Bad Request", title: "Authorization failed", message: "Invalid callback.")
             finish(.failure(AuthError.invalidCallback)); return
         }
         func q(_ name: String) -> String? { items.first { $0.name == name }?.value }
         guard q("state") == expectedState,
-              let apiKey = q("api_key"), !apiKey.isEmpty, apiKey.count <= 256,
-              let keyId = q("key_id"), !keyId.isEmpty, keyId.count <= 256,
-              keyId.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else {
+              let deviceCode = q("device_code"), !deviceCode.isEmpty, deviceCode.count <= 256,
+              deviceCode.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else {
             respond(conn, status: "400 Bad Request", title: "Authorization failed",
                     message: "Invalid login state. Return to Index and try again.")
             finish(.failure(AuthError.invalidCallback)); return
         }
         respond(conn, status: "200 OK", title: "Authentication complete",
                 message: "You may now close this window", ok: true)
-        finish(.success((apiKey: apiKey, keyId: keyId)))
+        finish(.success(deviceCode))
     }
 
     /// The web frontend's index-wordmark.svg, inlined so the page renders the

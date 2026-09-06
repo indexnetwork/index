@@ -1226,6 +1226,13 @@
       "when": 1788484800011,
       "tag": "0177_repoint_apikey_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1788484800012,
+      "tag": "0178_create_device_code",
+      "breakpoints": true
     }
   ]
 }

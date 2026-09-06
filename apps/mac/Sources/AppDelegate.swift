@@ -488,7 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let credential = currentOwnerCredential()?.credential
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result: [String: Any] = credential
-                .map { HermesSetup.run(apiKey: $0) }
+                .map { HermesSetup.run(sessionToken: $0) }
                 ?? ["ok": false, "error": "sign in first"]
             let json = (try? JSONSerialization.data(withJSONObject: result))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
@@ -710,9 +710,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         """
     }
 
-    /// The CLI's 90-day key lifetime; the server enforces the real expiry, this
-    /// local value only gates the credential-free `authenticated` bootstrap flag.
-    private static let ownerKeyLifetime: TimeInterval = 90 * 24 * 60 * 60
+    /// Client id presented to the device authorization grant. The web page
+    /// mints the code and this app redeems it, so both must send the same value.
+    private static let deviceClientId = "index-device"
 
     private func startLogin(admittedGeneration: UInt64) {
         guard ownerCredentialStore != nil else {
@@ -752,52 +752,112 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func finishLogin(
-        _ result: Result<(apiKey: String, keyId: String), Error>,
+        _ result: Result<String, Error>,
         admittedGeneration: UInt64
     ) {
         authServer?.stop(); authServer = nil
-        guard case .success(let callback) = result, let store = ownerCredentialStore else {
+        guard case .success(let deviceCode) = result else {
             notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
         }
-        // The .iso8601 Keychain encoding drops fractional seconds, so truncate
-        // up front or the read-back equality check can never match.
-        let record = OwnerCredentialRecord(
-            credential: callback.apiKey,
-            credentialId: callback.keyId,
-            expiresAt: Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + Self.ownerKeyLifetime).rounded(.down))
-        )
-        do {
-            try store.putAndVerify(record)
-            try nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
-        } catch {
-            try? ownerCredentialStore?.deleteAndVerify()
-            notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
+        // The browser only ever hands over the approved code; this app trades
+        // it for a session of its own so the token never touches the browser.
+        redeemDeviceCode(deviceCode) { [weak self] redeemed in
+            guard let self else { return }
+            guard let redeemed, let store = self.ownerCredentialStore else {
+                self.notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
+            }
+            // The .iso8601 Keychain encoding drops fractional seconds, so
+            // truncate up front or the read-back equality check can never match.
+            let record = OwnerCredentialRecord(
+                credential: redeemed.token,
+                expiresAt: Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + redeemed.expiresIn).rounded(.down))
+            )
+            do {
+                try store.putAndVerify(record)
+                try self.nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
+            } catch {
+                try? self.ownerCredentialStore?.deleteAndVerify()
+                self.notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
+            }
+            self.notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration)
         }
-        notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration)
+    }
+
+    /// Exchange an approved device code for this device's own session.
+    ///
+    /// - Parameters:
+    ///   - deviceCode: Code delivered to the loopback callback.
+    ///   - completion: Receives the session token and its lifetime, or nil on
+    ///     any transport, status or decoding failure. Always called on main.
+    private func redeemDeviceCode(
+        _ deviceCode: String,
+        completion: @escaping ((token: String, expiresIn: TimeInterval)?) -> Void
+    ) {
+        guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth/device/token") else {
+            completion(nil); return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // The session records this request's user agent, and that is what names
+        // the device in Index settings.
+        request.setValue("Index/mac", forHTTPHeaderField: "User-Agent")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            "device_code": deviceCode,
+            "client_id": Self.deviceClientId,
+        ])
+        URLSession(configuration: .ephemeral).dataTask(with: request) { data, response, _ in
+            let token: (token: String, expiresIn: TimeInterval)? = {
+                guard let data,
+                      (response as? HTTPURLResponse)?.statusCode == 200,
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let access = object["access_token"] as? String, !access.isEmpty,
+                      let expires = object["expires_in"] as? NSNumber else { return nil }
+                return (token: access, expiresIn: expires.doubleValue)
+            }()
+            DispatchQueue.main.async { completion(token) }
+        }.resume()
     }
 
     private func logout(admittedGeneration: UInt64) {
         // Reject new work and cancel in-flight tasks before the credential goes
         // away. The drain is empty on purpose: deletion below must not wait for
         // a cancelled stream to emit its terminal callback, or a logout could
-        // strand the app quarantined with a live key.
+        // strand the app quarantined with a live session.
         nativeAPIBridge?.beginQuarantine {}
 
-        // Deleting a key server-side requires the owner's own browser session,
-        // which this principal does not hold, so logout is local: drop the
-        // Keychain item and tell the user to remove the key in web settings.
+        // A session may revoke itself, so kill it server-side before dropping
+        // the Keychain item. Local deletion happens either way: leaving the
+        // token on disk because the network failed would strand the app.
+        let credential = currentOwnerCredential()
         var signedOut = true
         if let store = ownerCredentialStore {
             do { try store.deleteAndVerify() } catch { signedOut = false }
         }
         guard signedOut else {
             // The credential outlived the attempt. Reopen the bridge instead of
-            // leaving the app unable to either use or drop the key.
+            // leaving the app unable to either use or drop the session.
             try? nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
             notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration)
             return
         }
+        if let credential { revokeSession(credential.credential) }
         notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
+    }
+
+    /// Revoke a device session server-side using the session's own token.
+    /// Fire-and-forget: the local credential is already gone, so a failure here
+    /// only means the row outlives this device until it expires or is revoked
+    /// from Index web settings.
+    ///
+    /// - Parameter token: The session token being retired.
+    private func revokeSession(_ token: String) {
+        guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth/sign-out") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        URLSession(configuration: .ephemeral).dataTask(with: request).resume()
     }
 
     private func currentOwnerCredential() -> OwnerCredentialRecord? {

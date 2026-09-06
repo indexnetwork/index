@@ -1,4 +1,5 @@
 import type { CredentialStore } from "./auth.store";
+import { revokeSession } from "./auth.session";
 
 /** Result returned by the testable logout workflow. */
 export type LogoutResult =
@@ -6,9 +7,8 @@ export type LogoutResult =
   | { success: false; warning: string };
 
 /**
- * Clear the stored CLI credential. Only the owner's own browser session can
- * delete a key server-side, so logout is local: the key stays live until it is
- * removed in Index web settings.
+ * Sign out of the CLI. A device session may revoke itself, so the token is
+ * killed server-side first and the local credential is cleared either way.
  *
  * @param store - Persistent CLI credential store.
  * @returns A success result once the local credential is gone.
@@ -21,6 +21,8 @@ export async function handleLogout(
     return { success: true, message: "Already logged out." };
   }
 
+  const revoked = await revokeSession(credentials.apiUrl, credentials.token);
+
   try {
     await store.clear();
   } catch {
@@ -31,6 +33,8 @@ export async function handleLogout(
   }
   return {
     success: true,
-    message: "Logged out. The API key is still active — remove it in Index web settings.",
+    message: revoked
+      ? "Logged out."
+      : "Logged out locally. The session could not be reached — revoke it in Index web settings if this machine is not yours.",
   };
 }

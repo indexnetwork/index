@@ -17,10 +17,17 @@ const JWKS = createRemoteJWKSet(
 );
 
 /**
- * Resolve an authenticated user from a Better Auth JWT.
- * Expects `Authorization: Bearer <jwt>` header or `?token=...`.
+ * Resolve the human behind a bearer credential, in either of the two forms a
+ * session takes: the web app exchanges its cookie for a short-lived JWT, while
+ * native devices hold the session token itself, issued by the device
+ * authorization grant. Both mean "the owner is acting", so both record
+ * `kind: 'session'`.
+ *
+ * @param req - Request carrying `Authorization: Bearer <token>` or `?token=`.
+ * @returns The authenticated owner.
+ * @throws Error when no credential is present, or it verifies as neither form.
  */
-const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
+const resolveSessionUser = async (req: Request): Promise<AuthenticatedUser> => {
   const authHeader = req.headers.get('Authorization');
   const token = authHeader?.startsWith('Bearer ')
     ? authHeader.slice(7)
@@ -29,18 +36,36 @@ const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
   if (!token) {
     throw new Error('Access token required');
   }
-  try {
-    const { payload } = await jwtVerify(token, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
-    const user = {
-      id: payload.id as string,
-      email: (payload.email as string) ?? null,
-      name: payload.name as string,
-    };
-    recordRequestAuthContext(req, { kind: 'session' });
-    return user;
-  } catch {
+
+  // Three segments is a JWT; anything else can only be a session token, so
+  // each credential takes exactly one verification path.
+  if (token.split('.').length === 3) {
+    try {
+      const { payload } = await jwtVerify(token, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
+      recordRequestAuthContext(req, { kind: 'session' });
+      return {
+        id: payload.id as string,
+        email: (payload.email as string) ?? null,
+        name: payload.name as string,
+      };
+    } catch {
+      throw new Error('Invalid or expired access token');
+    }
+  }
+
+  const { auth } = await import('../lib/betterauth/auth.instance');
+  const session = await auth.api.getSession({
+    headers: new Headers({ authorization: `Bearer ${token}` }),
+  });
+  if (!session?.user) {
     throw new Error('Invalid or expired access token');
   }
+  recordRequestAuthContext(req, { kind: 'session' });
+  return {
+    id: session.user.id,
+    email: session.user.email ?? null,
+    name: session.user.name,
+  };
 };
 
 /**
@@ -55,8 +80,8 @@ export class SessionRequiredError extends Error {
 }
 
 /**
- * SessionOnlyGuard: accepts ONLY a Better Auth session JWT (`Authorization:
- * Bearer` header or `?token=`), never an API key.
+ * SessionOnlyGuard: accepts ONLY a Better Auth session (a JWT from the web app
+ * or a device session token), never an API key.
  *
  * Use for owner control: agent create/update/delete (including choosing the
  * negotiator) and account deletion. Key management itself is guarded the same
@@ -70,7 +95,7 @@ export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser>
   const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
 
   if (authHeader?.startsWith('Bearer ') || queryToken) {
-    return resolveJwtUser(req);
+    return resolveSessionUser(req);
   }
 
   if (req.headers.get('x-api-key')) {
@@ -145,15 +170,16 @@ async function resolveApiKeyOwner(userId: string): Promise<AuthenticatedUser | n
 }
 
 /**
- * AuthGuard: verifies genuine JWTs (`Authorization: Bearer` header or
- * `?token=`), else accepts an `x-api-key` credential. Nothing else.
+ * AuthGuard: verifies a bearer session (web JWT or device session token) from
+ * the `Authorization` header or `?token=`, else accepts an `x-api-key`
+ * credential. Nothing else.
  */
 export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
   const authHeader = req.headers.get('Authorization');
   const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
 
   if (authHeader?.startsWith('Bearer ') || queryToken) {
-    return resolveJwtUser(req);
+    return resolveSessionUser(req);
   }
 
   const apiKey = req.headers.get('x-api-key');

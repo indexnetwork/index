@@ -34,7 +34,7 @@ export class ApiClient {
 
   /**
    * @param baseUrl - Protocol server base URL (e.g. `http://localhost:3001`).
-   * @param token - CLI API key.
+   * @param token - Device session token.
    */
   constructor(baseUrl: string, token: string) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -42,7 +42,7 @@ export class ApiClient {
   }
 
   private authHeaders(): Record<string, string> {
-    return { "x-api-key": this.token };
+    return { Authorization: `Bearer ${this.token}` };
   }
 
   /**

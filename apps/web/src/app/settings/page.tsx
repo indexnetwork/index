@@ -16,6 +16,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { SaveBarProvider } from "@/contexts/SaveBarContext";
 import ApiKeysSection from "@/components/settings/ApiKeysSection";
+import DevicesSection from "@/components/settings/DevicesSection";
 import { parseSocial } from "@/lib/socials";
 
 const SETTINGS_TABS = ["profile", "notifications", "api-keys"] as const;
@@ -402,7 +403,10 @@ export default function ProfilePage() {
             </Tabs.Content>
 
             <Tabs.Content value="api-keys">
-              <ApiKeysSection />
+              <div className="space-y-10">
+                <ApiKeysSection />
+                <DevicesSection />
+              </div>
             </Tabs.Content>
 
             <Tabs.Content value="notifications">

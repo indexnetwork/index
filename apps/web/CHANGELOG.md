@@ -7,7 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- **Devices list in Settings.** Every session that can act as your account —
+  browsers plus the Mac app, CLI and Hermes — with the device it came from, when
+  it was signed in, when it expires, and a per-row sign-out backed by
+  `revokeSession`. Signing one device out leaves the others alone.
+
 ### Changed
+- **`/cli-auth` hands devices a session, not an API key.** The page now runs the
+  device authorization grant against your session: it mints a device code,
+  claims it, approves it, and redirects only that short-lived code to the
+  loopback callback, where the app exchanges it for its own session. No approval
+  prompt, and no long-lived credential ever travels through a redirect URL or
+  browser history.
 - **API keys live in Settings and belong to you, not to an agent.** The
   per-agent key panel is replaced by one account-key section that mints, lists
   and revokes through Better Auth's own `authClient.apiKey.*`; the `/cli-auth`

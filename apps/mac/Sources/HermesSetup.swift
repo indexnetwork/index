@@ -35,13 +35,13 @@ enum HermesSetup {
         return (p.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
-    static func run(apiKey: String) -> [String: Any] {
+    static func run(sessionToken: String) -> [String: Any] {
         guard let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] else {
             return ["ok": false, "error": "hermes binary not found on this mac"]
         }
         do {
             try writeEnv([
-                ("INDEX_API_KEY", apiKey),
+                ("INDEX_SESSION_TOKEN", sessionToken),
                 ("INDEX_API_URL", AppConfig.apiBaseURL),
                 ("INDEX_MCP_URL", AppConfig.mcpURL),
             ])
@@ -99,11 +99,11 @@ enum HermesSetup {
             if status != 0 {
                 return ["ok": false, "error": "hermes plugins remove: \(String(output.suffix(300)))"]
             }
-            removeEnv(["INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
+            removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
             restartGatewayIfRunning(hermes)
             return ["ok": true]
         }
-        removeEnv(["INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
+        removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
         return ["ok": true]
     }
 

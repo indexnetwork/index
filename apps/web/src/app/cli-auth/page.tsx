@@ -1,22 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
-import { apiKeysService } from "@/services/api-keys";
 import AuthForm from "@/components/AuthForm";
-import { buildCliApiKeyCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequest, type CliAuthRequest } from "@/lib/cli-auth";
+import { buildCliDeviceCodeCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequest, DEVICE_CLIENT_ID, type CliAuthRequest } from "@/lib/cli-auth";
 
 /**
- * CLI authentication bridge page.
+ * Device sign-in bridge page.
  *
- * Opened by `index login` — exchanges the user's existing browser session
- * for a revocable CLI API key and redirects to the local callback server.
+ * Opened by `index login`, the Mac app and Hermes — runs the device
+ * authorization grant against the owner's browser session and redirects the
+ * approved code to the local callback server, which exchanges it for a session
+ * of its own.
  *
  * Query params: callback, exact version=2, and one-time state.
  *
  * Flow:
  *   1. Fail closed on malformed/unknown protocol combinations
- *   2. If user has a session cookie, mint a user API key
- *   3. Return the state-bound api_key/key_id/state callback fields
+ *   2. If the user has a session cookie, mint a device code, claim it and
+ *      approve it — the page owns every step, so there is nothing to prompt
+ *      for and no caller-supplied code can enter the grant
+ *   3. Return the state-bound device_code/state callback fields
  *   4. If no session, show the sign-in form inline; Better Auth returns to
  *      this exact validated request after login
  */
@@ -51,20 +54,34 @@ function CliAuthPage() {
           return;
         }
 
-        // Mint a user API key through the one shared mint path.
-        const credential = await apiKeysService.create("CLI");
-        if (!credential.key || !credential.id) {
+        const requested = await authClient.device.code({
+          client_id: DEVICE_CLIENT_ID,
+          scope: "openid profile",
+        });
+        const deviceCode = requested.data?.device_code;
+        const userCode = requested.data?.user_code;
+        if (!deviceCode || !userCode) {
           setStatus("error");
-          setError("Failed to obtain credentials. Please try signing in again.");
+          setError("Failed to start device sign-in. Please try again from the app.");
+          return;
+        }
+
+        // Reading the code with a session claims it for this owner, which is
+        // what makes it approvable; approval then only ever binds a code this
+        // page just minted.
+        await authClient.device({ query: { user_code: userCode } });
+        const approved = await authClient.device.approve({ userCode });
+        if (!approved.data?.success) {
+          setStatus("error");
+          setError("Failed to authorize this device. Please try again from the app.");
           return;
         }
 
         setStatus("redirecting");
-        window.location.href = buildCliApiKeyCallbackUrl(
+        window.location.href = buildCliDeviceCodeCallbackUrl(
           authRequest.callback,
           authRequest.state,
-          credential.key,
-          credential.id,
+          deviceCode,
         );
       } catch {
         setStatus("error");

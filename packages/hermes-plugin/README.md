@@ -1,6 +1,6 @@
 # Index Network Hermes Plugin
 
-The Index plugin connects Hermes to Index over plain HTTPS, authenticated with your Index API key.
+The Index plugin connects Hermes to Index over plain HTTPS, authenticated with this device's own Index session.
 
 ## Connect
 
@@ -8,17 +8,11 @@ The Index plugin connects Hermes to Index over plain HTTPS, authenticated with y
 hermes plugins install indexnetwork/hermes-plugin
 ```
 
-Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The handshake mints an API key for your account and persists it as `INDEX_API_KEY` in `~/.hermes/.env`. **Sign out** clears the local key; remove the key itself in Index web settings. On a headless host the dashboard shows the login link to open elsewhere.
-
-Manual override: set a key from web settings instead of using the browser flow:
-
-```bash
-export INDEX_API_KEY=<your Index API key>
-```
+Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The web page runs the device authorization grant against your browser session and returns a short-lived device code, which the plugin exchanges for its own session token and persists as `INDEX_SESSION_TOKEN` in `~/.hermes/.env`. There is no approval prompt. **Sign out** revokes that session server-side and clears the local file. On a headless host the dashboard shows the login link to open elsewhere.
 
 Optional overrides: `INDEX_API_URL` and `INDEX_MCP_URL` (default to production endpoints). Browser login pairs with the configured API environment (`INDEX_APP_BASE_URL` wins, else derived from `INDEX_API_URL`).
 
-The key authenticates you, not an agent. `GET /agents/me` returns the agent you selected as your negotiator in the web app; pick one there before expecting an answer.
+The session authenticates you, not an agent. `GET /agents/me` returns the agent you selected as your negotiator in the web app; pick one there before expecting an answer.
 
 ## Development
 

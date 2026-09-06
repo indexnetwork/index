@@ -144,6 +144,27 @@ export const jwks = pgTable('jwks', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+/**
+ * Short-lived device authorization codes, owned by the Better Auth
+ * `deviceAuthorization` plugin. A row lives only between the moment
+ * `/cli-auth` mints it and the moment the device redeems it at
+ * `/device/token`, which deletes it.
+ */
+export const deviceCodes = pgTable('device_code', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  deviceCode: text('device_code').notNull().unique(),
+  userCode: text('user_code').notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at').notNull(),
+  status: text('status').notNull(),
+  lastPolledAt: timestamp('last_polled_at'),
+  pollingInterval: integer('polling_interval'),
+  clientId: text('client_id'),
+  scope: text('scope'),
+}, (table) => ({
+  userCodeIdx: index('device_code_user_code_idx').on(table.userCode),
+}));
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Better Auth MCP OAuth tables
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -8,6 +8,13 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: the plugin authenticates with `INDEX_SESSION_TOKEN`, not
+  `INDEX_API_KEY`.** Browser login now redeems the device code returned by
+  `/cli-auth` for this device's own session and persists that, sending it as
+  `Authorization: Bearer`. Sign-out revokes the session server-side instead of
+  only clearing the local file, so it takes effect immediately. An
+  `INDEX_API_KEY` left by an older install is removed on the next login or
+  sign-out; re-run **log in with browser**.
 - **BREAKING: `INDEX_API_KEY` is your account key, not an agent-bound token.**
   Browser login persists exactly what `/cli-auth` mints and stops there: the
   CLI→agent promotion (`dashboard/agent_bootstrap.py`) is deleted, so login no

@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { magicLink, bearer, jwt, mcp } from "better-auth/plugins";
+import { magicLink, bearer, jwt, mcp, deviceAuthorization } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
 import { resolveClassConfig } from "../limiter/config";
@@ -79,6 +79,15 @@ export function createAuth(deps: AuthDeps) {
        * restart, logging out every existing user.
        */
       storeSessionInDatabase: true,
+      /**
+       * 30 days rather than the 7-day default. Native devices now hold a
+       * session instead of a long-lived API key, and they cache the issued
+       * expiry locally to decide whether to send a request at all, so a short
+       * window would sign the Mac app out roughly weekly. Revocation is the
+       * safety valve: a device can sign itself out and the owner can revoke any
+       * device from settings.
+       */
+      expiresIn: 60 * 60 * 24 * 30,
     },
     rateLimit: {
       enabled: true,
@@ -129,6 +138,19 @@ export function createAuth(deps: AuthDeps) {
       apiKey({
         defaultKeyLength: 64,
         rateLimit: { enabled: false },
+      }),
+      // Native clients (Mac app, CLI, Hermes) sign in as devices, each holding
+      // its own session rather than a shared long-lived key. `/cli-auth` runs
+      // the whole grant server-side from the owner's browser session and hands
+      // the device only the code, so there is no approval prompt and no
+      // attacker-supplied code can enter the flow. The code is redeemed
+      // immediately after the redirect, hence the short expiry.
+      // `schema: {}` is required, not decorative: the plugin's option parser
+      // declares `schema` without `.optional()`, so omitting it fails at boot.
+      deviceAuthorization({
+        expiresIn: "5m",
+        interval: "1s",
+        schema: {},
       }),
       jwt({
         jwt: {

@@ -4,19 +4,19 @@ Index is a macOS 13+ WKWebView client with a native, credential-free request bri
 
 ## Security model
 
-The signed app stores one ordinary Better Auth API key in the Keychain. Raw credentials and authorization headers never enter browser JavaScript, WebKit storage, Application Support records, logs, callback URLs, or generated HTML.
+The signed app stores one Better Auth session token — this device's own session — in the Keychain. Raw credentials and authorization headers never enter browser JavaScript, WebKit storage, Application Support records, logs, callback URLs, or generated HTML.
 
 The native `indexAPI` bridge accepts only the exact bundled main document and document generation. JavaScript supplies structured, allowlisted requests; Swift constructs the fixed API/MCP URLs, reads the owner credential natively, validates body/schema/resource bounds, and returns sanitized data only. It permits bounded REST, upload, and SSE operations (32 pending requests, 1 MiB ordinary request/response, 8 MiB decoded images, 64 KiB events, 256 events; 30-second ordinary and five-minute stream deadlines). It never accepts a browser-supplied URL, header, credential, or transport override.
 
 ## Owner sign-in
 
-Login opens the web `/cli-auth` page (the same state-bound handshake the CLI uses) with a loopback callback on `http://127.0.0.1:<port>/callback`. The callback returns an ordinary 90-day API key plus its key ID; the app verifies the Keychain write/read-back before treating login as complete.
+Login opens the web `/cli-auth` page (the same state-bound handshake the CLI uses) with a loopback callback on `http://127.0.0.1:<port>/callback`. The page runs the device authorization grant against the owner's browser session and returns only a short-lived device code, which the app exchanges at `/api/auth/device/token` for its own 30-day session; the app verifies the Keychain write/read-back before treating login as complete. There is no approval prompt: the page mints and approves the code itself, so no externally supplied code can enter the grant, and the loopback binding is what keeps that safe.
 
-Logout quarantines bridge work, pauses/scrubs Hermes local activity, then deletes the Keychain item. It is local only: deleting a key server-side needs the owner's own browser session, so the key stays live until it is removed in Index web settings. A failed Keychain deletion retains the credential and never claims logout completed.
+Logout quarantines bridge work, pauses/scrubs Hermes local activity, deletes the Keychain item, then revokes the session server-side with its own token. A failed Keychain deletion retains the credential and never claims logout completed. A failed revocation still signs the app out locally; the device can also be revoked from Index web settings.
 
 ## Hermes runtime
 
-The native app may show the same owner controls as the web, but it is not required for direct Hermes use. The Hermes plugin authenticates with an ordinary agent-bound API key supplied via the `INDEX_API_KEY` environment variable. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule and preserves unrelated Hermes state.
+The native app may show the same owner controls as the web, but it is not required for direct Hermes use. The Hermes plugin authenticates with a device session token supplied via the `INDEX_SESSION_TOKEN` environment variable. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule and preserves unrelated Hermes state.
 
 ## Build and source checks
 

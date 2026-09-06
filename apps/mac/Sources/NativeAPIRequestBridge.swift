@@ -729,7 +729,7 @@ final class NativeAPIRequestBridge {
         var transport = URLRequest(url: url)
         transport.httpMethod = method
         transport.timeoutInterval = sse ? Self.streamTimeout : Self.requestTimeout
-        transport.setValue(credential.credential, forHTTPHeaderField: "x-api-key")
+        transport.setValue("Bearer " + credential.credential, forHTTPHeaderField: "Authorization")
         if let body {
             let data = try JSONEncoder().encode(body)
             guard data.count <= Self.maximumJSONRequestBytes else { throw NativeAPIRequestFailure.oversizedRequest }
@@ -773,7 +773,7 @@ final class NativeAPIRequestBridge {
         guard let url = components.url else { throw NativeAPIRequestFailure.deniedOperation }
         var transport = URLRequest(url: url)
         transport.httpMethod = "POST"
-        transport.setValue(credential.credential, forHTTPHeaderField: "x-api-key")
+        transport.setValue("Bearer " + credential.credential, forHTTPHeaderField: "Authorization")
         transport.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         transport.httpBody = body
         start(requestId: request.requestId, transport: transport, sse: false)
@@ -885,6 +885,7 @@ final class NativeAPIRequestBridge {
         let forbidden: Set<String> = [
             "apikey", "credential", "activationproof", "authorization",
             "x-api-key", "verifier", "targetkey",
+            "access_token", "device_code", "session_token",
         ]
         switch value {
         case .array(let values): return values.contains(where: containsForbiddenResponseField)

@@ -27,6 +27,7 @@ export class AuthDatabaseAdapter {
         oauthAccessToken: schema.oauthAccessTokens,
         oauthConsent: schema.oauthConsents,
         apikey: schema.apikeys,
+        deviceCode: schema.deviceCodes,
       },
     });
 

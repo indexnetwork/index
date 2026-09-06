@@ -82,7 +82,7 @@ def _load_sibling(module_name: str):
 def build_transport(
     *, platform: str | None = None, plugin_root: pathlib.Path | None = None
 ) -> IndexTransport:
-    """Build the only transport: direct HTTPS keyed by INDEX_API_KEY."""
+    """Build the only transport: direct HTTPS keyed by INDEX_SESSION_TOKEN."""
     del platform, plugin_root
     environment_module = _load_sibling("env_transport")
     return environment_module.EnvironmentCredentialTransport()
@@ -97,7 +97,7 @@ def get_transport() -> IndexTransport:
 
 
 def reset_transport() -> None:
-    """Drop the cached transport so the next call re-reads INDEX_API_KEY."""
+    """Drop the cached transport so the next call re-reads INDEX_SESSION_TOKEN."""
     global _transport
     with _transport_lock:
         _transport = None

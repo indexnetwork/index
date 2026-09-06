@@ -943,12 +943,16 @@ def auth_login_status() -> dict[str, Any]:
 
 @full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Clear the stored key from `~/.hermes/.env` + process.
+    """Revoke this device's session, then clear `~/.hermes/.env` + process.
 
-    Deleting a key server-side needs the owner's own browser session, so this is
-    local only: the key stays live until it is removed in Index web settings.
+    A session token may revoke itself, so sign-out reaches the server; the local
+    credential is cleared either way so a network failure cannot wedge the
+    dashboard in a signed-in state it cannot use.
     """
-    auth_login.clear_api_key()
+    token = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
+    if token:
+        auth_login.revoke_session(token)
+    auth_login.clear_session_token()
     tools.reset_transport()
     return {"success": True, "needsLogin": True}
 

@@ -2,7 +2,6 @@ import Foundation
 
 struct OwnerCredentialRecord: Codable, Equatable {
     let credential: String
-    let credentialId: String
     let expiresAt: Date
 }
 
@@ -11,14 +10,16 @@ enum OwnerCredentialStoreFailure: Error, Equatable {
     case keychainReadBackFailed
 }
 
-/// Owns the app-only Keychain descriptor for the owner's ordinary API key.
+/// Owns the app-only Keychain descriptor for this device's session token.
 /// Raw owner material is represented only by OwnerCredentialRecord in process
 /// memory and by the generic-password value written through IndexKeychainStore.
 struct OwnerCredentialStore {
     static let service = "network.index.system6.owner-credential"
-    static let account = "owner-v1"
+    // Bumped from owner-v1: the stored value is a device session token rather
+    // than an API key, so an older item must not be read back as one.
+    static let account = "owner-v2"
     static let accessGroupSuffix = "network.index.system6.owner-credentials"
-    static let credentialKeys: Set<String> = ["credential", "credentialId", "expiresAt"]
+    static let credentialKeys: Set<String> = ["credential", "expiresAt"]
 
     private let keychain: IndexKeychainStore
     private let descriptor: IndexKeychainItemDescriptor
@@ -61,7 +62,7 @@ struct OwnerCredentialStore {
                 throw OwnerCredentialStoreFailure.keychainReadBackFailed
             }
             let record = try JSONDecoder.ownerCredential.decode(OwnerCredentialRecord.self, from: data)
-            guard !record.credential.isEmpty, !record.credentialId.isEmpty else {
+            guard !record.credential.isEmpty else {
                 throw OwnerCredentialStoreFailure.keychainReadBackFailed
             }
             return record

@@ -233,6 +233,9 @@ const server = Bun.serve({
       // API key mint/list/delete — the plugin owns them; session-only because
       // `enableSessionForAPIKeys` is off.
       '/api/auth/api-key/',
+      // Device authorization grant: /device/code and /device/approve are driven
+      // by the owner's browser on /cli-auth, /device/token by the device itself.
+      '/api/auth/device',
       // MCP OAuth endpoints
       '/api/auth/mcp/',
       '/.well-known/oauth-authorization-server',

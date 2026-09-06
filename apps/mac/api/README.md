@@ -14,9 +14,9 @@ It is now **wired into the mac app**: `scripts/assemble.py` inlines `client.mjs`
 
 ## Authentication
 
-The native macOS client uses an ordinary 90-day Better Auth API key minted through the web `/cli-auth` handshake. The Swift shell stores it only in the Keychain and supplies it directly to `NativeAPIRequestBridge`; JavaScript receives only credential-free structured operations and nonsecret authentication status. Credentials and API-key headers are never exposed to the WKWebView, browser callback, local storage, or logs.
+The native macOS client holds its own Better Auth session, obtained through the device authorization grant that the web `/cli-auth` handshake runs on its behalf. The Swift shell stores the token only in the Keychain and supplies it directly to `NativeAPIRequestBridge` as `Authorization: Bearer`; JavaScript receives only credential-free structured operations and nonsecret authentication status. Credentials and authorization headers are never exposed to the WKWebView, browser callback, local storage, or logs.
 
-Native REST, MCP, upload, and bounded SSE requests are method/path allowlisted before the Swift bridge attaches the credential. Session-only routes, including key management, remain unavailable through this principal. Logout quarantines in-flight work and deletes Keychain state; the key itself is removed in Index web settings.
+Native REST, MCP, upload, and bounded SSE requests are method/path allowlisted before the Swift bridge attaches the credential. Because the credential is a session rather than an API key, session-only routes such as agent management are reachable from this principal; key management stays out of the allowlist. Logout quarantines in-flight work, deletes Keychain state, and revokes the session server-side with its own token.
 
 ## Current files
 

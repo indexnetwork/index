@@ -9,7 +9,27 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- **Native clients sign in as devices, not as API keys.** Better Auth's
+  `deviceAuthorization` plugin is registered and `/api/auth/device*` is proxied,
+  so the Mac app, CLI and Hermes each hold their own session. `/cli-auth` runs
+  the whole grant from the owner's browser session — mint, claim, approve — and
+  hands the device only a five-minute code, which it redeems at
+  `/device/token`. There is no approval prompt: the page approves a code it just
+  minted, so no externally supplied code can enter the grant, and the loopback
+  callback still binds the handoff to the machine that started it. New
+  `device_code` table (migration `0178`).
+
 ### Changed
+- **`AuthGuard` and the MCP resolver accept a session token as `Bearer`.** A
+  three-segment credential is verified as a JWT and anything else as a Better
+  Auth session, so device sessions reach product routes and MCP. Both record
+  `kind: 'session'`, which means a device is the owner acting and may use
+  session-only routes such as agent management; API keys still cannot.
+- **Sessions last 30 days instead of the 7-day default.** Devices cache the
+  issued expiry to decide whether to send a request at all, so a short window
+  would sign the Mac app out weekly. Revocation is the counterweight: a device
+  can sign itself out, and the owner can revoke any device from settings.
 - **BREAKING: keys are keys, agents are agents, and Better Auth owns them.** An
   API key authenticates a user and carries no `metadata.agentId`. The
   hand-rolled key stack is deleted — `apikey.adapter.ts`, `apikey.service.ts`,

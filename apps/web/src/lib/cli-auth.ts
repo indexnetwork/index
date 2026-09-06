@@ -1,5 +1,12 @@
 const CLI_STATE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 
+/**
+ * Client id every native device presents to the device authorization grant.
+ * The browser mints the code and the device redeems it, so both sides must
+ * send the same value; the session's user agent is what distinguishes devices.
+ */
+export const DEVICE_CLIENT_ID = "index-device";
+
 /** Validated CLI browser-auth protocol request. */
 export type CliAuthRequest = { protocolVersion: 2; callback: string; state: string };
 
@@ -78,23 +85,24 @@ export function buildCliAuthReturnPath(
 }
 
 /**
- * Build the credential callback without interpolating untrusted URL text.
+ * Build the handoff callback without interpolating untrusted URL text.
+ *
+ * Only the approved device code travels through the redirect; the device
+ * exchanges it for its own session over POST, so no long-lived credential ever
+ * lands in a URL, browser history or the loopback server's log.
  *
  * @param validatedCallback - Callback accepted by validateCliCallbackUrl.
  * @param state - State accepted by validateCliAuthState.
- * @param apiKey - Newly minted API-key secret.
- * @param keyId - Exact `apikey` row ID.
- * @returns A loopback callback carrying the bound credential fields.
+ * @param deviceCode - Device code already claimed and approved for this owner.
+ * @returns A loopback callback carrying the bound handoff fields.
  */
-export function buildCliApiKeyCallbackUrl(
+export function buildCliDeviceCodeCallbackUrl(
   validatedCallback: string,
   state: string,
-  apiKey: string,
-  keyId: string,
+  deviceCode: string,
 ): string {
   const callback = new URL(validatedCallback);
-  callback.searchParams.set("api_key", apiKey);
-  callback.searchParams.set("key_id", keyId);
+  callback.searchParams.set("device_code", deviceCode);
   callback.searchParams.set("state", state);
   return callback.toString();
 }

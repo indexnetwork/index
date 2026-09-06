@@ -143,6 +143,15 @@ const authResolver: McpAuthResolver = {
           const msg = err instanceof Error ? err.message : String(err);
           throw new Error(`MCP token lookup failed: ${msg}`, { cause: err });
         }
+
+        // Device sessions are opaque as well, but they live in Better Auth's
+        // session store rather than the MCP OAuth token store.
+        const { auth } = await import('../lib/betterauth/auth.instance');
+        const session = await auth.api.getSession({
+          headers: new Headers({ authorization: `Bearer ${input.bearerToken}` }),
+        });
+        if (session?.user) return { userId: session.user.id, isSessionAuth: true };
+
         throw new Error('Invalid or expired access token');
       }
     }

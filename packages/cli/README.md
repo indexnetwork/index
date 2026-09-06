@@ -37,22 +37,22 @@ Words you will see elsewhere in this doc: **network** = a community you are in; 
 
 ### `index login`
 
-Authenticate with Index Network. Opens a browser window that uses your existing session (or a fresh OAuth flow) to call the session-only, fixed-shape CLI credential endpoint, which mints a 90-day API key while keeping CLI requests on the non-web compatibility surface.
+Authenticate with Index Network. Opens a browser window that runs the device authorization grant against your existing session (or a fresh login), then hands this machine a session of its own.
 
 ```bash
 index login                     # Browser-based auth
 index login --api-url <url>     # Custom server URL
 ```
 
-Credentials are stored in `~/.index/credentials.json`. Current browser login explicitly requests protocol v2, binds the loopback callback with a one-time state, and stores both the API-key secret and its row ID. It sends the key with `x-api-key`. Deleting a key needs the owner's own browser session, so a re-login stores the replacement and warns that the previous key is still active until it is removed in Index web settings.
+Credentials are stored in `~/.index/credentials.json`. Browser login explicitly requests protocol v2 and binds the loopback callback with a one-time state. Only a short-lived device code travels through the redirect; the CLI exchanges it at `/api/auth/device/token` for its own session token and sends that as `Authorization: Bearer`. There is no approval prompt, because the web page mints and approves the code itself — no code from anywhere else can enter the grant. A re-login revokes the session it replaces, so logins do not pile up.
 
 **Rolling deploy order:** v2 clients require the v2 web bridge and intentionally reject callbacks from older web deployments that cannot return the bound state. On dev, this CLI is an RC: wait for both the API and web deployments to succeed before testing v2 login. Do not relax state validation to make a new CLI work against old web.
 
-The v1 login contract (`session_token` callback, Bearer API-key fallback, `--token` manual flow) is removed. Released v1 binaries and legacy `credentials.json` files without a key ID are treated as signed out; upgrade and run `index login`.
+The v1 login contract (`session_token` callback, Bearer API-key fallback, `--token` manual flow) is removed. So is API-key login: existing `credentials.json` files holding a key are treated as signed out; run `index login` again.
 
 ### `index logout`
 
-Clear the local credential file. The key itself stays live: deleting it requires the owner's own browser session, so logout tells you to remove it in Index web settings. If local cleanup fails, logout exits nonzero and asks you to remove the file manually.
+Revoke this machine's session server-side, then clear the local credential file. A session can revoke itself, so sign-out takes effect immediately without needing your browser. If the server cannot be reached the local file is still cleared, and logout tells you to revoke the device in Index web settings. If local cleanup fails, logout exits nonzero and asks you to remove the file manually.
 
 ```bash
 index logout
