@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
 import { negotiationService, type SubmitTurnRejection } from '../services/negotiation.service';
+import { networkService } from '../services/network.service';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
+import { isStaff } from '../lib/staff';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 
@@ -15,6 +17,11 @@ const submitTurnSchema = z.object({
   action: z.enum(['propose', 'counter', 'accept', 'decline']),
   message: z.string().trim().min(1).max(4000),
 });
+const openNegotiationSchema = z.object({
+  networkId: z.string().uuid('networkId must be a UUID'),
+  initiatorIntentId: z.string().uuid('initiatorIntentId must be a UUID'),
+  responderIntentId: z.string().uuid('responderIntentId must be a UUID'),
+}).strict();
 
 /** How each refusal reads on the wire. */
 const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: string }> = {
@@ -73,6 +80,71 @@ export class NegotiationController {
 
     logger.verbose('Negotiations listed', { userId: user.id, count: filtered.length });
     return Response.json({ negotiations: filtered });
+  }
+
+  /**
+   * POST /negotiations/open — open a negotiation between two seated signals.
+   *
+   * Discovery is the ordinary way a negotiation appears, and it decides both
+   * whether the pair is worth opening and who moves first. This is for a
+   * network's owner who wants neither decision made for them: they name the
+   * pair, and the initiator they name owes the opening turn.
+   *
+   * Staff as well as owner. Ownership alone reaches beyond staff, because the
+   * reviewed request flow grants it, and skipping the compatibility threshold
+   * is exactly what would let an owner bury members in negotiations the
+   * matcher would have refused.
+   *
+   * @param req - Carries the network and the two signals, initiator first.
+   * @param user - The authenticated caller, who must be staff and own the network.
+   * @returns The opened record, or the existing one when the pair is already open.
+   */
+  @Post('/open')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async openNegotiation(req: Request, user: AuthenticatedUser) {
+    if (!isStaff(user)) {
+      return Response.json({ error: 'Opening a negotiation by hand is staff-only' }, { status: 403 });
+    }
+
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    const parsed = openNegotiationSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 });
+    }
+
+    if (!await networkService.isNetworkOwner(parsed.data.networkId, user.id)) {
+      return Response.json({ error: 'Owner-only operation' }, { status: 403 });
+    }
+
+    const result = await negotiationService.open(parsed.data);
+    switch (result.kind) {
+      case 'opened':
+      case 'already_open':
+        logger.info('Negotiation opened by hand', {
+          userId: user.id,
+          networkId: parsed.data.networkId,
+          opportunityId: result.negotiation.opportunityId,
+          alreadyOpen: result.kind === 'already_open',
+        });
+        return Response.json({ opened: result.kind === 'opened', negotiation: result.negotiation });
+      case 'unseated':
+        return Response.json(
+          { error: `Signal ${result.intentId} is not an active signal shared with this network` },
+          { status: 422 },
+        );
+      case 'same_signal':
+        return Response.json({ error: 'A signal cannot negotiate with itself' }, { status: 422 });
+      case 'same_owner':
+        return Response.json({ error: 'Both signals belong to the same person' }, { status: 422 });
+      case 'not_opened':
+        return Response.json({ error: 'The pair could not be opened; check both owners are still members' }, { status: 409 });
+    }
   }
 
   /**

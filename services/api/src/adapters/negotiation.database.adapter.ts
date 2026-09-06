@@ -5,7 +5,7 @@
  * Index is the server for every negotiation. Both seats read the same rows and
  * append against them; there is no wire between agents and nothing to mirror.
  */
-import { and, asc, count, db, desc, eq, inArray, intents, isNull, logger, negotiations, negotiationTurns, networkMembers, opportunities, or, sql, users } from './database.shared';
+import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, negotiations, negotiationTurns, networkMembers, opportunities, or, sql, users } from './database.shared';
 
 import { publishNotificationStreamEvent } from '../lib/notification-stream-events';
 
@@ -27,6 +27,18 @@ export interface IntentCounterpartyPair {
   score: number;
   reasoning: string;
   evidence: unknown[];
+  /**
+   * Provenance for the opportunity. Discovery leaves this unset and gets its
+   * own stamp; a pair opened by hand says so, so the two are distinguishable
+   * afterwards.
+   */
+  detection?: { source: string; createdBy: string };
+}
+
+/** A signal eligible to hold a seat in a negotiation, with its owner. */
+export interface SeatedIntent {
+  intentId: string;
+  userId: string;
 }
 
 /** API-local structural twin of protocol's `OpenedNegotiation`. */
@@ -177,6 +189,52 @@ export class NegotiationDatabaseAdapter {
   }
 
   /**
+   * Resolve a signal that may hold a seat in a negotiation on this network:
+   * unarchived, still discoverable, and shared into the network.
+   *
+   * @param intentId - The signal to seat.
+   * @param networkId - The network the negotiation would sit in.
+   * @returns The signal with its owner, or null when it is not seated there.
+   */
+  async seatedIntent(intentId: string, networkId: string): Promise<SeatedIntent | null> {
+    const [row] = await db
+      .select({ intentId: intents.id, userId: intents.userId })
+      .from(intents)
+      .innerJoin(intentNetworks, eq(intentNetworks.intentId, intents.id))
+      .where(and(
+        eq(intents.id, intentId),
+        eq(intentNetworks.networkId, networkId),
+        isNull(intents.archivedAt),
+        activeIntentLifecycleWhere(),
+      ))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * The negotiation already open between a pair, if one is.
+   *
+   * `open()` reports "already open" and "could not open" the same way, as
+   * null. This is how a caller tells them apart.
+   *
+   * @param pairKey - The pair's canonical key.
+   * @returns The open record, or null when the pair has none.
+   */
+  async findByPairKey(pairKey: string): Promise<OpenedNegotiation | null> {
+    const [row] = await db
+      .select({
+        opportunityId: negotiations.opportunityId,
+        negotiationId: negotiations.id,
+        initiatorUserId: negotiations.initiatorUserId,
+        initiatorIntentId: negotiations.initiatorIntentId,
+      })
+      .from(negotiations)
+      .where(eq(negotiations.pairKey, pairKey))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
    * Open one pair.
    *
    * The advisory lock is on the PAIR. Both principals' discovery runs can reach
@@ -218,8 +276,8 @@ export class NegotiationDatabaseAdapter {
 
         const [row] = await tx.insert(opportunities).values({
           detection: {
-            source: 'opportunity_graph',
-            createdBy: 'agent-opportunity-finder',
+            source: pair.detection?.source ?? 'opportunity_graph',
+            createdBy: pair.detection?.createdBy ?? 'agent-opportunity-finder',
             triggeredBy: pair.intentA,
             timestamp: new Date().toISOString(),
           },
