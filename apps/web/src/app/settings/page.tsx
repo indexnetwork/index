@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Link } from "react-router";
-import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Loader2, Camera, ArrowUpRight, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -17,6 +16,7 @@ import { ContentContainer } from "@/components/layout";
 import { SaveBarProvider } from "@/contexts/SaveBarContext";
 import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import DevicesSection from "@/components/settings/DevicesSection";
+import SettingsTabs from "@/components/settings/SettingsTabs";
 import { parseSocial } from "@/lib/socials";
 
 const SETTINGS_TABS = ["profile", "notifications", "access"] as const;
@@ -28,7 +28,7 @@ function isSettingsTab(v: string | null): v is SettingsTab {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const { user, isAuthenticated, isLoading: authLoading, refetchUser, signOut } = useAuthContext();
   const authService = useAuth();
   const { success, error } = useNotifications();
@@ -58,10 +58,6 @@ export default function ProfilePage() {
   const tabParam = searchParams.get("tab");
   const activeTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "profile";
 
-  const setActiveTab = (v: string) => {
-    if (!isSettingsTab(v)) return;
-    setSearchParams(v === "profile" ? {} : { tab: v }, { replace: true });
-  };
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
@@ -176,24 +172,9 @@ export default function ProfilePage() {
         <ContentContainer>
           <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-8">Settings</h1>
 
-          <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
-            <Tabs.List className="flex flex-wrap gap-x-1 border-b border-gray-200 mb-8">
-              {([
-                ["profile", "Profile Settings"],
-                ["notifications", "Notification Settings"],
-                ["access", "Access"],
-              ] as const).map(([value, label]) => (
-                <Tabs.Trigger
-                  key={value}
-                  value={value}
-                  className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent outline-none data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
-                >
-                  {label}
-                </Tabs.Trigger>
-              ))}
-            </Tabs.List>
+          <SettingsTabs />
 
-            <Tabs.Content value="profile">
+          {activeTab === "profile" && (
           <div className="space-y-10">
 
             {/* Identity header */}
@@ -400,16 +381,16 @@ export default function ProfilePage() {
             </div>
 
           </div>
-            </Tabs.Content>
+          )}
 
-            <Tabs.Content value="access">
+          {activeTab === "access" && (
               <div className="space-y-10">
                 <ApiKeysSection />
                 <DevicesSection />
               </div>
-            </Tabs.Content>
+          )}
 
-            <Tabs.Content value="notifications">
+          {activeTab === "notifications" && (
               <div className="space-y-10">
                 <div className="space-y-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
@@ -471,8 +452,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
               </div>
-            </Tabs.Content>
-          </Tabs.Root>
+          )}
 
         </ContentContainer>
       </div>

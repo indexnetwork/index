@@ -31,7 +31,7 @@ function describeDevice(userAgent: string | null): string {
   if (!userAgent) return "Unknown device";
   if (userAgent.startsWith("Index/")) return "Index for Mac";
   if (userAgent.startsWith("index-cli")) return "Index CLI";
-  if (userAgent.includes("Hermes")) return "Personal agent";
+  if (userAgent.includes("Hermes")) return "Hermes agent";
   if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return "Web browser";
   return userAgent.slice(0, 48);
 }

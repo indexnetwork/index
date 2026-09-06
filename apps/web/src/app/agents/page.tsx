@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Check, Copy, Loader2, Plus, Trash2 } from 'lucide-react';
 
 import ClientLayout from '@/components/ClientLayout';
 import { ContentContainer } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import SettingsTabs from '@/components/settings/SettingsTabs';
 import { useAgents } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -153,134 +154,145 @@ export default function AgentsPage() {
     <ClientLayout>
       <div className="px-6 lg:px-8 py-8">
         <ContentContainer>
-          <div className="flex items-start justify-between gap-4 mb-8">
-            <div>
-              <h1 className="text-2xl font-bold text-black font-ibm-plex-mono">Agents</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Register personal agents and pick which one handles negotiations. API keys live in{' '}
-                <Link to="/settings" className="underline hover:text-gray-900">Settings</Link>.
-              </p>
-            </div>
-            <Button onClick={() => setRegisterOpen((open) => !open)}>
-              <Plus className="w-4 h-4 mr-1" />
-              Register Agent
-            </Button>
-          </div>
+          <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-8">Settings</h1>
 
-          {registerOpen && (
-            <div className="mb-8 p-4 border border-gray-200 rounded-sm bg-gray-50 space-y-3">
-              <Input
-                value={newAgentName}
-                onChange={(e) => setNewAgentName(e.target.value)}
-                placeholder="Agent name"
-                disabled={creating}
-              />
-              <Input
-                value={newAgentDescription}
-                onChange={(e) => setNewAgentDescription(e.target.value)}
-                placeholder="Description (optional)"
-                disabled={creating}
-              />
-              <div className="flex gap-2">
-                <Button onClick={handleCreateAgent} disabled={creating || !newAgentName.trim()}>
-                  {creating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                  {creating ? 'Creating...' : 'Create'}
-                </Button>
-                <Button variant="outline" onClick={() => setRegisterOpen(false)} disabled={creating}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
+          <SettingsTabs />
 
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
             </div>
           ) : (
-            <div className="space-y-8">
-              <section>
-                <div className="flex items-center gap-2 mb-3">
-                  <Bot className="w-4 h-4 text-gray-500" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Built-in</h2>
-                </div>
-                <div className="border border-gray-200 rounded-sm p-4 bg-gray-50 opacity-60">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-medium text-gray-900">Index Negotiator</h3>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-600">not yet active</span>
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    A hosted negotiator that would answer on your behalf when you have not picked one.
-                    It does not run yet, so negotiations wait for your own agent.
+            <div className="max-w-3xl space-y-10">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                    Agents
                   </p>
+                  <Button size="sm" onClick={() => setRegisterOpen((open) => !open)}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Register Agent
+                  </Button>
                 </div>
-              </section>
 
-              <section>
-                <div className="flex items-center gap-2 mb-1">
-                  <KeyRound className="w-4 h-4 text-gray-500" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Personal Agents</h2>
-                </div>
-                <p className="text-sm text-gray-500 mb-3">
+                <p className="text-xs text-gray-400 font-ibm-plex-mono">
                   Pick the one agent that handles your negotiations.
                 </p>
 
-                {personalAgents.length === 0 ? (
-                  <div className="text-center py-10 border border-dashed border-gray-200 rounded-sm">
-                    <p className="text-sm text-gray-500">No personal agents yet.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4" role="radiogroup" aria-label="Negotiator agent">
-                    {personalAgents.map((agent) => (
-                      <div key={agent.id} className="border border-gray-200 rounded-sm p-4 bg-white space-y-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex items-start gap-3 flex-1 min-w-0">
-                            <button
-                              type="button"
-                              role="radio"
-                              aria-checked={agent.handleNegotiations}
-                              aria-label={`${agent.name} handles negotiations`}
-                              onClick={() => handleSelectNegotiator(agent)}
-                              disabled={selecting !== null}
-                              className={`mt-1 w-4 h-4 shrink-0 rounded-full border flex items-center justify-center transition-colors disabled:cursor-not-allowed ${
-                                agent.handleNegotiations ? 'border-black bg-black' : 'border-gray-300 bg-white hover:border-gray-500'
-                              }`}
-                            >
-                              {agent.handleNegotiations ? <span className="w-1.5 h-1.5 rounded-full bg-white" /> : null}
-                            </button>
-                            <Link to={`/agents/${agent.id}`} className="group flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-medium text-gray-900 group-hover:underline">{agent.name}</h3>
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                  agent.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
-                                }`}>
-                                  {agent.status}
-                                </span>
-                                {agent.handleNegotiations ? (
-                                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">negotiator</span>
-                                ) : null}
-                              </div>
-                              {agent.description ? <p className="text-sm text-gray-500 mt-1">{agent.description}</p> : null}
-                            </Link>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button variant="outline" onClick={() => handleDeleteAgent(agent)}>
-                              <Trash2 className="w-4 h-4 mr-1" />
-                              Delete
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500 shrink-0">Agent ID</span>
-                          <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-0.5 font-mono text-gray-600 flex-1 min-w-0 break-all">{agent.id}</code>
-                          <CopyButton text={agent.id} />
-                        </div>
-                      </div>
-                    ))}
+                {registerOpen && (
+                  <div className="border border-gray-200 rounded-sm bg-gray-50 p-4 space-y-3">
+                    <Input
+                      value={newAgentName}
+                      onChange={(e) => setNewAgentName(e.target.value)}
+                      placeholder="Agent name"
+                      disabled={creating}
+                    />
+                    <Input
+                      value={newAgentDescription}
+                      onChange={(e) => setNewAgentDescription(e.target.value)}
+                      placeholder="Description (optional)"
+                      disabled={creating}
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleCreateAgent} disabled={creating || !newAgentName.trim()}>
+                        {creating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                        {creating ? 'Creating...' : 'Create'}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setRegisterOpen(false)} disabled={creating}>
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 )}
-              </section>
+
+                <div className="border border-gray-200 rounded-sm overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                          Negotiator
+                        </th>
+                        <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                          Agent
+                        </th>
+                        <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                          Agent ID
+                        </th>
+                        <th className="text-right px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-gray-100 last:border-b-0">
+                        <td className="px-4 py-2">
+                          <input
+                            type="checkbox"
+                            checked={false}
+                            disabled
+                            aria-label="Index Negotiator handles negotiations"
+                            className="w-4 h-4 accent-black"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className="text-sm text-gray-700">Index Negotiator</span>
+                          <span className="ml-2 text-xs text-gray-400 font-ibm-plex-mono">not yet active</span>
+                          <p className="text-xs text-gray-400 font-ibm-plex-mono mt-0.5">
+                            Hosted by Index. It does not run yet, so negotiations wait for your own agent.
+                          </p>
+                        </td>
+                        <td className="px-4 py-2 text-xs text-gray-400 font-ibm-plex-mono">—</td>
+                        <td className="px-4 py-2" />
+                      </tr>
+
+                      {personalAgents.map((agent) => (
+                        <tr key={agent.id} className="border-b border-gray-100 last:border-b-0">
+                          <td className="px-4 py-2">
+                            <input
+                              type="checkbox"
+                              checked={agent.handleNegotiations}
+                              onChange={() => handleSelectNegotiator(agent)}
+                              disabled={selecting !== null}
+                              aria-label={`${agent.name} handles negotiations`}
+                              className="w-4 h-4 accent-black disabled:cursor-not-allowed"
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <Link to={`/agents/${agent.id}`} className="text-sm text-gray-700 hover:underline">
+                              {agent.name}
+                            </Link>
+                            <span className="ml-2 text-xs text-gray-400 font-ibm-plex-mono">{agent.status}</span>
+                            {agent.description ? (
+                              <p className="text-xs text-gray-400 font-ibm-plex-mono mt-0.5">{agent.description}</p>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-2">
+                            <div className="flex items-center gap-1">
+                              <code className="font-mono text-xs text-gray-500">{agent.id}</code>
+                              <CopyButton text={agent.id} />
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAgent(agent)}
+                              className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                              title="Delete agent"
+                              aria-label="Delete agent"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {personalAgents.length === 0 ? (
+                  <p className="text-xs text-gray-400 font-ibm-plex-mono">No personal agents yet.</p>
+                ) : null}
+              </div>
             </div>
           )}
         </ContentContainer>

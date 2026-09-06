@@ -458,7 +458,7 @@ function describeDevice(userAgent) {
   if (!userAgent) return "unknown device";
   if (userAgent.startsWith("Index/")) return "index for mac";
   if (userAgent.startsWith("index-cli")) return "index cli";
-  if (userAgent.includes("Hermes")) return "personal agent";
+  if (userAgent.includes("Hermes")) return "hermes agent";
   if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return "web browser";
   return userAgent.slice(0, 32);
 }
@@ -566,8 +566,8 @@ function AccessPane() {
         </div>
 
         <p style={accessNote}>
-          a key authenticates you in mcp clients (claude code and openclaw). it
-          carries your whole account, not a single agent.
+          a key authenticates you in personal agents, mcp clients, and any
+          other client.
         </p>
 
         {keysError ? (

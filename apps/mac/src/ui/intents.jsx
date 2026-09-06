@@ -111,7 +111,7 @@ function UserMenu({ me, onSelect }) {
 
   // "your network" moved out to its own shelf row above.
   const ITEMS = [
-    { id: "profile",  label: "your profile" },
+    { id: "profile",  label: "settings" },
     { id: "settings", label: "notifications" },
     { id: "history",  label: "negotiation history" },
     { id: "signout",  label: "sign out", danger: true },

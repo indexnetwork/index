@@ -213,8 +213,7 @@ export default function ApiKeysSection() {
           </div>
 
           <p className="text-xs text-gray-400 font-ibm-plex-mono">
-            A key authenticates you in MCP clients (Claude Code and OpenClaw). It carries your
-            whole account, not a single agent.
+            A key authenticates you in personal agents, MCP clients, and any other client.
           </p>
 
           {keys.length === 0 ? (
