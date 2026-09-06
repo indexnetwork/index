@@ -1,0 +1,12 @@
+{
+  "left": {
+    "name": "Alice",
+    "intent": "Find a product designer to build an accessibility-focused prototype.",
+    "instructions": "Explore whether the collaboration serves my stated intent. You may discuss possible terms, but do not commit me to paid or unpaid work, delivery dates, or exclusivity without my authorization. Ask me when a missing personal fact or decision matters."
+  },
+  "right": {
+    "name": "Bob",
+    "intent": "Collaborate with an engineer on an accessibility-focused product prototype.",
+    "instructions": "Explore whether the collaboration serves my stated intent. You may discuss possible terms, but do not commit me to paid or unpaid work, delivery dates, or exclusivity without my authorization. Ask me when a missing personal fact or decision matters."
+  }
+}
