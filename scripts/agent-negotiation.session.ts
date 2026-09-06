@@ -90,6 +90,22 @@ export function createSeat(participant: { owner: User; intent: Intent; instructi
       }
     },
   };
+  // Keep the package's suspension/resume behavior, but ask for selectable questions here.
+  const questionTool = askUserTool();
+  questionTool.description += ' Include 2–4 concise suggested answers on every question. Ask about one fact or decision, not several topics at once. The host also provides a custom-reply field.';
+  questionTool.parameters = {
+    type: 'object',
+    properties: {
+      question: { type: 'string', minLength: 1, description: 'One focused question, explaining why this answer matters now.' },
+      options: {
+        type: 'array', minItems: 2, maxItems: 4, uniqueItems: true,
+        items: { type: 'string', minLength: 1 },
+        description: 'Short candidate answers the principal can confirm. Use neutral categories for unknown facts; do not invent specific credentials, years, or past projects. Do not include a custom/other option; the host supplies that separately.',
+      },
+    },
+    required: ['question', 'options'],
+    additionalProperties: false,
+  };
   const agent = new Agent({
     identity: { id: owner.id, name: owner.name ?? owner.id },
     systemPrompt: [
@@ -98,12 +114,13 @@ export function createSeat(participant: { owner: User; intent: Intent; instructi
       'Read the current negotiation before deciding. Evaluate whether the actual standing offer serves the intent and respects known limits. Do not invent preferences, facts, budgets, availability, or commitments. Do not replace the stated objective with a generic introductory conversation just to reach agreement, unless the principal authorized that objective.',
       'An intent is a goal, not evidence of either party’s experience, qualifications, working methods, resources, or availability. Neither party’s desired counterpart establishes the actual counterparty’s role or skills. Do not turn a desired collaboration into claims about who either person is or what they have done. Address material questions from the other agent before changing the subject: answer from known facts, or ask your principal for the missing fact. Do not sidestep an unanswered question with generic claims or a fresh questionnaire for the counterparty.',
       'Act without asking for routine permission when you have enough information and authority. If an unknown personal fact, preference, or missing authorization would materially change your next decision or response, call ask_user with one focused question and explain the decision it unlocks. Ask for the single most useful missing detail, not an omnibus intake form or a verbatim list of everything the counterparty asked. Do not manufacture questions, ask a fixed checklist, or re-ask something already answered. Missing counterparty information belongs in negotiation with their agent, not a question asking your principal to guess.',
+      'Every ask_user call must include 2–4 concise suggested answers in options. Narrow broad requests for background, scope, budget, and timing to the single most useful fact or decision now. For unknown personal facts, offer neutral self-description categories rather than fabricated biographies, qualifications, years, or projects. These are candidate answers, not facts until the principal selects one. They can always write a custom reply; do not add a duplicate custom/other option.',
       'Use propose only for the opening turn, counter to revise terms, accept only the other party’s standing offer, or decline when there is no viable fit within your principal’s limits. An accept closes the negotiation: do not accept conditionally, leave decision-critical questions unresolved, or claim a meeting, payment, or work has been carried out.',
       'Call ask_user alone when blocked and wait for the answer before making the decision. The answer is private principal context, not a counterparty turn. After it arrives, re-read Index and continue deciding autonomously. Never combine a question with a submission in the same step.',
       'Take at most one recorded turn each time the host runs you. After a submission attempt, do not retry or ask another question: stop and summarize the tool result honestly. A failed or uncertain write is not success. Do not force a particular outcome or number of turns.',
       `Principal instructions:\n${instructions}`,
     ].join('\n\n'),
-    tools: [readTool, submitTool, askUserTool()],
+    tools: [readTool, submitTool, questionTool],
     onRetry: (attempt, reason) => host.retry(owner, attempt, reason),
   }).for({ id: intent.id, statement: intent.payload });
   return { owner, client, agent, turn };
