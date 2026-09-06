@@ -202,7 +202,6 @@ export interface NetworkInvitationResult {
   user: { id: string; email: string };
   created: boolean;
   alreadyMember: boolean;
-  agentProvisioned: boolean;
 }
 
 // ── Conversation types ──────────────────────────────────────────────

@@ -10,6 +10,20 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: keys are keys, agents are agents.** An API key authenticates a
+  user and carries no `metadata.agentId`. There is one mint path,
+  `POST /auth/keys`, shared by the `/cli-auth` browser handshake and settings,
+  with `GET /auth/keys` and `DELETE /auth/keys/:id` beside it; all three are
+  session-only, so a leaked key cannot mint a successor. Key holders still
+  retire their own row through `POST /auth/keys/revoke-self` by re-proving the
+  raw secret. The Better Auth `apiKey` plugin and its `/api/auth/api-key`
+  routes are gone — this is the only mint.
+- **BREAKING: `GET /agents/me` returns the owner's selected negotiator.** It no
+  longer resolves an agent from the calling key, so a user with no negotiator
+  selected gets a 404 instead of whichever agent the key happened to name.
+  Agent writes (`POST /agents`, `PATCH /agents/:id`, `DELETE /agents/:id`,
+  including setting `handleNegotiations`) are session-only.
+
 - **BREAKING: network images are stored under `network-images`, not
   `index-images`.** `POST /api/storage/index-images` and
   `GET /api/storage/index-images/:userId/:filename` are now
@@ -27,6 +41,28 @@ section before promoting to `main`).
   MCP tools; `@indexnetwork/protocol` 49.0.0 is required.
 - `networks.key`'s unique index is renamed `indexes_key_unique` →
   `networks_key_unique` (migration `0175`).
+
+### Removed
+- **BREAKING: per-agent tokens.** `GET/POST/DELETE /agents/:id/tokens` and the
+  `AgentTokenAdapter` are deleted, as is the distinct CLI credential shape
+  (`POST /auth/cli-credential`, `POST /auth/cli-credential/revoke`,
+  `clicredential.adapter.ts`, `clicredential.service.ts`). Clients holding an
+  agent-bound token must log in again for a user key.
+- **BREAKING: the `agent_permissions` table.** Migration
+  `0176_drop_agent_permissions` drops the table and the `permission_scope`
+  enum. `POST /agents/:id/permissions` and
+  `DELETE /agents/:id/permissions/:permissionId` are gone, agent creation
+  inserts no permission row, and `agent-scope.guard.ts` — which caged API-key
+  callers inside one network — is deleted along with the `networkScopeId`
+  filtering it fed in the network, intent, opportunity, conversation and
+  notification paths.
+- **BREAKING: invitation-provisioned agents.** `POST /networks/:id/invite`
+  finds or creates the user, joins them as a member, and emails "you've been
+  added, sign in." It provisions no agent, mints no key, and returns no
+  `agentProvisioned`. `POST /networks/:id/resend-invite`, the key-bearing
+  email template, the OpenClaw connect command and the provisioned-cohort
+  cascade in `deleteNetwork` are deleted. Join-by-code and member/owner roles
+  are unchanged.
 
 ### Added
 - **`POST /intents/clarify`** — one stateless clarification round. Send

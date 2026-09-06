@@ -12,7 +12,6 @@ export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FU
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
-export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
 export const negotiationOutcomeEnum = pgEnum('negotiation_outcome', ['agreed', 'declined', 'closed']);
 export const negotiationTurnActionEnum = pgEnum('negotiation_turn_action', ['propose', 'counter', 'accept', 'decline']);
 
@@ -480,23 +479,6 @@ export const agents = pgTable('agents', {
     .where(sql`${table.type} = 'external' AND ${table.handleNegotiations} = true AND ${table.deletedAt} IS NULL`),
 }));
 
-export const agentPermissions = pgTable('agent_permissions', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  scope: permissionScopeEnum('scope').notNull().default('global'),
-  scopeId: text('scope_id'),
-  actions: text('actions').array().notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  agentIdIdx: index('agent_permissions_agent_id_idx').on(table.agentId),
-  userIdIdx: index('agent_permissions_user_id_idx').on(table.userId),
-  agentUserIdx: index('agent_permissions_agent_user_idx').on(table.agentId, table.userId),
-  uniqueGlobalPermission: uniqueIndex('uniq_agent_permissions_global')
-    .on(table.agentId, table.userId)
-    .where(sql`${table.scope} = 'global'`),
-}));
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Lens B outcome feedback events (IND-434)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -630,21 +612,9 @@ export const intentNetworksRelations = relations(intentNetworks, ({ one }) => ({
   }),
 }));
 
-export const agentsRelations = relations(agents, ({ one, many }) => ({
+export const agentsRelations = relations(agents, ({ one }) => ({
   owner: one(users, {
     fields: [agents.ownerId],
-    references: [users.id],
-  }),
-  permissions: many(agentPermissions),
-}));
-
-export const agentPermissionsRelations = relations(agentPermissions, ({ one }) => ({
-  agent: one(agents, {
-    fields: [agentPermissions.agentId],
-    references: [agents.id],
-  }),
-  user: one(users, {
-    fields: [agentPermissions.userId],
     references: [users.id],
   }),
 }));
@@ -669,8 +639,6 @@ export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
 export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
-export type AgentPermission = typeof agentPermissions.$inferSelect;
-export type NewAgentPermission = typeof agentPermissions.$inferInsert;
 export type Negotiation = typeof negotiations.$inferSelect;
 export type NewNegotiation = typeof negotiations.$inferInsert;
 export type NegotiationTurn = typeof negotiationTurns.$inferSelect;

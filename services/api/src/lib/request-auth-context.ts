@@ -1,9 +1,4 @@
-export type RequestAuthContext =
-  | { kind: 'session' }
-  | {
-      kind: 'api_key';
-      agentId: string | null;
-    };
+export type RequestAuthContext = { kind: 'session' } | { kind: 'api_key' };
 
 const requestAuthContexts = new WeakMap<Request, RequestAuthContext>();
 
@@ -11,7 +6,7 @@ const requestAuthContexts = new WeakMap<Request, RequestAuthContext>();
  * Record the credential context established by a successful authentication guard.
  *
  * @param req - Authenticated request
- * @param context - Credential kind and optional API-key agent binding
+ * @param context - Credential kind that authenticated the request
  */
 export function recordRequestAuthContext(req: Request, context: RequestAuthContext): void {
   requestAuthContexts.set(req, context);

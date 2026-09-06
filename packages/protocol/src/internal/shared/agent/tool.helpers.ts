@@ -90,8 +90,6 @@ export interface ResolvedToolContext {
   sessionId?: string;
   /** True when the request originates from an MCP transport (no interactive UI available). */
   isMcp?: boolean;
-  /** Agent ID when the request originates from an API key linked to an agent. */
-  agentId?: string;
   /** True when the host bound an authenticated owner session (never an API key). */
   isSessionAuth?: boolean;
 }
@@ -165,7 +163,7 @@ interface ToolContextBindings {
    * returned decision is `allowed: false`, the dispatch short-circuits with a
    * rate-limit error carrying `retryAfterSec`. Absent in test contexts.
    */
-  mcpRateLimiter?: (input: { userId: string; agentId?: string; toolName: string }) => Promise<{
+  mcpRateLimiter?: (input: { userId: string; toolName: string }) => Promise<{
     allowed: boolean;
     retryAfterSec?: number;
     limit?: number;
@@ -411,7 +409,7 @@ interface ToolDepsBindings {
    * returned decision is `allowed: false`, the dispatch short-circuits with a
    * rate-limit error carrying `retryAfterSec`. Absent in chat/test contexts.
    */
-  mcpRateLimiter?: (input: { userId: string; agentId?: string; toolName: string }) => Promise<{
+  mcpRateLimiter?: (input: { userId: string; toolName: string }) => Promise<{
     allowed: boolean;
     retryAfterSec?: number;
     limit?: number;

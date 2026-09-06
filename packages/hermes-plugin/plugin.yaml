@@ -20,4 +20,4 @@ provides_tools:
   - index_agent_me
   - index_open_app
 # The plugin authenticates with the INDEX_API_KEY environment variable
-# (an agent API key created in Index web settings).
+# (an API key for your account, created in Index web settings).

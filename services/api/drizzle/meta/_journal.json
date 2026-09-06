@@ -1212,6 +1212,13 @@
       "when": 1788484800009,
       "tag": "0175_rename_networks_key_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1788484800010,
+      "tag": "0176_drop_agent_permissions",
+      "breakpoints": true
     }
   ]
 }

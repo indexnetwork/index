@@ -301,16 +301,8 @@ export const createNetworksService = (api: ReturnType<typeof useAuthenticatedAPI
   },
 
   // Invite a single member to a network by email
-  inviteMember: async (networkId: string, email: string, name?: string): Promise<{ user: { id: string; email: string }; created: boolean; alreadyMember: boolean; agentProvisioned: boolean }> => {
+  inviteMember: async (networkId: string, email: string, name?: string): Promise<{ user: { id: string; email: string }; created: boolean; alreadyMember: boolean }> => {
     return api.post(`/networks/${networkId}/members/invite`, { email, name });
-  },
-
-  // Resend invitation to an existing member
-  resendInvite: async (
-    networkId: string,
-    memberId: string,
-  ): Promise<{ rotated: boolean; email: string }> => {
-    return api.post(`/networks/${networkId}/members/${memberId}/resend-invite`, {});
   },
 });
 

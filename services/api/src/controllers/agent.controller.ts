@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { AuthGuard, OwnerControlGuard, SessionOnlyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
@@ -29,16 +29,6 @@ const updateAgentSchema = z
     message: 'At least one field is required',
   });
 
-const grantPermissionSchema = z.object({
-  actions: z.array(z.string()).min(1, 'actions array is required'),
-  scope: z.enum(['global', 'node', 'network']).optional(),
-  scopeId: z.string().optional(),
-});
-
-const createTokenSchema = z.object({
-  name: z.string().optional(),
-});
-
 function jsonError(error: string, status: number) {
   return Response.json({ error }, { status });
 }
@@ -58,7 +48,7 @@ function parseErrorMessage(err: unknown): string {
 function errorStatus(err: unknown, fallback = 400): number {
   if (err instanceof RuntimeDomainError) return err.status;
   const message = parseErrorMessage(err);
-  if (message === 'Agent not found' || message === 'Transport not found' || message === 'Permission not found' || message === 'Token not found') {
+  if (message === 'Agent not found') {
     return 404;
   }
 
@@ -78,30 +68,6 @@ async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T | R
   }
 
   const parsed = schema.safeParse(raw);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    return jsonError(issue?.message ?? 'Invalid request body', 400);
-  }
-
-  return parsed.data;
-}
-
-async function parseOptionalBody<T>(req: Request, schema: z.ZodSchema<T>, emptyValue: unknown): Promise<T | Response> {
-  const text = await req.text().catch(() => '');
-  const trimmed = text.trim();
-
-  let raw: unknown;
-  if (!trimmed) {
-    raw = emptyValue;
-  } else {
-    try {
-      raw = JSON.parse(trimmed);
-    } catch {
-      return jsonError('Invalid JSON body', 400);
-    }
-  }
-
-  const parsed = schema.safeParse(raw ?? emptyValue);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return jsonError(issue?.message ?? 'Invalid request body', 400);
@@ -139,16 +105,16 @@ export class AgentController {
     }
   }
 
+  /**
+   * Read the agent the user selected to handle negotiations. The caller's
+   * credential names a user, so this is the only way a runtime learns which
+   * agent record it is acting as.
+   */
   @Get('/me')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async getMe(req: Request, user: AuthenticatedUser) {
-    const agentId = await resolveApiKeyAgentId(req);
-    if (!agentId) {
-      return jsonError('This endpoint requires an agent-bound API key', 400);
-    }
-
+  async getMe(_req: Request, user: AuthenticatedUser) {
     try {
-      const result = await this.agents.getMe(agentId, user.id);
+      const result = await this.agents.getMe(user.id);
       return Response.json(result);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err, 404));
@@ -172,7 +138,7 @@ export class AgentController {
   }
 
   @Patch('/:id')
-  @UseGuards(RateLimit('write'), OwnerControlGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async update(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -192,10 +158,8 @@ export class AgentController {
     }
   }
 
-  // Unbound owner keys may deregister agents, but an agent-bound key may not
-  // delete its executor or mint a successor credential.
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), OwnerControlGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async remove(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -204,106 +168,6 @@ export class AgentController {
 
     try {
       await this.agents.delete(agentId, user.id);
-      return new Response(null, { status: 204 });
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  @Post('/:id/permissions')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
-  async grantPermission(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    const body = await parseBody(req, grantPermissionSchema);
-    if (body instanceof Response) {
-      return body;
-    }
-
-    try {
-      const permission = await this.agents.grantPermission(
-        agentId,
-        user.id,
-        body.actions,
-        body.scope,
-        body.scopeId,
-      );
-      return Response.json({ permission }, { status: 201 });
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  @Delete('/:id/permissions/:permissionId')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
-  async revokePermission(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    const permissionId = params?.permissionId;
-    if (!agentId || !permissionId) {
-      return jsonError('Agent ID and permission ID are required', 400);
-    }
-
-    try {
-      await this.agents.revokePermission(agentId, permissionId, user.id);
-      return new Response(null, { status: 204 });
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  @Get('/:id/tokens')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async listTokens(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    try {
-      const tokens = await this.agents.listTokens(agentId, user.id);
-      return Response.json({ tokens });
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  // Desktop owner credentials may mint a key, but agent-bound keys may not
-  // mint successor credentials that survive their own rotation.
-  @Post('/:id/tokens')
-  @UseGuards(RateLimit('write'), OwnerControlGuard)
-  async createToken(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    const body = await parseOptionalBody(req, createTokenSchema, {});
-    if (body instanceof Response) {
-      return body;
-    }
-
-    try {
-      const token = await this.agents.createToken(agentId, user.id, body.name);
-      return Response.json({ token }, { status: 201 });
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  @Delete('/:id/tokens/:tokenId')
-  @UseGuards(RateLimit('write'), OwnerControlGuard)
-  async revokeToken(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    const tokenId = params?.tokenId;
-    if (!agentId || !tokenId) {
-      return jsonError('Agent ID and token ID are required', 400);
-    }
-
-    try {
-      await this.agents.revokeToken(agentId, tokenId, user.id);
       return new Response(null, { status: 204 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));

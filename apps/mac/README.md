@@ -12,7 +12,7 @@ The native `indexAPI` bridge accepts only the exact bundled main document and do
 
 Login opens the web `/cli-auth` page (the same state-bound handshake the CLI uses) with a loopback callback on `http://127.0.0.1:<port>/callback`. The callback returns an ordinary 90-day API key plus its key ID; the app verifies the Keychain write/read-back before treating login as complete.
 
-Logout quarantines bridge work, pauses/scrubs Hermes local activity, revokes the exact API key via `/auth/cli-credential/revoke`, verifies denial, then deletes the Keychain item. Uncertain network or persistence outcomes retain the credential and never claim logout completed.
+Logout quarantines bridge work, pauses/scrubs Hermes local activity, revokes the exact API key via `/auth/keys/revoke-self`, verifies denial, then deletes the Keychain item. Uncertain network or persistence outcomes retain the credential and never claim logout completed.
 
 ## Hermes runtime
 

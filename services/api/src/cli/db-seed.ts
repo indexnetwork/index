@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import path from 'path';
-import { and, eq, sql } from 'drizzle-orm/sql';
+import { sql } from 'drizzle-orm/sql';
 
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
-import { agentPermissions, agents, networkMembers, networks, users } from '../schemas/database.schema';
+import { agents, networkMembers, networks, users } from '../schemas/database.schema';
 import { SYSTEM_AGENT_IDS } from '../adapters/agent.database.adapter';
 import { setLevel } from '../lib/log';
 import type { Id } from '../types/common.types';
@@ -30,7 +30,6 @@ const SYSTEM_AGENT_DEFS = [
     id: SYSTEM_AGENT_IDS.negotiator,
     name: 'Index Negotiator',
     description: 'Built-in agent that handles negotiation turns and opportunity status transitions.',
-    actions: ['manage:opportunities', 'manage:negotiations'],
   },
 ] as const;
 
@@ -202,34 +201,6 @@ async function ensureUsersAndMemberships(accounts: SeedAccount[]): Promise<{ id:
   return createdUsers;
 }
 
-async function ensureAgentPermission(agentId: string, userId: string, actions: string[]): Promise<void> {
-  const existing = await db
-    .select({ actions: agentPermissions.actions })
-    .from(agentPermissions)
-    .where(
-      and(
-        eq(agentPermissions.agentId, agentId),
-        eq(agentPermissions.userId, userId),
-        eq(agentPermissions.scope, 'global'),
-      ),
-    )
-    .limit(1);
-
-  const existingActions = new Set(existing.flatMap((row) => row.actions ?? []));
-  const missingActions = actions.filter((action) => !existingActions.has(action));
-
-  if (missingActions.length === 0) {
-    return;
-  }
-
-  await db.insert(agentPermissions).values({
-    agentId,
-    userId,
-    scope: 'global',
-    actions: missingActions,
-  });
-}
-
 // ── Seed logic ──────────────────────────────────────────────────────────────
 
 async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
@@ -276,10 +247,6 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
           status: 'active',
           metadata: {},
         }).onConflictDoNothing();
-
-        for (const user of adminUsers) {
-          await ensureAgentPermission(systemAgent.id, user.id, [...systemAgent.actions]);
-        }
       }
 
       if (!silent) {

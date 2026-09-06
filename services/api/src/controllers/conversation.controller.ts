@@ -1,6 +1,7 @@
-import { AuthGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
+import { agentService } from '../services/agent.service';
 import { ConversationService } from '../services/conversation.service';
 import { log } from '../lib/log';
 
@@ -206,8 +207,12 @@ export class ConversationController {
       return Response.json({ error: 'parts array is required' }, { status: 400 });
     }
 
-    const asAgent = await resolveApiKeyAgentId(req) !== null
-      && await this.conversationService.isAgentDm(conversationId);
+    // A key-authenticated caller writing into an agent DM writes as the
+    // owner's negotiator. The key names no agent, so the selection is what
+    // decides — with no negotiator chosen, the write stays a user message.
+    const asAgent = !isSessionAuthenticated(req)
+      && await this.conversationService.isAgentDm(conversationId)
+      && await agentService.getSelectedNegotiator(user.id) !== null;
 
     if (asAgent && typeof body.metadata?.intentId !== 'string') {
       return Response.json({ error: 'metadata.intentId is required' }, { status: 400 });

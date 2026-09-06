@@ -68,7 +68,6 @@ export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 export { ChatContextDigestSchema, type ChatContextDigest } from "./protocol/schemas/chat-context.schema.js";
 export { UnderspecificationTypeSchema } from "./protocol/schemas/underspecification.schema.js";
 export type { UnderspecificationType } from "./protocol/schemas/underspecification.schema.js";
-export { McpApiKeyMetadataSchema } from "./platform/auth/mcp.js";
 export type {
   McpAuthInput,
   McpResolvedIdentity,

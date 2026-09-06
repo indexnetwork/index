@@ -1,6 +1,6 @@
 # Index Network Hermes Plugin
 
-The Index plugin connects Hermes to Index over plain HTTPS, authenticated with an agent API key.
+The Index plugin connects Hermes to Index over plain HTTPS, authenticated with your Index API key.
 
 ## Connect
 
@@ -8,17 +8,17 @@ The Index plugin connects Hermes to Index over plain HTTPS, authenticated with a
 hermes plugins install indexnetwork/hermes-plugin
 ```
 
-Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The handshake mints a CLI owner key, then the plugin registers or reuses the Hermes agent, mints an agent-bound token, and persists that token as `INDEX_API_KEY` in `~/.hermes/.env`. The CLI key is revoked after bootstrap. **Sign out** clears the local key. On a headless host the dashboard shows the login link to open elsewhere.
+Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The handshake mints an API key for your account and persists it as `INDEX_API_KEY` in `~/.hermes/.env`. **Sign out** revokes that key and clears it. On a headless host the dashboard shows the login link to open elsewhere.
 
-Manual override: set an agent API key yourself instead of using the browser flow:
+Manual override: set a key from web settings instead of using the browser flow:
 
 ```bash
-export INDEX_API_KEY=<your Index agent API key>
+export INDEX_API_KEY=<your Index API key>
 ```
 
 Optional overrides: `INDEX_API_URL` and `INDEX_MCP_URL` (default to production endpoints). Browser login pairs with the configured API environment (`INDEX_APP_BASE_URL` wins, else derived from `INDEX_API_URL`).
 
-`GET /agents/me` needs the agent-bound token, not the CLI owner key. The agent token can be revoked from web settings.
+The key authenticates you, not an agent. `GET /agents/me` returns the agent you selected as your negotiator in the web app; pick one there before expecting an answer.
 
 ## Development
 

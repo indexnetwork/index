@@ -246,4 +246,4 @@ Core tables the protocol interfaces read/write:
 - **Identity**: `users` (name/bio/location), `user_socials`
 - **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`
 - **Opportunities & discovery**: `opportunities`, `hyde_documents`, `opportunity_discovery_runs`, `enrichment_tool_runs`
-- **Agents**: `agents`, `agent_permissions`, `apikey`
+- **Agents**: `agents`, `apikey`

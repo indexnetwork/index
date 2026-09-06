@@ -360,7 +360,7 @@ def index_open_app(args: dict, **kwargs) -> str:
 
 
 def index_agent_me(args: dict, **kwargs) -> str:
-    """Return the authenticated Index personal agent for the configured API key."""
+    """Return the agent the key's owner selected to handle negotiations."""
     del kwargs
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")

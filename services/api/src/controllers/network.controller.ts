@@ -1,6 +1,5 @@
 import { ZodError } from 'zod';
 
-import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
@@ -24,28 +23,10 @@ export class NetworkController {
    */
   @Get('')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async list(req: Request, user: AuthenticatedUser) {
-    const { networkScopeId } = await withAgentScope(req, user);
+  async list(_req: Request, user: AuthenticatedUser) {
     const result = await networkService.getNetworksForUser(user.id);
-    let filtered = result;
-    if (networkScopeId) {
-      const networks = result.networks.filter((n: { id: string }) => n.id === networkScopeId);
-      // Recompute pagination so count/totalCount/total stay consistent with
-      // the post-filter networks array; otherwise scoped callers see stale
-      // counts that don't match the rows they receive.
-      filtered = {
-        ...result,
-        networks,
-        pagination: {
-          ...result.pagination,
-          count: networks.length,
-          totalCount: networks.length,
-          total: networks.length > 0 ? 1 : 0,
-        },
-      };
-    }
-    logger.verbose('Networks listed for user', { userId: user.id, count: filtered.networks.length, scoped: networkScopeId !== null });
-    return Response.json(filtered);
+    logger.verbose('Networks listed for user', { userId: user.id, count: result.networks.length });
+    return Response.json(result);
   }
 
   /**
@@ -113,9 +94,8 @@ export class NetworkController {
    */
   @Get('/:id/members')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async getMembers(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  async getMembers(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       const members = await networkService.getMembersForOwner(params.id, user.id);
       logger.verbose('Members listed for network', { networkId: params.id, count: members.length });
       return Response.json({
@@ -143,7 +123,6 @@ export class NetworkController {
       return Response.json({ error: 'userId is required' }, { status: 400 });
     }
     try {
-      await assertAgentNetworkScope(req, params.id);
       let role: 'owner' | 'member' = 'member';
       if (body.permissions !== undefined) {
         if (!Array.isArray(body.permissions)) {
@@ -186,7 +165,6 @@ export class NetworkController {
     }
     const role = isOwnerRole ? 'owner' as const : 'member' as const;
     try {
-      await assertAgentNetworkScope(req, params.id);
       const result = await networkService.updateMemberRole(params.id, params.memberId, user.id, role);
       logger.verbose('Member role updated', { networkId: params.id, memberId: params.memberId, role });
       return Response.json({ member: result.member, message: 'Role updated' });
@@ -210,9 +188,8 @@ export class NetworkController {
    */
   @Delete('/:id/members/:memberId')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async removeMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  async removeMember(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       await networkService.removeMember(params.id, params.memberId, user.id);
       logger.verbose('Member removed from network', { networkId: params.id, memberId: params.memberId });
       return Response.json({ success: true });
@@ -238,7 +215,6 @@ export class NetworkController {
   @UseGuards(RateLimit('write'), AuthGuard)
   async update(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       const body = await req.json().catch(() => ({})) as {
         title?: string;
         prompt?: string | null;
@@ -270,7 +246,6 @@ export class NetworkController {
   @UseGuards(RateLimit('write'), AuthGuard)
   async updatePermissions(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; contextInjection?: { discovery: boolean } };
 
       const result = await networkService.updatePermissions(params.id, user.id, body);
@@ -287,16 +262,13 @@ export class NetworkController {
 
   /**
    * Invite a single member to a network by email. Owner-only.
-   * Idempotent: re-inviting a user who already has a network-scoped agent is
-   * a no-op (no key minted, no email). When the user does NOT yet have a
-   * scoped agent — newly created and pre-existing users alike
-   * — provisions one and emails the invitation with a connect command.
+   * Idempotent: adds the user as a member and emails them to sign in. Members
+   * who are already in the network get neither a second row nor a second email.
    */
   @Post('/:id/members/invite')
   @UseGuards(RateLimit('write'), AuthGuard)
   async inviteMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       await this.assertOwner(params.id, user.id);
     } catch (err) {
       if (err instanceof Response) return err;
@@ -324,7 +296,6 @@ export class NetworkController {
         user: { id: result.user.id, email: result.user.email },
         created: result.created,
         alreadyMember: result.alreadyMember,
-        agentProvisioned: result.agentProvisioned,
       }, { status: result.created ? 201 : 200 });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -337,45 +308,13 @@ export class NetworkController {
   }
 
   /**
-   * Rotate a member's network-scoped api key and email it to them. Owner-only.
-   * Self-target is allowed (an owner can rotate their own key).
-   */
-  @Post('/:id/members/:memberId/resend-invite')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async resendInviteToMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
-    try {
-      await assertAgentNetworkScope(req, params.id);
-      await this.assertOwner(params.id, user.id);
-    } catch (err) {
-      if (err instanceof Response) return err;
-      throw err;
-    }
-
-    try {
-      const result = await networkInvitationService.resendInvite({
-        networkId: params.id,
-        memberId: params.memberId,
-      });
-      return Response.json(result, { status: 200 });
-    } catch (err: unknown) {
-      const msg = errorMessage(err);
-      if (msg === 'Member not found') {
-        return Response.json({ error: 'Member not found' }, { status: 404 });
-      }
-      logger.error('Resend invite failed', { networkId: params.id, memberId: params.memberId, error: msg });
-      return Response.json({ error: 'Resend failed' }, { status: 500 });
-    }
-  }
-
-  /**
    * Rotate a network's invitation link, issuing a fresh code. Owner-only.
    * The previously shared link stops resolving once rotated.
    */
   @Patch('/:id/regenerate-invitation')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async regenerateInvitation(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  async regenerateInvitation(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       const result = await networkService.regenerateInvitationLink(params.id, user.id);
       logger.verbose('Invitation link regenerated for network', { networkId: params.id });
       return Response.json({ network: result });
@@ -426,9 +365,8 @@ export class NetworkController {
    */
   @Delete('/:id')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async delete(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  async delete(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       await networkService.deleteNetwork(params.id, user.id);
       logger.verbose('Network deleted', { networkId: params.id, userId: user.id });
       return Response.json({ success: true });
@@ -447,9 +385,8 @@ export class NetworkController {
    */
   @Post('/:id/join')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async joinPublicNetwork(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  async joinPublicNetwork(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       const network = await networkService.joinPublicNetwork(params.id, user.id);
       logger.verbose('User joined public network', { networkId: params.id, userId: user.id });
       return Response.json({ network });
@@ -471,9 +408,8 @@ export class NetworkController {
    */
   @Get('/:id/member-settings')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async getMemberSettings(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  async getMemberSettings(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       const settings = await networkService.getMemberSettings(params.id, user.id);
       logger.verbose('Member settings retrieved', { networkId: params.id, userId: user.id });
       return Response.json(settings);
@@ -492,9 +428,8 @@ export class NetworkController {
    */
   @Get('/:id/overview')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async getOverview(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  async getOverview(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       const overview = await networkService.getNetworkOverview(params.id, user.id);
       logger.verbose('Network overview retrieved', { networkId: params.id, userId: user.id, intents: overview.intents.length });
       return Response.json(overview);
@@ -513,9 +448,8 @@ export class NetworkController {
    */
   @Post('/:id/leave')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async leaveNetwork(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  async leaveNetwork(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       await networkService.leaveNetwork(params.id, user.id);
       logger.verbose('User left network', { networkId: params.id, userId: user.id });
       return Response.json({ success: true });
@@ -570,8 +504,7 @@ export class NetworkController {
    */
   @Get('/public/:id')
   @UseGuards(RateLimit('read'))
-  async getPublicNetwork(req: Request, _user: unknown, params: Record<string, string>) {
-    await assertAgentNetworkScope(req, params.id);
+  async getPublicNetwork(_req: Request, _user: unknown, params: Record<string, string>) {
     const network = await networkService.getPublicNetworkById(params.id);
     if (!network) {
       return Response.json({ error: 'Network not found' }, { status: 404 });
@@ -585,9 +518,8 @@ export class NetworkController {
    */
   @Get('/:id')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async get(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  async get(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await assertAgentNetworkScope(req, params.id);
       const network = await networkService.getNetworkById(params.id, user.id);
       if (!network) {
         return Response.json({ error: 'Network not found' }, { status: 404 });

@@ -30,7 +30,7 @@ Native REST, MCP, upload, and bounded SSE requests are method/path allowlisted b
 
 The client base URL includes `/api`, matching the global prefix applied in `services/api/src/main.ts`. Resource methods currently cover these controller routes:
 
-- `auth.controller.ts`: `GET /auth/me`, `PATCH /auth/profile/update`, `POST /auth/cli-credential/revoke`
+- `auth.controller.ts`: `GET /auth/me`, `PATCH /auth/profile/update`, `POST /auth/keys/revoke-self`
 - `network.controller.ts`: `GET /networks`, `GET /networks/:id/overview`, `GET /networks/:id/my-intents`, `POST /networks`, `POST /networks/:id/join`, `POST /networks/:id/leave`
 - `intent.controller.ts`: `POST /intents/list`, `GET /intents/:id`, `PATCH /intents/:id/archive`, `PATCH /intents/:id/status`
 - `opportunity.controller.ts`: `GET /opportunities`, `GET /opportunities/radar` (incl. `scopeType=intent`), `GET /opportunities/chat-context`, `GET /opportunities/:id`, `GET /opportunities/:id/invite-message`, `PATCH /opportunities/:id/status` (incl. intent scope), `POST /opportunities/:id/start-chat` (incl. intent scope)

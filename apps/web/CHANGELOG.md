@@ -8,6 +8,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- **API keys live in Settings and belong to you, not to an agent.** The
+  per-agent key panel is replaced by one account-key section that mints, lists
+  and revokes through `/auth/keys`; the `/cli-auth` handshake mints from the
+  same route. Agent pages no longer show keys, setup wizards or a Permissions
+  tab — an agent is a name, a status, notification preferences and whether it
+  handles negotiations.
+- Inviting someone to a network reports membership only. There is no
+  "agent provisioned" state and no resend-invitation action, because the
+  invitation carries no credential to refresh.
+
 - **Nothing in the frontend calls a network an "index" any more.**
   `IndexAvatar`, `CreateIndexModal` and `IndexFilterContext` are `NetworkAvatar`,
   `CreateNetworkModal` and `NetworkFilterContext`; `indexesService`,

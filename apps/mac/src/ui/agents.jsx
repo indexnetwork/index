@@ -1,17 +1,6 @@
 // Agents: the runtimes on this Mac, and which one speaks for you.
 // Reached from the agents row on the hub's sidebar footer, same as networks.
 
-// Per-agent permissions, shown when a connected runtime is expanded.
-const AGENT_PERMISSIONS = [
-  { id:"updates", title:"connection updates",
-    blurb:"tells this agent when an opportunity is accepted or someone reaches out." },
-  { id:"indexing", title:"nightly indexing",
-    blurb:"turns what this agent learned today into signals, overnight. off means "
-        + "discovery only knows what you've told it." },
-  { id:"brief", title:"daily brief",
-    blurb:"one message at 08:00 with new overlaps and anything waiting on you." },
-];
-
 // On/off switch. A sliding knob rather than a checkmark: these rows are states
 // a runtime is in, not items you tick, and the knob's position reads at a
 // glance down a column. Squared off, since a rounded pill would be the only
@@ -63,7 +52,7 @@ function AgentState({ state }) {
   );
 }
 
-function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onTogglePerm, last }) {
+function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, last }) {
   const connected = agent.state === "connected";
   const [hover, setHover] = useState(false);
 
@@ -87,7 +76,8 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
         }}
         title={agent.builtin ? "index is built in and always on"
-          : connected ? "permissions" : "connect this agent to configure it"}
+          : agent.wireable ? "wire this runtime to your account key"
+          : "add this agent in the web app"}
         style={{
           display:"flex", alignItems:"center", gap:11,
           padding:"9px 12px",
@@ -108,7 +98,7 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
           onClick={e => e.stopPropagation()}
           style={{ flex:"0 0 auto", display:"flex" }}>
           <MiniSwitch on={agent.on} onClick={() => onToggleOn(agent.id)}
-            fixed={agent.builtin} label={`${agent.name} on`}/>
+            fixed={agent.builtin || !agent.wireable} label={`${agent.name} on`}/>
         </span>
         {/* indicator now, not a control, the row carries the click.
             the builtin row never opens, so it carries no chevron */}
@@ -147,23 +137,6 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
               }}>disconnect</button>
             </span>
           </div>
-
-          {/* Permissions are checkboxes, not switches. Two different kinds of
-              thing: the runtime switch turns an agent on, these tick what it's
-              allowed to do. Reuses the same Toggle as the notifications pane,
-              so a checkbox looks the same everywhere in the app, and the
-              switch stays the only right-hand control. */}
-          <div style={{ display:"grid", gap:8 }}>
-            {AGENT_PERMISSIONS.map(p => (
-              <Toggle
-                key={p.id}
-                on={!!perms[p.id]}
-                onClick={() => onTogglePerm(agent.id, p.id)}
-                title={p.title}
-                blurb={p.blurb}
-              />
-            ))}
-          </div>
         </div>
       )}
     </div>
@@ -175,22 +148,22 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
 // (picture on the left, name beside it) because it is the same kind of thing:
 // who you are to the network, and who your agent is. The face is derived from
 // your account id, so it is persistent and needs no control surface.
-function NegotiatorProfile({ agent, runtimeOptions, runtime, onChangeRuntime }) {
+function NegotiatorProfile({ agent, runtimeLabel }) {
   return (
     <div style={{ display:"grid", gap:16 }}>
-      {/* Pick the runtime first, then dress it. Which one carries your
-          negotiator is the decision on this page; the face and the name are
-          how it shows up once that's settled, so they follow it rather than
-          lead it. */}
+      {/* Which runtime carries your negotiator is picked in the web app, where
+          you are signed in; this states the answer and the face below is how it
+          shows up once that's settled. */}
       <div style={{ display:"grid", gap:7 }}>
-        <NegotiatorSelect
-          options={runtimeOptions}
-          value={runtime}
-          onChange={onChangeRuntime}
-        />
+        <div style={{
+          maxWidth:360, padding:"8px 11px",
+          border:"1px solid #000", background:"#fff",
+          boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+          fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+        }}>{runtimeLabel}</div>
         <span style={{
           fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
-        }}>index takes over if it's unavailable.</span>
+        }}>change this in the web app. index takes over if it's unavailable.</span>
       </div>
 
       <div style={{ display:"grid", gap:2 }}>
@@ -210,94 +183,6 @@ function NegotiatorProfile({ agent, runtimeOptions, runtime, onChangeRuntime }) 
           }}>{agent.name}</div>
         </div>
       </div>
-    </div>
-  );
-}
-
-// Negotiator picker. A dropdown rather than a card per runtime: the list is
-// short, only one can be chosen, and the cards repeated the same three lines
-// four times over. Only runtimes that are switched on appear, so there's no
-// disabled state to explain.
-function NegotiatorSelect({ options, value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    };
-    // capture + preventDefault so the open dropdown takes the Escape before the
-    // window-closing handler in primitives sees it
-    const onKey = (e) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("mousedown", onDown, true);
-      document.removeEventListener("keydown", onKey, true);
-    };
-  }, [open]);
-
-  const current = options.find(o => o.id === value) || options[0];
-  const rowHover = (on) => (e) => {
-    e.currentTarget.style.background = on ? "#000" : "transparent";
-    e.currentTarget.style.color = on ? "#FF8A00" : "#000";
-  };
-
-  return (
-    <div ref={wrapRef} style={{ position:"relative", maxWidth:360 }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        style={{
-          display:"flex", alignItems:"center", gap:10, width:"100%",
-          padding:"8px 11px", textAlign:"left", cursor:"pointer",
-          border:"1px solid #000", background: open ? "#F2EFE6" : "#fff",
-          boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
-        }}>
-        <span style={{
-          flex:1, minWidth:0,
-          fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
-        }}>{current.label}</span>
-        <span style={{
-          flex:"0 0 auto",
-          fontFamily:"var(--mac-mono)", fontSize:12, color:"#000",
-          transform: open ? "rotate(180deg)" : "none",
-        }}>▾</span>
-      </button>
-
-      {open && (
-        <div role="listbox" className="fade-up" style={{
-          position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:40,
-          width:"100%", background:"#fff",
-          border:"1px solid #000", boxShadow:"3px 3px 0 rgba(0,0,0,0.22)",
-          padding:"4px 0",
-        }}>
-          {options.map(o => (
-            <button
-              key={o.id}
-              role="option"
-              aria-selected={o.id === value}
-              onClick={() => { onChange(o.id); setOpen(false); }}
-              onMouseEnter={rowHover(true)}
-              onMouseLeave={rowHover(false)}
-              style={{
-                display:"flex", alignItems:"center", gap:8,
-                width:"100%", textAlign:"left",
-                padding:"6px 11px", border:"none", background:"transparent",
-                fontFamily:"var(--mac-mono)", fontSize:12, cursor:"pointer", color:"#000",
-              }}>
-              <span style={{ flex:"0 0 auto", width:8 }}>{o.id === value ? "•" : ""}</span>
-              {o.label}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -323,7 +208,7 @@ function mapLiveAgent(a) {
   // An agent registered against your account is connected, whether or not it
   // has checked in lately. `lastSeenAt` is null on every agent the API has
   // handed back so far, and reading that as "detected" left every row shut:
-  // only a connected row opens, so the permissions behind it were unreachable.
+  // only a connected row opens, so the detail behind it was unreachable.
   // The heartbeat is a separate fact and says for itself when there isn't one.
   const active = a.status ? a.status === "active" : true;
   const owner = String((currentMe() || {}).name || "").trim().split(/\s+/)[0];
@@ -339,14 +224,6 @@ function mapLiveAgent(a) {
     negotiates: !!a.handleNegotiations,
     connectedAs: a.description || (owner ? `${owner}'s ${name.toLowerCase()}` : name.toLowerCase()),
     heartbeat: a.lastSeenAt ? rel(a.lastSeenAt) : "",
-    // What this agent is actually allowed to do, off the record rather than
-    // off a demo id. Nightly indexing has no field behind it yet, so it starts
-    // off rather than claiming something the API never said.
-    perms: {
-      updates: !!a.notifyOnOpportunity,
-      brief: !!a.dailySummaryEnabled,
-      indexing: false,
-    },
   };
 }
 
@@ -355,8 +232,7 @@ function Agents({ onClose }) {
   // account's registered agents) and the local harness scan below.
   const [agents, setAgents] = useState([]);
   const [expanded, setExpanded] = useState(null);
-  // Filled from the live agent list; "index" is the builtin negotiator fallback.
-  const [perms, setPerms] = useState({});
+  // Read off the live agent list; "index" is the builtin negotiator fallback.
   const [negotiator, setNegotiator] = useState("index");
 
   // Which local runtimes are already registered on the account: personal
@@ -364,11 +240,6 @@ function Agents({ onClose }) {
   // to runtime rows — the Index row in the list is the local builtin, pinned
   // on, and it doubles as the negotiator fallback in the picker below.
   const [registered, setRegistered] = useState({});
-  const noteRegistered = (a) => {
-    const row = mapLiveAgent(a);
-    setRegistered(r => ({ ...r, [row.name.toLowerCase()]: row }));
-    setPerms(p => ({ ...p, [row.id]: p[row.id] || row.perms }));
-  };
   const fetchRegistered = () => {
     if (!window.IndexApp || !window.IndexApp.isAuthed()) return Promise.resolve();
     const client = window.IndexApp.getClient();
@@ -380,14 +251,11 @@ function Agents({ onClose }) {
         // Rebuild from scratch so agents deactivated or deleted elsewhere
         // (e.g. on the web) drop their stale state here.
         const next = {};
-        const nextPerms = {};
         list.forEach((a) => {
           const row = mapLiveAgent(a);
           next[row.name.toLowerCase()] = row;
-          nextPerms[row.id] = row.perms;
         });
         setRegistered(next);
-        setPerms(p => ({ ...nextPerms, ...p }));
         const carries = list.find(a => a.handleNegotiations && a.status !== "inactive");
         setNegotiator(carries ? carries.id : "index");
       })
@@ -421,85 +289,39 @@ function Agents({ onClose }) {
     });
   };
 
-  // Activating a detected runtime registers it as a personal agent (MCP
-  // register_agent) and mints it an api key; deactivating deletes the agent
-  // (revoking its keys) and tears down any local plugin wiring.
+  // The switch wires a local runtime to your account, it does not create an
+  // agent: agents are created and deleted in the web app with a signed-in
+  // session. Hermes is the runtime with local wiring — the Swift shell writes
+  // your stored key into ~/.hermes/.env and installs the Index plugin.
   const busy = useRef(new Set());
   const toggleOn = (id) => {
     // browser preview: the demo rows keep their local flip
     if (detected === null) {
       setAgents(list => list.map(a => {
         if (a.id !== id) return a;
-        const on = !a.on;
-        if (!on && negotiator === id) setNegotiator("index");
-        return { ...a, on };
+        return { ...a, on: !a.on };
       }));
       return;
     }
     if (!window.IndexApp || !window.IndexApp.isAuthed()) {
-      alert("sign in first — registering an agent needs your account.");
+      alert("sign in first — wiring a runtime needs your account key.");
       return;
     }
     const row = rows.find(a => a.id === id);
-    if (!row) return;
+    if (!row || row.name.toLowerCase() !== "hermes") return;
     if (busy.current.has(id)) return;
     busy.current.add(id);
     const done = () => busy.current.delete(id);
-    if (row.live) {
-      // Toggling off deregisters: delete the agent server-side (which also
-      // revokes its api keys) and, for hermes, uninstall the local plugin.
-      window.IndexApp.getClient().agents.remove(row.id)
-        .then(() => {
-          setRegistered(r => {
-            const next = { ...r };
-            delete next[row.name.toLowerCase()];
-            return next;
-          });
-          if (negotiator === row.id) setNegotiator("index");
-          if (row.name.toLowerCase() === "hermes") {
-            return window.IndexApp.teardownHermes().then((r) => {
-              if (!(r && r.ok)) alert(`deregistered, but plugin removal failed: ${(r && r.error) || "unknown error"}`);
-            });
-          }
-        })
-        .catch((err) => alert(`could not deregister ${row.name}: ${err && err.message || err}`))
-        .then(done, done);
-      return;
-    }
-    window.IndexApp.registerAgent({
-        name: row.name,
-        description: `${row.name} on this mac (${row.path})`,
-        permissions: ["manage:negotiations", "manage:intents", "manage:opportunities"],
+    const wire = row.live
+      ? window.IndexApp.teardownHermes()
+      : window.IndexApp.setupHermes();
+    wire
+      .then((r) => {
+        if (!(r && r.ok)) alert(`hermes wiring failed: ${(r && r.error) || "unknown error"}`);
       })
-      .then((agent) => {
-        if (!agent || !agent.id) throw new Error("no agent in response");
-        noteRegistered(agent);
-        return agent;
-      })
-      .then((agent) =>
-        // Mint an api key for the agent so the local runtime can act as it.
-        window.IndexApp.getClient().agents.createToken(agent.id).then((res) => {
-          const key = res && res.token && res.token.key;
-          if (!key) throw new Error("no key in bootstrap response");
-          if (row.id === "local-hermes") {
-            // Hand the key to the Swift shell: it writes ~/.hermes/.env and
-            // installs/enables the indexnetwork/hermes-plugin.
-            return window.IndexApp.setupHermes(key).then((r) => {
-              if (r && r.ok) alert("Hermes agent registered and its Index plugin is configured.");
-              else alert(`Hermes agent registered, but plugin setup failed: ${(r && r.error) || "unknown error"}`);
-            });
-          }
-          alert(`${row.name} registered. its api key (shown once):\n\n${key}`);
-        })
-      )
-      .catch((err) => alert(`could not activate ${row.name}: ${err && err.message || err}`))
+      .catch((err) => alert(`could not wire hermes: ${err && err.message || err}`))
       .then(done, done);
   };
-
-  const togglePerm = (agentId, permId) => setPerms(p => ({
-    ...p,
-    [agentId]: { ...p[agentId], [permId]: !(p[agentId] || {})[permId] },
-  }));
 
   // Your negotiator's picture is derived from your account id (see myAgent in
   // primitives), so it is the same everywhere with nothing to configure here.
@@ -510,45 +332,27 @@ function Agents({ onClose }) {
   // default that carries negotiations when nothing else does. A local
   // runtime already registered on the account (matched by name) wears its
   // live record: connected state, real id, on = active. Everything else is
-  // detected and off until the switch registers it.
+  // detected, and stays detected until that agent is added in the web app.
   const indexRow = {
     id:"index", name:"Index", state:"system default", on:true, builtin:true,
   };
   const rows = [indexRow, ...(detected === null ? agents : detected.map(d => {
     const live = registered[d.name.toLowerCase()];
+    // hermes is the only runtime with local wiring, so it is the only switch
+    // that does anything here.
+    const wireable = d.name.toLowerCase() === "hermes";
     return live
-      ? { ...live, path: d.path }
+      ? { ...live, path: d.path, wireable }
       : { id: d.id, name: d.name, state: "detected", on: false,
-          connectedAs: "", heartbeat: "", path: d.path };
+          connectedAs: "", heartbeat: "", path: d.path, wireable };
   }))];
 
-  // Persist which runtime carries negotiations. Selecting Index clears the
-  // former agent's handleNegotiations flag via the server's single-negotiator CAS.
-  const selectNegotiator = (id) => {
-    const previousId = negotiator;
-    setNegotiator(id);
-    if (!window.IndexApp || !window.IndexApp.isAuthed()) return;
-    const client = window.IndexApp.getClient();
-    if (!client || !client.agents.update) return;
-    if (id === "index") {
-      const previous = rows.find(a => a.live && a.id === previousId);
-      if (previous) {
-        client.agents.update(previous.id, { handleNegotiations: false }).catch(() => {});
-      }
-      return;
-    }
-    client.agents.update(id, { handleNegotiations: true })
-      .then(() => fetchRegistered())
-      .catch((err) => alert(`could not set negotiator: ${err && err.message || err}`));
-  };
-
-  // Only runtimes you've switched on can speak for you, so only those are
-  // offered. Index is always available as the fallback.
-  const negotiatorOptions = [
-    { id:"index", label:"Index · system default" },
-    ...rows.filter(a => a.on && !a.builtin)
-      .map(a => ({ id:a.id, label:`${a.name} · on this mac` })),
-  ];
+  // Which runtime carries negotiations is picked in the web app, where you
+  // have a session; here it is read off the agent list.
+  const negotiatorRow = rows.find(a => a.id === negotiator);
+  const negotiatorLabel = negotiatorRow && !negotiatorRow.builtin
+    ? `${negotiatorRow.name} · on this mac`
+    : "Index · system default";
 
   return (
     <div style={{
@@ -593,8 +397,8 @@ function Agents({ onClose }) {
               margin:"10px 0 0", maxWidth:560,
               fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
             }}>
-              agents on this mac can act for you. what each one is allowed to
-              do is set here.
+              agents on this mac can act for you. add and remove them in the
+              web app; this is what's running here.
             </p>
           </div>
 
@@ -629,8 +433,6 @@ function Agents({ onClose }) {
                   expanded={expanded === a.id}
                   onToggleExpand={(id) => setExpanded(e => e === id ? null : id)}
                   onToggleOn={toggleOn}
-                  perms={perms[a.id] || {}}
-                  onTogglePerm={togglePerm}
                 />
               ))}
               {/* index is always here, so "empty" means no local runtimes */}
@@ -654,9 +456,7 @@ function Agents({ onClose }) {
 
             <NegotiatorProfile
               agent={myNegotiator}
-              runtimeOptions={negotiatorOptions}
-              runtime={negotiator}
-              onChangeRuntime={selectNegotiator}
+              runtimeLabel={negotiatorLabel}
             />
           </div>
         </MacWindow>

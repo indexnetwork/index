@@ -424,9 +424,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             }
             else if action == "detectHarnesses" { detectHarnesses(admittedGeneration: admittedGeneration) }
             else if action == "setupHermes" {
-                if let key = body?["value"] as? String {
-                    setupHermes(apiKey: key, admittedGeneration: admittedGeneration)
-                }
+                setupHermes(admittedGeneration: admittedGeneration)
             }
             else if action == "teardownHermes" {
                 teardownHermes(admittedGeneration: admittedGeneration)
@@ -486,9 +484,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     /// Write ~/.hermes/.env and install/enable the Index plugin off the main
     /// thread, then hand the result to the page via window.__indexHermesSetup.
-    private func setupHermes(apiKey: String, admittedGeneration: UInt64) {
+    private func setupHermes(admittedGeneration: UInt64) {
+        let credential = currentOwnerCredential()?.credential
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = HermesSetup.run(apiKey: apiKey)
+            let result: [String: Any] = credential
+                .map { HermesSetup.run(apiKey: $0) }
+                ?? ["ok": false, "error": "sign in first"]
             let json = (try? JSONSerialization.data(withJSONObject: result))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
             DispatchQueue.main.async {
@@ -791,11 +792,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func revokeAndDelete(record: OwnerCredentialRecord) {
-        // Ordinary Better Auth API-key revocation - the same endpoint the CLI
-        // logout uses. Local deletion waits for server denial so a lost
-        // response never strands a still-live key.
+        // Ordinary API-key self-revocation - the same endpoint the CLI logout
+        // uses. Local deletion waits for server denial so a lost response
+        // never strands a still-live key.
         performOwnerRequest(
-            path: "/auth/cli-credential/revoke",
+            path: "/auth/keys/revoke-self",
             body: ["keyId": record.credentialId, "targetKey": record.credential],
             credential: record.credential
         ) { [weak self] revokeResult in

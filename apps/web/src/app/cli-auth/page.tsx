@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { apiClient } from "@/lib/api";
 import AuthForm from "@/components/AuthForm";
-import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, parseCliAuthRequest, type CliAuthRequest } from "@/lib/cli-auth";
+import { buildCliApiKeyCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequest, type CliAuthRequest } from "@/lib/cli-auth";
 
 /**
  * CLI authentication bridge page.
@@ -15,7 +15,7 @@ import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthRe
  *
  * Flow:
  *   1. Fail closed on malformed/unknown protocol combinations
- *   2. If user has a session cookie, mint a version-tagged CLI API key
+ *   2. If user has a session cookie, mint a user API key
  *   3. Return the state-bound api_key/key_id/state callback fields
  *   4. If no session, show the sign-in form inline; Better Auth returns to
  *      this exact validated request after login
@@ -51,12 +51,12 @@ function CliAuthPage() {
           return;
         }
 
-        // Mint a non-web API-key principal without creating a session-JWT web bypass.
-        const credential = await apiClient.post<{ key: string; id: string; expiresAt: string }>(
-          "/auth/cli-credential",
-          buildCliCredentialCreateBody(authRequest),
+        // Mint a user API key through the one shared mint path.
+        const credential = await apiClient.post<{ key: string; id: string }>(
+          "/auth/keys",
+          { name: "CLI" },
         );
-        if (!credential.key || !credential.id || !credential.expiresAt) {
+        if (!credential.key || !credential.id) {
           setStatus("error");
           setError("Failed to obtain credentials. Please try signing in again.");
           return;

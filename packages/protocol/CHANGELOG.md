@@ -20,6 +20,37 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 51.0.0 - 2026-09-06
+
+### Removed
+
+- **BREAKING — an API key names a user, never an agent.**
+  `McpResolvedIdentity` is `{ userId }` plus the session flag: `agentId`,
+  `enrollmentCapable`, `isHermesAgent` and `networkScopeId` are gone, along with
+  `McpApiKeyMetadataSchema`. Nothing derives a principal from key metadata, so
+  the `enrollment_key`, `unregistered_key`, `registered_network_agent` and
+  `registered_global_agent` capability profiles are gone too — a caller is
+  either a session or a key, and a key gets the full product tool set.
+- **BREAKING — `agent_permissions` is deleted.** `AgentPermissionRecord`,
+  `AgentWithRelations` and `GrantPermissionInput` are removed from the public
+  types; `AgentDatabase` loses `getAgentWithRelations`, `grantPermission`,
+  `revokePermission` and `hasPermission`, and gains `getSelectedNegotiator`.
+  The `grant_agent_permission` and `revoke_agent_permission` MCP tools are
+  gone, `register_agent` no longer takes `permissions`, and `read_own_agent`
+  returns the owner's selected negotiator.
+- **BREAKING — tool access rules collapse to four kinds.**
+  `McpToolAccessRule` is `authenticated`, `human_only`, `agent_admin` or
+  `removed`; `reach` and the stored-permission projection
+  (`defineMcpToolPermissionMap`, `McpToolPermissionMap`,
+  `MCP_PERMISSION_ACTIONS`, `projectStoredPermissionActions`) are removed.
+  Owner verdicts and `delete_network` stay `human_only`; agent CRUD is
+  `agent_admin` and reachable only from a session.
+
+### Changed
+
+- `ResolvedToolContext` no longer carries `agentId`, so rate limiting and
+  owner-verdict checks key off the user and the session flag alone.
+
 ## 50.0.0 - 2026-09-05
 
 ### Removed

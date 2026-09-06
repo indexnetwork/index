@@ -684,26 +684,17 @@ export class IntentDatabaseAdapter {
   async resolveIntentId(
     idOrPrefix: string,
     userId: string,
-    networkScopeId?: string | null,
   ): Promise<{ id: string } | { ambiguous: true } | null> {
     const normalized = idOrPrefix.trim().toLowerCase();
     const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(normalized);
     if (isFullUuid) {
       return { id: normalized };
     }
-    const scopeCondition = networkScopeId
-      ? sql`EXISTS (
-          SELECT 1 FROM ${schema.intentNetworks} resolve_scope
-          WHERE resolve_scope.intent_id = ${schema.intents.id}
-            AND resolve_scope.network_id = ${networkScopeId}
-        )`
-      : sql`true`;
     const rows = await db.select({ id: schema.intents.id })
       .from(schema.intents)
       .where(and(
         sql`${schema.intents.id} LIKE ${normalized + '%'}`,
         eq(schema.intents.userId, userId),
-        scopeCondition,
       ))
       .limit(2);
     if (rows.length === 0) return null;

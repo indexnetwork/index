@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
-import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
 import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
@@ -255,11 +254,9 @@ export class OpportunityController {
 
     const scope = parseIntentScopeFromBody(body);
     if (scope instanceof Response) return scope;
-    const { networkScopeId } = await withAgentScope(req, user);
 
     const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id, {
       ...scope,
-      ...(networkScopeId ? { networkScopeId } : {}),
       // Provenance: only a genuine human session may become a preference label
       // (IND-434). API-key/agent REST calls are excluded from outcome capture.
       actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
@@ -311,11 +308,9 @@ export class OpportunityController {
     }
     const scope = parseIntentScopeFromBody(body);
     if (scope instanceof Response) return scope;
-    const { networkScopeId } = await withAgentScope(req, user);
 
     const result = await opportunityService.startChat(resolved.id, user.id, {
       ...scope,
-      ...(networkScopeId ? { networkScopeId } : {}),
       actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
     });
     if ('error' in result) {
@@ -346,8 +341,6 @@ export class NetworkOpportunityController {
     if (!networkId) {
       return Response.json({ error: 'Missing network id' }, { status: 400 });
     }
-
-    await assertAgentNetworkScope(req, networkId);
 
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');

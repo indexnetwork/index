@@ -15,12 +15,12 @@ import { McpResolvedIdentitySchema } from '../../platform/auth/mcp.js';
 import { CANONICAL_GUIDANCE_SUMMARY } from '../shared/agent/canonical-guidance.js';
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
-import { deriveAllowedNetworkIds, isToolAllowedInScope, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
+import { deriveAllowedNetworkIds, isToolAllowedInScope } from '../shared/agent/tool.scope.js';
 import { createToolRegistry } from '../shared/agent/tool.registry.js';
 import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
-import type { McpAuthorizationObserver, McpCapabilityDecision, McpCapabilityPolicyOptions, McpCapabilitySubject, McpPolicyAgentSnapshot } from './mcp.authorization-policy.js';
+import type { McpAuthorizationObserver, McpCapabilityDecision, McpCapabilityPolicyOptions, McpCapabilitySubject } from './mcp.authorization-policy.js';
 import { buildMcpAuthorizationDenialEvent, McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
 
 const logger = protocolLogger('McpServer');
@@ -230,42 +230,6 @@ export interface ScopedDepsFactory {
   create(userId: string, allowedNetworkIds: string[]): Pick<ToolDeps, 'userDb' | 'systemDb'>;
 }
 
-/**
- * Promotes a network-scoped agent's bound network into the resolved tool
- * context as the implicit chat scope. Every tool derives its focused network
- * from the `scopeType`/`scopeId` envelope; without this step scoped API-key
- * calls would still resolve an unscoped/global view.
- *
- * No-op when there is no scope, or when an explicit scope is already set
- * (a user-driven network-scoped chat must keep precedence over the agent
- * binding — which would be a strict subset anyway, since the API key cannot
- * reach beyond its bound network).
- */
-export const applyNetworkScopeToContext = (
-  context: ResolvedToolContext,
-  networkScopeId: string | null | undefined,
-): void => {
-  if (!networkScopeId) return;
-  if (context.scopeType && context.scopeId) return;
-
-  const scope = scopeFromNetworkId(networkScopeId);
-  context.scopeType = scope.scopeType;
-  context.scopeId = scope.scopeId;
-
-  const bound = context.userNetworks.find((m) => m.networkId === networkScopeId);
-  if (!bound) return;
-
-  context.networkName = bound.networkTitle;
-  context.scopedNetwork = {
-    id: bound.networkId,
-    title: bound.networkTitle,
-    prompt: bound.networkPrompt ?? null,
-  };
-  const isOwner = bound.permissions?.includes('owner') ?? false;
-  context.scopedMembershipRole = isOwner ? 'owner' : 'member';
-  context.isOwner = isOwner;
-};
-
 export { ONBOARDING_ALLOWED } from './mcp.authorization-policy.js';
 
 /**
@@ -397,7 +361,6 @@ export function createMcpServer(
 
   type AuthenticatedMcpRequest = {
     identity: McpResolvedIdentity;
-    agent: McpPolicyAgentSnapshot | null;
     preliminarySubject: McpCapabilitySubject;
   };
 
@@ -406,10 +369,9 @@ export function createMcpServer(
     subject: McpCapabilitySubject;
   };
 
-  // Both snapshots are scoped to this MCP server/connection. Permission
-  // changes therefore apply only after the caller reconnects or refreshes
-  // its session. They are never shared with the static tool metadata cache,
-  // so a different server/principal cannot inherit decisions.
+  // Both snapshots are scoped to this MCP server/connection, and are never
+  // shared with the static tool metadata cache, so a different
+  // server/principal cannot inherit decisions.
   let authenticatedRequest: Promise<AuthenticatedMcpRequest> | undefined;
   let resolvedRequest: Promise<ResolvedMcpRequest> | undefined;
 
@@ -426,34 +388,11 @@ export function createMcpServer(
         await authResolver.resolveIdentity(extractAuthInput(httpReq)),
       );
 
-      const agentRecord = identity.agentId
-        ? await deps.agentDatabase?.getAgentWithRelations(identity.agentId) ?? null
-        : null;
-      const agent: McpPolicyAgentSnapshot | null = agentRecord
-        ? {
-            id: agentRecord.id,
-            ownerId: agentRecord.ownerId,
-            type: agentRecord.type,
-            status: agentRecord.status,
-            permissions: agentRecord.permissions.map((permission) => ({
-              agentId: permission.agentId,
-              userId: permission.userId,
-              scope: permission.scope,
-              scopeId: permission.scopeId,
-              actions: [...permission.actions],
-            })),
-          }
-        : null;
-
       return {
         identity,
-        agent,
         // This snapshot is sufficient to reject forged/hidden calls before
         // resolving chat context.
-        preliminarySubject: resolveMcpCapabilitySubject({
-          identity,
-          agent,
-        }),
+        preliminarySubject: resolveMcpCapabilitySubject(identity),
       };
     })();
     return authenticatedRequest;
@@ -469,27 +408,19 @@ export function createMcpServer(
         userId: authenticated.identity.userId,
           });
       context.isMcp = true;
-      if (authenticated.identity.agentId) {
-        context.agentId = authenticated.identity.agentId;
-      }
       context.isSessionAuth = authenticated.identity.isSessionAuth === true;
-      applyNetworkScopeToContext(context, authenticated.identity.networkScopeId);
 
-      const subject = resolveMcpCapabilitySubject({
-        identity: authenticated.identity,
-        agent: authenticated.agent,
-      });
       return {
         ...authenticated,
         context,
-        subject,
+        subject: resolveMcpCapabilitySubject(authenticated.identity),
       };
     })();
     return resolvedRequest;
   };
 
   const capabilityDeniedResult = (_decision: McpCapabilityDecision) => {
-    const message = 'This capability is not available to the authenticated principal. Reconnect or refresh the session after an administrator changes permissions.';
+    const message = 'This capability is not available to the authenticated principal.';
     return {
       content: [{
         type: 'text' as const,
@@ -558,7 +489,7 @@ export function createMcpServer(
           }
 
           const { identity, context } = resolved;
-          const { userId, agentId } = identity;
+          const { userId } = identity;
           reportUserId = userId;
 
           // Per-principal MCP throttle. Runs BEFORE any DB work so a throttled
@@ -574,7 +505,6 @@ export function createMcpServer(
             try {
               decision = await deps.mcpRateLimiter({
                 userId,
-                ...(agentId ? { agentId } : {}),
                 toolName,
               });
             } catch (rlErr) {
@@ -677,7 +607,6 @@ export function createMcpServer(
                 toolName,
               },
               context: {
-                agentId: reportContext?.agentId,
                 scopeType: reportContext?.scopeType,
                 scopeId: reportContext?.scopeId,
               },

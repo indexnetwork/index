@@ -22,7 +22,6 @@ export interface ApiKeyAuthenticationCredential {
   userId: string | null;
   enabled: boolean;
   expiresAt: Date | null;
-  metadata: string | null;
 }
 
 /** Persistence boundary used by the real API-key authentication algorithm. */
@@ -73,24 +72,15 @@ export class SessionRequiredError extends Error {
   }
 }
 
-/** Thrown when an agent-bound key reaches an owner-control endpoint. */
-export class OwnerControlRequiredError extends Error {
-  constructor(message = 'This endpoint requires an owner credential; agent-bound API keys are not accepted') {
-    super(message);
-    this.name = 'OwnerControlRequiredError';
-  }
-}
-
 /**
  * SessionOnlyGuard: accepts ONLY a Better Auth session JWT (`Authorization:
  * Bearer` header or `?token=`), never an API key.
  *
- * Use for endpoints where a leaked agent API key must not be able to act:
- * account deletion and agent-management writes (create/update/delete agents,
- * tokens, permissions). Re-walling those keeps leaked-key blast
- * radius at "act as the user in the product" — a key must never be able to
- * mint successor credentials (which would survive rotation of the leaked
- * key) or destroy the account. See IND-384.
+ * Use for owner control: minting and revoking API keys, agent create/update/
+ * delete (including choosing the negotiator), and account deletion. This keeps
+ * a leaked key's blast radius at "act as the user in the product" — it can
+ * never mint a successor credential that survives its own rotation, nor destroy
+ * the account. See IND-384.
  */
 export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser> => {
   const authHeader = req.headers.get('Authorization');
@@ -111,23 +101,6 @@ export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser>
   throw new Error('Access token required');
 };
 
-function parseApiKeyMetadata(metadata: string | null): Record<string, unknown> | null {
-  if (!metadata) return null;
-  try {
-    const parsed: unknown = JSON.parse(metadata);
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function parseApiKeyAgentId(metadata: string | null): string | null {
-  const parsed = parseApiKeyMetadata(metadata);
-  return typeof parsed?.agentId === 'string' ? parsed.agentId : null;
-}
-
 /**
  * True iff the request is authenticated by a genuine Better Auth session JWT
  * (`Authorization: Bearer` header or `?token=`), i.e. a human acting in the
@@ -140,38 +113,6 @@ function parseApiKeyAgentId(metadata: string | null): string | null {
  */
 export const isSessionAuthenticated = (req: Request): boolean =>
   getRequestAuthContext(req)?.kind === 'session';
-
-/**
- * Resolve the `metadata.agentId` of the API key on the request, or null if
- * the request is JWT-authenticated, has no key, or the key has no agent
- * binding. Authorization is intentionally NOT re-checked here — callers
- * must run `AuthGuard` first.
- */
-export type AgentPrincipalResolver = (request: Request) => Promise<string | null>;
-
-export const resolveApiKeyAgentId = async (req: Request): Promise<string | null> => {
-  const authenticated = getRequestAuthContext(req);
-  if (authenticated?.kind === 'api_key') return authenticated.agentId;
-
-  const authHeader = req.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) return null;
-  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
-  if (queryToken) return null;
-
-  const apiKey = req.headers.get('x-api-key');
-  if (!apiKey) return null;
-
-  const hashed = await hashApiKey(apiKey);
-
-  const database = (await import('../lib/drizzle/drizzle')).default;
-  const [row] = await database
-    .select({ metadata: apikeys.metadata })
-    .from(apikeys)
-    .where(eq(apikeys.key, hashed))
-    .limit(1);
-
-  return parseApiKeyAgentId(row?.metadata ?? null);
-};
 
 export async function authenticateApiKey(
   req: Request,
@@ -212,10 +153,7 @@ export async function authenticateApiKey(
     throw new Error('Invalid API key');
   }
 
-  recordRequestAuthContext(req, {
-    kind: 'api_key' as const,
-    agentId: parseApiKeyAgentId(row.metadata),
-  });
+  recordRequestAuthContext(req, { kind: 'api_key' });
 
   return {
     id: user.id,
@@ -254,7 +192,6 @@ const databaseApiKeyAuthenticationStore: ApiKeyAuthenticationStore = {
         userId: apikeys.userId,
         enabled: apikeys.enabled,
         expiresAt: apikeys.expiresAt,
-        metadata: apikeys.metadata,
       })
       .from(apikeys)
       .where(eq(apikeys.key, hash))
@@ -270,20 +207,4 @@ const databaseApiKeyAuthenticationStore: ApiKeyAuthenticationStore = {
       .limit(1);
     return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
   },
-};
-
-/**
- * Authenticate an owner-control request while rejecting every agent-bound key.
- * Sessions and unbound owner keys remain accepted.
- */
-export const OwnerControlGuard = async (
-  req: Request,
-  authenticate: (request: Request) => Promise<AuthenticatedUser> = AuthGuard,
-): Promise<AuthenticatedUser> => {
-  const user = await authenticate(req);
-  const context = getRequestAuthContext(req);
-  if (context?.kind === 'api_key' && context.agentId !== null) {
-    throw new OwnerControlRequiredError();
-  }
-  return user;
 };

@@ -259,9 +259,6 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/network-requests$"#), ("POST", #"^/network-requests$"#),
         ("PATCH", #"^/network-requests/[^/?]+$"#), ("DELETE", #"^/network-requests/[^/?]+$"#),
         ("GET", #"^/agents$"#),
-        ("POST", #"^/agents/[^/?]+/tokens$"#),
-        ("PATCH", #"^/agents/[^/?]+$"#),
-        ("DELETE", #"^/agents/[^/?]+$"#),
         ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
         ("POST", #"^/intents(?:/(?:list|clarify))?$"#),
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
@@ -289,11 +286,7 @@ final class NativeAPIRequestBridge {
     static let allowedSSERoutes: Set<String> = [
         "GET /notifications/stream", "GET /conversations/stream",
     ]
-    static let allowedMCPTools: Set<String> = ["create_intent", "register_agent"]
-    static let allowedAgentPermissionActions: Set<String> = [
-        "manage:identity", "manage:intents",
-        "manage:networks", "manage:opportunities", "manage:negotiations",
-    ]
+    static let allowedMCPTools: Set<String> = ["create_intent"]
 
     private let apiBaseURL: URL
     private let mcpURL: URL
@@ -653,24 +646,6 @@ final class NativeAPIRequestBridge {
             return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "websites"])
         case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
         case "/auth/onboarding/complete": return keysAllowed(body, allowed: ["intentId"])
-        case let value where value.range(of: #"^/agents/[^/?]+/tokens$"#, options: .regularExpression) != nil:
-            // Empty object or omitted name: createToken defaults the label server-side.
-            if body == nil { return true }
-            return exactTypedObject(body, optional: ["name"]) { optionalString($0, "name", maximum: 256) }
-        case let value where value.range(of: #"^/agents/[^/?]+$"#, options: .regularExpression) != nil:
-            guard method == "PATCH" else { return false }
-            return exactTypedObject(
-                body,
-                optional: ["name", "description", "status", "notifyOnOpportunity", "dailySummaryEnabled", "handleNegotiations"]
-            ) { item in
-                !item.keys.isEmpty
-                    && optionalString(item, "name", maximum: 256)
-                    && optionalString(item, "description", maximum: 8_192)
-                    && (item["status"] == nil || enumString(item["status"], ["active", "inactive"]))
-                    && optionalBool(item, "notifyOnOpportunity")
-                    && optionalBool(item, "dailySummaryEnabled")
-                    && optionalBool(item, "handleNegotiations")
-            }
         case "/conversations/dm":
             return exactTypedObject(body, required: ["peerUserId"]) { identifier($0["peerUserId"]) }
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
@@ -693,32 +668,12 @@ final class NativeAPIRequestBridge {
     }
 
     private static func isAllowedMCPArguments(tool: String, arguments: NativeJSONValue?) -> Bool {
-        switch tool {
-        case "register_agent":
-            return exactTypedObject(arguments, required: ["name"], optional: ["description", "permissions"]) { item in
-                boundedString(item["name"], maximum: 256)
-                    && optionalString(item, "description", maximum: 8_192)
-                    && (item["permissions"] == nil || validAgentPermissions(item["permissions"]))
-            }
-        default:
-            return false
-        }
+        return false
     }
 
     private static func validNetworkMemberPermissions(_ value: NativeJSONValue?) -> Bool {
         guard case .array(let values) = value, values.count == 1 else { return false }
         return enumString(values[0], ["owner", "member"])
-    }
-
-    private static func validAgentPermissions(_ value: NativeJSONValue?) -> Bool {
-        guard case .array(let values) = value, values.count <= allowedAgentPermissionActions.count else { return false }
-        var seen = Set<String>()
-        for entry in values {
-            guard case .string(let action) = entry,
-                  allowedAgentPermissionActions.contains(action),
-                  seen.insert(action).inserted else { return false }
-        }
-        return true
     }
 
     private static func hasAllowedQuery(_ path: String) -> Bool {

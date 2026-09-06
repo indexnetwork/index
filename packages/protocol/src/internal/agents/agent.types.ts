@@ -2,13 +2,9 @@
  * agents/domain — pure agent entity types.
  *
  * These are the core value-objects for the participant-agents capability:
- * agent records, permission grants, and the well-known system agent ID
- * constants.
+ * agent records and the well-known system agent ID constants.
  *
  * No application logic, no LLM calls, no cross-capability imports.
- *
- * IND-548: canonical home for agent entity types previously in
- * shared/interfaces/agent.interface.ts.
  */
 
 export interface AgentRecord {
@@ -23,34 +19,12 @@ export interface AgentRecord {
   updatedAt: Date;
 }
 
-export interface AgentPermissionRecord {
-  id: string;
-  agentId: string;
-  userId: string;
-  scope: 'global' | 'node' | 'network';
-  scopeId: string | null;
-  actions: string[];
-  createdAt: Date;
-}
-
-export interface AgentWithRelations extends AgentRecord {
-  permissions: AgentPermissionRecord[];
-}
-
 export interface CreateAgentInput {
   ownerId: string;
   name: string;
   description?: string;
   type: 'external' | 'system';
   metadata?: Record<string, unknown>;
-}
-
-export interface GrantPermissionInput {
-  agentId: string;
-  userId: string;
-  scope?: 'global' | 'node' | 'network';
-  scopeId?: string;
-  actions: string[];
 }
 
 /**

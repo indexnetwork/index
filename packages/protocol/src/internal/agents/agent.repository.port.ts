@@ -1,21 +1,18 @@
 /**
  * agents/ports — AgentDatabase persistence port.
  *
- * Injected boundary for agent registry persistence.  Implemented by the
+ * Injected boundary for agent registry persistence. Implemented by the
  * host application and passed into the protocol layer at the composition root.
- *
- * IND-548: extracted from shared/interfaces/agent.interface.ts into the
- * participant-agents capability's dedicated ports layer.
  */
 
-import type { AgentRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, GrantPermissionInput } from "./agent.types.js";
+import type { AgentRecord, CreateAgentInput } from "./agent.types.js";
 
 /**
  * Database adapter interface for agent registry operations.
  *
- * Handles CRUD for agents and permission grants. Implemented by the host
- * application (backend) and injected into the protocol layer via constructor
- * injection at the composition root.
+ * Handles CRUD for the agents a user owns, plus reading the single agent the
+ * owner selected to handle negotiations. Implemented by the host application
+ * and injected into the protocol layer at the composition root.
  */
 export interface AgentDatabase {
   /**
@@ -33,13 +30,6 @@ export interface AgentDatabase {
   getAgent(agentId: string): Promise<AgentRecord | null>;
 
   /**
-   * Retrieves an agent along with its permissions.
-   * @param agentId - The agent UUID.
-   * @returns The agent with relations, or null if not found.
-   */
-  getAgentWithRelations(agentId: string): Promise<AgentWithRelations | null>;
-
-  /**
    * Updates mutable fields on an agent.
    * @param agentId - The agent UUID.
    * @param updates - Partial set of fields to update.
@@ -51,45 +41,24 @@ export interface AgentDatabase {
   ): Promise<AgentRecord | null>;
 
   /**
-   * Deletes an agent and its associated permissions.
+   * Deletes an agent.
    * @param agentId - The agent UUID.
    */
   deleteAgent(agentId: string): Promise<void>;
 
   /**
-   * Lists all agents owned by a user, including their relations.
+   * Lists all agents owned by a user.
    * @param userId - The owner's user ID.
-   * @returns Array of agents with permissions.
+   * @returns Array of agents.
    */
-  listAgentsForUser(userId: string): Promise<AgentWithRelations[]>;
+  listAgentsForUser(userId: string): Promise<AgentRecord[]>;
 
   /**
-   * Grants a permission to an agent for a given user and scope.
-   * @param input - Permission grant parameters.
-   * @returns The persisted permission record.
+   * Reads the single agent the owner selected to handle negotiations.
+   * @param ownerId - The owner's user ID.
+   * @returns The selected negotiator, or null when none is selected.
    */
-  grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRecord>;
-
-  /**
-   * Revokes a permission by its ID.
-   * @param permissionId - The permission UUID.
-   */
-  revokePermission(permissionId: string): Promise<void>;
-
-  /**
-   * Checks whether an agent holds a specific permission for a user.
-   * @param agentId - The agent UUID.
-   * @param userId - The user whose permission is being checked.
-   * @param action - The action string to verify (e.g. `"read"`, `"write"`).
-   * @param scope - Optional scope restriction; defaults to global if omitted.
-   * @returns True if the permission exists, false otherwise.
-   */
-  hasPermission(
-    agentId: string,
-    userId: string,
-    action: string,
-    scope?: { type: 'global' | 'node' | 'network'; id?: string },
-  ): Promise<boolean>;
+  getSelectedNegotiator(ownerId: string): Promise<AgentRecord | null>;
 
   /**
    * Returns the well-known IDs for built-in system agents.

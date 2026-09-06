@@ -159,15 +159,13 @@ export class IntentService {
    * Resolve an intent identifier (full UUID or short prefix) to a full UUID.
    * @param idOrPrefix - Full UUID or short hex prefix
    * @param userId - The user ID (for ownership scoping)
-   * @param networkScopeId - Optional bound-agent network constraint for prefix lookup.
    * @returns Resolved ID, or error object with status
    */
   async resolveId(
     idOrPrefix: string,
     userId: string,
-    networkScopeId?: string | null,
   ): Promise<{ id: string } | { error: string; status: number }> {
-    const result = await this.adapter.resolveIntentId(idOrPrefix, userId, networkScopeId);
+    const result = await this.adapter.resolveIntentId(idOrPrefix, userId);
     if (!result) {
       return { error: 'Intent not found', status: 404 };
     }
@@ -211,16 +209,14 @@ export class IntentService {
    * @param intentId - Full intent UUID.
    * @param userId - Authenticated owner.
    * @param status - Requested lifecycle status.
-   * @param networkScopeId - Optional bound-agent network constraint.
    * @returns The graph's transition outcome.
    */
   async transitionStatus(
     intentId: string,
     userId: string,
     status: 'ACTIVE' | 'PAUSED',
-    networkScopeId?: string | null,
   ): Promise<IntentTransitionOutcome> {
-    logger.verbose('Transitioning intent lifecycle', { intentId, userId, status, networkScopeId });
+    logger.verbose('Transitioning intent lifecycle', { intentId, userId, status });
 
     const result = await this.intentGraph.invoke(
       {
@@ -228,7 +224,6 @@ export class IntentService {
         userProfile: '',
         targetIntentIds: [intentId],
         status,
-        ...(networkScopeId ? { scopeType: 'network' as const, scopeId: networkScopeId } : {}),
       },
       { recursionLimit: 100 },
     ) as { transitionResult?: IntentTransitionOutcome };

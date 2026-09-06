@@ -156,27 +156,6 @@ def _load_tools_module():
 
 tools = _load_tools_module()
 auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
-agent_bootstrap = _load_module(
-    "index_network_hermes_dashboard_agent_bootstrap",
-    _DASHBOARD_DIR / "agent_bootstrap.py",
-)
-
-
-def _promote_cli_key(cli_key: str, cli_key_id: str | None) -> dict[str, Any]:
-    """Swap the CLI owner key for a Hermes agent token, then rebuild transport."""
-    tools.reset_transport()
-    try:
-        return agent_bootstrap.promote(
-            tools.get_transport(),
-            auth_login.persist_api_key,
-            cli_key,
-            cli_key_id,
-        )
-    finally:
-        tools.reset_transport()
-
-
-auth_login.set_post_login(_promote_cli_key)
 
 
 def _call_read_intents() -> dict[str, Any]:
@@ -954,24 +933,22 @@ def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[
 
 @full_router.get("/auth/login/status")
 def auth_login_status() -> dict[str, Any]:
-    """Poll the pending login; on success the Hermes agent key is persisted."""
+    """Poll the pending login; on success the user's API key is persisted."""
     result = auth_login.poll_status()
     payload: dict[str, Any] = {"success": result.get("status") != "failed", "status": result.get("status")}
     if result.get("error"):
         payload["error"] = result.get("error")
-    if "negotiatorReady" in result:
-        payload["negotiatorReady"] = result["negotiatorReady"]
     return payload
 
 
 @full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Best-effort revoke the CLI key, then clear it from `~/.hermes/.env` + process."""
+    """Best-effort revoke the stored key, then clear it from `~/.hermes/.env` + process."""
     api_key = os.environ.get("INDEX_API_KEY", "").strip()
     key_id = os.environ.get("INDEX_API_KEY_ID", "").strip()
     if api_key and key_id:
         try:
-            tools._api_request("POST", "/auth/cli-credential/revoke", {"keyId": key_id, "targetKey": api_key})
+            tools._api_request("POST", "/auth/keys/revoke-self", {"keyId": key_id, "targetKey": api_key})
         except Exception:  # noqa: BLE001 - revoke is best-effort; local cleanup still runs.
             pass
     auth_login.clear_api_key()

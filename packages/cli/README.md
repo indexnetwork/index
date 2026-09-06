@@ -52,7 +52,7 @@ The v1 login contract (`session_token` callback, Bearer API-key fallback, `--tok
 
 ### `index logout`
 
-Revoke the exact stored CLI API key through `POST /api/auth/cli-credential/revoke`, proving both the active `x-api-key` caller and strict `{keyId,targetKey}` self target, then clear local credentials. If server revocation succeeds but local cleanup fails, logout exits nonzero and asks you to remove the local file manually. The released v1 CLI can only remove its credential locally because it did not store a server key ID; its temporary server key expires after 90 days. Legacy API-key credentials without a revocation ID are retained by the new CLI with a non-success warning that directs you to remove the old key in web settings first rather than implying another login revokes it.
+Revoke the exact stored API key through `POST /api/auth/keys/revoke-self`, proving both the active `x-api-key` caller and strict `{keyId,targetKey}` self target, then clear local credentials. If server revocation succeeds but local cleanup fails, logout exits nonzero and asks you to remove the local file manually. Credentials stored without a revocation ID are retained with a non-success warning that directs you to remove the old key in web settings first rather than implying another login revokes it.
 
 ```bash
 index logout

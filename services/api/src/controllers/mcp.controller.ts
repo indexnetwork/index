@@ -17,17 +17,15 @@ import { enricherAdapter } from '../adapters/enricher.adapter';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
-import { agentService } from '../services/agent.service';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
-import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, CompositeToolDatabase, McpAuthInput, McpResolvedIdentity, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
-import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 
 const logger = log.server.from('mcp');
 
@@ -50,8 +48,6 @@ const protocolDeps = {
   createSystemDatabase: (db: CompositeToolDatabase, userId: string, scope: string[], emb?: Embedder) =>
     createSystemDatabase(db as ChatDatabaseAdapter, userId, scope, emb),
   agentDatabase: agentDatabaseAdapter,
-  grantDefaultSystemPermissions: (userId: string) =>
-    agentService.grantDefaultSystemPermissions(userId),
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
   // #1471: host bridge for the `reject_opportunity` / `accept_opportunity`
@@ -112,60 +108,28 @@ const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', API_URL),
 );
 
-function parseApiKeyMetadata(raw: string | null | undefined): {
-  agentId?: string;
-  enrollmentCapable?: boolean;
-} {
-  if (!raw) {
-    return {};
-  }
-
-  try {
-    const parsed = McpApiKeyMetadataSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) return {};
-    return {
-      ...(parsed.data.agentId ? { agentId: parsed.data.agentId } : {}),
-      ...(parsed.data.enrollmentCapable === true ? { enrollmentCapable: true } : {}),
-    };
-  } catch {
-    return {};
-  }
-}
-
 type ApiKeyPrincipalRow = {
   referenceId: string | null;
   userId: string | null;
-  metadata?: string | null;
 };
 
 type ResolvedMcpIdentity = McpResolvedIdentity;
 
+/**
+ * Resolves the owning user of an API key row. A key names a user and nothing
+ * else, so this is the whole principal.
+ *
+ * @param row - The authoritative `apikey` principal columns.
+ * @param sessionUserId - Better Auth's own resolution, when it answered.
+ * @returns The owning user ID, or null when the row names nobody.
+ */
 export function resolveMcpApiKeyPrincipal(
   row: ApiKeyPrincipalRow,
   sessionUserId?: string,
-): {
-  userId: string;
-  agentId?: string;
-  enrollmentCapable?: boolean;
-} | null {
-  const metadata = parseApiKeyMetadata(row.metadata);
-
-  // Agent keys must carry BOTH principal columns (the adapter
-  // mints them with referenceId === userId); a missing side signals a
-  // cross-wired/tampered agent key. Divergence between populated columns is
-  // rejected for every key by resolveApiKeyUserId below.
-  if (metadata.agentId && (!row.userId || !row.referenceId)) {
-    throw new Error('Agent API key principal mismatch');
-  }
-
+): { userId: string } | null {
   const userId = resolveApiKeyUserId(row, sessionUserId);
   if (!userId) return null;
-
-  return {
-    userId,
-    ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
-    ...(!metadata.agentId && metadata.enrollmentCapable ? { enrollmentCapable: true } : {}),
-  };
+  return { userId };
 }
 
 const authResolver: McpAuthResolver = {
@@ -177,8 +141,8 @@ const authResolver: McpAuthResolver = {
         // JWT path
         try {
           const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
-          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null };
-          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null };
+          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true };
+          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true };
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -196,7 +160,7 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return { userId: data.userId, isSessionAuth: true, networkScopeId: null };
+            if (data?.userId) return { userId: data.userId, isSessionAuth: true };
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -234,7 +198,6 @@ const authResolver: McpAuthResolver = {
           userId: apikeys.userId,
           enabled: apikeys.enabled,
           expiresAt: apikeys.expiresAt,
-          metadata: apikeys.metadata,
         })
           .from(apikeys)
           .where(eq(apikeys.key, hashed))
@@ -263,20 +226,12 @@ const authResolver: McpAuthResolver = {
           }
 
           if (principal) {
-            const networkScopeId = principal.agentId
-              ? await resolveAgentNetworkScopeById(principal.agentId)
-              : null;
-            return {
-              userId: principal.userId,
-              ...(principal.agentId ? { agentId: principal.agentId } : {}),
-              ...(principal.enrollmentCapable ? { enrollmentCapable: true } : {}),
-              networkScopeId,
-            };
+            return { userId: principal.userId };
           }
         }
 
         if (sessionUserId) {
-          return { userId: sessionUserId, networkScopeId: null };
+          return { userId: sessionUserId };
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -327,11 +282,7 @@ const mcpAuthorizationObserver: McpAuthorizationObserver = {
       toolName: event.toolName,
       profile: event.profile,
       reason: event.reason,
-      ...(event.reach ? { reach: event.reach } : {}),
-      ...(event.requiredPermissions ? { requiredPermissions: event.requiredPermissions } : {}),
       userId: event.userId,
-      ...(event.agentId ? { agentId: event.agentId } : {}),
-      networkScopeId: event.networkScopeId,
     });
   },
 };
@@ -359,7 +310,6 @@ function createMcpServerInstance(): McpServer {
     // capability matrix confines verdicts to session-authenticated owners.
     negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools,
     agentDatabase: protocolDeps.agentDatabase,
-    grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
     reportToolError: (error, report) => captureAppException(error, {
       subsystem: report.subsystem ?? 'protocol',
       operation: report.operation,

@@ -101,17 +101,18 @@ window.IndexApp = (function () {
     });
   }
 
-  // Swift answers a setupHermes post (writes ~/.hermes/.env, installs the
-  // indexnetwork/hermes-plugin) via window.__indexHermesSetup.
+  // Swift answers a setupHermes post (writes ~/.hermes/.env with the owner's
+  // stored key, installs the indexnetwork/hermes-plugin) via
+  // window.__indexHermesSetup. The page never sees the key.
   const hermesWaiters = [];
   window.__indexHermesSetup = function (result) {
     while (hermesWaiters.length) hermesWaiters.shift()(result || {});
   };
-  function setupHermes(apiKey) {
+  function setupHermes() {
     if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
     return new Promise((resolve) => {
       hermesWaiters.push(resolve);
-      window.webkit.messageHandlers.indexAuth.postMessage({ action: "setupHermes", value: apiKey });
+      post("setupHermes");
     });
   }
   // Undo: uninstall the plugin and scrub Index credentials from ~/.hermes/.env.
@@ -454,51 +455,6 @@ window.IndexApp = (function () {
     };
   }
 
-  // ---- MCP tools/call -----------------------------------------------------
-
-  // Single structured tools/call through native /mcp. Used for intent creation
-  // and agent registration (SessionOnly REST create rejects owner API keys).
-  async function mcpCall(tool, args) {
-    const response = await nativeAPIBridge.request({
-      kind:"mcp", tool, arguments: args || {},
-    });
-    const rpc = response.body;
-    if (!rpc) throw new Error(`MCP ${tool} returned no response`);
-    if (rpc.error) throw new Error(rpc.error.message || `MCP ${tool} failed`);
-    const result = rpc.result || {};
-    if (result.isError) throw new Error(extractMcpText(result) || `MCP ${tool} reported an error`);
-    return parseMcpResult(result);
-  }
-
-  async function registerAgent(input) {
-    const payload = await mcpCall("register_agent", {
-      name: input.name,
-      ...(input.description ? { description: input.description } : {}),
-      ...(input.permissions ? { permissions: input.permissions } : {}),
-    });
-    // tool results arrive wrapped: { success, data: { message, agent } } or flat
-    const agent = (payload && payload.data && payload.data.agent)
-      || (payload && payload.agent)
-      || null;
-    if (!agent) throw new Error((payload && payload.error) || "registration failed");
-    return agent;
-  }
-
-  // MCP tool results carry a content[] array; the structured payload lives in
-  // structuredContent when present, otherwise as JSON text in the first block.
-  function parseMcpResult(result) {
-    if (result.structuredContent) return result.structuredContent;
-    const text = extractMcpText(result);
-    if (!text) return {};
-    try { return JSON.parse(text); } catch (e) { return { text }; }
-  }
-
-  function extractMcpText(result) {
-    const content = Array.isArray(result.content) ? result.content : [];
-    const block = content.find((c) => c && c.type === "text" && typeof c.text === "string");
-    return block ? block.text : "";
-  }
-
   return {
     native,
     isAuthed,
@@ -519,7 +475,6 @@ window.IndexApp = (function () {
     teardownHermes,
     onAuthChanged,
     onDeepLink,
-    registerAgent,
     streamInbox,
     notify,
     setNotifyPrefs,

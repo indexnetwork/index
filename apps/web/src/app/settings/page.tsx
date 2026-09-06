@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { SaveBarProvider } from "@/contexts/SaveBarContext";
-import AgentApiKeysSection from "@/components/settings/AgentApiKeysSection";
+import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import { parseSocial } from "@/lib/socials";
 
 const SETTINGS_TABS = ["profile", "notifications", "api-keys"] as const;
@@ -402,7 +402,7 @@ export default function ProfilePage() {
             </Tabs.Content>
 
             <Tabs.Content value="api-keys">
-              <AgentApiKeysSection />
+              <ApiKeysSection />
             </Tabs.Content>
 
             <Tabs.Content value="notifications">

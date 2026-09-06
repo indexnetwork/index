@@ -57,8 +57,6 @@ interface OpportunityStatusUpdateResult {
 interface IntentScopeOptions {
   scopeType?: 'intent';
   scopeId?: string;
-  /** Internal clamp derived from a network-scoped API-key principal. */
-  networkScopeId?: string;
   /**
    * Verified provenance of the owner action, set ONLY by controller entry
    * points that represent a genuine explicit human owner action (REST session
@@ -139,23 +137,6 @@ async function appendMatchProvenance(
 ): Promise<void> {
   await (database as MatchProvenanceDatabase).appendMatchProvenance(conversationId, provenance);
 }
-
-function matchesAgentNetworkScope(
-  opportunity: Pick<Opportunity, 'actors'>,
-  userId: string,
-  networkScopeId?: string,
-): boolean {
-  if (!networkScopeId) return true;
-  const callerAnchored = opportunity.actors.some(
-    (actor) => actor.userId === userId && actor.networkId === networkScopeId,
-  );
-  if (!callerAnchored) return false;
-  const participantIds = new Set(opportunity.actors.map((actor) => actor.userId));
-  return [...participantIds].every((participantId) => opportunity.actors.some(
-    (actor) => actor.userId === participantId && actor.networkId === networkScopeId,
-  ));
-}
-
 
 /** Events emitted after opportunity lifecycle changes (e.g. create, expire). */
 export type OpportunityCreatedPayload = { opportunity: Opportunity };
@@ -540,9 +521,6 @@ export class OpportunityService {
     if (!matchesSelectedIntentScope(opp, userId, options)) {
       return { error: 'Opportunity not found', status: 404 };
     }
-    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
-      return { error: 'Opportunity not found', status: 404 };
-    }
 
     // Self-accept guard: if the caller has already committed (actedAt is set)
     // and they are trying to accept, block them — the other party must accept.
@@ -688,9 +666,6 @@ export class OpportunityService {
       if (!matchesSelectedIntentScope(opp, userId, options)) {
         return { error: 'Opportunity not found', status: 404 };
       }
-      if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
-        return { error: 'Opportunity not found', status: 404 };
-      }
       const counterpart = resolveCounterpart(opp.actors, userId);
       if (!counterpart) {
         return { error: 'Opportunity has no counterpart to chat with', status: 400 };
@@ -731,9 +706,6 @@ export class OpportunityService {
       return { error: 'Not authorized to start chat for this opportunity', status: 403 };
     }
     if (!matchesSelectedIntentScope(opp, userId, options)) {
-      return { error: 'Opportunity not found', status: 404 };
-    }
-    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
       return { error: 'Opportunity not found', status: 404 };
     }
 

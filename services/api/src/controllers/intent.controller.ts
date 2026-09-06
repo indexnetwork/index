@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { assertAgentNetworkScope, ScopeViolationError, withAgentScope } from '../guards/agent-scope.guard';
 import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
@@ -27,15 +26,6 @@ const StatusSchema = z.object({
 
 @Controller('/intents')
 export class IntentController {
-  private readonly assertCreateNetworkScope: typeof assertAgentNetworkScope;
-
-  /**
-   * @param deps - Optional overrides for focused controller tests.
-   */
-  constructor(deps?: { assertNetworkScope?: typeof assertAgentNetworkScope }) {
-    this.assertCreateNetworkScope = deps?.assertNetworkScope ?? assertAgentNetworkScope;
-  }
-
   /**
    * List intents with pagination and filters.
    */
@@ -114,10 +104,6 @@ export class IntentController {
       );
     }
     const { description, networkIds } = parsed.data;
-
-    for (const networkId of networkIds) {
-      await this.assertCreateNetworkScope(req, networkId);
-    }
 
     try {
       const created = await intentService.create(user.id, description, networkIds);
@@ -210,8 +196,7 @@ export class IntentController {
       );
     }
 
-    const { networkScopeId } = await withAgentScope(req, user);
-    const resolved = await intentService.resolveId(params.id, user.id, networkScopeId);
+    const resolved = await intentService.resolveId(params.id, user.id);
     if ('error' in resolved) {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
@@ -220,13 +205,9 @@ export class IntentController {
       resolved.id,
       user.id,
       parsed.data.status,
-      networkScopeId,
     );
-    if (result.kind === 'not_found') {
+    if (result.kind === 'not_found' || result.kind === 'scope_violation') {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
-    }
-    if (result.kind === 'scope_violation') {
-      throw new ScopeViolationError('Agent is restricted to its bound network scope and cannot act on this intent');
     }
     if (result.kind === 'conflict') {
       return Response.json(

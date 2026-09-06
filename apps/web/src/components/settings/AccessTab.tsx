@@ -51,8 +51,6 @@ export default function AccessTab({
   const [isRegeneratingLink, setIsRegeneratingLink] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const [resendTarget, setResendTarget] = useState<Member | null>(null);
-  const [isResendInFlight, setIsResendInFlight] = useState(false);
   const [roleChangeTarget, setRoleChangeTarget] = useState<{ member: Member; newRole: 'owner' | 'member' } | null>(null);
 
   const [isAddingMember, setIsAddingMember] = useState(false);
@@ -215,32 +213,12 @@ export default function AccessTab({
       setShowSuggestions(false);
       setSearchHasQueried(false);
       await loadMembers();
-      const toast = result.agentProvisioned
-        ? 'Invitation sent'
-        : result.alreadyMember
-          ? 'Already a member'
-          : 'Member added';
-      success(toast);
+      success(result.alreadyMember ? 'Already a member' : 'Member added');
     } catch (err) {
       logger.error('Error inviting member', { error: err });
       error('Failed to invite member');
     } finally {
       setIsAddingMember(false);
-    }
-  };
-
-  const handleConfirmResend = async () => {
-    if (!resendTarget) return;
-    setIsResendInFlight(true);
-    try {
-      const result = await networkService.resendInvite(networkId, resendTarget.id);
-      success(`Invitation resent to ${result.email}${result.rotated ? ' (key rotated)' : ''}`);
-      setResendTarget(null);
-    } catch (err) {
-      logger.error('Resend invite failed', { error: err });
-      error('Failed to resend invitation');
-    } finally {
-      setIsResendInFlight(false);
     }
   };
 
@@ -450,14 +428,6 @@ export default function AccessTab({
                     </button>
                   </Tooltip>
                 )}
-                <Tooltip content="Resend invitation · expires old key">
-                  <button
-                    onClick={() => setResendTarget(member)}
-                    className="hidden group-hover:block p-1 text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0"
-                  >
-                    <RotateCw className="h-3.5 w-3.5" />
-                  </button>
-                </Tooltip>
                 {!member.permissions.includes('owner') && (
                   <Tooltip content="Remove member">
                     <button
@@ -520,29 +490,6 @@ export default function AccessTab({
               </AlertDialog.Cancel>
               <Button onClick={handleRegenerateLink} disabled={isRegeneratingLink}>
                 {isRegeneratingLink ? 'Regenerating...' : 'Regenerate'}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
-
-      {/* Resend invite dialog */}
-      <AlertDialog.Root open={resendTarget !== null} onOpenChange={(open) => { if (!open) setResendTarget(null); }}>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">
-              Resend invitation to {resendTarget?.id === currentUser?.id ? 'yourself' : (resendTarget?.name || 'this member')}?
-            </AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              This rotates {resendTarget?.id === currentUser?.id ? 'your' : 'their'} access key. The previous key will stop working immediately.
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-2">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline" disabled={isResendInFlight}>Cancel</Button>
-              </AlertDialog.Cancel>
-              <Button onClick={handleConfirmResend} disabled={isResendInFlight}>
-                {isResendInFlight ? 'Sending...' : 'Resend'}
               </Button>
             </div>
           </AlertDialog.Content>

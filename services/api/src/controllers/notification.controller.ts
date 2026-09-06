@@ -1,4 +1,3 @@
-import { resolveAgentNetworkScope, ScopeViolationError } from '../guards/agent-scope.guard';
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
@@ -13,22 +12,11 @@ export class NotificationController {
   constructor(
     private readonly notificationService: Pick<NotificationService, 'open'>,
     private readonly notificationDeliveryService: Pick<NotificationDeliveryService, 'snapshot'>,
-    private readonly resolveNetworkScope: typeof resolveAgentNetworkScope = resolveAgentNetworkScope,
   ) {}
-
-  private async assertUnscoped(req: Request): Promise<void> {
-    if (await this.resolveNetworkScope(req) !== null) {
-      throw new ScopeViolationError(
-        'Network-scoped API keys cannot access user notification streams or snapshots',
-      );
-    }
-  }
 
   @Get('/stream')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async stream(req: Request, user: AuthenticatedUser) {
-    await this.assertUnscoped(req);
-
+  async stream(_req: Request, user: AuthenticatedUser) {
     let subscription;
     try {
       subscription = await this.notificationService.open(user.id);
@@ -80,8 +68,7 @@ export class NotificationController {
 
   @Get('/snapshot')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async snapshot(req: Request, user: AuthenticatedUser) {
-    await this.assertUnscoped(req);
+  async snapshot(_req: Request, user: AuthenticatedUser) {
     const events = await this.notificationDeliveryService.snapshot(user.id);
     return Response.json({ events });
   }

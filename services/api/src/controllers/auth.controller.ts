@@ -4,19 +4,18 @@ import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Patch, Post, Delete, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
-import { cliCredentialService, type CliCredentialService } from '../services/clicredential.service';
+import { apiKeyService, type ApiKeyService } from '../services/apikey.service';
 import { userService } from '../services/user.service';
 import { onboardingService } from '../services/onboarding.service';
-import { agentService } from '../services/agent.service';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
 
-const createCliCredentialSchema = z.object({
-  protocolVersion: z.literal(2),
+const createApiKeySchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
 }).strict();
 
-const revokeCliCredentialSchema = z.object({
+const revokeOwnApiKeySchema = z.object({
   keyId: z.string().min(1).max(128),
   targetKey: z.string().min(1).max(512),
 }).strict();
@@ -45,7 +44,7 @@ const completeOnboardingSchema = z.object({
 @Controller('/auth')
 export class AuthController {
   constructor(
-    private readonly cliCredentials: Pick<CliCredentialService, 'create' | 'revoke'> = cliCredentialService,
+    private readonly keys: Pick<ApiKeyService, 'create' | 'list' | 'revoke' | 'revokeOwn'> = apiKeyService,
   ) {}
 
   /**
@@ -143,14 +142,6 @@ export class AuthController {
     }
     try {
       const result = await onboardingService.complete(user.id, parsed.data.intentId);
-      try {
-        await agentService.grantDefaultSystemPermissions(user.id);
-      } catch (grantErr) {
-        logger.warn('Default system agent permission grant failed', {
-          userId: user.id,
-          error: grantErr instanceof Error ? grantErr.message : String(grantErr),
-        });
-      }
       return Response.json({ success: true, message: 'Onboarding complete.', ...result });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -159,65 +150,102 @@ export class AuthController {
   }
 
   /**
-   * Mint a fixed-shape, time-bounded CLI API credential.
+   * Mint an API key for the authenticated user. This is the single mint path,
+   * shared by the browser handshake at `/cli-auth` and the settings UI.
    *
-   * @param req - Request containing only a supported protocol version.
+   * @param req - Request with an optional display name for the key.
    * @param user - Session-authenticated user.
-   * @returns Raw API key once, its row ID, and its expiry.
+   * @returns The raw secret once, plus its row ID, name and creation time.
    */
-  @Post('/cli-credential')
+  @Post('/keys')
   @UseGuards(RateLimit('write'), SessionOnlyGuard)
-  async createCliCredential(req: Request, user: AuthenticatedUser) {
-    const parsed = createCliCredentialSchema.safeParse(await req.json().catch(() => null));
+  async createKey(req: Request, user: AuthenticatedUser) {
+    const parsed = createApiKeySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
-      return Response.json({ error: 'Invalid CLI credential payload' }, { status: 400 });
+      return Response.json({ error: 'Invalid API key payload' }, { status: 400 });
     }
 
-    const credential = await this.cliCredentials.create(user.id, parsed.data.protocolVersion);
-    return Response.json({
-      key: credential.key,
-      id: credential.id,
-      expiresAt: credential.expiresAt.toISOString(),
-    });
+    const key = await this.keys.create(user.id, parsed.data.name);
+    logger.verbose('API key minted', { userId: user.id, keyId: key.id });
+    return Response.json(key, { status: 201 });
   }
 
   /**
-   * Revoke an exact CLI credential using an active CLI x-api-key caller.
+   * List the authenticated user's keys. Secrets are never returned again.
    *
-   * @param req - Request carrying only x-api-key authentication and exact target proof.
+   * @param _req - Unused.
+   * @param user - Session-authenticated user.
+   * @returns Masked key records.
+   */
+  @Get('/keys')
+  @UseGuards(RateLimit('read'), SessionOnlyGuard)
+  async listKeys(_req: Request, user: AuthenticatedUser) {
+    const keys = await this.keys.list(user.id);
+    return Response.json({ keys });
+  }
+
+  /**
+   * Revoke one of the authenticated user's keys by ID.
+   *
+   * @param _req - Unused.
+   * @param user - Session-authenticated user.
+   * @param params - Route params carrying the key ID.
+   * @returns 204 on deletion, 404 when the user owns no such key.
+   */
+  @Delete('/keys/:id')
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async revokeKey(_req: Request, user: AuthenticatedUser, params?: Record<string, string>) {
+    const keyId = params?.id;
+    if (!keyId) {
+      return Response.json({ error: 'Key ID is required' }, { status: 400 });
+    }
+
+    try {
+      await this.keys.revoke(user.id, keyId);
+      return new Response(null, { status: 204 });
+    } catch {
+      return Response.json({ error: 'Key not found' }, { status: 404 });
+    }
+  }
+
+  /**
+   * Retire the caller's own key by re-proving its raw secret. This is the
+   * logout path for clients that hold a key and no session; they cannot name
+   * anyone else's row.
+   *
+   * @param req - Request carrying only x-api-key auth plus the exact target proof.
    * @param user - API-key-authenticated owner resolved by AuthGuard.
    * @returns Stable success only after authoritative deletion; otherwise a stable denial.
    */
-  @Post('/cli-credential/revoke')
+  @Post('/keys/revoke-self')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async revokeCliCredential(req: Request, user: AuthenticatedUser) {
+  async revokeOwnKey(req: Request, user: AuthenticatedUser) {
     const callerKey = req.headers.get('x-api-key');
     const hasCompetingCredential = req.headers.has('authorization')
       || new URL(req.url).searchParams.has('token');
-    if (!callerKey || callerKey.length === 0 || hasCompetingCredential) {
-      return Response.json({ error: 'CLI credential revocation requires x-api-key authentication' }, { status: 403 });
+    if (!callerKey || hasCompetingCredential) {
+      return Response.json({ error: 'Self-revocation requires x-api-key authentication' }, { status: 403 });
     }
 
-    const parsed = revokeCliCredentialSchema.safeParse(await req.json().catch(() => null));
+    const parsed = revokeOwnApiKeySchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
-      return Response.json({ error: 'Invalid CLI credential revocation payload' }, { status: 400 });
+      return Response.json({ error: 'Invalid revocation payload' }, { status: 400 });
     }
 
-    const revoked = await this.cliCredentials.revoke({
+    const revoked = await this.keys.revokeOwn({
       userId: user.id,
-      callerKey,
       keyId: parsed.data.keyId,
       targetKey: parsed.data.targetKey,
     });
     if (!revoked) {
-      return Response.json({ error: 'CLI credential revocation denied' }, { status: 403 });
+      return Response.json({ error: 'Revocation denied' }, { status: 403 });
     }
     return Response.json({ success: true });
   }
 
   /**
    * Soft-deletes the authenticated user's account.
-   * Session-only: a leaked agent API key must not be able to destroy the account (IND-384).
+   * Session-only: a leaked API key must not be able to destroy the account (IND-384).
    */
   @Delete('/account')
   @UseGuards(RateLimit('write'), SessionOnlyGuard)

@@ -80,7 +80,7 @@ export function createOpportunityVerdictTools(defineTool: DefineTool, deps: Tool
       // admits a verdict. The capability matrix already refuses agent
       // principals; this refusal stands even if the tool is ever listed on a
       // surface without it.
-      if (context.agentId || context.isSessionAuth !== true) {
+      if (context.isSessionAuth !== true) {
         return error('Owner verdicts require the owner\'s own authenticated session. This principal cannot pass one.');
       }
       const result = await execute(context.userId, {

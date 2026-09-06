@@ -8,6 +8,14 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: `INDEX_API_KEY` is your account key, not an agent-bound token.**
+  Browser login persists exactly what `/cli-auth` mints and stops there: the
+  CLI→agent promotion (`dashboard/agent_bootstrap.py`) is deleted, so login no
+  longer registers a "Hermes" agent, mints a per-agent token or revokes the key
+  it just stored. `GET /auth/login/status` drops `negotiatorReady`. Sign-out
+  revokes through `POST /auth/keys/revoke-self`. `index_agent_me` returns the
+  agent you selected as your negotiator in the web app; select one there, or it
+  answers with a 404. Requires an API at 0.109.0 or newer.
 - Network picture upload forwards to `POST /storage/network-images`, following
   the Index API's rename of that route from `/storage/index-images`. Requires an
   API at 0.107.0 or newer.

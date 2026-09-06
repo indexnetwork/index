@@ -86,9 +86,8 @@ def forwarded_mcp_schema(tool_name: str) -> dict:
 INDEX_AGENT_ME = {
     "name": "index_agent_me",
     "description": (
-        "Return the authenticated Index Network agent bound to the configured "
-        "API key. Use this when you need the agent id or want to verify the "
-        "connection is agent-bound."
+        "Return the Index Network agent the key's owner selected to handle "
+        "negotiations. Use this when you need the agent id you are speaking as."
     ),
     "parameters": {
         "type": "object",

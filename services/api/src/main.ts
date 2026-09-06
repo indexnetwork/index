@@ -24,8 +24,7 @@ import { ConversationService } from './services/conversation.service';
 import { NotificationService } from './services/notification.service';
 import { NotificationDeliveryService } from './services/notification-delivery.service';
 import { RouteRegistry } from './lib/router/router.decorators';
-import { ScopeViolationError } from './guards/agent-scope.guard';
-import { OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
+import { SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
@@ -231,8 +230,6 @@ const server = Bun.serve({
       '/api/auth/revoke-session', '/api/auth/revoke-other-sessions',
       '/api/auth/update-user',
       '/api/auth/token', '/api/auth/jwks',
-      // API key management
-      '/api/auth/api-key',
       // MCP OAuth endpoints
       '/api/auth/mcp/',
       '/.well-known/oauth-authorization-server',
@@ -355,14 +352,8 @@ const server = Bun.serve({
               error: error instanceof Error ? error.message : String(error),
             });
             const message = error instanceof Error ? error.message : 'Internal Server Error';
-            // Map agent-scope violations to 403 (network-scoped API keys hitting
-            // a network they aren't bound to)
-            if (error instanceof ScopeViolationError) {
-              setSpanHttpStatus(403);
-              return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-            }
             // Session-only endpoints reject API-key credentials outright
-            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError) {
+            if (error instanceof SessionRequiredError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }

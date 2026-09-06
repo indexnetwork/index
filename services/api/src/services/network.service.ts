@@ -130,13 +130,7 @@ export class NetworkService {
   }
 
   /**
-   * Soft-delete a network. Owner-only. Runs the ordinary owner delete first
-   * (membership checks + network soft-delete, byte-identical to the
-   * pre-cascade path), then cascades to any provisioned cohort: only users
-   * provisioned through the invitation flow own network-scoped agents, so the
-   * cascade no-ops on networks whose members all joined organically. The
-   * cohort lookup keys off agents/agent_permissions, not network_members, so
-   * it still resolves after the network is soft-deleted.
+   * Soft-delete a network. Owner-only.
    */
   async deleteNetwork(networkId: string, userId: string) {
     logger.verbose('Deleting network', { networkId, userId });
@@ -144,7 +138,6 @@ export class NetworkService {
     const isOwner = await this.adapter.isNetworkOwner(networkId, userId);
     if (!isOwner) throw new Error('Access denied: Not an owner of this network');
     await this.adapter.deleteNetworkForOwner(networkId, userId);
-    await this.adapter.softDeleteProvisionedCohort(networkId);
   }
 
   /**
