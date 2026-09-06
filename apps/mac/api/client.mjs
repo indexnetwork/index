@@ -358,10 +358,6 @@ export function createIndexApiClient(options = {}) {
         `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
         { ...options, method: 'PATCH', body: { permissions } },
       ),
-      inviteMember: (networkId, body, options = {}) => request(
-        `/networks/${encodeURIComponent(networkId)}/members/invite`,
-        { ...options, method: 'POST', body },
-      ),
       searchUsers: (query, networkId, options = {}) => request(
         `/networks/search-users${toQueryString({ q: query, networkId })}`,
         options,

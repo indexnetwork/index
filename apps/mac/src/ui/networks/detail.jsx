@@ -120,20 +120,6 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
     finally { setBusy(false); }
   };
 
-  const inviteEmail = async (email) => {
-    if (!client || busy) return;
-    setBusy(true);
-    try {
-      await client.networks.inviteMember(networkId, { email });
-      const res = await client.networks.getMembers(networkId);
-      setMembers((res && res.members) || []);
-      setQuery("");
-      setSuggestions([]);
-      setShowSug(false);
-    } catch (e) { /* keep list */ }
-    finally { setBusy(false); }
-  };
-
   const remove = async (id) => {
     if (!client || busy) return;
     setBusy(true);
@@ -177,7 +163,7 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
           value={query}
           onChange={(e) => { setQuery(e.target.value); setShowSug(true); }}
           onFocus={() => setShowSug(true)}
-          placeholder="Search by name or add by email…"
+          placeholder="Search by name…"
           style={{
             width:"100%", boxSizing:"border-box",
             padding:"9px 12px", border:"1px solid #000", background:"#fff",
@@ -214,21 +200,9 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
             border:"1px solid #000", background:"#fff",
             boxShadow:"2px 2px 0 rgba(0,0,0,0.2)",
           }}>
-            {query.includes("@") ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => inviteEmail(query.trim())}
-                style={{
-                  width:"100%", padding:"10px 12px", border:"none", background:"transparent",
-                  cursor:"pointer", textAlign:"left",
-                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-                }}>Invite &quot;{query.trim()}&quot;</button>
-            ) : (
-              <div style={{
-                padding:"10px 12px", fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-              }}>No results found</div>
-            )}
+            <div style={{
+              padding:"10px 12px", fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+            }}>No results found</div>
           </div>
         )}
       </div>

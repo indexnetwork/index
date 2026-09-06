@@ -1565,8 +1565,8 @@ export class ChatDatabaseAdapter {
     const now = new Date();
 
     // Identify provisioned users: those who own at least one agent with a
-    // network-scoped permission on this network. These are the users
-    // provisioned by networkInvitationService.invite() (headless/CSV).
+    // network-scoped permission on this network. These accounts predate the
+    // removal of the email-invite flow that provisioned them.
     const provisionedUsers = await db
       .selectDistinct({ id: schema.users.id })
       .from(schema.users)

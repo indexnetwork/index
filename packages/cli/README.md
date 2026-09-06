@@ -103,7 +103,7 @@ Status values: `pending`, `accepted`, `rejected`, `expired`.
 
 ### `index network`
 
-Manage networks (communities). Network creation is direct for eligible staff; otherwise the command submits an early-access request. Invitations accept any valid email and use the server invitation flow.
+Manage networks (communities). Network creation is direct for eligible staff; otherwise the command submits an early-access request.
 
 ```bash
 index network list                     # List your networks
@@ -114,7 +114,6 @@ index network update <id> --title "New Name"  # Update a network
 index network delete <id>              # Delete a network
 index network join <id>                # Join a public network
 index network leave <id>               # Leave a network
-index network invite <id> user@email # Invite directly by email
 ```
 
 ### `index conversation`

@@ -266,7 +266,7 @@ body {
 <span class="c-gray">│</span> <span class="bold c-cyan">profile</span>      show · sync · search · create · update                           <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">conversation</span> sessions · list · with · show · send · stream                   <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">network</span>      list · create · show · update · delete                            <span class="c-gray">│</span>
-<span class="c-gray">│</span>              join · leave · invite                                              <span class="c-gray">│</span>
+<span class="c-gray">│</span>              join · leave                                                       <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">contact</span>      list · add · remove · import                                      <span class="c-gray">│</span>
 <span class="c-gray">│</span>                                                                                <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">scrape</span>       extract content from a URL                                        <span class="c-gray">│</span>
@@ -732,7 +732,7 @@ body {
 <!-- ═══════ NETWORKS ═══════ -->
 <div class="section" id="networks">
   <div class="section-title"><span class="dot" style="background:var(--blue)"></span> Networks <span class="cmd-label network">network</span></div>
-  <div class="section-desc">Network table with keys, detail card with members, create/show/update/delete/join/leave/invite.</div>
+  <div class="section-desc">Network table with keys, detail card with members, create/show/update/delete/join/leave.</div>
 
   <div class="output-grid">
     <div class="terminal full-width">
@@ -785,11 +785,6 @@ body {
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network delete &lt;id&gt;</span></div>
       <div class="terminal-body"><span class="c-green bold">+</span> Network deleted.</div>
-    </div>
-
-    <div class="terminal">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network invite &lt;id&gt; alex@mit.edu</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Invited Alex Chen (alex@mit.edu) to the network.</div>
     </div>
 
     <div class="terminal">
