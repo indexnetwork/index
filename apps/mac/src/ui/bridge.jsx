@@ -308,6 +308,34 @@ window.IndexApp = (function () {
     return c ? c.auth.completeOnboarding(body) : Promise.reject(new Error("no api client"));
   }
 
+  // ---- access settings ----------------------------------------------------
+
+  // Keys and devices are read straight through the native request bridge: the
+  // page states a route, Swift attaches the credential. Devices come from our
+  // own /auth/devices, not Better Auth's list-sessions, because that one
+  // returns every session's token and the bridge rejects credential material.
+  async function accessRequest(method, path, body) {
+    if (!hasAPIBridge()) throw new Error("no api bridge");
+    const response = await nativeAPIBridge.request(
+      body === undefined
+        ? { kind:"http", method, path }
+        : { kind:"http", method, path, body }
+    );
+    // The bridge rejects transport failures itself and resolves everything else
+    // as { status, body }, so the HTTP status is the only success signal here.
+    if (response.status < 200 || response.status >= 300) {
+      const detail = response.body && (response.body.error || response.body.message);
+      throw new Error(detail || `request failed (${response.status})`);
+    }
+    return response.body;
+  }
+
+  function listApiKeys() { return accessRequest("GET", "/auth/api-key/list"); }
+  function createApiKey(name) { return accessRequest("POST", "/auth/api-key/create", { name }); }
+  function revokeApiKey(keyId) { return accessRequest("POST", "/auth/api-key/delete", { keyId }); }
+  function listDevices() { return accessRequest("GET", "/auth/devices"); }
+  function revokeDevice(sessionId) { return accessRequest("POST", "/auth/devices/revoke", { sessionId }); }
+
   // Run public profile prefill (POST /enrichment/enrich) for the authenticated user.
   function triggerEnrichment(hints) {
     const c = getClient();
@@ -480,6 +508,11 @@ window.IndexApp = (function () {
     confirmOnboardingProfile,
     completeOnboarding,
     triggerEnrichment,
+    listApiKeys,
+    createApiKey,
+    revokeApiKey,
+    listDevices,
+    revokeDevice,
   };
 })();
 

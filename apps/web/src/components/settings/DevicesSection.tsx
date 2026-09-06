@@ -31,7 +31,7 @@ function describeDevice(userAgent: string | null): string {
   if (!userAgent) return "Unknown device";
   if (userAgent.startsWith("Index/")) return "Index for Mac";
   if (userAgent.startsWith("index-cli")) return "Index CLI";
-  if (userAgent.includes("Hermes")) return "Hermes plugin";
+  if (userAgent.includes("Hermes")) return "Personal agent";
   if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return "Web browser";
   return userAgent.slice(0, 48);
 }
@@ -115,8 +115,8 @@ export default function DevicesSection() {
           </p>
 
           <p className="text-xs text-gray-400 font-ibm-plex-mono">
-            Where you are signed in. The Mac app, CLI and Hermes each hold their own session, so
-            signing one out here leaves the others alone.
+            Where you are signed in. The Mac app, CLI and personal agents each hold their own
+            session, so signing one out here leaves the others alone.
           </p>
 
           {sessions.length === 0 ? (

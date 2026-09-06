@@ -793,7 +793,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         _ deviceCode: String,
         completion: @escaping ((token: String, expiresIn: TimeInterval)?) -> Void
     ) {
-        guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth/device/token") else {
+        // apiBaseURL already ends in /api.
+        guard let url = URL(string: AppConfig.apiBaseURL + "/auth/device/token") else {
             completion(nil); return
         }
         var request = URLRequest(url: url)
@@ -853,7 +854,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     ///
     /// - Parameter token: The session token being retired.
     private func revokeSession(_ token: String) {
-        guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth/sign-out") else { return }
+        // apiBaseURL already ends in /api.
+        guard let url = URL(string: AppConfig.apiBaseURL + "/auth/sign-out") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")

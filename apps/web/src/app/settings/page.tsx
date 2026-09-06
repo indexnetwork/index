@@ -19,7 +19,7 @@ import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import DevicesSection from "@/components/settings/DevicesSection";
 import { parseSocial } from "@/lib/socials";
 
-const SETTINGS_TABS = ["profile", "notifications", "api-keys"] as const;
+const SETTINGS_TABS = ["profile", "notifications", "access"] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 function isSettingsTab(v: string | null): v is SettingsTab {
@@ -181,7 +181,7 @@ export default function ProfilePage() {
               {([
                 ["profile", "Profile Settings"],
                 ["notifications", "Notification Settings"],
-                ["api-keys", "API Keys"],
+                ["access", "Access"],
               ] as const).map(([value, label]) => (
                 <Tabs.Trigger
                   key={value}
@@ -402,7 +402,7 @@ export default function ProfilePage() {
           </div>
             </Tabs.Content>
 
-            <Tabs.Content value="api-keys">
+            <Tabs.Content value="access">
               <div className="space-y-10">
                 <ApiKeysSection />
                 <DevicesSection />

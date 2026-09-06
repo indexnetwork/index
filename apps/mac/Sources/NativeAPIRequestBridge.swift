@@ -270,6 +270,12 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/enrichment/enrich$"#),
         ("POST", #"^/auth/onboarding/confirm-profile$"#),
         ("POST", #"^/auth/onboarding/complete$"#),
+        // Access settings. `/auth/devices` is ours and returns session metadata
+        // only; Better Auth's own list-sessions is deliberately not reachable
+        // here because it carries every device's token.
+        ("GET", #"^/auth/devices$"#), ("POST", #"^/auth/devices/revoke$"#),
+        ("GET", #"^/auth/api-key/list$"#),
+        ("POST", #"^/auth/api-key/(?:create|delete)$"#),
         ("GET", #"^/notifications/snapshot$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
@@ -646,6 +652,12 @@ final class NativeAPIRequestBridge {
             return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "websites"])
         case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
         case "/auth/onboarding/complete": return keysAllowed(body, allowed: ["intentId"])
+        case "/auth/devices/revoke":
+            return exactTypedObject(body, required: ["sessionId"]) { identifier($0["sessionId"]) }
+        case "/auth/api-key/create":
+            return exactTypedObject(body, required: ["name"]) { boundedString($0["name"], maximum: 256) }
+        case "/auth/api-key/delete":
+            return exactTypedObject(body, required: ["keyId"]) { identifier($0["keyId"]) }
         case "/conversations/dm":
             return exactTypedObject(body, required: ["peerUserId"]) { identifier($0["peerUserId"]) }
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:

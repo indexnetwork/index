@@ -420,95 +420,268 @@ function NotificationsPane({ notify, toggle }) {
   );
 }
 
-/* ---------- pane 3 · api keys ---------- */
+/* ---------- pane 3 · access ---------- */
 
-const KEYS = [
-  { id:"k1", label:"personal access", key:"idx_live_8f3c…a91e", used:"2 hours ago" },
-  { id:"k2", label:"raycast script",  key:"idx_live_2b77…40dd", used:"6 days ago" },
-];
+const accessTh = {
+  textAlign:"left", padding:"6px 10px", borderBottom:"1px solid #000",
+  fontFamily:"var(--mac-mono)", fontSize:9, fontWeight:700,
+  textTransform:"uppercase", letterSpacing:0.5, color:"var(--ink-2)",
+};
+const accessTd = {
+  padding:"7px 10px", borderBottom:"1px solid rgba(0,0,0,0.12)",
+  fontFamily:"var(--mac-mono)", fontSize:11, color:"#000", whiteSpace:"nowrap",
+};
+const accessNote = {
+  margin:"0 0 10px", maxWidth:520,
+  fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
+};
+const accessHeading = {
+  margin:0, fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
+  textTransform:"uppercase", letterSpacing:0.6, color:"var(--ink-2)",
+};
 
-// Live pane exposes status and revocation only. Credential values and metadata
-// remain native and are never projected into WebKit.
-function LiveApiKeyPane() {
-  const signedIn = !!(window.IndexApp && window.IndexApp.isAuthed && window.IndexApp.isAuthed());
-  const revoke = () => { if (window.IndexApp) window.IndexApp.logout(); };
+function accessDay(value) {
+  if (!value) return "never";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "never"
+    : date.toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
+}
+
+function maskKey(start) {
+  return start ? `${start}${"*".repeat(24)}` : "unavailable";
+}
+
+// The same labels the web access page uses, read off the user agent the device
+// grant recorded when the client signed in.
+function describeDevice(userAgent) {
+  if (!userAgent) return "unknown device";
+  if (userAgent.startsWith("Index/")) return "index for mac";
+  if (userAgent.startsWith("index-cli")) return "index cli";
+  if (userAgent.includes("Hermes")) return "personal agent";
+  if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return "web browser";
+  return userAgent.slice(0, 32);
+}
+
+function RetryLink({ onClick }) {
   return (
-    <div>
-      <p style={{
-        margin:"0 0 14px", maxWidth:520,
-        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
-      }}>
-        this mac is signed in with a single access key stored in your keychain.
-        revoking it signs you out here and stops it working immediately.
-      </p>
-      <div style={{
-        border:"1px solid #000", background:"#fff", boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
-        padding:"10px 12px",
-        display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-      }}>
-        <div style={{ minWidth:0 }}>
-          <div style={{
-            fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:600, color:"#000",
-          }}>this mac</div>
-          <div style={{
-            marginTop:3, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-          }}>{signedIn ? "stored securely · value hidden" : "signed out"}</div>
-        </div>
-        <button
-          onClick={revoke}
-          style={{
-            flex:"0 0 auto",
-            fontFamily:"var(--mac-mono)", fontSize:12, padding:"6px 14px",
-            border:"1px solid #000", background:"#fff", color:"var(--ink-warn)",
-            boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-          }}>revoke & sign out</button>
-      </div>
-    </div>
+    <button
+      onClick={onClick}
+      style={{
+        fontFamily:"var(--mac-sans)", fontSize:12, border:"none", background:"none",
+        color:"var(--ink-2)", textDecoration:"underline", cursor:"pointer", padding:0,
+      }}>retry</button>
   );
 }
 
-function ApiKeysPane() {
+// Revoking is irreversible and one row looks much like the next, so the button
+// asks once. There is no confirm() here: this shell implements only the alert
+// panel, so window.confirm would answer false without ever showing anything.
+function RevokeButton({ onConfirm, busy }) {
+  const [armed, setArmed] = useState(false);
   return (
-    <div>
-      <p style={{
-        margin:"0 0 14px", maxWidth:520,
-        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
-      }}>
-        keys let other tools act as you on the network. revoke one and it stops
-        working immediately.
-      </p>
+    <button
+      onClick={() => { if (armed) { onConfirm(); setArmed(false); } else setArmed(true); }}
+      onBlur={() => setArmed(false)}
+      disabled={busy}
+      style={{
+        fontFamily:"var(--mac-mono)", fontSize:11, padding:"3px 10px",
+        border:"1px solid #000", background: armed ? "var(--ink-warn)" : "#fff",
+        color: armed ? "#fff" : "var(--ink-warn)",
+        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor: busy ? "default" : "pointer",
+      }}>{armed ? "sure?" : "revoke"}</button>
+  );
+}
 
-      <div style={{ display:"grid", gap:9 }}>
-        {KEYS.map(k => (
-          <div key={k.id} style={{
-            border:"1px solid #000", background:"#fff", boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
-            padding:"10px 12px",
-            display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+// Access mirrors the web settings page: the account's API keys, then every
+// session it is signed in on. Key values are never stored here — a freshly
+// minted key is held only until the panel is dismissed.
+function AccessPane() {
+  const [keys, setKeys] = useState(null);
+  const [devices, setDevices] = useState(null);
+  const [currentId, setCurrentId] = useState(null);
+  const [minted, setMinted] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [keysError, setKeysError] = useState(null);
+  const [devicesError, setDevicesError] = useState(null);
+
+  const app = window.IndexApp;
+
+  // The two lists are fetched independently and fail independently: they sit on
+  // different limiters, so one being unavailable must not hide the other.
+  const reload = React.useCallback(async () => {
+    if (!app || !app.listApiKeys) return;
+    const reason = (e) => (e && e.message ? e.message : "could not load");
+    const [keyPage, devicePage] = await Promise.allSettled([app.listApiKeys(), app.listDevices()]);
+
+    if (keyPage.status === "fulfilled") {
+      setKeys((keyPage.value && keyPage.value.apiKeys) || []);
+      setKeysError(null);
+    } else setKeysError(reason(keyPage.reason));
+
+    if (devicePage.status === "fulfilled") {
+      setDevices((devicePage.value && devicePage.value.devices) || []);
+      setCurrentId((devicePage.value && devicePage.value.currentId) || null);
+      setDevicesError(null);
+    } else setDevicesError(reason(devicePage.reason));
+  }, [app]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const run = async (work, setError) => {
+    setBusy(true);
+    try { await work(); await reload(); }
+    catch (e) { setError(e && e.message ? e.message : "request failed"); }
+    finally { setBusy(false); }
+  };
+
+  const generate = () => run(async () => {
+    const names = new Set((keys || []).map(k => k.name));
+    let name = "Personal";
+    for (let n = 2; names.has(name); n += 1) name = `Personal ${n}`;
+    const created = await app.createApiKey(name);
+    if (created && created.key) setMinted(created.key);
+  }, setKeysError);
+
+  if (keys === null && devices === null && !keysError && !devicesError) {
+    return <p style={accessNote}>loading…</p>;
+  }
+
+  return (
+    <div style={{ display:"grid", gap:22 }}>
+      <div>
+        <div style={{
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          gap:12, marginBottom:8,
+        }}>
+          <p style={accessHeading}>api keys</p>
+          <button
+            onClick={generate}
+            disabled={busy}
+            style={{
+              fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
+              border:"1px solid #000", background:"#FF8A00", color:"#000", fontWeight:700,
+              boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", cursor: busy ? "default" : "pointer",
+            }}>generate key</button>
+        </div>
+
+        <p style={accessNote}>
+          a key authenticates you in mcp clients (claude code and openclaw). it
+          carries your whole account, not a single agent.
+        </p>
+
+        {keysError ? (
+          <p style={accessNote}>{keysError} · <RetryLink onClick={reload}/></p>
+        ) : keys === null || keys.length === 0 ? (
+          <p style={accessNote}>{keys === null ? "loading…" : "no api keys yet."}</p>
+        ) : (
+          <div style={{
+            border:"1px solid #000", background:"#fff",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", overflowX:"auto",
           }}>
-            <div style={{ minWidth:0 }}>
-              <div style={{
-                fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:600, color:"#000",
-              }}>{k.label}</div>
-              <div style={{
-                marginTop:3, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-              }}>{k.key} · used {k.used}</div>
-            </div>
-            <button style={{
-              flex:"0 0 auto",
-              fontFamily:"var(--mac-mono)", fontSize:12, padding:"6px 14px",
-              border:"1px solid #000", background:"#fff", color:"var(--ink-warn)",
-              boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-            }}>revoke</button>
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr>
+                  <th style={accessTh}>key</th>
+                  <th style={accessTh}>created</th>
+                  <th style={accessTh}>last used</th>
+                  <th style={{ ...accessTh, textAlign:"right" }}>actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keys.map(k => (
+                  <tr key={k.id}>
+                    <td style={{ ...accessTd, color:"var(--ink-2)" }}>{maskKey(k.start)}</td>
+                    <td style={accessTd}>{accessDay(k.createdAt)}</td>
+                    <td style={accessTd}>{accessDay(k.lastRequest)}</td>
+                    <td style={{ ...accessTd, textAlign:"right" }}>
+                      <RevokeButton
+                        busy={busy}
+                        onConfirm={() => run(() => app.revokeApiKey(k.id), setKeysError)}/>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))}
+        )}
+
+        {minted && (
+          <div style={{
+            marginTop:10, border:"1px solid #000", background:"#FFF6E5",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", padding:"10px 12px",
+          }}>
+            <p style={{
+              margin:"0 0 6px", fontFamily:"var(--mac-mono)", fontSize:11,
+              fontWeight:700, color:"#000",
+            }}>copy this key now — it won&apos;t be shown again</p>
+            <code style={{
+              display:"block", fontFamily:"var(--mac-mono)", fontSize:11,
+              color:"#000", wordBreak:"break-all", userSelect:"text",
+            }}>{minted}</code>
+            <button
+              onClick={() => setMinted(null)}
+              style={{
+                marginTop:8, fontFamily:"var(--mac-mono)", fontSize:10,
+                border:"none", background:"none", color:"var(--ink-2)",
+                textDecoration:"underline", cursor:"pointer", padding:0,
+              }}>dismiss</button>
+          </div>
+        )}
       </div>
 
-      <button style={{
-        marginTop:12,
-        fontFamily:"var(--mac-mono)", fontSize:11, padding:"6px 14px",
-        border:"1px solid #000", background:"#FF8A00", color:"#000", fontWeight:700,
-        boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", cursor:"pointer",
-      }}>+ new key</button>
+      <div>
+        <p style={{ ...accessHeading, marginBottom:8 }}>devices</p>
+        <p style={accessNote}>
+          where you are signed in. the mac app, cli and personal agents each hold
+          their own session, so signing one out here leaves the others alone.
+        </p>
+
+        {devicesError ? (
+          <p style={accessNote}>{devicesError} · <RetryLink onClick={reload}/></p>
+        ) : devices === null || devices.length === 0 ? (
+          <p style={accessNote}>{devices === null ? "loading…" : "no active devices."}</p>
+        ) : (
+          <div style={{
+            border:"1px solid #000", background:"#fff",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", overflowX:"auto",
+          }}>
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr>
+                  <th style={accessTh}>device</th>
+                  <th style={accessTh}>signed in</th>
+                  <th style={accessTh}>expires</th>
+                  <th style={{ ...accessTh, textAlign:"right" }}>actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {devices.map(d => (
+                  <tr key={d.id}>
+                    <td style={accessTd}>
+                      {describeDevice(d.userAgent)}
+                      {d.id === currentId && (
+                        <span style={{ marginLeft:6, fontSize:10, color:"var(--ink-2)" }}>this mac</span>
+                      )}
+                    </td>
+                    <td style={accessTd}>{accessDay(d.createdAt)}</td>
+                    <td style={accessTd}>{accessDay(d.expiresAt)}</td>
+                    <td style={{ ...accessTd, textAlign:"right" }}>
+                      <RevokeButton
+                        busy={busy}
+                        onConfirm={() => (
+                          d.id === currentId
+                            ? app.logout()
+                            : run(() => app.revokeDevice(d.id), setDevicesError)
+                        )}/>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -710,7 +883,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
                   options={[
                     { value:"profile",  label:"profile" },
                     { value:"notify",   label:"notifications" },
-                    { value:"keys",     label:"api keys" },
+                    { value:"keys",     label:"access" },
                   ]}
                 />
               </div>
@@ -723,7 +896,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
           }}>
             {tab === "profile" && <ProfilePane me={ME} form={form} set={set} profileOnly={profileOnly}/>}
             {tab === "notify"  && <NotificationsPane notify={notify} toggle={toggle}/>}
-            {tab === "keys"    && (live ? <LiveApiKeyPane/> : <ApiKeysPane/>)}
+            {tab === "keys"    && <AccessPane/>}
           </div>
 
           <div style={{

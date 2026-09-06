@@ -105,6 +105,16 @@ function Login({ onSignIn }) {
     if (onSignIn && onSignIn(null)) setWaiting(true);
   };
 
+  // A handshake that ends without a credential leaves this screen mounted, so
+  // the button has to be released here: without it a failed sign-in is
+  // indistinguishable from one still waiting on the browser.
+  useEffect(() => {
+    if (!window.IndexApp) return;
+    return window.IndexApp.onAuthChanged((authenticated) => {
+      if (!authenticated) setWaiting(false);
+    });
+  }, []);
+
   return (
     <div style={{
       position:"absolute", inset:0,
