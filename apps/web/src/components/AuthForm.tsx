@@ -20,7 +20,7 @@ type AuthView = 'main' | 'magic-link-sent' | 'email-password';
 /**
  * Sign-in form (Google, magic link, optional email/password). Rendered inside
  * the AuthModal overlay or inline on a page (e.g. /cli-auth) — the surrounding
- * `.auth` / `.auth-light` wrapper picks the dark or light theme.
+ * `.auth` wrapper supplies the landing tokens.
  */
 export default function AuthForm({ callbackURL, onAuthenticated, variant = 'default' }: AuthFormProps) {
   const [view, setView] = useState<AuthView>('main');

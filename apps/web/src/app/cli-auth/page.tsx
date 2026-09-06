@@ -2,7 +2,26 @@ import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
 import AuthForm from "@/components/AuthForm";
+import { ensureLandingFonts } from "@/app/landing/Nav";
 import { buildCliDeviceCodeCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequest, DEVICE_CLIENT_ID, type CliAuthRequest } from "@/lib/cli-auth";
+
+import "./cli-auth.css";
+
+function Status({ title, message, ok }: { title: string; message: string; ok?: boolean }) {
+  return (
+    <div className="cli-auth__status">
+      {ok && (
+        <div className="cli-auth__check">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#0b1612" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        </div>
+      )}
+      <h1>{title}</h1>
+      <p>{message}</p>
+    </div>
+  );
+}
 
 /**
  * Device sign-in bridge page.
@@ -34,6 +53,10 @@ function CliAuthPage() {
     request ? null : "Invalid sign-in request. Start the sign-in from the Index app, or run `index login` from the CLI.",
   );
   const exchangeStartedRef = useRef(false);
+
+  useEffect(() => {
+    ensureLandingFonts();
+  }, []);
 
   useEffect(() => {
     if (!request || exchangeStartedRef.current) return;
@@ -93,10 +116,13 @@ function CliAuthPage() {
   }, [request]);
 
   return (
-    <div className="flex-1 flex items-center justify-center bg-white">
-      <div className="text-center max-w-sm w-full px-6">
+    <div className="cli-auth">
+      <nav className="cli-auth__nav">
+        <img src="/landing/index-wordmark.svg" alt="Index Network" />
+      </nav>
+      <main className="cli-auth__main">
         {status === "login" && request && (
-          <div className="auth auth-light text-left">
+          <div className="auth cli-auth__form">
             <AuthForm
               callbackURL={`${window.location.origin}${buildCliAuthReturnPath(window.location.pathname, request)}`}
               onAuthenticated={() => window.location.reload()}
@@ -104,24 +130,15 @@ function CliAuthPage() {
           </div>
         )}
         {status === "loading" && (
-          <>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Signing you in</h1>
-            <p className="text-sm text-gray-500">Connecting to your account...</p>
-          </>
+          <Status title="Signing you in" message="Connecting to your account..." />
         )}
         {status === "redirecting" && (
-          <>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Signed in</h1>
-            <p className="text-sm text-gray-500">Returning to the app... You can close this window.</p>
-          </>
+          <Status ok title="Authentication complete" message="You may now close this window" />
         )}
         {status === "error" && (
-          <>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Authorization failed</h1>
-            <p className="text-sm text-gray-500">{error}</p>
-          </>
+          <Status title="Authorization failed" message={error ?? ""} />
         )}
-      </div>
+      </main>
     </div>
   );
 }

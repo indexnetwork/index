@@ -149,7 +149,7 @@ export async function handleLogin(
       }
 
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(callbackHtml("CLI authorized", "You can close this window and return to the terminal.", true));
+      res.end(callbackHtml("Authentication complete", "You can close this window and return to the terminal.", true));
       return;
     }
 
