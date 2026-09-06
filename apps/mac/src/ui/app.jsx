@@ -265,6 +265,10 @@ function App() {
   // React to native login/logout coming from the Swift shell.
   useEffect(() => {
     if (!window.IndexApp) return;
+    // Reload can finish (and set INDEX_NATIVE.authenticated) before this
+    // subscriber is attached. Re-read so a signed-in Reload does not stick
+    // on the login screen from a stale document-start snapshot.
+    if (nativeAuthed()) setScreen("building");
     return window.IndexApp.onAuthChanged((authenticated) => {
       if (authenticated) {
         setScreen("building");

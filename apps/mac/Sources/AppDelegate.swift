@@ -24,6 +24,10 @@ document.addEventListener('mousedown', function (e) {
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     var window: NSWindow!
     var webView: WKWebView!
+    /// The controller the web view was created with. `webView.configuration`
+    /// returns a copy; user scripts must be rebuilt on this instance or Reload
+    /// keeps injecting the launch-time auth snapshot.
+    private var userContentController: WKUserContentController!
     private var authServer: LoopbackAuthServer?
     private var ownerCredentialStore: OwnerCredentialStore?
     private var ownerStartupFailure: String?
@@ -96,15 +100,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
         // Window-drag bridge (see windowDragScript above).
         config.userContentController.add(self, name: "windowDrag")
-        config.userContentController.addUserScript(WKUserScript(
-            source: windowDragScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
 
         // Native auth bridge: the page posts {action:"login"|"logout"} and reads
         // window.INDEX_NATIVE (injected at document start from CredentialStore).
         config.userContentController.add(self, name: "indexAuth")
         config.userContentController.add(self, name: "indexAPI")
-        config.userContentController.addUserScript(WKUserScript(
-            source: nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        userContentController = config.userContentController
+        installNativeUserScripts(on: userContentController)
 
         // Desktop notification bridge: the page posts {id,title,body,url?,imageUrl?}
         // and the native side owns delivery (UNUserNotificationCenter) plus the
@@ -220,10 +222,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
         let requestURL = navigationAction.request.url?.standardizedFileURL
-        let isMainFrame = navigationAction.targetFrame?.isMainFrame == true
-        if isMainFrame,
-           let trustedBundledDocumentURL,
-           requestURL == trustedBundledDocumentURL {
+        // Reload can arrive with a nil targetFrame. Treat that as main-frame when
+        // the URL is the bundled document; only an explicit subframe is refused.
+        let isBundledMainDocument = requestURL == trustedBundledDocumentURL
+            && navigationAction.targetFrame?.isMainFrame != false
+        if isBundledMainDocument, trustedBundledDocumentURL != nil {
+            // WKUserScript source is a frozen string. Rebuild it from the live
+            // Keychain so Reload does not re-inject launch-time auth.
+            installNativeUserScripts(on: userContentController)
             decisionHandler(.allow)
             return
         }
@@ -378,6 +384,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         hasLoadedDocument = true
         webViewReady = true
+        // Document-start injection can still be a stale snapshot if WebKit
+        // captured user scripts before decidePolicyFor rebuilt them. Push the
+        // live Keychain flag so a Reload after login does not stick on sign-in.
+        notifyAuthChanged(authenticated: ownerIsAuthenticated(), admittedGeneration: trustedDocumentGeneration)
         flushPendingDeepLinks()
     }
 
@@ -691,12 +701,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
+    /// Replace document-start scripts with a Keychain-current INDEX_NATIVE.
+    /// WKUserScript stores the source string; without a rebuild, Reload after
+    /// login re-injects the launch-time `authenticated` flag.
+    private func installNativeUserScripts(on controller: WKUserContentController) {
+        controller.removeAllUserScripts()
+        controller.addUserScript(WKUserScript(
+            source: windowDragScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        controller.addUserScript(WKUserScript(
+            source: nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+
+    private func ownerIsAuthenticated() -> Bool {
+        (currentOwnerCredential()?.expiresAt ?? .distantPast) > Date()
+    }
+
     /// Document-start metadata is deliberately credential-free.
     private func nativeInjectionScript() -> String {
-        let authenticated = (currentOwnerCredential()?.expiresAt ?? .distantPast) > Date()
         let obj: [String: Any] = [
             "apiBaseUrl": AppConfig.apiBaseURL,
-            "authenticated": authenticated,
+            "authenticated": ownerIsAuthenticated(),
             // Share / invitation links use the configured web origin.
             "appUrl": AppConfig.trimTrailingSlash(AppConfig.appURL),
             "deepLinkHosts": AppConfig.deepLinkHosts,
@@ -869,6 +893,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func notifyAuthChanged(authenticated: Bool, admittedGeneration: UInt64) {
+        installNativeUserScripts(on: userContentController)
         guard webViewReady,
               admittedGeneration == trustedDocumentGeneration,
               webView.url?.standardizedFileURL == trustedBundledDocumentURL else { return }
