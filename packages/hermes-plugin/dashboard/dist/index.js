@@ -1337,31 +1337,6 @@
         .finally(function () { setBusy(false); });
     }
 
-    function inviteEmail(email) {
-      if (!local.id || busy) return;
-      setBusy(true);
-      setErr(null);
-      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email }),
-      })
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Could not invite.");
-          }
-          return fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members");
-        })
-        .then(function (payload) {
-          setMembers((payload && Array.isArray(payload.members)) ? payload.members : []);
-          setQuery("");
-          setSuggestions([]);
-          setShowSug(false);
-        })
-        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
-        .finally(function () { setBusy(false); });
-    }
-
     function removeMember(id) {
       if (!local.id || busy) return;
       setBusy(true);
@@ -1534,7 +1509,7 @@
           React.createElement("input", {
             className: "index-dashboard__net-member-input",
             value: query,
-            placeholder: "Search by name or add by email…",
+            placeholder: "Search by name…",
             onChange: function (e) { setQuery(e.target.value); setShowSug(true); },
             onFocus: function () { setShowSug(true); },
           }),
@@ -1552,14 +1527,7 @@
             : null,
           noResults
             ? React.createElement("div", { className: "index-dashboard__net-member-suggestions" },
-              query.indexOf("@") >= 0
-                ? React.createElement("button", {
-                  type: "button",
-                  className: "index-dashboard__net-member-suggestion",
-                  disabled: busy,
-                  onClick: function () { inviteEmail(query.trim()); },
-                }, "Invite \"" + query.trim() + "\"")
-                : React.createElement("div", { className: "index-dashboard__net-invite-empty" }, "No results found"),
+              React.createElement("div", { className: "index-dashboard__net-invite-empty" }, "No results found"),
             )
             : null,
         ),

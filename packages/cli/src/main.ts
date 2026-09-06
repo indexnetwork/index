@@ -166,7 +166,7 @@ function renderHelp(): void {
     helpRowCmd(cmdLW, "profile", "show · sync"),
     helpRowCmd(cmdLW, "conversation", "list · with · show · send · stream"),
     helpRowCmd(cmdLW, "network", "list · create · show · update · delete"),
-    helpRowCont(cmdLW, "join · leave · invite"),
+    helpRowCont(cmdLW, "join · leave"),
     "",
     helpRowCmd(cmdLW, "scrape", "extract content from a URL"),
     helpRowCmd(cmdLW, "sync", "download your context locally"),

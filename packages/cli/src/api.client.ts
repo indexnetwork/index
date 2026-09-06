@@ -5,10 +5,10 @@
  * common error patterns (401, network errors).
  */
 
-import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
+import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
 
 // Re-export all types for backward compatibility
-export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
+export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
 
 /** HTTP error retaining a parsed structured response for JSON/advisory clients. */
 export class ApiError extends Error {
@@ -253,19 +253,6 @@ export class ApiClient {
    */
   async leaveNetwork(id: string): Promise<void> {
     await this.post(`/api/networks/${id}/leave`, {});
-  }
-
-  /** Invite a network member directly by email. */
-  async inviteNetworkMember(
-    networkId: string,
-    email: string,
-    name?: string,
-  ): Promise<NetworkInvitationResult> {
-    const res = await this.post(`/api/networks/${networkId}/members/invite`, {
-      email,
-      ...(name ? { name } : {}),
-    });
-    return await res.json() as NetworkInvitationResult;
   }
 
   // ── Conversation methods ─────────────────────────────────────────

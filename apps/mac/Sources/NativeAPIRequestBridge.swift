@@ -252,7 +252,7 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/networks/discovery/public(?:\?.*)?$"#),
         ("GET", #"^/networks/[^/?]+/(?:overview|my-intents|members)$"#),
         ("POST", #"^/networks/[^/?]+/(?:join|leave)$"#),
-        ("POST", #"^/networks/[^/?]+/members(?:/invite)?$"#),
+        ("POST", #"^/networks/[^/?]+/members$"#),
         ("PATCH", #"^/networks/[^/?]+/members/[^/?]+$"#),
         ("DELETE", #"^/networks/[^/?]+/members/[^/?]+$"#),
         ("PATCH", #"^/networks/[^/?]+/(?:permissions|regenerate-invitation)$"#),
@@ -597,12 +597,6 @@ final class NativeAPIRequestBridge {
             }
         case let value where value.range(of: #"^/networks/[^/?]+/(?:join|leave|regenerate-invitation)$"#, options: .regularExpression) != nil:
             return keysAllowed(body, allowed: [])
-        // Invite is matched before the member-role route, which would otherwise
-        // claim `/members/invite` as a member id.
-        case let value where value.range(of: #"^/networks/[^/?]+/members/invite$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["email"], optional: ["name"]) { item in
-                boundedString(item["email"], maximum: 320) && optionalString(item, "name", maximum: 256)
-            }
         case let value where value.range(of: #"^/networks/[^/?]+/members$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["userId"], optional: ["permissions"]) { item in
                 identifier(item["userId"])

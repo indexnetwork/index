@@ -198,13 +198,6 @@ export type NetworkCreateResult =
   | { kind: "created"; network: Network }
   | { kind: "requested"; request: NetworkRequest };
 
-export interface NetworkInvitationResult {
-  user: { id: string; email: string };
-  created: boolean;
-  alreadyMember: boolean;
-  agentProvisioned: boolean;
-}
-
 // ── Conversation types ──────────────────────────────────────────────
 
 /** A participant in a conversation. */

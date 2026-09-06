@@ -1210,32 +1210,6 @@ def remove_network_member(network_id: str, member_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
-@full_router.post("/networks/{network_id}/members/invite")
-def invite_network_member(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Invite by email — REST `POST /networks/:id/members/invite`."""
-    network_id = _text(network_id)
-    if not network_id:
-        return {"success": False, "error": "A network id is required."}
-    payload_in = body if isinstance(body, dict) else {}
-    email = _text(payload_in.get("email"))
-    if not email or "@" not in email:
-        return {"success": False, "error": "A valid email is required."}
-    forward: dict[str, Any] = {"email": email}
-    name = _text(payload_in.get("name"))
-    if name:
-        forward["name"] = name[:200]
-    payload = tools._api_request(
-        "POST",
-        f"/networks/{quote(network_id, safe='')}/members/invite",
-        forward,
-    )
-    if payload.get("success") is False:
-        return payload
-    out = dict(payload) if isinstance(payload, dict) else {}
-    out.setdefault("success", True)
-    return out
-
-
 @full_router.get("/networks/search-users")
 def search_network_users(q: str = "", networkId: str = "") -> dict[str, Any]:
     """Search users to add — REST `GET /networks/search-users`."""

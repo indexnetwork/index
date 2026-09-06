@@ -1,7 +1,7 @@
 /**
  * Network command handlers for the Index CLI.
  *
- * Implements: list, create, show, join, leave, invite subcommands.
+ * Implements: list, create, show, join, leave subcommands.
  * Backed by the /api/networks/* endpoints.
  */
 
@@ -19,14 +19,13 @@ Network Commands:
   index network delete <id>              Delete a network
   index network join <id|key>            Join a public network
   index network leave <id|key>           Leave a network
-  index network invite <id|key> <email>  Invite a user by email
 `;
 
 /**
  * Route a network subcommand to the appropriate handler.
  *
  * @param client - Authenticated API client.
- * @param subcommand - The subcommand (list, create, show, join, leave, invite, update, delete).
+ * @param subcommand - The subcommand (list, create, show, join, leave, update, delete).
  * @param positionals - Positional arguments after the subcommand.
  * @param options - Additional options (e.g. prompt, title, json).
  */
@@ -62,9 +61,6 @@ export async function handleNetwork(
       return;
     case "delete":
       await networkDelete(client, positionals[0], options.json);
-      return;
-    case "invite":
-      await networkInvite(client, positionals[0], positionals[1], options.json);
       return;
     default:
       output.error(`Unknown network subcommand: ${subcommand}`, 1);
@@ -218,31 +214,4 @@ async function networkDelete(client: ApiClient, id: string | undefined, json?: b
     return;
   }
   output.success("Network deleted.");
-}
-
-/**
- * Invite a user to a network by email.
- */
-async function networkInvite(
-  client: ApiClient,
-  id: string | undefined,
-  email: string | undefined,
-  json?: boolean,
-): Promise<void> {
-  if (!id || !email) {
-    output.error("Usage: index network invite <id> <email>", 1);
-    return;
-  }
-
-  const result = await client.inviteNetworkMember(id, email);
-  if (json) {
-    console.log(JSON.stringify(result));
-    return;
-  }
-  if (result.alreadyMember) {
-    output.info(`${result.user.email} is already a network member.`);
-    return;
-  }
-  output.success(`Invitation sent to ${result.user.email}.`);
-  if (result.created) output.dim("  Created a pending account for this invitee.");
 }

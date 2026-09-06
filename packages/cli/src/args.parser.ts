@@ -15,7 +15,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
+  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "with" | "send" | "stream" | "help" | "update" | "delete" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -58,7 +58,7 @@ const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
 
 const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show"]);
 
-const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite", "update", "delete"]);
+const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "update", "delete"]);
 
 const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "stream", "help"]);
 

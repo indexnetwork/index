@@ -44,6 +44,13 @@ section before promoting to `main`).
   request, so the generic write budget was far too loose for them.
 
 ### Removed
+- **BREAKING: email member invites.** `POST /networks/:id/members/invite` and
+  `POST /networks/:id/members/:memberId/resend-invite` are gone, along with
+  `network-invitation.service.ts`, the invitation email template and the
+  `openclaw index connect` command builder. Owners add members with
+  `POST /networks/:id/members` (existing accounts) or share the invitation link;
+  nothing creates an account or emails a raw API key on an owner's behalf
+  anymore. Accounts and keys provisioned by the old flow keep working.
 - **BREAKING — drop opportunity owner-approval proofs.** Remove
   `POST /api/opportunities/:id/owner-approvals`, the Redis challenge store, HMAC
   signing, and `OPPORTUNITY_OWNER_APPROVAL_SECRET`. `update_opportunity` is an
