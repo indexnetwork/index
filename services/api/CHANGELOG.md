@@ -10,14 +10,25 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
-- **BREAKING: keys are keys, agents are agents.** An API key authenticates a
-  user and carries no `metadata.agentId`. There is one mint path,
-  `POST /auth/keys`, shared by the `/cli-auth` browser handshake and settings,
-  with `GET /auth/keys` and `DELETE /auth/keys/:id` beside it; all three are
-  session-only, so a leaked key cannot mint a successor. Key holders still
-  retire their own row through `POST /auth/keys/revoke-self` by re-proving the
-  raw secret. The Better Auth `apiKey` plugin and its `/api/auth/api-key`
-  routes are gone — this is the only mint.
+- **BREAKING: keys are keys, agents are agents, and Better Auth owns them.** An
+  API key authenticates a user and carries no `metadata.agentId`. The
+  hand-rolled key stack is deleted — `apikey.adapter.ts`, `apikey.service.ts`,
+  `lib/apikey/*` and the `POST/GET/DELETE /auth/keys*` routes — and replaced by
+  the `@better-auth/api-key` plugin at `/api/auth/api-key/*`, used by both the
+  `/cli-auth` browser handshake and settings. `enableSessionForAPIKeys` is off,
+  so create/list/delete need the owner's own session and a leaked key still
+  cannot mint a successor. `AuthGuard` and the MCP auth resolver authenticate
+  through `auth.api.verifyApiKey`.
+- **BREAKING: there is no remote self-revocation.** `POST /auth/keys/revoke-self`
+  is gone; the plugin has no equivalent that works without a session. Logging
+  out of the CLI, Mac app or Hermes clears the local credential only, and the
+  key stays live until it is deleted in web settings.
+- **BREAKING: `apikey.reference_id` is the owner column.** Migration `0177`
+  backfills it from `user_id`, makes it `NOT NULL` with the cascading foreign
+  key to `users`, and drops `user_id`, which the plugin never writes.
+- **BREAKING: MCP has no capability policy.** Every authenticated caller reaches
+  every tool; `mcpAuthorizationObserver` and the policy arguments to
+  `createMcpServer` are gone. `@indexnetwork/protocol` 52.0.0 is required.
 - **BREAKING: `GET /agents/me` returns the owner's selected negotiator.** It no
   longer resolves an agent from the calling key, so a user with no negotiator
   selected gets a 404 instead of whichever agent the key happened to name.

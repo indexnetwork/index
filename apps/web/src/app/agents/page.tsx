@@ -47,6 +47,7 @@ export default function AgentsPage() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentDescription, setNewAgentDescription] = useState('');
+  const [selecting, setSelecting] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -84,10 +85,6 @@ export default function AgentsPage() {
     () => agents.filter((agent) => agent.type === 'external'),
     [agents],
   );
-  const systemAgents = useMemo(
-    () => agents.filter((agent) => agent.type === 'system'),
-    [agents],
-  );
 
   async function refreshAgents() {
     const next = await agentsService.list();
@@ -111,6 +108,20 @@ export default function AgentsPage() {
       error('Failed to create agent', err instanceof Error ? err.message : undefined);
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleSelectNegotiator(agent: Agent) {
+    const next = !agent.handleNegotiations;
+    setSelecting(agent.id);
+    try {
+      await agentsService.update(agent.id, { handleNegotiations: next });
+      await refreshAgents();
+      success(next ? `${agent.name} handles negotiations` : 'No agent handles negotiations');
+    } catch (err) {
+      error('Failed to set the negotiator', err instanceof Error ? err.message : undefined);
+    } finally {
+      setSelecting(null);
     }
   }
 
@@ -191,50 +202,67 @@ export default function AgentsPage() {
               <section>
                 <div className="flex items-center gap-2 mb-3">
                   <Bot className="w-4 h-4 text-gray-500" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">System Agents</h2>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Built-in</h2>
                 </div>
-                <div className="space-y-3">
-                  {systemAgents.map((agent) => (
-                    <Link key={agent.id} to={`/agents/${agent.id}`} className="block border border-gray-200 rounded-sm p-4 bg-white hover:bg-gray-50 transition-colors cursor-pointer">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-medium text-gray-900">{agent.name}</h3>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">system</span>
-                      </div>
-                      {agent.description ? <p className="text-sm text-gray-500">{agent.description}</p> : null}
-                    </Link>
-                  ))}
+                <div className="border border-gray-200 rounded-sm p-4 bg-gray-50 opacity-60">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-medium text-gray-900">Index Negotiator</h3>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-600">not yet active</span>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    A hosted negotiator that would answer on your behalf when you have not picked one.
+                    It does not run yet, so negotiations wait for your own agent.
+                  </p>
                 </div>
               </section>
 
               <section>
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-1">
                   <KeyRound className="w-4 h-4 text-gray-500" />
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Personal Agents</h2>
                 </div>
+                <p className="text-sm text-gray-500 mb-3">
+                  Pick the one agent that handles your negotiations.
+                </p>
 
                 {personalAgents.length === 0 ? (
                   <div className="text-center py-10 border border-dashed border-gray-200 rounded-sm">
                     <p className="text-sm text-gray-500">No personal agents yet.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-4" role="radiogroup" aria-label="Negotiator agent">
                     {personalAgents.map((agent) => (
                       <div key={agent.id} className="border border-gray-200 rounded-sm p-4 bg-white space-y-4">
                         <div className="flex items-start justify-between gap-4">
-                          <Link to={`/agents/${agent.id}`} className="group flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-medium text-gray-900 group-hover:underline">{agent.name}</h3>
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                agent.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
-                              }`}>
-                                {agent.status}
-                              </span>
-                              {agent.handleNegotiations ? (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">negotiator</span>
-                              ) : null}
-                            </div>
-                            {agent.description ? <p className="text-sm text-gray-500 mt-1">{agent.description}</p> : null}
-                          </Link>
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <button
+                              type="button"
+                              role="radio"
+                              aria-checked={agent.handleNegotiations}
+                              aria-label={`${agent.name} handles negotiations`}
+                              onClick={() => handleSelectNegotiator(agent)}
+                              disabled={selecting !== null}
+                              className={`mt-1 w-4 h-4 shrink-0 rounded-full border flex items-center justify-center transition-colors disabled:cursor-not-allowed ${
+                                agent.handleNegotiations ? 'border-black bg-black' : 'border-gray-300 bg-white hover:border-gray-500'
+                              }`}
+                            >
+                              {agent.handleNegotiations ? <span className="w-1.5 h-1.5 rounded-full bg-white" /> : null}
+                            </button>
+                            <Link to={`/agents/${agent.id}`} className="group flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-medium text-gray-900 group-hover:underline">{agent.name}</h3>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  agent.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {agent.status}
+                                </span>
+                                {agent.handleNegotiations ? (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">negotiator</span>
+                                ) : null}
+                              </div>
+                              {agent.description ? <p className="text-sm text-gray-500 mt-1">{agent.description}</p> : null}
+                            </Link>
+                          </div>
                           <div className="flex items-center gap-2">
                             <Button variant="outline" onClick={() => handleDeleteAgent(agent)}>
                               <Trash2 className="w-4 h-4 mr-1" />

@@ -41,12 +41,6 @@ const FAST_TOOLS = new Set([
   "delete_network_membership",
   "read_docs",
   "read_own_agent",
-  "register_agent",
-  "list_agents",
-  "update_agent",
-  "delete_agent",
-  "grant_agent_permission",
-  "revoke_agent_permission",
 ]);
 
 const ASYNC_CANDIDATE_TOOLS = new Set([

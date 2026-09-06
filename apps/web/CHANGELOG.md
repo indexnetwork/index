@@ -10,10 +10,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 - **API keys live in Settings and belong to you, not to an agent.** The
   per-agent key panel is replaced by one account-key section that mints, lists
-  and revokes through `/auth/keys`; the `/cli-auth` handshake mints from the
-  same route. Agent pages no longer show keys, setup wizards or a Permissions
-  tab — an agent is a name, a status, notification preferences and whether it
-  handles negotiations.
+  and revokes through Better Auth's own `authClient.apiKey.*`; the `/cli-auth`
+  handshake mints from the same client. Agent pages no longer show keys, setup
+  wizards or a Permissions tab — an agent is a name, a status and notification
+  preferences.
+- **You pick your negotiator on `/agents`.** The personal agent list is a
+  single-choice selector, so the one place that sets it is the list itself; the
+  "Handle negotiations on my behalf" checkbox is gone from the agent detail
+  page. The System Agents section is replaced by a static, disabled "Index
+  Negotiator" row labelled *not yet active*, because nothing runs it yet.
 - Inviting someone to a network reports membership only. There is no
   "agent provisioned" state and no resend-invitation action, because the
   invitation carries no credential to refresh.

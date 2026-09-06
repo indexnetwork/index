@@ -16,12 +16,11 @@ import { intentIndexing } from '../lib/intent/indexing';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
-import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
-import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, CompositeToolDatabase, McpAuthInput, McpResolvedIdentity, McpAuthorizationObserver } from '@indexnetwork/protocol';
+import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, CompositeToolDatabase, McpAuthInput, McpResolvedIdentity } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -108,29 +107,7 @@ const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', API_URL),
 );
 
-type ApiKeyPrincipalRow = {
-  referenceId: string | null;
-  userId: string | null;
-};
-
 type ResolvedMcpIdentity = McpResolvedIdentity;
-
-/**
- * Resolves the owning user of an API key row. A key names a user and nothing
- * else, so this is the whole principal.
- *
- * @param row - The authoritative `apikey` principal columns.
- * @param sessionUserId - Better Auth's own resolution, when it answered.
- * @returns The owning user ID, or null when the row names nobody.
- */
-export function resolveMcpApiKeyPrincipal(
-  row: ApiKeyPrincipalRow,
-  sessionUserId?: string,
-): { userId: string } | null {
-  const userId = resolveApiKeyUserId(row, sessionUserId);
-  if (!userId) return null;
-  return { userId };
-}
 
 const authResolver: McpAuthResolver = {
   async resolveIdentity(input: McpAuthInput): Promise<ResolvedMcpIdentity> {
@@ -171,73 +148,16 @@ const authResolver: McpAuthResolver = {
     }
 
     if (input.apiKey) {
-      let sessionUserId: string | undefined;
-
+      // The apiKey plugin owns verification: hashing, enablement, expiry and
+      // rate limiting. `referenceId` is the user the key names.
+      const { auth } = await import('../lib/betterauth/auth.instance');
       try {
-        const sessionRes = await fetch(`${API_URL}/api/auth/get-session`, {
-          headers: { 'x-api-key': input.apiKey },
-          signal: AbortSignal.timeout(5000),
-        });
-        if (sessionRes.ok) {
-          const data = await sessionRes.json() as { user?: { id?: string } } | null;
-          if (data?.user?.id) {
-            sessionUserId = data.user.id;
-          }
-        }
-      } catch { /* session lookup failed, try direct DB */ }
-
-      try {
-        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input.apiKey));
-        const hashed = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
-          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        const drizzle = await import('../lib/drizzle/drizzle');
-        const { eq } = await import('drizzle-orm');
-        const { apikeys } = await import('../schemas/database.schema');
-        const [row] = await drizzle.default.select({
-          referenceId: apikeys.referenceId,
-          userId: apikeys.userId,
-          enabled: apikeys.enabled,
-          expiresAt: apikeys.expiresAt,
-        })
-          .from(apikeys)
-          .where(eq(apikeys.key, hashed))
-          .limit(1);
-
-        if (row) {
-          if (!row.enabled) {
-            throw new Error('Invalid API key');
-          }
-
-          if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
-            throw new Error('Invalid API key');
-          }
-
-          let principal: ReturnType<typeof resolveMcpApiKeyPrincipal>;
-          try {
-            principal = resolveMcpApiKeyPrincipal(row, sessionUserId);
-          } catch (err) {
-            logger.warn('API key principal mismatch', {
-              keyHashPrefix: hashed.slice(0, 8),
-              rowUserId: row.userId,
-              referenceId: row.referenceId,
-              error: err instanceof Error ? err.message : String(err),
-            });
-            throw new Error('Invalid API key', { cause: err });
-          }
-
-          if (principal) {
-            return { userId: principal.userId };
-          }
-        }
-
-        if (sessionUserId) {
-          return { userId: sessionUserId };
+        const { valid, key } = await auth.api.verifyApiKey({ body: { key: input.apiKey } });
+        if (valid && key) {
+          return { userId: key.referenceId };
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg === 'Invalid API key') {
-          throw err;
-        }
         throw new Error(`API key authentication failed: ${msg}`, { cause: err });
       }
 
@@ -265,29 +185,6 @@ const authResolver: McpAuthResolver = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// AUTHORIZATION OBSERVABILITY (host boundary)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Records MCP capability denials as structured, secret-free authorization audit
- * logs. The protocol constructs the event with only safe caller-profile/reason
- * fields (no token, API key, header, or tool-argument payload), so this seam can
- * log it verbatim. This is standing authorization observability at info level,
- * not debug instrumentation, and it never alters the fail-closed decision.
- */
-const mcpAuthorizationObserver: McpAuthorizationObserver = {
-  onCapabilityDenied(event) {
-    logger.info('MCP capability denied', {
-      phase: event.phase,
-      toolName: event.toolName,
-      profile: event.profile,
-      reason: event.reason,
-      userId: event.userId,
-    });
-  },
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // PER-REQUEST MCP SERVER CREATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -306,8 +203,7 @@ function createMcpServerInstance(): McpServer {
     cache: protocolDeps.cache,
     enricher: protocolDeps.enricher,
     // #1471: owner-verdict host behind reject/accept_opportunity (the Radar
-    // Skip/Start-Chat path). Registered on the MCP surface only; the
-    // capability matrix confines verdicts to session-authenticated owners.
+    // Skip/Start-Chat path). Registered on the MCP surface only.
     negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools,
     agentDatabase: protocolDeps.agentDatabase,
     reportToolError: (error, report) => captureAppException(error, {
@@ -335,13 +231,7 @@ function createMcpServerInstance(): McpServer {
     },
   };
 
-  return createMcpServer(
-    toolDeps,
-    authResolver,
-    scopedDepsFactory,
-    CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS,
-    mcpAuthorizationObserver,
-  );
+  return createMcpServer(toolDeps, authResolver, scopedDepsFactory);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

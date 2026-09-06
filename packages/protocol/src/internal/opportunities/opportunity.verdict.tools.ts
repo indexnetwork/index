@@ -15,12 +15,8 @@ import type { NegotiatorVerdictInput, NegotiatorVerdictResult } from '../../plat
  * underneath, and the same outcome hooks (question retirement, DM resolution,
  * contact memberships) in its wake.
  *
- * Admission is a SESSION-AUTHENTICATED principal (`context.isSessionAuth`,
- * bound by the host in mcp.server.ts) — never a caller-supplied field. The
- * capability matrix already hides these tools from every agent principal
- * (`human_only`); this handler check is the fail-closed second layer, so a
- * mis-listed surface still refuses. API-key agents are refused, deliberately:
- * a verdict is the owner's own gate, and the boundary is the feature.
+ * A credential names its owner, so a verdict passed through a key is the owner
+ * passing it. The write is scoped to `context.userId` either way.
  *
  * Positions, never ids — the host resolves the number against the same
  * oldest-first enumeration the DM prompt renders, and the executed result
@@ -76,13 +72,6 @@ export function createOpportunityVerdictTools(defineTool: DefineTool, deps: Tool
     execute: (userId: string, input: NegotiatorVerdictInput) => Promise<NegotiatorVerdictResult>,
   ): Promise<string> => {
     try {
-      // Fail-closed owner boundary: only a session-authenticated principal
-      // admits a verdict. The capability matrix already refuses agent
-      // principals; this refusal stands even if the tool is ever listed on a
-      // surface without it.
-      if (context.isSessionAuth !== true) {
-        return error('Owner verdicts require the owner\'s own authenticated session. This principal cannot pass one.');
-      }
       const result = await execute(context.userId, {
         intentId: query.intentId,
         counterparty: query.counterparty,
@@ -98,10 +87,9 @@ export function createOpportunityVerdictTools(defineTool: DefineTool, deps: Tool
   const rejectOpportunity = defineTool({
     name: 'reject_opportunity',
     description:
-      'Decline one of a signal\'s counterparties, because the user (the signal\'s owner, in their own authenticated session) told you to. ' +
+      'Decline one of a signal\'s counterparties, because the user (the signal\'s owner) told you to. ' +
       'This is the ONLY tool that declines a live or parked pairing — `update_opportunity` refuses a `negotiating` one, and saying it does nothing. ' +
       'It executes the same owner reject the Radar card\'s Skip performs, so the pairing\'s open question retires with it.\n\n' +
-      '**Access:** owner session only. Agent principals cannot pass owner verdicts; this tool is absent from their inventory and refused if called.\n\n' +
       '**Never on your own judgment** — only on the user\'s explicit instruction about a specific counterparty.',
     querySchema: VerdictQuerySchema,
     handler: async ({ context, query }) => {
@@ -114,10 +102,9 @@ export function createOpportunityVerdictTools(defineTool: DefineTool, deps: Tool
   const acceptOpportunity = defineTool({
     name: 'accept_opportunity',
     description:
-      'Accept one of a signal\'s counterparties on the user\'s (the owner\'s) explicit instruction, from their own authenticated session. ' +
+      'Accept one of a signal\'s counterparties on the user\'s (the owner\'s) explicit instruction. ' +
       'This records the owner\'s acceptance — one side of a two-party decision: the connection is made only when the counterparty accepts too, ' +
       'so never say they are connected on the strength of this alone.\n\n' +
-      '**Access:** owner session only. Agent principals cannot pass owner verdicts; this tool is absent from their inventory and refused if called.\n\n' +
       '**Never on your own judgment** — only on the user\'s explicit instruction about a specific counterparty.',
     querySchema: VerdictQuerySchema,
     handler: async ({ context, query }) => {

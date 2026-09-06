@@ -7,7 +7,6 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import NegotiationHistory from "@/components/NegotiationHistory";
-import { AlphaBadge } from "@/components/AlphaBadge";
 import type { Agent } from "@/services/agents";
 
 const SYSTEM_AGENT_IDS = {
@@ -20,7 +19,7 @@ function NotificationsSection({
   disabled,
 }: {
   agent: Agent;
-  onChange: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>) => void;
+  onChange: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled">>) => void;
   disabled: boolean;
 }) {
   if (agent.type !== "external") return null;
@@ -65,25 +64,6 @@ function NotificationsSection({
           </span>
         </label>
 
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={agent.handleNegotiations}
-            disabled={disabled}
-            onChange={(e) => onChange({ handleNegotiations: e.target.checked })}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-gray-900 disabled:opacity-50"
-          />
-          <span>
-            <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
-              Handle negotiations on my behalf
-              <AlphaBadge />
-            </span>
-            <span className="block text-xs text-gray-400 mt-0.5">
-              Experimental — this is the agent your API keys act as in negotiations. Only one agent
-              can hold it at a time.
-            </span>
-          </span>
-        </label>
       </div>
     </div>
   );
@@ -97,7 +77,7 @@ function AgentOverview({
 }: {
   agent: Agent;
   userId: string;
-  onPatch: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>) => void;
+  onPatch: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled">>) => void;
   isSaving: boolean;
 }) {
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
@@ -196,7 +176,7 @@ export default function AgentDetailPage() {
   }, [id, agentsService, isAuthenticated, error, navigate]);
 
   async function handlePatch(
-    patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>,
+    patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled">>,
   ) {
     if (!agent) return;
     setIsSaving(true);

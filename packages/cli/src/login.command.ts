@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 
-import { storeReplacementCredentials, type CredentialReplacementOptions } from "./auth.lifecycle";
 import type { CredentialStore } from "./auth.store";
 
 /** Result of the login callback flow. */
@@ -21,8 +20,6 @@ export interface LoginOptions {
   serverFactory?: (handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>) => CallbackServer;
   /** Host to bind the callback server to. Defaults to 127.0.0.1. */
   callbackHost?: string;
-  /** Override the replacement-cleanup API client for tests. */
-  credentialClientFactory?: CredentialReplacementOptions["clientFactory"];
 }
 
 interface CallbackServer {
@@ -137,13 +134,16 @@ export async function handleLogin(
     const keyId = url.searchParams.get("key_id");
     if (apiKey && keyId) {
       try {
-        const cleanup = await storeReplacementCredentials(store, previousCredentials, {
-          token: apiKey,
-          apiUrl: baseUrl,
-          authKind: "api_key",
-          keyId,
-        }, { clientFactory: options.credentialClientFactory });
-        resolveCallback({ success: true, ...cleanup });
+        await store.save({ token: apiKey, apiUrl: baseUrl, authKind: "api_key", keyId });
+        // Only the owner's own browser session can delete a key, so a login
+        // that replaces one cannot retire its predecessor from here.
+        const replacedKey = previousCredentials && previousCredentials.keyId !== keyId;
+        resolveCallback({
+          success: true,
+          ...(replacedKey
+            ? { warning: "The previous CLI API key is still active. Remove it in Index web settings." }
+            : {}),
+        });
       } catch {
         resolveCallback({ success: false, error: "Failed to save CLI credentials." });
         res.writeHead(500, { "Content-Type": "text/html" });

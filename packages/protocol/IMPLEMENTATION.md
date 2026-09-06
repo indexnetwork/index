@@ -90,18 +90,15 @@ Two entry points are supported, both taking a single dependency object built
 from the adapters above.
 
 `createMcpServer` is the complete integration: it composes every capability's
-tools internally, applies the authorization policy, and returns a ready MCP
-server.
+tools internally and returns a ready MCP server.
 
 ```typescript
-import { createMcpServer, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from "@indexnetwork/protocol";
+import { createMcpServer } from "@indexnetwork/protocol";
 
 const server = createMcpServer(
   deps,                // ToolDeps
   authResolver,        // McpAuthResolver
   scopedDepsFactory,   // ScopedDepsFactory — builds per-user scoped userDb/systemDb
-  CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS,
-  authorizationObserver, // optional McpAuthorizationObserver
 );
 ```
 
@@ -249,13 +246,14 @@ const server = createMcpServer(
 On every tool call the server:
 
 1. Extracts the HTTP request from the MCP `ServerContext`.
-2. Calls `authResolver.resolveIdentity(req)` to get `{ userId, agentId }`.
-3. Gates access through the canonical capability policy (`mcp/mcp.authorization-policy.ts`), decided per resolved principal BEFORE any context read or scoped-deps creation:
-   - **Enrollment-capable unregistered API keys** may see and call only `register_agent` — single-purpose across the entire registry.
-   - **Plain unregistered API keys** fail closed on every tool.
-   - **Registered active agents** retain their canonical permission- and network-scope-authorized domain tools and `read_docs`; within the agent-administration family (`MCP_AGENT_ADMIN_TOOLS`) they may see and call only `read_own_agent`, which returns the caller's own sanitized record and accepts no target.
-   - **Session humans** administer their owned agents (`register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission`) but are never offered the agent-only `read_own_agent`.
-   - Contact/Gmail-import tools, `scrape_url`, and the deprecated `*_user_profile`/`*_profile_run` aliases are not registered on the MCP surface at all (IND-596/597/598).
+2. Calls `authResolver.resolveIdentity(req)` to get `{ userId }`. A credential
+   names a user, so every authenticated caller reaches the same tool surface;
+   ownership and membership checks live in the tool handlers.
+3. Hides tools the caller's focused scope makes impossible. Agent CRUD,
+   contact/Gmail-import tools, `scrape_url`, and the deprecated
+   `*_user_profile`/`*_profile_run` aliases are not registered on the MCP
+   surface at all — agents are created and deleted from a signed-in session
+   over REST.
 4. Builds per-request scoped databases via `scopedDepsFactory` and invokes the tool handler through the shared runtime.
 
 ### Runtime controls

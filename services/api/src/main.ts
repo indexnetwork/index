@@ -230,6 +230,9 @@ const server = Bun.serve({
       '/api/auth/revoke-session', '/api/auth/revoke-other-sessions',
       '/api/auth/update-user',
       '/api/auth/token', '/api/auth/jwks',
+      // API key mint/list/delete — the plugin owns them; session-only because
+      // `enableSessionForAPIKeys` is off.
+      '/api/auth/api-key/',
       // MCP OAuth endpoints
       '/api/auth/mcp/',
       '/.well-known/oauth-authorization-server',

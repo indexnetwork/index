@@ -16,7 +16,7 @@ It is now **wired into the mac app**: `scripts/assemble.py` inlines `client.mjs`
 
 The native macOS client uses an ordinary 90-day Better Auth API key minted through the web `/cli-auth` handshake. The Swift shell stores it only in the Keychain and supplies it directly to `NativeAPIRequestBridge`; JavaScript receives only credential-free structured operations and nonsecret authentication status. Credentials and API-key headers are never exposed to the WKWebView, browser callback, local storage, or logs.
 
-Native REST, MCP, upload, and bounded SSE requests are method/path allowlisted before the Swift bridge attaches the credential. Session-only routes remain unavailable through this principal. Logout quarantines in-flight work, revokes authority, verifies denial, and deletes Keychain state only after confirmed server-side revocation.
+Native REST, MCP, upload, and bounded SSE requests are method/path allowlisted before the Swift bridge attaches the credential. Session-only routes, including key management, remain unavailable through this principal. Logout quarantines in-flight work and deletes Keychain state; the key itself is removed in Index web settings.
 
 ## Current files
 
@@ -30,7 +30,7 @@ Native REST, MCP, upload, and bounded SSE requests are method/path allowlisted b
 
 The client base URL includes `/api`, matching the global prefix applied in `services/api/src/main.ts`. Resource methods currently cover these controller routes:
 
-- `auth.controller.ts`: `GET /auth/me`, `PATCH /auth/profile/update`, `POST /auth/keys/revoke-self`
+- `auth.controller.ts`: `GET /auth/me`, `PATCH /auth/profile/update`
 - `network.controller.ts`: `GET /networks`, `GET /networks/:id/overview`, `GET /networks/:id/my-intents`, `POST /networks`, `POST /networks/:id/join`, `POST /networks/:id/leave`
 - `intent.controller.ts`: `POST /intents/list`, `GET /intents/:id`, `PATCH /intents/:id/archive`, `PATCH /intents/:id/status`
 - `opportunity.controller.ts`: `GET /opportunities`, `GET /opportunities/radar` (incl. `scopeType=intent`), `GET /opportunities/chat-context`, `GET /opportunities/:id`, `GET /opportunities/:id/invite-message`, `PATCH /opportunities/:id/status` (incl. intent scope), `POST /opportunities/:id/start-chat` (incl. intent scope)

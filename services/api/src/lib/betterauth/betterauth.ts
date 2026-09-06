@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { magicLink, bearer, jwt, mcp } from "better-auth/plugins";
+import { apiKey } from "@better-auth/api-key";
 
 import { resolveClassConfig } from "../limiter/config";
 
@@ -119,6 +120,16 @@ export function createAuth(deps: AuthDeps) {
         expiresIn: 600,
       }),
       bearer(),
+      // A key names a user and nothing else. `enableSessionForAPIKeys` stays at
+      // its default of off, so create/list/delete need the owner's own session:
+      // a leaked key acts as the user in the product but cannot mint a
+      // successor. The plugin's own throttle is disabled — it defaults to 10
+      // requests per key per day, and volume is already capped by the
+      // `RateLimit` guards and the MCP tool limiter.
+      apiKey({
+        defaultKeyLength: 64,
+        rateLimit: { enabled: false },
+      }),
       jwt({
         jwt: {
           issuer: API_URL,
@@ -131,15 +142,12 @@ export function createAuth(deps: AuthDeps) {
           }),
         },
       }),
-      // Cast needed: @better-auth/core version mismatch between plugins (1.5.6) and
-      // root lockfile (1.4.18) causes incompatible Plugin types. Runtime is fine.
       mcp({
         loginPage: `${WEB_APP_URL}/login`,
         // No consentPage needed: the mcp() plugin skips consent automatically when the
         // authorization request does not include prompt=consent, which Claude Code never
         // sends. The flow goes: /mcp/authorize → session check → code → callback.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }) as any,
+      }),
     ],
     advanced: {
       // Cookie attributes must match the scheme the API is actually served on.

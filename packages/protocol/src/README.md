@@ -69,15 +69,15 @@ Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled p
 | `internal/intents/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `add_intent_to_network`, `list_intent_networks`, `remove_intent_from_network` |
 | `internal/networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `internal/opportunities/opportunity.tools.ts` | `list_opportunities`, `update_opportunity` |
-| `internal/agents/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
+| `internal/agents/agent.tools.ts` | `read_own_agent` |
 | `internal/shared/agent/utility.tools.ts` | `scrape_url`¹, `read_docs` |
 
 ¹ REST-only: `scrape_url` is omitted from the MCP registry entirely
-  (IND-596/597). MCP does not gate on web/CLI onboarding. On the MCP surface,
-  agent administration follows the IND-599 split:
-  registered agents get `read_own_agent` only; session humans get the owned
-  admin tools but never `read_own_agent`; enrollment-capable keys are
-  `register_agent`-only; unregistered keys fail closed.
+  (IND-596/597). MCP does not gate on web/CLI onboarding. There is no
+  per-principal tool policy: a credential names a user, so every authenticated
+  caller reaches the same surface and the handlers own ownership and membership
+  checks. Agent CRUD is not a tool at all — agents are created and deleted from
+  a signed-in session over REST.
 
 ## Core Concepts
 

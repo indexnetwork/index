@@ -4,7 +4,7 @@ The dashboard is the optional UI for the Index Hermes plugin. It is not an autho
 
 ## Connection and status
 
-The tab displays connection status. When no `INDEX_API_KEY` is configured, the login screen offers **log in with browser**: `POST /auth/login/start` binds a loopback callback and opens the web `/cli-auth` handshake (returning the URL as a manual link for headless hosts), and the UI polls `GET /auth/login/status` until the minted user key is persisted to `~/.hermes/.env`. **Sign out** (`POST /auth/logout`) revokes and clears the local key. Setting `INDEX_API_KEY` manually still works as an override.
+The tab displays connection status. When no `INDEX_API_KEY` is configured, the login screen offers **log in with browser**: `POST /auth/login/start` binds a loopback callback and opens the web `/cli-auth` handshake (returning the URL as a manual link for headless hosts), and the UI polls `GET /auth/login/status` until the minted user key is persisted to `~/.hermes/.env`. **Sign out** (`POST /auth/logout`) clears the local key; the key itself is removed in Index web settings. Setting `INDEX_API_KEY` manually still works as an override.
 
 ## Scope
 

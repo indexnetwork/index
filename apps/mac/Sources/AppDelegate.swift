@@ -779,9 +779,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func logout(admittedGeneration: UInt64) {
         guard currentOwnerCredential() != nil else { return }
         notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
-        guard let bridge = nativeAPIBridge, let record = currentOwnerCredential() else { return }
+        guard let bridge = nativeAPIBridge else { return }
+        // Deleting a key server-side requires the owner's own browser session,
+        // which this principal does not hold, so logout is local: drop the
+        // Keychain item and tell the user to remove the key in web settings.
         bridge.beginQuarantine { [weak self] in
-            self?.revokeAndDelete(record: record)
+            try? self?.ownerCredentialStore?.deleteAndVerify()
         }
     }
 
@@ -789,63 +792,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         guard let store = ownerCredentialStore else { return nil }
         do { return try store.loadCredential() }
         catch { return nil }
-    }
-
-    private func revokeAndDelete(record: OwnerCredentialRecord) {
-        // Ordinary API-key self-revocation - the same endpoint the CLI logout
-        // uses. Local deletion waits for server denial so a lost response
-        // never strands a still-live key.
-        performOwnerRequest(
-            path: "/auth/keys/revoke-self",
-            body: ["keyId": record.credentialId, "targetKey": record.credential],
-            credential: record.credential
-        ) { [weak self] revokeResult in
-            guard let self, case .success = revokeResult else { return }
-            self.verifyCredentialDenied(record.credential) { denied in
-                guard denied, let store = self.ownerCredentialStore else { return }
-                do { try store.deleteAndVerify() } catch { return }
-            }
-        }
-    }
-
-    private func verifyCredentialDenied(_ credential: String, completion: @escaping (Bool) -> Void) {
-        guard let url = URL(string: AppConfig.apiBaseURL + "/auth/me") else { completion(false); return }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(credential, forHTTPHeaderField: "x-api-key")
-        URLSession.shared.dataTask(with: request) { _, response, _ in
-            let status = (response as? HTTPURLResponse)?.statusCode
-            completion(status == 401 || status == 403)
-        }.resume()
-    }
-
-    private func performOwnerRequest(
-        path: String,
-        body: [String: Any],
-        credential: String? = nil,
-        completion: @escaping (Result<Data, Error>) -> Void
-    ) {
-        guard JSONSerialization.isValidJSONObject(body),
-              let data = try? JSONSerialization.data(withJSONObject: body),
-              data.count <= 1_048_576,
-              let url = URL(string: AppConfig.apiBaseURL + path) else {
-            completion(.failure(LoopbackAuthServer.AuthError.invalidCallback)); return
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 30
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let credential { request.setValue(credential, forHTTPHeaderField: "x-api-key") }
-        request.httpBody = data
-        URLSession.shared.dataTask(with: request) { responseData, response, error in
-            guard error == nil,
-                  let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  let responseData, responseData.count <= 1_048_576 else {
-                completion(.failure(LoopbackAuthServer.AuthError.invalidCallback)); return
-            }
-            completion(.success(responseData))
-        }.resume()
     }
 
     private func notifyAuthChanged(authenticated: Bool, admittedGeneration: UInt64) {

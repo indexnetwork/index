@@ -46,21 +46,6 @@ export class ApiClient {
   }
 
   /**
-   * Revoke one exact server-issued API key with caller and target proof.
-   *
-   * @param keyId - Stored row ID returned when the target key was created.
-   * @param targetKey - Raw target secret; defaults to the caller token for logout.
-   * @throws Error when the server does not confirm revocation.
-   */
-  async revokeApiKey(keyId: string, targetKey: string = this.token): Promise<void> {
-    const res = await this.post("/api/auth/keys/revoke-self", { keyId, targetKey });
-    const body = (await res.json()) as { success?: unknown };
-    if (body.success !== true) {
-      throw new Error("API-key revocation was not confirmed");
-    }
-  }
-
-  /**
    * Get the currently authenticated user's profile.
    *
    * @returns The user object.

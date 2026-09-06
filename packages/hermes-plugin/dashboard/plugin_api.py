@@ -943,14 +943,11 @@ def auth_login_status() -> dict[str, Any]:
 
 @full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Best-effort revoke the stored key, then clear it from `~/.hermes/.env` + process."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    key_id = os.environ.get("INDEX_API_KEY_ID", "").strip()
-    if api_key and key_id:
-        try:
-            tools._api_request("POST", "/auth/keys/revoke-self", {"keyId": key_id, "targetKey": api_key})
-        except Exception:  # noqa: BLE001 - revoke is best-effort; local cleanup still runs.
-            pass
+    """Clear the stored key from `~/.hermes/.env` + process.
+
+    Deleting a key server-side needs the owner's own browser session, so this is
+    local only: the key stays live until it is removed in Index web settings.
+    """
     auth_login.clear_api_key()
     tools.reset_transport()
     return {"success": True, "needsLogin": True}

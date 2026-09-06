@@ -8,7 +8,7 @@ The Index plugin connects Hermes to Index over plain HTTPS, authenticated with y
 hermes plugins install indexnetwork/hermes-plugin
 ```
 
-Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The handshake mints an API key for your account and persists it as `INDEX_API_KEY` in `~/.hermes/.env`. **Sign out** revokes that key and clears it. On a headless host the dashboard shows the login link to open elsewhere.
+Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The handshake mints an API key for your account and persists it as `INDEX_API_KEY` in `~/.hermes/.env`. **Sign out** clears the local key; remove the key itself in Index web settings. On a headless host the dashboard shows the login link to open elsewhere.
 
 Manual override: set a key from web settings instead of using the browser flow:
 

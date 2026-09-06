@@ -122,16 +122,6 @@ export { normalizeTelegramHandle } from './internal/shared/utils/telegram-handle
 
 export { createMcpServer, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./internal/mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./internal/mcp/mcp.server.js";
-export { CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from "./internal/mcp/mcp.authorization-policy.js";
-// `McpCapabilityPolicyOptions` types the fourth `createMcpServer` parameter and
-// `McpAuthorizationDenialEvent` is the sole argument of the observer's
-// `onCapabilityDenied`. Both are required to type a host's own composition, so
-// they ship with the entry point rather than with the pruned policy internals.
-export type {
-  McpAuthorizationDenialEvent,
-  McpAuthorizationObserver,
-  McpCapabilityPolicyOptions,
-} from "./internal/mcp/mcp.authorization-policy.js";
 
 // ─── Negotiation thread reading ────────────────────────────────────────────
 /**

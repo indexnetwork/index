@@ -12,10 +12,14 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
   Browser login persists exactly what `/cli-auth` mints and stops there: the
   CLI→agent promotion (`dashboard/agent_bootstrap.py`) is deleted, so login no
   longer registers a "Hermes" agent, mints a per-agent token or revokes the key
-  it just stored. `GET /auth/login/status` drops `negotiatorReady`. Sign-out
-  revokes through `POST /auth/keys/revoke-self`. `index_agent_me` returns the
-  agent you selected as your negotiator in the web app; select one there, or it
-  answers with a 404. Requires an API at 0.109.0 or newer.
+  it just stored. `GET /auth/login/status` drops `negotiatorReady`.
+  `index_agent_me` returns the agent you selected as your negotiator in the web
+  app; select one there, or it answers with a 404. Requires an API at 0.110.0 or
+  newer.
+- **BREAKING: sign-out is local.** `POST /auth/logout` clears `INDEX_API_KEY`
+  from `~/.hermes/.env` and the process, and no longer calls
+  `/auth/keys/revoke-self`, which the API deleted. The key stays live until it
+  is removed in Index web settings.
 - Network picture upload forwards to `POST /storage/network-images`, following
   the Index API's rename of that route from `/storage/index-images`. Requires an
   API at 0.107.0 or newer.

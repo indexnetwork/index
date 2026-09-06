@@ -5,10 +5,9 @@ import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import CopyableBox from "@/components/CopyableBox";
-import { useApiKeys } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { buildMcpConfigs } from "@/lib/mcp-config";
-import type { ApiKeyInfo } from "@/services/api-keys";
+import { apiKeysService, type ApiKeyInfo } from "@/services/api-keys";
 
 function hasActiveSelection(): boolean {
   const sel = typeof window !== "undefined" ? window.getSelection() : null;
@@ -127,7 +126,6 @@ function generateDefaultKeyName(keys: ApiKeyInfo[]): string {
 
 /** The account's API keys. A key authenticates its owner, not an agent. */
 export default function ApiKeysSection() {
-  const apiKeysService = useApiKeys();
   const { success, error } = useNotifications();
 
   const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
@@ -161,7 +159,7 @@ export default function ApiKeysSection() {
     return () => {
       cancelled = true;
     };
-  }, [apiKeysService, error]);
+  }, [error]);
 
   async function handleGenerateKey() {
     setGenerating(true);

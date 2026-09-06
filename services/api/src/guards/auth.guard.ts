@@ -1,9 +1,5 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import { eq } from 'drizzle-orm/sql';
 
-import { hashApiKey } from '../lib/apikey/credential';
-import { resolveApiKeyUserId } from '../lib/apikey/principal';
-import { apikeys, users } from '../schemas/database.schema';
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { getRequestAuthContext, recordRequestAuthContext } from '../lib/request-auth-context';
@@ -14,20 +10,6 @@ export interface AuthenticatedUser {
   id: string;
   email: string | null;
   name: string;
-}
-
-export interface ApiKeyAuthenticationCredential {
-  id?: string;
-  referenceId: string | null;
-  userId: string | null;
-  enabled: boolean;
-  expiresAt: Date | null;
-}
-
-/** Persistence boundary used by the real API-key authentication algorithm. */
-export interface ApiKeyAuthenticationStore {
-  findCredentialByHash(hash: string): Promise<ApiKeyAuthenticationCredential | null>;
-  findUserById(userId: string): Promise<AuthenticatedUser | null>;
 }
 
 const JWKS = createRemoteJWKSet(
@@ -76,11 +58,12 @@ export class SessionRequiredError extends Error {
  * SessionOnlyGuard: accepts ONLY a Better Auth session JWT (`Authorization:
  * Bearer` header or `?token=`), never an API key.
  *
- * Use for owner control: minting and revoking API keys, agent create/update/
- * delete (including choosing the negotiator), and account deletion. This keeps
- * a leaked key's blast radius at "act as the user in the product" — it can
- * never mint a successor credential that survives its own rotation, nor destroy
- * the account. See IND-384.
+ * Use for owner control: agent create/update/delete (including choosing the
+ * negotiator) and account deletion. Key management itself is guarded the same
+ * way by the Better Auth apiKey plugin, which requires a session because
+ * `enableSessionForAPIKeys` is off. This keeps a leaked key's blast radius at
+ * "act as the user in the product" — it can never mint a successor credential
+ * that survives its own rotation, nor destroy the account. See IND-384.
  */
 export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser> => {
   const authHeader = req.headers.get('Authorization');
@@ -114,52 +97,51 @@ export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser>
 export const isSessionAuthenticated = (req: Request): boolean =>
   getRequestAuthContext(req)?.kind === 'session';
 
+/**
+ * Resolve the owning user behind an `x-api-key` credential. Verification,
+ * expiry, enablement and rate limiting all belong to the Better Auth apiKey
+ * plugin; this only maps the verified key to the user it references.
+ *
+ * @param req - The request carrying the credential, for provenance recording.
+ * @param apiKey - The raw secret from the `x-api-key` header.
+ * @returns The authenticated owner.
+ * @throws Error when the key is unknown, disabled, expired or orphaned.
+ */
 export async function authenticateApiKey(
   req: Request,
   apiKey: string,
-  store: ApiKeyAuthenticationStore = databaseApiKeyAuthenticationStore,
 ): Promise<AuthenticatedUser> {
-  const hashed = await hashApiKey(apiKey);
-  const row = await store.findCredentialByHash(hashed);
-
-  // Log a prefix of the stored SHA-256 hash, never raw credential material.
-  const keyHashPrefix = hashed.slice(0, 8);
   const ua = req.headers.get('user-agent') ?? 'unknown';
+  const { auth } = await import('../lib/betterauth/auth.instance');
 
-  if (!row || !row.enabled) {
-    logger.warn('API key rejected', { reason: row ? 'disabled' : 'not_found', keyHashPrefix, ua });
-    throw new Error('Invalid API key');
-  }
-  if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
-    logger.warn('API key rejected', { reason: 'expired', keyHashPrefix, ua });
-    throw new Error('Invalid API key');
-  }
-  let userId: string | null;
-  try {
-    userId = resolveApiKeyUserId(row);
-  } catch {
-    logger.warn('API key rejected', { reason: 'principal_mismatch', keyHashPrefix, ua });
-    throw new Error('Invalid API key');
-  }
-  if (!userId) {
-    logger.warn('API key rejected', { reason: 'no_user_ref', keyHashPrefix, ua });
+  const { valid, error, key } = await auth.api.verifyApiKey({ body: { key: apiKey } });
+  if (!valid || !key) {
+    logger.warn('API key rejected', { reason: error?.code ?? 'invalid', ua });
     throw new Error('Invalid API key');
   }
 
-  const user = await store.findUserById(userId);
-
+  const user = await resolveApiKeyOwner(key.referenceId);
   if (!user) {
-    logger.warn('API key rejected', { reason: 'user_not_found', keyHashPrefix, ua });
+    logger.warn('API key rejected', { reason: 'user_not_found', ua });
     throw new Error('Invalid API key');
   }
 
   recordRequestAuthContext(req, { kind: 'api_key' });
+  return user;
+}
 
-  return {
-    id: user.id,
-    email: user.email ?? null,
-    name: user.name,
-  };
+async function resolveApiKeyOwner(userId: string): Promise<AuthenticatedUser | null> {
+  const database = (await import('../lib/drizzle/drizzle')).default;
+  const { eq } = await import('drizzle-orm/sql');
+  const { users } = await import('../schemas/database.schema');
+
+  const [user] = await database
+    .select({ id: users.id, email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
 }
 
 /**
@@ -180,31 +162,4 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
   }
 
   return authenticateApiKey(req, apiKey);
-};
-
-const databaseApiKeyAuthenticationStore: ApiKeyAuthenticationStore = {
-  async findCredentialByHash(hash) {
-    const database = (await import('../lib/drizzle/drizzle')).default;
-    const [row] = await database
-      .select({
-        id: apikeys.id,
-        referenceId: apikeys.referenceId,
-        userId: apikeys.userId,
-        enabled: apikeys.enabled,
-        expiresAt: apikeys.expiresAt,
-      })
-      .from(apikeys)
-      .where(eq(apikeys.key, hash))
-      .limit(1);
-    return row ?? null;
-  },
-  async findUserById(userId) {
-    const database = (await import('../lib/drizzle/drizzle')).default;
-    const [user] = await database
-      .select({ id: users.id, email: users.email, name: users.name })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
-  },
 };

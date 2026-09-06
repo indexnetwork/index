@@ -195,14 +195,15 @@ export const oauthConsents = pgTable('oauth_consent', {
 }));
 
 /**
- * API keys for external agent authentication (Better Auth apiKey plugin).
- * Keys are hashed before storage; the raw key is only returned on creation.
+ * API keys, owned and managed entirely by the Better Auth `apiKey` plugin.
+ * Keys are hashed before storage; the raw secret is only returned on creation.
+ * `reference_id` is the plugin's owner pointer — the only column that names the
+ * user, which is why the foreign key hangs off it.
  */
 export const apikeys = pgTable('apikey', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   key: text('key').notNull(),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
-  referenceId: text('reference_id'),
+  referenceId: text('reference_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   configId: text('config_id').default('default'),
   name: text('name'),
   prefix: text('prefix'),

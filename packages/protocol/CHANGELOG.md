@@ -20,6 +20,26 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 52.0.0 - 2026-09-06
+
+### Removed
+
+- **BREAKING — the MCP capability policy is gone.** `mcp.authorization-policy.ts`
+  is deleted along with the `CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS`,
+  `McpCapabilityPolicyOptions`, `McpAuthorizationObserver` and
+  `McpAuthorizationDenialEvent` exports. `createMcpServer` now takes three
+  arguments — `(deps, authResolver, scopedDepsFactory)` — and every
+  authenticated caller sees and can call every registered tool. A credential
+  names a user, so ownership and membership checks in the handlers are the only
+  remaining gate.
+- **BREAKING — agent CRUD is not an MCP tool.** `register_agent`, `list_agents`,
+  `update_agent` and `delete_agent` are deleted. Agents are created, updated and
+  deleted from the owner's own signed-in session over the host's REST surface.
+  `read_own_agent` stays, unchanged, as a plain authenticated tool.
+- The owner-session gate inside `accept_opportunity` and `reject_opportunity` is
+  removed. A verdict passed through a key is the owner passing it, and the write
+  was always scoped to `context.userId`.
+
 ## 51.0.0 - 2026-09-06
 
 ### Removed

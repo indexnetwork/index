@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
-import { apiClient } from "@/lib/api";
+import { apiKeysService } from "@/services/api-keys";
 import AuthForm from "@/components/AuthForm";
 import { buildCliApiKeyCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequest, type CliAuthRequest } from "@/lib/cli-auth";
 
@@ -52,10 +52,7 @@ function CliAuthPage() {
         }
 
         // Mint a user API key through the one shared mint path.
-        const credential = await apiClient.post<{ key: string; id: string }>(
-          "/auth/keys",
-          { name: "CLI" },
-        );
+        const credential = await apiKeysService.create("CLI");
         if (!credential.key || !credential.id) {
           setStatus("error");
           setError("Failed to obtain credentials. Please try signing in again.");

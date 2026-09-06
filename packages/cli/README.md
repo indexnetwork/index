@@ -44,7 +44,7 @@ index login                     # Browser-based auth
 index login --api-url <url>     # Custom server URL
 ```
 
-Credentials are stored in `~/.index/credentials.json`. Current browser login explicitly requests protocol v2, binds the loopback callback with a one-time state, and stores both the API-key secret and its exact revocation ID. It sends the key with `x-api-key`. Re-login stores the successful replacement first, then calls the constrained CLI revocation endpoint with the replacement as caller plus the captured previous raw secret and exact row ID; cleanup failures leave the new login usable but print a warning directing the user to remove the prior key in web settings.
+Credentials are stored in `~/.index/credentials.json`. Current browser login explicitly requests protocol v2, binds the loopback callback with a one-time state, and stores both the API-key secret and its row ID. It sends the key with `x-api-key`. Deleting a key needs the owner's own browser session, so a re-login stores the replacement and warns that the previous key is still active until it is removed in Index web settings.
 
 **Rolling deploy order:** v2 clients require the v2 web bridge and intentionally reject callbacks from older web deployments that cannot return the bound state. On dev, this CLI is an RC: wait for both the API and web deployments to succeed before testing v2 login. Do not relax state validation to make a new CLI work against old web.
 
@@ -52,7 +52,7 @@ The v1 login contract (`session_token` callback, Bearer API-key fallback, `--tok
 
 ### `index logout`
 
-Revoke the exact stored API key through `POST /api/auth/keys/revoke-self`, proving both the active `x-api-key` caller and strict `{keyId,targetKey}` self target, then clear local credentials. If server revocation succeeds but local cleanup fails, logout exits nonzero and asks you to remove the local file manually. Credentials stored without a revocation ID are retained with a non-success warning that directs you to remove the old key in web settings first rather than implying another login revokes it.
+Clear the local credential file. The key itself stays live: deleting it requires the owner's own browser session, so logout tells you to remove it in Index web settings. If local cleanup fails, logout exits nonzero and asks you to remove the file manually.
 
 ```bash
 index logout
