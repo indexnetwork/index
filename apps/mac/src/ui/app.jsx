@@ -101,8 +101,9 @@ function App() {
   // True until the user creates their first signal, the hub opens empty.
   const [freshUser, setFreshUser] = useState(false);
   const [profile, setProfile] = useState({});
-  // Public-research enrichment result, fetched on the "setting up" screen and
-  // handed to the first-run review so it opens pre-filled without a second load.
+  // First run, in order: the name confirmed on the card, then what the
+  // public-research lookup made of it. Both feed the getting-started review.
+  const [confirmedName, setConfirmedName] = useState("");
   const [enriched, setEnriched] = useState(null);
   // Live snapshot state; null until loadSnapshot() resolves (or in demo mode).
   const [snapshot, setSnapshot] = useState(null);
@@ -274,6 +275,7 @@ function App() {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
+        setConfirmedName(""); setEnriched(null);
         Object.assign(window.INDEX_DATA, { NETWORKS: [] });
         // Drop the whole deep-link pipeline, not just what is on screen: a
         // resolve still in flight would otherwise render a counterpart's card
@@ -314,18 +316,27 @@ function App() {
         // here — the building effect cleanup would discard the update otherwise.
         refreshNetworks();
       }
-      // First run only: run the public-research enrichment behind this same
-      // "setting up" loader so the review opens filled and the animation shows
-      // once. Gated on needsProfile so returning users are never re-enriched.
-      if (needsProfile && nativeAuthed() && window.IndexApp && window.IndexApp.triggerEnrichment) {
-        const res = await window.IndexApp.triggerEnrichment().catch(() => null);
-        if (cancelled) return;
-        setEnriched(res);
-      }
-      setScreen(needsProfile ? "onboarding" : "intents");
+      setScreen(needsProfile ? "name" : "intents");
     })();
     return () => { cancelled = true; };
   }, [screen, refreshNetworks]);
+
+  // First run, behind the same loader window: the public-research lookup, run on
+  // the name just confirmed rather than on whatever the handshake happened to
+  // supply. Nothing found is not a failure, the review just opens empty.
+  useEffect(() => {
+    if (screen !== "looking-up") return;
+    let cancelled = false;
+    (async () => {
+      const res = (nativeAuthed() && window.IndexApp && window.IndexApp.triggerEnrichment)
+        ? await window.IndexApp.triggerEnrichment({ name: confirmedName }).catch(() => null)
+        : null;
+      if (cancelled) return;
+      setEnriched(res);
+      setScreen("onboarding");
+    })();
+    return () => { cancelled = true; };
+  }, [screen, confirmedName]);
 
   // Fold a loaded snapshot into React state and mirror ME/NETWORKS/INTENTS onto
   // window.INDEX_DATA so the side screens (settings/networks) that still read it
@@ -350,6 +361,7 @@ function App() {
       return;
     }
     setSnapshot(null); setMe(null); setNetworks(null);
+    setConfirmedName(""); setEnriched(null);
     Object.assign(window.INDEX_DATA, { NETWORKS: [] });
     setScreen("login");
   };
@@ -487,13 +499,25 @@ function App() {
                                        onNew={goNewIntent}
                                        onSignOut={signOut}/>}
         {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
-        {/* First run: profile review backed by enrich prefill; PATCH profile +
-            confirm-profile REST; first signal then POST onboarding/complete. */}
+        {/* First run, in three screens: confirm the name, look the person up
+            behind the loader, then review what came back. The review is what
+            PATCHes profile + confirm-profile; the first signal after it POSTs
+            onboarding/complete. */}
+        {screen === "name"        && <AskName
+                                       initialName={(me && me.name) || ""}
+                                       onSubmit={(name) => { setConfirmedName(name); setScreen("looking-up"); }}
+                                       onSignOut={signOut}/>}
+        {screen === "looking-up"  && <BuildingProfile lines={[
+                                       "looking you up…",
+                                       "reading what's already public…",
+                                       "almost there.",
+                                     ]}/>}
         {screen === "onboarding"  && <Settings
                                        initialTab="profile"
                                        profileOnly
-                                       enrich
+                                       firstRun
                                        enriched={enriched}
+                                       name={confirmedName}
                                        onClose={signOut}
                                        onDone={() => { setFreshUser((INTENTS || []).length === 0); setScreen("new-intent"); }}/>}
         {/* A deep-linked card floats over whatever screen is showing: the link

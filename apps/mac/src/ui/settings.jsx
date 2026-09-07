@@ -693,13 +693,6 @@ function AccessPane() {
 //            it back to sign-in. The titlebar gadget uses this too.
 // onDone  , the single committing path. Defaults to onClose so the ordinary
 //            settings pane behaves exactly as before.
-// A public-research enrichment result is "usable" for the review when it filled
-// in a bio or discovered at least one social — otherwise we fall through to the
-// context/preview drafts below.
-function usableEnriched(res) {
-  const p = res && res.profile;
-  return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
-}
 
 /** Always one website row to type into, even before there is a website. */
 function websiteRows(sites) {
@@ -716,7 +709,34 @@ function fillBlankHandles(current, found) {
   return merged;
 }
 
-function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false, enrich = false, enriched = null }) {
+// The baseline the form opens on, and what "reset" restores to: the account
+// record, with the public-research lookup filling in every blank it found, and
+// the name the person confirmed on the way in winning over both. Ordinary
+// settings passes neither a lookup nor a name, so it is just the account record.
+// Socials are normalized on the way in so the fields hold a bare username: the
+// API returns {label, value} with value as a whole URL.
+function assembleProfile(ME, enriched, name) {
+  const stored = splitProfileSocials(ME.socials);
+  const found = splitProfileSocials(enriched && enriched.profile ? enriched.profile.socials : []);
+  const p = (enriched && enriched.profile) || {};
+  return {
+    name: name || ME.name || "",
+    email: ME.email || "",
+    location: ME.location || p.location || "",
+    intro: ME.intro || p.intro || "",
+    // Keyed by platform, not a list: every field is always on screen so it can
+    // be emptied and filled again. `websites` always keeps one row to type in.
+    socials: fillBlankHandles(stored.handles, found.handles),
+    websites: websiteRows(found.websites.length ? found.websites : stored.websites),
+    photo: ME.photo || null,
+  };
+}
+
+// firstRun , this is the getting-started pass rather than the settings pane:
+//            saving also confirms onboarding.
+// enriched , the public-research lookup the caller already ran, or null.
+// name     , the name confirmed on the card before the lookup.
+function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false, firstRun = false, enriched = null, name = "" }) {
   const env = (typeof useIndexEnv === "function") ? useIndexEnv() : { live: false };
   // The signed-in user, mirrored onto INDEX_DATA.ME once the snapshot loads.
   // Live-only: empty when nothing has loaded yet, never a demo identity.
@@ -724,19 +744,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   const live = !!(env.live && window.IndexApp && window.IndexApp.isAuthed());
   const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
-  // What the agent assembled, the baseline "reset" restores to.
-  // Socials are normalized on the way in so the fields hold a bare username:
-  // the API returns {label, value} with value as a whole URL.
-  const stored = splitProfileSocials(ME.socials);
-  const assembled = useRef({
-    name: ME.name || "", email: ME.email || "", location: ME.location || "",
-    intro: ME.intro || "",
-    // Keyed by platform, not a list: every field is always on screen so it can
-    // be emptied and filled again. `websites` always keeps one row to type in.
-    socials: stored.handles,
-    websites: websiteRows(stored.websites),
-    photo: ME.photo || null,
-  });
+  const assembled = useRef(assembleProfile(ME, enriched, name));
   const [form, setForm] = useState(assembled.current);
   // In-session edits (ME.notify) win over the durable native store; the
   // defaults only apply on a truly fresh install. `messages` predates neither:
@@ -746,41 +754,6 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
     ...((window.INDEX_NATIVE && window.INDEX_NATIVE.notifyPrefs) || {}),
     ...(ME.notify || {}),
   });
-
-  // Enrichment-backed getting started: adopt POST /enrichment/enrich prefill when
-  // the parent already ran it on the setting-up screen.
-  const [drafting, setDrafting] = useState(enrich && live && !usableEnriched(enriched));
-  useEffect(() => {
-    if (!enrich || !live) { setDrafting(false); return; }
-    let cancelled = false;
-    const adopt = (next) => {
-      assembled.current = { ...assembled.current, ...next };
-      setForm(f => ({ ...f, ...next }));
-    };
-    (async () => {
-      try {
-        const res = enriched;
-        const p = res && res.profile;
-        if (p && (String(p.intro || "").trim() || (p.socials && p.socials.length))) {
-          const found = splitProfileSocials(p.socials);
-          const intro = p.intro || "";
-          const location = p.location || "";
-          adopt({
-            name: assembled.current.name || p.name || "",
-            location: assembled.current.location || location,
-            intro: assembled.current.intro || intro,
-            socials: fillBlankHandles(assembled.current.socials, found.handles),
-            websites: websiteRows(
-              found.websites.length ? found.websites : assembled.current.websites
-            ),
-          });
-        }
-      } catch (e) { /* keep assembled /auth/me values */ }
-      if (!cancelled) setDrafting(false);
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggle = (id) => setNotify(n => ({ ...n, [id]: !n[id] }));
@@ -829,7 +802,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         socials,
         ...(avatarKey ? { avatar: avatarKey } : {}),
       }).catch(() => {});
-      if (enrich && window.IndexApp && window.IndexApp.confirmOnboardingProfile) {
+      if (firstRun && window.IndexApp && window.IndexApp.confirmOnboardingProfile) {
         await window.IndexApp.confirmOnboardingProfile().catch(() => {});
       }
     }
@@ -865,9 +838,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             <div style={{ padding:"14px 24px", borderBottom:"2px solid #000" }}>
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-              }}>{drafting
-                ? "pulling together your profile…"
-                : "here's what i pulled together. make sure it's right."}</div>
+              }}>here's what i pulled together. make sure it's right.</div>
             </div>
           ) : (
             <div style={{
