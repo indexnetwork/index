@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/notary-submit.sh"
 
 APP_PATH="${APP_PATH:-dist/Index.app}"
 DMG_PATH="${DMG_PATH:-dist/Index.dmg}"
-VOLUME_NAME="${VOLUME_NAME:-Index}"
+VOLUME_NAME="${VOLUME_NAME:-Install Index}"
 SKIP_NOTARY="${SKIP_NOTARY:-0}"
 
 if [ "$SKIP_NOTARY" != "1" ]; then
