@@ -2,8 +2,9 @@
 
 ## Local three-pane TUI
 
-The local lab runs real `@indexnetwork/agent` instances against an in-memory
-negotiation. No Index API, database, frontend, or Index credentials are used.
+The local lab includes **12 selectable users** and runs real `@indexnetwork/agent`
+instances against in-memory negotiations. No Index API, database, frontend, or
+Index credentials are used.
 It shares the REST runner's prompts and host coordination in
 `agent-negotiation.session.ts`; `Agent.run()` still owns the model/tool loop,
 question suspension, and private conversation history.
@@ -17,6 +18,7 @@ Use a terminal at least 100 columns wide (120+ recommended):
 
 ```text
 ┌─ H2A · Alice ──────┬─ A2A · negotiation ──┬─ H2A · Bob ─────────┐
+│ Alice ▾ · 1/12    │     Alice ↔ Bob     │ Bob ▾ · 2/12       │
 │ Intent + mandate  │                     │ Intent + mandate   │
 │ Private questions │ Shared agent turns  │ Private questions  │
 │ Your answers      │                     │ Your answers       │
@@ -25,6 +27,18 @@ Use a terminal at least 100 columns wide (120+ recommended):
 └───────────────────┴─────────────────────┴────────────────────┘
 ```
 
+- Click the **user name above either side**, or focus that side and press
+  **Ctrl+U**, to open its user picker. Click a user to switch, or use **↑ / ↓**
+  and **Enter**. **Esc** cancels. The opposite side's user is excluded so a user
+  cannot negotiate with themselves. Both sides can select from the same roster.
+- The first two users start automatically. Each new pair starts when selected;
+  the center pane shows only that pair's shared turns. Returning to a pair,
+  including with left/right positions reversed, restores its existing session.
+  Questions, private conversations, and drafts stay with their **pair and user**.
+  Personal answers are not copied into other negotiations.
+- Previously visited pairs continue until they need a human answer, settle, or
+  stop. The status bar counts other pairs waiting for answers. Unvisited pairs
+  make no model calls; the lab does not start all 66 possible pairs at once.
 - Click a side pane to act as that user, or use **Tab / Shift+Tab** to change
   focus. The focused pane has a blue border; a pending question is highlighted.
 - The reply picker shows a **highlighted row with a `›` marker**. Click a
@@ -46,16 +60,30 @@ Use a terminal at least 100 columns wide (120+ recommended):
   transcript and resume the same agent; answering does not itself create a
   shared A2A turn.
 - **Ctrl+J** adds a newline. Mouse wheel or **PageUp / PageDown** scrolls the
-  selected transcript. The center pane cannot send messages.
+  selected transcript, or the open user picker. The center pane cannot send messages.
 - Agents take turns autonomously. Settlement or failure stays on screen for
-  inspection. **Ctrl+C** cancels outstanding work, restores the terminal, and
-  prints the path of a private Markdown transcript containing all three panes'
-  conversations. It includes both users' private messages; do not share it as
+  inspection. **Ctrl+C** cancels outstanding work for **all visited pairs**,
+  restores the terminal, and prints the path of a private Markdown transcript
+  grouped by pair. It includes all visited users' private messages; do not share it as
   if it were only the public negotiation.
 
-Copy and edit the scenario JSON to change both names, intents, and private
-instructions. Rerun the command for a fresh negotiation; there is no live
-scenario editor or restart recovery. You answer the fictional users' questions
+The bundled roster is Alice, Bob, Carla, Diego, Emma, Farah, Gabriel, Hana, Ivan,
+Jules, Kai, and Leila, with different roles, goals, and collaboration limits.
+Copy and edit the scenario JSON to change users, intents, and private instructions:
+
+```json
+{
+  "users": [
+    { "id": "alice", "name": "Alice", "intent": "...", "instructions": "..." },
+    { "id": "bob", "name": "Bob", "intent": "...", "instructions": "..." }
+  ]
+}
+```
+
+Each user needs a unique, nonempty `id`, plus a name, intent, and instructions.
+At least two users are required. This replaces the old `left`/`right` scenario
+format. Rerun the command for a fresh lab; there is no live profile editor or
+restart recovery. You answer the fictional users' questions
 in the TUI—no canned human replies are supplied. The model may agree, decline,
 or ask questions; the host does not choose that outcome. Model calls incur
 normal OpenRouter usage. No live commitments are created by the local lab.
@@ -169,8 +197,9 @@ resume discovery, or connect principal questions to DMs.
 
 ```bash
 bun run agent:negotiate --help
+bun run agent:tui --help
 bunx tsc --noEmit --strict --skipLibCheck --target ES2022 \
   --module Preserve --moduleResolution bundler --types bun,node \
-  scripts/agent-negotiation.ts
+  scripts/agent-negotiation.ts scripts/agent-negotiation.tui.ts
 cd packages/agent && bun run check
 ```

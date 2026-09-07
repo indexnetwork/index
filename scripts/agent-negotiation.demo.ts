@@ -3,14 +3,14 @@ import { EventEmitter } from 'node:events';
 import { createSeat, runNegotiation, type Action, type Negotiation, type NegotiationClient, type NegotiationHost, type TurnInput } from './agent-negotiation.session';
 
 export interface DemoPrincipal {
+  id: string;
   name: string;
   intent: string;
   instructions: string;
 }
 
 export interface DemoScenario {
-  left: DemoPrincipal;
-  right: DemoPrincipal;
+  users: DemoPrincipal[];
 }
 
 export interface TranscriptEntry {
@@ -23,32 +23,30 @@ export interface TranscriptEntry {
 
 /**
  * Validate a user-editable local scenario before starting model work.
- * @param value - Parsed JSON, with one principal per side.
- * @returns The two principals' names, intents, and private instructions.
- * @throws When either principal is missing a nonempty field.
+ * @param value - Parsed JSON containing the selectable user roster.
+ * @returns Users with stable IDs, names, intents, and private instructions.
+ * @throws When fewer than two users are supplied, a field is empty, or IDs repeat.
  */
 export function parseScenario(value: unknown): DemoScenario {
-  if (!value || typeof value !== 'object') throw new Error('Scenario must contain left and right principals.');
-  const principals = {} as DemoScenario;
-  for (const side of ['left', 'right'] as const) {
-    const raw = (value as Record<string, unknown>)[side];
-    if (!raw || typeof raw !== 'object') throw new Error(`Scenario.${side} must contain name, intent, and instructions.`);
+  const users = value && typeof value === 'object' ? (value as Record<string, unknown>).users : undefined;
+  if (!Array.isArray(users) || users.length < 2) throw new Error('Scenario.users must contain at least two users.');
+  const ids = new Set<string>();
+  return { users: users.map((raw: unknown, index) => {
+    if (!raw || typeof raw !== 'object') throw new Error(`Scenario.users[${index}] must contain id, name, intent, and instructions.`);
     const principal = {} as DemoPrincipal;
-    for (const field of ['name', 'intent', 'instructions'] as const) {
+    for (const field of ['id', 'name', 'intent', 'instructions'] as const) {
       const text = (raw as Record<string, unknown>)[field];
-      if (typeof text !== 'string' || !text.trim()) throw new Error(`Scenario.${side}.${field} must be a nonempty string.`);
+      if (typeof text !== 'string' || !text.trim()) throw new Error(`Scenario.users[${index}].${field} must be a nonempty string.`);
       principal[field] = text.trim();
     }
-    principals[side] = principal;
-  }
-  return principals;
+    if (ids.has(principal.id)) throw new Error(`Duplicate user ID: ${principal.id}`);
+    ids.add(principal.id);
+    return principal;
+  }) };
 }
-
-const OPPORTUNITY_ID = 'local-negotiation';
 
 /** A disposable host: real personal agents, private Q&A, and an in-memory turn log. */
 export class NegotiationDemo extends EventEmitter {
-  readonly principals: (DemoPrincipal & { id: string })[];
   readonly transcript: TranscriptEntry[] = [];
   phase: 'ready' | 'running' | 'question' | 'settled' | 'error' | 'stopped' = 'ready';
   status = 'Ready';
@@ -56,13 +54,13 @@ export class NegotiationDemo extends EventEmitter {
   private readonly controller = new AbortController();
   private answerReady: ((answer: string | null) => void) | undefined;
   private readonly turns: Negotiation['turns'] = [];
-  private awaitingUserId: string | null = 'user-1';
+  private awaitingUserId: string | null;
   private outcome: string | null = null;
   private settledAt: string | null = null;
 
-  constructor(scenario: DemoScenario) {
+  constructor(readonly principals: readonly [DemoPrincipal, DemoPrincipal], readonly opportunityId: string) {
     super();
-    this.principals = [{ ...scenario.left, id: 'user-1' }, { ...scenario.right, id: 'user-2' }];
+    this.awaitingUserId = principals[0].id;
   }
 
   private update(status: string): void {
@@ -78,7 +76,7 @@ export class NegotiationDemo extends EventEmitter {
   private read(ownerId: string): Negotiation {
     const other = this.principals.find((principal) => principal.id !== ownerId)!;
     return structuredClone({
-      opportunityId: OPPORTUNITY_ID,
+      opportunityId: this.opportunityId,
       intentId: `intent-${ownerId}`,
       awaitingUserId: this.awaitingUserId,
       outcome: this.outcome,
@@ -148,8 +146,8 @@ export class NegotiationDemo extends EventEmitter {
         intent: { id: `intent-${principal.id}`, payload: principal.intent },
         instructions: principal.instructions,
         client: this.client(principal.id),
-      }, OPPORTUNITY_ID, host));
-      const record = await runNegotiation(seats, OPPORTUNITY_ID, host, this.controller.signal);
+      }, this.opportunityId, host));
+      const record = await runNegotiation(seats, this.opportunityId, host, this.controller.signal);
       if (this.controller.signal.aborted) return;
       this.phase = record.settledAt ? 'settled' : 'stopped';
       this.update(`${record.outcome ?? 'Stopped without settlement'} · ${record.turnCount} A2A turns`);
@@ -200,6 +198,69 @@ export class NegotiationDemo extends EventEmitter {
         : entry.kind === 'answer' ? `H2A · ${name} → their agent` : `A2H · ${name}'s agent → ${name} · ${entry.kind}`;
       return `## ${index + 1}. ${label}\n\n${entry.text}`;
     });
-    return `# Local negotiation transcript\n\nReal agents, simulated negotiation. Includes both principals' private conversations. No live Index records changed.\n\n${entries.join('\n\n')}\n\n## Status\n\n${this.status}\n`;
+    return `# ${this.principals.map(({ name }) => name).join(' ↔ ')}\n\n${entries.join('\n\n')}\n\n## Status\n\n${this.status}\n`;
+  }
+}
+
+/** A selectable user roster with one independent, retained negotiation per pair. */
+export class NegotiationLab extends EventEmitter {
+  readonly users: DemoPrincipal[];
+  readonly negotiations = new Map<string, NegotiationDemo>();
+  private selection: [DemoPrincipal, DemoPrincipal];
+  private readonly runs: Promise<void>[] = [];
+
+  constructor(scenario: DemoScenario) {
+    super();
+    this.users = scenario.users;
+    this.selection = [this.users[0], this.users[1]];
+  }
+
+  /** @returns The users displayed on the left and right, in that order. */
+  get selectedUsers(): readonly [DemoPrincipal, DemoPrincipal] { return this.selection; }
+
+  /** @returns The selected pair's session, creating it without model work on first access. */
+  get active(): NegotiationDemo {
+    const id = `local:${this.selection.map(({ id }) => id).sort().map(encodeURIComponent).join(':')}`;
+    let demo = this.negotiations.get(id);
+    if (!demo) {
+      demo = new NegotiationDemo([...this.selection], id);
+      demo.on('change', () => this.emit('change'));
+      this.negotiations.set(id, demo);
+    }
+    return demo;
+  }
+
+  /** Start the selected pair once; returning to a pair keeps its existing agents. */
+  start(): void {
+    const demo = this.active;
+    if (demo.phase === 'ready') this.runs.push(demo.run());
+  }
+
+  /**
+   * Change one side and run that pair if it has not been visited yet.
+   * @param side - The left or right user selector.
+   * @param userId - A user in this scenario, distinct from the opposite side.
+   * @throws When the user is unknown or already selected on the opposite side.
+   */
+  selectUser(side: 'left' | 'right', userId: string): void {
+    const user = this.users.find(({ id }) => id === userId);
+    if (!user) throw new Error(`Unknown user: ${userId}`);
+    const index = side === 'left' ? 0 : 1;
+    if (this.selection[1 - index].id === userId) throw new Error('Select two different users.');
+    this.selection[index] = user;
+    this.emit('change');
+    this.start();
+  }
+
+  /** Cancel every visited pair, release pending questions, and await outstanding model work. */
+  async stop(): Promise<void> {
+    for (const demo of this.negotiations.values()) demo.stop();
+    await Promise.all(this.runs);
+  }
+
+  /** @returns Every visited pair's shared turns and private conversations, grouped by pair. */
+  markdown(): string {
+    return '# Local negotiation lab transcript\n\nReal agents, simulated negotiations. Includes all visited pairs’ private conversations. No live Index records changed.\n\n'
+      + [...this.negotiations.values()].map((demo) => demo.markdown()).join('\n---\n\n');
   }
 }

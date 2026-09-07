@@ -1,12 +1,76 @@
 {
-  "left": {
-    "name": "Alice",
-    "intent": "Find a product designer to build an accessibility-focused prototype.",
-    "instructions": "Explore whether the collaboration serves my stated intent. You may discuss possible terms, but do not commit me to paid or unpaid work, delivery dates, or exclusivity without my authorization. Ask me when a missing personal fact or decision matters."
-  },
-  "right": {
-    "name": "Bob",
-    "intent": "Collaborate with an engineer on an accessibility-focused product prototype.",
-    "instructions": "Explore whether the collaboration serves my stated intent. You may discuss possible terms, but do not commit me to paid or unpaid work, delivery dates, or exclusivity without my authorization. Ask me when a missing personal fact or decision matters."
-  }
+  "users": [
+    {
+      "id": "alice",
+      "name": "Alice",
+      "intent": "Find a product designer to build an accessibility-focused prototype.",
+      "instructions": "I am a frontend engineer exploring accessible collaboration tools. Explore whether the collaboration serves my stated intent. You may discuss possible terms, but do not commit me to paid or unpaid work, delivery dates, or exclusivity without my authorization. Ask me when a missing personal fact or decision matters."
+    },
+    {
+      "id": "bob",
+      "name": "Bob",
+      "intent": "Collaborate with an engineer on an accessibility-focused product prototype.",
+      "instructions": "I am a product designer interested in accessible interfaces. Explore whether the collaboration serves my stated intent. You may discuss possible terms, but do not commit me to paid or unpaid work, delivery dates, or exclusivity without my authorization. Ask me when a missing personal fact or decision matters."
+    },
+    {
+      "id": "carla",
+      "name": "Carla",
+      "intent": "Find a designer or engineer who needs user research for an accessibility prototype.",
+      "instructions": "I am a UX researcher who conducts interviews and usability studies. I am looking for paid project work. Explore a relevant research scope, but ask me before agreeing to compensation, participant recruitment, or a timeline. Do not accept unpaid work."
+    },
+    {
+      "id": "diego",
+      "name": "Diego",
+      "intent": "Find a designer to prototype an accessible mobile journaling app.",
+      "instructions": "I am a mobile engineer exploring this as a side project, with no hiring budget. You may discuss an unpaid collaboration openly, but ask me before committing my time, delivery dates, or ownership terms. Do not promise payment."
+    },
+    {
+      "id": "emma",
+      "name": "Emma",
+      "intent": "Find a prototype team that needs a screen-reader and keyboard accessibility review.",
+      "instructions": "I am an accessibility consultant offering paid reviews. Clarify the product and review scope with the other agent. Ask me before quoting a fee or committing to availability, deliverables, or a deadline. Do not offer free consulting."
+    },
+    {
+      "id": "farah",
+      "name": "Farah",
+      "intent": "Find an engineer or designer to explore accessible onboarding for my nonprofit's volunteer portal.",
+      "instructions": "I coordinate volunteers at a small nonprofit and can explain our onboarding needs. I cannot authorize spending or provide access to volunteer data. Ask me about scope and timing before committing to a collaboration."
+    },
+    {
+      "id": "gabriel",
+      "name": "Gabriel",
+      "intent": "Find a designer or researcher to explore privacy-conscious collaboration software.",
+      "instructions": "I am a backend engineer interested in data minimization. Discuss a small exploratory prototype using synthetic data only. Ask me before committing to work, dates, compensation, or ownership. Do not agree to use real personal data."
+    },
+    {
+      "id": "hana",
+      "name": "Hana",
+      "intent": "Find a product team that needs plain-language content for an accessible onboarding flow.",
+      "instructions": "I am a content designer looking for a paid engagement. Explore whether there is a concrete writing and content-testing scope. Ask me before agreeing to fees, workload, or dates. Do not substitute a generic networking call for a project."
+    },
+    {
+      "id": "ivan",
+      "name": "Ivan",
+      "intent": "Find a designer to explore an accessible dashboard for a community energy project.",
+      "instructions": "I am a data analyst and can work with public, aggregated energy data. I am exploring a volunteer project with no compensation budget. Ask me before committing my time or agreeing on deliverables, licensing, or deadlines."
+    },
+    {
+      "id": "jules",
+      "name": "Jules",
+      "intent": "Find an engineer or researcher to build a small accessible interaction prototype for my portfolio.",
+      "instructions": "I am an interaction design student open to a voluntary collaboration with shared portfolio credit. Discuss ideas, but ask me before committing to a scope, time budget, deadline, or ownership arrangement. Do not claim professional consulting experience."
+    },
+    {
+      "id": "kai",
+      "name": "Kai",
+      "intent": "Find a prototype team that needs help testing keyboard navigation and documenting accessibility defects.",
+      "instructions": "I am a QA engineer looking for paid accessibility testing work. Clarify the platform and scope with the other agent. Ask me before agreeing to a fee, workload, or delivery date. Do not promise formal accessibility certification."
+    },
+    {
+      "id": "leila",
+      "name": "Leila",
+      "intent": "Find a designer, engineer, or researcher to explore a multilingual, accessible community resource directory.",
+      "instructions": "I organize a community resource directory and can describe its users and content needs. Funding and project dates are undecided. Explore a useful collaboration, but ask me before committing money, volunteer time, data access, or delivery dates."
+    }
+  ]
 }
