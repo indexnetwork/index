@@ -36,9 +36,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> Generating DMG background (Amiga palette)"
-swiftc -O -o "$WORK/dmg-background" "$SCRIPT_DIR/dmg-background.swift"
-"$WORK/dmg-background" "$WORK"
+BG="$SCRIPT_DIR/dmg-background.png"
+BG2X="$SCRIPT_DIR/dmg-background@2x.png"
+[ -f "$BG" ] || { echo "missing $BG (540x380)" >&2; exit 1; }
+[ -f "$BG2X" ] || { echo "missing $BG2X (1080x760)" >&2; exit 1; }
 
 APP_BASENAME="$(basename "$APP_PATH")"
 SIZE_KB=$(( $(du -sk "$APP_PATH" | awk '{print $1}') + 20480 ))
@@ -89,8 +90,8 @@ echo "==> Populating DMG"
 ditto "$APP_PATH" "$MOUNT/$APP_BASENAME"
 ln -s /Applications "$MOUNT/Applications"
 mkdir -p "$MOUNT/.background"
-cp "$WORK/dmg-background.png" "$MOUNT/.background/dmg-background.png"
-cp "$WORK/dmg-background@2x.png" "$MOUNT/.background/dmg-background@2x.png"
+cp "$BG" "$MOUNT/.background/dmg-background.png"
+cp "$BG2X" "$MOUNT/.background/dmg-background@2x.png"
 chflags hidden "$MOUNT/.background"
 
 echo "==> Styling Finder window"
