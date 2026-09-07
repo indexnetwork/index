@@ -9,7 +9,7 @@ The host initializes one long-lived `NegotiationAgent` per user/intent from
 `@indexnetwork/agent` and delivers simulated match and turn-update events.
 The library owns turn scheduling, prompts, tools, question resumption, and private
 conversation history. There is **one H2A conversation per user/intent** and
-**one A2A conversation per match**. The TUI supplies records and human answers
+**one A2A conversation per match**. The TUI supplies records and human input
 and observes the selected users and pair; it does not run or schedule agents.
 
 ```bash
@@ -23,10 +23,10 @@ Use a terminal at least 100 columns wide (120+ recommended):
 ┌─ H2A · Alice ──────┬─ A2A · negotiation ──┬─ H2A · Bob ─────────┐
 │ Alice ▾ · 1/12    │     Alice ↔ Bob     │ Bob ▾ · 2/12       │
 │ Intent + mandate  │                     │ Intent + mandate   │
-│ Private questions │ Shared agent turns  │ Private questions  │
-│ Your answers      │                     │ Your answers       │
+│ Private chat      │ Shared agent turns  │ Private chat       │
+│ Your messages     │                     │ Your messages      │
 ├───────────────────┤     Read-only       ├────────────────────┤
-│ Reply as Alice…   │                     │ Reply as Bob…      │
+│ Message as Alice… │                     │ Message as Bob…    │
 └───────────────────┴─────────────────────┴────────────────────┘
 ```
 
@@ -47,6 +47,9 @@ Use a terminal at least 100 columns wide (120+ recommended):
 - H2A shows questions and meaningful, consolidated outcomes. Routine A2A
   progress and per-turn model summaries stay out of the human conversation.
   The PA reviews relevant background events in short batches and can stay silent.
+  You can also message your PA at any time when no question is displayed, for
+  example “Any active negotiations?” or a new preference. Direct messages get
+  a reply ahead of background updates, using that user's match state and H2A history.
 - Each principal has **one active question**, labeled **For this intent** for
   shared facts or **About [counterparty]** for a match-specific decision. If a
   related request arrives while you answer, it can join the existing question
@@ -72,9 +75,10 @@ Use a terminal at least 100 columns wide (120+ recommended):
   neutral self-description categories when personal facts are missing. A choice
   becomes a fact only after the principal confirms it; the TUI does not invent
   answers. **Custom reply…** remains available for every question.
-- **Enter** submits to that user's displayed question ID, even if it concerns
-  a different match from the center pane. Empty and duplicate replies are
-  rejected; unsent drafts stay with their user until you send an answer.
+- **Enter** answers that user's displayed question ID, even if it concerns
+  a different match from the center pane. **With no active question, Enter sends
+  a message to that user's personal agent.** Empty input and stale question
+  answers are rejected; unsent drafts stay with their user until sent.
 - Both selected options and custom replies are recorded in the private
   transcript and resume the same agent; answering does not itself create a
   shared A2A turn.
@@ -143,10 +147,11 @@ negotiation or a host decision tree—tell agents to:
   an approval, and consider existing commitments before agreeing to more work.
 
 Parallel decisions use the same private context. The runtime serializes each
-principal's outgoing submissions and reconsiders a decision when a human answer
+principal's outgoing submissions and reconsiders a decision when a human message, answer,
 or accepted commitment changed that context before submission.
 
-Human participation is limited to answering an agent's principal question.
+The TUI accepts both direct principal messages and answers to agent questions.
+The REST runner prompts only for answers during its single negotiation.
 The host does not write offers, choose an outcome, or decide when a substantive
 question is needed. Prompt adherence is model behavior, not a permissions
 sandbox: only use principals and credentials whose autonomous participation you

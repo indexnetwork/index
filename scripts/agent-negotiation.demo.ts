@@ -255,8 +255,8 @@ export class NegotiationLab extends EventEmitter {
   markdown(): string {
     const human = this.users.map((user) => {
       const entries = this.agents.get(user.id)!.conversation.map((entry, index) =>
-        '## ' + (index + 1) + '. ' + (entry.kind === 'answer' ? user.name : "Your agent") + ' · ' + entry.kind
-        + ' · ' + (entry.scope === 'intent' ? 'This intent' : entry.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ')) + '\n\n' + entry.text
+        '## ' + (index + 1) + '. ' + (entry.kind === 'answer' || entry.kind === 'user' ? user.name : "Your agent") + ' · ' + entry.kind
+        + (entry.scope === 'intent' ? ' · This intent' : entry.matches.length ? ' · ' + entry.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ') : '') + '\n\n' + entry.text
         + (entry.options ? '\n\n' + entry.options.map((option) => '- ' + option).join('\n') : ''),
       );
       return '# H2A · ' + user.name + '\n\nIntent: ' + user.intent + '\n\n' + entries.join('\n\n');

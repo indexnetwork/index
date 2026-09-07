@@ -201,9 +201,10 @@ void agent.receive({
 void agent.receive({ kind: "negotiation.updated", opportunityId });
 
 // Show agent.conversation and agent.pending when host.conversation() fires.
-// Reply to the displayed question ID, regardless of the selected A2A match.
+// Answer the displayed question; otherwise send a message to the personal agent.
 const question = agent.pending;
-if (question) agent.answer(question.id, humanAnswer);
+if (question) agent.answer(question.id, humanInput);
+else agent.message(humanInput);
 
 // When the host shuts down:
 await agent.stop();
@@ -215,7 +216,10 @@ retries, tool steps, completion, and errors. Its `conversation()` notification
 tells the host to read `agent.conversation`, `agent.pending`, and
 `agent.queuedQuestions`. Conversation entries and questions carry a `matches`
 array; questions and answers also declare `intent` or `match` scope. Transport
-and UI code relay events and answers; they never choose whose agent runs next.
+and UI code relay events and principal input; they never choose whose agent runs next.
+Direct principal messages have kind `user`; the agent's replies have kind
+`message`. Their `matches` arrays are empty because they belong to the H2A
+conversation rather than a displayed match question.
 An error with a null opportunity ID means the principal communication loop
 failed, and the runtime shuts down that principal/intent.
 
@@ -223,7 +227,7 @@ All matches share one `Agent` instance, H2A history, and accepted commitments.
 Each A2A match keeps its own task, record, and temporary model/tool transcript.
 Duplicate events are coalesced; only one run acts for a principal on a given
 match at a time. Model calls for different matches run concurrently, while
-outgoing submissions are serialized per principal. A changed human answer or
+outgoing submissions are serialized per principal. A new human message, answer, or
 accepted commitment invalidates decisions made against older context before
 they can submit.
 
@@ -232,6 +236,15 @@ tasks submit internal `request_principal_input` requests and authoritative
 outcomes. Routine proposals, counters, and model completion summaries stay
 internal. A bounded two-second window batches background requests and outcomes
 without delaying negotiation turns or waiting for every match to finish.
+
+When no question is displayed, `message(text)` records private input and requests
+a reply immediately, ahead of background communication. The PA sees its latest
+observed match records and full H2A history, so it can answer status questions and
+follow-ups even when no negotiation is active. Additional messages cancel stale
+reviews and remain queued until answered. New facts and instructions become
+shared private context for negotiation decisions; a question is not treated as
+new authority. Empty messages and messages sent while a question is displayed
+are rejected; use that question's ID with `answer()` instead.
 
 The same agent reviews each batch with the H2A history, instructions, and
 accepted commitments. It can ask one existing focused question, send one

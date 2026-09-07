@@ -32,7 +32,7 @@ interface Pane {
 /**
  * Mount the two private human/agent panes around a read-only shared negotiation.
  * @param renderer - Owns terminal mouse, keyboard, and resize handling.
- * @param lab - The user/intent conversations and separate match records. Only pending questions accept replies.
+ * @param lab - The user/intent conversations and separate match records.
  */
 export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab): void {
   let demo = lab.active;
@@ -139,7 +139,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       });
       box.add(pane.users);
       box.add(history);
-      pane.hint = new TextRenderable(renderer, { content: 'Draft a reply; send only when asked.', fg: COLORS.muted, height: 2, flexShrink: 0, wrapMode: 'word' });
+      pane.hint = new TextRenderable(renderer, { content: 'Enter sends a message to your agent.', fg: COLORS.muted, height: 2, flexShrink: 0, wrapMode: 'word' });
       box.add(pane.hint);
       pane.choices = new ScrollBoxRenderable(renderer, {
         id: `choices-${index}`, visible: false, height: 6, maxHeight: '30%', flexShrink: 0,
@@ -149,7 +149,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       box.add(pane.choices);
       pane.input = new TextareaRenderable(renderer, {
         id: `reply-${index}`, height: 5, flexShrink: 0, wrapMode: 'word',
-        placeholder: `Custom reply as ${principal.name}…`, textColor: COLORS.text,
+        placeholder: `Message your agent as ${principal.name}…`, textColor: COLORS.text,
         backgroundColor: '#192230', focusedBackgroundColor: '#202e40', cursorColor: COLORS.focus,
         onMouseDown: (event) => {
           event.stopPropagation();
@@ -165,10 +165,13 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
         ],
         onSubmit: () => {
           const agent = lab.agents.get(pane.ownerId!)!;
-          if (pane.shownQuestion && agent.answer(pane.shownQuestion.id, pane.input!.plainText)) {
+          const sent = pane.shownQuestion
+            ? agent.answer(pane.shownQuestion.id, pane.input!.plainText)
+            : agent.message(pane.input!.plainText);
+          if (sent) {
             pane.input!.clear();
           } else {
-            pane.hint!.content = agent.pending ? 'Enter a nonempty answer.' : 'No pending question for this user. Draft kept.';
+            pane.hint!.content = pane.input!.plainText.trim() ? 'Could not send. Draft kept.' : 'Enter a message or answer.';
           }
         },
       });
@@ -191,7 +194,6 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
         pane.shownQuestion = undefined;
         pane.users!.visible = false;
         pane.input!.setText(drafts.get(principal.id) ?? '');
-        pane.input!.placeholder = 'Custom reply as ' + principal.name + '…';
         pane.selector!.content = ' ' + principal.name + ' ▾ · ' + (lab.users.findIndex(({ id }) => id === principal.id) + 1) + '/' + lab.users.length;
         append(pane.history, 'Intent', principal.intent, COLORS.muted);
         append(pane.history, 'Private instructions', principal.instructions, COLORS.muted);
@@ -205,11 +207,12 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       if (agent) {
         while (pane.displayed < agent.conversation.length) {
           const entry = agent.conversation[pane.displayed++];
-          const who = entry.kind === 'answer' ? principal!.name + ' (you)' : entry.kind === 'question' ? 'Your agent asks' : 'Your agent';
+          const human = entry.kind === 'answer' || entry.kind === 'user';
+          const who = human ? principal!.name + ' (you)' : entry.kind === 'question' ? 'Your agent asks' : 'Your agent';
           const text = entry.text + (entry.options ? '\n\n' + entry.options.map((option) => '• ' + option).join('\n') : '');
           const about = entry.scope === 'intent' ? 'This intent' : entry.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ');
-          append(pane.history, who + ' · ' + about, text,
-            entry.kind === 'question' ? COLORS.question : entry.kind === 'answer' ? COLORS.answer : COLORS.focus);
+          append(pane.history, who + (about ? ' · ' + about : ''), text,
+            entry.kind === 'question' ? COLORS.question : human ? COLORS.answer : COLORS.focus);
         }
       } else {
         while (pane.displayed < demo.transcript.length) {
@@ -222,6 +225,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       const pending = Boolean(question);
       if (pane.choices && pane.shownQuestion !== question) {
         pane.shownQuestion = question;
+        pane.input!.placeholder = (question ? 'Custom reply as ' : 'Message your agent as ') + principal!.name + '…';
         clear(pane.choices);
         pane.choiceRows = [];
         const options = question?.options ?? [];
@@ -269,7 +273,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       if (pane.hint) {
         let hint = pane.users?.visible ? 'Click a user or ↑/↓ + Enter · Esc cancels.' : pending
           ? pane.editingReply ? 'Enter sends · Esc returns to choices.' : '↑/↓ choose · Enter confirms.'
-          : 'Draft a reply; send only when asked.';
+          : 'Enter sends a message to your agent.';
         if (question) hint = (question.scope === 'intent' ? 'For this intent' : 'About ' + question.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ')) + ' · ' + hint;
         if (agent?.queuedQuestions) hint += ' · ' + agent.queuedQuestions + ' queued';
         pane.hint.content = hint;
@@ -358,6 +362,8 @@ changing it while you answer; match-specific approvals remain separate.
 Click either side to act as that user. Click or use Up/Down to highlight an
 agent-provided option, then Enter to confirm. Select Custom reply or click the
 text box to write your own answer. Esc returns from editing to the choices.
+When no question is active, Enter sends the text to your personal agent instead.
+Ask about your negotiations or give new instructions in the same H2A conversation.
 Tab cycles panes; Ctrl+J adds a newline; mouse wheel or PgUp/PgDn scrolls history.
 Ctrl+C stops all agents and exports each H2A conversation once, followed by A2A turns.
 Rerun the command for a fresh lab with an edited user roster.

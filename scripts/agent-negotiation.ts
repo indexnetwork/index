@@ -139,7 +139,7 @@ async function main(): Promise<void> {
           while (displayed < agent.conversation.length) {
             const entry = agent.conversation[displayed++];
             const about = entry.scope === 'intent' ? 'This intent' : entry.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ');
-            console.log(`\nH2A · ${participant.owner.name ?? participant.owner.id} · ${entry.kind} · ${about}\n${entry.text}`);
+            console.log(`\nH2A · ${participant.owner.name ?? participant.owner.id} · ${entry.kind}${about ? ' · ' + about : ''}\n${entry.text}`);
             if (entry.options) console.log(entry.options.join('\n'));
           }
           const question = agent.pending;
