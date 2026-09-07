@@ -213,9 +213,11 @@ await agent.stop();
 credentials outside model context. `NegotiationHost` observes status, turns,
 retries, tool steps, completion, and errors. Its `conversation()` notification
 tells the host to read `agent.conversation`, `agent.pending`, and
-`agent.queuedQuestions`. Conversation entries and questions identify the
-originating match and counterparty. Transport and UI code relay events and
-answers; they never choose whose agent runs next.
+`agent.queuedQuestions`. Conversation entries and questions carry a `matches`
+array; questions and answers also declare `intent` or `match` scope. Transport
+and UI code relay events and answers; they never choose whose agent runs next.
+An error with a null opportunity ID means the principal communication loop
+failed, and the runtime shuts down that principal/intent.
 
 All matches share one `Agent` instance, H2A history, and accepted commitments.
 Each A2A match keeps its own task, record, and temporary model/tool transcript.
@@ -225,13 +227,29 @@ outgoing submissions are serialized per principal. A changed human answer or
 accepted commitment invalidates decisions made against older context before
 they can submit.
 
-The principal sees one active question, with other matches' questions queued.
-An answer is recorded once in H2A. The originating task and queued questions
-reconsider the latest shared context before continuing. The prompt tells the
-model to reuse personal facts and explicit intent-wide instructions, while
-keeping approvals and brief yes/no answers scoped to the originating match.
-This interpretation is model behavior; the runtime does not infer permission
-from answer text. Other principals never receive this private history.
+Only the principal communication inbox can publish H2A messages. Negotiation
+tasks submit internal `request_principal_input` requests and authoritative
+outcomes. Routine proposals, counters, and model completion summaries stay
+internal. A bounded two-second window batches background requests and outcomes
+without delaying negotiation turns or waiting for every match to finish.
+
+The same agent reviews each batch with the H2A history, instructions, and
+accepted commitments. It can ask one existing focused question, send one
+consolidated outcome update, or stay silent. It can also return a redundant
+request to its negotiation with a pointer to existing principal evidence.
+That internal advice never becomes a human answer or grants new authority.
+
+While a question is displayed, new requests for the same intent-wide fact can
+join it internally. Its ID, wording, options, scope, and displayed match
+references stay unchanged. Other details and approvals remain queued;
+match-scoped requests cannot be attached to another question. Background
+outcome updates wait while the human is answering.
+
+An answer is recorded once in H2A, cancels any stale communication review, and
+immediately releases waiting negotiations to reconsider the latest context.
+The model identifies related facts and interprets answers; the runtime enforces
+one displayed question and separate match-scoped requests. Other principals
+never receive this private history.
 
 With one intent for each of 12 users and all pairs matched, this produces
 **12 H2A conversations and 66 A2A conversations**. Settlement or failure ends

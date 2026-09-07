@@ -44,11 +44,16 @@ Use a terminal at least 100 columns wide (120+ recommended):
   pair's shared turns. Each side shows its user's **single H2A conversation**
   across all matches. Changing the opposite user preserves that H2A history,
   scroll position, and draft. Drafts also follow a user between left and right.
-- Each principal has **one active question**, labeled with the counterparty it
-  concerns. Other questions queue behind it and are reconsidered after an
-  answer. General facts and intent-wide instructions can inform every match;
-  a match-specific approval stays attached to that match. Other users never
-  receive the private answers.
+- H2A shows questions and meaningful, consolidated outcomes. Routine A2A
+  progress and per-turn model summaries stay out of the human conversation.
+  The PA reviews relevant background events in short batches and can stay silent.
+- Each principal has **one active question**, labeled **For this intent** for
+  shared facts or **About [counterparty]** for a match-specific decision. If a
+  related request arrives while you answer, it can join the existing question
+  internally; the displayed question, options, scope, and draft stay stable.
+  Other details and approvals remain queued. All waiting requests reconsider
+  your answer before another question appears. Other users never receive the
+  private answers.
 - Pairs continue in the background until they need a human answer, settle, or
   stop. The status bar shows **12 H2A conversations, 66 A2A matches**, and the
   number of principals awaiting answers. Selecting a pair never starts or
@@ -62,11 +67,11 @@ Use a terminal at least 100 columns wide (120+ recommended):
 - The last row is always **Custom reply…**. Select it and press **Enter**, or
   click the text box, to write your own answer. **Esc** returns from the editor
   to the picker. Arrow keys edit text normally while the editor is focused.
-- Suggestions come from `ask_user.options`. The negotiation prompt and tool
-  schema request **2–4 suggested answers for every focused question**, including
+- Suggestions come from `request_principal_input.options`. The negotiation
+  prompt and tool schema request **2–4 suggested answers for every focused question**, including
   neutral self-description categories when personal facts are missing. A choice
   becomes a fact only after the principal confirms it; the TUI does not invent
-  answers. **Custom reply…** remains available even if a model omits suggestions.
+  answers. **Custom reply…** remains available for every question.
 - **Enter** submits to that user's displayed question ID, even if it concerns
   a different match from the center pane. Empty and duplicate replies are
   rejected; unsent drafts stay with their user until you send an answer.
@@ -191,8 +196,9 @@ The first file belongs to `INDEX_API_KEY`'s owner; the second belongs to
 distinct seats. Either seat may be awaiting: Index, not argument order, chooses
 who runs first. This replaces the earlier single-owner, approved-turn command.
 
-On `ask_user`, the terminal shows **which principal** should answer. Supply only
-that principal's answer. The agent resumes its private conversation and decides
+When the communication inbox presents a question, the terminal shows **which
+principal** should answer. Supply only that principal's answer. The agent resumes
+its private conversation and decides
 what to do next; the host does not turn the answer into an offer. An empty
 answer stops without fabricating a reply. Without an interactive terminal, the
 host prints the question and stops unanswered. A question never becomes an

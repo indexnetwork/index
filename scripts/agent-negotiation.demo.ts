@@ -155,7 +155,7 @@ export class NegotiationLab extends EventEmitter {
   readonly users: DemoPrincipal[];
   readonly negotiations = new Map<string, NegotiationDemo>();
   readonly agents = new Map<string, NegotiationAgent>();
-  retryStatus = '';
+  agentStatus = '';
   private selection: [DemoPrincipal, DemoPrincipal];
 
   constructor(scenario: DemoScenario) {
@@ -180,19 +180,24 @@ export class NegotiationLab extends EventEmitter {
         status: (id, message, phase) => this.negotiations.get(id)!.progress(message, phase),
         turn: (owner, input, record) => this.negotiations.get(record.opportunityId)!.turn(owner.id, input),
         retry: (owner, attempt, reason) => {
-          this.retryStatus = (owner.name ?? owner.id) + ': model retry ' + attempt + ' · ' + reason;
+          this.agentStatus = (owner.name ?? owner.id) + ': model retry ' + attempt + ' · ' + reason;
           this.emit('change');
         },
         step: (id, _owner, step) => {
-          this.retryStatus = '';
+          this.agentStatus = '';
           if (step.kind === 'tool') this.negotiations.get(id)!.progress(step.name + ' ' + (step.error ?? 'completed'));
         },
         conversation: () => this.emit('change'),
         end: (record) => this.negotiations.get(record.opportunityId)!.end(record),
-        error: (id, _owner, reason) => {
-          const demo = this.negotiations.get(id)!;
-          demo.error(reason);
-          for (const principal of demo.principals) void this.agents.get(principal.id)!.stop(id);
+        error: (id, owner, reason) => {
+          const affected = id === null
+            ? [...this.negotiations.values()].filter((demo) => demo.phase !== 'settled' && demo.principals.some((principal) => principal.id === owner.id))
+            : [this.negotiations.get(id)!];
+          for (const demo of affected) {
+            demo.error(reason);
+            for (const principal of demo.principals) void this.agents.get(principal.id)!.stop(demo.opportunityId);
+          }
+          if (id === null) { this.agentStatus = (owner.name ?? owner.id) + ': ' + reason; this.emit('change'); }
         },
       };
       this.agents.set(user.id, new NegotiationAgent({
@@ -251,7 +256,7 @@ export class NegotiationLab extends EventEmitter {
     const human = this.users.map((user) => {
       const entries = this.agents.get(user.id)!.conversation.map((entry, index) =>
         '## ' + (index + 1) + '. ' + (entry.kind === 'answer' ? user.name : "Your agent") + ' · ' + entry.kind
-        + ' · ' + (entry.counterparty.name ?? entry.counterparty.id) + '\n\n' + entry.text
+        + ' · ' + (entry.scope === 'intent' ? 'This intent' : entry.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ')) + '\n\n' + entry.text
         + (entry.options ? '\n\n' + entry.options.map((option) => '- ' + option).join('\n') : ''),
       );
       return '# H2A · ' + user.name + '\n\nIntent: ' + user.intent + '\n\n' + entries.join('\n\n');

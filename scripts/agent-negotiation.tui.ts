@@ -207,7 +207,8 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
           const entry = agent.conversation[pane.displayed++];
           const who = entry.kind === 'answer' ? principal!.name + ' (you)' : entry.kind === 'question' ? 'Your agent asks' : 'Your agent';
           const text = entry.text + (entry.options ? '\n\n' + entry.options.map((option) => '• ' + option).join('\n') : '');
-          append(pane.history, who + ' · ' + (entry.counterparty.name ?? entry.counterparty.id), text,
+          const about = entry.scope === 'intent' ? 'This intent' : entry.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ');
+          append(pane.history, who + ' · ' + about, text,
             entry.kind === 'question' ? COLORS.question : entry.kind === 'answer' ? COLORS.answer : COLORS.focus);
         }
       } else {
@@ -269,7 +270,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
         let hint = pane.users?.visible ? 'Click a user or ↑/↓ + Enter · Esc cancels.' : pending
           ? pane.editingReply ? 'Enter sends · Esc returns to choices.' : '↑/↓ choose · Enter confirms.'
           : 'Draft a reply; send only when asked.';
-        if (question) hint = 'About ' + (question.counterparty.name ?? question.counterparty.id) + ' · ' + hint;
+        if (question) hint = (question.scope === 'intent' ? 'For this intent' : 'About ' + question.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ')) + ' · ' + hint;
         if (agent?.queuedQuestions) hint += ' · ' + agent.queuedQuestions + ' queued';
         pane.hint.content = hint;
         pane.hint.fg = pending ? COLORS.question : COLORS.muted;
@@ -278,7 +279,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
     const waiting = [...lab.agents.values()].filter((agent) => agent.pending).length;
     status.content = demo.status + ' · H2A: ' + lab.agents.size + ' · A2A: ' + lab.negotiations.size
       + (waiting ? ' · Principals awaiting answers: ' + waiting : '')
-      + (lab.retryStatus ? ' · ' + lab.retryStatus : '')
+      + (lab.agentStatus ? ' · ' + lab.agentStatus : '')
       + (renderer.width < 100 ? ' · Widen terminal to 100+ columns for more space.' : '');
     status.fg = demo.phase === 'error' ? '#f88a8a' : waiting ? COLORS.question : COLORS.muted;
   }
@@ -351,6 +352,9 @@ pairs are simulated matches and start in parallel on launch (66 with 12 users).
 Each user has one H2A conversation and draft for their intent, across all matches.
 The center shows the selected pair's A2A turns. Questions identify their match;
 answering one resumes that match even while another pair is displayed.
+H2A shows focused questions and meaningful outcomes, with routine A2A progress
+kept in the center. Related requests can share an intent-wide question without
+changing it while you answer; match-specific approvals remain separate.
 Click either side to act as that user. Click or use Up/Down to highlight an
 agent-provided option, then Enter to confirm. Select Custom reply or click the
 text box to write your own answer. Esc returns from editing to the choices.
