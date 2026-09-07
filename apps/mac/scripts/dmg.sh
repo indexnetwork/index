@@ -8,13 +8,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAC_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$MAC_ROOT"
 
+source "$SCRIPT_DIR/notary-submit.sh"
+
 APP_PATH="${APP_PATH:-dist/Index.app}"
 DMG_PATH="${DMG_PATH:-dist/Index.dmg}"
 VOLUME_NAME="${VOLUME_NAME:-Index}"
 SKIP_NOTARY="${SKIP_NOTARY:-0}"
 
 if [ "$SKIP_NOTARY" != "1" ]; then
-    PROFILE="${NOTARYTOOL_PROFILE:?set NOTARYTOOL_PROFILE to a local keychain profile (SKIP_NOTARY=1 exists only for CI packaging tests)}"
+    require_notary_auth
 fi
 
 [ -d "$APP_PATH" ] || { echo "app not found: $APP_PATH" >&2; exit 1; }
@@ -133,7 +135,7 @@ mv -f "$WORK/compressed.dmg" "$DMG_PATH"
 
 if [ "$SKIP_NOTARY" != "1" ]; then
     echo "==> Notarizing DMG"
-    xcrun notarytool submit "$DMG_PATH" --keychain-profile "$PROFILE" --wait
+    notary_submit "$DMG_PATH"
     xcrun stapler staple "$DMG_PATH"
     xcrun stapler validate "$DMG_PATH"
 fi

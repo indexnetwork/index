@@ -40,7 +40,7 @@ jobs:
 
       - name: Shell syntax check
         working-directory: apps/mac
-        run: bash -n scripts/build.sh scripts/link-host.sh scripts/provisioning-profile.sh scripts/notarize.sh scripts/dmg.sh
+        run: bash -n scripts/build.sh scripts/link-host.sh scripts/provisioning-profile.sh scripts/notary-submit.sh scripts/notarize.sh scripts/dmg.sh
 
       - name: Assemble web layer
         working-directory: apps/mac

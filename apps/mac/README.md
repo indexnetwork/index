@@ -32,6 +32,17 @@ Generated HTML must be regenerated through `assemble.py`, never hand-edited. The
 
 Production distribution is direct Developer ID distribution, not the Mac App Store. It requires macOS 13+, Universal 2 artifacts, Hardened Runtime, Developer ID signing, notarization, stapling, checksums, immutable production HTTPS endpoint inputs, and a clean-account acceptance run. **App Sandbox is not a production requirement** for this direct-distribution model; release validation rejects unexpected sandbox/debug entitlements rather than requiring them.
 
+Pushes to `dev` and `main` that touch `apps/mac` run `.github/workflows/mac-app-release.yml`: Developer ID sign, notarize the app, package the branded DMG, notarize that, and attach `Index.dmg` to a rolling release.
+
+| Branch | Release | Download |
+| --- | --- | --- |
+| `dev` | prerelease `mac-dev` | `https://github.com/indexnetwork/index/releases/download/mac-dev/Index.dmg` |
+| `main` | `mac` (latest) | `https://github.com/indexnetwork/index/releases/download/mac/Index.dmg` |
+
+Required Actions secrets (fail closed if any are missing): `MAC_CODESIGN_P12`, `MAC_CODESIGN_P12_PASSWORD`, `MAC_CODESIGN_IDENTITY`, `MAC_APP_IDENTIFIER_PREFIX`, `MAC_PROVISIONING_PROFILE`, `MAC_NOTARY_KEY`, `MAC_NOTARY_KEY_ID`, `MAC_NOTARY_ISSUER`. Pull requests do not produce a DMG; they stay on the ad-hoc compile in `mac-app-build.yml`.
+
+`./scripts/notarize.sh` and `./scripts/dmg.sh` accept either a local `NOTARYTOOL_PROFILE` or CI's `NOTARYTOOL_KEY` / `NOTARYTOOL_KEY_ID` / `NOTARYTOOL_ISSUER`.
+
 ### Development: Hot-Reload Mode
 
 For rapid iteration without rebuilding the Swift binary each time:
@@ -149,6 +160,6 @@ NOTARYTOOL_PROFILE='<local-keychain-profile>' ./scripts/dmg.sh
 xcrun stapler validate dist/Index.dmg
 ```
 
-`./scripts/dmg.sh` revalidates the signed, stapled bundle, lays out the branded disk image, notarizes it, and staples `dist/Index.dmg`. The DMG is the handoff artifact.
+`./scripts/dmg.sh` revalidates the signed, stapled bundle, lays out the branded disk image, notarizes it, and staples `dist/Index.dmg`. The local DMG is for debugging; GitHub Releases are the distribution path.
 
 Record only redacted commands and pass/fail status in PR evidence; never IDs, credentials, certificate subjects, or profile names.
