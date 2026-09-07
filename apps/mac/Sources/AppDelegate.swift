@@ -16,6 +16,15 @@ document.addEventListener('mousedown', function (e) {
 }, true);
 """
 
+/// Drops WebKit's browser context menu (Reload, Inspect Element) so right-click
+/// does not look like Electron. Copy/paste stay on the Edit menu.
+private final class ShellWebView: WKWebView {
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        menu.removeAllItems()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Configuration. API_URL / APP_URL are read from UserDefaults (e.g. `defaults
 // write network.index.system6 API_URL https://…`) or Info.plist, so production
@@ -121,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
 
         let contentRect = Self.defaultContentFrame(for: NSScreen.main)
-        webView = WKWebView(frame: contentRect, configuration: config)
+        webView = ShellWebView(frame: contentRect, configuration: config)
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.autoresizingMask = [.width, .height]
