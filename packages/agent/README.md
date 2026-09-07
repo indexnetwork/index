@@ -144,6 +144,33 @@ hands the arguments to the host, which supplies the result by resuming. That
 is all `askUserTool()` is — anything else needing a human or another system
 can work the same way.
 
+### Models and quota recovery
+
+Pass an ordered `models` list when initializing an `Agent`, or in the third
+argument to `NegotiationAgent`:
+
+```ts
+const models = ["google/gemini-3.8-flash", "anthropic/claude-haiku-4.5"];
+const agent = new Agent({ identity, systemPrompt, models });
+const negotiator = new NegotiationAgent(participant, observersFor, { models });
+```
+
+OpenRouter accepts one to three models; an injected list replaces the defaults
+completely. This replaces the former
+`model` option; use `models: [modelId]` for a single model. Omitting the list uses
+`DEFAULT_MODELS` in [core/model.ts](src/core/model.ts), which also owns all retry
+and cooldown policy. Both negotiation scripts inherit that policy.
+
+OpenRouter handles provider selection and ordered model fallback. If it still
+returns a rate limit, agents using the same key and list in this process share
+a cooldown based on `Retry-After` or `X-RateLimit-Reset`, including headers in
+error metadata. Without a hint, waits grow from 30 seconds to 5 minutes, with
+jitter to spread retries. Quota failures wait until recovery or cancellation;
+they do not exhaust the normal three-attempt budget for transient failures.
+`onRetry` reports waits, and shutdown interrupts them immediately. Authentication,
+credit, and invalid-request errors fail promptly. Individual provider quotas
+are left to OpenRouter; there are no local per-model request counters.
+
 ### Always-on negotiations
 
 Initialize one `NegotiationAgent` per user. The host supplies that user's private

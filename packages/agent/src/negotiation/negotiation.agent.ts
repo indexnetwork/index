@@ -1,4 +1,4 @@
-import { Agent } from '../core/agent.ts';
+import { Agent, type AgentOptions } from '../core/agent.ts';
 import { askUserTool, type Tool } from '../core/tools.ts';
 import type { PendingQuestion, RunResult, Step } from '../core/types.ts';
 
@@ -51,9 +51,10 @@ export interface NegotiationHost {
  * @param participant - Only this principal's identity, instructions, and client.
  * @param opportunityId - The sole opportunity this session can read or write.
  * @param host - Displays messages and obtains human answers; never chooses a turn.
+ * @param models - The host's ordered OpenRouter models, or the library defaults.
  * @returns The agent and transport guards, reset on each new turn.
  */
-function createSeat(participant: { owner: User; intent: Intent; instructions: string; client: NegotiationClient }, opportunityId: string, host: NegotiationHost) {
+function createSeat(participant: { owner: User; intent: Intent; instructions: string; client: NegotiationClient }, opportunityId: string, host: NegotiationHost, models?: AgentOptions['models']) {
   const { owner, intent, instructions, client } = participant;
   const turn = { attempted: false, submitted: false, writeError: false, awaitingAnswer: false };
   const readTool: Tool = {
@@ -111,6 +112,7 @@ function createSeat(participant: { owner: User; intent: Intent; instructions: st
     additionalProperties: false,
   };
   const agent = new Agent({
+    models,
     identity: { id: owner.id, name: owner.name ?? owner.id },
     systemPrompt: [
       'You are this principal’s autonomous personal negotiator in one Index negotiation. Pursue their stated intent within their instructions, not agreement for its own sake. You choose the offer, counteroffer, acceptance, or decline; the host does not choose for you or approve individual turns.',
@@ -152,6 +154,7 @@ export class NegotiationAgent {
   constructor(
     private readonly participant: { owner: User; instructions: string; client: NegotiationClient },
     private readonly host: (opportunityId: string) => NegotiationHost,
+    private readonly options: Pick<AgentOptions, 'models'> = {},
   ) {}
 
   /**
@@ -168,7 +171,7 @@ export class NegotiationAgent {
       const host = this.host(event.opportunityId);
       session = {
         opportunityId: event.opportunityId,
-        seat: createSeat({ ...this.participant, intent: event.intent }, event.opportunityId, host),
+        seat: createSeat({ ...this.participant, intent: event.intent }, event.opportunityId, host, this.options.models),
         host, controller: new AbortController(), notified: false, stopped: false,
       };
       this.sessions.set(event.opportunityId, session);

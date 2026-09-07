@@ -35,9 +35,8 @@ export interface AgentOptions {
    */
   tools?: Tool<never>[];
 
-  /** OpenRouter model for the agent loop. Defaults to
-   * `google/gemini-3.7-flash`. */
-  model?: string;
+  /** One to three ordered OpenRouter models, replacing core/model.ts defaults. */
+  models?: readonly string[];
   /** OpenRouter API key. Falls back to `OPENROUTER_API_KEY`. */
   apiKey?: string;
   /** Step cap for `run()`. Defaults to 10. */
@@ -45,8 +44,8 @@ export interface AgentOptions {
   /** How long one model request may take, in ms. Defaults to 120s. A hung
    * connection otherwise stalls the agent until someone interrupts it. */
   timeout?: number;
-  /** Model attempts per step, including the first. Defaults to 3; only
-   * transient failures are retried. */
+  /** Attempts for transient model failures. Defaults to 3. Rate limits
+   * wait until recovery or cancellation without spending this budget. */
   attempts?: number;
   /** Fires before a model call is retried. A retry looks like slowness
    * from the outside, so a host with a UI generally wants to say so. */
@@ -110,7 +109,7 @@ export class Agent {
 
     this.model = new ModelClient({
       apiKey: options.apiKey,
-      model: options.model,
+      models: options.models,
       timeout: options.timeout,
       attempts: options.attempts,
       onRetry: options.onRetry,
