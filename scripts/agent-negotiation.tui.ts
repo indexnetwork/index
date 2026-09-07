@@ -3,9 +3,10 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import type { PrincipalQuestion } from '@indexnetwork/agent';
 import { BoxRenderable, createCliRenderer, ScrollBoxRenderable, TextareaRenderable, TextRenderable, type CliRenderer, type KeyEvent } from '@opentui/core';
 
-import { NegotiationLab, parseScenario, type NegotiationDemo } from './agent-negotiation.demo';
+import { NegotiationLab, parseScenario } from './agent-negotiation.demo';
 
 const COLORS = { background: '#10151e', text: '#dce4ef', muted: '#8996aa', border: '#364255', focus: '#77b8ff', question: '#f4c773', answer: '#8dd9b7' };
 
@@ -18,7 +19,9 @@ interface Pane {
   choiceRows: { box: BoxRenderable; label: TextRenderable; text: string }[];
   choiceIndex: number;
   editingReply: boolean;
-  shownQuestion?: NegotiationDemo['pending'];
+  shownQuestion?: PrincipalQuestion | null;
+  displayed: number;
+  opportunityId?: string;
   ownerId?: string;
   selector?: TextRenderable;
   users?: ScrollBoxRenderable;
@@ -29,7 +32,7 @@ interface Pane {
 /**
  * Mount the two private human/agent panes around a read-only shared negotiation.
  * @param renderer - Owns terminal mouse, keyboard, and resize handling.
- * @param lab - The user roster and retained pair sessions. Only pending questions accept replies.
+ * @param lab - The user/intent conversations and separate match records. Only pending questions accept replies.
  */
 export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab): void {
   let demo = lab.active;
@@ -45,8 +48,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
 
   const panes: Pane[] = [];
   let selected = 0;
-  let displayed = 0;
-  const drafts = new Map<NegotiationDemo, Map<string, string>>();
+  const drafts = new Map<string, string>();
 
   function append(history: ScrollBoxRenderable, label: string, text: string, color: string): void {
     const card = new BoxRenderable(renderer, { width: '100%', flexDirection: 'column', flexShrink: 0, marginBottom: 1 });
@@ -122,7 +124,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       stickyScroll: true, stickyStart: 'bottom',
       contentOptions: { flexDirection: 'column' },
     });
-    const pane: Pane = { box, history, choiceRows: [], choiceIndex: 0, editingReply: true, userRows: [], userIndex: 0 };
+    const pane: Pane = { box, history, displayed: 0, choiceRows: [], choiceIndex: 0, editingReply: true, userRows: [], userIndex: 0 };
     panes.push(pane);
     if (principal) {
       pane.selector = new TextRenderable(renderer, {
@@ -162,10 +164,11 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
           { name: 'j', ctrl: true, action: 'newline' },
         ],
         onSubmit: () => {
-          if (demo.answer(pane.ownerId!, pane.input!.plainText)) {
+          const agent = lab.agents.get(pane.ownerId!)!;
+          if (pane.shownQuestion && agent.answer(pane.shownQuestion.id, pane.input!.plainText)) {
             pane.input!.clear();
           } else {
-            pane.hint!.content = demo.pending?.ownerId === pane.ownerId ? 'Enter a nonempty answer.' : 'No pending question for this user. Draft kept.';
+            pane.hint!.content = agent.pending ? 'Enter a nonempty answer.' : 'No pending question for this user. Draft kept.';
           }
         },
       });
@@ -177,42 +180,44 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
 
   function render(): void {
     if (renderer.isDestroyed) return;
-    if (demo !== lab.active || panes[0].ownerId !== lab.selectedUsers[0].id || panes[2].ownerId !== lab.selectedUsers[1].id) {
-      const saved = drafts.get(demo) ?? new Map<string, string>();
-      for (const pane of panes) if (pane.ownerId) saved.set(pane.ownerId, pane.input!.plainText);
-      drafts.set(demo, saved);
-      demo = lab.active;
-      displayed = 0;
-      panes.forEach((pane, index) => {
-        clear(pane.history);
-        pane.history.scrollTo(pane.history.scrollHeight);
-        const principal = index === 1 ? undefined : lab.selectedUsers[index === 0 ? 0 : 1];
-        pane.ownerId = principal?.id;
-        pane.shownQuestion = undefined;
-        if (principal) {
-          pane.users!.visible = false;
-          pane.input!.setText(drafts.get(demo)?.get(principal.id) ?? '');
-          pane.input!.placeholder = `Custom reply as ${principal.name}…`;
-          pane.selector!.content = ` ${principal.name} ▾ · ${lab.users.findIndex(({ id }) => id === principal.id) + 1}/${lab.users.length}`;
-          append(pane.history, 'Intent', principal.intent, COLORS.muted);
-          append(pane.history, 'Private instructions', principal.instructions, COLORS.muted);
-        } else {
-          append(pane.history, lab.selectedUsers.map(({ name }) => name).join(' ↔ '), 'Shared agent turns for this pair. Private questions and replies stay in the side panes.', COLORS.muted);
-        }
-      });
-    }
-    while (displayed < demo.transcript.length) {
-      const entry = demo.transcript[displayed++];
-      const principal = demo.principals.find(({ id }) => id === entry.ownerId)!;
-      const pane = entry.channel === 'shared' ? panes[1] : panes.find(({ ownerId }) => ownerId === entry.ownerId)!;
-      const label = entry.channel === 'shared'
-        ? `${principal.name}'s agent · ${entry.action}`
-        : entry.kind === 'answer' ? `${principal.name} (you)` : entry.kind === 'question' ? 'Your agent asks' : 'Your agent';
-      append(pane.history, label, entry.text, entry.kind === 'question' ? COLORS.question : entry.kind === 'answer' ? COLORS.answer : COLORS.focus);
-    }
+    for (const pane of panes) if (pane.ownerId) drafts.set(pane.ownerId, pane.input!.plainText);
+    demo = lab.active;
     panes.forEach((pane, index) => {
-      const principal = demo.principals.find(({ id }) => id === pane.ownerId);
-      const question = principal && demo.pending?.ownerId === principal.id ? demo.pending : null;
+      const principal = index === 1 ? undefined : lab.selectedUsers[index === 0 ? 0 : 1];
+      if (principal && pane.ownerId !== principal.id) {
+        clear(pane.history);
+        pane.displayed = 0;
+        pane.ownerId = principal.id;
+        pane.shownQuestion = undefined;
+        pane.users!.visible = false;
+        pane.input!.setText(drafts.get(principal.id) ?? '');
+        pane.input!.placeholder = 'Custom reply as ' + principal.name + '…';
+        pane.selector!.content = ' ' + principal.name + ' ▾ · ' + (lab.users.findIndex(({ id }) => id === principal.id) + 1) + '/' + lab.users.length;
+        append(pane.history, 'Intent', principal.intent, COLORS.muted);
+        append(pane.history, 'Private instructions', principal.instructions, COLORS.muted);
+      } else if (!principal && pane.opportunityId !== demo.opportunityId) {
+        clear(pane.history);
+        pane.displayed = 0;
+        pane.opportunityId = demo.opportunityId;
+        append(pane.history, lab.selectedUsers.map(({ name }) => name).join(' ↔ '), 'Shared agent turns for this match.', COLORS.muted);
+      }
+      const agent = principal ? lab.agents.get(principal.id)! : undefined;
+      if (agent) {
+        while (pane.displayed < agent.conversation.length) {
+          const entry = agent.conversation[pane.displayed++];
+          const who = entry.kind === 'answer' ? principal!.name + ' (you)' : entry.kind === 'question' ? 'Your agent asks' : 'Your agent';
+          const text = entry.text + (entry.options ? '\n\n' + entry.options.map((option) => '• ' + option).join('\n') : '');
+          append(pane.history, who + ' · ' + (entry.counterparty.name ?? entry.counterparty.id), text,
+            entry.kind === 'question' ? COLORS.question : entry.kind === 'answer' ? COLORS.answer : COLORS.focus);
+        }
+      } else {
+        while (pane.displayed < demo.transcript.length) {
+          const entry = demo.transcript[pane.displayed++];
+          const name = demo.principals.find(({ id }) => id === entry.ownerId)!.name;
+          append(pane.history, name + "'s agent · " + entry.action, entry.text, COLORS.focus);
+        }
+      }
+      const question = agent?.pending ?? null;
       const pending = Boolean(question);
       if (pane.choices && pane.shownQuestion !== question) {
         pane.shownQuestion = question;
@@ -230,7 +235,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
             paddingX: 1, marginBottom: 1,
             onMouseDown: (event) => {
               event.stopPropagation();
-              if (demo.pending !== question) return;
+              if (agent?.pending !== question) return;
               pane.users!.visible = false;
               pane.choiceIndex = choiceIndex;
               pane.editingReply = choiceIndex === options.length;
@@ -261,20 +266,27 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       pane.box.borderColor = selected === index ? COLORS.focus : pending ? COLORS.question : COLORS.border;
       pane.box.titleColor = pending ? COLORS.question : selected === index ? COLORS.focus : COLORS.muted;
       if (pane.hint) {
-        pane.hint.content = pane.users?.visible ? 'Click a user or ↑/↓ + Enter · Esc cancels.' : pending
+        let hint = pane.users?.visible ? 'Click a user or ↑/↓ + Enter · Esc cancels.' : pending
           ? pane.editingReply ? 'Enter sends · Esc returns to choices.' : '↑/↓ choose · Enter confirms.'
-          : demo.phase === 'settled' ? 'Negotiation ended. Scroll to review.' : 'Draft a reply; send only when asked.';
+          : 'Draft a reply; send only when asked.';
+        if (question) hint = 'About ' + (question.counterparty.name ?? question.counterparty.id) + ' · ' + hint;
+        if (agent?.queuedQuestions) hint += ' · ' + agent.queuedQuestions + ' queued';
+        pane.hint.content = hint;
         pane.hint.fg = pending ? COLORS.question : COLORS.muted;
       }
     });
-    const otherQuestions = [...lab.negotiations.values()].filter((session) => session !== demo && session.pending).length;
-    status.content = `${demo.status} · Matches: ${lab.negotiations.size}${otherQuestions ? ` · Other pairs awaiting answers: ${otherQuestions}` : ''}${renderer.width < 100 ? ' · Widen terminal to 100+ columns for more space.' : ''}`;
-    status.fg = demo.phase === 'error' ? '#f88a8a' : demo.pending ? COLORS.question : COLORS.muted;
+    const waiting = [...lab.agents.values()].filter((agent) => agent.pending).length;
+    status.content = demo.status + ' · H2A: ' + lab.agents.size + ' · A2A: ' + lab.negotiations.size
+      + (waiting ? ' · Principals awaiting answers: ' + waiting : '')
+      + (lab.retryStatus ? ' · ' + lab.retryStatus : '')
+      + (renderer.width < 100 ? ' · Widen terminal to 100+ columns for more space.' : '');
+    status.fg = demo.phase === 'error' ? '#f88a8a' : waiting ? COLORS.question : COLORS.muted;
   }
 
   const onKey = (key: KeyEvent) => {
     const pane = panes[selected];
-    const question = demo.pending?.ownerId === pane.ownerId && pane.shownQuestion === demo.pending ? demo.pending : null;
+    const agent = pane.ownerId ? lab.agents.get(pane.ownerId) : undefined;
+    const question = pane.shownQuestion === agent?.pending ? agent?.pending : null;
     if (key.name === 'tab') {
       key.preventDefault();
       focus((selected + (key.shift ? 2 : 1)) % 3);
@@ -306,7 +318,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       const option = question.options?.[pane.choiceIndex];
       if (option === undefined) {
         pane.editingReply = true;
-      } else if (demo.answer(pane.ownerId!, option)) {
+      } else if (agent!.answer(question.id, option)) {
         pane.input!.clear();
       }
       focus(selected);
@@ -336,13 +348,14 @@ Scenario: { "users": [{ "id", "name", "intent", "instructions" }, ...] }
 Click the name above either side or press Ctrl+U to change that user. Select with
 Up/Down + Enter or click a user. The opposite user is excluded. All distinct user
 pairs are simulated matches and start in parallel on launch (66 with 12 users).
-Selection only changes the displayed conversation. Each pair keeps its history,
-questions, and drafts when you switch away.
+Each user has one H2A conversation and draft for their intent, across all matches.
+The center shows the selected pair's A2A turns. Questions identify their match;
+answering one resumes that match even while another pair is displayed.
 Click either side to act as that user. Click or use Up/Down to highlight an
 agent-provided option, then Enter to confirm. Select Custom reply or click the
 text box to write your own answer. Esc returns from editing to the choices.
 Tab cycles panes; Ctrl+J adds a newline; mouse wheel or PgUp/PgDn scrolls history.
-Ctrl+C stops all pairs and saves their private transcripts in a temporary directory.
+Ctrl+C stops all agents and exports each H2A conversation once, followed by A2A turns.
 Rerun the command for a fresh lab with an edited user roster.
 `;
 

@@ -5,11 +5,12 @@
 The local lab includes **12 selectable users** and runs real `@indexnetwork/agent`
 instances against in-memory negotiations. No Index API, database, frontend, or
 Index credentials are used.
-The host initializes one long-lived `NegotiationAgent` per user from
+The host initializes one long-lived `NegotiationAgent` per user/intent from
 `@indexnetwork/agent` and delivers simulated match and turn-update events.
 The library owns turn scheduling, prompts, tools, question resumption, and private
-conversation history. The TUI supplies records and human answers and observes
-the selected pair; it does not run or schedule agents.
+conversation history. There is **one H2A conversation per user/intent** and
+**one A2A conversation per match**. The TUI supplies records and human answers
+and observes the selected users and pair; it does not run or schedule agents.
 
 ```bash
 # From this worktree. The env file supplies OPENROUTER_API_KEY.
@@ -39,14 +40,19 @@ Use a terminal at least 100 columns wide (120+ recommended):
   agents, which check authoritative turn order before acting. A question pauses
   only its own negotiation; other pairs continue independently, including other
   matches involving the same user.
-- User selection only changes the displayed conversation; the center pane
-  shows that pair's shared turns. Returning to a pair,
-  including with left/right positions reversed, restores its existing session.
-  Questions, private conversations, and drafts stay with their **pair and user**.
-  Personal answers are not copied into other negotiations.
+- User selection changes the displayed users; the center pane shows their
+  pair's shared turns. Each side shows its user's **single H2A conversation**
+  across all matches. Changing the opposite user preserves that H2A history,
+  scroll position, and draft. Drafts also follow a user between left and right.
+- Each principal has **one active question**, labeled with the counterparty it
+  concerns. Other questions queue behind it and are reconsidered after an
+  answer. General facts and intent-wide instructions can inform every match;
+  a match-specific approval stays attached to that match. Other users never
+  receive the private answers.
 - Pairs continue in the background until they need a human answer, settle, or
-  stop. The status bar shows the total matches and counts other pairs waiting
-  for answers. Selecting a pair never starts or restarts its agents.
+  stop. The status bar shows **12 H2A conversations, 66 A2A matches**, and the
+  number of principals awaiting answers. Selecting a pair never starts or
+  restarts its agents.
 - Click a side pane to act as that user, or use **Tab / Shift+Tab** to change
   focus. The focused pane has a blue border; a pending question is highlighted.
 - The reply picker shows a **highlighted row with a `›` marker**. Click a
@@ -61,9 +67,9 @@ Use a terminal at least 100 columns wide (120+ recommended):
   neutral self-description categories when personal facts are missing. A choice
   becomes a fact only after the principal confirms it; the TUI does not invent
   answers. **Custom reply…** remains available even if a model omits suggestions.
-- **Enter** submits only to that user's pending question. Empty, wrong-side,
-  and duplicate replies are rejected; unsent drafts stay in their own pane
-  until you send an answer.
+- **Enter** submits to that user's displayed question ID, even if it concerns
+  a different match from the center pane. Empty and duplicate replies are
+  rejected; unsent drafts stay with their user until you send an answer.
 - Both selected options and custom replies are recorded in the private
   transcript and resume the same agent; answering does not itself create a
   shared A2A turn.
@@ -72,8 +78,9 @@ Use a terminal at least 100 columns wide (120+ recommended):
 - Agents take turns autonomously. Settlement or failure stays on screen for
   inspection. **Ctrl+C** cancels outstanding work for **all pairs**,
   restores the terminal, and prints the path of a private Markdown transcript
-  grouped by pair. It includes all users' private messages; do not share it as
-  if it were only the public negotiation.
+  containing each user's H2A history once, followed by the separate A2A match
+  transcripts. It includes all users' private messages; do not share it as if
+  it were only the public negotiation.
 
 The bundled roster is Alice, Bob, Carla, Diego, Emma, Farah, Gabriel, Hana, Ivan,
 Jules, Kai, and Leila, with different roles, goals, and collaboration limits.
@@ -127,6 +134,12 @@ negotiation or a host decision tree—tell agents to:
   their own principal to guess them.
 - Accept only an understood standing offer; counter or decline when appropriate.
   A commitment to meet does not mean a meeting has been scheduled.
+- Reuse known personal facts across matches, respect the originating match of
+  an approval, and consider existing commitments before agreeing to more work.
+
+Parallel decisions use the same private context. The runtime serializes each
+principal's outgoing submissions and reconsiders a decision when a human answer
+or accepted commitment changed that context before submission.
 
 Human participation is limited to answering an agent's principal question.
 The host does not write offers, choose an outcome, or decide when a substantive

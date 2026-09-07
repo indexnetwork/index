@@ -3,8 +3,8 @@
 A personal agent that a host runs on someone's behalf.
 
 `Agent` provides the model/tool loop. `NegotiationAgent` is the long-lived
-per-user runtime for matches: the host initializes it once and delivers events,
-and the library schedules that user's negotiation turns automatically.
+runtime for a principal and intent: it owns one human/agent conversation and
+schedules concurrent agent/agent negotiations for that intent's matches.
 
 It works the way Claude Code, Hermes or OpenClaw do — a system prompt, a set
 of tools, and a loop that runs until the work is done. Two things make it
@@ -152,7 +152,7 @@ argument to `NegotiationAgent`:
 ```ts
 const models = ["google/gemini-3.8-flash", "anthropic/claude-haiku-4.5"];
 const agent = new Agent({ identity, systemPrompt, models });
-const negotiator = new NegotiationAgent(participant, observersFor, { models });
+const negotiator = new NegotiationAgent(participant, host, { models });
 ```
 
 OpenRouter accepts one to three models; an injected list replaces the defaults
@@ -173,28 +173,37 @@ are left to OpenRouter; there are no local per-model request counters.
 
 ### Always-on negotiations
 
-Initialize one `NegotiationAgent` per user. The host supplies that user's private
-instructions, authenticated transport, and a per-opportunity observer/reply
-channel. These are infrastructure ports; the library owns prompts, tools,
-turn-order checks, question resumption, and negotiation scheduling.
+Initialize one `NegotiationAgent` per principal/intent. The host supplies the
+principal's private instructions, authenticated transport, and one observer for
+their conversation and match activity. These are infrastructure ports; the
+library owns prompts, tools, turn-order checks, questions, and scheduling.
 
 ```ts
 import { NegotiationAgent } from "@indexnetwork/agent";
 
 const agent = new NegotiationAgent(
-  { owner: { id: user.id, name: user.name }, instructions, client },
-  (opportunityId) => observersFor(user.id, opportunityId),
+  {
+    owner: { id: user.id, name: user.name },
+    intent: { id: intent.id, payload: intent.statement },
+    instructions,
+    client,
+  },
+  host,
 );
 
-// A match immediately creates an isolated conversation and checks whose turn it is.
+// Register a separate A2A match under this personal agent and intent.
 void agent.receive({
   kind: "opportunity.matched",
   opportunityId,
-  intent: { id: intent.id, payload: intent.statement },
 });
 
 // Relay persisted turn changes, including settlement, to the participants.
 void agent.receive({ kind: "negotiation.updated", opportunityId });
+
+// Show agent.conversation and agent.pending when host.conversation() fires.
+// Reply to the displayed question ID, regardless of the selected A2A match.
+const question = agent.pending;
+if (question) agent.answer(question.id, humanAnswer);
 
 // When the host shuts down:
 await agent.stop();
@@ -202,18 +211,33 @@ await agent.stop();
 
 `NegotiationClient` supplies `readNegotiation()` and `submitTurn()`; it holds
 credentials outside model context. `NegotiationHost` observes status, turns,
-retries, tool steps, output, completion, and errors. Its `ask()` promise supplies
-the principal's private answer, or `null` to stop that negotiation unanswered.
-Transport and UI code relay events and answers; they never choose whose agent
-to run next.
+retries, tool steps, completion, and errors. Its `conversation()` notification
+tells the host to read `agent.conversation`, `agent.pending`, and
+`agent.queuedQuestions`. Conversation entries and questions identify the
+originating match and counterparty. Transport and UI code relay events and
+answers; they never choose whose agent runs next.
 
-Matches run concurrently, including multiple matches for the same user. Each
-opportunity keeps a separate agent conversation and at most one active run for
-that user. Duplicate match events reuse the existing session; updates arriving
-during a run are coalesced and read again afterward. A pending question holds
-only its own negotiation. Settlement or failure ends that session while the
-personal runtime remains available for later matches. `stop()` cancels model
-calls and pending answer waits across all of this user's sessions.
+All matches share one `Agent` instance, H2A history, and accepted commitments.
+Each A2A match keeps its own task, record, and temporary model/tool transcript.
+Duplicate events are coalesced; only one run acts for a principal on a given
+match at a time. Model calls for different matches run concurrently, while
+outgoing submissions are serialized per principal. A changed human answer or
+accepted commitment invalidates decisions made against older context before
+they can submit.
+
+The principal sees one active question, with other matches' questions queued.
+An answer is recorded once in H2A. The originating task and queued questions
+reconsider the latest shared context before continuing. The prompt tells the
+model to reuse personal facts and explicit intent-wide instructions, while
+keeping approvals and brief yes/no answers scoped to the originating match.
+This interpretation is model behavior; the runtime does not infer permission
+from answer text. Other principals never receive this private history.
+
+With one intent for each of 12 users and all pairs matched, this produces
+**12 H2A conversations and 66 A2A conversations**. Settlement or failure ends
+the affected match while the personal agent remains available for other work.
+`stop(opportunityId)` cancels one match and releases its questions; `stop()`
+cancels all model calls and answer waits for this principal/intent.
 
 There is at most one submission attempt per turn, with no automatic write
 retry, and a 12-turn limit per negotiation. The runtime's session state is

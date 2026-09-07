@@ -73,6 +73,10 @@ export interface AgentOptions {
 
 export interface RunOptions {
   maxSteps?: number;
+  /** Working transcript for this task. Concurrent tasks use separate stores. */
+  history?: MessageStore;
+  /** Tools scoped to this task; the agent's identity and model stay shared. */
+  tools?: Tool<never>[];
   /** The conversation so far — pass `messages` from a previous result to
    * continue it, including resuming a run that stopped on a question.
    * Omit it to fall back to the agent's `history` store instead; passing
@@ -170,12 +174,13 @@ export class Agent {
   async run(input: string, options: RunOptions = {}): Promise<RunResult> {
     // A host can pass `messages` message-style, lean on a shared `history`
     // store, or both — whichever arrived travels into this run.
-    const messages = options.messages ?? this.history.list();
+    const history = options.history ?? this.history;
+    const messages = options.messages ?? history.list();
 
     const result = await runLoop({
       model: this.model,
       systemPrompt: this.instructions(),
-      tools: this.tools,
+      tools: options.tools ?? this.tools,
       messages,
       input,
       maxSteps: options.maxSteps ?? this.maxSteps,
@@ -184,7 +189,7 @@ export class Agent {
       signal: options.signal,
     });
 
-    this.history.save(result.messages);
+    history.save(result.messages);
     return result;
   }
 }

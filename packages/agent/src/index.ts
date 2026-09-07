@@ -5,7 +5,7 @@ export { Agent } from "./core/agent.ts";
 export type { AgentOptions, RunOptions } from "./core/agent.ts";
 
 export { NegotiationAgent } from "./negotiation/negotiation.agent.ts";
-export type { Action as NegotiationAction, TurnInput as NegotiationTurn, User as NegotiationUser, Intent as NegotiationIntent, Negotiation, NegotiationClient, NegotiationHost, NegotiationEvent } from "./negotiation/negotiation.agent.ts";
+export type { Action as NegotiationAction, TurnInput as NegotiationTurn, User as NegotiationUser, Intent as NegotiationIntent, Negotiation, NegotiationClient, NegotiationHost, NegotiationEvent, PrincipalMessage, PrincipalQuestion } from "./negotiation/negotiation.agent.ts";
 
 export { askUserTool, defaultTools } from "./core/tools.ts";
 export type { Tool, ToolContext } from "./core/tools.ts";

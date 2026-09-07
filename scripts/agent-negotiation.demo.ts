@@ -14,11 +14,9 @@ export interface DemoScenario {
 }
 
 export interface TranscriptEntry {
-  channel: 'private' | 'shared';
   ownerId: string;
-  kind: 'question' | 'answer' | 'message' | 'turn';
   text: string;
-  action?: Action;
+  action: Action;
 }
 
 /**
@@ -45,14 +43,12 @@ export function parseScenario(value: unknown): DemoScenario {
   }) };
 }
 
-/** A disposable negotiation record and UI observer; the agent library owns execution. */
+/** A disposable A2A record. Principal conversations belong to the agent runtimes. */
 export class NegotiationDemo extends EventEmitter {
   readonly transcript: TranscriptEntry[] = [];
   phase: 'ready' | 'running' | 'question' | 'settled' | 'error' | 'stopped' = 'ready';
   status = 'Ready';
-  pending: { ownerId: string; question: string; options?: string[] } | null = null;
   private readonly controller = new AbortController();
-  private answerReady: ((answer: string | null) => void) | undefined;
   private readonly turns: Negotiation['turns'] = [];
   private awaitingUserId: string | null;
   private outcome: string | null = null;
@@ -63,19 +59,11 @@ export class NegotiationDemo extends EventEmitter {
     this.awaitingUserId = principals[0].id;
   }
 
-  private update(status: string): void {
+  /** @param status - The library's progress for this match. @param phase - Whether it is running or awaiting its principal. */
+  progress(status: string, phase?: 'running' | 'question'): void {
+    if (this.phase === 'settled' || this.phase === 'error' || this.phase === 'stopped' || (this.phase === 'question' && !phase)) return;
+    this.phase = phase ?? 'running';
     this.status = status;
-    this.emit('change');
-  }
-
-  private progress(status: string): void {
-    if (this.pending || this.phase === 'settled' || this.phase === 'error' || this.phase === 'stopped') return;
-    this.phase = 'running';
-    this.update(status);
-  }
-
-  private append(entry: TranscriptEntry): void {
-    this.transcript.push(entry);
     this.emit('change');
   }
 
@@ -121,96 +109,53 @@ export class NegotiationDemo extends EventEmitter {
     };
   }
 
-  /** @returns Per-match observers and a human reply channel for the library runtime. */
-  get host(): NegotiationHost {
-    return {
-      status: (message) => this.progress(message),
-      turn: (owner, input) => {
-        this.append({ channel: 'shared', ownerId: owner.id, kind: 'turn', text: input.message, action: input.action });
-        this.emit('negotiation.updated');
-      },
-      retry: (owner, attempt, reason) => this.progress(`${owner.name}: model retry ${attempt} — ${reason}`),
-      step: (owner, step) => {
-        if (step.kind === 'tool') this.progress(`${owner.name}: ${step.name} ${step.error ? `— ${step.error}` : 'completed'}`);
-      },
-      ask: (owner, question) => {
-        if (this.controller.signal.aborted) return Promise.resolve(null);
-        this.phase = 'question';
-        this.pending = { ownerId: owner.id, ...question };
-        this.status = `Needs ${owner.name}'s answer`;
-        const waiting = new Promise<string | null>((resolve) => { this.answerReady = resolve; });
-        this.append({
-          channel: 'private', ownerId: owner.id, kind: 'question',
-          text: question.question + (question.options?.length ? '\n\n' + question.options.map((option) => `• ${option}`).join('\n') : ''),
-        });
-        return waiting;
-      },
-      output: (owner, result) => {
-        if (result.output.trim()) this.append({ channel: 'private', ownerId: owner.id, kind: 'message', text: result.output });
-      },
-      end: (record) => {
-        if (this.phase === 'error') return;
-        this.phase = record.settledAt ? 'settled' : 'stopped';
-        this.update(`${record.outcome ?? 'Stopped without settlement'} · ${record.turnCount} A2A turns`);
-      },
-      error: (_owner, reason) => {
-        if (this.phase === 'error') return;
-        this.phase = 'error';
-        this.update(reason);
-        this.stop();
-      },
-    };
+  /** @param ownerId - The author of a persisted A2A turn. @param input - The public decision. */
+  turn(ownerId: string, input: TurnInput): void {
+    this.transcript.push({ ownerId, text: input.message, action: input.action });
+    this.emit('change');
+    this.emit('negotiation.updated');
   }
 
-  /**
-   * Deliver a human reply only to the principal whose question is pending.
-   * @param ownerId - The side the operator is acting as.
-   * @param text - That principal's answer; never a public negotiation turn.
-   * @returns Whether the answer was accepted. Rejects empty, wrong-side, and duplicate replies.
-   */
-  answer(ownerId: string, text: string): boolean {
-    if (this.pending?.ownerId !== ownerId || !this.answerReady || !text.trim()) return false;
-    const resolve = this.answerReady;
-    this.answerReady = undefined;
-    this.pending = null;
-    this.phase = 'running';
-    this.status = `Resuming ${this.principals.find((principal) => principal.id === ownerId)!.name}'s agent…`;
-    this.append({ channel: 'private', ownerId, kind: 'answer', text: text.trim() });
-    resolve(text.trim());
-    return true;
+  /** @param record - The final authoritative state observed by an agent. */
+  end(record: Negotiation): void {
+    if (this.phase === 'error') return;
+    this.phase = record.settledAt ? 'settled' : 'stopped';
+    this.status = (record.outcome ?? 'Stopped without settlement') + ' · ' + record.turnCount + ' A2A turns';
+    this.emit('change');
   }
 
-  /** Cancel outstanding model work and release an unanswered question when the TUI closes. */
+  /** @param reason - Why this match stopped. */
+  error(reason: string): void {
+    this.phase = 'error';
+    this.status = reason;
+    this.stop();
+  }
+
+  /** Stop writes to this match when the lab closes. */
   stop(): void {
     this.controller.abort();
-    this.answerReady?.(null);
-    this.answerReady = undefined;
-    this.pending = null;
     if (this.phase !== 'settled' && this.phase !== 'error') {
       this.phase = 'stopped';
-      this.update('Stopped by operator');
+      this.status = 'Stopped by operator';
     }
+    this.emit('change');
   }
 
-  /** @returns The chronological transcript of both private conversations and shared turns. */
+  /** @returns Only this match's public A2A turns. */
   markdown(): string {
     const names = new Map(this.principals.map((principal) => [principal.id, principal.name]));
-    const entries = this.transcript.map((entry, index) => {
-      const name = names.get(entry.ownerId);
-      const label = entry.channel === 'shared'
-        ? `A2A · ${name}'s agent · ${entry.action}`
-        : entry.kind === 'answer' ? `H2A · ${name} → their agent` : `A2H · ${name}'s agent → ${name} · ${entry.kind}`;
-      return `## ${index + 1}. ${label}\n\n${entry.text}`;
-    });
-    return `# ${this.principals.map(({ name }) => name).join(' ↔ ')}\n\n${entries.join('\n\n')}\n\n## Status\n\n${this.status}\n`;
+    return '# A2A · ' + this.principals.map(({ name }) => name).join(' ↔ ') + '\n\n'
+      + this.transcript.map((entry, index) => '## ' + (index + 1) + '. ' + names.get(entry.ownerId) + ' · ' + entry.action + '\n\n' + entry.text).join('\n\n')
+      + '\n\n## Status\n\n' + this.status + '\n';
   }
 }
 
-/** A post-match simulation with one parallel negotiation for every distinct user pair. */
+/** One H2A conversation per user/intent, with one parallel A2A record per match. */
 export class NegotiationLab extends EventEmitter {
   readonly users: DemoPrincipal[];
   readonly negotiations = new Map<string, NegotiationDemo>();
   readonly agents = new Map<string, NegotiationAgent>();
+  retryStatus = '';
   private selection: [DemoPrincipal, DemoPrincipal];
 
   constructor(scenario: DemoScenario) {
@@ -231,20 +176,41 @@ export class NegotiationLab extends EventEmitter {
     }
     for (const user of this.users) {
       const clientFor = (id: string) => this.negotiations.get(id)!.client(user.id);
+      const host: NegotiationHost = {
+        status: (id, message, phase) => this.negotiations.get(id)!.progress(message, phase),
+        turn: (owner, input, record) => this.negotiations.get(record.opportunityId)!.turn(owner.id, input),
+        retry: (owner, attempt, reason) => {
+          this.retryStatus = (owner.name ?? owner.id) + ': model retry ' + attempt + ' · ' + reason;
+          this.emit('change');
+        },
+        step: (id, _owner, step) => {
+          this.retryStatus = '';
+          if (step.kind === 'tool') this.negotiations.get(id)!.progress(step.name + ' ' + (step.error ?? 'completed'));
+        },
+        conversation: () => this.emit('change'),
+        end: (record) => this.negotiations.get(record.opportunityId)!.end(record),
+        error: (id, _owner, reason) => {
+          const demo = this.negotiations.get(id)!;
+          demo.error(reason);
+          for (const principal of demo.principals) void this.agents.get(principal.id)!.stop(id);
+        },
+      };
       this.agents.set(user.id, new NegotiationAgent({
-        owner: { id: user.id, name: user.name }, instructions: user.instructions,
+        owner: { id: user.id, name: user.name },
+        intent: { id: 'intent-' + user.id, payload: user.intent },
+        instructions: user.instructions,
         client: {
           readNegotiation: (id) => clientFor(id).readNegotiation(id),
           submitTurn: (id, turn) => clientFor(id).submitTurn(id, turn),
         },
-      }, (id) => this.negotiations.get(id)!.host));
+      }, host));
     }
   }
 
   /** @returns The users displayed on the left and right, in that order. */
   get selectedUsers(): readonly [DemoPrincipal, DemoPrincipal] { return this.selection; }
 
-  /** @returns The selected pair's existing session without changing its execution. */
+  /** @returns The selected pair's A2A record without changing execution or H2A state. */
   get active(): NegotiationDemo {
     const id = `local:${this.selection.map(({ id }) => id).sort().map(encodeURIComponent).join(':')}`;
     return this.negotiations.get(id)!;
@@ -254,10 +220,7 @@ export class NegotiationLab extends EventEmitter {
   matchAll(): void {
     for (const demo of this.negotiations.values()) {
       for (const principal of demo.principals) {
-        void this.agents.get(principal.id)!.receive({
-          kind: 'opportunity.matched', opportunityId: demo.opportunityId,
-          intent: { id: `intent-${principal.id}`, payload: principal.intent },
-        });
+        void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: demo.opportunityId });
       }
     }
   }
@@ -277,15 +240,23 @@ export class NegotiationLab extends EventEmitter {
     this.emit('change');
   }
 
-  /** Cancel every pair, release pending questions, and await outstanding model work. */
+  /** Cancel model work, release human questions, and stop all match records. */
   async stop(): Promise<void> {
-    for (const demo of this.negotiations.values()) demo.stop();
     await Promise.all([...this.agents.values()].map((agent) => agent.stop()));
+    for (const demo of this.negotiations.values()) demo.stop();
   }
 
-  /** @returns Every pair's shared turns and private conversations, grouped by pair. */
+  /** @returns Each H2A conversation once, followed by the separate A2A match transcripts. */
   markdown(): string {
-    return '# Local negotiation lab transcript\n\nReal agents, simulated negotiations. Includes all pairs’ private conversations. No live Index records changed.\n\n'
-      + [...this.negotiations.values()].map((demo) => demo.markdown()).join('\n---\n\n');
+    const human = this.users.map((user) => {
+      const entries = this.agents.get(user.id)!.conversation.map((entry, index) =>
+        '## ' + (index + 1) + '. ' + (entry.kind === 'answer' ? user.name : "Your agent") + ' · ' + entry.kind
+        + ' · ' + (entry.counterparty.name ?? entry.counterparty.id) + '\n\n' + entry.text
+        + (entry.options ? '\n\n' + entry.options.map((option) => '- ' + option).join('\n') : ''),
+      );
+      return '# H2A · ' + user.name + '\n\nIntent: ' + user.intent + '\n\n' + entries.join('\n\n');
+    });
+    return '# Local negotiation lab transcript\n\nIncludes private principal conversations. No live Index records changed.\n\n'
+      + [...human, ...[...this.negotiations.values()].map((demo) => demo.markdown())].join('\n\n---\n\n');
   }
 }

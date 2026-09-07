@@ -113,40 +113,60 @@ async function main(): Promise<void> {
   let finish!: () => void;
   let failure: string | undefined;
   const finished = new Promise<void>((resolve) => { finish = resolve; });
-  const host: NegotiationHost = {
-    status: (message) => console.log(`\n${message}`),
+  let closing = false;
+  const host: Omit<NegotiationHost, 'conversation'> = {
+    status: (_id, message) => console.log(`\n${message}`),
     turn: (owner, input, result) => {
       console.log(`\n${owner.name ?? owner.id} [${input.action}]: ${input.message}`);
       console.log(`Recorded by Index; turnCount=${result.turnCount}, outcome=${result.outcome ?? 'open'}`);
       for (const agent of agents) void agent.receive({ kind: 'negotiation.updated', opportunityId });
     },
     retry: (owner, attempt, reason) => console.error(`${owner.name ?? owner.id}: model retry ${attempt}: ${reason}`),
-    step: (_owner, step) => {
+    step: (_id, _owner, step) => {
       if (step.kind === 'tool') console.log(`Tool ${step.name}: ${step.error ?? 'completed'}`);
     },
-    ask: async (owner, question) => {
-      console.log(`\nQuestion for ${owner.name ?? owner.id}: ${question.question}`);
-      if (question.options) console.log(question.options.join('\n'));
-      if (!terminal) {
-        console.log('Paused unanswered: use an interactive terminal to answer principal questions.');
-        return null;
-      }
-      const answer = await terminal.question('Principal answer (empty to stop): ');
-      if (!answer.trim()) console.log('Stopped with the principal question unanswered. No reply was invented.');
-      return answer;
-    },
-    output: (_owner, result) => console.log(`Agent ended: ${result.end}\n${result.output}`),
     end: () => finish(),
-    error: (_owner, reason) => { failure = reason; finish(); },
+    error: (_id, _owner, reason) => { failure = reason; finish(); },
   };
   try {
-    agents.push(...participants.map((participant) => new NegotiationAgent(participant, () => host)));
-    participants.forEach((participant, index) => {
-      void agents[index].receive({ kind: 'opportunity.matched', opportunityId, intent: participant.intent });
+    agents.push(...participants.map((participant) => {
+      let agent!: NegotiationAgent;
+      let displayed = 0;
+      let shownQuestion: string | undefined;
+      agent = new NegotiationAgent(participant, {
+        ...host,
+        conversation: () => {
+          while (displayed < agent.conversation.length) {
+            const entry = agent.conversation[displayed++];
+            console.log(`\nH2A · ${participant.owner.name ?? participant.owner.id} · ${entry.kind} · ${entry.counterparty.name ?? entry.counterparty.id}\n${entry.text}`);
+            if (entry.options) console.log(entry.options.join('\n'));
+          }
+          const question = agent.pending;
+          if (!question || shownQuestion === question.id || closing) return;
+          shownQuestion = question.id;
+          if (!terminal) {
+            console.log('Paused unanswered: use an interactive terminal to answer principal questions.');
+            finish();
+            return;
+          }
+          void terminal.question('Principal answer (empty to stop): ').then((answer) => {
+            if (closing) return;
+            if (answer.trim()) agent.answer(question.id, answer);
+            else { console.log('Stopped with the principal question unanswered.'); finish(); }
+          }, (error: unknown) => {
+            if (!closing) { failure = String(error); finish(); }
+          });
+        },
+      });
+      return agent;
+    }));
+    participants.forEach((_participant, index) => {
+      void agents[index].receive({ kind: 'opportunity.matched', opportunityId });
     });
     await finished;
     if (failure) throw new Error(failure);
   } finally {
+    closing = true;
     terminal?.close();
     await Promise.all(agents.map((agent) => agent.stop()));
     console.log('\nFresh Index transcript:');
