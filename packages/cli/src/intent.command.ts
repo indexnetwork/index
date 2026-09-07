@@ -16,8 +16,8 @@ Usage:
   index intent create <content>                 Create a signal from text
   index intent update <id> <content>            Update a signal's description
   index intent archive <id>                     Archive a signal (accepts short ID)
-  index intent link <id> <network-id>           Link a signal to a network
-  index intent unlink <id> <network-id>         Unlink a signal from a network
+  index intent add-to-network <id> <network-id>      Add a signal to a network
+  index intent remove-from-network <id> <network-id> Remove a signal from a network
 `;
 
 /**
@@ -85,21 +85,15 @@ export async function handleIntent(
       if (!options.json) output.info("Processing signal...");
       const result = await client.callTool("create_intent", {
         description: options.intentContent,
+        ...(options.targetId ? { networkIds: [options.targetId] } : {}),
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to create signal", 1); return; }
 
-      // `create_intent` returns a proposal (for interactive approval), not a
-      // persisted intent. Confirm it so the CLI actually creates the signal.
-      const proposals = parseIntentProposals((result.data as { message?: string })?.message);
-      if (proposals.length === 0) {
-        output.error("Signal proposal could not be parsed from the response.", 1);
-        return;
-      }
-      for (const proposal of proposals) {
-        await client.confirmIntent(proposal.proposalId, proposal.description);
-        output.success("Signal created.");
-        output.dim(`  ${proposal.description}`);
+      const created = (result.data as { intents?: Array<{ description?: string }> })?.intents ?? [];
+      output.success("Signal created.");
+      for (const intent of created) {
+        if (intent.description) output.dim(`  ${intent.description}`);
       }
       return;
     }
@@ -135,68 +129,38 @@ export async function handleIntent(
       return;
     }
 
-    case "link": {
+    case "add-to-network": {
       if (!options.intentId || !options.targetId) {
-        output.error("Usage: index intent link <intent-id> <network-id>", 1);
+        output.error("Usage: index intent add-to-network <intent-id> <network-id>", 1);
         return;
       }
       // Resolve short ID to full UUID — the tool rejects non-UUID intent IDs.
       const intent = await client.getIntent(options.intentId);
-      const result = await client.callTool("create_intent_index", {
+      const result = await client.callTool("add_intent_to_network", {
         intentId: intent.id,
         networkId: options.targetId,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
-      if (!result.success) { output.error(result.error ?? "Failed to link signal", 1); return; }
-      output.success("Signal linked to network.");
+      if (!result.success) { output.error(result.error ?? "Failed to add signal to network", 1); return; }
+      output.success("Signal added to network.");
       return;
     }
 
-    case "unlink": {
+    case "remove-from-network": {
       if (!options.intentId || !options.targetId) {
-        output.error("Usage: index intent unlink <intent-id> <network-id>", 1);
+        output.error("Usage: index intent remove-from-network <intent-id> <network-id>", 1);
         return;
       }
       // Resolve short ID to full UUID — the tool rejects non-UUID intent IDs.
       const intent = await client.getIntent(options.intentId);
-      const result = await client.callTool("delete_intent_index", {
+      const result = await client.callTool("remove_intent_from_network", {
         intentId: intent.id,
         networkId: options.targetId,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
-      if (!result.success) { output.error(result.error ?? "Failed to unlink signal", 1); return; }
-      output.success("Signal unlinked from network.");
+      if (!result.success) { output.error(result.error ?? "Failed to remove signal from network", 1); return; }
+      output.success("Signal removed from network.");
       return;
     }
   }
-}
-
-/**
- * Extract intent proposals from a `create_intent` tool message.
- *
- * The tool embeds one or more ```intent_proposal fenced JSON blocks (each with
- * a `proposalId` and `description`) in its message. This pulls them out so the
- * CLI can confirm them into real signals.
- *
- * @param message - The `message` field of the create_intent tool result.
- * @returns Parsed proposals (empty if none found).
- */
-function parseIntentProposals(
-  message: string | undefined,
-): Array<{ proposalId: string; description: string }> {
-  if (!message) return [];
-  const proposals: Array<{ proposalId: string; description: string }> = [];
-  const blockRegex = /```intent_proposal\s*\n([\s\S]*?)\n```/g;
-  let match: RegExpExecArray | null;
-  while ((match = blockRegex.exec(message)) !== null) {
-    try {
-      const parsed = JSON.parse(match[1]) as { proposalId?: string; description?: string };
-      if (parsed.proposalId && parsed.description) {
-        proposals.push({ proposalId: parsed.proposalId, description: parsed.description });
-      }
-    } catch {
-      // Skip blocks whose body is not valid JSON.
-    }
-  }
-  return proposals;
 }

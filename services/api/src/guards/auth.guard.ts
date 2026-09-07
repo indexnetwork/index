@@ -1,16 +1,8 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import { eq } from 'drizzle-orm/sql';
 
-import { hashApiKey } from '../lib/apikey/credential';
-import { resolveApiKeyUserId } from '../lib/apikey/principal';
-import { apikeys, users } from '../schemas/database.schema';
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { getRequestAuthContext, recordRequestAuthContext } from '../lib/request-auth-context';
-import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
-
-export { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND } from '../lib/agent/hermes-credential';
-export type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 
 const logger = log.server.from('auth.guard');
 
@@ -18,21 +10,12 @@ export interface AuthenticatedUser {
   id: string;
   email: string | null;
   name: string;
-}
-
-export interface ApiKeyAuthenticationCredential {
-  id?: string;
-  referenceId: string | null;
-  userId: string | null;
-  enabled: boolean;
-  expiresAt: Date | null;
-  metadata: string | null;
-}
-
-/** Persistence boundary used by the real API-key authentication algorithm. */
-export interface ApiKeyAuthenticationStore {
-  findCredentialByHash(hash: string): Promise<ApiKeyAuthenticationCredential | null>;
-  findUserById(userId: string): Promise<AuthenticatedUser | null>;
+  /**
+   * The caller's own session, when it authenticated with a session token. The
+   * web app's JWT does not carry it, so this is set only for native devices —
+   * enough for a device list to mark the row the caller is looking from.
+   */
+  sessionId?: string;
 }
 
 const JWKS = createRemoteJWKSet(
@@ -40,10 +23,17 @@ const JWKS = createRemoteJWKSet(
 );
 
 /**
- * Resolve an authenticated user from a Better Auth JWT.
- * Expects `Authorization: Bearer <jwt>` header or `?token=...`.
+ * Resolve the human behind a bearer credential, in either of the two forms a
+ * session takes: the web app exchanges its cookie for a short-lived JWT, while
+ * native devices hold the session token itself, issued by the device
+ * authorization grant. Both mean "the owner is acting", so both record
+ * `kind: 'session'`.
+ *
+ * @param req - Request carrying `Authorization: Bearer <token>` or `?token=`.
+ * @returns The authenticated owner.
+ * @throws Error when no credential is present, or it verifies as neither form.
  */
-const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
+const resolveSessionUser = async (req: Request): Promise<AuthenticatedUser> => {
   const authHeader = req.headers.get('Authorization');
   const token = authHeader?.startsWith('Bearer ')
     ? authHeader.slice(7)
@@ -52,18 +42,37 @@ const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
   if (!token) {
     throw new Error('Access token required');
   }
-  try {
-    const { payload } = await jwtVerify(token, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
-    const user = {
-      id: payload.id as string,
-      email: (payload.email as string) ?? null,
-      name: payload.name as string,
-    };
-    recordRequestAuthContext(req, { kind: 'session' });
-    return user;
-  } catch {
+
+  // Three segments is a JWT; anything else can only be a session token, so
+  // each credential takes exactly one verification path.
+  if (token.split('.').length === 3) {
+    try {
+      const { payload } = await jwtVerify(token, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
+      recordRequestAuthContext(req, { kind: 'session' });
+      return {
+        id: payload.id as string,
+        email: (payload.email as string) ?? null,
+        name: payload.name as string,
+      };
+    } catch {
+      throw new Error('Invalid or expired access token');
+    }
+  }
+
+  const { auth } = await import('../lib/betterauth/auth.instance');
+  const session = await auth.api.getSession({
+    headers: new Headers({ authorization: `Bearer ${token}` }),
+  });
+  if (!session?.user) {
     throw new Error('Invalid or expired access token');
   }
+  recordRequestAuthContext(req, { kind: 'session' });
+  return {
+    id: session.user.id,
+    email: session.user.email ?? null,
+    name: session.user.name,
+    sessionId: session.session.id,
+  };
 };
 
 /**
@@ -77,31 +86,23 @@ export class SessionRequiredError extends Error {
   }
 }
 
-/** Thrown when an agent-bound key reaches an owner-control endpoint. */
-export class OwnerControlRequiredError extends Error {
-  constructor(message = 'This endpoint requires an owner credential; agent-bound API keys are not accepted') {
-    super(message);
-    this.name = 'OwnerControlRequiredError';
-  }
-}
-
 /**
- * SessionOnlyGuard: accepts ONLY a Better Auth session JWT (`Authorization:
- * Bearer` header or `?token=`), never an API key.
+ * SessionOnlyGuard: accepts ONLY a Better Auth session (a JWT from the web app
+ * or a device session token), never an API key.
  *
- * Use for endpoints where a leaked agent API key must not be able to act:
- * account deletion and agent-management writes (create/update/delete agents,
- * tokens, permissions, transports). Re-walling those keeps leaked-key blast
- * radius at "act as the user in the product" — a key must never be able to
- * mint successor credentials (which would survive rotation of the leaked
- * key) or destroy the account. See IND-384.
+ * Use for owner control: agent create/update/delete (including choosing the
+ * negotiator) and account deletion. Key management itself is guarded the same
+ * way by the Better Auth apiKey plugin, which requires a session because
+ * `enableSessionForAPIKeys` is off. This keeps a leaked key's blast radius at
+ * "act as the user in the product" — it can never mint a successor credential
+ * that survives its own rotation, nor destroy the account. See IND-384.
  */
 export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser> => {
   const authHeader = req.headers.get('Authorization');
   const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
 
   if (authHeader?.startsWith('Bearer ') || queryToken) {
-    return resolveJwtUser(req);
+    return resolveSessionUser(req);
   }
 
   if (req.headers.get('x-api-key')) {
@@ -114,90 +115,6 @@ export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser>
 
   throw new Error('Access token required');
 };
-
-function parseApiKeyMetadata(metadata: string | null): Record<string, unknown> | null {
-  if (!metadata) return null;
-  try {
-    const parsed: unknown = JSON.parse(metadata);
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function parseApiKeyAgentId(metadata: string | null): string | null {
-  const parsed = parseApiKeyMetadata(metadata);
-  return typeof parsed?.agentId === 'string' ? parsed.agentId : null;
-}
-
-function parseApiKeyAudience(metadata: string | null): typeof HERMES_NEGOTIATOR_AUDIENCE | null {
-  const parsed = parseApiKeyMetadata(metadata);
-  return parsed?.audience === HERMES_NEGOTIATOR_AUDIENCE
-    ? HERMES_NEGOTIATOR_AUDIENCE
-    : null;
-}
-
-function parseApiKeySetupAttemptId(metadata: string | null): string | null {
-  const parsed = parseApiKeyMetadata(metadata);
-  return typeof parsed?.setupAttemptId === 'string' ? parsed.setupAttemptId : null;
-}
-
-/**
- * Negotiator-audience credentials are a closed authentication contract.
- * Inspect the audience directly before resolving an owner so malformed rows
- * cannot collapse into the legacy `audience: null` / unbound-key behavior.
- */
-function hasValidHermesAuthenticationIdentity(row: ApiKeyAuthenticationCredential): boolean {
-  const parsed = parseApiKeyMetadata(row.metadata);
-  if (parsed?.audience !== HERMES_NEGOTIATOR_AUDIENCE) return true;
-
-  return typeof row.id === 'string'
-    && row.id.trim().length > 0
-    && typeof parsed.agentId === 'string'
-    && parsed.agentId.trim().length > 0
-    && typeof parsed.setupAttemptId === 'string'
-    && parsed.setupAttemptId.trim().length > 0
-    && parsed.kind === HERMES_NEGOTIATOR_CREDENTIAL_KIND
-    && row.expiresAt !== null
-    && typeof parsed.expiresAt === 'string'
-    && parsed.expiresAt === row.expiresAt.toISOString();
-}
-
-/** Stable 403 for an explicitly negotiation-only credential used elsewhere. */
-export class HermesNegotiatorRouteDeniedError extends Error {
-  constructor(message = 'This Hermes negotiator credential is not authorized for this endpoint') {
-    super(message);
-    this.name = 'HermesNegotiatorRouteDeniedError';
-  }
-}
-
-/**
- * Centrally enforce the REST allowlist for the dedicated Hermes audience.
- * Legacy agent-bound keys have no explicit audience and retain their historical
- * route behavior. The URL is matched exactly after removing the optional API
- * prefix; query strings never influence admission.
- */
-export function assertApiKeyAudienceRoute(
-  req: Request,
-  principal: Pick<NegotiationCredentialPrincipal, 'agentId' | 'audience'>,
-): void {
-  if (principal.audience !== HERMES_NEGOTIATOR_AUDIENCE) return;
-
-  const method = req.method.toUpperCase();
-  const rawPath = new URL(req.url, 'http://localhost').pathname;
-  const path = rawPath === '/api' ? '/' : rawPath.replace(/^\/api(?=\/)/, '');
-  if (method === 'GET' && path === '/agents/me') return;
-
-  const escapedAgentId = principal.agentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const negotiationRoute = new RegExp(
-    `^/agents/${escapedAgentId}/negotiations/(?:pickup|[^/]+/(?:respond|consult))$`,
-  );
-  if (method === 'POST' && negotiationRoute.test(path)) return;
-
-  throw new HermesNegotiatorRouteDeniedError();
-}
 
 /**
  * True iff the request is authenticated by a genuine Better Auth session JWT
@@ -213,111 +130,63 @@ export const isSessionAuthenticated = (req: Request): boolean =>
   getRequestAuthContext(req)?.kind === 'session';
 
 /**
- * Resolve the `metadata.agentId` of the API key on the request, or null if
- * the request is JWT-authenticated, has no key, or the key has no agent
- * binding. Authorization is intentionally NOT re-checked here — callers
- * must run `AuthGuard` first.
+ * Resolve the owning user behind an `x-api-key` credential. Verification,
+ * expiry and enablement all belong to the Better Auth apiKey plugin; this
+ * only maps the verified key to the user it references.
+ *
+ * @param req - The request carrying the credential, for provenance recording.
+ * @param apiKey - The raw secret from the `x-api-key` header.
+ * @returns The authenticated owner.
+ * @throws Error when the key is unknown, disabled, expired or orphaned.
  */
-export type AgentPrincipalResolver = (request: Request) => Promise<string | null>;
-
-export const resolveApiKeyAgentId = async (req: Request): Promise<string | null> => {
-  const authenticated = getRequestAuthContext(req);
-  if (authenticated?.kind === 'api_key') return authenticated.agentId;
-
-  const authHeader = req.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) return null;
-  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
-  if (queryToken) return null;
-
-  const apiKey = req.headers.get('x-api-key');
-  if (!apiKey) return null;
-
-  const hashed = await hashApiKey(apiKey);
-
-  const database = (await import('../lib/drizzle/drizzle')).default;
-  const [row] = await database
-    .select({ metadata: apikeys.metadata })
-    .from(apikeys)
-    .where(eq(apikeys.key, hashed))
-    .limit(1);
-
-  return parseApiKeyAgentId(row?.metadata ?? null);
-};
-
 export async function authenticateApiKey(
   req: Request,
   apiKey: string,
-  store: ApiKeyAuthenticationStore = databaseApiKeyAuthenticationStore,
 ): Promise<AuthenticatedUser> {
-  const hashed = await hashApiKey(apiKey);
-  const row = await store.findCredentialByHash(hashed);
-
-  // Log a prefix of the stored SHA-256 hash, never raw credential material.
-  const keyHashPrefix = hashed.slice(0, 8);
   const ua = req.headers.get('user-agent') ?? 'unknown';
+  const { auth } = await import('../lib/betterauth/auth.instance');
 
-  if (!row || !row.enabled) {
-    logger.warn('API key rejected', { reason: row ? 'disabled' : 'not_found', keyHashPrefix, ua });
-    throw new Error('Invalid API key');
-  }
-  if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
-    logger.warn('API key rejected', { reason: 'expired', keyHashPrefix, ua });
-    throw new Error('Invalid API key');
-  }
-  if (!hasValidHermesAuthenticationIdentity(row)) {
-    logger.warn('API key rejected', { reason: 'malformed_hermes_identity', keyHashPrefix, ua });
+  const { valid, error, key } = await auth.api.verifyApiKey({ body: { key: apiKey } });
+  if (!valid || !key) {
+    logger.warn('API key rejected', { reason: error?.code ?? 'invalid', ua });
     throw new Error('Invalid API key');
   }
 
-  let userId: string | null;
-  try {
-    userId = resolveApiKeyUserId(row);
-  } catch {
-    logger.warn('API key rejected', { reason: 'principal_mismatch', keyHashPrefix, ua });
-    throw new Error('Invalid API key');
-  }
-  if (!userId) {
-    logger.warn('API key rejected', { reason: 'no_user_ref', keyHashPrefix, ua });
-    throw new Error('Invalid API key');
-  }
-
-  const user = await store.findUserById(userId);
-
+  const user = await resolveApiKeyOwner(key.referenceId);
   if (!user) {
-    logger.warn('API key rejected', { reason: 'user_not_found', keyHashPrefix, ua });
+    logger.warn('API key rejected', { reason: 'user_not_found', ua });
     throw new Error('Invalid API key');
   }
 
-  const context = {
-    kind: 'api_key' as const,
-    agentId: parseApiKeyAgentId(row.metadata),
-    audience: parseApiKeyAudience(row.metadata),
-    credentialId: row.id ?? null,
-    setupAttemptId: parseApiKeySetupAttemptId(row.metadata),
-  };
-  recordRequestAuthContext(req, context);
-  if (context.agentId) assertApiKeyAudienceRoute(req, {
-    agentId: context.agentId,
-    audience: context.audience,
-  });
+  recordRequestAuthContext(req, { kind: 'api_key' });
+  return user;
+}
 
-  return {
-    id: user.id,
-    email: user.email ?? null,
-    name: user.name,
-  };
+async function resolveApiKeyOwner(userId: string): Promise<AuthenticatedUser | null> {
+  const database = (await import('../lib/drizzle/drizzle')).default;
+  const { eq } = await import('drizzle-orm/sql');
+  const { users } = await import('../schemas/database.schema');
+
+  const [user] = await database
+    .select({ id: users.id, email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
 }
 
 /**
- * AuthGuard: verifies genuine JWTs (`Authorization: Bearer` header or
- * `?token=`), else accepts an `x-api-key` credential. Nothing else.
+ * AuthGuard: verifies a bearer session (web JWT or device session token) from
+ * the `Authorization` header or `?token=`, else accepts an `x-api-key`
+ * credential. Nothing else.
  */
 export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
   const authHeader = req.headers.get('Authorization');
   const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
 
   if (authHeader?.startsWith('Bearer ') || queryToken) {
-    return resolveJwtUser(req);
+    return resolveSessionUser(req);
   }
 
   const apiKey = req.headers.get('x-api-key');
@@ -326,48 +195,4 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
   }
 
   return authenticateApiKey(req, apiKey);
-};
-
-const databaseApiKeyAuthenticationStore: ApiKeyAuthenticationStore = {
-  async findCredentialByHash(hash) {
-    const database = (await import('../lib/drizzle/drizzle')).default;
-    const [row] = await database
-      .select({
-        id: apikeys.id,
-        referenceId: apikeys.referenceId,
-        userId: apikeys.userId,
-        enabled: apikeys.enabled,
-        expiresAt: apikeys.expiresAt,
-        metadata: apikeys.metadata,
-      })
-      .from(apikeys)
-      .where(eq(apikeys.key, hash))
-      .limit(1);
-    return row ?? null;
-  },
-  async findUserById(userId) {
-    const database = (await import('../lib/drizzle/drizzle')).default;
-    const [user] = await database
-      .select({ id: users.id, email: users.email, name: users.name })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
-  },
-};
-
-/**
- * Authenticate an owner-control request while rejecting every agent-bound key.
- * Sessions and unbound owner keys remain accepted.
- */
-export const OwnerControlGuard = async (
-  req: Request,
-  authenticate: (request: Request) => Promise<AuthenticatedUser> = AuthGuard,
-): Promise<AuthenticatedUser> => {
-  const user = await authenticate(req);
-  const context = getRequestAuthContext(req);
-  if (context?.kind === 'api_key' && context.agentId !== null) {
-    throw new OwnerControlRequiredError();
-  }
-  return user;
 };

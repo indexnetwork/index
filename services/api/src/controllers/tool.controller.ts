@@ -7,8 +7,7 @@
 import { z } from 'zod';
 
 import { Controller, Post, Get, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
+import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { ToolService } from '../services/tool.service';
 import { ChatContextAccessError } from '@indexnetwork/protocol';
 import { log } from '../lib/log';
@@ -37,7 +36,7 @@ export class ToolController {
    * @returns Tool result as JSON
    */
   @Post('/:toolName')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async invoke(req: Request, user: AuthenticatedUser, params: { toolName: string }) {
     const { toolName } = params;
     logger.verbose('Tool invoke requested', { userId: user.id, toolName });
@@ -58,13 +57,7 @@ export class ToolController {
     }
 
     try {
-      // IND-593 trusted provenance seam: derive the auth kind from the
-      // guard-recorded request context (session vs API key) — never from the
-      // request body — so only genuine owner sessions can attest owner-gated
-      // opportunity transitions downstream.
-      const result = await this.toolService.invokeTool(user.id, toolName, parsed.data.query, {
-        sessionAuthenticated: isSessionAuthenticated(req),
-      });
+      const result = await this.toolService.invokeTool(user.id, toolName, parsed.data.query);
       return Response.json(result);
     } catch (err) {
       if (err instanceof ChatContextAccessError) {
@@ -111,7 +104,7 @@ export class ToolController {
    * @returns Array of tool metadata
    */
   @Get('/')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async list(_req: Request, _user: AuthenticatedUser) {
     logger.verbose('Tool list requested');
 

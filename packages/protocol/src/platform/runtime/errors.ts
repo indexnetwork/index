@@ -3,7 +3,7 @@ export class ChatContextAccessError extends Error {
   constructor(
     message: string,
     public readonly statusCode: number,
-    public readonly code: "USER_NOT_FOUND" | "INDEX_NOT_FOUND" | "INDEX_MEMBERSHIP_REQUIRED",
+    public readonly code: "USER_NOT_FOUND" | "NETWORK_NOT_FOUND" | "NETWORK_MEMBERSHIP_REQUIRED",
   ) {
     super(message);
     this.name = "ChatContextAccessError";

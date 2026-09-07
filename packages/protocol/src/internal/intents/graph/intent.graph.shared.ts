@@ -9,7 +9,6 @@
 import { IntentGraphState, VerifiedIntent, type IntentGraphAction, type IntentValidationFailure } from "./intent.graph.state.js";
 import { ExplicitIntentInferrer } from "../intent.inferrer.js";
 import { SemanticVerifier } from "../intent.verifier.js";
-import { DEFAULT_SPECIFICITY_WARNING } from "../intent.proposal.js";
 import { IntentReconciler } from "../intent.reconciler.js";
 import type { NormalizedIntentAction } from "../intent.reconciler.js";
 import { IntentGraphDatabase } from "../../../platform/database.js";
@@ -110,6 +109,9 @@ export const isVague = (description: string, entropy: number, clarity: number): 
   return false;
 };
 
+/** Default user-facing warning for broad attributive intents. */
+export const DEFAULT_SPECIFICITY_WARNING = "This signal is broad and may produce many weak matches. Add a more concrete role, outcome, location, timeframe, domain, or specific need to get better recommendations.";
+
 export const getSpecificityWarning = (verdict: { specificity_warning?: string | null }): string => {
   const warning = verdict.specificity_warning?.trim();
   return warning && warning.length > 0 ? warning : DEFAULT_SPECIFICITY_WARNING;
@@ -120,8 +122,17 @@ export const toSpeechActType = (classification?: string): "COMMISSIVE" | "DIRECT
   return null;
 };
 
-/**
- * Factory class to build and compile the Intent Processing Graph.
+/** Normalize intent text to the form the graph persists. */
+export function normalizeIntentDescription(description: string): string {
+  if (!description || typeof description !== "string") return description;
+  const normalized = description
+    .replace(/\s*More details at\s*:?\s*https?:\/\/[^\s"'<>)\]]+/gi, "")
+    .replace(/\s*See\s+https?:\/\/[^\s"'<>)\]]+\s+for\s+more[^.]*\.?/gi, "")
+    .replace(/https?:\/\/[^\s"'<>)\]]+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return normalized.replace(/[.,;]\s*$/, "").trim() || description;
+}
 
 /**
  * Generate a flat embedding for an intent payload, swallowing failures so

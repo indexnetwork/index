@@ -21,7 +21,7 @@ export interface DiscoveryStrategyContext {
   deps: OpportunityGraphDeps;
   discoveryUserId: string;
   limitPerStrategy: number;
-  perIndexLimit: number;
+  perNetworkLimit: number;
 }
 
 /** Trace payload the query-HyDE path produces alongside its candidates. */
@@ -36,7 +36,7 @@ export interface QueryHydeDiscoveryResult {
  * text, then search every target network with the resulting lens embeddings.
  */
 export async function runQueryHydeDiscovery(ctx: DiscoveryStrategyContext): Promise<QueryHydeDiscoveryResult | null> {
-  const { state, deps, discoveryUserId, limitPerStrategy, perIndexLimit } = ctx;
+  const { state, deps, discoveryUserId, limitPerStrategy, perNetworkLimit } = ctx;
   const searchText = state.searchQuery?.trim() ?? '';
   const lensInput = {
     profileContext: buildDiscovererContext(state.sourceProfile, state.indexedIntents),
@@ -67,22 +67,22 @@ export async function runQueryHydeDiscovery(ctx: DiscoveryStrategyContext): Prom
   const lensEmbeddings = toLensEmbeddings(hydeEmbeddings, lenses);
   const all: CandidateMatch[] = [];
   await Promise.all(
-    state.targetNetworks.map(async (targetIndex) => {
+    state.targetNetworks.map(async (targetNetwork) => {
       const results = await deps.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
-        indexScope: [targetIndex.networkId],
+        networkScope: [targetNetwork.networkId],
         excludeUserId: discoveryUserId,
         limitPerStrategy,
-        limit: perIndexLimit,
+        limit: perNetworkLimit,
         minScore: deps.retrievalMinSimilarity,
       });
-      all.push(...collectHydeResults(results, targetIndex.networkId));
+      all.push(...collectHydeResults(results, targetNetwork.networkId));
     })
   );
   discoveryLog.verbose('searchWithHydeEmbeddings raw results', { total: all.length });
   const byKey = new Map<string, CandidateMatch>();
   for (const c of all) {
-    // Dedup by candidateUserId + intent, NOT by indexId. Including indexId
-    // caused the same user to appear once per index they belong to.
+    // Dedup by candidateUserId + intent, NOT by networkId. Including networkId
+    // caused the same user to appear once per network they belong to.
     const key = `${c.candidateUserId}:intent:${c.candidateIntentId}`;
     if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
       byKey.set(key, c);
@@ -94,7 +94,7 @@ export async function runQueryHydeDiscovery(ctx: DiscoveryStrategyContext): Prom
 /** Map HyDE embeddings back onto their lens metadata. */
 export function toLensEmbeddings(
   hydeEmbeddings: Record<string, number[]>,
-  lenses: Array<{ label: string; corpus: 'profiles' | 'intents' | 'premises' }>,
+  lenses: Array<{ label: string; corpus: 'profiles' | 'intents' }>,
 ): LensEmbedding[] {
   const lensMap = new Map(lenses.map(l => [l.label, l]));
   const lensEmbeddings: LensEmbedding[] = [];
@@ -149,7 +149,7 @@ export function mergeStrategyCandidates(...groups: CandidateMatch[][]): Candidat
   const merged = new Map<string, CandidateMatch & { _strategies: Set<string> }>();
   for (const group of groups) {
     for (const c of group) {
-      const entityId = c.candidateIntentId ?? c.candidatePremiseId ?? c.candidateContextId ?? 'none';
+      const entityId = c.candidateIntentId ?? c.candidateContextId ?? 'none';
       const key = `${c.candidateUserId}:${c.networkId}:${entityId}`;
       const existing = merged.get(key);
       if (!existing) {

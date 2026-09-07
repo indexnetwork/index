@@ -19,13 +19,13 @@ export interface LensEmbedding {
   /** Free-text lens label (e.g. "crypto infrastructure VC"). */
   lens: string;
   /** Which corpus to search. */
-  corpus: 'profiles' | 'intents' | 'premises';
+  corpus: 'profiles' | 'intents';
   /** 2000-dim embedding vector. */
   embedding: number[];
 }
 
 export interface HydeSearchOptions {
-  indexScope: string[];
+  networkScope: string[];
   excludeUserId?: string;
   limitPerStrategy?: number;
   limit?: number;
@@ -61,7 +61,7 @@ export type VectorStoreOption<T> = {
  *
  * The retained score is the user's best raw cosine similarity plus a bounded
  * bonus for each ADDITIONAL DISTINCT lens that surfaced them. Counting matched
- * rows instead of lenses (one lens hitting three of a user's premises counted as
+ * rows instead of lenses (one lens hitting three of a user's intents counted as
  * three signals) saturated the old additive bonus, so unrelated candidates all
  * landed on exactly 1.0 and monopolised the by-rank evaluation batch.
  */
@@ -243,7 +243,7 @@ export class EmbedderAdapter {
           'db.operation': 'vector_search',
           'search.strategy': 'hyde',
           'search.lens_count': lensEmbeddings.length,
-          'search.index_scope_count': options.indexScope.length,
+          'search.network_scope_count': options.networkScope.length,
           'search.limit': options.limit ?? 80,
         },
       },
@@ -256,19 +256,15 @@ export class EmbedderAdapter {
     options: HydeSearchOptions
   ): Promise<HydeCandidate[]> {
     const {
-      indexScope,
+      networkScope,
       excludeUserId,
       limitPerStrategy = 40,
       limit = 80,
       minScore = 0.40,
     } = options;
 
-    const filter = { indexScope, excludeUserId };
+    const filter = { networkScope, excludeUserId };
 
-    // Corpus selection honors the caller-composed `corpusGating` option, composed
-    // by the discovery graph from DISCOVERY_ALLOWED_TYPES / DISCOVERY_PROFILE_SOURCE.
-    // 'profiles' hints remap to the active profile corpus: premises (default) or
-    // user_contexts (lightweight mode).
     const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
@@ -286,23 +282,23 @@ export class EmbedderAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Private: intent/premise search for HyDE
+  // Private: intent search for HyDE
   // ─────────────────────────────────────────────────────────────────────────
 
   private async searchIntentsForHyde(
     embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
+    filter: { networkScope: string[]; excludeUserId?: string },
     limit: number,
     minScore: number,
     lens: string
   ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
+    if (filter.networkScope?.length === 0) return [];
     const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentNetworks } = schema;
 
     const conditions = [
-      inArray(intentNetworks.networkId, filter.indexScope),
+      inArray(intentNetworks.networkId, filter.networkScope),
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
       isNull(intents.archivedAt),
       or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
@@ -356,10 +352,8 @@ export class EmbedderAdapter {
 
   // NOTE: profile-HyDE discovery (the `searchProfiles` profiles-corpus reader) was
   // retired in WS10 (IND-367). It was the last runtime read of `user_profiles` and was
-  // already unreachable: the live HyDE path (`searchWithHydeEmbeddings`) remaps the
-  // 'profiles' corpus hint to 'premises', and no caller passed 'profiles' to `search()`.
-  // Discovery now runs on HyDE query retrieval. See IND-365 for the
-  // table drop.
+  // already unreachable. Discovery now runs on HyDE query retrieval over intents.
+  // See IND-365 for the table drop.
 
   private async searchIntents(
     embedding: number[],
@@ -378,8 +372,8 @@ export class EmbedderAdapter {
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];
 
-    const scopedIndexes =
-      filter?.indexScope && Array.isArray(filter.indexScope) ? (filter.indexScope as string[]) : null;
+    const scopedNetworks =
+      filter?.networkScope && Array.isArray(filter.networkScope) ? (filter.networkScope as string[]) : null;
 
     const selection = {
       id: intents.id,
@@ -389,7 +383,7 @@ export class EmbedderAdapter {
       similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
     };
 
-    const results = scopedIndexes
+    const results = scopedNetworks
       ? await db
           .select(selection)
           .from(intents)
@@ -402,7 +396,7 @@ export class EmbedderAdapter {
           .innerJoin(schema.users, eq(intents.userId, schema.users.id))
           .where(and(
             ...baseConditions,
-            inArray(intentNetworks.networkId, scopedIndexes),
+            inArray(intentNetworks.networkId, scopedNetworks),
             isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt),
           ))

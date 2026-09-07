@@ -20,6 +20,356 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 53.0.0 - 2026-09-06
+
+### Removed
+
+- **BREAKING — `mcpRateLimiter` is gone.** Hosts used to inject a per-principal
+  throttle on MCP tool dispatch. That hook is deleted; a tool call runs as soon
+  as identity resolves.
+
+## 52.0.0 - 2026-09-06
+
+### Removed
+
+- **BREAKING — the MCP capability policy is gone.** `mcp.authorization-policy.ts`
+  is deleted along with the `CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS`,
+  `McpCapabilityPolicyOptions`, `McpAuthorizationObserver` and
+  `McpAuthorizationDenialEvent` exports. `createMcpServer` now takes three
+  arguments — `(deps, authResolver, scopedDepsFactory)` — and every
+  authenticated caller sees and can call every registered tool. A credential
+  names a user, so ownership and membership checks in the handlers are the only
+  remaining gate.
+- **BREAKING — agent CRUD is not an MCP tool.** `register_agent`, `list_agents`,
+  `update_agent` and `delete_agent` are deleted. Agents are created, updated and
+  deleted from the owner's own signed-in session over the host's REST surface.
+  `read_own_agent` stays, unchanged, as a plain authenticated tool.
+- The owner-session gate inside `accept_opportunity` and `reject_opportunity` is
+  removed. A verdict passed through a key is the owner passing it, and the write
+  was always scoped to `context.userId`.
+
+## 51.0.0 - 2026-09-06
+
+### Removed
+
+- **BREAKING — an API key names a user, never an agent.**
+  `McpResolvedIdentity` is `{ userId }` plus the session flag: `agentId`,
+  `enrollmentCapable`, `isHermesAgent` and `networkScopeId` are gone, along with
+  `McpApiKeyMetadataSchema`. Nothing derives a principal from key metadata, so
+  the `enrollment_key`, `unregistered_key`, `registered_network_agent` and
+  `registered_global_agent` capability profiles are gone too — a caller is
+  either a session or a key, and a key gets the full product tool set.
+- **BREAKING — `agent_permissions` is deleted.** `AgentPermissionRecord`,
+  `AgentWithRelations` and `GrantPermissionInput` are removed from the public
+  types; `AgentDatabase` loses `getAgentWithRelations`, `grantPermission`,
+  `revokePermission` and `hasPermission`, and gains `getSelectedNegotiator`.
+  The `grant_agent_permission` and `revoke_agent_permission` MCP tools are
+  gone, `register_agent` no longer takes `permissions`, and `read_own_agent`
+  returns the owner's selected negotiator.
+- **BREAKING — tool access rules collapse to four kinds.**
+  `McpToolAccessRule` is `authenticated`, `human_only`, `agent_admin` or
+  `removed`; `reach` and the stored-permission projection
+  (`defineMcpToolPermissionMap`, `McpToolPermissionMap`,
+  `MCP_PERMISSION_ACTIONS`, `projectStoredPermissionActions`) are removed.
+  Owner verdicts and `delete_network` stay `human_only`; agent CRUD is
+  `agent_admin` and reachable only from a session.
+
+### Changed
+
+- `ResolvedToolContext` no longer carries `agentId`, so rate limiting and
+  owner-verdict checks key off the user and the session flag alone.
+
+## 50.0.0 - 2026-09-05
+
+### Removed
+
+- **BREAKING — drop the IND-593 owner-approval proof port.** `update_opportunity`
+  send/accept/reject is an ordinary tool call gated by existing MCP/session auth.
+  Removed `ownerApprovalProof` from the public schema, plus
+  `OpportunityOwnerApprovalAuthority` and related public types,
+  `bindOwnerApprovalProvenance`, and `opportunityOwnerActionForStatus`. Owner
+  verdict tools (`accept_opportunity` / `reject_opportunity`) still require a
+  host-bound session (`context.isSessionAuth`).
+
+## 49.0.1 - 2026-09-05
+
+### Changed
+
+- Documentation only. TSDoc and inline comments across `platform/database/` and
+  `internal/opportunities/` no longer call a network an "index".
+  `IMPLEMENTATION.md` drops the removed `indexer` dependency from its `Networks`
+  example and describes `createAssignmentGraph()` as it behaves today: no
+  scoring policy, rows written at score 1 with `mode: manual_override`.
+  `src/README.md` drops the Intent Indexer agent row, whose file
+  (`internal/intents/indexing/intent.indexer.ts`) no longer exists. No public
+  surface change.
+
+## 49.0.0 - 2026-09-04
+
+### Removed
+
+- **BREAKING — the three intent↔network MCP tools were renamed.** External agents
+  must switch tool names; there is no alias or compatibility shim.
+  - `create_intent_index` → `add_intent_to_network`
+  - `read_intent_indexes` → `list_intent_networks`
+  - `delete_intent_index` → `remove_intent_from_network`
+
+### Changed
+
+- **BREAKING — host interfaces no longer call a network an "index".** The domain
+  renamed indexes to networks, but the ports a host implements still said
+  `Index`, so a host had to speak both vocabularies. Every such member is renamed
+  in place. Hosts must rename their implementations:
+  - `Database`/`UserDatabase`/`SystemDatabase` methods: `getOwnedIndexes` →
+    `getOwnedNetworks`, `getUserIndexIds` → `getUserNetworkIds`,
+    `getPublicIndexesNotJoined` → `getPublicNetworksNotJoined`,
+    `getMembersFromUserIndexes` → `getMembersFromUserNetworks`,
+    `getActiveIntentsAcrossIndexes` → `getActiveIntentsAcrossNetworks`,
+    `getIntentsInIndex` → `getIntentsInNetwork`, `getUserIntentsInIndex` →
+    `getUserIntentsInNetwork`, `getIntentsInIndexForMember` →
+    `getIntentsInNetworkForMember`, `getIntentIndexScores` →
+    `getIntentNetworkScores`, `deleteIntentIndexAssociations` →
+    `deleteIntentNetworkAssociations`, `isIntentAssignedToIndex` →
+    `isIntentAssignedToNetwork`, `unassignIntentFromIndex` →
+    `unassignIntentFromNetwork`, `isIndexOwner` → `isNetworkOwner`,
+    `removeMemberFromIndex` → `removeMemberFromNetwork`, `updateIndexSettings` →
+    `updateNetworkSettings`.
+  - Entity types: `OwnedIndex` → `OwnedNetwork`, `IndexMemberDetails` →
+    `NetworkMemberDetails`, `IndexedIntentDetails` → `NetworkIntentDetails`,
+    `UpdateIndexSettingsData` → `UpdateNetworkSettingsData`. The
+    `NetworkMembership.indexPrompt` field is now `networkPrompt`.
+  - Scope plumbing: `indexScope` is `networkScope` everywhere it appears —
+    `SystemDatabase.indexScope`, the `createSystemDatabase` /
+    `ScopedDepsFactory.create` third argument, `HydeSearchOptions.indexScope`,
+    `ChatToolRequest.indexScope`, and the intent/opportunity graph state channels.
+  - Tool context: `ResolvedToolContext.indexName`/`scopedIndex` are `networkName`/
+    `scopedNetwork`; `ToolRequestContext.indexName` is `networkName`.
+  - Graph registry keys: `graphs.index` → `graphs.network` and
+    `graphs.intentIndex` → `graphs.intentNetwork`. Their trace name changed from
+    `index` to `network`.
+  - `ChatContextAccessError.code` values `INDEX_NOT_FOUND` and
+    `INDEX_MEMBERSHIP_REQUIRED` are now `NETWORK_NOT_FOUND` and
+    `NETWORK_MEMBERSHIP_REQUIRED`.
+  - `resolveIndexNames` → `resolveNetworkNames`;
+    `DiscoveryNegotiation.indexContext` → `networkContext`.
+  - Presenter context: the `indexName` field returned by `gatherPresenterContext`
+    is `networkName`, which also fixes `focusedNetworkLabel` reading a field that
+    no longer existed and falling back to the network id.
+- Agent-facing tool descriptions, scope-refusal messages, and `read_docs`
+  guidance now say "network" or "community" wherever they said "index".
+- The intent assignment pipeline keeps its verb naming (`getIntentForIndexing`,
+  `indexer.graph.ts`, `IndexedIntent`): those describe assigning a signal, not
+  the community noun.
+
+## 48.1.0 - 2026-09-04
+
+### Changed
+
+- **`read_docs` speaks networks, not indexes.** The topic key `indexes` is now
+  `networks` and its section is rewritten in network terms, so `topic=indexes`
+  no longer resolves to a section and falls back to the summary. MCP callers are
+  unaffected: that surface already served `communities-networks`.
+- **Opportunity-graph log payloads renamed.** `targetIndexesCount` is
+  `targetNetworksCount` and the `indexes` key is `networks`, alongside the
+  surrounding trace strings. Log-scraping dashboards need updating.
+
+## 48.0.0 - 2026-09-04
+
+### Added
+
+- **`Intents.clarify({ payload, answers? })` → `{ payload, questions }`.** One
+  stateless round of signal clarification: with no answers it returns the payload
+  untouched plus the questions worth asking; with answers it rewrites the payload
+  so those answers are stated in it and returns whatever is still open. Nothing
+  is stored, so skipping is always valid. `ClarifyAnswer`, `ClarifyInput`,
+  `ClarifyQuestion`, `ClarifyQuestionOption` and `ClarifyResult` are exported.
+
+### Removed
+
+- **BREAKING: the intake funnel is gone.** `IntakePack`, `IntakePackInput`,
+  `IntakePackQuestion`, `IntakePackQuestionOption`, `IntakeAnswer`, `IntakeRound`,
+  `FollowUpPlan`, `SynthesisInput` and `SynthesisResult` are removed along with
+  the pack generator and intake orchestrator. Clarification is `clarify` now, and
+  it holds no run state — hosts can drop their intake pack and run storage.
+- **BREAKING: signals are no longer proposed before they are created.** The
+  dry-run branch of `create_intent`, the `intent_proposal` fence it emitted and
+  the `autoApprove` argument are gone. `create_intent({ description, networkIds })`
+  persists directly, so hosts can drop their proposal storage and their confirm
+  and reject endpoints.
+- **BREAKING: networks are no longer assigned by a model.** `IntentNetworkIndexer`,
+  `IntentIndexingResult`, `Intents.indexIntent` and the evaluated branch of the
+  indexer graph are removed, and so is the threshold scoring behind them. A signal
+  reaches exactly the networks its owner names on create or links afterwards with
+  `create_intent_index`.
+- **BREAKING: agents no longer have transports.** `AgentTransportRecord`,
+  `CreateTransportInput` and the `AgentDatabase` methods `createTransport`,
+  `deleteTransport`, `recordTransportFailure` and `recordTransportSuccess` are
+  removed, and `AgentWithRelations` no longer carries a `transports` array. No
+  delivery loop ever read the rows. Hosts can drop their `agent_transports`
+  storage.
+- `createIntentSuggested` and `suggestedIntentDescription` from the opportunity
+  graph state. Nothing routed on them.
+
+## 47.0.0 - 2026-09-03
+
+### Removed
+
+- **BREAKING: `'personal'` is no longer an agent type.** `AgentRecord.type` and
+  `CreateAgentInput.type` are now `'external' | 'system'`. The `personal` row was
+  the auto-provisioned per-user negotiator behind the in-process negotiation
+  loop; nothing reads it since that loop was deleted. Hosts must delete their
+  `personal` rows and shrink their own enum — user-registered agents are
+  `external`.
+
+## 46.0.0 - 2026-09-03
+
+### Removed
+
+- **BREAKING: the question surface is gone.** `Question`, `QuestionPurpose`,
+  `QuestionPurposeSchema`, `QuestionStrategy`, `QuestionStrategySchema`,
+  `QuestionRecoverySnapshot` and `QuestionVoidedReason` are removed along with
+  `question.ts`, and so are the question-block exports (`QuestionBlockSchema`,
+  `QuestionBlockQuestionSchema`, `QuestionBlock`, `QuestionBlockQuestion`,
+  `ParsedQuestionMessage`, `parseQuestionMessage`, `serializeQuestionMessage`,
+  `questionBlockFixture`, `questionMessageFixture`, `questionProseFixture`).
+  The durable question system was retired generator-first; nothing produced,
+  stored or rendered these shapes any more. Hosts can drop their `questions`
+  storage with them.
+- `UnderspecificationTypeSchema` and `UnderspecificationType` now come straight
+  from `protocol/schemas/underspecification.schema.ts`. The exported names and
+  types are unchanged; only the (never-contractual) internal module moved.
+
+## 46.0.0 - 2026-09-03
+
+### Removed
+
+- **BREAKING: `upsertDiscoveryMatchCandidates` and `openCandidates` are replaced
+  by `openCounterparties(pairs)`.** Discovery no longer stages a scored pair
+  before opening it: it hands the host the pair and the host writes the
+  opportunity and its negotiation in one transaction, keyed on `pairKey`. Hosts
+  can drop their candidates table; the pair-uniqueness it enforced belongs on
+  the negotiation.
+- **BREAKING: `DiscoveryMatchCandidate`, `CreateDiscoveryMatchCandidateData` and
+  `DiscoveryMatchCandidateStatus` are gone.** `CreateIntentCounterpartyData`
+  replaces the create shape as a call payload rather than a stored entity.
+
+## 45.0.0 - 2026-09-03
+
+### Added
+
+- **`NegotiationContextDatabase`** (`platform/database/negotiation.ts`), with
+  `NegotiationContextRecord`, `NegotiationContextTurn` and
+  `NegotiationContextOutcome`. The host reads one negotiation record and its
+  turn log; the loader turns that into the prompt block and the negotiating
+  chip. It replaces every task-shaped read the old loader performed.
+- **`OpportunityGraphDatabase.openCandidates`** returns `OpenedNegotiation[]`.
+  Discovery now opens the opportunity and its negotiation record together, so
+  the graph never leaves a scored candidate without a record to negotiate in.
+
+### Removed
+
+- **BREAKING: `NegotiationGraphDatabase` is gone**, along with
+  `NegotiationTurnSchema`, the `negotiation-evidence` module and its exports,
+  the negotiation digest schema, and `CreateAndOpenResult`. Index is the server
+  for a negotiation: it validates turn order, appends the turn and computes the
+  settlement, so there is no in-process graph left to give a port.
+- **BREAKING: `listPendingCandidatesForIntent` is replaced by `openCandidates`**
+  on the discovery database port.
+- **BREAKING: `'stalled'` is gone from `OpportunityStatus`.** It was the
+  turn-cap outcome of the A2A task loop; the negotiation record has two
+  outcomes and a close, so nothing produces it.
+
+## 44.0.0 - 2026-09-03
+
+### Removed
+
+- **BREAKING: `NegotiationRoundLogDatabase`, `NegotiationRoundLogEventKind` and
+  `NegotiationRoundLogEventRecord` are gone.** The port was orphaned when the
+  in-process negotiation graph and its `foldNegotiationRoundLog` were deleted:
+  nothing composed it into `NegotiationGraphDatabase` and no host implemented
+  its two methods. Hosts that declared them can delete those implementations
+  along with their `negotiation_round_log_events` storage.
+
+## 43.0.0 - 2026-09-02
+
+### Removed
+
+- **BREAKING: `McpAuthInputSchema` no longer accepts `telegramHandle` or
+  `telegramUsername`.** The MCP server stops reading the `x-telegram-handle` and
+  `x-telegram-username` headers, and the host no longer binds a Telegram handle
+  to an account at authentication time. Telegram on a user profile is now only a
+  social link, so `telegram-handle.ts` and `social-label.ts` are unchanged.
+
+## 42.0.0 - 2026-09-02
+
+### Removed
+
+- **BREAKING: the premises capability is gone.** `create_premise`,
+  `read_premises`, `update_premise`, and `retract_premise` are no longer
+  registered; `PremiseGraphFactory`, `PremiseGraphDatabase`, `PremiseRecord`,
+  `OpportunityActor.premise`, and every premise method on the host database
+  ports are removed. Matching is intent-only: `HydeTargetCorpus` drops
+  `'premises'`, the `query_premise` evidence kind and the
+  `sourcePremiseId`/`candidatePremiseId` candidate fields are gone, and
+  `manage:premises` is no longer a permission action. The protocol README drops
+  **Premise** as an entity: context stands on its own, and candidate generation
+  no longer lists premise-to-premise as a strategy.
+- **BREAKING: opportunity delivery is gone.** `confirm_opportunity_delivery`,
+  the `DeliveryLedger` port, `getOrCreateDeliveryCardBatch`,
+  `buildDeliveryCardPresentationCacheKey`, the `isDeliveryAgent` identity flag,
+  and digest mode (`includeDigestMarkers`, `selectDigestCandidates`,
+  presenter `digestSummary`) are removed. Opportunity statuses are unchanged.
+- **BREAKING: `read_activity_summary` is gone**, along with the activity
+  projection and the `UserDatabase.getAgentActivitySummary` port.
+
+No aliases or compatibility shims: hosts must drop the deleted ports.
+
+## 41.0.0 - 2026-09-02
+
+### Removed
+
+- **BREAKING: `SYSTEM_AGENT_IDS.chatOrchestrator` is gone.** The only remaining
+  well-known system agent is `negotiator`. `AgentDatabase.getSystemAgentIds()`
+  no longer returns a chat-orchestrator id.
+- **BREAKING: the in-process personal agent is gone.** `PersonalAgentGraph` and
+  everything it needed — its judgment, prompt, act types, activity port, match
+  refs and the `personal-agent.e2e` spec — are deleted. Index no longer runs an
+  agent; a host that wants one builds it as a client over REST/MCP.
+- **BREAKING: `ChatGraph` and the whole chat capability are gone.**
+  `ChatGraphFactory`, `ChatAgent`, the personas (`SIGNAL_PERSONA`,
+  `ONBOARDING_PERSONA`, `withPersona`), the streamer, suggester, summarizer,
+  title generator, interrupt classifier, question-dedup, chat state/tools/utils
+  and the chat-streaming types no longer exist. There is no H2A chat runtime in
+  the protocol.
+- **BREAKING: `NegotiationGraph` and the negotiation MCP tools are gone.**
+  `NegotiationGraphFactory`, the turn author, the round-reflect enqueue, the
+  `IndexNegotiator` agent, the insight generator and summarizer, and the
+  `list_negotiations` / `get_negotiation` / `respond_to_negotiation` /
+  `answer_pending_question` tools are all deleted. Negotiation turn shapes and
+  the `NegotiationGraphDatabase` port remain, because the host still persists
+  and reads negotiation conversations.
+- **BREAKING: host ports for the deleted runtimes are gone** —
+  `AgentDispatcher`, `ChatSessionReader`, `ChatSummaryReader`,
+  `ChatMessageWriter`, `NegotiationSummaryReader`, `MintConnectLink`, and
+  `AgentRepositoryPort.findAuthorizedAgents`.
+- Specs are down to three: `capabilities/tests/intents`,
+  `internal/opportunities/tests/opportunity.graph`, and
+  `internal/premises/tests/premise.decomposer`.
+
+### Changed
+
+- **BREAKING: `ChatGraphCompositeDatabase` is `CompositeToolDatabase`.** The
+  type outlived the graph it was named after; it is still the composite the
+  host passes to the tool factory.
+- **BREAKING: `OpportunityGraphFactory` drops two constructor parameters.** The
+  `matchesReady` and `agentDispatcher` slots are gone, so `thresholdOverrides`
+  moves from the eighth positional argument to the sixth.
+
+**Kept:** intents, premises, networks, opportunities (including
+`OpportunityGraphFactory` discovery into candidates), radar, HyDE, the agent
+registry tools, the owner-verdict tools, and the MCP server shell over what
+remains.
+
 ## 40.0.0 - 2026-08-29
 
 ### Changed

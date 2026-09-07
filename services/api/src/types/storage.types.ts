@@ -11,8 +11,8 @@ export interface StorageAdapter {
     contentType: string,
   ): Promise<string>;
 
-  /** Upload an index image and return its S3 key. */
-  uploadIndexImage(
+  /** Upload a network image and return its S3 key. */
+  uploadNetworkImage(
     buffer: Buffer,
     userId: string,
     extension: string,

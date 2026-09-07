@@ -27,17 +27,6 @@
   padding: 24px;
 }
 
-/* Light variant for inline use on white pages (e.g. /cli-auth). */
-.auth.auth-light {
-  --av-bg-deep: #ffffff;
-  --av-cream: #14241f;
-  --av-cream-soft: rgba(20, 36, 31, 0.75);
-  --av-cream-faint: rgba(20, 36, 31, 0.45);
-  --av-rule: rgba(20, 36, 31, 0.22);
-  --av-rule-strong: rgba(20, 36, 31, 0.45);
-  --av-ink: #F4FBF6;
-}
-.auth.auth-light .av-oauth:hover { background: rgba(20, 36, 31, 0.04); }
 .auth *,
 .auth *::before,
 .auth *::after { box-sizing: border-box; }

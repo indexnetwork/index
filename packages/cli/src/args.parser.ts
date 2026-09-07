@@ -15,7 +15,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "link" | "unlink" | "links" | "search" | "add" | "remove" | "import" | "complete";
+  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -50,8 +50,6 @@ export interface ParsedCommand {
   details?: string;
   /** ISO date string for --since filter (e.g. negotiation list). */
   since?: string;
-  /** Explicit uptake question IDs acknowledged on opportunity acceptance retry. */
-  acknowledgeUptake?: string[];
 }
 
 const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
@@ -175,12 +173,6 @@ export function parseArgs(args: string[]): ParsedCommand {
     } else if (arg === "--since") {
       result.since = args[i + 1];
       i += 2;
-    } else if (arg === "--acknowledge-uptake") {
-      result.acknowledgeUptake = (args[i + 1] ?? "")
-        .split(",")
-        .map((id) => id.trim())
-        .filter(Boolean);
-      i += 2;
     } else if (arg.startsWith("--")) {
       // Skip unknown flags
       i++;
@@ -281,7 +273,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   return result;
 }
 
-const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "link", "unlink"]);
+const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "add-to-network", "remove-from-network"]);
 
 /**
  * Parse intent-specific positional arguments into subcommand, ID, or content.
@@ -314,8 +306,8 @@ function parseIntentArgs(positionals: string[], result: ParsedCommand): void {
         result.intentContent = rest.slice(1).join(" ");
       }
       break;
-    case "link":
-    case "unlink":
+    case "add-to-network":
+    case "remove-from-network":
       result.intentId = rest[0];
       result.targetId = rest[1]; // networkId
       break;

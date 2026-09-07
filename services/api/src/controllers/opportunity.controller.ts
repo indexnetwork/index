@@ -2,18 +2,15 @@ import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
-import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
 import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
-import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('opportunity');
 
-const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
+const listStatusSchema = z.enum(['pending', 'accepted', 'rejected', 'expired']);
 /** Full lifecycle enum for the radar view's explicit `statuses` filter (e.g. the intent radar). */
-const radarStatusSchema = z.enum(['negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
+const radarStatusSchema = z.enum(['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 
@@ -81,7 +78,7 @@ export class OpportunityController {
    * GET /opportunities — list opportunities for the authenticated user.
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async listOpportunities(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
@@ -123,7 +120,7 @@ export class OpportunityController {
    * @returns JSON with opportunity cards for the chat context
    */
   @Get('/chat-context')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getChatContext(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const peerUserId = url.searchParams.get('peerUserId');
@@ -145,7 +142,7 @@ export class OpportunityController {
    * GET /opportunities/radar — radar view: flat presenter-card list, optionally intent-scoped.
    */
   @Get('/radar')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getRadar(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const networkId = url.searchParams.get('networkId') ?? undefined;
@@ -194,7 +191,7 @@ export class OpportunityController {
    * Accepts full UUID or short ID prefix.
    */
   @Get('/:id')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getOpportunity(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -227,7 +224,7 @@ export class OpportunityController {
    * Accepts full UUID or short ID prefix.
    */
   @Patch('/:id/status')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async updateStatus(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -248,19 +245,17 @@ export class OpportunityController {
     if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 
     const rawStatus = typeof body.status === 'string' ? body.status : undefined;
-    const status = rawStatus as 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
-    const allowed = ['pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
+    const status = rawStatus as 'pending' | 'negotiating' | 'accepted' | 'rejected' | 'expired' | undefined;
+    const allowed = ['pending', 'negotiating', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
       return Response.json({ error: 'Invalid status; use one of: ' + allowed.join(', ') }, { status: 400 });
     }
 
     const scope = parseIntentScopeFromBody(body);
     if (scope instanceof Response) return scope;
-    const { networkScopeId } = await withAgentScope(req, user);
 
     const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id, {
       ...scope,
-      ...(networkScopeId ? { networkScopeId } : {}),
       // Provenance: only a genuine human session may become a preference label
       // (IND-434). API-key/agent REST calls are excluded from outcome capture.
       actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
@@ -274,81 +269,6 @@ export class OpportunityController {
     }
 
     return Response.json(result);
-  }
-
-  /**
-   * POST /opportunities/:id/owner-approvals — issue a single-use owner-approval
-   * proof for a pending MCP-agent interaction challenge (IND-593).
-   *
-   * The agent relays the `interactionId` challenge from its
-   * `owner_approval_required` denial; the authenticated owner session explicitly
-   * approves that exact interaction here. The proof binding (opportunity,
-   * action, owner, agent, interaction) comes entirely from the server-side
-   * challenge store — caller-supplied binding fields are never accepted.
-   * Session-auth only: an API-key/agent caller must never self-issue owner
-   * authorization.
-   */
-  @Post('/:id/owner-approvals')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async issueOwnerApproval(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    if (!isSessionAuthenticated(req)) {
-      return Response.json({ error: 'Owner approval requires an authenticated owner session' }, { status: 403 });
-    }
-    const id = params?.id;
-    if (!id) {
-      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
-    }
-    const resolved = await opportunityService.resolveId(id, user.id);
-    if ('error' in resolved) {
-      return Response.json({ error: resolved.error }, { status: resolved.status });
-    }
-
-    let body: unknown;
-    try {
-      const rawBody = await req.text();
-      body = rawBody.trim() ? JSON.parse(rawBody) : {};
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-    if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-    const interactionId = typeof body.interactionId === 'string' ? body.interactionId.trim() : '';
-    if (!interactionId) {
-      return Response.json({ error: 'interactionId is required' }, { status: 400 });
-    }
-
-    const issuance = await getOpportunityOwnerApprovalAuthority().issueProofForInteraction({
-      interactionId,
-      ownerId: user.id,
-      // Server-resolved route opportunity — the authority answers a mismatch
-      // opaquely BEFORE the one-shot issuance flag, so a wrong-route request
-      // can never mint a proof nor burn the challenge's single issuance.
-      expectedOpportunityId: resolved.id,
-    });
-    if (issuance.kind === 'denied') {
-      if (issuance.reason === 'wrong_owner') {
-        return Response.json({ error: 'Only the challenge owner may approve this interaction' }, { status: 403 });
-      }
-      if (issuance.reason === 'stale') {
-        return Response.json({ error: 'Approval interaction has expired — ask the agent to retry' }, { status: 410 });
-      }
-      if (issuance.reason === 'already_issued') {
-        return Response.json({ error: 'Approval proof was already issued for this interaction' }, { status: 409 });
-      }
-      if (issuance.reason === 'unavailable') {
-        return Response.json({ error: 'Approval service is temporarily unavailable' }, { status: 503 });
-      }
-      return Response.json({ error: 'Unknown approval interaction' }, { status: 404 });
-    }
-    return Response.json({
-      proof: issuance.proof,
-      expiresAt: issuance.expiresAt,
-      approval: {
-        interactionId,
-        opportunityId: issuance.binding.opportunityId,
-        action: issuance.binding.action,
-        agentId: issuance.binding.agentId,
-      },
-    });
   }
 
   /**
@@ -366,7 +286,7 @@ export class OpportunityController {
    *   counterpart, 403 for non-actors, 404 when the opp does not exist).
    */
   @Post('/:id/start-chat')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async startChat(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -387,11 +307,9 @@ export class OpportunityController {
     }
     const scope = parseIntentScopeFromBody(body);
     if (scope instanceof Response) return scope;
-    const { networkScopeId } = await withAgentScope(req, user);
 
     const result = await opportunityService.startChat(resolved.id, user.id, {
       ...scope,
-      ...(networkScopeId ? { networkScopeId } : {}),
       actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
     });
     if ('error' in result) {
@@ -416,14 +334,12 @@ export class NetworkOpportunityController {
    * GET /networks/:networkId/opportunities — list opportunities for a network (owner or member).
    */
   @Get('/:networkId/opportunities')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async listForIndex(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  @UseGuards(AuthGuard)
+  async listForNetwork(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {
       return Response.json({ error: 'Missing network id' }, { status: 400 });
     }
-
-    await assertAgentNetworkScope(req, networkId);
 
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');

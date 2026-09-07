@@ -19,7 +19,7 @@ export interface PoolCandidate {
   id: string;
   /**
    * The exact public-context string shown to the LLM for this candidate
-   * (name + bio + matchReason + headline + premise snippets, ≤400 chars).
+   * (name + bio + matchReason + headline, ≤400 chars).
    * Evidence spans are substring-verified against this exact string.
    */
   publicContext: string;

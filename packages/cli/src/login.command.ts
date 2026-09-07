@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 
-import { storeReplacementCredentials, type CredentialReplacementOptions } from "./auth.lifecycle";
 import type { CredentialStore } from "./auth.store";
+import { redeemDeviceCode, revokeSession } from "./auth.session";
 
 /** Result of the login callback flow. */
 export interface LoginResult {
@@ -21,8 +21,6 @@ export interface LoginOptions {
   serverFactory?: (handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>) => CallbackServer;
   /** Host to bind the callback server to. Defaults to 127.0.0.1. */
   callbackHost?: string;
-  /** Override the replacement-cleanup API client for tests. */
-  credentialClientFactory?: CredentialReplacementOptions["clientFactory"];
 }
 
 interface CallbackServer {
@@ -133,38 +131,32 @@ export async function handleLogin(
     // both persist credentials from the same browser login.
     stateConsumed = true;
 
-    const apiKey = url.searchParams.get("api_key");
-    const keyId = url.searchParams.get("key_id");
-    if (apiKey && keyId) {
+    const deviceCode = url.searchParams.get("device_code");
+    if (deviceCode) {
       try {
-        const cleanup = await storeReplacementCredentials(store, previousCredentials, {
-          token: apiKey,
-          apiUrl: baseUrl,
-          authKind: "api_key",
-          keyId,
-        }, { clientFactory: options.credentialClientFactory });
-        resolveCallback({ success: true, ...cleanup });
-      } catch {
-        resolveCallback({ success: false, error: "Failed to save CLI credentials." });
+        const token = await redeemDeviceCode(baseUrl, deviceCode);
+        await store.save({ token, apiUrl: baseUrl, authKind: "session" });
+        // A session token may revoke itself, so this login retires the one it
+        // replaces instead of leaving it live.
+        if (previousCredentials) await revokeSession(baseUrl, previousCredentials.token);
+        resolveCallback({ success: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to save CLI credentials.";
+        resolveCallback({ success: false, error: message });
         res.writeHead(500, { "Content-Type": "text/html" });
-        res.end(callbackHtml("Authorization failed", "CLI credentials could not be saved. Return to the terminal and try again."));
+        res.end(callbackHtml("Authorization failed", "CLI sign-in could not be completed. Return to the terminal and try again."));
         return;
       }
 
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(callbackHtml("CLI authorized", "You can close this window and return to the terminal.", true));
+      res.end(callbackHtml("Authentication complete", "You can close this window and return to the terminal.", true));
       return;
     }
 
-    resolveCallback({
-      success: false,
-      error: apiKey
-        ? "CLI API-key callback did not include its key ID."
-        : "No CLI credential received in callback.",
-    });
+    resolveCallback({ success: false, error: "No device code received in callback." });
 
     res.writeHead(400, { "Content-Type": "text/html" });
-    res.end(callbackHtml("Authorization failed", "Incomplete CLI credentials received. Please try again."));
+    res.end(callbackHtml("Authorization failed", "Incomplete sign-in received. Please try again."));
   });
 
   // Listen on port 0 for ephemeral port assignment. Keep handling server

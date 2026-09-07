@@ -353,7 +353,7 @@ async function evaluateCandidatePool(
 
   return { evaluatedOpportunities, trace: traceEntries };
 }
-/** Dedup by userId — when same similarity, prefer index with highest relevancyScore. */
+/** Dedup by userId — when same similarity, prefer network with highest relevancyScore. */
 function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: OpportunityState): CandidateMatch[] {
   const bestByUser = new Map<string, CandidateMatch>();
   for (const c of sortedCandidates) {
@@ -363,9 +363,9 @@ function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: Oppor
     } else if (c.similarity > existing.similarity) {
       bestByUser.set(c.candidateUserId, c);
     } else if (c.similarity === existing.similarity) {
-      // Tie-break: prefer index with higher relevancy score
-      const cScore = state.indexRelevancyScores[c.networkId] ?? 0;
-      const existingScore = state.indexRelevancyScores[existing.networkId] ?? 0;
+      // Tie-break: prefer network with higher relevancy score
+      const cScore = state.networkRelevancyScores[c.networkId] ?? 0;
+      const existingScore = state.networkRelevancyScores[existing.networkId] ?? 0;
       if (cScore > existingScore) {
         bestByUser.set(c.candidateUserId, c);
       }
@@ -400,7 +400,7 @@ async function filterToActiveMemberships(
 /**
  * IND-567: Rejection cool-down penalty.
  *
- * Candidates with a recently rejected or stalled opportunity receive a
+ * Candidates with a recently rejected opportunity receive a
  * similarity penalty so they are ranked lower (and often pushed out of
  * the evaluation pool). This prevents cross-query re-surfacing of
  * false-positive matches that were already caught downstream.
@@ -460,22 +460,12 @@ async function buildCandidateEntities(
       const profile = await deps.database.getProfile(c.candidateUserId);
       let intentPayload = c.candidatePayload;
       let intentSummary = c.candidateSummary;
-      let evidence = c.evidence;
+      const evidence = c.evidence;
       if (c.candidateIntentId != null && (!intentPayload || intentPayload === '')) {
         const intent = await deps.database.getIntent(c.candidateIntentId);
         if (intent) {
           intentPayload = intent.payload;
           intentSummary = intent.summary ?? undefined;
-        }
-      }
-      if (c.candidatePremiseId != null && (!intentPayload || intentPayload === '')) {
-        const premise = await deps.database.getPremise(c.candidatePremiseId);
-        if (premise) {
-          intentPayload = premise.assertion.text;
-          intentSummary = premise.assertion.summary;
-          evidence = (c.evidence ?? []).map((item) => item.candidatePremiseId === c.candidatePremiseId
-            ? { ...item, payload: premise.assertion.text, summary: premise.assertion.summary, assertionText: premise.assertion.text }
-            : item);
         }
       }
       return {

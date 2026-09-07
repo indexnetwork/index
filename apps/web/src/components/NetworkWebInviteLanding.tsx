@@ -6,7 +6,7 @@ import { DOWNLOAD_PATH } from "@/components/DeepLinkLanding";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { log } from "@/lib/logger";
 import { Network } from "@/lib/types";
-import { indexesService as publicIndexesService, useNetworkService } from "@/services/networks";
+import { networksService as publicNetworksService, useNetworkService } from "@/services/networks";
 import "@/app/l/[code]/invite.css";
 import "@/components/AuthModal.css";
 
@@ -45,7 +45,7 @@ export default function NetworkWebInviteLanding() {
     let cancelled = false;
     (async () => {
       try {
-        const loaded = await publicIndexesService.getIndexByShareCode(code);
+        const loaded = await publicNetworksService.getNetworkByShareCode(code);
         if (cancelled) return;
         setNetwork(loaded);
         setPreviewStep("ready");

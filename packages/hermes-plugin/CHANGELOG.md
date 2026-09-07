@@ -7,6 +7,58 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: one realtime relay instead of two.** The `/notifications/stream`
+  SSE proxy and the `/notifications/socket` WebSocket relay are removed; the
+  user's whole event stream — messages and opportunity frames alike — arrives
+  over `/conversations/stream` and `/conversations/socket`, following the API's
+  merge of the two upstream streams. Desktop OS notifications listen on that one
+  socket and suppress own sends only for messages. The `/notifications/snapshot`
+  proxy is removed with the upstream endpoint, so OS alerts are realtime-only;
+  the 60-second timer now only refreshes the signed-in identity that own-send
+  suppression needs. Requires an API at 0.113.0 or newer.
+- **BREAKING: the plugin authenticates with `INDEX_SESSION_TOKEN`, not
+  `INDEX_API_KEY`.** Browser login now redeems the device code returned by
+  `/cli-auth` for this device's own session and persists that, sending it as
+  `Authorization: Bearer`. Sign-out revokes the session server-side instead of
+  only clearing the local file, so it takes effect immediately. An
+  `INDEX_API_KEY` left by an older install is removed on the next login or
+  sign-out; re-run **log in with browser**.
+- **BREAKING: `INDEX_API_KEY` is your account key, not an agent-bound token.**
+  Browser login persists exactly what `/cli-auth` mints and stops there: the
+  CLI→agent promotion (`dashboard/agent_bootstrap.py`) is deleted, so login no
+  longer registers a "Hermes" agent, mints a per-agent token or revokes the key
+  it just stored. `GET /auth/login/status` drops `negotiatorReady`.
+  `index_agent_me` returns the agent you selected as your negotiator in the web
+  app; select one there, or it answers with a 404. Requires an API at 0.110.0 or
+  newer.
+- **BREAKING: sign-out is local.** `POST /auth/logout` clears `INDEX_API_KEY`
+  from `~/.hermes/.env` and the process, and no longer calls
+  `/auth/keys/revoke-self`, which the API deleted. The key stays live until it
+  is removed in Index web settings.
+- Network picture upload forwards to `POST /storage/network-images`, following
+  the Index API's rename of that route from `/storage/index-images`. Requires an
+  API at 0.107.0 or newer.
+
+### Removed
+- **The `hasMasterKey` network field.** The dashboard no longer forwards it and
+  the network detail always shows visibility and the invitation link, matching
+  the web app now that master-key signup is gone.
+
+### Removed
+- **The forwarders for deleted Index tools:** `confirm_opportunity_delivery`,
+  the four premise tools, and `read_activity_summary`. `research_profile` is
+  unchanged.
+- **The `index-orchestrator` skill**, plus the `pre_llm_call` hint hook and
+  `/index` command that existed only to load it.
+
+### Removed
+- **The negotiator mode and its tools.** `INDEX_PLUGIN_MODE`, `_mode.py`, the
+  `index-negotiator` skill, `index_respond_negotiation`, and the forwarded
+  `list_negotiations` / `get_negotiation` / `respond_to_negotiation` MCP
+  wrappers are gone: Index no longer exposes a negotiation turn surface. The
+  dashboard is always mounted and its `/mode` endpoint is removed.
+
 ### Removed
 - Delete `tests/`. No source or tool-contract change.
 

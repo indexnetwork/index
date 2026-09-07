@@ -10,6 +10,235 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: one SSE stream per user.** Notifications and conversation messages
+  share the Redis channel `events:user:<userId>` and the single endpoint
+  `GET /conversations/stream`; `GET /notifications/stream` is deleted. Frames are
+  unchanged — notification frames stay pointer-shaped, messages keep their text
+  inline — so consumers discriminate on `type` and ignore the rest.
+  The surviving stream also waits for Redis to acknowledge the subscription and
+  buffers frames published before the consumer attaches, which the conversation
+  stream previously dropped. `lib/notification-stream-events.ts` and
+  `lib/conversation-events.ts` merged into `lib/user-events.ts`, and
+  `NotificationService` is gone.
+- **The realtime frame vocabulary is "user event", not "notification".**
+  `NotificationStreamEvent`, `NotificationStreamPublisher` and
+  `publishNotificationStreamEvent` are `UserEvent`, `UserEventPublisher` and
+  `publishUserEvent`; `notification-delivery.service.ts` and
+  `notification-projection.ts` are one `services/opportunity-event.service.ts`
+  exporting `OpportunityEventService`. Internal only — every frame's JSON is
+  byte-identical, and the words "notification" and "notify" stay where they mean
+  an OS toast or a delivery preference (`user_notification_settings`,
+  `notifyOnOpportunity`, staff emails, the desktop composers).
+- **BREAKING: `GET /notifications/snapshot` is deleted.** Notifications are
+  realtime-only: a client that is not connected when an opportunity becomes
+  actionable will not be told about it, and reads the opportunity from
+  `GET /opportunities` instead. `NotificationController`,
+  `NotificationDeliveryService.snapshot` and the adapter's
+  `getNotificationSnapshotOpportunities` query are gone, so the
+  `/notifications` prefix no longer exists.
+
+### Added
+- **Native clients sign in as devices, not as API keys.** Better Auth's
+  `deviceAuthorization` plugin is registered and `/api/auth/device*` is proxied,
+  so the Mac app, CLI and Hermes each hold their own session. `/cli-auth` runs
+  the whole grant from the owner's browser session — mint, claim, approve — and
+  hands the device only a five-minute code, which it redeems at
+  `/device/token`. There is no approval prompt: the page approves a code it just
+  minted, so no externally supplied code can enter the grant, and the loopback
+  callback still binds the handoff to the machine that started it. New
+  `device_code` table (migration `0178`).
+
+### Changed
+- **`AuthGuard` and the MCP resolver accept a session token as `Bearer`.** A
+  three-segment credential is verified as a JWT and anything else as a Better
+  Auth session, so device sessions reach product routes and MCP. Both record
+  `kind: 'session'`, which means a device is the owner acting and may use
+  session-only routes such as agent management; API keys still cannot.
+- **Sessions last 30 days instead of the 7-day default.** Devices cache the
+  issued expiry to decide whether to send a request at all, so a short window
+  would sign the Mac app out weekly. Revocation is the counterweight: a device
+  can sign itself out, and the owner can revoke any device from settings.
+- **BREAKING: keys are keys, agents are agents, and Better Auth owns them.** An
+  API key authenticates a user and carries no `metadata.agentId`. The
+  hand-rolled key stack is deleted — `apikey.adapter.ts`, `apikey.service.ts`,
+  `lib/apikey/*` and the `POST/GET/DELETE /auth/keys*` routes — and replaced by
+  the `@better-auth/api-key` plugin at `/api/auth/api-key/*`, used by both the
+  `/cli-auth` browser handshake and settings. `enableSessionForAPIKeys` is off,
+  so create/list/delete need the owner's own session and a leaked key still
+  cannot mint a successor. `AuthGuard` and the MCP auth resolver authenticate
+  through `auth.api.verifyApiKey`.
+- **BREAKING: there is no remote self-revocation.** `POST /auth/keys/revoke-self`
+  is gone; the plugin has no equivalent that works without a session. Logging
+  out of the CLI, Mac app or Hermes clears the local credential only, and the
+  key stays live until it is deleted in web settings.
+- **BREAKING: `apikey.reference_id` is the owner column.** Migration `0177`
+  backfills it from `user_id`, makes it `NOT NULL` with the cascading foreign
+  key to `users`, and drops `user_id`, which the plugin never writes.
+- **BREAKING: MCP has no capability policy.** Every authenticated caller reaches
+  every tool; `mcpAuthorizationObserver` and the policy arguments to
+  `createMcpServer` are gone. `@indexnetwork/protocol` 52.0.0 is required.
+- **BREAKING: `GET /agents/me` returns the owner's selected negotiator.** It no
+  longer resolves an agent from the calling key, so a user with no negotiator
+  selected gets a 404 instead of whichever agent the key happened to name.
+  Agent writes (`POST /agents`, `PATCH /agents/:id`, `DELETE /agents/:id`,
+  including setting `handleNegotiations`) are session-only.
+
+- **BREAKING: network images are stored under `network-images`, not
+  `index-images`.** `POST /api/storage/index-images` and
+  `GET /api/storage/index-images/:userId/:filename` are now
+  `/api/storage/network-images`, and uploads are keyed
+  `network-images/{userId}/{uuid}.{ext}`. This repairs network image upload from
+  the web app, which already posted to the new path and was getting a 404.
+  Images uploaded before this release keep their `index-images/` keys and no
+  longer resolve; there is no migration.
+- **BREAKING: opportunity payloads name the community `network`, not `index`.**
+  `GET /opportunities` and friends return `network: { id, title }` where they
+  returned `index`, and `POST /networks/invitation/:code/accept` returns
+  `network` instead of `index`. The debug snapshot key `indexes` is `networks`.
+- The host implements the renamed protocol ports (`getOwnedNetworks`,
+  `isNetworkOwner`, `updateNetworkSettings`, …) and the renamed intent↔network
+  MCP tools; `@indexnetwork/protocol` 49.0.0 is required.
+- `networks.key`'s unique index is renamed `indexes_key_unique` →
+  `networks_key_unique` (migration `0175`).
+
+### Removed
+- **BREAKING: per-agent tokens.** `GET/POST/DELETE /agents/:id/tokens` and the
+  `AgentTokenAdapter` are deleted, as is the distinct CLI credential shape
+  (`POST /auth/cli-credential`, `POST /auth/cli-credential/revoke`,
+  `clicredential.adapter.ts`, `clicredential.service.ts`). Clients holding an
+  agent-bound token must log in again for a user key.
+- **BREAKING: the `agent_permissions` table.** Migration
+  `0176_drop_agent_permissions` drops the table and the `permission_scope`
+  enum. `POST /agents/:id/permissions` and
+  `DELETE /agents/:id/permissions/:permissionId` are gone, agent creation
+  inserts no permission row, and `agent-scope.guard.ts` — which caged API-key
+  callers inside one network — is deleted along with the `networkScopeId`
+  filtering it fed in the network, intent, opportunity, conversation and
+  notification paths.
+- **BREAKING: invitation-provisioned agents.** `POST /networks/:id/invite`
+  finds or creates the user, joins them as a member, and emails "you've been
+  added, sign in." It provisions no agent, mints no key, and returns no
+  `agentProvisioned`. `POST /networks/:id/resend-invite`, the key-bearing
+  email template, the OpenClaw connect command and the provisioned-cohort
+  cascade in `deleteNetwork` are deleted. Join-by-code and member/owner roles
+  are unchanged.
+
+### Added
+- **`POST /intents/clarify`** — one stateless clarification round. Send
+  `{ payload, answers? }`, get back `{ payload, questions }`. Nothing is stored;
+  the client decides whether to ask again or create.
+- **`POST /intents`** — the one way to create a signal. Takes
+  `{ description, networkIds }`, runs the intent graph, and links the signal to
+  exactly the networks named, each of which must be a current membership. An
+  empty list is allowed: the signal is saved and reaches nobody until it is
+  linked.
+
+### Changed
+- Signal clarification and creation are rate-limited as `intent_llm` (20/min),
+  the class previously named `intake_synthesis`. Both run a model call per
+  request, so the generic write budget was far too loose for them.
+
+### Removed
+- **BREAKING — drop opportunity owner-approval proofs.** Remove
+  `POST /api/opportunities/:id/owner-approvals`, the Redis challenge store, HMAC
+  signing, and `OPPORTUNITY_OWNER_APPROVAL_SECRET`. `update_opportunity` is an
+  ordinary MCP/tool call. Requires protocol 50.0.0.
+- **BREAKING: `/intents/intake/*`, `POST /intents/confirm`, `POST /intents/reject`
+  and `POST /intents/proposals/status`.** The guided intake funnel and the
+  propose-then-confirm handshake are replaced by clarify-then-create.
+  `signal-intake.service.ts`, the pack and run adapters, the proposal adapter and
+  the `FAST_SIGNAL_INTAKE` feature flag are deleted with them. Migration `0173`
+  drops `signal_intake_packs`, `signal_intake_runs` and `intent_proposals`.
+- **BREAKING: automatic network assignment.** A signal no longer gets scored
+  against every network the owner belongs to. `assignIntentToNetworks`,
+  `reconcileIntentNetworks`, `addNetworkReconcileForUser`, the join-time
+  re-evaluation hook and the `maintenance:backfill-intent-networks` script are
+  gone. Links come from `networkIds` on create, or `create_intent_index` later.
+- **`conversations.persona` and the dead H2A chat-session API.** The column
+  labelled which in-process agent loop owned a conversation; every one of those
+  loops is gone and the surviving writers (H2H DMs, agent DMs, negotiation
+  conversations) all left it at `'none'`. `createChatSession`, `getChatSession`,
+  `getUserChatSessions`, `listChatSessionSummaries`, `getChatSessionDetail`,
+  `getChatSessionByShareToken`, `createChatMessage`, `getChatSessionMessages`,
+  `getChatSessionMetadata` and the rest of that block are deleted, along with
+  `ChatPersonaId`, `ChatSession`, `ChatMessage`, `ChatConversationMeta`,
+  `ChatMessageMeta`, `CreateSessionInput`, `CreateMessageInput` and the
+  `X-Chat-Persona` CORS header. Conversation listings key off participant
+  topology. Migration `0171` drops the column.
+- **`agents.type = 'personal'`.** The auto-provisioned `{First}'s Negotiator` row
+  is gone with `ensureNegotiatorAgent`, `getNegotiatorAgent`, the Better Auth
+  sign-in/registration hooks, the invite-path call and
+  `uniq_agents_personal_per_owner`. Migration `0172` deletes the rows and
+  recreates `agent_type` as `('external','system')`. User-registered agents were
+  already `external`.
+- **The seed-persona fixtures.** `sandbox-personas.ts`, `db-seed-sandbox.ts`,
+  `test-data.ts`, `opportunity-three-user-test.ts`, the `db:seed:sandbox` and
+  `test:opportunity-three-user` scripts. `db:seed` now creates only the networks,
+  the three admin accounts (the first owns every network) and the system
+  negotiator — no tester users, intents, agent API keys or `.seed-api-keys.json`.
+  `notify:simulate` without `--counterpart` falls back to any other user.
+  **Break:** local `protocol_sandbox` no longer comes with a curated market.
+- **The experiment service and master-key signup.** `POST /networks/:id/signup`,
+  `/signup/lookup`, `/master-key`, `/rotate-master-key`, `/members/import` and
+  `/members/import/parse` are gone, along with `ExperimentService`,
+  `MasterKeyGuard`, `lib/experiment/master-key.ts`, the
+  `experiment-import-credentials` and `network-master-key-rotated` email
+  templates, and the `maintenance:audit-experiment-emails` script. Networks no
+  longer project `hasMasterKey`.
+- **The Telegram bot.** The gateway, `lib/telegram/bot-api.ts`, the webhooks
+  controller (Telegram was its only route), the boot wiring in `main.ts`, the
+  `TELEGRAM_BOT_*` and `TELEGRAM_WEBHOOK_*` variables, the Telegram
+  notification preference adapters and the notification event are removed. MCP
+  authentication no longer reads `x-telegram-handle` / `x-telegram-username` or
+  binds a handle to an account. Telegram on a user profile stays as a social
+  link.
+- **Composio Slack and Gmail.** `integration.controller.ts`,
+  `integration.service.ts`, `integration.adapter.ts`, `lib/composio/`, the
+  `@composio/core` and `@composio/langchain` dependencies and `COMPOSIO_API_KEY`
+  are gone. Google *login* is unaffected: it runs through Better Auth.
+- Migration `0162` drops `networks.master_key_hash` and the
+  `network_integrations` table.
+
+### Removed
+- **Daily frame-drift monitoring.** The 00:15 UTC cron, its service, both
+  adapters and `lib/frame-drift.config.ts` are gone, along with the
+  `FrameDriftCron` wiring in `main.ts`. The job measured per-network embedding
+  centroids and a cross-network opportunity-yield proxy and then only logged
+  them; nothing read the rows, and its premise corpus disappeared with
+  `premises` in `0160`. Migration `0161` drops
+  `frame_drift_observation_runs`, `frame_centroid_snapshots`,
+  `cross_network_yield_snapshots` and `frame_drift_execution_attempts`,
+  historical snapshots included.
+- **Premises, the opportunity delivery ledger, and the activity summary.** The
+  premise cascade, events, adapters, and seeds are gone; profile saves no longer
+  decompose into premises. `OpportunityDeliveryService` and the
+  `/agents/:id/opportunities/{pickup,pending,accepted,delivery-stats}` and
+  `/:opportunityId/delivered` routes are removed, as is
+  `getAgentActivitySummary`. Migration `0160` drops `premises`,
+  `premise_networks`, `opportunity_deliveries`, the `premise_status` type,
+  `signal_intake_packs.premise_hash`, and `manage:premises` from live
+  `agent_permissions.actions`. `ProjectedScreenDecision` drops
+  `counterpartyPremiseFit`; the historical `tasks.metadata.screenDecision` rows
+  still project their reasoning, `intentAlignment` and `screenedAt`.
+- **The Index Chat Orchestrator system agent and the `orchestrator` chat
+  persona.** `SYSTEM_AGENT_IDS` is only the negotiator; onboarding no longer
+  grants chat-orchestrator permissions; seed no longer inserts that row.
+  Migration `0159` relabels leftover `conversations.persona = 'orchestrator'`
+  to `'none'` and deletes agent `00000000-0000-0000-0000-000000000001`.
+- **The in-process personal agent and every host path that fed it.**
+  `personal-agent.service.ts`, the PersonalAgent reply stream, the intent
+  dossier/ledger adapters, `lib/negotiation/negotiation-graph.ts`, the chat
+  H2A endpoints (`/chat/stream`, `/chat/web/stream`,
+  `/chat/onboarding/stream`), the `ChatGraphFactory` composition, the
+  negotiation watchdog, the `matchesReady` wakes, the intent-cycle/timeline
+  debug endpoints, the negotiator-memory and negotiation-insights endpoints,
+  the connected-agents and agent-runtime controllers/services/adapters, the
+  Hermes credential/capability/telemetry helpers, the floor lab, and
+  `PERSONAL_AGENT_KICKOFF_CONCURRENCY`. Discovery still records candidates and
+  the Radar owner verdict still works; nothing advances a negotiation until an
+  external agent is built against the API.
+
+### Changed
 - **Delete `src/queues/`.** Nothing in it had been a queue since BullMQ was
   removed; the folder, filenames and class names were the only thing left
   saying otherwise. Each module moved to the layer it actually belongs to:

@@ -10,25 +10,6 @@ import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResul
 // Re-export all types for backward compatibility
 export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
 
-export interface UptakeQuestion {
-  id: string;
-  title: string;
-  prompt: string;
-  options: Array<{ label: string; description: string }>;
-  multiSelect: boolean;
-}
-
-export interface UptakeAcceptanceAdvisoryBody {
-  error: string;
-  advisory: {
-    code: "unresolved_uptake_questions";
-    advisoryOnly: true;
-    opportunityId: string;
-    questions: UptakeQuestion[];
-    acknowledgedUptakeQuestionIds: string[];
-  };
-}
-
 /** HTTP error retaining a parsed structured response for JSON/advisory clients. */
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly response?: unknown) {
@@ -53,7 +34,7 @@ export class ApiClient {
 
   /**
    * @param baseUrl - Protocol server base URL (e.g. `http://localhost:3001`).
-   * @param token - CLI API key.
+   * @param token - Device session token.
    */
   constructor(baseUrl: string, token: string) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -61,22 +42,7 @@ export class ApiClient {
   }
 
   private authHeaders(): Record<string, string> {
-    return { "x-api-key": this.token };
-  }
-
-  /**
-   * Revoke one exact server-issued CLI API key with caller and target proof.
-   *
-   * @param keyId - Stored row ID returned when the target key was created.
-   * @param targetKey - Raw target secret; defaults to the caller token for logout.
-   * @throws Error when the server does not confirm revocation.
-   */
-  async revokeApiKey(keyId: string, targetKey: string = this.token): Promise<void> {
-    const res = await this.post("/api/auth/cli-credential/revoke", { keyId, targetKey });
-    const body = (await res.json()) as { success?: unknown };
-    if (body.success !== true) {
-      throw new Error("API-key revocation was not confirmed");
-    }
+    return { Authorization: `Bearer ${this.token}` };
   }
 
   /**
@@ -134,18 +100,12 @@ export class ApiClient {
     return (await res.json()) as OpportunityDetail;
   }
 
-  /** Update an opportunity status over REST, optionally acknowledging uptake questions on acceptance. */
+  /** Update an opportunity status over REST. */
   async updateOpportunityStatus(
     id: string,
     status: "accepted" | "rejected",
-    acknowledgedUptakeQuestionIds?: string[],
   ): Promise<Record<string, unknown>> {
-    const res = await this.patch(`/api/opportunities/${id}/status`, {
-      status,
-      ...(status === "accepted" && acknowledgedUptakeQuestionIds
-        ? { acknowledgedUptakeQuestionIds }
-        : {}),
-    });
+    const res = await this.patch(`/api/opportunities/${id}/status`, { status });
     return await res.json() as Record<string, unknown>;
   }
 
@@ -180,27 +140,6 @@ export class ApiClient {
     return body.intent;
   }
 
-  /**
-   * Confirm a proposed intent, persisting it as an active signal.
-   *
-   * `create_intent` returns a proposal (for interactive approval); this turns
-   * that proposal into a real intent.
-   *
-   * @param proposalId - The proposal ID from the create_intent result.
-   * @param description - The proposed signal description.
-   * @param networkId - Optional network to scope the intent to.
-   * @returns The created intent's ID.
-   * @throws Error on auth failure or network error.
-   */
-  async confirmIntent(proposalId: string, description: string, networkId?: string): Promise<{ intentId: string }> {
-    const res = await this.post("/api/intents/confirm", {
-      proposalId,
-      description,
-      ...(networkId ? { networkId } : {}),
-    });
-    const body = (await res.json()) as { intentId: string };
-    return body;
-  }
 
   async updateIntent(intentId: string, description: string): Promise<ToolResult> {
     return this.callTool("update_intent", { intentId, description });

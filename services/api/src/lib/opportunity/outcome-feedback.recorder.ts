@@ -23,7 +23,7 @@
  * The stored snapshot is presentation-approved and bounded; the sole
  * counterpart is stored only as a recipient-scoped, non-reversible hash.
  */
-import { OUTCOME_MAX_PUBLIC_CONTEXT_CHARS, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey, isOutcomeQuestionsActivated, stripUnsupportedOpportunityClaims, stripUuids, truncateAtBoundary, type Opportunity, type OutcomeLabel } from '@indexnetwork/protocol';
+import { OUTCOME_MAX_PUBLIC_CONTEXT_CHARS, buildRadarCardPresentationCacheKey, isOutcomeQuestionsActivated, stripUnsupportedOpportunityClaims, stripUuids, truncateAtBoundary, type Opportunity, type OutcomeLabel } from '@indexnetwork/protocol';
 
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { cacheAdapter } from '../../adapters/cache.adapter';
@@ -64,11 +64,6 @@ interface CachedHomePresentation {
   mainText: string;
 }
 
-interface CachedDeliveryPresentation {
-  opportunityId: string;
-  personalizedSummary: string;
-}
-
 function normalizeApprovedSnapshot(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const safe = stripUuids(stripUnsupportedOpportunityClaims(value)).trim();
@@ -81,16 +76,11 @@ async function getCachedApprovedSnapshot(
   recipientUserId: string,
 ): Promise<string | null> {
   try {
-    const [home, delivery] = await cacheAdapter.mget<CachedHomePresentation | CachedDeliveryPresentation>([
+    const [home] = await cacheAdapter.mget<CachedHomePresentation>([
       buildRadarCardPresentationCacheKey(opportunity.id, opportunity.status, recipientUserId),
-      buildDeliveryCardPresentationCacheKey(opportunity.id, opportunity.status, recipientUserId),
     ]);
     if (home?.opportunityId === opportunity.id && 'mainText' in home) {
-      const snapshot = normalizeApprovedSnapshot(home.mainText);
-      if (snapshot) return snapshot;
-    }
-    if (delivery?.opportunityId === opportunity.id && 'personalizedSummary' in delivery) {
-      return normalizeApprovedSnapshot(delivery.personalizedSummary);
+      return normalizeApprovedSnapshot(home.mainText);
     }
     return null;
   } catch {

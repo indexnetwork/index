@@ -16,19 +16,27 @@ document.addEventListener('mousedown', function (e) {
 }, true);
 """
 
+/// Drops WebKit's browser context menu (Reload, Inspect Element) so right-click
+/// does not look like Electron. Copy/paste stay on the Edit menu.
+private final class ShellWebView: WKWebView {
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        menu.removeAllItems()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Configuration. API_URL / APP_URL are read from UserDefaults (e.g. `defaults
 // write network.index.system6 API_URL https://…`) or Info.plist, so production
 // URLs are switchable without recompiling. Defaults target a local dev backend.
 // ---------------------------------------------------------------------------
-struct HermesRuntimeProgress: Encodable {
-    let requestId: String
-    let event: String
-}
-
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     var window: NSWindow!
     var webView: WKWebView!
+    /// The controller the web view was created with. `webView.configuration`
+    /// returns a copy; user scripts must be rebuilt on this instance or Reload
+    /// keeps injecting the launch-time auth snapshot.
+    private var userContentController: WKUserContentController!
     private var authServer: LoopbackAuthServer?
     private var ownerCredentialStore: OwnerCredentialStore?
     private var ownerStartupFailure: String?
@@ -39,8 +47,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
         return Data(bytes)
     }
-    private let hermesRuntime = HermesRuntimeManager()
-    private let hermesRuntimeQueue = DispatchQueue(label: "network.index.hermes-runtime", qos: .userInitiated)
     /// Exact file URL authorized to invoke the credential-bearing runtime bridge.
     /// Set before navigation starts and never derived from page-controlled data.
     private var trustedBundledDocumentURL: URL?
@@ -103,16 +109,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
         // Window-drag bridge (see windowDragScript above).
         config.userContentController.add(self, name: "windowDrag")
-        config.userContentController.addUserScript(WKUserScript(
-            source: windowDragScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
 
         // Native auth bridge: the page posts {action:"login"|"logout"} and reads
         // window.INDEX_NATIVE (injected at document start from CredentialStore).
         config.userContentController.add(self, name: "indexAuth")
         config.userContentController.add(self, name: "indexAPI")
-        config.userContentController.add(self, name: "hermesRuntime")
-        config.userContentController.addUserScript(WKUserScript(
-            source: nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        userContentController = config.userContentController
+        installNativeUserScripts(on: userContentController)
 
         // Desktop notification bridge: the page posts {id,title,body,url?,imageUrl?}
         // and the native side owns delivery (UNUserNotificationCenter) plus the
@@ -127,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
 
         let contentRect = Self.defaultContentFrame(for: NSScreen.main)
-        webView = WKWebView(frame: contentRect, configuration: config)
+        webView = ShellWebView(frame: contentRect, configuration: config)
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.autoresizingMask = [.width, .height]
@@ -228,10 +231,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
         let requestURL = navigationAction.request.url?.standardizedFileURL
-        let isMainFrame = navigationAction.targetFrame?.isMainFrame == true
-        if isMainFrame,
-           let trustedBundledDocumentURL,
-           requestURL == trustedBundledDocumentURL {
+        // Reload can arrive with a nil targetFrame. Treat that as main-frame when
+        // the URL is the bundled document; only an explicit subframe is refused.
+        let isBundledMainDocument = requestURL == trustedBundledDocumentURL
+            && navigationAction.targetFrame?.isMainFrame != false
+        if isBundledMainDocument, trustedBundledDocumentURL != nil {
+            // WKUserScript source is a frozen string. Rebuild it from the live
+            // Keychain so Reload does not re-inject launch-time auth.
+            installNativeUserScripts(on: userContentController)
             decisionHandler(.allow)
             return
         }
@@ -386,6 +393,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         hasLoadedDocument = true
         webViewReady = true
+        // Document-start injection can still be a stale snapshot if WebKit
+        // captured user scripts before decidePolicyFor rebuilt them. Push the
+        // live Keychain flag so a Reload after login does not stick on sign-in.
+        notifyAuthChanged(authenticated: ownerIsAuthenticated(), admittedGeneration: trustedDocumentGeneration)
         flushPendingDeepLinks()
     }
 
@@ -415,10 +426,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     // while the button stays down, follow the cursor and reposition the window.
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
-        if message.name == "hermesRuntime" {
-            handleHermesRuntimeMessage(message)
-            return
-        }
         if message.name == "indexAPI" {
             handleNativeAPIMessage(message)
             return
@@ -432,16 +439,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             let action = body?["action"] as? String
             if action == "login" { startLogin(admittedGeneration: admittedGeneration) }
             else if action == "completeLogout" {
-                logout(
-                    ownerId: body?["ownerId"] as? String,
-                    admittedGeneration: admittedGeneration
-                )
+                logout(admittedGeneration: admittedGeneration)
             }
             else if action == "detectHarnesses" { detectHarnesses(admittedGeneration: admittedGeneration) }
             else if action == "setupHermes" {
-                if let key = body?["value"] as? String {
-                    setupHermes(apiKey: key, admittedGeneration: admittedGeneration)
-                }
+                setupHermes(admittedGeneration: admittedGeneration)
             }
             else if action == "teardownHermes" {
                 teardownHermes(admittedGeneration: admittedGeneration)
@@ -501,9 +503,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     /// Write ~/.hermes/.env and install/enable the Index plugin off the main
     /// thread, then hand the result to the page via window.__indexHermesSetup.
-    private func setupHermes(apiKey: String, admittedGeneration: UInt64) {
+    private func setupHermes(admittedGeneration: UInt64) {
+        let credential = currentOwnerCredential()?.credential
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = HermesSetup.run(apiKey: apiKey)
+            let result: [String: Any] = credential
+                .map { HermesSetup.run(sessionToken: $0) }
+                ?? ["ok": false, "error": "sign in first"]
             let json = (try? JSONSerialization.data(withJSONObject: result))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
             DispatchQueue.main.async {
@@ -537,51 +542,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
-    /// Decode on the WebKit callback thread, execute all filesystem/Process
-    /// work on one serial background queue, then deliver the correlated result
-    /// back on the main thread. The decoded bootstrap credential never enters
-    /// the callback result or an error/log message.
-    private func handleHermesRuntimeMessage(_ message: WKScriptMessage) {
-        // This trust check deliberately precedes even reading/decoding the body:
-        // subframes and any replacement document get no bridge work or reply.
-        guard isTrustedBridgeMessage(message) else { return }
-        let admittedGeneration = trustedDocumentGeneration
-        let body = message.body as? [String: Any]
-        let requestId = body?["requestId"] as? String ?? ""
-        guard let body,
-              JSONSerialization.isValidJSONObject(body),
-              let data = try? JSONSerialization.data(withJSONObject: body),
-              let request = try? JSONDecoder().decode(HermesRuntimeRequest.self, from: data) else {
-            emitHermesRuntimeResult(HermesRuntimeResult(
-                requestId: requestId,
-                ok: false,
-                stage: "decode",
-                state: nil,
-                errorCode: "invalid_request",
-                retryable: false
-            ), admittedGeneration: admittedGeneration)
-            return
-        }
-
-        hermesRuntimeQueue.async { [weak self] in
-            guard let self else { return }
-            // Credential-free dequeue acknowledgement. It is emitted from
-            // inside the serial queue immediately before handle so JavaScript
-            // can distinguish bounded queue wait from bounded execution.
-            self.emitHermesRuntimeProgress(
-                HermesRuntimeProgress(requestId: request.requestId, event: "started"),
-                admittedGeneration: admittedGeneration
-            )
-            let result = self.hermesRuntime.handle(request)
-            DispatchQueue.main.async { [weak self] in
-                self?.emitHermesRuntimeResult(
-                    result,
-                    admittedGeneration: admittedGeneration
-                )
-            }
-        }
-    }
-
     private func isTrustedBridgeMessage(_ message: WKScriptMessage) -> Bool {
         guard webViewReady,
               message.frameInfo.isMainFrame,
@@ -594,45 +554,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         return true
     }
 
-    private func emitHermesRuntimeProgress(
-        _ progress: HermesRuntimeProgress,
-        admittedGeneration: UInt64
-    ) {
-        let json = (try? JSONEncoder().encode(progress))
-            .flatMap { String(data: $0, encoding: .utf8) }
-            ?? "{\"requestId\":\"\",\"event\":\"invalid\"}"
-        DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  self.webViewReady,
-                  admittedGeneration == self.trustedDocumentGeneration,
-                  let trustedBundledDocumentURL = self.trustedBundledDocumentURL,
-                  self.webView.url?.standardizedFileURL == trustedBundledDocumentURL else { return }
-            self.webView.evaluateJavaScript(
-                "if (typeof window.__indexHermesRuntimeProgress === 'function') { window.__indexHermesRuntimeProgress(\(json)); }",
-                completionHandler: nil
-            )
-        }
-    }
-
-    private func emitHermesRuntimeResult(
-        _ result: HermesRuntimeResult,
-        admittedGeneration: UInt64
-    ) {
-        // A trusted request may finish after navigation. Readiness plus the
-        // captured epoch distinguishes a same-URL replacement from its sender.
-        guard webViewReady,
-              admittedGeneration == trustedDocumentGeneration,
-              let trustedBundledDocumentURL,
-              webView.url?.standardizedFileURL == trustedBundledDocumentURL else { return }
-        let json = (try? JSONEncoder().encode(result))
-            .flatMap { String(data: $0, encoding: .utf8) }
-            ?? "{\"requestId\":\"\",\"ok\":false,\"stage\":\"encode\",\"errorCode\":\"internal_failure\",\"retryable\":true}"
-        webView.evaluateJavaScript(
-            "if (typeof window.__indexHermesRuntimeResult === 'function') { window.__indexHermesRuntimeResult(\(json)); }",
-            completionHandler: nil
-        )
-    }
-
     // MARK: - Desktop notifications
     //
     // Delivery is native (UNUserNotificationCenter); everything else — which
@@ -642,7 +563,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     // `imageUrl` an https avatar attached to the toast (fail-open on any error).
 
     private func postNotification(_ body: [String: Any]) {
-        // Hermes-style background gating: never toast over the app itself.
+        // Never toast over the app itself.
         guard !NSApp.isActive else { return }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
@@ -724,7 +645,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             }
         } else {
 #if INDEX_DEVELOPMENT_BUILD
-            ownerCredentialStore = OwnerCredentialStore(developmentLoginKeychain: IndexKeychainStore())
+            ownerCredentialStore = OwnerCredentialStore()
 #else
             ownerStartupFailure = "This build has no authorized owner Keychain group. Use a signed Index build."
 #endif
@@ -789,12 +710,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
+    /// Replace document-start scripts with a Keychain-current INDEX_NATIVE.
+    /// WKUserScript stores the source string; without a rebuild, Reload after
+    /// login re-injects the launch-time `authenticated` flag.
+    private func installNativeUserScripts(on controller: WKUserContentController) {
+        controller.removeAllUserScripts()
+        controller.addUserScript(WKUserScript(
+            source: windowDragScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        controller.addUserScript(WKUserScript(
+            source: nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+
+    private func ownerIsAuthenticated() -> Bool {
+        (currentOwnerCredential()?.expiresAt ?? .distantPast) > Date()
+    }
+
     /// Document-start metadata is deliberately credential-free.
     private func nativeInjectionScript() -> String {
-        let authenticated = (currentOwnerCredential()?.expiresAt ?? .distantPast) > Date()
         let obj: [String: Any] = [
             "apiBaseUrl": AppConfig.apiBaseURL,
-            "authenticated": authenticated,
+            "authenticated": ownerIsAuthenticated(),
             // Share / invitation links use the configured web origin.
             "appUrl": AppConfig.trimTrailingSlash(AppConfig.appURL),
             "deepLinkHosts": AppConfig.deepLinkHosts,
@@ -808,9 +743,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         """
     }
 
-    /// The CLI's 90-day key lifetime; the server enforces the real expiry, this
-    /// local value only gates the credential-free `authenticated` bootstrap flag.
-    private static let ownerKeyLifetime: TimeInterval = 90 * 24 * 60 * 60
+    /// Client id presented to the device authorization grant. The web page
+    /// mints the code and this app redeems it, so both must send the same value.
+    private static let deviceClientId = "index-device"
 
     private func startLogin(admittedGeneration: UInt64) {
         guard ownerCredentialStore != nil else {
@@ -850,40 +785,114 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func finishLogin(
-        _ result: Result<(apiKey: String, keyId: String), Error>,
+        _ result: Result<String, Error>,
         admittedGeneration: UInt64
     ) {
         authServer?.stop(); authServer = nil
-        guard case .success(let callback) = result, let store = ownerCredentialStore else {
+        guard case .success(let deviceCode) = result else {
             notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
         }
-        // The .iso8601 Keychain encoding drops fractional seconds, so truncate
-        // up front or the read-back equality check can never match.
-        let record = OwnerCredentialRecord(
-            credential: callback.apiKey,
-            credentialId: callback.keyId,
-            expiresAt: Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + Self.ownerKeyLifetime).rounded(.down))
-        )
-        do {
-            try store.putAndVerify(record)
-            try nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
-        } catch {
-            try? ownerCredentialStore?.deleteAndVerify()
-            notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
+        // The browser only ever hands over the approved code; this app trades
+        // it for a session of its own so the token never touches the browser.
+        redeemDeviceCode(deviceCode) { [weak self] redeemed in
+            guard let self else { return }
+            guard let redeemed, let store = self.ownerCredentialStore else {
+                self.notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
+            }
+            // The .iso8601 Keychain encoding drops fractional seconds, so
+            // truncate up front or the read-back equality check can never match.
+            let record = OwnerCredentialRecord(
+                credential: redeemed.token,
+                expiresAt: Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + redeemed.expiresIn).rounded(.down))
+            )
+            do {
+                try store.putAndVerify(record)
+                try self.nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
+            } catch {
+                try? self.ownerCredentialStore?.deleteAndVerify()
+                self.notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
+            }
+            self.notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration)
         }
-        notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration)
     }
 
-    private func logout(ownerId: String?, admittedGeneration: UInt64) {
-        // Simple connect path does not require a Hermes saga journal. Evidence
-        // is optional and only finishes a leftover Personal Agent setup row.
-        let evidence = ownerId.flatMap { hermesRuntime.logoutEvidence(ownerId: $0) }
-        guard currentOwnerCredential() != nil else { return }
-        notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
-        guard let bridge = nativeAPIBridge, let record = currentOwnerCredential() else { return }
-        bridge.beginQuarantine { [weak self] in
-            self?.revokeAndDelete(record: record, evidence: evidence)
+    /// Exchange an approved device code for this device's own session.
+    ///
+    /// - Parameters:
+    ///   - deviceCode: Code delivered to the loopback callback.
+    ///   - completion: Receives the session token and its lifetime, or nil on
+    ///     any transport, status or decoding failure. Always called on main.
+    private func redeemDeviceCode(
+        _ deviceCode: String,
+        completion: @escaping ((token: String, expiresIn: TimeInterval)?) -> Void
+    ) {
+        // apiBaseURL already ends in /api.
+        guard let url = URL(string: AppConfig.apiBaseURL + "/auth/device/token") else {
+            completion(nil); return
         }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // The session records this request's user agent, and that is what names
+        // the device in Index settings.
+        request.setValue("Index/mac", forHTTPHeaderField: "User-Agent")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            "device_code": deviceCode,
+            "client_id": Self.deviceClientId,
+        ])
+        URLSession(configuration: .ephemeral).dataTask(with: request) { data, response, _ in
+            let token: (token: String, expiresIn: TimeInterval)? = {
+                guard let data,
+                      (response as? HTTPURLResponse)?.statusCode == 200,
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let access = object["access_token"] as? String, !access.isEmpty,
+                      let expires = object["expires_in"] as? NSNumber else { return nil }
+                return (token: access, expiresIn: expires.doubleValue)
+            }()
+            DispatchQueue.main.async { completion(token) }
+        }.resume()
+    }
+
+    private func logout(admittedGeneration: UInt64) {
+        // Reject new work and cancel in-flight tasks before the credential goes
+        // away. The drain is empty on purpose: deletion below must not wait for
+        // a cancelled stream to emit its terminal callback, or a logout could
+        // strand the app quarantined with a live session.
+        nativeAPIBridge?.beginQuarantine {}
+
+        // A session may revoke itself, so kill it server-side before dropping
+        // the Keychain item. Local deletion happens either way: leaving the
+        // token on disk because the network failed would strand the app.
+        let credential = currentOwnerCredential()
+        var signedOut = true
+        if let store = ownerCredentialStore {
+            do { try store.deleteAndVerify() } catch { signedOut = false }
+        }
+        guard signedOut else {
+            // The credential outlived the attempt. Reopen the bridge instead of
+            // leaving the app unable to either use or drop the session.
+            try? nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
+            notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration)
+            return
+        }
+        if let credential { revokeSession(credential.credential) }
+        notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
+    }
+
+    /// Revoke a device session server-side using the session's own token.
+    /// Fire-and-forget: the local credential is already gone, so a failure here
+    /// only means the row outlives this device until it expires or is revoked
+    /// from Index web settings.
+    ///
+    /// - Parameter token: The session token being retired.
+    private func revokeSession(_ token: String) {
+        // apiBaseURL already ends in /api.
+        guard let url = URL(string: AppConfig.apiBaseURL + "/auth/sign-out") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        URLSession(configuration: .ephemeral).dataTask(with: request).resume()
     }
 
     private func currentOwnerCredential() -> OwnerCredentialRecord? {
@@ -892,67 +901,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         catch { return nil }
     }
 
-    private func revokeAndDelete(record: OwnerCredentialRecord, evidence: HermesSagaOperationRecord?) {
-        // Ordinary Better Auth API-key revocation - the same endpoint the CLI
-        // logout uses. Local deletion waits for server denial so a lost
-        // response never strands a still-live key.
-        performOwnerRequest(
-            path: "/auth/cli-credential/revoke",
-            body: ["keyId": record.credentialId, "targetKey": record.credential],
-            credential: record.credential
-        ) { [weak self] revokeResult in
-            guard let self, case .success = revokeResult else { return }
-            self.verifyCredentialDenied(record.credential) { denied in
-                guard denied, let store = self.ownerCredentialStore else { return }
-                do {
-                    try store.deleteAndVerify()
-                    if let evidence { self.hermesRuntime.finishLogoutEvidence(evidence) }
-                } catch { return }
-            }
-        }
-    }
-
-    private func verifyCredentialDenied(_ credential: String, completion: @escaping (Bool) -> Void) {
-        guard let url = URL(string: AppConfig.apiBaseURL + "/auth/me") else { completion(false); return }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(credential, forHTTPHeaderField: "x-api-key")
-        URLSession.shared.dataTask(with: request) { _, response, _ in
-            let status = (response as? HTTPURLResponse)?.statusCode
-            completion(status == 401 || status == 403)
-        }.resume()
-    }
-
-    private func performOwnerRequest(
-        path: String,
-        body: [String: Any],
-        credential: String? = nil,
-        completion: @escaping (Result<Data, Error>) -> Void
-    ) {
-        guard JSONSerialization.isValidJSONObject(body),
-              let data = try? JSONSerialization.data(withJSONObject: body),
-              data.count <= 1_048_576,
-              let url = URL(string: AppConfig.apiBaseURL + path) else {
-            completion(.failure(LoopbackAuthServer.AuthError.invalidCallback)); return
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 30
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let credential { request.setValue(credential, forHTTPHeaderField: "x-api-key") }
-        request.httpBody = data
-        URLSession.shared.dataTask(with: request) { responseData, response, error in
-            guard error == nil,
-                  let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  let responseData, responseData.count <= 1_048_576 else {
-                completion(.failure(LoopbackAuthServer.AuthError.invalidCallback)); return
-            }
-            completion(.success(responseData))
-        }.resume()
-    }
-
     private func notifyAuthChanged(authenticated: Bool, admittedGeneration: UInt64) {
+        installNativeUserScripts(on: userContentController)
         guard webViewReady,
               admittedGeneration == trustedDocumentGeneration,
               webView.url?.standardizedFileURL == trustedBundledDocumentURL else { return }

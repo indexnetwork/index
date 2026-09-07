@@ -37,22 +37,22 @@ Words you will see elsewhere in this doc: **network** = a community you are in; 
 
 ### `index login`
 
-Authenticate with Index Network. Opens a browser window that uses your existing session (or a fresh OAuth flow) to call the session-only, fixed-shape CLI credential endpoint, which mints a 90-day API key while keeping CLI requests on the non-web compatibility surface.
+Authenticate with Index Network. Opens a browser window that runs the device authorization grant against your existing session (or a fresh login), then hands this machine a session of its own.
 
 ```bash
 index login                     # Browser-based auth
 index login --api-url <url>     # Custom server URL
 ```
 
-Credentials are stored in `~/.index/credentials.json`. Current browser login explicitly requests protocol v2, binds the loopback callback with a one-time state, and stores both the API-key secret and its exact revocation ID. It sends the key with `x-api-key`. Re-login stores the successful replacement first, then calls the constrained CLI revocation endpoint with the replacement as caller plus the captured previous raw secret and exact row ID; cleanup failures leave the new login usable but print a warning directing the user to remove the prior key in web settings.
+Credentials are stored in `~/.index/credentials.json`. Browser login explicitly requests protocol v2 and binds the loopback callback with a one-time state. Only a short-lived device code travels through the redirect; the CLI exchanges it at `/api/auth/device/token` for its own session token and sends that as `Authorization: Bearer`. There is no approval prompt, because the web page mints and approves the code itself — no code from anywhere else can enter the grant. A re-login revokes the session it replaces, so logins do not pile up.
 
 **Rolling deploy order:** v2 clients require the v2 web bridge and intentionally reject callbacks from older web deployments that cannot return the bound state. On dev, this CLI is an RC: wait for both the API and web deployments to succeed before testing v2 login. Do not relax state validation to make a new CLI work against old web.
 
-The v1 login contract (`session_token` callback, Bearer API-key fallback, `--token` manual flow) is removed. Released v1 binaries and legacy `credentials.json` files without a key ID are treated as signed out; upgrade and run `index login`.
+The v1 login contract (`session_token` callback, Bearer API-key fallback, `--token` manual flow) is removed. So is API-key login: existing `credentials.json` files holding a key are treated as signed out; run `index login` again.
 
 ### `index logout`
 
-Revoke the exact stored CLI API key through `POST /api/auth/cli-credential/revoke`, proving both the active `x-api-key` caller and strict `{keyId,targetKey}` self target, then clear local credentials. If server revocation succeeds but local cleanup fails, logout exits nonzero and asks you to remove the local file manually. The released v1 CLI can only remove its credential locally because it did not store a server key ID; its temporary server key expires after 90 days. Legacy API-key credentials without a revocation ID are retained by the new CLI with a non-success warning that directs you to remove the old key in web settings first rather than implying another login revokes it.
+Revoke this machine's session server-side, then clear the local credential file. A session can revoke itself, so sign-out takes effect immediately without needing your browser. If the server cannot be reached the local file is still cleared, and logout tells you to revoke the device in Index web settings. If local cleanup fails, logout exits nonzero and asks you to remove the file manually.
 
 ```bash
 index logout
@@ -70,8 +70,8 @@ index intent show <id>                      # Show full signal details
 index intent create "Looking for a CTO"     # Create from natural language
 index intent update <id> "revised text"     # Update a signal (runs full pipeline)
 index intent archive <id>                   # Archive a signal
-index intent link <id> <network-id>         # Link a signal to a network
-index intent unlink <id> <network-id>       # Unlink a signal from a network
+index intent add-to-network <id> <network-id>      # Add a signal to a network
+index intent remove-from-network <id> <network-id> # Remove a signal from a network
 ```
 
 ### `index negotiation`

@@ -35,27 +35,15 @@ function nativeAuthed() {
 // gets one fetch by id through the existing client methods, and null when even
 // that comes up empty, so the caller can say so instead of opening a blank
 // window.
-// A question or conversation link (minted by the app's own OS toasts) names an
+// A conversation link (minted by the app's own OS toasts) names an
 // intent-scoped destination rather than a person card: resolve which signal
-// owns it so the caller can open that signal — and, for a conversation, the
-// specific chat — through the same machinery the menubar uses.
+// owns it so the caller can open that signal, and the specific chat within it,
+// through the same machinery the menubar uses.
 async function resolveDeepLinkTarget(route, intents) {
   if (!nativeAuthed() || !window.IndexApp) return null;
   const client = window.IndexApp.getClient();
   if (!client) return null;
   try {
-    if (route.route === "question") {
-      const res = await client.questions.pending();
-      const q = window.IndexApp.normalizeList(res, "questions").find((row) => row && row.id === route.id);
-      const d = (q && q.detection) || {};
-      // Same intent resolution as the server's notification projection.
-      const intentId = d.triggeredBy
-        || (d.sourceType === "intent" ? d.sourceId : null)
-        || (d.negotiation && d.negotiation.recipientIntentId)
-        || null;
-      const intent = intentId ? (intents || []).find((i) => i.id === intentId) : null;
-      return intent ? { intent } : null;
-    }
     const res = await client.conversations.list();
     const conv = window.IndexApp.normalizeList(res, "conversations").find((row) => row && row.id === route.id);
     const via = conv && Array.isArray(conv.via) ? conv.via[0] : null;
@@ -113,8 +101,9 @@ function App() {
   // True until the user creates their first signal, the hub opens empty.
   const [freshUser, setFreshUser] = useState(false);
   const [profile, setProfile] = useState({});
-  // Public-research enrichment result, fetched on the "setting up" screen and
-  // handed to the first-run review so it opens pre-filled without a second load.
+  // First run, in order: the name confirmed on the card, then what the
+  // public-research lookup made of it. Both feed the getting-started review.
+  const [confirmedName, setConfirmedName] = useState("");
   const [enriched, setEnriched] = useState(null);
   // Live snapshot state; null until loadSnapshot() resolves (or in demo mode).
   const [snapshot, setSnapshot] = useState(null);
@@ -240,7 +229,7 @@ function App() {
     (async () => {
       // Notification activate links land on a signal (and maybe a chat within
       // it) rather than a floating person card.
-      if (link.route === "question" || link.route === "conversation") {
+      if (link.route === "conversation") {
         const target = await resolveDeepLinkTarget(link, INTENTS);
         if (resolvingRef.current !== link) return;
         resolvingRef.current = null;
@@ -248,9 +237,7 @@ function App() {
           pickExistingIntent(target.intent);
           if (target.personId) setPendingChat(target.personId);
         } else {
-          setNotice(link.route === "question"
-            ? "that question isn't waiting anymore."
-            : "couldn't open that conversation.");
+          setNotice("couldn't open that conversation.");
         }
         setPendingLink(null);
         return;
@@ -279,11 +266,16 @@ function App() {
   // React to native login/logout coming from the Swift shell.
   useEffect(() => {
     if (!window.IndexApp) return;
+    // Reload can finish (and set INDEX_NATIVE.authenticated) before this
+    // subscriber is attached. Re-read so a signed-in Reload does not stick
+    // on the login screen from a stale document-start snapshot.
+    if (nativeAuthed()) setScreen("building");
     return window.IndexApp.onAuthChanged((authenticated) => {
       if (authenticated) {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
+        setConfirmedName(""); setEnriched(null);
         Object.assign(window.INDEX_DATA, { NETWORKS: [] });
         // Drop the whole deep-link pipeline, not just what is on screen: a
         // resolve still in flight would otherwise render a counterpart's card
@@ -299,17 +291,16 @@ function App() {
 
   // The "building" screen doubles as the boot loader: fetch the live snapshot,
   // then drop into the signals hub. Falls back to demo data when unauthenticated.
+  // Two GETs and no artificial floor: the real wait at first run is the lookup
+  // after the name card, and padding this one only made the same window appear
+  // twice in a few seconds.
   useEffect(() => {
     if (screen !== "building") return;
     let cancelled = false;
     (async () => {
       let loaded = null;
       if (nativeAuthed() && window.IndexApp) {
-        const [snap] = await Promise.all([
-          window.IndexApp.loadSnapshot().catch(() => null),
-          new Promise((r) => setTimeout(r, 1400)),
-        ]);
-        loaded = snap;
+        loaded = await window.IndexApp.loadSnapshot().catch(() => null);
       }
       if (cancelled) return;
       let needsProfile = false;
@@ -324,18 +315,27 @@ function App() {
         // here — the building effect cleanup would discard the update otherwise.
         refreshNetworks();
       }
-      // First run only: run the public-research enrichment behind this same
-      // "setting up" loader so the review opens filled and the animation shows
-      // once. Gated on needsProfile so returning users are never re-enriched.
-      if (needsProfile && nativeAuthed() && window.IndexApp && window.IndexApp.triggerEnrichment) {
-        const res = await window.IndexApp.triggerEnrichment().catch(() => null);
-        if (cancelled) return;
-        setEnriched(res);
-      }
-      setScreen(needsProfile ? "onboarding" : "intents");
+      setScreen(needsProfile ? "name" : "intents");
     })();
     return () => { cancelled = true; };
   }, [screen, refreshNetworks]);
+
+  // First run, behind the same loader window: the public-research lookup, run on
+  // the name just confirmed rather than on whatever the handshake happened to
+  // supply. Nothing found is not a failure, the review just opens empty.
+  useEffect(() => {
+    if (screen !== "looking-up") return;
+    let cancelled = false;
+    (async () => {
+      const res = (nativeAuthed() && window.IndexApp && window.IndexApp.triggerEnrichment)
+        ? await window.IndexApp.triggerEnrichment({ name: confirmedName }).catch(() => null)
+        : null;
+      if (cancelled) return;
+      setEnriched(res);
+      setScreen("onboarding");
+    })();
+    return () => { cancelled = true; };
+  }, [screen, confirmedName]);
 
   // Fold a loaded snapshot into React state and mirror ME/NETWORKS/INTENTS onto
   // window.INDEX_DATA so the side screens (settings/networks) that still read it
@@ -360,6 +360,7 @@ function App() {
       return;
     }
     setSnapshot(null); setMe(null); setNetworks(null);
+    setConfirmedName(""); setEnriched(null);
     Object.assign(window.INDEX_DATA, { NETWORKS: [] });
     setScreen("login");
   };
@@ -411,8 +412,6 @@ function App() {
   const profileFromIntent = (intent) => ({
     intentId: intent.id,
     intent: intent.title,
-    edges: intent.edges,
-    offLimits: intent.offLimits,
     status: intent.status,
   });
   const pickExistingIntent = (intent) => {
@@ -432,16 +431,14 @@ function App() {
     setPeople([]);
     setFreshUser(false);   // they've created a signal, hub is no longer empty
 
-    // Match web confirmation: open the exact persisted signal as soon as
-    // /intents/confirm returns its ID. The shelf refresh is background work,
-    // not a second blocking /auth/me + /intents/list bootstrap.
+    // Open the exact persisted signal as soon as POST /intents returns its ID.
+    // The shelf refresh is background work, not a second blocking
+    // /auth/me + /intents/list bootstrap.
     if (created && intentId) {
       const now = new Date().toISOString();
       const optimistic = {
         id: intentId,
         title: answers.intent || "new signal",
-        edges: answers.edges || "",
-        offLimits: answers["off-limits"] || "",
         status: "active",
         source: { id:intentId, createdAt:now, updatedAt:now },
       };
@@ -460,31 +457,7 @@ function App() {
       return;
     }
 
-    // Legacy/direct MCP creation can lack a structured ID. Keep the old
-    // recovery lookup for that path only; proposal confirmation never pays it.
-    if (created && window.IndexApp && window.IndexApp.isAuthed()) {
-      const snap = await window.IndexApp.loadSnapshot().catch(() => null);
-      if (snap) {
-        applyLoaded(snap);
-        const intents = [...(snap.snapshot.INTENTS || [])].sort((a, b) => {
-          const ta = a.source && a.source.createdAt ? Date.parse(a.source.createdAt) : 0;
-          const tb = b.source && b.source.createdAt ? Date.parse(b.source.createdAt) : 0;
-          return tb - ta;
-        });
-        if (intents[0]) {
-          setProfile(profileFromIntent(intents[0]));
-          setScreen("main");
-          seedField();
-          return;
-        }
-      }
-    }
-
-    setProfile({
-      intent: answers.intent,
-      edges: answers.edges,
-      offLimits: answers["off-limits"],
-    });
+    setProfile({ intent: answers.intent });
     setScreen("main");
     seedField();
   };
@@ -525,13 +498,27 @@ function App() {
                                        onNew={goNewIntent}
                                        onSignOut={signOut}/>}
         {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
-        {/* First run: profile review backed by enrich prefill; PATCH profile +
-            confirm-profile REST; first signal then POST onboarding/complete. */}
+        {/* First run, in three screens: confirm the name, look the person up
+            behind the loader, then review what came back. The review is what
+            PATCHes profile + confirm-profile; the first signal after it POSTs
+            onboarding/complete. */}
+        {screen === "name"        && <AskName
+                                       initialName={(me && me.name) || ""}
+                                       onSubmit={(name) => { setConfirmedName(name); setScreen("looking-up"); }}
+                                       onSignOut={signOut}/>}
+        {screen === "looking-up"  && <BuildingProfile
+                                       title="looking you up"
+                                       lines={[
+                                         "looking you up…",
+                                         "reading what's already public…",
+                                         "almost there.",
+                                       ]}/>}
         {screen === "onboarding"  && <Settings
                                        initialTab="profile"
                                        profileOnly
-                                       enrich
+                                       firstRun
                                        enriched={enriched}
+                                       name={confirmedName}
                                        onClose={signOut}
                                        onDone={() => { setFreshUser((INTENTS || []).length === 0); setScreen("new-intent"); }}/>}
         {/* A deep-linked card floats over whatever screen is showing: the link

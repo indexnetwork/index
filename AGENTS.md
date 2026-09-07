@@ -74,11 +74,10 @@ The ESLint boundaries enforce these roles:
 
 ## Tests
 
-The repository keeps five specs, all under `packages/protocol`, and nothing else:
-`src/capabilities/tests/{intents,negotiations.e2e,personal-agent.e2e}.spec.ts`
-and `src/internal/opportunities/tests/opportunity.graph.spec.ts` plus
-`src/internal/premises/tests/premise.decomposer.spec.ts`. The rest were deleted
-on 2026-08-28 because maintaining them cost more than they returned.
+The repository keeps two specs, all under `packages/protocol`, and nothing
+else: `src/capabilities/tests/intents.spec.ts` and
+`src/internal/opportunities/tests/opportunity.graph.spec.ts`. The rest were
+deleted because maintaining them cost more than they returned.
 
 - Do not add tests unless you are asked. A missing spec is not a gap to fill.
 - If a change genuinely warrants one, say so and ask before writing it. The only
@@ -155,7 +154,7 @@ Two Neon projects exist: Protocol-dev-europe (`patient-pine-89907813`) for local
 development, and Protocol (`shiny-cloud-34341469`) with branches `production`
 (never touch), `dev` (the Railway dev environment, database `protocol_prod`), and
 `local-dev`. On `local-dev`, `protocol_prod` is a real-data copy while
-`protocol_sandbox` is the curated synthetic sandbox and the safe default for
+`protocol_sandbox` is the disposable one and the safe default for
 `.env.development`.
 
 The schema is `services/api/src/schemas/database.schema.ts` and the Drizzle client

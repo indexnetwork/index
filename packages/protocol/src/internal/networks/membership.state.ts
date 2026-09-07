@@ -2,7 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 
 /**
  * Network Membership Graph State.
- * Handles CRUD operations for network memberships (index_members table).
+ * Handles CRUD operations for network memberships (network_members table).
  *
  * ## Membership authority policy
  *
@@ -17,7 +17,7 @@ import { Annotation } from "@langchain/langgraph";
  * START → routerNode → {addMemberNode | listMembersNode | removeMemberNode} → END
  */
 export const NetworkMembershipGraphState = Annotation.Root({
-  // --- Core Inputs (from ChatGraph via ToolContext) ---
+  // --- Core Inputs (from ToolContext) ---
 
   /** User performing the action (the actor). Always required. */
   userId: Annotation<string>,

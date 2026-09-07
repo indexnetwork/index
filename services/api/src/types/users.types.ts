@@ -11,16 +11,6 @@ export interface NotificationPreferences {
   connectionUpdates: boolean;
 }
 
-export interface OnboardingProfileSeed {
-  source: 'experiment_signup' | 'experiment_csv_import';
-  networkId: UUID;
-  capturedAt: ISODateString;
-  name?: string;
-  bio?: string;
-  location?: string;
-  socials?: { label: string; value: string }[];
-}
-
 export interface OnboardingState {
   completedAt?: ISODateString | null;
   profileConfirmedAt?: ISODateString;
@@ -29,7 +19,6 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: UUID | null;
   invitationCode?: string;
-  profileSeeds?: OnboardingProfileSeed[];
 }
 
 export interface User {

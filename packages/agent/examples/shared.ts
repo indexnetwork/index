@@ -1,26 +1,8 @@
 /**
  * Shared helpers for the examples/ scripts. These make real OpenRouter
- * calls through `Negotiator` — set OPENROUTER_API_KEY before running them.
- * Every run is capped at MAX_TURNS, since a live model isn't guaranteed to
- * reach a terminal action on its own.
+ * calls — set OPENROUTER_API_KEY before running them.
  */
-import type { Agent, AgentTurn, Negotiation, RunOptions, RunResult, Step } from "../src/index.ts";
-
-export const MAX_TURNS = 6;
-
-export function logTurn(speaker: string, turn: AgentTurn): void {
-  console.log(`[${speaker}] (${turn.decision.action}) ${turn.decision.message}`);
-}
-
-/** Prints how a negotiation ended, in the terms this package reports it. */
-export function logOutcome(negotiation: Negotiation): void {
-  const by = negotiation.endedBy
-    ? `${negotiation.endedBy.speaker} took "${negotiation.endedBy.action}"`
-    : "nobody took a terminal action";
-
-  console.log(`\n— ended: ${negotiation.end} (${by})`);
-  console.log(`  shared task state: ${negotiation.state}`);
-}
+import type { Agent, RunOptions, RunResult, Step } from "../src/index.ts";
 
 /** Prints one step of an agent run. */
 export function logStep(step: Step): void {
@@ -46,8 +28,8 @@ function truncate(text: string, max = 140): string {
  * a chat message, a push notification, a form — whatever channel the host
  * has to the user, seconds or days later.
  *
- * Nothing is held open between the two runs. `messages` and `negotiations`
- * are the whole state — persist them and resume tomorrow if you like.
+ * Nothing is held open between the two runs. `messages` is the whole
+ * state — persist it and resume tomorrow if you like.
  */
 export async function answerUntilDone(
   agent: Agent,
@@ -59,13 +41,7 @@ export async function answerUntilDone(
   while (result.end === "needs-input" && asked < answers.length) {
     const answer = answers[asked++]!;
     console.log(`  > ${answer}\n`);
-    result = await agent.run(answer, { ...options, messages: result.messages, negotiations: result.negotiations });
+    result = await agent.run(answer, { ...options, messages: result.messages });
   }
   return result;
-}
-
-/** Serves an agent handler on an ephemeral local port. */
-export function serve(fetch: (request: Request) => Promise<Response>) {
-  const server = Bun.serve({ port: 0, fetch });
-  return { url: server.url.toString(), stop: () => server.stop(true) };
 }

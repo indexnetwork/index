@@ -11,7 +11,7 @@ const logger = protocolLogger("NetworkMembershipGraphFactory");
 /**
  * Factory class to build and compile the Network Membership Graph.
  *
- * Handles CRUD operations for the index_members table:
+ * Handles CRUD operations for the network_members table:
  * - create: Add a member to a network (validates join policy and ownership)
  * - read: List members of a network (validates caller is member)
  * - delete: Remove a member from a network (owner-only)
@@ -128,7 +128,7 @@ export async function addMemberNode(state: NetworkMembershipState, deps: Network
       }
 
       if (joinPolicy === 'invite_only') {
-        const isOwner = await deps.database.isIndexOwner(state.networkId, state.userId);
+        const isOwner = await deps.database.isNetworkOwner(state.networkId, state.userId);
         if (!isOwner) {
           return { mutationResult: { success: false, error: "Only the network owner can add members when the network is invite-only." } };
         }
@@ -225,12 +225,12 @@ export async function removeMemberNode(state: NetworkMembershipState, deps: Netw
     }
 
     try {
-      const isOwner = await deps.database.isIndexOwner(state.networkId, state.userId);
+      const isOwner = await deps.database.isNetworkOwner(state.networkId, state.userId);
       if (!isOwner) {
         return { mutationResult: { success: false, error: "Only the network owner can remove members." } };
       }
 
-      const result = await deps.database.removeMemberFromIndex(state.networkId, state.targetUserId);
+      const result = await deps.database.removeMemberFromNetwork(state.networkId, state.targetUserId);
 
       if (result.wasOwner) {
         return { mutationResult: { success: false, error: "Cannot remove the network owner." } };

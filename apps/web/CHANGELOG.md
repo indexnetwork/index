@@ -7,6 +7,85 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- **Devices list in Settings.** Every session that can act as your account —
+  browsers plus the Mac app, CLI and Hermes — with the device it came from, when
+  it was signed in, when it expires, and a per-row sign-out backed by
+  `revokeSession`. Signing one device out leaves the others alone.
+
+### Changed
+- **`/cli-auth` hands devices a session, not an API key.** The page now runs the
+  device authorization grant against your session: it mints a device code,
+  claims it, approves it, and redirects only that short-lived code to the
+  loopback callback, where the app exchanges it for its own session. No approval
+  prompt, and no long-lived credential ever travels through a redirect URL or
+  browser history.
+- **API keys live in Settings and belong to you, not to an agent.** The
+  per-agent key panel is replaced by one account-key section that mints, lists
+  and revokes through Better Auth's own `authClient.apiKey.*`; the `/cli-auth`
+  handshake mints from the same client. Agent pages no longer show keys, setup
+  wizards or a Permissions tab — an agent is a name, a status and notification
+  preferences.
+- **You pick your negotiator on `/agents`.** The personal agent list is a
+  single-choice selector, so the one place that sets it is the list itself; the
+  "Handle negotiations on my behalf" checkbox is gone from the agent detail
+  page. The System Agents section is replaced by a static, disabled "Index
+  Negotiator" row labelled *not yet active*, because nothing runs it yet.
+- Inviting someone to a network reports membership only. There is no
+  "agent provisioned" state and no resend-invitation action, because the
+  invitation carries no credential to refresh.
+
+- **Nothing in the frontend calls a network an "index" any more.**
+  `IndexAvatar`, `CreateIndexModal` and `IndexFilterContext` are `NetworkAvatar`,
+  `CreateNetworkModal` and `NetworkFilterContext`; `indexesService`,
+  `joinIndex`, `getSharedIndexes`, `discoverPublicIndexes`,
+  `getIndexByShareCode` and `uploadIndexImage` take their network names; the
+  network panels take a `network` prop. Routes are untouched.
+- **`/i/new` keeps its question-at-a-time shape on a two-call backend.** The
+  opening question, up to two clarifying follow-ups and the confirmation gate
+  are unchanged; underneath, each answer is folded back into the payload by
+  `POST /intents/clarify` and the gate calls `POST /intents`. A clarification
+  that cannot be reached shows a retry that resumes the round with your answers
+  intact. `services/intake.ts` becomes `services/signals.ts`.
+
+### Removed
+- **The "where should this go?" step.** Signals go out everywhere for now, so
+  the community list and its selection are gone from the flow and create no
+  longer sends `networkIds`.
+- **The guided intake funnel.** `FastSignalIntake`, `GuidedSignalIntake`,
+  `WherePicker` and the `fastSignalIntake` feature flag are gone (the flow now
+  lives in the `/i/new` page itself), along with the proposal confirmation step
+  — signals are created directly now.
+- `'personal'` from the `Agent.type` union, which is now `'external' | 'system'`.
+  The API no longer has a personal agent type; the "Personal Agents" section on
+  `/agents` already listed `external` rows.
+- **The network Integrations tab** and the `/networks/:id/integrations` URL,
+  along with `IntegrationsTab`, `services/integrations.ts`, `useGmailConnect`,
+  the `/oauth/callback` route and the Composio toolkit icons. Google login is
+  unaffected.
+- **Master-key signup on the Access tab.** CSV member import (`csv-import.ts`,
+  `CsvPreviewModal`) and `MasterKeyDialog` are gone; join policy, the invitation
+  link and add-member now always use the ordinary path.
+- **The Connect Telegram bot control in user settings.** The Telegram *social*
+  field on the profile stays.
+- The `manage:premises` permission label on the agent pages and the unused
+  `premises` field on the network-overview client type.
+- The `counterpartyPremiseFit` field on the `screenDecision` conversation type.
+  The API no longer projects it; the rest of the historical screen decision
+  still renders for its initiator.
+- The unused `chatOrchestrator` system-agent id on `/agents/:id`. The
+  negotiator is the only remaining well-known system agent.
+- **The agent chat surface.** Routes `/agent`, `/agent/:tab`, `/d/:id`,
+  `/agents/connected`, `/i/:intentId/negotiations/:taskId`, `/dev/floor` and
+  `/dev/intent-proposal` are gone, along with `ChatContent`,
+  `AgentSessionsPanel`, `IntentNegotiatorChat`, `NegotiatorMemoryPanel`,
+  `PersonalAgentTimeline`, `IntentCycleInspector`,
+  `IntentNegotiationInspector`, `AgentHandlingOpportunity`, the `chat/*`
+  message components, the `AIChat*` contexts, and the connected-agents and
+  negotiator-memory services. The signal page is a single column: signal CRUD
+  plus Radar. The `agent-handling` radar bucket is gone and buckets are purely
+  status-based. `/agents` and `/agents/:id` stay.
+
 ### Removed
 - Delete `tests/`, including the Playwright e2e suite. No source change.
 

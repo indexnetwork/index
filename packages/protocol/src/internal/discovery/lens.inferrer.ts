@@ -37,7 +37,7 @@ const SYSTEM_PROMPT = `You analyze goals and search queries to identify the most
 
 For each perspective you identify, specify:
 1. A clear, specific description of who or what to search for
-2. Whether to search "profiles" (user bios, expertise, backgrounds), "intents" (stated goals, needs, aspirations), or "premises" (identity assertions, values, worldview)
+2. Whether to search "profiles" (user bios, expertise, backgrounds) or "intents" (stated goals, needs, aspirations)
 3. A brief reason why this perspective is relevant
 
 Guidelines:
@@ -45,7 +45,7 @@ Guidelines:
 - Consider both sides: who can help the person AND whose goals complement theirs.
 - When user context is provided, tailor perspectives to their domain (e.g. a DePIN founder searching for "investors" needs crypto-native infra investors specifically).
 - Generate only perspectives that add distinct search value — don't repeat similar angles.
-- Use "profiles" when looking for a type of person (expert, advisor, leader). Use "intents" when looking for a complementary goal or need (someone raising, someone hiring, someone seeking collaboration). Use "premises" when looking for someone whose identity, values, or worldview aligns — stable traits rather than transient goals.
+- Use "profiles" when looking for a type of person (expert, advisor, leader). Use "intents" when looking for a complementary goal or need (someone raising, someone hiring, someone seeking collaboration).
 - Always include at least one "profiles" perspective when the source describes a need that a specific type of professional could fulfill. Most intents benefit from profile-based discovery.
 - LOCATION AWARENESS: When the source text or user context mentions a specific location (city, region, country), incorporate it into lens descriptions. For example, "investors in San Francisco" should produce a lens like "SF-based early-stage investor" rather than just "early-stage investor". This helps the hypothetical document generator produce location-specific search documents, improving retrieval quality.`;
 
@@ -64,7 +64,7 @@ Source-frame rules:
 
 const lensSchema = z.object({
   label: z.string().describe('Specific description of the search perspective'),
-  corpus: z.enum(['profiles', 'intents', 'premises']).describe('Search user profiles, user intents, or user premises (identity/values)'),
+  corpus: z.enum(['profiles', 'intents']).describe('Search user profiles or user intents'),
   reasoning: z.string().describe('Why this perspective is relevant'),
 });
 

@@ -58,16 +58,14 @@ export class IntentGraphFactory {
       .addNode("executor", (state: IntentState) => executorNode(state, deps))
 
       // The graph routes on the shape of its input (see intent.graph.state.ts):
-      // - READ:      no content/target/proposal → prep → query → END (no LLM calls)
+      // - READ:      no content/target → prep → query → END (no LLM calls)
       // - CREATE:    inputContent only → prep → inference → verification → reconciler → executor → END
       // - UPDATE:    inputContent + targetIntentIds → same pipeline, bound to that one target
       // - ARCHIVE:   targetIntentIds + archive → prep → reconciler → executor → END (no LLM)
       // - TRANSITION: targetIntentIds + status → prep → reconciler → executor → END (no LLM)
-      // - CONFIRM:   proposalId → prep → reconciler → executor → END (no LLM)
-      // - dryRun:true on CREATE/UPDATE stops after verification (no reconciliation/execution, no writes)
       .addEdge(START, "prep")
 
-      // After prep: read → query; archive/status/proposal → reconciler directly; else content path → inference
+      // After prep: read → query; archive/status → reconciler directly; else content path → inference
       .addConditionalEdges("prep", afterPrepRoute, {
         query: "query",
         inference: "inference",
@@ -82,14 +80,10 @@ export class IntentGraphFactory {
       .addConditionalEdges("inference", shouldRunVerification, {
         verification: "verification",
         reconciler: "reconciler",
-        __end__: END,
       })
 
-      // After verification: propose mode exits early; others continue to reconciliation
-      .addConditionalEdges("verification", routeAfterVerification, {
-        reconciler: "reconciler",
-        __end__: END,
-      })
+      // Verification always continues to reconciliation
+      .addEdge("verification", "reconciler")
 
       // Reconciliation always goes to executor
       .addEdge("reconciler", "executor")
@@ -102,8 +96,8 @@ export class IntentGraphFactory {
 
     /**
      * After prep: an invalid input shape or a failed precondition ends the
-     * graph; a fully-empty input is a read; archive/status/proposalId skip
-     * straight to the reconciler (no LLM); otherwise the content path infers.
+     * graph; a fully-empty input is a read; archive/status skip straight to
+     * the reconciler (no LLM); otherwise the content path infers.
      */
 export function afterPrepRoute(state: IntentState): string {
   if (state.error) {
@@ -113,14 +107,13 @@ export function afterPrepRoute(state: IntentState): string {
   const hasContent = state.inputContent !== undefined;
   const hasArchive = state.archive === true;
   const hasStatus = state.status !== undefined;
-  const hasProposal = state.proposalId !== undefined;
 
-  if (!hasContent && !hasArchive && !hasStatus && !hasProposal) {
-    logger.verbose('No content/target/proposal - routing to query (read fast path)');
+  if (!hasContent && !hasArchive && !hasStatus) {
+    logger.verbose('No content/target - routing to query (read fast path)');
     return 'query';
   }
-  if (hasArchive || hasStatus || hasProposal) {
-    logger.verbose('Deterministic route (archive/status/confirm) - skipping inference');
+  if (hasArchive || hasStatus) {
+    logger.verbose('Deterministic route (archive/status) - skipping inference');
     return 'reconciler';
   }
   logger.verbose('Content path - running inference');
@@ -129,26 +122,13 @@ export function afterPrepRoute(state: IntentState): string {
 
     /**
      * Determines if verification should run. Skipped when inference produced
-     * no candidates: a dry run ends there; otherwise the (empty) reconciler
-     * pass still runs so the graph reports "nothing to do" consistently.
+     * no candidates: the (empty) reconciler pass still runs so the graph
+     * reports "nothing to do" consistently.
      */
 export function shouldRunVerification(state: IntentState): string {
   if (state.inferredIntents.length === 0) {
-    if (state.dryRun) {
-      logger.verbose('Dry run with no inferred intents - exiting early');
-      return '__end__';
-    }
     logger.verbose('No intents to verify - skipping verification, routing to reconciliation');
     return 'reconciler';
   }
   return 'verification';
-}
-
-/** After verification: a dry run exits early; otherwise continue to reconciliation. */
-export function routeAfterVerification(state: IntentState): string {
-  if (state.dryRun) {
-    logger.verbose('Dry run - stopping after verification, skipping reconciliation');
-    return '__end__';
-  }
-  return 'reconciler';
 }

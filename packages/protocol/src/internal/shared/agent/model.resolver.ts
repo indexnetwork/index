@@ -7,7 +7,6 @@
  */
 export const CANONICAL_AGENT_MODEL_DEFAULTS = Object.freeze({
   intentInferrer: "google/gemini-3.7-flash",
-  intentIndexer: "google/gemini-3.7-flash",
   intentVerifier: "google/gemini-3.7-flash",
   intentReconciler: "google/gemini-3.7-flash",
   intentClarifier: "google/gemini-3.7-flash",
@@ -24,15 +23,11 @@ export const CANONICAL_AGENT_MODEL_DEFAULTS = Object.freeze({
   chatTitleGenerator: "google/gemini-3.7-flash",
   negotiationInsights: "google/gemini-3.7-flash",
   chatContextSummarizer: "google/gemini-3.7-flash",
-  signalIntakePack: "google/gemini-3.7-flash",
   negotiationSummarizer: "google/gemini-3.7-flash",
   poolDiscriminatorMiner: "google/gemini-3.7-flash",
   poolDiscriminatorAssigner: "google/gemini-3.7-flash",
   negotiationEvidenceMiner: "google/gemini-3.7-flash",
   inviteGenerator: "google/gemini-3.7-flash",
-  premiseAnalyzer: "google/gemini-3.7-flash",
-  premiseDecomposer: "google/gemini-3.7-flash",
-  premiseIndexer: "google/gemini-3.7-flash",
   userContextGenerator: "google/gemini-3.7-flash",
   networkRecommender: "google/gemini-3.7-flash",
   interruptClassifier: "google/gemini-3.7-flash",

@@ -90,7 +90,7 @@ for legacy_dir in "${LEGACY_ENV_DIRS[@]}"; do
 done
 
 # Configure git hooks path (points to committed scripts/hooks/)
-git -C "$WORKTREE" config core.hooksPath "$REPO_ROOT/scripts/hooks"
+git -C "$WORKTREE" config core.hooksPath scripts/hooks
 echo "  [git] hooksPath -> scripts/hooks"
 
 echo ""

@@ -1,19 +1,19 @@
 /**
- * Database operations for intent-network assignment and index ownership.
+ * Database operations for intent-network assignment and network ownership.
  */
 
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
 import type { NetworkAssignmentMetadata } from '../../protocol/schemas/network-assignment.schema.js';
-import type { ActiveIntent, AssignmentNetworkMembership, Id, IndexMemberDetails, IndexedIntentDetails, IntentNetworkFinalAssignmentResult, NetworkAssignmentContext, OwnedIndex, UpdateIndexSettingsData } from './entities.js';
+import type { ActiveIntent, AssignmentNetworkMembership, Id, IntentNetworkFinalAssignmentResult, NetworkAssignmentContext, NetworkIntentDetails, NetworkMemberDetails, OwnedNetwork, UpdateNetworkSettingsData } from './entities.js';
 
-/** Network assignment and owner-only index operations. */
+/** Network assignment and owner-only network operations. */
 export interface DatabaseNetworkQueries {
   // ─────────────────────────────────────────────────────────────────────────────
   // Network Graph Operations (Intent–Network Assignment)
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
-   * Intent fields needed for index appropriateness evaluation.
+   * Intent fields needed for network appropriateness evaluation.
    */
   getIntentForIndexing(intentId: string): Promise<{
     id: string;
@@ -24,7 +24,7 @@ export interface DatabaseNetworkQueries {
   } | null>;
 
   /**
-   * Index + member prompts for a user in an index (only when member has autoAssign).
+   * Network + member prompts for a user in a network (only when member has autoAssign).
    * Returns null if user is not a member or autoAssign is false.
    */
   getNetworkMemberContext(
@@ -34,13 +34,13 @@ export interface DatabaseNetworkQueries {
 
   /**
    * Network memberships that should be considered for assignment policy. Unlike
-   * getUserIndexIds, this is not gated by network_members.autoAssign.
+   * getUserNetworkIds, this is not gated by network_members.autoAssign.
    */
   getAssignmentNetworkMembershipsForUser(userId: string): Promise<AssignmentNetworkMembership[]>;
 
   /**
    * Network IDs that should be considered for assignment policy. Unlike
-   * getUserIndexIds, this is not gated by network_members.autoAssign.
+   * getUserNetworkIds, this is not gated by network_members.autoAssign.
    * @deprecated Prefer getAssignmentNetworkMembershipsForUser for scope-aware assignment.
    */
   getAssignmentNetworkIdsForUser(userId: string): Promise<string[]>;
@@ -52,12 +52,12 @@ export interface DatabaseNetworkQueries {
   getNetworkAssignmentContext(networkId: string, userId: string): Promise<NetworkAssignmentContext | null>;
 
   /**
-   * Whether the intent is currently assigned to the index.
+   * Whether the intent is currently assigned to the network.
    */
-  isIntentAssignedToIndex(intentId: string, networkId: string): Promise<boolean>;
+  isIntentAssignedToNetwork(intentId: string, networkId: string): Promise<boolean>;
 
   /**
-   * Assigns an intent to an index (inserts intent_indexes row).
+   * Assigns an intent to a network (inserts intent_networks row).
    */
   assignIntentToNetwork(
     intentId: string,
@@ -80,18 +80,18 @@ export interface DatabaseNetworkQueries {
   ): Promise<IntentNetworkFinalAssignmentResult>;
 
   /**
-   * Returns per-index relevancy scores for an intent's index assignments.
+   * Returns per-network relevancy scores for an intent's network assignments.
    */
-  getIntentIndexScores(intentId: string): Promise<Array<{
+  getIntentNetworkScores(intentId: string): Promise<Array<{
     networkId: string;
     relevancyScore: number | null;
     assignmentMetadata?: NetworkAssignmentMetadata | null;
   }>>;
 
   /**
-   * Removes an intent from an index (deletes intent_indexes row).
+   * Removes an intent from a network (deletes intent_networks row).
    */
-  unassignIntentFromIndex(intentId: string, networkId: string): Promise<void>;
+  unassignIntentFromNetwork(intentId: string, networkId: string): Promise<void>;
 
   /**
    * Returns all network IDs that an intent is registered to.
@@ -99,17 +99,17 @@ export interface DatabaseNetworkQueries {
   getNetworkIdsForIntent(intentId: string): Promise<string[]>;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Index Ownership Operations (Owner-Only)
+  // Network Ownership Operations (Owner-Only)
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
-   * Get indexes where the user has owner permissions.
-   * Returns full index details with member and intent counts.
+   * Get networks where the user has owner permissions.
+   * Returns full network details with member and intent counts.
    *
    * @param userId - The user ID to check ownership for
-   * @returns Array of owned indexes with counts
+   * @returns Array of owned networks with counts
    */
-  getOwnedIndexes(userId: string): Promise<OwnedIndex[]>;
+  getOwnedNetworks(userId: string): Promise<OwnedNetwork[]>;
 
   /**
    * Get public networks (joinPolicy 'anyone') that the user has not joined.
@@ -118,7 +118,7 @@ export interface DatabaseNetworkQueries {
    * @param userId - The user ID to check memberships against
    * @returns Object containing array of public networks with owner info
    */
-  getPublicIndexesNotJoined(userId: string): Promise<{
+  getPublicNetworksNotJoined(userId: string): Promise<{
     networks: Array<{
       id: string;
       title: string;
@@ -129,28 +129,28 @@ export interface DatabaseNetworkQueries {
   }>;
 
   /**
-   * Check if user is an owner of a specific index.
+   * Check if user is an owner of a specific network.
    *
-   * @param networkId - The index to check
+   * @param networkId - The network to check
    * @param userId - The user to verify ownership for
    * @returns True if user is an owner
    */
-  isIndexOwner(networkId: string, userId: string): Promise<boolean>;
+  isNetworkOwner(networkId: string, userId: string): Promise<boolean>;
 
   /**
-   * Check if user is a member of a specific index.
+   * Check if user is a member of a specific network.
    *
-   * @param networkId - The index to check
+   * @param networkId - The network to check
    * @param userId - The user to verify membership for
    * @returns True if user is a member
    */
   isNetworkMember(networkId: string, userId: string): Promise<boolean>;
 
   /**
-   * Get all members of an index with their details.
+   * Get all members of a network with their details.
    * **OWNER ONLY** - throws if user is not an owner.
    *
-   * @param networkId - The index to get members for
+   * @param networkId - The network to get members for
    * @param requestingUserId - The user requesting (must be owner)
    * @returns Array of member details with intent counts
    * @throws Error if requestingUserId is not an owner
@@ -158,37 +158,37 @@ export interface DatabaseNetworkQueries {
   getNetworkMembersForOwner(
     networkId: string,
     requestingUserId: string
-  ): Promise<IndexMemberDetails[]>;
+  ): Promise<NetworkMemberDetails[]>;
 
   /**
-   * Get all members of an index with their details.
-   * **MEMBER ONLY** - any member of the index can list members (not just owners).
+   * Get all members of a network with their details.
+   * **MEMBER ONLY** - any member of the network can list members (not just owners).
    * Returns same shape as getNetworkMembersForOwner; email may be omitted for privacy.
    *
-   * @param networkId - The index to get members for
-   * @param requestingUserId - The user requesting (must be a member of the index)
+   * @param networkId - The network to get members for
+   * @param requestingUserId - The user requesting (must be a member of the network)
    * @returns Array of member details with intent counts
-   * @throws Error if requestingUserId is not a member of the index
+   * @throws Error if requestingUserId is not a member of the network
    */
   getNetworkMembersForMember(
     networkId: string,
     requestingUserId: string
-  ): Promise<IndexMemberDetails[]>;
+  ): Promise<NetworkMemberDetails[]>;
 
   /**
    * Get all members from every network the user is a member of (deduplicated).
-   * Used for mentionable-users: anyone who shares at least one index with the requesting user.
+   * Used for mentionable-users: anyone who shares at least one network with the requesting user.
    *
    * @param userId - The signed-in user
    * @returns Array of member summaries (id, name, avatar only; no email)
    */
-  getMembersFromUserIndexes(userId: Id<'users'>): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]>;
+  getMembersFromUserNetworks(userId: Id<'users'>): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]>;
 
   /**
-   * Get all indexed intents for an index.
+   * Get all assigned intents for a network.
    * **OWNER ONLY** - throws if user is not an owner.
    *
-   * @param networkId - The index to get intents for
+   * @param networkId - The network to get intents for
    * @param requestingUserId - The user requesting (must be owner)
    * @param options - Pagination options
    * @returns Array of intent details with owner info
@@ -198,52 +198,52 @@ export interface DatabaseNetworkQueries {
     networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
-  ): Promise<IndexedIntentDetails[]>;
+  ): Promise<NetworkIntentDetails[]>;
 
   /**
-   * Get all indexed intents for an index.
-   * **MEMBER ONLY** - any member of the index can list intents (not just owners).
+   * Get all assigned intents for a network.
+   * **MEMBER ONLY** - any member of the network can list intents (not just owners).
    *
-   * @param networkId - The index to get intents for
-   * @param requestingUserId - The user requesting (must be a member of the index)
+   * @param networkId - The network to get intents for
+   * @param requestingUserId - The user requesting (must be a member of the network)
    * @param options - Pagination options
    * @returns Array of intent details with owner info
-   * @throws Error if requestingUserId is not a member of the index
+   * @throws Error if requestingUserId is not a member of the network
    */
   getNetworkIntentsForMember(
     networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
-  ): Promise<IndexedIntentDetails[]>;
+  ): Promise<NetworkIntentDetails[]>;
 
   /**
-   * Get the caller's own active intents across a set of indexes.
+   * Get the caller's own active intents across a set of networks.
    * Returns intents owned by `userId` that are linked (via intent_networks)
-   * to at least one of `indexIds`. Used by network-scoped agents to honor
-   * indexScope without falling back to global getActiveIntents (which would
-   * include intents in indexes outside scope).
+   * to at least one of `networkIds`. Used by network-scoped agents to honor
+   * networkScope without falling back to global getActiveIntents (which would
+   * include intents in networks outside scope).
    *
    * @param userId - The intent owner (always the caller).
-   * @param indexIds - The set of network IDs to filter on. Empty → empty result.
-   * @returns Active intents owned by userId in any of indexIds, deduped by intent id.
+   * @param networkIds - The set of network IDs to filter on. Empty → empty result.
+   * @returns Active intents owned by userId in any of networkIds, deduped by intent id.
    */
-  getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]): Promise<ActiveIntent[]>;
+  getActiveIntentsAcrossNetworks(userId: string, networkIds: string[]): Promise<ActiveIntent[]>;
 
   /**
-   * Update index settings.
+   * Update network settings.
    * **OWNER ONLY** - throws if user is not an owner.
    *
-   * @param networkId - The index to update
+   * @param networkId - The network to update
    * @param requestingUserId - The user requesting (must be owner)
    * @param data - The settings to update
-   * @returns The updated index
+   * @returns The updated network
    * @throws Error if requestingUserId is not an owner
    */
-  updateIndexSettings(
+  updateNetworkSettings(
     networkId: string,
     requestingUserId: string,
-    data: UpdateIndexSettingsData
-  ): Promise<OwnedIndex>;
+    data: UpdateNetworkSettingsData
+  ): Promise<OwnedNetwork>;
 
   /**
    * Soft-delete a network (set deletedAt).
@@ -270,7 +270,7 @@ export interface DatabaseNetworkQueries {
   getProfileByUserId(userId: string): Promise<(UserIdentity & { id: string }) | null>;
 
   /**
-   * Create a new index and return its record.
+   * Create a new network and return its record.
    *
    * @param data - Title, optional prompt, optional imageUrl, optional joinPolicy
    * @returns The created network with id, title, prompt, imageUrl, permissions
@@ -289,9 +289,9 @@ export interface DatabaseNetworkQueries {
   }>;
 
   /**
-   * Count members in an index (for delete guard).
+   * Count members in a network (for delete guard).
    *
-   * @param networkId - The index to count
+   * @param networkId - The network to count
    * @returns Number of members
    */
   getNetworkMemberCount(networkId: string): Promise<number>;
@@ -311,14 +311,14 @@ export interface DatabaseNetworkQueries {
   ): Promise<{ success: boolean; alreadyMember?: boolean }>;
 
   /**
-   * Removes a user from an index.
+   * Removes a user from a network.
    * Only the network owner can remove members. Cannot remove the owner.
    *
-   * @param networkId - The index to remove from
+   * @param networkId - The network to remove from
    * @param userId - The user to remove
    * @returns success, or wasOwner/notMember if removal failed
    */
-  removeMemberFromIndex(
+  removeMemberFromNetwork(
     networkId: string,
     userId: string
   ): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }>;

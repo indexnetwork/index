@@ -1,29 +1,20 @@
 import type { Id } from '../../../platform/database.js';
 import { ChatContextAccessError } from '../../../platform/runtime/errors.js';
 import type { OpportunityGraphDeps } from '../../opportunities/opportunity.graph.shared.js';
-import type { MatchesReadyFn } from '../../opportunities/opportunity.graph.shared.js';
 import type { OpportunityMutationOutcome } from '../../opportunities/opportunity.graph.modes.js';
 import { z } from "zod";
 import type { ModelConfig } from "./model.config.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
 import type { ToolScopeType } from "./tool.scope.js";
 import type { UserIdentity } from "../../../protocol/schemas/identity.schema.js";
-import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../../../platform/database.js";
+import type { CompositeToolDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase } from "../../../platform/database.js";
 import type { Scraper } from "../../../platform/discovery/scraper.js";
 import type { Cache, HydeCache } from "../../../platform/discovery/cache.js";
 import type { ProfileEnricher } from "../../../platform/enrichment/ports.js";
 import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
-import type { ChatSessionReader } from "../../../platform/chat/ports.js";
-import type { ChatSummaryReader } from "../../../platform/chat/ports.js";
-import type { ChatMessageWriter } from "../../../platform/chat/ports.js";
-import type { NegotiationSummaryReader } from "../../../platform/negotiation/summary.js";
 import type { Embedder } from "../../../platform/discovery/embedder.js";
 import type { AgentDatabase } from "../../agents/agent.repository.port.js";
-import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
-import type { DeliveryLedger } from "../../../platform/runtime/delivery-ledger.js";
 import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiation/verdict.js";
-import type { McpActivityCaller } from "./activity-projection.js";
-import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.js";
 
 export type IdentityContext = UserIdentity | null;
 
@@ -71,20 +62,20 @@ export interface ResolvedToolContext {
   scopeType?: ToolScopeType;
   /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
   scopeId?: string;
-  indexName?: string;
-  /** True when chat is network-scoped and the user owns the index. */
+  networkName?: string;
+  /** True when chat is network-scoped and the user owns the network. */
   isOwner?: boolean;
   // Rich identity context for prompt/tool orchestration.
   user: UserRecord;
   userProfile: IdentityContext;
   userNetworks: NetworkMembership[];
   /**
-   * @deprecated indexScope is legacy concrete network reach. New code should derive reach
+   * @deprecated networkScope is legacy concrete network reach. New code should derive reach
    * from `scopeType`/`scopeId` plus `userNetworks` via `tool.scope.ts`.
    * Removed after call sites are migrated in this plan.
    */
-  indexScope: string[];
-  scopedIndex?: {
+  networkScope: string[];
+  scopedNetwork?: {
     id: string;
     title: string;
     prompt: string | null;
@@ -99,16 +90,8 @@ export interface ResolvedToolContext {
   sessionId?: string;
   /** True when the request originates from an MCP transport (no interactive UI available). */
   isMcp?: boolean;
-  /** Agent ID when the request originates from an API key linked to an agent. */
-  agentId?: string;
-  /**
-   * Typed resolved MCP caller context, set only by the MCP server after the
-   * capability subject is resolved. Tools with permission-projected output
-   * (currently `read_activity_summary`) pass it into the centralized
-   * projection in `activity-projection.ts`. Absent on REST/chat surfaces,
-   * which are owner-trusted and receive the full owner view.
-   */
-  mcpCaller?: McpActivityCaller;
+  /** True when the host bound an authenticated owner session (never an API key). */
+  isSessionAuth?: boolean;
 }
 
 /**
@@ -122,7 +105,7 @@ export interface ResolvedToolContext {
 interface ToolContextBindings {
   userId: string;
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
-  database: ChatGraphCompositeDatabase;
+  database: CompositeToolDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. Created internally if not provided. */
   userDb?: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. Created internally if not provided. */
@@ -135,8 +118,8 @@ interface ToolContextBindings {
   scopeType?: ToolScopeType;
   /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
   scopeId?: string;
-  /** @deprecated indexScope is legacy; use `scopeType`/`scopeId`, retained until wiring phases migrate call sites. */
-  indexScope?: string[];
+  /** @deprecated networkScope is legacy; use `scopeType`/`scopeId`, retained until wiring phases migrate call sites. */
+  networkScope?: string[];
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
   sessionId?: string;
 
@@ -147,16 +130,6 @@ interface ToolContextBindings {
   hydeCache: HydeCache;
   /** Queue for enqueuing follow-up intent processing (HyDE generation/deletion). */
   intentFollowUp: IntentFollowUp;
-  /** Chat session reader for loading conversation history. */
-  chatSession: ChatSessionReader;
-  /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
-  chatSummary?: ChatSummaryReader;
-  /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
-  chatMessageWriter?: ChatMessageWriter;
-  /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
-  negotiationSummary?: NegotiationSummaryReader;
-  /** Durable host persistence for verified intent proposals shown in chat. */
-  intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   /**
    * Host bridge for the `reject_opportunity` / `accept_opportunity` tools —
    * the owner's VERDICT lane (#1471). Injected by the composition root;
@@ -166,52 +139,30 @@ interface ToolContextBindings {
   negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
-  /** Database adapter for negotiations/conversation operations. */
-  negotiationDatabase: NegotiationGraphDatabase;
-  /** The compiled negotiation graph — every negotiation write goes through it. */
-  negotiationGraph?: NegotiationGraphLike;
-  /** Wakes a signal's PersonalAgent when discovery persists matches for it. */
-  matchesReady?: MatchesReadyFn;
   /** Factory for user-scoped database access. */
-  createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) => UserDatabase;
+  createUserDatabase: (db: CompositeToolDatabase, userId: string) => UserDatabase;
   /** Factory for system-scoped database access. */
-  createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
+  createSystemDatabase: (db: CompositeToolDatabase, userId: string, networkScope: string[], embedder?: Embedder) => SystemDatabase;
   /** Optional runtime LLM config. Pass to override env vars for API key, model, etc. */
   modelConfig?: ModelConfig;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
   agentDatabase?: AgentDatabase;
   /** Grants the default system-agent permissions after onboarding (optional). */
   grantDefaultSystemPermissions?: (userId: string) => Promise<void>;
-  /** Dispatcher for routing negotiation turns to personal agents (optional — falls back to system AI). */
-  agentDispatcher?: AgentDispatcher;
   /** Host callback for pre-insert newborn pool-preference stamping (optional). */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
-  /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
-  deliveryLedger?: DeliveryLedger;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
   apiBaseUrl?: string;
   /** Optional host-side error reporter for swallowed protocol/tool errors. */
   reportToolError?: (error: unknown, report: ToolErrorReport) => void;
-  /**
-   * Optional host-side per-principal MCP call throttle. Invoked once per MCP
-   * tool dispatch (after identity resolves, before any DB work). When the
-   * returned decision is `allowed: false`, the dispatch short-circuits with a
-   * rate-limit error carrying `retryAfterSec`. Absent in chat/test contexts.
-   */
-  mcpRateLimiter?: (input: { userId: string; agentId?: string; toolName: string }) => Promise<{
-    allowed: boolean;
-    retryAfterSec?: number;
-    limit?: number;
-    scope?: 'tool' | 'principal';
-  }>;
 }
 
 /** Per-request chat identity, scope, and adapter inputs. */
 export type ChatToolRequest = Pick<ToolContextBindings,
   'userId' | 'userDb' | 'systemDb' | 'networkId' | 'scopeType' | 'scopeId'
-  | 'indexScope' | 'sessionId'
+  | 'networkScope' | 'sessionId'
 >;
 
 /** Host-owned bindings injected into a chat request at the composition boundary. */
@@ -241,12 +192,12 @@ export { ChatContextAccessError } from "../../../platform/runtime/errors.js";
 
 /**
  * Resolve the canonical context used by chat tools and system prompt.
- * This preloads user identity, profile, network memberships, and scoped index role.
+ * This preloads user identity, profile, network memberships, and scoped network role.
  */
 export async function resolveChatContext(params: {
   database: Pick<
-    ChatGraphCompositeDatabase,
-    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isIndexOwner" | "isNetworkMember" | "getUserContext"
+    CompositeToolDatabase,
+    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isNetworkOwner" | "isNetworkMember" | "getUserContext"
   >;
   userId: string;
   networkId?: string;
@@ -279,23 +230,23 @@ export async function resolveChatContext(params: {
     );
   }
 
-  let scopedIndex: ResolvedToolContext["scopedIndex"] = undefined;
+  let scopedNetwork: ResolvedToolContext["scopedNetwork"] = undefined;
   let scopedMembershipRole: ResolvedToolContext["scopedMembershipRole"] = undefined;
   let isOwner = false;
-  let indexName: string | undefined;
+  let networkName: string | undefined;
 
   if (networkId) {
-    const [index, isMember, owner] = await Promise.all([
+    const [network, isMember, owner] = await Promise.all([
       database.getNetwork(networkId),
       database.isNetworkMember(networkId, userId),
-      database.isIndexOwner(networkId, userId),
+      database.isNetworkOwner(networkId, userId),
     ]);
 
-    if (!index) {
+    if (!network) {
       throw new ChatContextAccessError(
-        "Index not found",
+        "Network not found",
         404,
-        "INDEX_NOT_FOUND"
+        "NETWORK_NOT_FOUND"
       );
     }
 
@@ -303,22 +254,22 @@ export async function resolveChatContext(params: {
       throw new ChatContextAccessError(
         "You are not a member of this network",
         403,
-        "INDEX_MEMBERSHIP_REQUIRED"
+        "NETWORK_MEMBERSHIP_REQUIRED"
       );
     }
 
-    let membership = userNetworks.find((m) => m.networkId === index.id);
+    let membership = userNetworks.find((m) => m.networkId === network.id);
     if (membership === undefined) {
-      membership = (await database.getNetworkMembership(index.id, userId)) ?? undefined;
+      membership = (await database.getNetworkMembership(network.id, userId)) ?? undefined;
     }
-    scopedIndex = {
-      id: index.id,
-      title: index.title,
-      prompt: membership?.indexPrompt ?? null,
-      permissions: index.permissions ?? {},
+    scopedNetwork = {
+      id: network.id,
+      title: network.title,
+      prompt: membership?.networkPrompt ?? null,
+      permissions: network.permissions ?? {},
     };
     isOwner = owner;
-    indexName = index.title;
+    networkName = network.title;
     scopedMembershipRole = owner ? "owner" : "member";
   }
 
@@ -341,13 +292,13 @@ export async function resolveChatContext(params: {
     userEmail,
     networkId,
     ...scope,
-    indexName,
+    networkName,
     isOwner,
     user,
     userProfile,
     userNetworks,
-    indexScope: allowedNetworkIds,
-    scopedIndex,
+    networkScope: allowedNetworkIds,
+    scopedNetwork,
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
     hasName,
@@ -404,23 +355,15 @@ export type ToolRegistry = Map<string, RawToolDefinition>;
  */
 interface ToolDepsBindings {
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
-  database: ChatGraphCompositeDatabase;
+  database: CompositeToolDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. */
   userDb: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. */
   systemDb: SystemDatabase;
-  /** Durable host persistence for verified intent proposals shown in chat. */
-  intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   scraper: Scraper;
   embedder: import('../../../platform/discovery/embedder.js').Embedder;
   cache: Cache;
   enricher: ProfileEnricher;
-  /** Database adapter for negotiations/conversation operations. */
-  negotiationDatabase: NegotiationGraphDatabase;
-  /** The compiled negotiation graph — every negotiation write goes through it. */
-  negotiationGraph?: NegotiationGraphLike;
-  /** Wakes a signal's PersonalAgent when discovery persists matches for it. */
-  matchesReady?: MatchesReadyFn;
   /**
    * Host bridge behind the MCP-surface `reject_opportunity` /
    * `accept_opportunity` owner-verdict tools (#1471, one surface over).
@@ -428,10 +371,6 @@ interface ToolDepsBindings {
    * session-authenticated owners (capability matrix + provenance re-check).
    */
   negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
-  /** Chat session reader for exposing the caller's past conversations as MCP tools. */
-  chatSession?: ChatSessionReader;
-  /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
-  chatSummary?: ChatSummaryReader;
   /**
    * Test seam for opportunity card presentation helpers. Production
    * compositions leave this unset so tools construct the real presenter.
@@ -440,38 +379,18 @@ interface ToolDepsBindings {
     createPresenter?: () => { presentCard(input: unknown): Promise<unknown> };
     gatherPresenterContext?: (...args: unknown[]) => Promise<unknown>;
   };
-  /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
-  chatMessageWriter?: ChatMessageWriter;
-  /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
-  negotiationSummary?: NegotiationSummaryReader;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
   agentDatabase?: AgentDatabase;
   /** Grants the default system-agent permissions after onboarding (optional). */
   grantDefaultSystemPermissions?: (userId: string) => Promise<void>;
-  /** Dispatcher for routing negotiation turns to personal agents (optional — falls back to system AI). */
-  agentDispatcher?: AgentDispatcher;
   /** Host callback for pre-insert newborn pool-preference stamping (optional). */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
-  /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
-  deliveryLedger?: DeliveryLedger;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
   apiBaseUrl?: string;
   /** Optional host-side error reporter for swallowed protocol/tool errors. */
   reportToolError?: (error: unknown, report: ToolErrorReport) => void;
-  /**
-   * Optional host-side per-principal MCP call throttle. Invoked once per MCP
-   * tool dispatch (after identity resolves, before any DB work). When the
-   * returned decision is `allowed: false`, the dispatch short-circuits with a
-   * rate-limit error carrying `retryAfterSec`. Absent in chat/test contexts.
-   */
-  mcpRateLimiter?: (input: { userId: string; agentId?: string; toolName: string }) => Promise<{
-    allowed: boolean;
-    retryAfterSec?: number;
-    limit?: number;
-    scope?: 'tool' | 'principal';
-  }>;
   /**
    * The non-discovery opportunity operations (`update_opportunity` and its
    * send variant). Defaults to the plain functions in
@@ -480,11 +399,10 @@ interface ToolDepsBindings {
   opportunityOperations?: OpportunityOperations;
   graphs: {
     intent: CompiledGraph;
-    index: CompiledGraph;
+    network: CompiledGraph;
     networkMembership: CompiledGraph;
-    intentIndex: CompiledGraph;
+    intentNetwork: CompiledGraph;
     opportunity: CompiledGraph;
-    premise: CompiledGraph;
   };
   /**
    * Optional network ranking override for `read_networks`. Injected by tests or custom compositions.
@@ -501,12 +419,12 @@ interface ToolDepsBindings {
  * ports may Pick from this type, but it is intentionally not a root export.
  */
 export type ToolRegistryCompositionDeps = Omit<ToolDepsBindings,
-  'embedder' | 'chatMessageWriter' | 'apiBaseUrl' | 'mcpRateLimiter'
+  'embedder' | 'apiBaseUrl'
 >;
 
 /** Runtime-only hooks retained for MCP and existing host composition. */
 type ToolRuntimeCompatibilityDeps = Pick<ToolDepsBindings,
-  'embedder' | 'chatMessageWriter' | 'apiBaseUrl' | 'mcpRateLimiter'
+  'embedder' | 'apiBaseUrl'
 >;
 
 /**
@@ -572,7 +490,7 @@ export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
  * Resolves an array of network IDs to their display titles.
  * Skips any IDs that don't resolve (deleted or invalid networks).
  */
-export async function resolveIndexNames(
+export async function resolveNetworkNames(
   database: { getNetwork(id: string): Promise<{ id: string; title: string } | null> },
   networkIds: string[]
 ): Promise<string[]> {
@@ -580,7 +498,7 @@ export async function resolveIndexNames(
   const results = await Promise.all(
     networkIds.map(id => database.getNetwork(id))
   );
-  return results.filter(Boolean).map(idx => idx!.title);
+  return results.filter(Boolean).map(network => network!.title);
 }
 
 /**

@@ -1,4 +1,12 @@
-import { BasicUserInfo, NewsletterUserData, NotificationPreferences, TelegramPrefs, User, UserWithGraph, db, eq, inArray, sessions, sql, userNotificationSettings, userSocials, users } from './database.shared';
+import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, and, db, desc, eq, gt, inArray, sessions, userNotificationSettings, userSocials, users } from './database.shared';
+
+/** A live session presented as a device: metadata only, never the token. */
+export interface DeviceSession {
+  id: string;
+  userAgent: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+}
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 
@@ -196,6 +204,39 @@ export class UserDatabaseAdapter {
   }
 
   /**
+   * Lists a user's live sessions as device metadata. The session token is
+   * deliberately not selected: this feeds a settings list, and the native shell
+   * discards any response carrying credential material.
+   * @param userId - The user whose devices should be listed
+   * @returns One row per unexpired session, newest first
+   */
+  async listUserDevices(userId: string): Promise<DeviceSession[]> {
+    return db.select({
+      id: sessions.id,
+      userAgent: sessions.userAgent,
+      createdAt: sessions.createdAt,
+      expiresAt: sessions.expiresAt,
+    })
+      .from(sessions)
+      .where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, new Date())))
+      .orderBy(desc(sessions.createdAt));
+  }
+
+  /**
+   * Deletes one of a user's sessions, signing that device out.
+   * @param userId - Owner of the session, scoping the delete
+   * @param sessionId - The session to remove
+   * @returns Whether a session was removed
+   */
+  async deleteUserSession(userId: string, sessionId: string): Promise<boolean> {
+    const removed = await db.delete(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)))
+      .returning({ id: sessions.id });
+
+    return removed.length > 0;
+  }
+
+  /**
    * Soft delete user
    */
   async softDelete(userId: string): Promise<void> {
@@ -303,85 +344,6 @@ export class UserDatabaseAdapter {
       await db.insert(userNotificationSettings)
         .values({ userId, preferences });
     }
-  }
-
-  /**
-   * Get the stored Telegram connection prefs for a user.
-   * Returns null when the user has no Telegram connection.
-   * @param userId - The user whose Telegram prefs to retrieve
-   * @returns The TelegramPrefs or null if not connected
-   */
-  async getTelegramPrefs(userId: string): Promise<TelegramPrefs | null> {
-    const result = await db
-      .select({ preferences: userNotificationSettings.preferences })
-      .from(userNotificationSettings)
-      .where(eq(userNotificationSettings.userId, userId))
-      .limit(1);
-    return (result[0]?.preferences as NotificationPreferences | undefined)?.telegram ?? null;
-  }
-
-  /**
-   * Upsert the telegram key inside user_notification_settings.preferences,
-   * preserving the existing connectionUpdates value.
-   * @param userId - The user whose Telegram prefs to update
-   * @param telegramPrefs - The new Telegram prefs to store
-   */
-  async updateTelegramPrefs(userId: string, telegramPrefs: TelegramPrefs): Promise<void> {
-    const existing = await db
-      .select({ preferences: userNotificationSettings.preferences })
-      .from(userNotificationSettings)
-      .where(eq(userNotificationSettings.userId, userId))
-      .limit(1);
-    const current = (existing[0]?.preferences as NotificationPreferences | undefined) ?? {
-      connectionUpdates: true,
-    };
-    const updated: NotificationPreferences = { ...current, telegram: telegramPrefs };
-    await db
-      .insert(userNotificationSettings)
-      .values({ userId, preferences: updated })
-      .onConflictDoUpdate({
-        target: userNotificationSettings.userId,
-        set: { preferences: updated, updatedAt: new Date() },
-      });
-  }
-
-  /**
-   * Remove the telegram key from user_notification_settings.preferences.
-   * No-op if the user has no notification settings row.
-   * @param userId - The user whose Telegram prefs to clear
-   */
-  async clearTelegramPrefs(userId: string): Promise<void> {
-    const existing = await db
-      .select({ preferences: userNotificationSettings.preferences })
-      .from(userNotificationSettings)
-      .where(eq(userNotificationSettings.userId, userId))
-      .limit(1);
-    if (!existing[0]) return;
-    const { telegram: _removed, ...rest } = (existing[0].preferences as NotificationPreferences | null) ?? {};
-    await db
-      .update(userNotificationSettings)
-      .set({ preferences: rest as NotificationPreferences, updatedAt: new Date() })
-      .where(eq(userNotificationSettings.userId, userId));
-  }
-
-  /**
-   * Find a user by their stored Telegram chatId.
-   * Used by the gateway to route inbound messages.
-   * @param chatId - The Telegram chat ID to look up
-   * @returns The userId and optional sessionId, or null if not found
-   */
-  async findByTelegramChatId(chatId: string): Promise<{ userId: string; sessionId?: string } | null> {
-    const result = await db
-      .select({
-        userId: userNotificationSettings.userId,
-        preferences: userNotificationSettings.preferences,
-      })
-      .from(userNotificationSettings)
-      .where(sql`${userNotificationSettings.preferences}->'telegram'->>'chatId' = ${chatId}`)
-      .limit(1);
-    if (!result[0]) return null;
-    const telegram = (result[0].preferences as NotificationPreferences | undefined)?.telegram;
-    return { userId: result[0].userId, sessionId: telegram?.sessionId };
   }
 
 }

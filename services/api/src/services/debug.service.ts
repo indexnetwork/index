@@ -11,13 +11,13 @@ export interface DiscoveryPreflight {
     hasEmbedding: boolean;
     isArchived: boolean;
     status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
-    assignedToIndexes: Array<{ networkId: string; title: string | null }>;
+    assignedToNetworks: Array<{ networkId: string; title: string | null }>;
   };
   userNetworks: Array<{ networkId: string; title: string | null }>;
   candidatePool: {
-    otherMembersInIndexes: number;
+    otherMembersInNetworks: number;
     otherMembersWithProfiles: number;
-    otherIntentsInIndexes: number;
+    otherIntentsInNetworks: number;
   };
 }
 
@@ -25,7 +25,7 @@ export interface DiscoveryPreflight {
 export interface DiscoveryResult {
   discoverySource: string | null;
   resolvedTriggerIntentId: string | null;
-  resolvedIntentInIndex: boolean;
+  resolvedIntentInNetwork: boolean;
   targetNetworks: unknown[];
   candidatesFound: number;
   candidates: Array<{
@@ -108,7 +108,7 @@ export class DebugService {
 
 
   /**
-   * Gather preflight diagnostics for an intent: index assignments, user indexes,
+   * Gather preflight diagnostics for an intent: network assignments, user networks,
    * and candidate pool counts.
    * @param intentId - The intent to diagnose
    * @param userId - The authenticated user
@@ -117,7 +117,7 @@ export class DebugService {
   async getDiscoveryPreflight(intentId: string, userId: string): Promise<{
     preflight: DiscoveryPreflight;
     intentPayload: string;
-    userIndexIds: string[];
+    userNetworkIds: string[];
   } | null> {
     const [intent] = await db
       .select({
@@ -134,34 +134,34 @@ export class DebugService {
 
     if (!intent) return null;
 
-    const intentIndexRows = await db
+    const intentNetworkRows = await db
       .select({ networkId: intentNetworks.networkId, title: networks.title })
       .from(intentNetworks)
       .innerJoin(networks, eq(intentNetworks.networkId, networks.id))
       .where(and(eq(intentNetworks.intentId, intentId), isNull(networks.deletedAt)));
 
-    const userIndexRows = await db
+    const userNetworkRows = await db
       .select({ networkId: networkMembers.networkId, title: networks.title })
       .from(networkMembers)
       .innerJoin(networks, eq(networkMembers.networkId, networks.id))
       .where(and(eq(networkMembers.userId, userId), isNull(networks.deletedAt)));
 
-    const userIndexIds = userIndexRows.map((r) => r.networkId);
-    let otherMembersInIndexes = 0;
+    const userNetworkIds = userNetworkRows.map((r) => r.networkId);
+    let otherMembersInNetworks = 0;
     let otherMembersWithProfiles = 0;
-    let otherIntentsInIndexes = 0;
+    let otherIntentsInNetworks = 0;
 
-    if (userIndexIds.length > 0) {
+    if (userNetworkIds.length > 0) {
       const [memberCount] = await db
         .select({ count: count().as('count') })
         .from(networkMembers)
         .where(
           and(
-            inArray(networkMembers.networkId, userIndexIds),
+            inArray(networkMembers.networkId, userNetworkIds),
             ne(networkMembers.userId, userId),
           ),
         );
-      otherMembersInIndexes = memberCount?.count ?? 0;
+      otherMembersInNetworks = memberCount?.count ?? 0;
 
       // Has a profile: name or intro on the users row.
       const [profileCount] = await db
@@ -170,7 +170,7 @@ export class DebugService {
         .innerJoin(networkMembers, eq(users.id, networkMembers.userId))
         .where(
           and(
-            inArray(networkMembers.networkId, userIndexIds),
+            inArray(networkMembers.networkId, userNetworkIds),
             ne(users.id, userId),
             or(
               sql`trim(${users.intro}) <> ''`,
@@ -186,13 +186,13 @@ export class DebugService {
         .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
         .where(
           and(
-            inArray(intentNetworks.networkId, userIndexIds),
+            inArray(intentNetworks.networkId, userNetworkIds),
             ne(intents.userId, userId),
             isNull(intents.archivedAt),
             isNotNull(intents.embedding),
           ),
         );
-      otherIntentsInIndexes = intentCount?.count ?? 0;
+      otherIntentsInNetworks = intentCount?.count ?? 0;
     }
 
     return {
@@ -203,17 +203,17 @@ export class DebugService {
           hasEmbedding: intent.hasEmbedding,
           isArchived: !!intent.archivedAt,
           status: intent.status ?? 'ACTIVE',
-          assignedToIndexes: intentIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
+          assignedToNetworks: intentNetworkRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         },
-        userNetworks: userIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
+        userNetworks: userNetworkRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         candidatePool: {
-          otherMembersInIndexes,
+          otherMembersInNetworks,
           otherMembersWithProfiles,
-          otherIntentsInIndexes,
+          otherIntentsInNetworks,
         },
       },
       intentPayload: intent.payload,
-      userIndexIds,
+      userNetworkIds,
     };
   }
 

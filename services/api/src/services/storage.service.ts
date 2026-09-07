@@ -21,12 +21,12 @@ export class StorageService {
     return this.adapter.uploadAvatar(buffer, userId, extension, contentType);
   }
 
-  uploadIndexImage(
+  uploadNetworkImage(
     buffer: Buffer,
     userId: string,
     extension: string,
     contentType: string,
   ): Promise<string> {
-    return this.adapter.uploadIndexImage(buffer, userId, extension, contentType);
+    return this.adapter.uploadNetworkImage(buffer, userId, extension, contentType);
   }
 }

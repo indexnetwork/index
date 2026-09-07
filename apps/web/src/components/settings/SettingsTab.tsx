@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { validateFiles } from '@/lib/file-validation';
-import NetworkAvatar from '@/components/IndexAvatar';
+import NetworkAvatar from '@/components/NetworkAvatar';
 import { resolveNetworkImageSrc } from '@/lib/network-image';
 import { log } from '@/lib/logger';
 
@@ -49,7 +49,7 @@ export default function SettingsTab({
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(network.imageUrl ?? null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [isDeletingIndex, setIsDeletingIndex] = useState(false);
+  const [isDeletingNetwork, setIsDeletingNetwork] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
@@ -120,26 +120,26 @@ export default function SettingsTab({
       onUpdated(updatedIndex);
       success('Settings updated');
     } catch (err) {
-      logger.error('Error updating index', { error: err });
+      logger.error('Error updating network', { error: err });
       error('Failed to update settings');
     } finally {
       setIsSavingSettings(false);
     }
   };
 
-  const handleDeleteIndex = async () => {
+  const handleDeleteNetwork = async () => {
     try {
-      setIsDeletingIndex(true);
+      setIsDeletingNetwork(true);
       await deleteNetwork(networkId);
       onRemoved(networkId);
       success('Network deleted');
       setShowDeleteConfirmation(false);
       onDeleted?.();
     } catch (err) {
-      logger.error('Error deleting index', { error: err });
+      logger.error('Error deleting network', { error: err });
       error('Failed to delete network');
     } finally {
-      setIsDeletingIndex(false);
+      setIsDeletingNetwork(false);
     }
   };
 
@@ -244,8 +244,8 @@ export default function SettingsTab({
             <Input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={network.title} className="mb-4" />
             <div className="flex justify-end gap-3">
               <AlertDialog.Cancel asChild><Button variant="outline">Cancel</Button></AlertDialog.Cancel>
-              <Button onClick={handleDeleteIndex} disabled={isDeletingIndex || !isDeleteConfirmationValid} className="bg-red-600 hover:bg-red-700 text-white">
-                {isDeletingIndex ? 'Deleting...' : 'Delete'}
+              <Button onClick={handleDeleteNetwork} disabled={isDeletingNetwork || !isDeleteConfirmationValid} className="bg-red-600 hover:bg-red-700 text-white">
+                {isDeletingNetwork ? 'Deleting...' : 'Delete'}
               </Button>
             </div>
           </AlertDialog.Content>

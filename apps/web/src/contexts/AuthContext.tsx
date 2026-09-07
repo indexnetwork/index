@@ -24,12 +24,9 @@ const SPLASH_BACKGROUND = '#0d1a13';
 
 /**
  * Server-driven feature flags returned alongside the user on GET /auth/me
- * (sibling of `user`, not part of it). `fastSignalIntake` swaps the guided
- * intake for the deterministic funnel.
+ * (sibling of `user`, not part of it).
  */
-export type UserFeatures = {
-  fastSignalIntake?: boolean;
-};
+export type UserFeatures = Record<string, boolean>;
 
 type AuthContextType = {
   isReady: boolean;
@@ -159,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const publicPrefixes = [
       '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
       '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/', '/o/', '/waitlist', '/download',
-      '/9db20a5fbe', '/dev/floor',
+      '/9db20a5fbe',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
     const isProtectedPage = pathname.startsWith('/i/');
@@ -172,8 +169,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (shouldRedirectToHome) {
       // Preserve the destination so the user returns to it after authenticating,
       // instead of being stranded on the home page. This makes protected deep
-      // links work when opened while logged out — e.g. the negotiation-trace
-      // negotiation task-index link surfaced in the daily digest. The
+      // links work when opened while logged out — e.g. a signal link surfaced
+      // in the daily digest. The
       // captured URL is forwarded to Better Auth as `callbackURL`, mirroring the
       // public `/u/:id/chat` page's `openLoginModal(window.location.href)` flow.
       if (typeof window !== 'undefined') {

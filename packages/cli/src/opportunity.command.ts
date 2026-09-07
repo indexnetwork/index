@@ -6,7 +6,7 @@
  * pattern as network.command.ts and conversation.command.ts.
  */
 
-import { ApiError, type ApiClient, type UptakeAcceptanceAdvisoryBody } from "./api.client";
+import { ApiError, type ApiClient } from "./api.client";
 import * as output from "./output";
 
 const OPPORTUNITY_HELP = `
@@ -16,7 +16,6 @@ Usage:
   index opportunity list --limit <n>            Limit results
   index opportunity show <id>                   Show full opportunity details (accepts short ID)
   index opportunity accept <id>                 Accept an opportunity (accepts short ID)
-  index opportunity accept <id> --acknowledge-uptake <id,id>  Continue after an uptake advisory
   index opportunity reject <id>                 Reject an opportunity (accepts short ID)
 `;
 
@@ -38,7 +37,6 @@ export async function handleOpportunity(
     positionals?: string[];
     target?: string;
     introduce?: string;
-    acknowledgeUptake?: string[];
   },
 ): Promise<void> {
   if (!subcommand) {
@@ -68,7 +66,7 @@ export async function handleOpportunity(
         output.error("Missing opportunity ID. Usage: index opportunity accept <id>", 1);
         return;
       }
-      await opportunityStatusUpdate(client, options.targetId, "accepted", options.json, options.acknowledgeUptake);
+      await opportunityStatusUpdate(client, options.targetId, "accepted", options.json);
       return;
 
     case "reject":
@@ -119,33 +117,20 @@ async function opportunityStatusUpdate(
   id: string,
   status: "accepted" | "rejected",
   json?: boolean,
-  acknowledgedUptakeQuestionIds?: string[],
 ): Promise<void> {
   // Resolve short ID to full UUID via REST read.
   const opportunity = await client.getOpportunity(id);
   if (status === "accepted") {
     try {
-      const result = await client.updateOpportunityStatus(opportunity.id, "accepted", acknowledgedUptakeQuestionIds);
+      const result = await client.updateOpportunityStatus(opportunity.id, "accepted");
       if (json) { console.log(JSON.stringify(result)); return; }
       output.success("Opportunity accepted.");
     } catch (error) {
-      const advisory = uptakeAdvisoryFromError(error);
       if (json && error instanceof ApiError) {
         console.log(JSON.stringify(error.response ?? { error: error.message }));
         return;
       }
-      if (!advisory) throw error;
-      output.heading("Questions before accepting");
-      for (const question of advisory.advisory.questions) {
-        console.log(`\n${question.title}`);
-        console.log(question.prompt);
-        for (const option of question.options) {
-          console.log(`  - ${option.label}${option.description ? ` — ${option.description}` : ""}`);
-        }
-        output.dim(`  Question ID: ${question.id}`);
-      }
-      const ids = advisory.advisory.questions.map((question) => question.id).join(",");
-      output.info(`Answer or dismiss these questions, then retry. To continue anyway, run:\n  index opportunity accept ${opportunity.id} --acknowledge-uptake ${ids}`);
+      throw error;
     }
     return;
   }
@@ -156,12 +141,4 @@ async function opportunityStatusUpdate(
     return;
   }
   output.success("Opportunity rejected.");
-}
-
-function uptakeAdvisoryFromError(error: unknown): UptakeAcceptanceAdvisoryBody | null {
-  if (!(error instanceof ApiError) || error.status !== 409) return null;
-  const body = error.response as Partial<UptakeAcceptanceAdvisoryBody> | undefined;
-  return body?.advisory?.code === "unresolved_uptake_questions"
-    ? body as UptakeAcceptanceAdvisoryBody
-    : null;
 }

@@ -1,11 +1,6 @@
 import { betterAuth } from "better-auth";
-import { magicLink, bearer, jwt, mcp } from "better-auth/plugins";
+import { magicLink, bearer, jwt, mcp, deviceAuthorization } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
-
-import { log } from "../log";
-import { resolveClassConfig } from "../limiter/config";
-
-const logger = log.server.from("betterauth");
 
 export const API_URL =
   process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`;
@@ -18,14 +13,11 @@ export const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
 export interface AuthDbContract {
   /** Returns a configured adapter object for Better Auth's `database` option. */
   createDrizzleAdapter(): unknown;
-  /** Ensures the user has a personal negotiator agent row. Idempotent. */
-  ensureNegotiatorAgent(userId: string): Promise<string | null>;
 }
 
 /**
  * Better Auth's `secondaryStorage` contract — a generic KV used by the
- * library for rate-limit counters (when `rateLimit.storage` is set to
- * `'secondary-storage'`) and for any other secondary-storage needs.
+ * library when a backing store is injected.
  */
 export interface AuthSecondaryStorage {
   get(key: string): Promise<string | null | undefined>;
@@ -42,9 +34,8 @@ export interface AuthDeps {
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
   /**
-   * Backing store for Better Auth's rate-limit counters. When omitted (no
-   * Redis configured), Better Auth falls back to its built-in in-memory
-   * rate limiter — suitable for local dev, not for multi-instance prod.
+   * Optional KV store for Better Auth. When omitted, Better Auth uses its
+   * built-in in-memory store.
    */
   secondaryStorage?: AuthSecondaryStorage;
 }
@@ -60,45 +51,13 @@ export interface AuthDeps {
 export function createAuth(deps: AuthDeps) {
   const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage } = deps;
 
-  // Snapshot auth_write config once so all customRules entries use a consistent
-  // value (resolveClassConfig reads env vars on every call).
-  const authWrite = resolveClassConfig("auth_write");
-  const authWriteRule = { window: authWrite.windowSec, max: authWrite.perMinute };
-
   return betterAuth({
     baseURL: API_URL,
     database: authDb.createDrizzleAdapter(),
-    databaseHooks: {
-      session: {
-        create: {
-          after: async (session) => {
-            try {
-              await authDb.ensureNegotiatorAgent(session.userId);
-            } catch (err) {
-              logger.error('Failed to ensure negotiator agent on sign-in', { userId: session.userId, error: err });
-            }
-          },
-        },
-      },
-      user: {
-        create: {
-          after: async (user) => {
-            try {
-              await authDb.ensureNegotiatorAgent(user.id);
-            } catch (err) {
-              logger.error('Failed to ensure negotiator agent on registration', { userId: user.id, error: err });
-            }
-          },
-        },
-      },
-    },
     basePath: "/api/auth",
     /**
-     * Backing store for Better Auth's rate-limit counters. Injected via
-     * AuthDeps so this lib module stays free of direct adapter imports.
-     *
-     * Better Auth v1.6+ resolves `rateLimit.storage = 'secondary-storage'`
-     * against this top-level object (Pattern B in the rate-limiter plan).
+     * Injected via AuthDeps so this lib module stays free of direct adapter
+     * imports. Sessions stay in Postgres (`storeSessionInDatabase` below).
      */
     secondaryStorage,
     session: {
@@ -108,21 +67,18 @@ export function createAuth(deps: AuthDeps) {
        * restart, logging out every existing user.
        */
       storeSessionInDatabase: true,
+      /**
+       * 30 days rather than the 7-day default. Native devices now hold a
+       * session instead of a long-lived API key, and they cache the issued
+       * expiry locally to decide whether to send a request at all, so a short
+       * window would sign the Mac app out roughly weekly. Revocation is the
+       * safety valve: a device can sign itself out and the owner can revoke any
+       * device from settings.
+       */
+      expiresIn: 60 * 60 * 24 * 30,
     },
     rateLimit: {
-      enabled: true,
-      // Route through secondaryStorage only when one was injected; otherwise
-      // Better Auth uses its built-in in-memory limiter (fine for local dev,
-      // not multi-instance safe).
-      ...(secondaryStorage ? { storage: "secondary-storage" as const } : {}),
-      customRules: {
-        "/sign-in/email":      authWriteRule,
-        "/sign-up/email":      authWriteRule,
-        "/sign-in/magic-link": authWriteRule,
-        "/forget-password":    authWriteRule,
-        "/reset-password":     authWriteRule,
-        "/verify-email":       authWriteRule,
-      },
+      enabled: false,
     },
     emailAndPassword: { enabled: process.env.NODE_ENV !== 'production' },
     user: {
@@ -149,6 +105,28 @@ export function createAuth(deps: AuthDeps) {
         expiresIn: 600,
       }),
       bearer(),
+      // A key names a user and nothing else. `enableSessionForAPIKeys` stays at
+      // its default of off, so create/list/delete need the owner's own session:
+      // a leaked key acts as the user in the product but cannot mint a
+      // successor. The plugin's own throttle is disabled — it defaults to 10
+      // requests per key per day.
+      apiKey({
+        defaultKeyLength: 64,
+        rateLimit: { enabled: false },
+      }),
+      // Native clients (Mac app, CLI, Hermes) sign in as devices, each holding
+      // its own session rather than a shared long-lived key. `/cli-auth` runs
+      // the whole grant server-side from the owner's browser session and hands
+      // the device only the code, so there is no approval prompt and no
+      // attacker-supplied code can enter the flow. The code is redeemed
+      // immediately after the redirect, hence the short expiry.
+      // `schema: {}` is required, not decorative: the plugin's option parser
+      // declares `schema` without `.optional()`, so omitting it fails at boot.
+      deviceAuthorization({
+        expiresIn: "5m",
+        interval: "1s",
+        schema: {},
+      }),
       jwt({
         jwt: {
           issuer: API_URL,
@@ -161,22 +139,12 @@ export function createAuth(deps: AuthDeps) {
           }),
         },
       }),
-      // Cast needed: @better-auth/core version mismatch between plugins (1.5.6) and
-      // root lockfile (1.4.18) causes incompatible Plugin types. Runtime is fine.
-      apiKey({
-        // Keep generic API-key management session-bound. API keys continue to
-        // authenticate through the project's AuthGuard and MCP DB fallback,
-        // but Better Auth must never promote them into browser sessions.
-        enableMetadata: true,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }) as any,
       mcp({
         loginPage: `${WEB_APP_URL}/login`,
         // No consentPage needed: the mcp() plugin skips consent automatically when the
         // authorization request does not include prompt=consent, which Claude Code never
         // sends. The flow goes: /mcp/authorize → session check → code → callback.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }) as any,
+      }),
     ],
     advanced: {
       // Cookie attributes must match the scheme the API is actually served on.

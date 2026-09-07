@@ -4,10 +4,9 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useAIChat } from '@/contexts/AIChatContext';
-import { useNetworkFilter } from '@/contexts/IndexFilterContext';
+import { useNetworkFilter } from '@/contexts/NetworkFilterContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
 import { log } from '@/lib/logger';
@@ -15,21 +14,20 @@ import { log } from '@/lib/logger';
 const logger = log.ui.from('NetworkOverviewPanel');
 
 interface NetworkOverviewPanelProps {
-  index: Network;
+  network: Network;
   isOwner: boolean;
   onLeft?: () => void;
   onLeaveRequest?: boolean;
   onLeaveRequestHandled?: () => void;
 }
 
-export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
+export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
   const navigate = useNavigate();
-  const { removeIndex } = useNetworksState();
+  const { removeNetwork } = useNetworksState();
   const { success, error } = useNotifications();
-  const { clearChat, resolveIntentSession } = useAIChat();
   const { setSelectedNetworkIds } = useNetworkFilter();
   const api = useAuthenticatedAPI();
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
 
   // The parent can also ask for the dialog via `onLeaveRequest`; both sources
   // are combined during render rather than mirrored into state by an effect.
@@ -52,14 +50,12 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
     userName: string;
   }[]>([]);
   const [overviewLoading, setOverviewLoading] = useState(true);
-  const [userContext, setUserContext] = useState<{ text: string; generatedAt: string } | null>(null);
 
   useEffect(() => {
     const loadOverview = async () => {
       try {
-        const overview = await indexesService.getNetworkOverview(index.id);
+        const overview = await networksService.getNetworkOverview(network.id);
         setIntents(overview.intents);
-        setUserContext(overview.userContext);
       } catch (err) {
         logger.error('Error loading network overview', { error: err });
       } finally {
@@ -67,27 +63,19 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
       }
     };
     loadOverview();
-  }, [index.id, indexesService]);
+  }, [network.id, networksService]);
 
-  const handleOpenIntentChat = useCallback(async (intent: { id: string; payload: string; summary?: string | null }) => {
-    try {
-      clearChat({ abortStream: false });
-      setSelectedNetworkIds([]);
-      const label = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
-      const sessionId = await resolveIntentSession({ id: intent.id, label });
-      if (!sessionId) return;
-      navigate(`/d/${sessionId}`);
-    } catch {
-      error('Failed to open signal chat');
-    }
-  }, [clearChat, setSelectedNetworkIds, resolveIntentSession, navigate, error]);
+  const handleOpenIntent = useCallback((intent: { id: string }) => {
+    setSelectedNetworkIds([]);
+    navigate(`/i/${intent.id}`);
+  }, [setSelectedNetworkIds, navigate]);
 
   const handleLeaveNetwork = async () => {
     try {
       setIsLeaving(true);
-      await api.post(`/networks/${index.id}/leave`, {});
-      removeIndex(index.id);
-      success(`Left ${index.title}`);
+      await api.post(`/networks/${network.id}/leave`, {});
+      removeNetwork(network.id);
+      success(`Left ${network.title}`);
       setLeaveConfirmation(false);
       onLeft?.();
     } catch (err) {
@@ -102,28 +90,6 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
     <>
       <div className="space-y-8">
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-            Your Context
-          </p>
-          {overviewLoading ? (
-            <div
-              role="status"
-              className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg"
-            >
-              Loading your network context…
-            </div>
-          ) : userContext && userContext.text.trim().length > 0 ? (
-            <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{userContext.text}</p>
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-              <p>Your context for this network is still being generated</p>
-            </div>
-          )}
-        </div>
-
-        <div>
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
               Your Signals
@@ -136,7 +102,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
             intents={intents}
             isLoading={overviewLoading}
             emptyMessage="You haven't shared any signals in this network yet"
-            onIntentClick={handleOpenIntentChat}
+            onIntentClick={handleOpenIntent}
           />
         </div>
       </div>
@@ -145,7 +111,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
           <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Leave &apos;{index.title}&apos;?</AlertDialog.Title>
+            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Leave &apos;{network.title}&apos;?</AlertDialog.Title>
             <AlertDialog.Description className="text-sm text-gray-600 mb-4">
               You will lose access to this network. You can rejoin later if the network is public or if you receive a new invitation.
             </AlertDialog.Description>

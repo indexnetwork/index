@@ -2,17 +2,15 @@ import './startup.env';
 
 import * as Sentry from '@sentry/bun';
 
-import { ChatController } from './controllers/chat.controller';
 import { DebugController } from './controllers/debug.controller';
-import { FloorLabController } from './controllers/floor-lab.controller';
 import { ToolController } from './controllers/tool.controller';
 import { ToolService } from './services/tool.service';
 import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
 import { NetworkRequestController } from './controllers/network-request.controller';
 import { IntentController } from './controllers/intent.controller';
-import { IntentIntakeController } from './controllers/intent-intake.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
+import { NegotiationController } from './controllers/negotiation.controller';
 import { AuthController } from './controllers/auth.controller';
 import { EnrichmentController } from './controllers/enrichment.controller';
 import { UserController } from './controllers/user.controller';
@@ -20,54 +18,27 @@ import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
 import { SubscribeController } from './controllers/subscribe.controller';
 import { ConversationController } from './controllers/conversation.controller';
-import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
-import { AgentRuntimeController } from './controllers/agent-runtime.controller';
-import { ConnectedAgentsController } from './controllers/connected-agents.controller';
 import { ConversationService } from './services/conversation.service';
-import { NotificationService } from './services/notification.service';
-import { NotificationDeliveryService } from './services/notification-delivery.service';
-import { TaskService } from './services/task.service';
-import { IntegrationController } from './controllers/integration.controller';
-import { WebhooksController } from './controllers/webhooks.controller';
-import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
-import { IntegrationService } from './services/integration.service';
+import { OpportunityEventService } from './services/opportunity-event.service';
 import { RouteRegistry } from './lib/router/router.decorators';
-import { ScopeViolationError } from './guards/agent-scope.guard';
-import { HermesNegotiatorRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
-import { RateLimiterError } from './lib/limiter/error';
-import { getRateLimitInfo } from './guards/limiter.guard';
-import { bindLimiterServer } from './lib/limiter/identifier';
+import { SessionRequiredError } from './guards/auth.guard';
 import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
-import { mcpHandler, chatFactory } from './controllers/mcp.controller';
-import { chatSessionService } from './services/chat.service';
+import { mcpHandler } from './controllers/mcp.controller';
 import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
-import { intentIndexing } from './lib/intent/indexing';
-import { intentDiscovery } from './lib/opportunity/discovery';
-import { negotiationWatchdogCron, isNegotiationWatchdogEnabled } from './crons/negotiation-watchdog.cron';
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
 import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
-import { frameDriftCron } from './crons/frame-drift.cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
-import { negotiationReflect } from './lib/negotiation/reflect';
-import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
-import { personalAgentService } from './services/personal-agent.service';
-import { NetworkMembershipEvents } from './events/network_membership.event';
-import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
-import { premiseCascade } from './lib/premise/cascade';
-import { background } from './lib/background';
-import { init as initTelegramGateway } from './gateways/telegram.gateway';
-import { setWebhook } from './lib/telegram/bot-api';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
-import { publishNotificationStreamEvent } from './lib/notification-stream-events';
+import { publishUserEvent } from './lib/user-events';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
 // emoji, LOG_LEVEL, Sentry, embedding redaction + payload truncation).
@@ -76,9 +47,6 @@ setLoggerFactory(
   (context, source) => log.withContext(context as Parameters<typeof log.withContext>[0], source),
   sanitizeForLog,
 );
-
-// Wire ChatGraphFactory into chat service at startup
-chatSessionService.setFactory(chatFactory);
 
 setTimingWrapper((name, fn) => traceAppOperation(
   {
@@ -94,74 +62,19 @@ setTimingWrapper((name, fn) => traceAppOperation(
 
 setRequestContextStore(hostRequestContext);
 
-// Wire the matches_ready hand-off into background discovery, so the
-// post-assignment HyDE path wakes the signal's agent exactly as chat/MCP
-// discovery does. Without this, the graph's matches_ready node
-// short-circuits and a persisted batch never reaches its agent.
-intentDiscovery.setRuntimeDeps({
-  matchesReady,
-  agentDispatcher: backgroundAgentDispatcher,
-});
-negotiationWatchdogCron.setNegotiationGraph(negotiationGraph);
-negotiationWatchdogCron.setReflectEnqueue(async (job) => {
-  await personalAgentService.addAllPausedEvent(job);
-});
-
-const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
-const notificationDeliveryService = new NotificationDeliveryService({
-  opportunities: notificationOpportunityAdapter,
-  getIdentity: (userId) => notificationOpportunityAdapter.getProfile(userId),
-  publish: publishNotificationStreamEvent,
+const opportunityEventAdapter = new OpportunityDatabaseAdapter();
+const opportunityEventService = new OpportunityEventService({
+  opportunities: opportunityEventAdapter,
+  getIdentity: (userId) => opportunityEventAdapter.getProfile(userId),
+  publish: publishUserEvent,
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
-OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
+OpportunityEvents.onActionable = (payload) => opportunityEventService.publishOpportunityActionable(payload);
 
-NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
-  // Re-evaluate the member's pre-existing intents against the joined network.
-  // Intents created before joining never get an assignment pass for this network
-  // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
-  // regen / opportunity discovery); scoped to this network.
-  intentIndexing.addNetworkReconcileForUser(userId, networkId).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to trigger intent network reconcile', { userId, networkId, error: err });
-  });
-};
-
-
-PremiseEvents.onCreated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise created', { premiseId, userId });
-};
-
-PremiseEvents.onUpdated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise updated', { premiseId, userId });
-};
-
-PremiseEvents.onRetracted = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade', { premiseId, userId });
-  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'retracted' }));
-};
-
-PremiseEvents.onExpired = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade', { premiseId, userId });
-  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'expired' }));
-};
-
-if (isNegotiationWatchdogEnabled()) {
-  void negotiationWatchdogCron.start().catch((error) => {
-    log.job.from('NegotiationWatchdogCron').error('Negotiation watchdog startup failed', { error });
-  });
-}
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
-void frameDriftCron.start().catch((error) => {
-  log.job.from('FrameDriftCron').error('Frame-drift cron startup failed', {
-    event: 'frame_drift_monitoring_startup_failed',
-    error,
-  });
-});
 hydeMaintenanceCron.startCrons();
-negotiationReflect.startCrons();
-premiseCascade.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';
@@ -169,25 +82,14 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
 
-// Warm up the PostgresSaver checkpointer at boot so the first chat request
+// Warm up the PostgresSaver checkpointer at boot so the first graph run
 // doesn't pay the table-setup round trip and misconfiguration surfaces at
-// startup instead of mid-stream. Non-fatal: chat degrades to no checkpointer.
+// startup instead of mid-run. Non-fatal: graphs degrade to no checkpointer.
 getCheckpointer().catch((err) => {
-  logger.warn('Checkpointer warm-up failed; chat will run without persistence', {
+  logger.warn('Checkpointer warm-up failed; graphs will run without persistence', {
     error: err instanceof Error ? err.message : String(err),
   });
 });
-
-// ── Telegram bot startup ────────────────────────────────────────────────────
-if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {
-  const webhookBase = process.env.TELEGRAM_WEBHOOK_URL ?? process.env.API_URL ?? '';
-  const webhookUrl = `${webhookBase.replace(/\/$/, '')}/api/webhooks/telegram`;
-  setWebhook(webhookUrl, process.env.TELEGRAM_WEBHOOK_SECRET).catch((err) => {
-    logger.error('Failed to register Telegram webhook on startup', { error: err });
-  });
-  initTelegramGateway();
-  logger.info('Telegram bot gateway initialised', { webhookUrl });
-}
 
 /** Match pathname against a route pattern with :param placeholders; returns params or null. */
 function matchPath(pattern: string, pathname: string): Record<string, string> | null {
@@ -229,30 +131,18 @@ const storageAdapter = new S3StorageAdapter({
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(EnrichmentController, new EnrichmentController());
-controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(NetworkController, new NetworkController());
 controllerInstances.set(NetworkRequestController, new NetworkRequestController());
 controllerInstances.set(IntentController, new IntentController());
-controllerInstances.set(IntentIntakeController, new IntentIntakeController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
+controllerInstances.set(NegotiationController, new NegotiationController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
-controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
-controllerInstances.set(
-  NotificationController,
-  new NotificationController(new NotificationService(), notificationDeliveryService),
-);
+controllerInstances.set(ConversationController, new ConversationController(new ConversationService()));
 controllerInstances.set(AgentController, new AgentController());
-controllerInstances.set(AgentRuntimeController, new AgentRuntimeController());
-controllerInstances.set(ConnectedAgentsController, new ConnectedAgentsController());
-const integrationAdapter = new ComposioIntegrationAdapter();
-const integrationService = new IntegrationService(integrationAdapter);
-controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
-controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
-controllerInstances.set(FloorLabController, new FloorLabController());
 const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));
 
@@ -268,7 +158,7 @@ function classifyRequestSubsystem(pathname: string): string {
 }
 
 // Cron jobs (newsletter, opportunity finder, HyDE) are registered above.
-const server = Bun.serve({
+Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors
   async fetch(req) {
@@ -331,14 +221,23 @@ const server = Bun.serve({
       '/api/auth/revoke-session', '/api/auth/revoke-other-sessions',
       '/api/auth/update-user',
       '/api/auth/token', '/api/auth/jwks',
-      // API key management
-      '/api/auth/api-key',
+      // API key mint/list/delete — the plugin owns them; session-only because
+      // `enableSessionForAPIKeys` is off.
+      '/api/auth/api-key/',
+      // Device authorization grant: /device/code and /device/approve are driven
+      // by the owner's browser on /cli-auth, /device/token by the device itself.
+      // The trailing slash matters — a bare `/api/auth/device` prefix would also
+      // swallow our own /api/auth/devices list.
+      '/api/auth/device/',
       // MCP OAuth endpoints
       '/api/auth/mcp/',
       '/.well-known/oauth-authorization-server',
       '/.well-known/oauth-protected-resource',
     ];
-    const isBetterAuthRoute = betterAuthPaths.some(p => url.pathname.startsWith(p));
+    // The grant's claim step is the bare `/api/auth/device` with a user_code
+    // query, so it is matched exactly rather than by prefix.
+    const isBetterAuthRoute = betterAuthPaths.some(p => url.pathname.startsWith(p))
+      || url.pathname === '/api/auth/device';
     if (isBetterAuthRoute) {
       // better-call strips basePath via `pathname.split(basePath)`, which only works
       // for paths that contain the basePath string. Root-level /.well-known/* paths
@@ -417,25 +316,12 @@ const server = Bun.serve({
             const result = await handler.call(instance, req, guardResult, routeParams);
             logger.verbose('Handler invoked successfully');
 
-            // Attach ratelimit headers if available
-            const limiterInfo = getRateLimitInfo(req);
-            const limiterHeaders: Record<string, string> = limiterInfo
-              ? {
-                  'ratelimit-limit': String(limiterInfo.limit),
-                  'ratelimit-remaining': String(limiterInfo.remaining),
-                  'ratelimit-reset': String(Math.max(0, Math.ceil((limiterInfo.resetAt - Date.now()) / 1000))),
-                }
-              : {};
-
             // If result is a Response object, add CORS headers and return it.
             if (result instanceof Response) {
               setSpanHttpStatus(result.status);
               // Clone the response with CORS headers added
               const newHeaders = new Headers(result.headers);
               Object.entries(corsHeaders).forEach(([key, value]) => {
-                newHeaders.set(key, value);
-              });
-              Object.entries(limiterHeaders).forEach(([key, value]) => {
                 newHeaders.set(key, value);
               });
               return new Response(result.body, {
@@ -446,7 +332,7 @@ const server = Bun.serve({
             }
             // Otherwise assume JSON
             setSpanHttpStatus(200);
-            return Response.json(result, { headers: { ...corsHeaders, ...limiterHeaders } });
+            return Response.json(result, { headers: corsHeaders });
 
           } catch (error: unknown) {
             logger.error('Error handling request', {
@@ -455,20 +341,10 @@ const server = Bun.serve({
               error: error instanceof Error ? error.message : String(error),
             });
             const message = error instanceof Error ? error.message : 'Internal Server Error';
-            // Map agent-scope violations to 403 (network-scoped API keys hitting
-            // a network they aren't bound to)
-            if (error instanceof ScopeViolationError) {
-              setSpanHttpStatus(403);
-              return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-            }
             // Session-only endpoints reject API-key credentials outright
-            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError || error instanceof HermesNegotiatorRouteDeniedError) {
+            if (error instanceof SessionRequiredError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-            }
-            if (error instanceof RateLimiterError) {
-              setSpanHttpStatus(429);
-              return new Response(error.toBody(), error.toResponseInit(corsHeaders));
             }
             // Map common auth errors
             if (
@@ -541,10 +417,6 @@ const server = Bun.serve({
     );
   },
 });
-
-// Bind the live server to the limiter so resolveClientIp can fall back to
-// the socket peer in environments where RAILWAY_ENVIRONMENT isn't set.
-bindLimiterServer(server);
 
 logger.info('Server running', { port: PORT });
 

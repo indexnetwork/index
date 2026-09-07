@@ -36,12 +36,14 @@ function SignInButton({ children, primary, onClick, disabled }) {
 // ("reading your public profile", "pulling in what people already say about
 // you"), which is both cold and, in the case of what other people say, not
 // something index looks at. These are the agent thinking out loud instead.
-function BuildingProfile({ onDone }) {
-  const lines = [
-    "getting a sense of you…",
-    "working out what you're into…",
-    "almost there.",
-  ];
+// The caller can hand it its own title and lines: the boot pass and the
+// public-research pass both wait behind this window, and saying the same things
+// twice would read as the loader repeating rather than as two pieces of work.
+function BuildingProfile({ onDone, title = "setting up", lines = [
+  "getting a sense of you…",
+  "working out what you're into…",
+  "almost there.",
+] }) {
   useEffect(() => {
     const t = setTimeout(() => onDone && onDone(), 2400);
     return () => clearTimeout(t);
@@ -52,7 +54,7 @@ function BuildingProfile({ onDone }) {
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
     }}>
-      <MacWindow title="setting up" style={{ width: 420 }}>
+      <MacWindow title={title} style={{ width: 420 }}>
         <div style={{ padding:"26px 28px 24px", textAlign:"center" }}>
           <div style={{
             display:"flex", justifyContent:"center",
@@ -96,6 +98,87 @@ function BuildingProfile({ onDone }) {
   );
 }
 
+// The one thing the agent cannot work out on its own, asked before it goes
+// looking: a name is what the public-research lookup runs on, and the account
+// name from a browser handshake is often a handle or plain wrong.
+//
+// Deliberately the sign-in card's shape rather than the profile form's. Asking
+// one thing inside a form built to review a whole profile leaves either a
+// collapsed window or a screen of fields nobody can touch yet; a card that only
+// ever holds one question is small because that is its size.
+function AskName({ initialName = "", onSubmit, onSignOut }) {
+  const [name, setName] = useState(initialName);
+  const ready = !!name.trim();
+
+  return (
+    <div style={{
+      position:"absolute", inset:0,
+      display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
+      padding:"56px 40px", overflow:"auto",
+    }}>
+      <div style={{ width:420, maxWidth:"100%" }}>
+        <MacWindow title="getting started" onClose={onSignOut} style={{ minHeight:0 }}>
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (ready) onSubmit(name.trim()); }}
+            style={{ padding:"30px 30px 26px" }}>
+
+            {/* Smaller than the sign-in card's 32px: that one is the app
+                introducing itself, this one is a question. */}
+            <h1 style={{
+              fontFamily:"var(--amiga-mono)", fontWeight:500,
+              fontSize:20, lineHeight:1.15, letterSpacing:-0.3,
+              margin:0, color:"#000",
+            }}>
+              what's your <span style={{ fontWeight:700 }}>name</span>?
+            </h1>
+
+            <p style={{
+              marginTop:12, marginBottom:0,
+              fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"#000",
+            }}>
+              i'll use it to find what's already public about you, so you don't
+              have to type it all out.
+            </p>
+
+            {/* Underlined rather than a sunken well: the well belongs to the
+                profile form, where a field is one of many. Here it is the only
+                thing on the card, so it reads as the line to write on. */}
+            <input
+              autoFocus
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="your name"
+              aria-label="your name"
+              style={{
+                width:"100%", marginTop:22, padding:"7px 0",
+                background:"transparent", border:"none",
+                borderBottom:"1px solid #000", outline:"none",
+                fontFamily:"var(--mac-sans)", fontSize:16, color:"#000",
+              }}
+            />
+
+            <div style={{ marginTop:22 }}>
+              <SignInButton primary disabled={!ready}>continue →</SignInButton>
+            </div>
+
+            <div style={{ marginTop:20, textAlign:"center" }}>
+              <button
+                type="button"
+                onClick={onSignOut}
+                style={{
+                  fontFamily:"var(--mac-mono)", fontSize:10, padding:0,
+                  border:"none", background:"transparent", color:"var(--ink-3)",
+                  textDecoration:"underline", cursor:"pointer",
+                }}>sign out</button>
+            </div>
+          </form>
+        </MacWindow>
+      </div>
+    </div>
+  );
+}
+
 function Login({ onSignIn }) {
   // Real auth is a browser handshake (the shell opens /cli-auth and hands back
   // a key). A single button starts it; the copy flips to "waiting" while the
@@ -104,6 +187,16 @@ function Login({ onSignIn }) {
   const go = () => {
     if (onSignIn && onSignIn(null)) setWaiting(true);
   };
+
+  // A handshake that ends without a credential leaves this screen mounted, so
+  // the button has to be released here: without it a failed sign-in is
+  // indistinguishable from one still waiting on the browser.
+  useEffect(() => {
+    if (!window.IndexApp) return;
+    return window.IndexApp.onAuthChanged((authenticated) => {
+      if (!authenticated) setWaiting(false);
+    });
+  }, []);
 
   return (
     <div style={{

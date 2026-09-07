@@ -6,18 +6,14 @@
  * implementation, grouped by what they do rather than by layer:
  *
  *   graph/               the lifecycle graph — prep, infer, verify, reconcile, execute
- *   intake/              the guided first-signal interview
  *   intent.inferrer      an utterance into candidate signals
  *   intent.reconciler    candidate signals into create/update/expire actions
  *   intent.verifier      felicity and entropy verdicts
- *   intent.clarifier     the clarification path when a signal is underspecified
- *   intent.indexer       scoring one signal against one network
- *   intent.proposal      the persisted proposal record and description normalization
+ *   intent.clarifier     a typed payload into a clarified payload plus questions
  *   intent.tools         the agent-facing tool definitions
  *
- * Only the two multi-file stages keep a directory. Nothing outside `intents/`
- * imports any of it; the layout may change freely as long as this class keeps
- * its shape.
+ * Only the graph keeps a directory. Nothing outside `intents/` imports any of
+ * it; the layout may change freely as long as this class keeps its shape.
  */
 
 import type { DefineTool } from "../internal/shared/agent/tool.helpers.js";
@@ -26,42 +22,32 @@ import type { EmbeddingGenerator } from "../platform/discovery/embedder.js";
 import type { IntentFollowUp } from "../platform/runtime/follow-up.js";
 
 import { IntentGraphFactory } from "../internal/intents/graph/intent.graph.js";
-import { IntentIndexer } from "../internal/shared/intent-indexer.js";
+import { normalizeIntentDescription } from "../internal/intents/graph/intent.graph.shared.js";
+import { IntentClarifier } from "../internal/intents/intent.clarifier.js";
 import { ExplicitIntentInferrer } from "../internal/intents/intent.inferrer.js";
 import { IntentReconciler } from "../internal/intents/intent.reconciler.js";
-import { FALLBACK_WHO_QUESTION, SignalIntakeOrchestrator } from "../internal/intents/intake/intake.orchestrator.js";
-import { SignalIntakePackGenerator } from "../internal/intents/intake/intake.pack.generator.js";
-import { normalizeIntentDescription } from "../internal/intents/intent.proposal.js";
 import { createIntentTools } from "../internal/intents/intent.tools.js";
 import { SemanticVerifier } from "../internal/intents/intent.verifier.js";
 
-import type { IntentIndexerOutput } from "../internal/shared/intent-indexer.js";
-import type { FollowUpPlan, FollowUpPlanInput, IntakeAnswer, IntakeRound, SynthesisInput, SynthesisResult } from "../internal/intents/intake/intake.orchestrator.js";
-import type { IntakePack, IntakePackInput, IntakePackQuestion, IntakePackQuestionOption } from "../internal/intents/intake/intake.pack.generator.js";
+import type { ClarifyAnswer, ClarifyInput, ClarifyQuestion, ClarifyQuestionOption, ClarifyResult } from "../internal/intents/intent.clarifier.js";
 import type { IntentToolDeps } from "../internal/intents/intent.tools.js";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export type {
-  FollowUpPlan,
-  FollowUpPlanInput,
-  IntakeAnswer,
-  IntakePack,
-  IntakePackInput,
-  IntakePackQuestion,
-  IntakePackQuestionOption,
-  IntakeRound,
-  IntentIndexerOutput,
+  ClarifyAnswer,
+  ClarifyInput,
+  ClarifyQuestion,
+  ClarifyQuestionOption,
+  ClarifyResult,
   IntentToolDeps,
-  SynthesisInput,
-  SynthesisResult,
 };
 
 /**
  * Host capabilities the intent lifecycle needs.
  *
  * Every field is optional: a host that only wants the model-backed helpers
- * (verification, indexing, intake) can construct `new Intents()` with nothing.
+ * (verification, clarification) can construct `new Intents()` with nothing.
  * {@link Intents.createGraph} is the one method that requires `database`.
  */
 export interface IntentsDeps {
@@ -69,7 +55,7 @@ export interface IntentsDeps {
   database?: IntentGraphDatabase;
   /** Embedding generator used to vectorize executed signals. */
   embedder?: EmbeddingGenerator;
-  /** Host follow-up work started after a persist (HyDE, network assignment, discovery). */
+  /** Host follow-up work started after a persist (HyDE, discovery). */
   followUp?: IntentFollowUp;
   /**
    * Model-backed stages, injectable so tests can run the graph without a model.
@@ -92,10 +78,8 @@ export interface IntentsDeps {
 export class Intents {
   private readonly deps: IntentsDeps;
 
-  private indexer?: IntentIndexer;
   private verifier?: SemanticVerifier;
-  private orchestrator?: SignalIntakeOrchestrator;
-  private packGenerator?: SignalIntakePackGenerator;
+  private clarifier?: IntentClarifier;
 
   constructor(deps: IntentsDeps = {}) {
     this.deps = deps;
@@ -130,49 +114,23 @@ export class Intents {
     return this.verifier.invoke(content, profileContext);
   }
 
-  // ── Indexing ────────────────────────────────────────────────────────────────
+  // ── Clarification ───────────────────────────────────────────────────────────
 
   /**
-   * Score how well one signal fits one network, from the network's purpose and
-   * the member's sharing preferences.
+   * Run one stateless clarification round over a signal payload.
    *
-   * @returns Scores and reasoning, or `null` when the model call fails.
+   * With no answers the payload comes back unchanged alongside the questions
+   * worth asking; with answers the payload is rewritten to state them, then
+   * whatever is still open is asked. Answering is always optional.
+   *
+   * @param input - The payload and any answers gathered so far.
    */
-  public async indexIntent(
-    intent: string,
-    indexPrompt: string | null,
-    memberPrompt: string | null,
-    sourceName?: string | null,
-    networkContext?: string | null,
-  ): Promise<IntentIndexerOutput | null> {
-    this.indexer ??= new IntentIndexer();
-    return this.indexer.invoke(intent, indexPrompt, memberPrompt, sourceName, networkContext);
-  }
-
-  // ── Guided intake ───────────────────────────────────────────────────────────
-
-  /** Generate a participant's intake brief and round-1 question. */
-  public async generateIntakePack(input: IntakePackInput): Promise<IntakePack> {
-    this.packGenerator ??= new SignalIntakePackGenerator();
-    return this.packGenerator.generate(input);
-  }
-
-  /** Plan and write the next intake follow-up questions. */
-  public async generateIntakeFollowUps(input: FollowUpPlanInput): Promise<FollowUpPlan> {
-    this.orchestrator ??= new SignalIntakeOrchestrator();
-    return this.orchestrator.generateFollowUps(input);
-  }
-
-  /** Turn answered intake rounds into a signal description and card summary. */
-  public async synthesizeIntake(input: SynthesisInput): Promise<SynthesisResult> {
-    this.orchestrator ??= new SignalIntakeOrchestrator();
-    return this.orchestrator.synthesize(input);
+  public async clarify(input: ClarifyInput): Promise<ClarifyResult> {
+    this.clarifier ??= new IntentClarifier();
+    return this.clarifier.invoke(input);
   }
 
   // ── Stateless surface ───────────────────────────────────────────────────────
-
-  /** The static round-1 question used when pack generation is unavailable. */
-  public static readonly FALLBACK_INTAKE_QUESTION: IntakePackQuestion = FALLBACK_WHO_QUESTION;
 
   /** Normalize a signal description to its persisted form. */
   public static normalizeDescription(description: string): string {

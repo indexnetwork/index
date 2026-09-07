@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-import { IntentClarifier } from "./intent.clarifier.js";
-import type { ExecutionResult, IntentValidationFailure, VerifiedIntent } from "./graph/intent.graph.state.js";
-import { DEFAULT_SPECIFICITY_WARNING, normalizeIntentDescription, type PersistableIntentProposal } from "./intent.proposal.js";
+import type { ExecutionResult, IntentValidationFailure } from "./graph/intent.graph.state.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { traceGraph } from "../shared/observability/trace.js";
 
@@ -14,60 +12,13 @@ import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, focusedNetw
 
 /** Host capabilities consumed by signal and intent tools. */
 export type IntentToolDeps = Pick<ToolRegistryCompositionDeps, "userDb" | "systemDb">
-  & Pick<ToolRegistryCompositionDeps, "intentProposalStore">
-  & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "intent" | "intentIndex"> };
+  & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "intent" | "intentNetwork"> };
 
 const logger = protocolLogger("ChatTools:Intent");
 
-type IntentClarifierLike = Pick<IntentClarifier, "invoke">;
-
-let intentClarifier: IntentClarifierLike | undefined;
-
-function getIntentClarifier(): IntentClarifierLike {
-  intentClarifier ??= new IntentClarifier();
-  return intentClarifier;
-}
-
-async function buildTypedClarificationResult(params: {
-  description: string;
-  userProfile: string;
-  activeIntentsContext?: string;
-  debugSteps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
-}): Promise<string | null> {
-  const clarification = await getIntentClarifier().invoke(
-    params.description,
-    params.userProfile,
-    params.activeIntentsContext ?? "",
-  );
-  if (!clarification.needsClarification) return null;
-  return JSON.stringify({
-    success: false,
-    needsClarification: true,
-    underspecificationType: clarification.underspecificationType,
-    suggestedDescription: clarification.suggestedDescription,
-    clarificationMessage: clarification.clarificationMessage,
-    missingFields: [clarification.underspecificationType],
-    message: clarification.clarificationMessage,
-    debugSteps: params.debugSteps,
-  });
-}
-
-/** Replace the lazy clarifier in deterministic tool tests. */
-export function setIntentClarifierForTesting(clarifier: IntentClarifierLike | null): void {
-  intentClarifier = clarifier ?? undefined;
-}
-
-/**
- * Sanitize JSON string for use inside a markdown code fence (```). Escapes backticks
- * so embedded ``` cannot close the fence prematurely.
- */
-function sanitizeJsonForCodeFence(json: string): string {
-  return json.replace(/`/g, "\\u0060");
-}
-
-/** When context is network-scoped, verifies the caller is still a member of that index. Returns error message or null. */
+/** When context is network-scoped, verifies the caller is still a member of that network. Returns error message or null. */
 async function ensureScopedMembership(
-  context: ToolScopeEnvelope & { indexName?: string; userId: string },
+  context: ToolScopeEnvelope & { networkName?: string; userId: string },
   systemDb: IntentToolDeps['systemDb']
 ): Promise<string | null> {
   const scopedNetworkId = focusedNetworkId(context);
@@ -82,7 +33,7 @@ async function ensureScopedMembership(
 /**
  * Build the approved identity context used to infer an intent. This deliberately
  * reads the current user record directly: public-profile research is only a
- * prefill mechanism and ACTIVE-premise presence is not a profile-readiness gate.
+ * prefill mechanism.
  */
 function buildApprovedIdentitySnapshot(user: UserRecord | null | undefined): string {
   const name = user?.name?.trim() ?? "";
@@ -100,22 +51,6 @@ function buildApprovedIdentitySnapshot(user: UserRecord | null | undefined): str
     narrative: { context: bio },
     attributes: { skills: [], interests: [] },
   });
-}
-
-function isBroadAttributiveIntent(intent: VerifiedIntent): boolean {
-  return intent.verification?.referential_breadth === "broad";
-}
-
-const NULL_LIKE_SPECIFICITY_WARNING_VALUES = new Set(["null", "undefined"]);
-
-function normalizeSpecificityWarning(value: string | null | undefined): string | null {
-  const warning = value?.trim();
-  if (!warning) return null;
-  return NULL_LIKE_SPECIFICITY_WARNING_VALUES.has(warning.toLowerCase()) ? null : warning;
-}
-
-function specificityWarningFor(intent: VerifiedIntent): string {
-  return normalizeSpecificityWarning(intent.verification?.specificity_warning) ?? DEFAULT_SPECIFICITY_WARNING;
 }
 
 type IntentUpdateGraphResult = {
@@ -171,13 +106,13 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       "Intents are the core unit of discovery — they represent what users are seeking and drive semantic matching for opportunities.\n\n" +
       "**Usage modes:**\n" +
       "- No parameters: returns the **caller's own** active intents. In a network-scoped chat the result is clamped to the bound network. In an unscoped chat the result spans all of the user's active intents. There is no implicit default to the scoped network — to browse the bound community's intents, pass `networkId` explicitly.\n" +
-      "- With networkId: returns **all members'** intents in that index (community browse path). Add userId to filter to one member.\n" +
-      "- With userId in an network-scoped chat: reads that member's intents in the bound network. The target user must be a member of that index.\n" +
+      "- With networkId: returns **all members'** intents in that network (community browse path). Add userId to filter to one member.\n" +
+      "- With userId in an network-scoped chat: reads that member's intents in the bound network. The target user must be a member of that network.\n" +
       "- With userId in an unscoped chat: only works for the current user (cannot read another user's global intents without an network scope).\n\n" +
       "**Workflow:** To explore what members of a network are looking for, first call read_network_memberships(networkId) to list members, " +
       "then read_intents(networkId) to see all intents in that community. " +
-      "Each intent includes: id, description (payload), summary, confidence (0-1), inferenceType (explicit/implicit), status, and linked indexes.\n\n" +
-      "**Returns:** Paginated list of intents with count. Use the intent IDs in subsequent calls to update_intent, delete_intent, or create_intent_index.",
+      "Each intent includes: id, description (payload), summary, confidence (0-1), inferenceType (explicit/implicit), status, and linked networks.\n\n" +
+      "**Returns:** Paginated list of intents with count. Use the intent IDs in subsequent calls to update_intent, delete_intent, or add_intent_to_network.",
     querySchema: z.object({
       networkId: z.string().optional().describe("Network UUID — filters intents to this network (community browse path: returns all members' intents). There is no implicit default in network-scoped chats; omit to get caller-owned intents across the reachable networks, or pass the scoped network UUID to browse community members. Get network IDs from read_networks."),
       userId: z.string().optional().describe("User ID — filters to this user's intents. In an network-scoped chat, this reads that member's intents in the bound network (no networkId required). In an unscoped chat, only the current user is allowed without networkId; cross-user reads require an network scope. Omit for caller-owned intents."),
@@ -191,7 +126,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       // Distinguish "explicit network browse" from "implicit scope-aware read"
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
       const explicitNetworkId = query.networkId?.trim();
       const explicitUserId = query.userId?.trim();
 
@@ -209,16 +144,16 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       // happen in a separate unscoped chat or a chat scoped to that network.
       if (scopedNetworkId && explicitNetworkId && explicitNetworkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only read intents from this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only read intents from this community.`
         );
       }
 
       // Cross-user read in scoped chat: target user must be a member of the scoped network
       if (scopedNetworkId && explicitUserId && explicitUserId !== context.userId) {
-        const isInScopedIndex = await deps.systemDb.isNetworkMember(scopedNetworkId, explicitUserId);
-        if (!isInScopedIndex) {
+        const isInScopedNetwork = await deps.systemDb.isNetworkMember(scopedNetworkId, explicitUserId);
+        if (!isInScopedNetwork) {
           return error(
-            `This chat is scoped to ${scopedIndexLabel}. You can only read intents from members of this community.`
+            `This chat is scoped to ${scopedNetworkLabel}. You can only read intents from members of this community.`
           );
         }
       }
@@ -232,15 +167,15 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       if (!scopedNetworkId && explicitNetworkId) {
         const callerIsMember = await deps.systemDb.isNetworkMember(explicitNetworkId, context.userId);
         if (!callerIsMember) {
-          return error("You can only read intents from indexes you are a member of.");
+          return error("You can only read intents from networks you are a member of.");
         }
       }
 
       // ── Choose the read mode ──
-      // 1. Explicit networkId (browse all members in that index) — pass networkId, optionally + queryUserId.
+      // 1. Explicit networkId (browse all members in that network) — pass networkId, optionally + queryUserId.
       // 2. Explicit userId in a scoped chat — read that user's intents in the bound network.
       // 3. Explicit userId in an unscoped chat — only self (cross-user rejected above); global "my intents".
-      // 4. Implicit (no explicit network/user) in scoped chat — pass indexScope, no networkId.
+      // 4. Implicit (no explicit network/user) in scoped chat — pass networkScope, no networkId.
       // 5. Implicit in unscoped chat — global getActiveIntents (caller's own).
       const graphInput: Record<string, unknown> = {
         userId: context.userId,
@@ -283,7 +218,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         graphInput.allUserIntents = true;
       } else if (scopedNetworkId) {
         // Scoped chat, implicit read: caller-only across reachable networks.
-        graphInput.indexScope = deriveAllowedNetworkIds({
+        graphInput.networkScope = deriveAllowedNetworkIds({
           memberships: context.userNetworks,
           scopeType: 'network',
           scopeId: scopedNetworkId,
@@ -329,31 +264,21 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
   const createIntent = defineTool({
     name: "create_intent",
     description:
-      "Creates a new intent (signal of interest/need) for the authenticated user. Intents drive the discovery engine — once created, " +
-      "the system automatically evaluates them against indexes the user belongs to, links them to relevant communities, and begins " +
-      "searching for matching opportunities (complementary intents from other users).\n\n" +
-      "**What to pass:** A clear, concept-based description of what the user is looking for (e.g. 'Looking for an AI/ML co-founder in Berlin', " +
-      "'Need a designer for a mobile app project'). If the user provided a URL, scrape it with scrape_url first and synthesize the content into a description.\n\n" +
-      "**What happens:** The system runs inference (extracting structured intents), verification (checking specificity and speech-act type), " +
-      "and durably stores an owner-scoped proposal containing the exact normalized description, optional network scope, and complete verifier output before returning a proposal widget. The intent itself is NOT yet persisted — the user must approve the proposal first.\n\n" +
-      "**Returns:** An intent_proposal code block that MUST be included verbatim in the response. The frontend renders it as an interactive " +
-      "card the user can approve or skip. On approval, the intent is persisted, indexed, and discovery begins.\n\n" +
-      "**Next steps after approval:** The intent is automatically linked to relevant indexes and becomes eligible for background matching. " +
-      "Background processing creates opportunities when matches are found; use list_opportunities only to review persisted results.\n\n" +
-      "**Specificity gate.** Before calling this tool, judge whether the description is concrete enough to be " +
-      "useful for matching. If the user says \"find a job\", \"meet people\", or \"learn something\", that's too " +
-      "vague — FIRST call read_premises() + read_intents() to understand their context, THEN propose a " +
-      "refined version (\"Based on your background in X, did you mean 'Y'?\") and wait for confirmation before " +
-      "calling create_intent. Specific asks (\"senior UX design role at a tech company in Berlin\") can go " +
-      "directly to create_intent.\n\n" +
-      "**URL handling.** If the user pastes a URL describing the intent (e.g. a job posting), call scrape_url " +
-      "first with objective=\"Extract key details for an intent\", synthesize a conceptual description from the " +
-      "content, then call create_intent with the synthesis. Exception: profile URLs (LinkedIn, GitHub, X) are for " +
-      "research_profile, not scrape_url — do not scrape first.",
+      "Creates and persists an intent (a signal of interest or need) for the authenticated user, linked to exactly the networks you name. " +
+      "Intents drive discovery: once created, the system indexes the signal and searches for complementary intents from other people.\n\n" +
+      "**What to pass:** `description` — a clear, concept-based statement of what the user is looking for (e.g. 'Looking for an AI/ML co-founder in Berlin'). " +
+      "`networkIds` — the networks to broadcast it to. Nothing is auto-assigned: a signal with no network ids is created but reaches nobody until it is linked. " +
+      "Get network ids from read_networks; every id must be a network the user currently belongs to.\n\n" +
+      "**Specificity gate.** Judge whether the description is concrete enough to match on before calling. 'find a job', 'meet people', or 'learn something' " +
+      "is too vague — call read_intents() for context, propose a refined version to the user, and wait for their confirmation first. " +
+      "Specific asks ('senior UX design role at a tech company in Berlin') can go straight through.\n\n" +
+      "**URL handling.** If the user pastes a URL describing the intent (e.g. a job posting), call scrape_url first with " +
+      "objective=\"Extract key details for an intent\", synthesize a conceptual description, then pass that here. Exception: profile URLs " +
+      "(LinkedIn, GitHub, X) are for research_profile, not scrape_url.\n\n" +
+      "**Returns:** The created intent id and the networks it was linked to. Use add_intent_to_network / remove_intent_from_network to change those links later.",
     querySchema: z.object({
-      description: z.string().describe("A clear, specific description of what the user is looking for. Should be concept-based, not a raw URL. If the user shared a URL, scrape it first with scrape_url and pass the synthesized content here. Vague descriptions will be rejected — include what kind, what for, and/or timeframe."),
-      networkId: z.string().optional().describe("Network UUID to link the intent to upon creation. Defaults to the scoped network in network-scoped chats. Get network IDs from read_networks. If omitted, the system auto-assigns to relevant networks based on their prompts."),
-      autoApprove: z.boolean().optional().describe("When true, automatically persists all verified intents without returning proposal cards for manual approval. MCP agents SHOULD set this to true since there is no UI for card-based approval. Web chat agents should omit or set to false to get interactive proposal cards."),
+      description: z.string().describe("A clear, specific description of what the user is looking for. Concept-based, not a raw URL. Vague descriptions are rejected — include what kind, what for, and/or timeframe."),
+      networkIds: z.array(z.string()).optional().describe("Network UUIDs to link the intent to. Each must be a current membership. Defaults to the scoped network in a network-scoped chat, and to nothing otherwise."),
     }),
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
@@ -364,20 +289,25 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
 
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
 
       if (scopedIntentId) {
         return error("This chat is scoped to an existing selected intent. Update that intent instead of creating a different one here.");
       }
 
-      // Strict scope enforcement
-      if (scopedNetworkId && query.networkId?.trim() && query.networkId.trim() !== scopedNetworkId) {
+      const requestedNetworkIds = (query.networkIds ?? []).map((id) => id.trim()).filter(Boolean);
+      if (requestedNetworkIds.some((id) => !UUID_REGEX.test(id))) {
+        return error("Invalid network ID format.");
+      }
+      if (scopedNetworkId && requestedNetworkIds.some((id) => id !== scopedNetworkId)) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only create intents in this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only create intents in this community.`
         );
       }
 
-      const effectiveIndexId = scopedNetworkId || query.networkId?.trim() || undefined;
+      const networkIds = scopedNetworkId
+        ? [scopedNetworkId]
+        : requestedNetworkIds;
       const scopeEnvelope = scopedNetworkId
         ? { scopeType: 'network' as const, scopeId: scopedNetworkId }
         : {};
@@ -385,186 +315,47 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       const latestUser = typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
       const userProfile = buildApprovedIdentitySnapshot(latestUser);
 
-      // Run inference + verification only (propose mode — no DB persistence)
-      const _intentGraphStart1 = Date.now();
+      const _intentGraphStart = Date.now();
       const result = await traceGraph("intent", () => invokeWithAbortSignal(graphs.intent, {
         userId: context.userId,
         userProfile,
         inputContent: query.description,
-        dryRun: true,
-        ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
+        networkIds,
         ...scopeEnvelope,
       }));
-      const _intentGraphMs1 = Date.now() - _intentGraphStart1;
-      logger.debug("Intent graph propose response", { result });
+      const _intentGraphMs = Date.now() - _intentGraphStart;
+      logger.debug("Intent graph create response", { result });
 
-      const verified = result.verifiedIntents || [];
-
-      // MCP contexts have no interactive UI for proposal cards — default to auto-approve
-      const shouldAutoApprove = query.autoApprove ?? context.isMcp ?? false;
-
-      // Extract trace from graph and convert to debugSteps
       const trace = Array.isArray(result.trace) ? result.trace : [];
       const debugSteps = trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
         step: t.node,
         detail: t.detail,
         ...(t.data ? { data: t.data } : {}),
       }));
+      const graphTimings = [{ name: 'intent-create', durationMs: _intentGraphMs, agents: result.agentTimings ?? [] }];
 
-      if (verified.length === 0) {
-        // Build a descriptive rejection reason from the trace so the ReACT agent
-        // can retry with a better description or ask the user for clarification.
-        // When inference produces 0 intents, propose mode exits before verification
-        // runs — so we check inference trace first.
-        const verificationTrace = debugSteps.find((s: { step: string; detail?: string }) => s.step === "verification");
-
-        const typedClarification = await buildTypedClarificationResult({
-          description: query.description,
-          userProfile,
-          activeIntentsContext: result.activeIntents,
-          debugSteps,
-        });
-        if (typedClarification) return typedClarification;
-
-        if (!verificationTrace) {
-          const inferenceHint =
-            debugSteps.find((s: { step: string; detail?: string }) => s.step === "inference")?.detail
-            ?? "no intents extracted";
-          return error(
-            `No actionable intent was extracted (${inferenceHint}). ` +
-            `Please retry with an explicit goal or ask the user what outcome they want.`,
-            debugSteps,
-          );
-        }
-
-        const rejectionHint =
-          verificationTrace.detail ?? "all candidate intents were filtered as invalid or too vague";
+      const created = (result.executionResults ?? []).filter(
+        (execution: ExecutionResult) => execution.actionType === 'create' && execution.success,
+      );
+      if (created.length === 0) {
+        const failure = describeIntentUpdateFailure(result as IntentUpdateGraphResult);
         return error(
-          `Intent verification failed (${rejectionHint}). ` +
-          `The description may have been classified as a statement rather than a goal. ` +
-          `Retry with an explicit goal or ask the user what outcome they want.`,
+          `${failure.error} Retry with a more specific goal, or ask the user what outcome they want.`,
           debugSteps,
         );
       }
-
-      // ── Auto-approve path (for MCP agents or explicit opt-in) ──
-      if (shouldAutoApprove) {
-        const broadIntents = (verified as VerifiedIntent[]).filter(isBroadAttributiveIntent);
-        if (broadIntents.length > 0) {
-          const typedClarification = await buildTypedClarificationResult({
-            description: broadIntents[0].description,
-            userProfile,
-            activeIntentsContext: result.activeIntents,
-            debugSteps,
-          });
-          if (typedClarification) return typedClarification;
-
-          const first = broadIntents[0];
-          const missing = first.verification?.missing_selectional_constraints ?? [];
-          const missingHint = missing.length > 0
-            ? ` Missing specifics: ${missing.map((m) => m.replace(/_/g, " ")).join(", ")}.`
-            : "";
-          return error(
-            `${specificityWarningFor(first)}${missingHint} ` +
-            `Please ask the user to clarify before creating this signal, or retry with a narrower description.`,
-            debugSteps,
-          );
-        }
-
-        const createdIntents: Array<{ description: string; confidence: number | null; speechActType: string | null }> = [];
-        const createTimings: Array<{ name: string; durationMs: number; agents: unknown[] }> = [];
-
-        for (const v of verified as VerifiedIntent[]) {
-          const _createGraphStart = Date.now();
-          const createResult = await traceGraph("intent", () => invokeWithAbortSignal(graphs.intent, {
-            userId: context.userId,
-            userProfile,
-            inputContent: v.description,
-            ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
-            ...scopeEnvelope,
-          }));
-          const _createGraphMs = Date.now() - _createGraphStart;
-
-          createTimings.push({ name: 'intent-create', durationMs: _createGraphMs, agents: createResult.agentTimings ?? [] });
-
-          const succeeded = createResult.executionResults?.some((r: ExecutionResult) => r.success);
-          if (succeeded) {
-            createdIntents.push({
-              description: v.description,
-              confidence: v.score != null ? Math.round(v.score * 100) / 100 : null,
-              speechActType: v.verification?.classification ?? null,
-            });
-          }
-        }
-
-        return success({
-          created: createdIntents.length > 0,
-          count: createdIntents.length,
-          intents: createdIntents,
-          message: createdIntents.length > 0
-            ? `Created ${createdIntents.length} intent${createdIntents.length > 1 ? 's' : ''} successfully. The system will automatically index them and begin searching for matching opportunities.`
-            : 'Intent creation failed — the intents could not be persisted.',
-          debugSteps,
-          _graphTimings: [
-            { name: 'intent-propose', durationMs: _intentGraphMs1, agents: result.agentTimings ?? [] },
-            ...createTimings,
-          ],
-        });
-      }
-
-      // ── Proposal path (for web chat with interactive cards) ──
-      // Persist complete verifier output before emitting any usable card.
-      if (!deps.intentProposalStore) {
-        return error("Verified intent proposals are unavailable because durable proposal storage is not configured.");
-      }
-      const proposals: PersistableIntentProposal[] = [];
-      const proposalBlocks: string[] = [];
-      for (const v of verified as VerifiedIntent[]) {
-        if (!v.verification) {
-          return error("Intent verification produced no authoritative analysis; no proposal was created.", debugSteps);
-        }
-        const proposalId = crypto.randomUUID();
-        const normalizedDescription = normalizeIntentDescription(v.description);
-        const isBroad = isBroadAttributiveIntent(v);
-        proposals.push({
-          proposalId,
-          userId: context.userId,
-          description: normalizedDescription,
-          ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
-          analysis: {
-            verifierOutput: v.verification,
-            combinedScore: v.score ?? null,
-          },
-        });
-        const data = {
-          proposalId,
-          description: normalizedDescription,
-          ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
-          confidence: v.score != null ? Math.round(v.score * 100) / 100 : null,
-          speechActType: v.verification?.classification ?? null,
-          semanticEntropy: v.verification?.semantic_entropy ?? null,
-          referentialBreadth: v.verification?.referential_breadth ?? null,
-          missingSelectionalConstraints: v.verification?.missing_selectional_constraints ?? [],
-          specificityWarning: isBroad ? specificityWarningFor(v) : normalizeSpecificityWarning(v.verification?.specificity_warning),
-        };
-        proposalBlocks.push(
-          "```intent_proposal\n" +
-          sanitizeJsonForCodeFence(JSON.stringify(data)) +
-          "\n```"
-        );
-      }
-      await deps.intentProposalStore.createProposals(proposals);
-
-      const blocksText = proposalBlocks.join("\n\n");
 
       return success({
-        proposed: true,
-        count: verified.length,
-        message: `IMPORTANT: Include the following \`\`\`intent_proposal code blocks EXACTLY as-is in your response (they render as interactive cards for the user to approve or skip):\n\n${blocksText}`,
+        created: true,
+        count: created.length,
+        intents: created.map((execution: ExecutionResult) => ({
+          intentId: execution.intentId,
+          description: execution.payload,
+          networkIds: execution.linkedNetworkIds ?? [],
+        })),
+        message: `Created ${created.length} intent${created.length > 1 ? 's' : ''}. Discovery starts in the background; use list_opportunities to review results.`,
         debugSteps,
-        _graphTimings: [
-          { name: 'intent', durationMs: _intentGraphMs1, agents: result.agentTimings ?? [] },
-        ],
+        _graphTimings: graphTimings,
       });
     },
   });
@@ -573,10 +364,10 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
     name: "update_intent",
     description:
       "Updates an existing intent's description. After updating, the system re-processes it through inference and verification, " +
-      "re-evaluates its index assignments, and makes the approved signal eligible for background matching.\n\n" +
+      "re-evaluates its network assignments, and makes the approved signal eligible for background matching.\n\n" +
       "**When to use:** When the user wants to refine or change what they're looking for — e.g. narrowing scope, adding specificity, " +
-      "or pivoting to a different need. Prefer updating over delete+create to preserve the intent's history and existing index links.\n\n" +
-      "**Returns:** Updated `intentId` and `description`, plus a confirmation message. The intent's embeddings and index relevancy scores are recalculated automatically.",
+      "or pivoting to a different need. Prefer updating over delete+create to preserve the intent's history and existing network links.\n\n" +
+      "**Returns:** Updated `intentId` and `description`, plus a confirmation message. The intent's embeddings and network relevancy scores are recalculated automatically.",
     querySchema: z.object({
       intentId: z.string().describe("The UUID of the intent to update. Get this from read_intents results."),
       description: z.string().describe("The updated description of what the user is looking for. Same guidelines as create_intent — should be clear and specific."),
@@ -604,15 +395,15 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       }
 
       const scopedNetworkId = focusedNetworkId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
 
-      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that index
+      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that network
       if (scopedNetworkId) {
         const db = deps.userDb;
         const intentNetworks = await db.getNetworkIdsForIntent(intentId);
         if (!intentNetworks.includes(scopedNetworkId)) {
           return error(
-            `This chat is scoped to ${scopedIndexLabel}. You can only update intents linked to this community.`
+            `This chat is scoped to ${scopedNetworkLabel}. You can only update intents linked to this community.`
           );
         }
       }
@@ -651,7 +442,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
     name: "delete_intent",
     description:
       "Archives (soft-deletes) an intent, removing it from active discovery. The intent is not permanently deleted — it is marked as archived " +
-      "and no longer participates in opportunity matching or index evaluation.\n\n" +
+      "and no longer participates in opportunity matching or network evaluation.\n\n" +
       "**When to use:** When the user's need has been fulfilled, is no longer relevant, or was created by mistake. " +
       "If the user wants to change the description instead, use update_intent to preserve history.\n\n" +
       "**Returns:** Confirmation that the intent was archived. Previously created opportunities from this intent remain but won't generate new ones.",
@@ -674,19 +465,19 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
 
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
 
       if (scopedIntentId && scopedIntentId !== intentId) {
         return error("This chat is scoped to one selected intent. You can only delete that intent here.");
       }
 
-      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that index
+      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that network
       if (scopedNetworkId) {
         const db = deps.userDb;
         const intentNetworks = await db.getNetworkIdsForIntent(intentId);
         if (!intentNetworks.includes(scopedNetworkId)) {
           return error(
-            `This chat is scoped to ${scopedIndexLabel}. You can only delete intents linked to this community.`
+            `This chat is scoped to ${scopedNetworkLabel}. You can only delete intents linked to this community.`
           );
         }
       }
@@ -712,17 +503,17 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // INTENT–INDEX JUNCTION (link / list / unlink)
+  // INTENT–NETWORK JUNCTION (add / list / remove)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const createIntentIndex = defineTool({
-    name: "create_intent_index",
+  const addIntentToNetwork = defineTool({
+    name: "add_intent_to_network",
     description:
-      "Manually links an intent to a network (community), making the approved signal eligible for background matching within that index. " +
-      "Normally intents are auto-assigned to relevant indexes on creation, but use this to explicitly add an intent to an additional index.\n\n" +
+      "Manually links an intent to a network (community), making the approved signal eligible for background matching within that network. " +
+      "Normally intents are auto-assigned to relevant networks on creation, but use this to explicitly add an intent to an additional network.\n\n" +
       "**When to use:** When the user wants to share an existing intent with a specific community they belong to, " +
       "or when auto-assignment missed a network the user considers relevant.\n\n" +
-      "**Returns:** Confirmation that the link was created. The intent will now appear in that index's intent list and participate in discovery within that community.",
+      "**Returns:** Confirmation that the link was created. The intent will now appear in that network's intent list and participate in discovery within that community.",
     querySchema: z.object({
       intentId: z.string().describe("The UUID of the intent to link. Get this from read_intents results."),
       networkId: z.string().optional().describe("The UUID of the network to link the intent to. Get this from read_networks. Defaults to the scoped network in network-scoped chats."),
@@ -732,7 +523,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       if (scopeErr) return error(scopeErr);
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() ?? "";
       const networkId = query.networkId?.trim() || scopedNetworkId || "";
       if (scopedIntentId && intentId !== scopedIntentId) {
@@ -742,22 +533,21 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         return error("Invalid ID format. Both must be UUIDs.");
       }
 
-      // Strict scope enforcement: when chat is network-scoped, only allow linking to that index
+      // Strict scope enforcement: when chat is network-scoped, only allow linking to that network
       if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only link intents to this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only link intents to this community.`
         );
       }
 
-      const _createIntentIndexGraphStart = Date.now();
-      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentIndex, {
+      const _addIntentToNetworkGraphStart = Date.now();
+      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentNetwork, {
         userId: context.userId,
         networkId,
         intentId,
         operationMode: 'create' as const,
-        skipEvaluation: true,
       }));
-      const _createIntentIndexGraphMs = Date.now() - _createIntentIndexGraphStart;
+      const _addIntentToNetworkGraphMs = Date.now() - _addIntentToNetworkGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
@@ -765,7 +555,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
           return success({
             created: !alreadyExisted,
             message: result.mutationResult.message,
-            _graphTimings: [{ name: 'intent_network', durationMs: _createIntentIndexGraphMs, agents: result.agentTimings ?? [] }],
+            _graphTimings: [{ name: 'intent_network', durationMs: _addIntentToNetworkGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to link intent to network.");
@@ -774,29 +564,29 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
     },
   });
 
-  const readIntentIndexes = defineTool({
-    name: "read_intent_indexes",
+  const listIntentNetworks = defineTool({
+    name: "list_intent_networks",
     description:
-      "Reads the many-to-many links between intents and indexes. Use this to understand which intents are shared in which communities, " +
-      "and which indexes a specific intent belongs to.\n\n" +
+      "Reads the many-to-many links between intents and networks. Use this to understand which intents are shared in which communities, " +
+      "and which networks a specific intent belongs to.\n\n" +
       "**Usage modes:**\n" +
-      "- With networkId: lists all intents linked to that index. Add userId to filter to one member's intents in that index.\n" +
-      "- With intentId + networkId: checks whether a specific intent is linked to a specific index.\n" +
+      "- With networkId: lists all intents linked to that network. Add userId to filter to one member's intents in that network.\n" +
+      "- With intentId + networkId: checks whether a specific intent is linked to a specific network.\n" +
       "- intentId alone requires a networkId (the system won't reveal all networks an intent is in).\n\n" +
-      "**When to use:** To audit which intents are active in a community, verify an intent's index assignment before unlinking, " +
-      "or check if a newly created intent was auto-assigned to the expected index.\n\n" +
+      "**When to use:** To audit which intents are active in a community, verify an intent's network assignment before removing it, " +
+      "or check if a newly created intent was auto-assigned to the expected network.\n\n" +
       "**Returns:** List of intent-network links with relevancy scores (0-1, how well the intent fits the network's purpose).",
     querySchema: z.object({
-      intentId: z.string().optional().describe("Intent UUID — check if this specific intent is linked to the specified index. Must be combined with networkId."),
+      intentId: z.string().optional().describe("Intent UUID — check if this specific intent is linked to the specified network. Must be combined with networkId."),
       networkId: z.string().optional().describe("Network UUID — list all intents linked to this network. Get this from read_networks. Defaults to scoped network in network-scoped chats."),
-      userId: z.string().optional().describe("Filter results to this user's intents within the specified index. Omit to see all members' intents."),
+      userId: z.string().optional().describe("Filter results to this user's intents within the specified network. Omit to see all members' intents."),
     }),
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
       if (scopeErr) return error(scopeErr);
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() || scopedIntentId || undefined;
       let networkId = query.networkId?.trim() || scopedNetworkId || undefined;
       const queryUserId = query.userId?.trim() || undefined;
@@ -818,14 +608,14 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         return error("Provide networkId or intentId.");
       }
 
-      // Strict scope enforcement: when chat is network-scoped, only allow querying that index
+      // Strict scope enforcement: when chat is network-scoped, only allow querying that network
       if (scopedNetworkId && networkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only read intent links from this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only read intent links from this community.`
         );
       }
 
-      // When only intentId is provided, enforce scope - don't reveal all linked indexes
+      // When only intentId is provided, enforce scope - don't reveal all linked networks
       if (intentId && !networkId) {
         if (scopedNetworkId) {
           // When scoped, only check if intent is linked to the scoped network
@@ -838,36 +628,36 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         }
       }
 
-      const _readIntentIndexGraphStart = Date.now();
-      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentIndex, {
+      const _listIntentNetworksGraphStart = Date.now();
+      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentNetwork, {
         userId: context.userId,
         networkId,
         intentId,
         operationMode: 'read' as const,
         queryUserId,
       }));
-      const _readIntentIndexGraphMs = Date.now() - _readIntentIndexGraphStart;
+      const _listIntentNetworksGraphMs = Date.now() - _listIntentNetworksGraphStart;
 
       if (result.error) {
         return error(result.error);
       }
       if (result.readResult) {
-        return success({ ...result.readResult, _graphTimings: [{ name: 'intent_network', durationMs: _readIntentIndexGraphMs, agents: result.agentTimings ?? [] }] });
+        return success({ ...result.readResult, _graphTimings: [{ name: 'intent_network', durationMs: _listIntentNetworksGraphMs, agents: result.agentTimings ?? [] }] });
       }
       return error("Failed to fetch intent-network links.");
     },
   });
 
-  const deleteIntentIndex = defineTool({
-    name: "delete_intent_index",
+  const removeIntentFromNetwork = defineTool({
+    name: "remove_intent_from_network",
     description:
       "Removes the link between an intent and a network. The intent itself is NOT deleted — it just stops being visible in that community " +
-      "and is no longer eligible for background matching within that index. The intent may still be linked to other indexes.\n\n" +
+      "and is no longer eligible for background matching within that network. The intent may still be linked to other networks.\n\n" +
       "**When to use:** When the user wants to withdraw an intent from a specific community without archiving it entirely. " +
-      "Use read_intent_indexes first to verify the link exists.\n\n" +
+      "Use list_intent_networks first to verify the link exists.\n\n" +
       "**Returns:** Confirmation that the link was removed. To fully remove an intent, use delete_intent instead.",
     querySchema: z.object({
-      intentId: z.string().describe("The UUID of the intent to unlink. Get this from read_intents or read_intent_indexes."),
+      intentId: z.string().describe("The UUID of the intent to unlink. Get this from read_intents or list_intent_networks."),
       networkId: z.string().optional().describe("The UUID of the network to unlink from. Get this from read_networks. Defaults to the scoped network in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
@@ -875,7 +665,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       if (scopeErr) return error(scopeErr);
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIntentId = focusedIntentId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
+      const scopedNetworkLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() ?? "";
       const networkId = query.networkId?.trim() || scopedNetworkId || "";
       if (scopedIntentId && intentId !== scopedIntentId) {
@@ -885,28 +675,28 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         return error("Invalid ID format. Both must be UUIDs.");
       }
 
-      // Strict scope enforcement: when chat is network-scoped, only allow unlinking from that index
+      // Strict scope enforcement: when chat is network-scoped, only allow unlinking from that network
       if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only unlink intents from this community.`
+          `This chat is scoped to ${scopedNetworkLabel}. You can only unlink intents from this community.`
         );
       }
 
-      const _deleteIntentIndexGraphStart = Date.now();
-      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentIndex, {
+      const _removeIntentFromNetworkGraphStart = Date.now();
+      const result = await traceGraph("intent_network", () => invokeWithAbortSignal(graphs.intentNetwork, {
         userId: context.userId,
         networkId,
         intentId,
         operationMode: 'delete' as const,
       }));
-      const _deleteIntentIndexGraphMs = Date.now() - _deleteIntentIndexGraphStart;
+      const _removeIntentFromNetworkGraphMs = Date.now() - _removeIntentFromNetworkGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
           return success({
             deleted: true,
             message: result.mutationResult.message,
-            _graphTimings: [{ name: 'intent_network', durationMs: _deleteIntentIndexGraphMs, agents: result.agentTimings ?? [] }],
+            _graphTimings: [{ name: 'intent_network', durationMs: _removeIntentFromNetworkGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to unlink.");
@@ -940,5 +730,5 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
     },
   });
 
-  return [readIntents, createIntent, updateIntent, deleteIntent, createIntentIndex, readIntentIndexes, deleteIntentIndex, searchIntents] as const;
+  return [readIntents, createIntent, updateIntent, deleteIntent, addIntentToNetwork, listIntentNetworks, removeIntentFromNetwork, searchIntents] as const;
 }

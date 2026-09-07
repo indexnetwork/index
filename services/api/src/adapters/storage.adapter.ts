@@ -92,10 +92,10 @@ export class S3StorageAdapter {
   }
 
   /**
-   * Upload an index (network) image to S3.
-   * @returns The S3 object key (e.g., index-images/userId/uuid.ext)
+   * Upload a network image to S3.
+   * @returns The S3 object key (e.g., network-images/userId/uuid.ext)
    */
-  async uploadIndexImage(
+  async uploadNetworkImage(
     buffer: Buffer,
     userId: string,
     extension: string,
@@ -106,7 +106,7 @@ export class S3StorageAdapter {
     if (!safeExtension) {
       throw new Error('Invalid file extension');
     }
-    const key = `index-images/${safeUserId}/${uuidv4()}.${safeExtension}`;
+    const key = `network-images/${safeUserId}/${uuidv4()}.${safeExtension}`;
     return this.uploadBuffer(buffer, key, contentType);
   }
 

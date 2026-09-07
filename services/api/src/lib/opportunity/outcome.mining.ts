@@ -9,7 +9,7 @@
  *
  * Guarantees (shadow discipline):
  *   - Never throws into the owner-action path (all failures warn-only).
- *   - Never writes questions, ranking, intent, premise, memory, newborn stamps,
+ *   - Never writes questions, ranking, intent, memory, newborn stamps,
  *     or push — the only durable write in this pipeline is the feedback event
  *     itself (done by the recorder before this runs).
  *   - Never logs opportunity ids, actions, candidate text, hypothesis/question

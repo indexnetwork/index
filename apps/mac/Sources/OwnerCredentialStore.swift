@@ -2,7 +2,6 @@ import Foundation
 
 struct OwnerCredentialRecord: Codable, Equatable {
     let credential: String
-    let credentialId: String
     let expiresAt: Date
 }
 
@@ -11,17 +10,21 @@ enum OwnerCredentialStoreFailure: Error, Equatable {
     case keychainReadBackFailed
 }
 
-/// Owns the app-only Keychain descriptor for the owner's ordinary API key.
-/// Raw owner material is represented only by OwnerCredentialRecord in process
-/// memory and by the generic-password value written through IndexKeychainStore.
+/// Owns this device's session token. Production writes it through
+/// IndexKeychainStore into the app-only Keychain group. Ad-hoc development
+/// builds cannot use that group, and login-keychain ACLs bind to the binary
+/// hash, so they store the same record in Application Support instead.
 struct OwnerCredentialStore {
     static let service = "network.index.system6.owner-credential"
-    static let account = "owner-v1"
+    // Bumped from owner-v1: the stored value is a device session token rather
+    // than an API key, so an older item must not be read back as one.
+    static let account = "owner-v2"
     static let accessGroupSuffix = "network.index.system6.owner-credentials"
-    static let credentialKeys: Set<String> = ["credential", "credentialId", "expiresAt"]
+    static let credentialKeys: Set<String> = ["credential", "expiresAt"]
 
     private let keychain: IndexKeychainStore
     private let descriptor: IndexKeychainItemDescriptor
+    private let fileURL: URL?
 
     init(
         accessGroup: String,
@@ -31,6 +34,7 @@ struct OwnerCredentialStore {
             throw OwnerCredentialStoreFailure.invalidAccessGroup
         }
         self.keychain = keychain
+        self.fileURL = nil
         self.descriptor = IndexKeychainItemDescriptor(
             service: Self.service,
             account: Self.account,
@@ -39,29 +43,47 @@ struct OwnerCredentialStore {
     }
 
 #if INDEX_DEVELOPMENT_BUILD
-    /// Ad-hoc development builds carry no provisioning-profile-authorized
-    /// access group, so the data-protection keychain is unavailable to them.
-    /// Store the credential in the login keychain instead. Never compiled
-    /// into production builds.
-    init(developmentLoginKeychain keychain: IndexKeychainStore = IndexKeychainStore()) {
-        self.keychain = keychain
+    /// Never compiled into production builds.
+    init() {
+        self.keychain = IndexKeychainStore()
         self.descriptor = IndexKeychainItemDescriptor(
             service: Self.service,
-            account: Self.account,
-            accessGroup: nil
+            account: Self.account
         )
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Index", isDirectory: true)
+        self.fileURL = dir.appendingPathComponent("owner-credential.json")
     }
 #endif
 
     func loadCredential() throws -> OwnerCredentialRecord? {
-        guard let data = try keychain.read(descriptor: descriptor) else { return nil }
+        guard let data = try readData() else { return nil }
+        return try record(from: data)
+    }
+
+    func putAndVerify(_ record: OwnerCredentialRecord) throws {
+        let data = try JSONEncoder.ownerCredential.encode(record)
+        try writeData(data)
+        guard try loadCredential() == record else {
+            throw OwnerCredentialStoreFailure.keychainReadBackFailed
+        }
+    }
+
+    func deleteAndVerify() throws {
+        try deleteData()
+        guard try loadCredential() == nil else {
+            throw OwnerCredentialStoreFailure.keychainReadBackFailed
+        }
+    }
+
+    private func record(from data: Data) throws -> OwnerCredentialRecord {
         do {
             guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   Set(object.keys) == Self.credentialKeys else {
                 throw OwnerCredentialStoreFailure.keychainReadBackFailed
             }
             let record = try JSONDecoder.ownerCredential.decode(OwnerCredentialRecord.self, from: data)
-            guard !record.credential.isEmpty, !record.credentialId.isEmpty else {
+            guard !record.credential.isEmpty else {
                 throw OwnerCredentialStoreFailure.keychainReadBackFailed
             }
             return record
@@ -69,19 +91,42 @@ struct OwnerCredentialStore {
         catch { throw OwnerCredentialStoreFailure.keychainReadBackFailed }
     }
 
-    func putAndVerify(_ record: OwnerCredentialRecord) throws {
-        let data = try JSONEncoder.ownerCredential.encode(record)
-        try keychain.putAndVerify(data, descriptor: descriptor)
-        guard try loadCredential() == record else {
-            throw OwnerCredentialStoreFailure.keychainReadBackFailed
+    private func readData() throws -> Data? {
+        if let fileURL {
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+            do { return try Data(contentsOf: fileURL) }
+            catch { throw OwnerCredentialStoreFailure.keychainReadBackFailed }
         }
+        return try keychain.read(descriptor: descriptor)
     }
 
-    func deleteAndVerify() throws {
-        try keychain.delete(descriptor: descriptor)
-        guard try keychain.read(descriptor: descriptor) == nil else {
-            throw OwnerCredentialStoreFailure.keychainReadBackFailed
+    private func writeData(_ data: Data) throws {
+        if let fileURL {
+            do {
+                try FileManager.default.createDirectory(
+                    at: fileURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try data.write(to: fileURL, options: .atomic)
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o600],
+                    ofItemAtPath: fileURL.path
+                )
+            } catch { throw OwnerCredentialStoreFailure.keychainReadBackFailed }
+            return
         }
+        try keychain.putAndVerify(data, descriptor: descriptor)
+    }
+
+    private func deleteData() throws {
+        if let fileURL {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                do { try FileManager.default.removeItem(at: fileURL) }
+                catch { throw OwnerCredentialStoreFailure.keychainReadBackFailed }
+            }
+            return
+        }
+        try keychain.delete(descriptor: descriptor)
     }
 }
 

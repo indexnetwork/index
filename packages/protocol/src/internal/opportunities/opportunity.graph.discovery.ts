@@ -21,7 +21,7 @@ type TraceEntry = { node: string; detail?: string; data?: Record<string, unknown
 // Search limits - fixed values for candidate retrieval
 // (The options.limit controls final output, not search pool)
 const LIMIT_PER_STRATEGY = 80;
-const PER_INDEX_LIMIT = 160;
+const PER_NETWORK_LIMIT = 160;
 
 /**
  * Node 3: Discovery
@@ -45,14 +45,14 @@ export async function discoveryNode(state: OpportunityState, deps: OpportunityGr
     };
 
     discoveryLog.verbose('Starting semantic search', {
-      targetIndexesCount: state.targetNetworks.length,
+      targetNetworksCount: state.targetNetworks.length,
       discoverySource: state.discoverySource,
       searchQueryPreview: state.searchQuery?.trim().slice(0, 60) ?? '(none)',
     });
 
     try {
       if (state.targetNetworks.length === 0) {
-        discoveryLog.warn('No target indexes for search');
+        discoveryLog.warn('No target networks for search');
         return { candidates: [] };
       }
 
@@ -65,7 +65,7 @@ export async function discoveryNode(state: OpportunityState, deps: OpportunityGr
         deps,
         discoveryUserId,
         limitPerStrategy: LIMIT_PER_STRATEGY,
-        perIndexLimit: PER_INDEX_LIMIT,
+        perNetworkLimit: PER_NETWORK_LIMIT,
       };
 
       if (state.discoverySource === 'context') {
@@ -114,21 +114,21 @@ async function discoverDirectConnection(
   }
   discoveryLog.verbose('Direct-connection mode — bypassing vector search', { targetUserId });
   const targetMemberships = await deps.database.getNetworkMemberships(targetUserId);
-  const targetUserIndexIds = targetMemberships.map(m => m.networkId);
-  const sharedIndexIds = state.targetNetworks
-    .filter(ti => targetUserIndexIds.includes(ti.networkId))
-    .map(ti => ti.networkId);
+  const targetUserNetworkIds = targetMemberships.map(m => m.networkId);
+  const sharedNetworkIds = state.targetNetworks
+    .filter(tn => targetUserNetworkIds.includes(tn.networkId))
+    .map(tn => tn.networkId);
 
-  if (sharedIndexIds.length === 0) {
-    discoveryLog.warn('Target user shares no indexes with discoverer', {
+  if (sharedNetworkIds.length === 0) {
+    discoveryLog.warn('Target user shares no networks with discoverer', {
       targetUserId,
-      discovererIndexes: state.targetNetworks.map(ti => ti.networkId),
+      discovererNetworks: state.targetNetworks.map(tn => tn.networkId),
     });
     return {
       candidates: [],
       trace: [{
         node: "discovery",
-        detail: `Direct connection: target user shares no indexes`,
+        detail: `Direct connection: target user shares no networks`,
         data: { targetUserId },
       }],
     };
@@ -142,7 +142,7 @@ async function discoverDirectConnection(
     // Build one candidate per intent per shared network it belongs to
     for (const intent of targetIntents) {
       const intentNetworkIds = await deps.database.getNetworkIdsForIntent(intent.id);
-      const overlapping = sharedIndexIds.filter(id => intentNetworkIds.includes(id));
+      const overlapping = sharedNetworkIds.filter(id => intentNetworkIds.includes(id));
       for (const networkId of overlapping) {
         directCandidates.push(withCandidateEvidence({
           candidateUserId: targetUserId,
@@ -162,7 +162,7 @@ async function discoverDirectConnection(
   if (directCandidates.length === 0) {
     directCandidates.push(withCandidateEvidence({
       candidateUserId: targetUserId,
-      networkId: sharedIndexIds[0] as Id<'networks'>,
+      networkId: sharedNetworkIds[0] as Id<'networks'>,
       similarity: 1.0,
       lens: 'explicit_mention',
       candidatePayload: '',
@@ -173,7 +173,7 @@ async function discoverDirectConnection(
 
   discoveryLog.verbose('Direct candidates constructed', {
     count: directCandidates.length,
-    sharedIndexes: sharedIndexIds.length,
+    sharedNetworks: sharedNetworkIds.length,
     targetIntents: targetIntents.length,
   });
 
@@ -181,11 +181,11 @@ async function discoverDirectConnection(
     candidates: directCandidates,
     trace: [{
       node: "discovery",
-      detail: `Direct connection → ${directCandidates.length} candidate(s) from ${sharedIndexIds.length} shared network(es)`,
+      detail: `Direct connection → ${directCandidates.length} candidate(s) from ${sharedNetworkIds.length} shared network(s)`,
       data: {
         targetUserId,
         candidateCount: directCandidates.length,
-        sharedIndexes: sharedIndexIds.length,
+        sharedNetworks: sharedNetworkIds.length,
         durationMs: Date.now() - startTime,
       },
     }],
@@ -194,7 +194,7 @@ async function discoverDirectConnection(
 
 /**
  * Context source: HyDE (when a search query exists) plus the additive
- * premise/context strategies.
+ * context strategies.
  */
 async function discoverFromContext(
   ctx: DiscoveryStrategyContext,
@@ -204,7 +204,7 @@ async function discoverFromContext(
   const { state } = ctx;
 
   if (state.searchQuery?.trim()) {
-    discoveryLog.verbose('Context source with searchQuery → running query HyDE + premise paths', {
+    discoveryLog.verbose('Context source with searchQuery → running query HyDE paths', {
       searchQuery: state.searchQuery.trim().substring(0, 80),
     });
     const queryResult = await runQueryHydeDiscovery(ctx);
@@ -301,26 +301,26 @@ async function discoverFromIntent(
   const searchAllNetworks = async (minScore: number): Promise<CandidateMatch[]> => {
     const found: CandidateMatch[] = [];
     await Promise.all(
-      state.targetNetworks.map(async (targetIndex) => {
+      state.targetNetworks.map(async (targetNetwork) => {
         const results = await deps.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
-          indexScope: [targetIndex.networkId],
+          networkScope: [targetNetwork.networkId],
           excludeUserId: discoveryUserId,
           limitPerStrategy: ctx.limitPerStrategy,
-          limit: ctx.perIndexLimit,
+          limit: ctx.perNetworkLimit,
           minScore,
         });
-        found.push(...collectHydeResults(results, targetIndex.networkId));
+        found.push(...collectHydeResults(results, targetNetwork.networkId));
       })
     );
     return found;
   };
 
-  const byUserAndIndex = new Map<string, CandidateMatch>();
+  const byUserAndNetwork = new Map<string, CandidateMatch>();
   const mergeIntoPool = (found: CandidateMatch[]) => {
     for (const c of found) {
       const key = `${c.candidateUserId}:${c.networkId}:intent:${c.candidateIntentId}`;
-      if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
-        byUserAndIndex.set(key, c);
+      if (!byUserAndNetwork.has(key) || c.similarity > (byUserAndNetwork.get(key)?.similarity ?? 0)) {
+        byUserAndNetwork.set(key, c);
       }
     }
   };
@@ -330,13 +330,13 @@ async function discoverFromIntent(
   // The similarity floor can be what keeps a small network under the match
   // floor, not a genuine lack of members. Re-run without it once when the
   // deduped pool doesn't have enough distinct users yet.
-  const distinctUsers = new Set(Array.from(byUserAndIndex.values()).map((c) => c.candidateUserId)).size;
+  const distinctUsers = new Set(Array.from(byUserAndNetwork.values()).map((c) => c.candidateUserId)).size;
   const toppedUp = distinctUsers < DISCOVERY_MIN_MATCHES;
   if (toppedUp) {
     mergeIntoPool(await searchAllNetworks(0));
   }
 
-  const candidates = Array.from(byUserAndIndex.values());
+  const candidates = Array.from(byUserAndNetwork.values());
   discoveryLog.verbose('Intent-path discovery complete', { candidatesFound: candidates.length, toppedUp });
   const usedLenses = Object.keys(hydeEmbeddings);
 

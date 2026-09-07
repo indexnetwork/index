@@ -7,10 +7,10 @@
  *
  * Handles: **bold**, *italic*, `inline code`, code blocks (```),
  * bullet lists, numbered lists, headings, and special blocks
- * (intent_proposal, opportunity).
+ * (opportunity).
  */
 
-import { RESET, BOLD, ITALIC, WHITE, CYAN, BLUE, MAGENTA, GRAY, AGENT_TEXT, wordWrap, confidenceBar } from "./base";
+import { RESET, BOLD, ITALIC, WHITE, CYAN, BLUE, GRAY, AGENT_TEXT, wordWrap } from "./base";
 
 export class MarkdownRenderer {
   private buffer = "";
@@ -146,12 +146,6 @@ export class MarkdownRenderer {
     }
     this.pristine = false;
 
-    // Special block: intent_proposal
-    if (lang === "intent_proposal") {
-      this.renderIntentProposal(content);
-      return;
-    }
-
     // Special block: opportunity
     if (lang === "opportunity") {
       this.renderOpportunity(content);
@@ -169,40 +163,6 @@ export class MarkdownRenderer {
       process.stdout.write(`  ${border} ${CYAN}${line}${RESET}\n`);
     }
     process.stdout.write(`  ${GRAY}${"─".repeat(46)}${RESET}\n\n`);
-  }
-
-  /** Render an intent proposal as a styled card. */
-  private renderIntentProposal(content: string): void {
-    try {
-      const data = JSON.parse(content) as {
-        description?: string;
-        confidence?: number;
-        proposalId?: string;
-      };
-
-      const desc = data.description ?? content;
-      const confidence = data.confidence;
-
-      process.stdout.write(`  ${MAGENTA}+${"─".repeat(56)}+${RESET}\n`);
-      process.stdout.write(`  ${MAGENTA}|${RESET} ${BOLD}${MAGENTA}Signal Proposal${RESET}${" ".repeat(40)}${MAGENTA}|${RESET}\n`);
-      process.stdout.write(`  ${MAGENTA}|${RESET}${" ".repeat(56)}${MAGENTA}|${RESET}\n`);
-
-      const wrapped = wordWrap(desc, 52);
-      for (const line of wrapped) {
-        const pad = Math.max(0, 54 - line.length);
-        process.stdout.write(`  ${MAGENTA}|${RESET}  ${AGENT_TEXT}${line}${RESET}${" ".repeat(pad)}${MAGENTA}|${RESET}\n`);
-      }
-
-      if (confidence !== undefined) {
-        process.stdout.write(`  ${MAGENTA}|${RESET}${" ".repeat(56)}${MAGENTA}|${RESET}\n`);
-        const bar = confidenceBar(confidence);
-        process.stdout.write(`  ${MAGENTA}|${RESET}  ${GRAY}Confidence: ${bar}${RESET}${" ".repeat(24)}${MAGENTA}|${RESET}\n`);
-      }
-
-      process.stdout.write(`  ${MAGENTA}+${"─".repeat(56)}+${RESET}\n\n`);
-    } catch {
-      process.stdout.write(`  ${GRAY}${content}${RESET}\n\n`);
-    }
   }
 
   /** Render an opportunity block. */

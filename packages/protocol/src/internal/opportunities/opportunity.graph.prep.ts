@@ -6,13 +6,9 @@
  */
 
 import type { ActiveIntent, Id } from '../../platform/database.js';
-import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { IndexedIntent, TargetNetwork } from './opportunity.state.js';
-import { IntentIndexer } from '../shared/intent-indexer.js';
-import type { IntentIndexingResult } from '../../protocol/core.js';
 import { withCallLogging } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
-import { requestContext } from '../shared/observability/request-context.js';
 import { prepLog, scopeLog, resolveLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /**
@@ -28,10 +24,10 @@ export async function prepNode(state: OpportunityState, deps: OpportunityGraphDe
       {
         userId: state.userId,
         hasSearchQuery: !!state.searchQuery,
-        requestedIndexId: state.networkId ?? undefined,
+        requestedNetworkId: state.networkId ?? undefined,
       },
       async () => {
-        // Use getNetworkMemberships (all memberships) for search scope — NOT getUserIndexIds
+        // Use getNetworkMemberships (all memberships) for search scope — NOT getUserNetworkIds
         // (which filters by autoAssign=true and is intended only for intent assignment).
         const memberships = await deps.database.getNetworkMemberships(state.userId);
         const userNetworkIds = memberships.map(m => m.networkId) as Id<'networks'>[];
@@ -52,7 +48,7 @@ export async function prepNode(state: OpportunityState, deps: OpportunityGraphDe
           intentId: intent.id,
           payload: intent.payload,
           summary: intent.summary ?? undefined,
-          indexes: [],
+          networks: [],
         }));
         const sourceProfile = profile
           ? {
@@ -90,31 +86,31 @@ export async function prepNode(state: OpportunityState, deps: OpportunityGraphDe
 export function prepTraceSummary(result: unknown): string | undefined {
   const r = result as Record<string, unknown>;
   if (r?.error) return `error: ${r.error}`;
-  const indexes = r?.userNetworks as unknown[];
+  const networks = r?.userNetworks as unknown[];
   const intents = r?.indexedIntents as unknown[];
-  return indexes && intents ? `${indexes.length} index(es), ${intents.length} intent(s)` : undefined;
+  return networks && intents ? `${networks.length} network(s), ${intents.length} intent(s)` : undefined;
 }
 
 /**
  * Node 1: Scope
- * Determines which indexes to search within.
- * If networkId provided: searches only that index.
- * Otherwise: searches all user's indexes.
+ * Determines which networks to search within.
+ * If networkId provided: searches only that network.
+ * Otherwise: searches all the user's networks.
  */
 export async function scopeNode(state: OpportunityState, deps: OpportunityGraphDeps) {
   return timed("OpportunityGraph.scope", async () => {
     scopeLog.verbose('Determining search scope', {
-      requestedIndexId: state.networkId,
+      requestedNetworkId: state.networkId,
       userNetworksCount: state.userNetworks.length,
     });
 
     try {
-      let targetIndexIds: Id<'networks'>[];
+      let targetNetworkIds: Id<'networks'>[];
 
       if (state.networkId) {
         // Validate user is member or owner of requested network
         const isInScope = state.userNetworks.includes(state.networkId);
-        const isOwner = !isInScope && await deps.database.isIndexOwner(state.networkId, state.userId);
+        const isOwner = !isInScope && await deps.database.isNetworkOwner(state.networkId, state.userId);
         if (!isInScope && !isOwner) {
           scopeLog.warn('User not member of requested network', {
             networkId: state.networkId,
@@ -124,22 +120,22 @@ export async function scopeNode(state: OpportunityState, deps: OpportunityGraphD
             error: 'You are not a member of that network.',
           };
         }
-        targetIndexIds = [state.networkId];
-      } else if (state.indexScope !== undefined) {
+        targetNetworkIds = [state.networkId];
+      } else if (state.networkScope !== undefined) {
         // Bounded scope (e.g. a network-scoped agent's reachable networks):
         // intersect with the user's actual memberships so discovery never
         // reaches networks outside the agent's bound scope. An explicit
         // empty scope is authoritative and must fail closed.
-        const allowed = new Set(state.indexScope);
-        targetIndexIds = state.userNetworks.filter((n) => allowed.has(n));
-        scopeLog.verbose('Applied indexScope intersection', {
-          indexScopeCount: state.indexScope.length,
+        const allowed = new Set(state.networkScope);
+        targetNetworkIds = state.userNetworks.filter((n) => allowed.has(n));
+        scopeLog.verbose('Applied networkScope intersection', {
+          networkScopeCount: state.networkScope.length,
           userNetworksCount: state.userNetworks.length,
-          targetCount: targetIndexIds.length,
+          targetCount: targetNetworkIds.length,
         });
       } else {
-        // Search all user's indexes
-        targetIndexIds = state.userNetworks;
+        // Search all the user's networks
+        targetNetworkIds = state.userNetworks;
       }
 
       if (state.triggerIntentId) {
@@ -150,112 +146,58 @@ export async function scopeNode(state: OpportunityState, deps: OpportunityGraphD
           await deps.database.getNetworkIdsForIntent(state.triggerIntentId),
         );
         const activeOwnerNetworkIds = new Set(state.userNetworks);
-        targetIndexIds = targetIndexIds.filter((networkId) =>
+        targetNetworkIds = targetNetworkIds.filter((networkId) =>
           assignedNetworkIds.has(networkId) && activeOwnerNetworkIds.has(networkId),
         );
         scopeLog.verbose('Applied trigger-intent network intersection', {
           triggerIntentId: state.triggerIntentId,
           assignedCount: assignedNetworkIds.size,
-          targetCount: targetIndexIds.length,
+          targetCount: targetNetworkIds.length,
         });
       }
 
-      // Fetch index details
+      // Fetch network details
       const targetNetworks: TargetNetwork[] = await Promise.all(
-        targetIndexIds.map(async (networkId) => {
-          const index = await deps.database.getNetwork(networkId);
+        targetNetworkIds.map(async (networkId) => {
+          const network = await deps.database.getNetwork(networkId);
           const memberCount = await deps.database.getNetworkMemberCount(networkId);
           return {
             networkId,
-            title: index?.title ?? 'Unknown',
+            title: network?.title ?? 'Unknown',
             memberCount,
           };
         })
       );
 
       scopeLog.verbose('Scope determined', {
-        targetIndexesCount: targetNetworks.length,
-        indexes: targetNetworks.map(i => i.title),
+        targetNetworksCount: targetNetworks.length,
+        networks: targetNetworks.map(n => n.title),
       });
 
-      // ── Populate index relevancy scores for dedup tie-breaking ──
-      const indexRelevancyScores: Record<string, number> = {};
+      // ── Populate network relevancy scores for dedup tie-breaking ──
+      const networkRelevancyScores: Record<string, number> = {};
 
       if (state.triggerIntentId) {
-        // Background path: look up persisted scores from intent_indexes
+        // Background path: look up persisted scores from intent_networks
         try {
-          const scores = await deps.database.getIntentIndexScores(state.triggerIntentId);
+          const scores = await deps.database.getIntentNetworkScores(state.triggerIntentId);
           for (const { networkId, relevancyScore } of scores) {
             if (relevancyScore != null) {
-              indexRelevancyScores[networkId] = relevancyScore;
+              networkRelevancyScores[networkId] = relevancyScore;
             }
           }
         } catch (err) {
-          scopeLog.warn('Failed to load intent index scores', { triggerIntentId: state.triggerIntentId, error: err });
-        }
-      } else if (state.searchQuery?.trim()) {
-        // Chat path: score query against target indexes in parallel
-        try {
-          const indexer = new IntentIndexer();
-          const scopeAgentTimings: DebugMetaAgent[] = [];
-          const scorableIndexes = targetNetworks.filter(ti => ti.title !== 'Unknown');
-          const scoringPromises = scorableIndexes.map(async (ti) => {
-            const ctx = await deps.database.getNetworkMemberContext(ti.networkId, state.userId);
-            if (!ctx?.indexPrompt?.trim() && !ctx?.memberPrompt?.trim()) {
-              return { networkId: ti.networkId, score: 1.0 };
-            }
-            const _indexerStart = Date.now();
-            const traceEmitter = requestContext.getStore()?.traceEmitter;
-            traceEmitter?.({ type: "agent_start", name: "intent-networker" });
-            let result: IntentIndexingResult | null;
-            try {
-              result = await indexer.invoke(
-                state.searchQuery!,
-                ctx?.indexPrompt ?? null,
-                ctx?.memberPrompt ?? null,
-              );
-            } catch {
-              return { networkId: ti.networkId, score: 1.0 };
-            } finally {
-              const _indexerDuration = Date.now() - _indexerStart;
-              traceEmitter?.({ type: "agent_end", name: "intent-networker", durationMs: _indexerDuration, summary: `Scored index ${ti.networkId}` });
-              scopeAgentTimings.push({ name: 'intent.indexer', durationMs: _indexerDuration });
-            }
-            if (!result) return { networkId: ti.networkId, score: 1.0 };
-            const score = ctx?.indexPrompt && ctx?.memberPrompt
-              ? result.indexScore * 0.6 + result.memberScore * 0.4
-              : ctx?.indexPrompt ? result.indexScore : result.memberScore;
-            return { networkId: ti.networkId, score };
-          });
-          const results = await Promise.all(scoringPromises);
-          for (const { networkId, score } of results) {
-            indexRelevancyScores[networkId] = score;
-          }
-          // Accumulate indexer timings into graph state
-          if (scopeAgentTimings.length > 0) {
-            return {
-              targetNetworks,
-              indexRelevancyScores,
-              agentTimings: scopeAgentTimings,
-              trace: [{
-                node: "scope",
-                detail: `Searching ${targetNetworks.length} index(es): ${targetNetworks.map(i => `${i.title} (${i.memberCount})`).join(', ')}`,
-                data: { totalMembers: targetNetworks.reduce((sum, i) => sum + i.memberCount, 0) },
-              }],
-            };
-          }
-        } catch (err) {
-          scopeLog.warn('Failed to score query against indexes', { error: err });
+          scopeLog.warn('Failed to load intent network scores', { triggerIntentId: state.triggerIntentId, error: err });
         }
       }
 
       const totalMembers = targetNetworks.reduce((sum, i) => sum + i.memberCount, 0);
       return {
         targetNetworks,
-        indexRelevancyScores,
+        networkRelevancyScores,
         trace: [{
           node: "scope",
-          detail: `Searching ${targetNetworks.length} index(es): ${targetNetworks.map(i => `${i.title} (${i.memberCount})`).join(', ')}`,
+          detail: `Searching ${targetNetworks.length} network(s): ${targetNetworks.map(n => `${n.title} (${n.memberCount})`).join(', ')}`,
           data: { totalMembers },
         }],
       };
@@ -279,14 +221,14 @@ export async function scopeNode(state: OpportunityState, deps: OpportunityGraphD
 export function scopeTraceSummary(result: unknown): string | undefined {
   const r = result as Record<string, unknown>;
   if (r?.error) return `error: ${r.error}`;
-  const indexes = r?.targetNetworks as unknown[];
-  return indexes ? `${indexes.length} index(es) in scope` : undefined;
+  const networks = r?.targetNetworks as unknown[];
+  return networks ? `${networks.length} network(s) in scope` : undefined;
 }
 
 /**
  * Node 2: Resolve
  * Resolves trigger intent from triggerIntentId or searchQuery vs indexedIntents;
- * sets discoverySource, resolvedTriggerIntentId, resolvedIntentInIndex for routing (path A/B/C).
+ * sets discoverySource, resolvedTriggerIntentId, resolvedIntentInNetwork for routing (path A/B/C).
  */
 export async function resolveNode(state: OpportunityState, deps: OpportunityGraphDeps) {
   return timed("OpportunityGraph.resolve", async () => {
@@ -296,7 +238,7 @@ export async function resolveNode(state: OpportunityState, deps: OpportunityGrap
       indexedIntentsCount: state.indexedIntents.length,
     });
 
-    const targetIndexIds = state.targetNetworks.map((t) => t.networkId);
+    const targetNetworkIds = state.targetNetworks.map((t) => t.networkId);
 
     try {
       let resolvedIntentId: Id<'intents'> | undefined;
@@ -310,19 +252,19 @@ export async function resolveNode(state: OpportunityState, deps: OpportunityGrap
           });
           return {
             resolvedTriggerIntentId: undefined,
-            resolvedIntentInIndex: false,
+            resolvedIntentInNetwork: false,
             discoverySource: 'context' as const,
             error: 'Trigger intent is not available for discovery.',
           };
         }
         const inNetwork = await deps.database.getNetworkIdsForIntent(state.triggerIntentId);
-        const inTarget = inNetwork.some((id) => targetIndexIds.includes(id as Id<'networks'>));
+        const inTarget = inNetwork.some((id) => targetNetworkIds.includes(id as Id<'networks'>));
         resolvedIntentId = state.triggerIntentId;
-        const resolvedIntentInIndex = inTarget;
-        const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('context' as const);
+        const resolvedIntentInNetwork = inTarget;
+        const discoverySource = resolvedIntentInNetwork ? ('intent' as const) : ('context' as const);
         return {
           resolvedTriggerIntentId: resolvedIntentId,
-          resolvedIntentInIndex,
+          resolvedIntentInNetwork,
           discoverySource,
         };
       }
@@ -333,11 +275,11 @@ export async function resolveNode(state: OpportunityState, deps: OpportunityGrap
         if (matched) {
           resolvedIntentId = matched.intentId;
           const inNetwork = await deps.database.getNetworkIdsForIntent(matched.intentId);
-          const resolvedIntentInIndex = inNetwork.some((id) => targetIndexIds.includes(id as Id<'networks'>));
-          const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('context' as const);
+          const resolvedIntentInNetwork = inNetwork.some((id) => targetNetworkIds.includes(id as Id<'networks'>));
+          const discoverySource = resolvedIntentInNetwork ? ('intent' as const) : ('context' as const);
           return {
             resolvedTriggerIntentId: resolvedIntentId,
-            resolvedIntentInIndex,
+            resolvedIntentInNetwork,
             discoverySource,
           };
         }
@@ -349,7 +291,7 @@ export async function resolveNode(state: OpportunityState, deps: OpportunityGrap
 
       return {
         resolvedTriggerIntentId: undefined,
-        resolvedIntentInIndex: false,
+        resolvedIntentInNetwork: false,
         discoverySource: 'context' as const,
       };
     } catch (err) {
@@ -361,7 +303,7 @@ export async function resolveNode(state: OpportunityState, deps: OpportunityGrap
       });
       return {
         resolvedTriggerIntentId: undefined,
-        resolvedIntentInIndex: false,
+        resolvedIntentInNetwork: false,
         discoverySource: 'context' as const,
         error: errMsg || 'Resolve failed',
         trace: [{

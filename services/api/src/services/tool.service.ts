@@ -1,30 +1,22 @@
 /**
  * Tool Service — owns graph compilation, tool deps assembly, and context resolution.
- * Provides direct HTTP invocation of chat tools without LangChain wrapping.
+ * Provides direct HTTP invocation of protocol tools without LangChain wrapping.
  */
 
 import { z } from 'zod';
 
-import { matchesReadyBestEffort } from '../lib/negotiation/negotiation-graph';
-import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase, conversationDatabaseAdapter } from '../adapters/database.adapter';
+import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
-import type { AgentDispatcher } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, ToolDeps } from '@indexnetwork/protocol';
 import { intentIndexing } from '../lib/intent/indexing';
-import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { enrichUserProfile } from '../lib/parallel/parallel';
-import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 import { log } from '../lib/log';
 
 const logger = log.service.from('ToolService');
-
-type ToolServiceDeps = ToolDeps & {
-  opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
-};
 
 
 /**
@@ -52,25 +44,15 @@ export class ToolService {
     userDb: ToolDeps['userDb'],
     systemDb: ToolDeps['systemDb'],
     graphs: ToolDeps['graphs'],
-  ): ToolServiceDeps {
+  ): ToolDeps {
     return {
       database,
       userDb,
       systemDb,
-      intentProposalStore: intentProposalDatabaseAdapter,
       scraper: this.scraper,
       embedder: this.embedder,
       cache: this.cache,
       enricher: { enrichUserProfile },
-      negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
-      // Discovery run from a tool must wake the signal's agent exactly as the
-      // background queue does. Without it the tool-built opportunity graph's
-      // matches_ready edge ends at END: matches persist and nobody is woken.
-      matchesReady: matchesReadyBestEffort,
-      // IND-593: direct authenticated-owner tool calls (REST tool controller /
-      // CLI) traverse the owner-approval boundary via host attestation. Own
-      // authority instance over the store shared with the MCP composition.
-      opportunityOwnerApproval: getDirectOpportunityOwnerApprovalAuthority(),
       graphs,
     };
   }
@@ -82,18 +64,14 @@ export class ToolService {
    * @param userId - Authenticated user ID
    * @param toolName - Name of the tool to invoke (e.g. "read_intents")
    * @param query - Tool input object (validated against tool schema)
-   * @param options - Trusted, server-derived request provenance from the
-   *   controller seam. `sessionAuthenticated` must reflect the authenticated
-   *   request's auth kind (AuthGuard session vs API key) — never caller input.
    * @returns Parsed tool result
-   * @throws ChatContextAccessError if user/index context is invalid
+   * @throws ChatContextAccessError if user/network context is invalid
    * @throws Error if tool not found or validation fails
    */
   async invokeTool(
     userId: string,
     toolName: string,
     query: Record<string, unknown> = {},
-    options: { sessionAuthenticated?: boolean } = {},
   ): Promise<unknown> {
     logger.verbose('Invoking tool', { userId, toolName });
 
@@ -101,22 +79,6 @@ export class ToolService {
 
     // Resolve user context
     const context = await resolveChatContext({ database, userId });
-    // IND-593 trusted provenance seam: mark this context as a direct
-    // authenticated owner session ONLY from the controller-derived auth kind.
-    // API-key (CLI/agent) callers stay unmarked and cannot attest owner
-    // authority at the opportunity owner-approval boundary.
-    bindOwnerApprovalProvenance(context, {
-      surface: 'rest',
-      sessionAuthenticated: options.sessionAuthenticated === true,
-    });
-
-    if (context.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
-      return {
-        success: false,
-        error: 'Onboarding required',
-        message: buildMcpOnboardingMessage(context),
-      };
-    }
 
     // Get or compile graphs (cached across requests — graphs are stateless)
     const graphs = this.getOrCompileGraphs(database);
@@ -221,7 +183,6 @@ export class ToolService {
       followUp: intentIndexing,
     });
     const intentGraph = intents.createGraph();
-    const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();
     const hydeCache = new RedisCacheAdapter();
     const compiledHydeGraph = new HydeGraphFactory(
       database as unknown as HydeGraphDatabase,
@@ -230,35 +191,22 @@ export class ToolService {
       new LensInferrer(),
       new HydeGenerator(),
     ).createGraph();
-    // No-op dispatcher: ToolService is used for non-chat tool invocations.
-    // Only the opportunity graph below still needs one (hasExternalAgent,
-    // the unlimited-maxTurns rule) — the negotiation graph no longer takes a
-    // dispatcher at all (external-agent turn dispatch is offline, #1494
-    // round-3 Option A).
-    const noOpDispatcher: AgentDispatcher = {
-      hasExternalAgent: async () => false,
-    };
     const opportunityGraph = new OpportunityGraphFactory(
       database,
       this.embedder,
       compiledHydeGraph,
-      undefined,
-      undefined,
-      matchesReadyBestEffort,
-      noOpDispatcher,
     ).createGraph();
-    const networks = new Networks({ database, indexer: intents });
-    const indexGraph = networks.createGraph();
+    const networks = new Networks({ database });
+    const networkGraph = networks.createGraph();
     const networkMembershipGraph = networks.createMembershipGraph();
-    const intentIndexGraph = networks.createAssignmentGraph();
+    const intentNetworkGraph = networks.createAssignmentGraph();
 
     this.compiledGraphs = {
       intent: intentGraph,
-      index: indexGraph,
+      network: networkGraph,
       networkMembership: networkMembershipGraph,
-      intentIndex: intentIndexGraph,
+      intentNetwork: intentNetworkGraph,
       opportunity: opportunityGraph,
-      premise: premiseGraph,
     };
 
     return this.compiledGraphs;

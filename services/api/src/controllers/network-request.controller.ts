@@ -1,5 +1,4 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { isStaff } from '../lib/staff';
@@ -36,7 +35,7 @@ function parseInput(body: Record<string, unknown>): NetworkRequestInput | null {
 export class NetworkRequestController {
   /** Submit a new "create a network" request. */
   @Post('')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async create(req: Request, user: AuthenticatedUser) {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const input = parseInput(body);
@@ -57,7 +56,7 @@ export class NetworkRequestController {
    * (which misses STAFF_EMAILS entries and mixed-case @index.network addresses).
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async listMine(_req: Request, user: AuthenticatedUser) {
     const requests = await networkRequestService.listMyRequests(user.id);
     return Response.json({ requests, canReview: isStaff(user) });
@@ -65,7 +64,7 @@ export class NetworkRequestController {
 
   /** Staff-only: list all open requests awaiting review. */
   @Get('/pending')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async listPending(_req: Request, user: AuthenticatedUser) {
     if (!isStaff(user)) {
       return Response.json({ error: 'Access denied' }, { status: 403 });
@@ -76,7 +75,7 @@ export class NetworkRequestController {
 
   /** Update and resubmit the caller's own request. */
   @Patch('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async update(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const input = parseInput(body);
@@ -93,7 +92,7 @@ export class NetworkRequestController {
 
   /** Dismiss (soft-delete) the caller's own request. */
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async dismiss(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await networkRequestService.dismissRequest(params.id, user.id);
@@ -105,7 +104,7 @@ export class NetworkRequestController {
 
   /** Staff-only: approve or request changes on a request. */
   @Post('/:id/review')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async review(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     if (!isStaff(user)) {
       return Response.json({ error: 'Access denied' }, { status: 403 });

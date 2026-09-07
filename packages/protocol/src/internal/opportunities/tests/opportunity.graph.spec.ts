@@ -94,8 +94,11 @@ function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabase {
   });
 
   return {
-    upsertDiscoveryMatchCandidates: async (items: unknown[]) => items.map((item, i) => ({
-      ...(item as object), id: `cand-${i}`, status: 'pending', createdAt: new Date(),
+    openCounterparties: async (pairs) => pairs.map((pair, i) => ({
+      opportunityId: `opp-${i}` as Id<'opportunities'>,
+      negotiationId: `neg-${i}`,
+      initiatorUserId: pair.userA,
+      initiatorIntentId: pair.intentA,
     })),
     getProfile: async () => null,
     createOpportunity: async (data) => ({ ...emptyOpportunity('fixture-opportunity'), ...data }),
@@ -105,14 +108,14 @@ function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabase {
     updateOpportunityStatusIfNetworkEligible: async () => null,
     opportunityExistsBetweenActors: async () => false,
     findOpportunitiesByActors: async () => [],
-    getUserIndexIds: async () => [],
+    getUserNetworkIds: async () => [],
     getNetworkMemberships: async () => [],
     getActiveNetworkMembershipPairs: async (pairs) => pairs,
     getActiveIntents: async () => [],
     getNetworkIdsForIntent: async () => [],
     getNetwork: async () => null,
     getNetworkMemberCount: async () => 0,
-    getIntentIndexScores: async () => [],
+    getIntentNetworkScores: async () => [],
     getNetworkMemberContext: async () => null,
     getNetworkAssignmentContext: async () => null,
     getOpportunity: async () => null,
@@ -121,20 +124,14 @@ function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabase {
     stampOpportunityActorAction: async () => null,
     updateOpportunityActorApproval: async () => null,
     isNetworkMember: async () => false,
-    isIndexOwner: async () => false,
+    isNetworkOwner: async () => false,
     getUser: async () => null,
     getOrCreateDM: async () => ({ id: 'fixture-conversation' }),
     getIntent: async () => null,
-    getPremise: async () => null,
-    getPremisesForUser: async () => [],
-    getPremisesForUserInNetworks: async () => [],
-    searchPremisesBySimilarity: async () => [],
-    searchPremisesBySimilarityBatch: async () => [],
     getUserContext: async () => null,
     getUserContexts: async () => [],
     searchIntentsByContextEmbedding: async () => [],
     getHydeDocumentsForSource: async () => [],
-    getNegotiationTaskForOpportunity: async () => null,
   };
 }
 
@@ -172,8 +169,8 @@ function createdOpportunity(data: CreateOpportunityData): Opportunity {
 }
 
 function createMockGraph(deps?: {
-  getUserIndexIds?: () => Promise<Id<'networks'>[]>;
-  getNetworkMemberships?: () => Promise<Array<{ networkId: string; networkTitle: string; indexPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; isPersonal: boolean; joinedAt: Date }>>;
+  getUserNetworkIds?: () => Promise<Id<'networks'>[]>;
+  getNetworkMemberships?: () => Promise<Array<{ networkId: string; networkTitle: string; networkPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; isPersonal: boolean; joinedAt: Date }>>;
   getActiveNetworkMembershipPairs?: OpportunityGraphDatabase['getActiveNetworkMembershipPairs'];
   getActiveIntents?: () => Promise<Array<{ id: Id<'intents'>; payload: string; summary: string | null; createdAt: Date }>>;
   getNetwork?: (id: string) => Promise<{ id: string; title: string } | null>;
@@ -194,10 +191,10 @@ function createMockGraph(deps?: {
     },
     opportunityExistsBetweenActors: () => Promise.resolve(false),
     findOpportunitiesByActors: () => Promise.resolve([]),
-    getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'networks'>[])),
+    getUserNetworkIds: deps?.getUserNetworkIds ?? (() => Promise.resolve(['idx-1'] as Id<'networks'>[])),
     getNetworkMemberships: deps?.getNetworkMemberships ?? (async () => {
-      const ids = deps?.getUserIndexIds ? await deps.getUserIndexIds() : ['idx-1'] as Id<'networks'>[];
-      return ids.map(id => ({ networkId: id, networkTitle: 'Test Index', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }));
+      const ids = deps?.getUserNetworkIds ? await deps.getUserNetworkIds() : ['idx-1'] as Id<'networks'>[];
+      return ids.map(id => ({ networkId: id, networkTitle: 'Test Network', networkPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }));
     }),
     getActiveNetworkMembershipPairs: deps?.getActiveNetworkMembershipPairs ?? ((pairs) => Promise.resolve(pairs)),
     getActiveIntents:
@@ -211,12 +208,12 @@ function createMockGraph(deps?: {
             createdAt: new Date(),
           },
         ])),
-    getNetwork: deps?.getNetwork ?? (() => Promise.resolve({ id: 'idx-1', title: 'Test Index' })),
+    getNetwork: deps?.getNetwork ?? (() => Promise.resolve({ id: 'idx-1', title: 'Test Network' })),
     getNetworkMemberCount: deps?.getNetworkMemberCount ?? (() => Promise.resolve(2)),
     getNetworkIdsForIntent: deps?.getNetworkIdsForIntent ?? (() => Promise.resolve(['idx-1'])),
     getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
     isNetworkMember: () => Promise.resolve(true),
-    isIndexOwner: () => Promise.resolve(false),
+    isNetworkOwner: () => Promise.resolve(false),
     getOpportunity: () => Promise.resolve(null),
     getOpportunitiesForUser: () => Promise.resolve([]),
     updateOpportunityStatus: () => Promise.resolve(null),
@@ -225,12 +222,9 @@ function createMockGraph(deps?: {
     },
     updateOpportunityActorApproval: () => Promise.resolve(null),
     getIntent: () => Promise.resolve(null),
-    getIntentIndexScores: async () => [],
+    getIntentNetworkScores: async () => [],
     getNetworkMemberContext: async () => null,
-    getNegotiationTaskForOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
-    getPremisesForUser: async () => [],
-    searchPremisesBySimilarity: async () => [],
     getUserContexts: async () => [],
   };
 
@@ -270,8 +264,6 @@ function createMockGraph(deps?: {
     mockHydeGenerator,
     explainer,
     queueNotification,
-    undefined,
-    undefined,
     thresholdOverrides,
   );
   const compiledGraph = factory.createGraph();
@@ -281,8 +273,8 @@ function createMockGraph(deps?: {
 function createMockGraphWithFnOverrides(deps?: {
   getProfileFn?: (userId: string) => Promise<Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>>;
   getActiveIntentsFn?: (userId: string) => Promise<Array<{ id: Id<'intents'>; payload: string; summary: string | null; createdAt: Date }>>;
-  getUserIndexIds?: () => Promise<Id<'networks'>[]>;
-  getNetworkMemberships?: () => Promise<Array<{ networkId: string; networkTitle: string; indexPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; isPersonal: boolean; joinedAt: Date }>>;
+  getUserNetworkIds?: () => Promise<Id<'networks'>[]>;
+  getNetworkMemberships?: () => Promise<Array<{ networkId: string; networkTitle: string; networkPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; isPersonal: boolean; joinedAt: Date }>>;
   getActiveNetworkMembershipPairsFn?: OpportunityGraphDatabase['getActiveNetworkMembershipPairs'];
   thresholdOverrides?: OpportunityGraphThresholdOverrides;
 }) {
@@ -298,10 +290,10 @@ function createMockGraphWithFnOverrides(deps?: {
     },
     opportunityExistsBetweenActors: () => Promise.resolve(false),
     findOpportunitiesByActors: () => Promise.resolve([]),
-    getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'networks'>[])),
+    getUserNetworkIds: deps?.getUserNetworkIds ?? (() => Promise.resolve(['idx-1'] as Id<'networks'>[])),
     getNetworkMemberships: deps?.getNetworkMemberships ?? (async () => {
-      const ids = deps?.getUserIndexIds ? await deps.getUserIndexIds() : ['idx-1'] as Id<'networks'>[];
-      return ids.map(id => ({ networkId: id, networkTitle: 'Test Index', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }));
+      const ids = deps?.getUserNetworkIds ? await deps.getUserNetworkIds() : ['idx-1'] as Id<'networks'>[];
+      return ids.map(id => ({ networkId: id, networkTitle: 'Test Network', networkPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }));
     }),
     getActiveNetworkMembershipPairs: deps?.getActiveNetworkMembershipPairsFn ?? ((pairs) => Promise.resolve(pairs)),
     getActiveIntents: (userId: string) =>
@@ -315,23 +307,20 @@ function createMockGraphWithFnOverrides(deps?: {
               createdAt: new Date(),
             },
           ]),
-    getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
+    getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Network' }),
     getNetworkMemberCount: () => Promise.resolve(2),
     getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
     getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
     isNetworkMember: () => Promise.resolve(true),
-    isIndexOwner: () => Promise.resolve(false),
+    isNetworkOwner: () => Promise.resolve(false),
     getOpportunity: () => Promise.resolve(null),
     getOpportunitiesForUser: () => Promise.resolve([]),
     updateOpportunityStatus: () => Promise.resolve(null),
     updateOpportunityActorApproval: () => Promise.resolve(null),
     getIntent: () => Promise.resolve(null),
-    getIntentIndexScores: async () => [],
+    getIntentNetworkScores: async () => [],
     getNetworkMemberContext: async () => null,
-    getNegotiationTaskForOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
-    getPremisesForUser: async () => [],
-    searchPremisesBySimilarity: async () => [],
     getUserContexts: async () => [],
   };
 
@@ -369,8 +358,6 @@ function createMockGraphWithFnOverrides(deps?: {
     mockHyde,
     explainer,
     queueNotification,
-    undefined,
-    undefined,
     deps?.thresholdOverrides,
   );
   const compiledGraph = factory.createGraph();
@@ -381,7 +368,7 @@ describe('Opportunity Graph', () => {
   describe('Prep node', () => {
     test('when user has no network memberships, returns error and no opportunities', async () => {
       const { compiledGraph, mockHydeGenerator, mockEmbedder } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve([]),
+        getUserNetworkIds: () => Promise.resolve([]),
       });
       const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
       const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
@@ -394,7 +381,7 @@ describe('Opportunity Graph', () => {
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('join');
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
       expect(hydeSpy).not.toHaveBeenCalled();
       expect(searchSpy).not.toHaveBeenCalled();
     });
@@ -413,16 +400,16 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.error).toBeUndefined();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
   });
 
   describe('Scope node', () => {
-    test('when networkId provided and user is member, targetNetworks contains only that index', async () => {
+    test('when networkId provided and user is member, targetNetworks contains only that network', async () => {
       const { compiledGraph, mockDb } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
+        getUserNetworkIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
       });
-      const getIndexSpy = spyOn(mockDb, 'getNetwork');
+      const getNetworkSpy = spyOn(mockDb, 'getNetwork');
 
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
@@ -431,15 +418,15 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput);
 
-      expect(getIndexSpy).toHaveBeenCalledWith('idx-1');
-      expect(getIndexSpy.mock.calls.map((call) => call[0])).not.toContain('idx-2');
+      expect(getNetworkSpy).toHaveBeenCalledWith('idx-1');
+      expect(getNetworkSpy.mock.calls.map((call) => call[0])).not.toContain('idx-2');
     });
 
-    test('when networkId omitted, scope uses all user indexes', async () => {
+    test('when networkId omitted, scope uses all user networks', async () => {
       const { compiledGraph, mockDb } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
+        getUserNetworkIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
       });
-      const getIndexSpy = spyOn(mockDb, 'getNetwork');
+      const getNetworkSpy = spyOn(mockDb, 'getNetwork');
 
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
@@ -447,13 +434,13 @@ describe('Opportunity Graph', () => {
         options: { limit: 5 },
       } as OpportunityGraphInvokeInput);
 
-      expect(getIndexSpy).toHaveBeenCalledWith('idx-1');
-      expect(getIndexSpy).toHaveBeenCalledWith('idx-2');
+      expect(getNetworkSpy).toHaveBeenCalledWith('idx-1');
+      expect(getNetworkSpy).toHaveBeenCalledWith('idx-2');
     });
 
     test('when triggerIntentId is present, unscoped graph discovery searches only active assigned networks', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
+        getUserNetworkIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
         getNetworkIdsForIntent: async () => ['idx-2'],
       });
       const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
@@ -465,7 +452,7 @@ describe('Opportunity Graph', () => {
         options: { limit: 5 },
       } as OpportunityGraphInvokeInput);
 
-      const searchedNetworks = searchSpy.mock.calls.flatMap((call) => call?.[1]?.indexScope ?? []);
+      const searchedNetworks = searchSpy.mock.calls.flatMap((call) => call?.[1]?.networkScope ?? []);
       expect([...new Set(searchedNetworks)]).toEqual(['idx-2']);
       expect(searchedNetworks).not.toContain('idx-1');
     });
@@ -484,12 +471,12 @@ describe('Opportunity Graph', () => {
 
       expect(searchSpy).not.toHaveBeenCalled();
       expect(result.error).toContain('not available');
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
     test('when trigger intent has no active assigned network, graph discovery fails closed', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
+        getUserNetworkIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
         getNetworkIdsForIntent: async () => ['idx-foreign'],
       });
       const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
@@ -502,29 +489,29 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(searchSpy).not.toHaveBeenCalled();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
-    test('when indexScope is explicitly empty, discovery fails closed', async () => {
+    test('when networkScope is explicitly empty, discovery fails closed', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
+        getUserNetworkIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
       });
       const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
 
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        indexScope: [],
+        networkScope: [],
         options: { limit: 5 },
       } as OpportunityGraphInvokeInput);
 
       expect(searchSpy).not.toHaveBeenCalled();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
-    test('when indexScope provided, the vector search is intersected and networks outside it are excluded', async () => {
+    test('when networkScope provided, the vector search is intersected and networks outside it are excluded', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2', 'idx-3'] as Id<'networks'>[]),
+        getUserNetworkIds: () => Promise.resolve(['idx-1', 'idx-2', 'idx-3'] as Id<'networks'>[]),
       });
       const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
 
@@ -533,14 +520,14 @@ describe('Opportunity Graph', () => {
         searchQuery: 'co-founder',
         // A network-scoped agent reaches only its bound network + personal network;
         // idx-3 is another network the user belongs to and must not be searched.
-        indexScope: ['idx-1', 'idx-2'] as Id<'networks'>[],
+        networkScope: ['idx-1', 'idx-2'] as Id<'networks'>[],
         options: { limit: 5 },
       } as OpportunityGraphInvokeInput);
 
       expect(searchSpy).toHaveBeenCalled();
       // Discovery searches one network at a time; collect every network touched.
       const searchedNetworks = searchSpy.mock.calls
-        .flatMap((c) => c?.[1]?.indexScope ?? []);
+        .flatMap((c) => c?.[1]?.networkScope ?? []);
       expect([...new Set(searchedNetworks)].sort()).toEqual(['idx-1', 'idx-2']);
       expect(searchedNetworks).not.toContain('idx-3');
     });
@@ -563,9 +550,9 @@ describe('Opportunity Graph', () => {
       });
 
       expect(searchSpy.mock.calls[0]?.[1]?.minScore).toBe(0.42);
-      // Every candidate that clears retrieval is persisted directly now —
+      // Every candidate that clears retrieval is opened directly now —
       // no evaluator score floor.
-      expect(result.candidatesEmitted).toHaveLength(1);
+      expect(result.opened).toHaveLength(1);
       expect(result.trace).toContainEqual(expect.objectContaining({
         node: 'threshold_filter',
         detail: expect.stringContaining('above 0.42'),
@@ -621,7 +608,7 @@ describe('Opportunity Graph', () => {
 
       expect(searchSpy).toHaveBeenCalled();
       const call = searchSpy.mock.calls[0];
-      expect(call?.[1]?.indexScope).toContain('idx-1');
+      expect(call?.[1]?.networkScope).toContain('idx-1');
       expect(call?.[1]?.excludeUserId).toBe('a0000000-0000-4000-8000-000000000001');
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
     });
@@ -683,14 +670,14 @@ describe('Opportunity Graph', () => {
   });
 
   describe('Evaluation node: userId dedup', () => {
-    test('when same user appears via multiple indexes, evaluates them only once (deduped by userId)', async () => {
+    test('when same user appears via multiple networks, evaluates them only once (deduped by userId)', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
-        getNetwork: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
+        getUserNetworkIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
+        getNetwork: (id: string) => Promise.resolve({ id, title: `Network ${id}` }),
         getNetworkMemberCount: () => Promise.resolve(5),
       });
 
-      // Same user appears in two indexes from search results
+      // Same user appears in two networks from search results
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         { type: 'intent' as const, id: 'intent-bob-1', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
         { type: 'intent' as const, id: 'intent-bob-2', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.85, matchedVia: 'mirror' as const, networkId: 'idx-2' },
@@ -708,27 +695,27 @@ describe('Opportunity Graph', () => {
           t.node === 'candidate' && t.data?.userId === 'b0000000-0000-4000-8000-000000000002'
       );
       expect(candidateTraceEntries.length).toBe(1);
-      expect(result.candidatesEmitted.length).toBe(1);
+      expect(result.opened.length).toBe(1);
     });
 
-    test('dedup prefers candidate from index with higher relevancy score on equal similarity', async () => {
+    test('dedup prefers candidate from network with higher relevancy score on equal similarity', async () => {
       const { compiledGraph } = createMockGraph({
-        getUserIndexIds: async () => ['idx-high', 'idx-low'] as Id<'networks'>[],
+        getUserNetworkIds: async () => ['idx-high', 'idx-low'] as Id<'networks'>[],
         getNetworkMemberships: async () => [
-          { networkId: 'idx-high', networkTitle: 'High Relevancy', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
-          { networkId: 'idx-low', networkTitle: 'Low Relevancy', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
+          { networkId: 'idx-high', networkTitle: 'High Relevancy', networkPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
+          { networkId: 'idx-low', networkTitle: 'Low Relevancy', networkPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
         ],
       });
 
-      // Invoke with indexRelevancyScores pre-set (simulating scope node output)
+      // Invoke with networkRelevancyScores pre-set (simulating scope node output)
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'find collaborators',
         operationMode: 'create' as const,
-        indexRelevancyScores: { 'idx-high': 0.9, 'idx-low': 0.3 },
+        networkRelevancyScores: { 'idx-high': 0.9, 'idx-low': 0.3 },
       });
 
-      // The opportunity actors should have networkId from the higher-scoring index
+      // The opportunity actors should have networkId from the higher-scoring network
       if (result.evaluatedOpportunities?.length > 0) {
         const sourceActor = result.evaluatedOpportunities[0].actors.find(
           (a: { userId: string }) => a.userId === 'a0000000-0000-4000-8000-000000000001'
@@ -833,7 +820,7 @@ describe('Opportunity Graph', () => {
       const { compiledGraph, mockDb } = createMockGraph({
         explainerResult: { reasoning: 'Alice and Bob will both be at Edge Esmeralda.' },
       });
-      const createSpy = spyOn(mockDb, 'upsertDiscoveryMatchCandidates');
+      const createSpy = spyOn(mockDb, 'openCounterparties');
 
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
@@ -842,7 +829,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).not.toHaveBeenCalled();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
     test('removes inactive candidate pairs before evaluation and pagination', async () => {
@@ -862,7 +849,7 @@ describe('Opportunity Graph', () => {
       expect(explainerSpy).not.toHaveBeenCalled();
       expect(result.candidates).toEqual([]);
       expect(result.evaluatedOpportunities).toEqual([]);
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
 
@@ -885,13 +872,14 @@ describe('Opportunity Graph', () => {
 
       expect(assignmentRead).toBeGreaterThanOrEqual(2);
       expect(createIfEligible).not.toHaveBeenCalled();
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
     });
 
 
 
-    test('when discovery returns an intent candidate, a candidate is emitted', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph();
+    test('when discovery returns an intent candidate, a pair is opened', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const openSpy = spyOn(mockDb, 'openCounterparties');
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
           type: 'intent' as const,
@@ -909,16 +897,17 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.candidatesEmitted.length).toBe(1);
-      // Both seats on one row: either principal's agent can open it.
-      expect(result.candidatesEmitted[0].userA).toBe('a0000000-0000-4000-8000-000000000001');
-      expect(result.candidatesEmitted[0].userB).toBe('b0000000-0000-4000-8000-000000000002');
-      expect(result.candidatesEmitted[0].intentB).toBe('intent-bob');
+      expect(result.opened.length).toBe(1);
+      // Both seats on one pair: either principal's run reaches the same key.
+      const [pair] = openSpy.mock.calls[0]![0];
+      expect(pair!.userA).toBe('a0000000-0000-4000-8000-000000000001');
+      expect(pair!.userB).toBe('b0000000-0000-4000-8000-000000000002');
+      expect(pair!.intentB).toBe('intent-bob');
     });
 
-    test('carries typed opportunity evidence onto the candidate', async () => {
+    test('carries typed opportunity evidence onto the pair', async () => {
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const upsertSpy = spyOn(mockDb, 'upsertDiscoveryMatchCandidates');
+      const upsertSpy = spyOn(mockDb, 'openCounterparties');
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
           type: 'intent' as const,
@@ -957,7 +946,8 @@ describe('Opportunity Graph', () => {
     test('sorts by score and applies limit', async () => {
       // Score is derived from discovery similarity now — the higher-similarity
       // candidate (c, 0.9) should outrank the lower one (bob, 0.8).
-      const { compiledGraph, mockEmbedder } = createMockGraph();
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const openSpy = spyOn(mockDb, 'openCounterparties');
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.8, matchedVia: 'mirror' as const, networkId: 'idx-1' },
         { type: 'intent' as const, id: 'intent-alice', userId: 'c0000000-0000-4000-8000-000000000003', score: 0.9, matchedVia: 'reciprocal' as const, networkId: 'idx-1' },
@@ -969,8 +959,8 @@ describe('Opportunity Graph', () => {
         options: { limit: 1 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.candidatesEmitted.length).toBe(1);
-      expect(result.candidatesEmitted[0].userB).toBe('c0000000-0000-4000-8000-000000000003');
+      expect(result.opened.length).toBe(1);
+      expect(openSpy.mock.calls[0]![0][0]!.userB).toBe('c0000000-0000-4000-8000-000000000003');
     });
   });
 
@@ -979,7 +969,7 @@ describe('Opportunity Graph', () => {
   describe('Conditional routing: early exit', () => {
     test('when no network memberships, full invoke does not call HyDE or search or createOpportunity', async () => {
       const { compiledGraph, mockDb, mockHydeGenerator, mockEmbedder } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve([]),
+        getUserNetworkIds: () => Promise.resolve([]),
       });
       const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
       const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
@@ -1016,7 +1006,8 @@ describe('Opportunity Graph', () => {
 
   describe('Full flow with new API', () => {
     test('invoke with userId, searchQuery, options returns opportunities with correct shape', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph();
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const openSpy = spyOn(mockDb, 'openCounterparties');
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
           type: 'intent' as const,
@@ -1034,18 +1025,18 @@ describe('Opportunity Graph', () => {
         options: { limit: 5 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.candidatesEmitted).toBeDefined();
-      expect(Array.isArray(result.candidatesEmitted)).toBe(true);
-      if (result.candidatesEmitted.length > 0) {
-        const candidate = result.candidatesEmitted[0];
-        // A candidate is a pair, not a row: two seats, one network, one key.
-        expect(candidate.pairKey).toBeDefined();
-        expect(candidate.networkId).toBeDefined();
-        expect(candidate.reasoning).toBeDefined();
-        expect(candidate.userA).toBeDefined();
-        expect(candidate.userB).toBeDefined();
-        expect(candidate.intentA).toBeDefined();
-        expect(candidate.intentB).toBeDefined();
+      expect(result.opened).toBeDefined();
+      expect(Array.isArray(result.opened)).toBe(true);
+      if (result.opened.length > 0) {
+        // A counterparty is a pair: two seats, one network, one key.
+        const pair = openSpy.mock.calls[0]![0][0]!;
+        expect(pair.pairKey).toBeDefined();
+        expect(pair.networkId).toBeDefined();
+        expect(pair.reasoning).toBeDefined();
+        expect(pair.userA).toBeDefined();
+        expect(pair.userB).toBeDefined();
+        expect(pair.intentA).toBeDefined();
+        expect(pair.intentB).toBeDefined();
       }
     });
 
@@ -1059,7 +1050,7 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.candidatesEmitted).toEqual([]);
+      expect(result.opened).toEqual([]);
       expect(result.candidates).toEqual([]);
     });
 
@@ -1068,7 +1059,8 @@ describe('Opportunity Graph', () => {
 
   describe('targetUserId filtering', () => {
     test('when targetUserId is set, only candidates matching that user are returned', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph();
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const openSpy = spyOn(mockDb, 'openCounterparties');
       // Return two candidates: b0000000-0000-4000-8000-000000000002 and c0000000-0000-4000-8000-000000000003
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
@@ -1096,10 +1088,11 @@ describe('Opportunity Graph', () => {
         options: {},
       });
 
-      // Only c0000000-0000-4000-8000-000000000003 should be evaluated and persisted
-      expect(result.candidatesEmitted.length).toBe(1);
-      expect(result.candidatesEmitted[0].userA).toBe('a0000000-0000-4000-8000-000000000001');
-      expect(result.candidatesEmitted[0].userB).toBe('c0000000-0000-4000-8000-000000000003');
+      // Only c0000000-0000-4000-8000-000000000003 should be evaluated and opened
+      expect(result.opened.length).toBe(1);
+      const pair = openSpy.mock.calls[0]![0][0]!;
+      expect(pair.userA).toBe('a0000000-0000-4000-8000-000000000001');
+      expect(pair.userB).toBe('c0000000-0000-4000-8000-000000000003');
     });
 
     test('when targetUserId is not set, all candidates proceed to evaluation', async () => {
@@ -1130,7 +1123,7 @@ describe('Opportunity Graph', () => {
       });
 
       // Both candidates should proceed (no filtering) — at least 1 opportunity
-      expect(result.candidatesEmitted.length).toBeGreaterThanOrEqual(1);
+      expect(result.opened.length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -1275,34 +1268,31 @@ describe('Opportunity Graph', () => {
         }),
         opportunityExistsBetweenActors: () => Promise.resolve(false),
         findOpportunitiesByActors: () => Promise.resolve([]),
-        getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
+        getUserNetworkIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
         getNetworkMemberships: (userId: string) => {
           // Discoverer is in idx-1, target is in idx-999 — no overlap
           if (userId === discovererId) {
-            return Promise.resolve([{ networkId: 'idx-1', networkTitle: 'Alpha', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }]);
+            return Promise.resolve([{ networkId: 'idx-1', networkTitle: 'Alpha', networkPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }]);
           }
-          return Promise.resolve([{ networkId: 'idx-999', networkTitle: 'Beta', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }]);
+          return Promise.resolve([{ networkId: 'idx-999', networkTitle: 'Beta', networkPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }]);
         },
         getActiveIntents: () => Promise.resolve([{
           id: 'intent-1' as Id<'intents'>, payload: 'Test intent', summary: null, createdAt: new Date(),
         }]),
-        getNetwork: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
+        getNetwork: (id: string) => Promise.resolve({ id, title: `Network ${id}` }),
         getNetworkMemberCount: () => Promise.resolve(5),
         getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
         getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
         isNetworkMember: () => Promise.resolve(true),
-        isIndexOwner: () => Promise.resolve(false),
+        isNetworkOwner: () => Promise.resolve(false),
         getOpportunity: () => Promise.resolve(null),
         getOpportunitiesForUser: () => Promise.resolve([]),
         updateOpportunityStatus: () => Promise.resolve(null),
         updateOpportunityActorApproval: () => Promise.resolve(null),
         getIntent: () => Promise.resolve(null),
-        getIntentIndexScores: async () => [],
+        getIntentNetworkScores: async () => [],
         getNetworkMemberContext: async () => null,
-        getNegotiationTaskForOpportunity: async () => null,
         stampOpportunityActorAction: async () => null,
-        getPremisesForUser: async () => [],
-        searchPremisesBySimilarity: async () => [],
       };
 
       const mockEmbedder = {
@@ -1314,7 +1304,6 @@ describe('Opportunity Graph', () => {
       const mockHyde = { invoke: () => Promise.resolve({ hydeEmbeddings: { mirror: dummyEmbedding } }) };
       const factory = new OpportunityGraphFactory(
         mockDb, mockEmbedder, mockHyde, createMockExplainer(), async () => undefined,
-        undefined, undefined, undefined,
       );
       const compiledGraph = factory.createGraph();
 
@@ -1485,9 +1474,9 @@ function createTraceMockGraph(explainerOverride?: MatchExplainerLike) {
       }),
     opportunityExistsBetweenActors: () => Promise.resolve(false),
     findOpportunitiesByActors: () => Promise.resolve([]),
-    getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
+    getUserNetworkIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
     getNetworkMemberships: async () => [
-      { networkId: 'idx-1', networkTitle: 'Test Index', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
+      { networkId: 'idx-1', networkTitle: 'Test Network', networkPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
     ],
     getActiveNetworkMembershipPairs: async (pairs) => pairs,
     getActiveIntents: () =>
@@ -1499,23 +1488,20 @@ function createTraceMockGraph(explainerOverride?: MatchExplainerLike) {
           createdAt: new Date(),
         },
       ]),
-    getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
+    getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Network' }),
     getNetworkMemberCount: () => Promise.resolve(2),
     getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
     getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
     isNetworkMember: () => Promise.resolve(true),
-    isIndexOwner: () => Promise.resolve(false),
+    isNetworkOwner: () => Promise.resolve(false),
     getOpportunity: () => Promise.resolve(null),
     getOpportunitiesForUser: () => Promise.resolve([]),
     updateOpportunityStatus: () => Promise.resolve(null),
     updateOpportunityActorApproval: () => Promise.resolve(null),
     getIntent: () => Promise.resolve(null),
-    getIntentIndexScores: async () => [],
+    getIntentNetworkScores: async () => [],
     getNetworkMemberContext: async () => null,
-    getNegotiationTaskForOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
-    getPremisesForUser: async () => [],
-    searchPremisesBySimilarity: async () => [],
     getUserContexts: async () => [],
   };
 
@@ -1549,7 +1535,6 @@ function createTraceMockGraph(explainerOverride?: MatchExplainerLike) {
   const queueNotification = async () => undefined;
   const factory = new OpportunityGraphFactory(
     mockDb, mockEmbedder, mockHydeGenerator, explainer, queueNotification,
-    undefined, undefined, undefined,
   );
   const compiledGraph = factory.createGraph();
   return { compiledGraph };
@@ -1562,7 +1547,7 @@ const EXPECTED_NODE_TRACE_NAMES = [
   'opportunity-resolve',
   'opportunity-discovery',
   'opportunity-ranking',
-  'opportunity-emit-candidates',
+  'opportunity-emit-counterparties',
 ];
 
 describe('Opportunity Graph — Trace Events', () => {

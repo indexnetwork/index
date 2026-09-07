@@ -8,13 +8,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAC_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$MAC_ROOT"
 
+source "$SCRIPT_DIR/notary-submit.sh"
+
 APP_PATH="${APP_PATH:-dist/Index.app}"
 DMG_PATH="${DMG_PATH:-dist/Index.dmg}"
-VOLUME_NAME="${VOLUME_NAME:-Index}"
+VOLUME_NAME="${VOLUME_NAME:-Install Index}"
 SKIP_NOTARY="${SKIP_NOTARY:-0}"
 
 if [ "$SKIP_NOTARY" != "1" ]; then
-    PROFILE="${NOTARYTOOL_PROFILE:?set NOTARYTOOL_PROFILE to a local keychain profile (SKIP_NOTARY=1 exists only for CI packaging tests)}"
+    require_notary_auth
 fi
 
 [ -d "$APP_PATH" ] || { echo "app not found: $APP_PATH" >&2; exit 1; }
@@ -34,9 +36,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> Generating DMG background (Amiga palette)"
-swiftc -O -o "$WORK/dmg-background" "$SCRIPT_DIR/dmg-background.swift"
-"$WORK/dmg-background" "$WORK"
+BG="$SCRIPT_DIR/dmg-background.png"
+BG2X="$SCRIPT_DIR/dmg-background@2x.png"
+[ -f "$BG" ] || { echo "missing $BG (540x380)" >&2; exit 1; }
+[ -f "$BG2X" ] || { echo "missing $BG2X (1080x760)" >&2; exit 1; }
 
 APP_BASENAME="$(basename "$APP_PATH")"
 SIZE_KB=$(( $(du -sk "$APP_PATH" | awk '{print $1}') + 20480 ))
@@ -87,9 +90,17 @@ echo "==> Populating DMG"
 ditto "$APP_PATH" "$MOUNT/$APP_BASENAME"
 ln -s /Applications "$MOUNT/Applications"
 mkdir -p "$MOUNT/.background"
-cp "$WORK/dmg-background.png" "$MOUNT/.background/dmg-background.png"
-cp "$WORK/dmg-background@2x.png" "$MOUNT/.background/dmg-background@2x.png"
+cp "$BG" "$MOUNT/.background/dmg-background.png"
+cp "$BG2X" "$MOUNT/.background/dmg-background@2x.png"
 chflags hidden "$MOUNT/.background"
+
+ICON="$APP_PATH/Contents/Resources/AppIcon.icns"
+[ -f "$ICON" ] || { echo "missing app icon: $ICON" >&2; exit 1; }
+command -v SetFile >/dev/null || { echo "SetFile not found (Xcode CLT)" >&2; exit 1; }
+cp "$ICON" "$MOUNT/.VolumeIcon.icns"
+SetFile -c icnC "$MOUNT/.VolumeIcon.icns"
+chflags hidden "$MOUNT/.VolumeIcon.icns"
+SetFile -a C "$MOUNT"
 
 echo "==> Styling Finder window"
 attempt=0
@@ -133,7 +144,7 @@ mv -f "$WORK/compressed.dmg" "$DMG_PATH"
 
 if [ "$SKIP_NOTARY" != "1" ]; then
     echo "==> Notarizing DMG"
-    xcrun notarytool submit "$DMG_PATH" --keychain-profile "$PROFILE" --wait
+    notary_submit "$DMG_PATH"
     xcrun stapler staple "$DMG_PATH"
     xcrun stapler validate "$DMG_PATH"
 fi

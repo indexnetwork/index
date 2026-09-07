@@ -3,7 +3,7 @@ import type { Id, OpportunityStatus } from '../../platform/database.js';
 import type { Lens } from '../../platform/discovery/embedder.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
-import type { DiscoveryMatchCandidate } from '../../platform/database.js';
+import type { OpenedNegotiation } from '../../platform/database.js';
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -28,11 +28,11 @@ export interface IndexedIntent {
   summary?: string;
   hydeDocumentId?: string;
   hydeEmbedding?: number[];
-  indexes: Id<'networks'>[];
+  networks: Id<'networks'>[];
 }
 
 /**
- * Target index for search (from scope node)
+ * Target network for search (from scope node)
  */
 export interface TargetNetwork {
   networkId: Id<'networks'>;
@@ -46,10 +46,6 @@ export interface TargetNetwork {
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
   candidateIntentId?: Id<'intents'>;
-  /** Source premise that produced this candidate, when premise-grounded. */
-  sourcePremiseId?: Id<'premises'>;
-  /** Candidate premise that matched this candidate (set for premise-based matches). */
-  candidatePremiseId?: Id<'premises'>;
   /** Source context that produced this candidate, when context-grounded. */
   sourceContextId?: string;
   /** Candidate context that matched this candidate (set for user_context-based matches). */
@@ -152,13 +148,13 @@ export const OpportunityGraphState = Annotation.Root({
   }),
 
   /**
-   * Optional set of indexes discovery may search within (e.g. a network-scoped
+   * Optional set of networks discovery may search within (e.g. a network-scoped
    * agent's reachable networks: the bound network).
    * The scope node intersects this with the user's actual memberships. Ignored
    * when `networkId` is set (single-network override). When unset, discovery
    * spans all of the user's networks.
    */
-  indexScope: Annotation<Id<'networks'>[] | undefined>({
+  networkScope: Annotation<Id<'networks'>[] | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
@@ -225,14 +221,14 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** Target indexes to search within (from scope) */
+  /** Target networks to search within (from scope) */
   targetNetworks: Annotation<TargetNetwork[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
 
-  /** Per-index relevancy scores for dedup tie-breaking. Background path: from intent_indexes. Chat path: transient from IntentIndexer. */
-  indexRelevancyScores: Annotation<Record<string, number>>({
+  /** Per-network relevancy scores for dedup tie-breaking, read from intent_networks. */
+  networkRelevancyScores: Annotation<Record<string, number>>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),
   }),
@@ -255,34 +251,16 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => null,
   }),
 
-  /** User's active premises with embeddings (from prep). Used for premise-to-premise discovery path D. */
-  sourcePremises: Annotation<Array<{ premiseId: Id<'premises'>; embedding: number[] }>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
   /** User context embeddings per network (from prep). Used for discovery. */
   sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; text: string; embedding: number[] }>>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
 
-  /** Resolved intent is in at least one target index (path A vs C). */
-  resolvedIntentInIndex: Annotation<boolean>({
+  /** Resolved intent is in at least one target network (path A vs C). */
+  resolvedIntentInNetwork: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
-  }),
-
-  /** Create-intent signal: when true, tool should return createIntentSuggested so agent can auto-call create_intent. */
-  createIntentSuggested: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /** Suggested description for create_intent when createIntentSuggested is true. */
-  suggestedIntentDescription: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
   }),
 
   /** HyDE embeddings per lens label (from discovery) */
@@ -317,8 +295,8 @@ export const OpportunityGraphState = Annotation.Root({
 
   // ─── Output Fields (Overwrite per turn) ───
 
-  /** Pairs discovery recorded this run. Discovery creates no opportunities. */
-  candidatesEmitted: Annotation<DiscoveryMatchCandidate[]>({
+  /** The pairs that became an opportunity and a negotiation this run. */
+  opened: Annotation<OpenedNegotiation[]>({
     reducer: (curr, next) => next,
     default: () => [],
   }),
@@ -354,7 +332,7 @@ export const OpportunityGraphState = Annotation.Root({
     message?: string;
     opportunities: Array<{
       id: string;
-      indexName: string;
+      networkName: string;
       connectedWith: string[];
       suggestedBy: string | null;
       reasoning: string;

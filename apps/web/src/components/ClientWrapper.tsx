@@ -4,16 +4,15 @@ import { useLocation } from 'react-router';
 import Header from "@/components/Header";
 import TopBar from "@/components/TopBar";
 import ChatSidebar from "@/components/ChatSidebar";
-import AgentSessionsPanel from "@/components/AgentSessionsPanel";
-import { NetworkFilterProvider } from "@/contexts/IndexFilterContext";
-import { NetworksProvider } from "@/contexts/IndexesContext";
+import { NetworkFilterProvider } from "@/contexts/NetworkFilterContext";
+import { NetworksProvider } from "@/contexts/NetworksContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
-const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
+const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents'];
 const publicRoutes = ['/c'];
 // /l is chrome-free web invite join; /index stays app-only public join.
-const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe', '/dev/floor'];
+const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth'];
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
@@ -50,17 +49,8 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     pathname?.startsWith('/pages/'),
   [pathname, isAuthenticated]);
 
-  // CLI auth bridge: keep the logo header but no nav/CTA and no bottom border.
-  const isCliAuth = pathname?.startsWith('/cli-auth');
-
   const isMessagesView = useMemo(() =>
     pathname === '/chat' || pathname?.startsWith('/chat/') || pathname === '/negotiations' || pathname?.startsWith('/negotiations/') || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
-  [pathname]);
-
-  // Agent chat routes get the conversation-history aside (relocated from the
-  // retired sidebar). Covers the agent landing and specific /d/:sessionId chats.
-  const isAgentView = useMemo(() =>
-    pathname === '/agent' || pathname?.startsWith('/agent/') || pathname?.startsWith('/d/'),
   [pathname]);
 
   if (isBareRoute) {
@@ -96,15 +86,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               <div className="flex flex-col h-screen overflow-hidden">
                 <TopBar />
                 <div className="flex flex-1 min-h-0 overflow-hidden">
-                  {/* Secondary aside: DM list on messages, conversation history on agent */}
+                  {/* Secondary aside: DM list on messages */}
                   {isMessagesView && (
                     <aside className="hidden lg:block w-80 bg-white border-r border-gray-200 flex-shrink-0">
                       <ChatSidebar />
-                    </aside>
-                  )}
-                  {isAgentView && !isMessagesView && (
-                    <aside className="hidden lg:block w-72 bg-white border-r border-gray-200 flex-shrink-0">
-                      <AgentSessionsPanel />
                     </aside>
                   )}
 
@@ -120,7 +105,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               // Public layout without sidebar
               <>
                 {showHeader && (
-                  <div className={isLandingOrBlog ? 'z-40' : `sticky top-0 z-40 bg-white/95 backdrop-blur-md${isCliAuth ? '' : ' border-b border-gray-300'}`}>
+                  <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-300'}>
                     <div className="max-w-7xl mx-auto px-4">
                       <Suspense
                         fallback={
@@ -138,11 +123,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                           </header>
                         }
                       >
-                        <Header 
-                          showHeaderButtons={!isCliAuth}
-                          keepButtonSpace={isCliAuth}
-                          forcePublicView={isLandingOrBlog}
-                        />
+                        <Header forcePublicView={isLandingOrBlog} />
                       </Suspense>
                     </div>
                   </div>

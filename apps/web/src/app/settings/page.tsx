@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Link } from "react-router";
-import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { Loader2, Camera, ArrowUpRight, Trash2, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
+import { Loader2, Camera, ArrowUpRight, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -15,11 +14,12 @@ import { Button } from "@/components/ui/button";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { SaveBarProvider } from "@/contexts/SaveBarContext";
-import AgentApiKeysSection from "@/components/settings/AgentApiKeysSection";
-import { useIntegrationsService } from "@/services/integrations";
+import ApiKeysSection from "@/components/settings/ApiKeysSection";
+import DevicesSection from "@/components/settings/DevicesSection";
+import SettingsTabs from "@/components/settings/SettingsTabs";
 import { parseSocial } from "@/lib/socials";
 
-const SETTINGS_TABS = ["profile", "notifications", "api-keys"] as const;
+const SETTINGS_TABS = ["profile", "notifications", "access"] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 function isSettingsTab(v: string | null): v is SettingsTab {
@@ -28,7 +28,7 @@ function isSettingsTab(v: string | null): v is SettingsTab {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const { user, isAuthenticated, isLoading: authLoading, refetchUser, signOut } = useAuthContext();
   const authService = useAuth();
   const { success, error } = useNotifications();
@@ -58,10 +58,6 @@ export default function ProfilePage() {
   const tabParam = searchParams.get("tab");
   const activeTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "profile";
 
-  const setActiveTab = (v: string) => {
-    if (!isSettingsTab(v)) return;
-    setSearchParams(v === "profile" ? {} : { tab: v }, { replace: true });
-  };
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
@@ -69,12 +65,6 @@ export default function ProfilePage() {
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
-
-  const integrationsService = useIntegrationsService();
-  const [telegramConnected, setTelegramConnected] = useState(false);
-  const [telegramConnecting, setTelegramConnecting] = useState(false);
-  const [telegramDisconnecting, setTelegramDisconnecting] = useState(false);
-  const [telegramUserId, setTelegramUserId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -100,15 +90,6 @@ export default function ProfilePage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs only when user changes; state setters are stable
   useEffect(() => { resetForm(user); }, [user]); // eslint-disable-line react-hooks/set-state-in-effect -- resetForm mirrors server-fetched user into editable form fields; legitimate sync-from-external-state pattern.
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    integrationsService.getConnections().then(({ connections }) => {
-      const tg = connections.find(c => c.toolkit === 'telegram' && c.status === 'active');
-      setTelegramConnected(!!tg);
-      setTelegramUserId(tg ? tg.id : null);
-    }).catch(() => { /* ignore -- non-critical */ });
-  }, [isAuthenticated, integrationsService]);
 
   const mark = () => setIsDirty(true);
 
@@ -161,51 +142,6 @@ export default function ProfilePage() {
 
   const handleDiscard = () => resetForm(user);
 
-
-  const handleConnectTelegram = async () => {
-    setTelegramConnecting(true);
-    try {
-      const response = await integrationsService.connect('telegram') as unknown as { deepLink: string };
-      if (response.deepLink) {
-        window.open(response.deepLink, '_blank');
-        // Poll for connection status after the user opens Telegram
-        const poll = setInterval(async () => {
-          try {
-            const { connections } = await integrationsService.getConnections();
-            const tg = connections.find(c => c.toolkit === 'telegram' && c.status === 'active');
-            if (tg) {
-              clearInterval(poll);
-              setTelegramConnected(true);
-              setTelegramUserId(tg.id);
-              setTelegramConnecting(false);
-              success('Telegram connected');
-            }
-          } catch { /* ignore polling errors */ }
-        }, 3000);
-        // Stop polling after 2 minutes
-        setTimeout(() => { clearInterval(poll); setTelegramConnecting(false); }, 120_000);
-      }
-    } catch {
-      error('Failed to connect Telegram');
-      setTelegramConnecting(false);
-    }
-  };
-
-  const handleDisconnectTelegram = async () => {
-    if (!telegramUserId) return;
-    setTelegramDisconnecting(true);
-    try {
-      await integrationsService.disconnect(telegramUserId);
-      setTelegramConnected(false);
-      setTelegramUserId(null);
-      success('Telegram disconnected');
-    } catch {
-      error('Failed to disconnect Telegram');
-    } finally {
-      setTelegramDisconnecting(false);
-    }
-  };
-
   const handleDeleteAccount = async () => {
     setIsDeletingAccount(true);
     try {
@@ -236,24 +172,9 @@ export default function ProfilePage() {
         <ContentContainer>
           <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-8">Settings</h1>
 
-          <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
-            <Tabs.List className="flex flex-wrap gap-x-1 border-b border-gray-200 mb-8">
-              {([
-                ["profile", "Profile Settings"],
-                ["notifications", "Notification Settings"],
-                ["api-keys", "API Keys"],
-              ] as const).map(([value, label]) => (
-                <Tabs.Trigger
-                  key={value}
-                  value={value}
-                  className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent outline-none data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
-                >
-                  {label}
-                </Tabs.Trigger>
-              ))}
-            </Tabs.List>
+          <SettingsTabs />
 
-            <Tabs.Content value="profile">
+          {activeTab === "profile" && (
           <div className="space-y-10">
 
             {/* Identity header */}
@@ -431,61 +352,6 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* Integrations */}
-            <div className="space-y-2.5 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono pt-4 mb-4">
-                Integrations
-              </p>
-
-              <div className="flex items-center justify-between p-3 border border-gray-200 rounded-sm">
-                <div className="flex items-center gap-3">
-                  <MessageCircle className="w-5 h-5 text-gray-500" />
-                  <div>
-                    <p className="text-sm font-medium font-ibm-plex-mono text-gray-700">Telegram</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {telegramConnected
-                        ? "Your Telegram account is connected"
-                        : "Receive notifications and updates via Telegram"}
-                    </p>
-                  </div>
-                </div>
-                {telegramConnected ? (
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-green-600 font-medium font-ibm-plex-mono">Connected &#x2713;</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleDisconnectTelegram}
-                      disabled={telegramDisconnecting}
-                      className="text-gray-500 hover:text-red-600 hover:border-red-200"
-                    >
-                      {telegramDisconnecting ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        "Disconnect"
-                      )}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleConnectTelegram}
-                    disabled={telegramConnecting}
-                  >
-                    {telegramConnecting ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                        Waiting...
-                      </>
-                    ) : (
-                      "Connect"
-                    )}
-                  </Button>
-                )}
-              </div>
-            </div>
-
             {/* Danger Zone */}
             <div className="pt-6 border-t border-gray-100">
               <button
@@ -515,13 +381,16 @@ export default function ProfilePage() {
             </div>
 
           </div>
-            </Tabs.Content>
+          )}
 
-            <Tabs.Content value="api-keys">
-              <AgentApiKeysSection />
-            </Tabs.Content>
+          {activeTab === "access" && (
+              <div className="space-y-10">
+                <ApiKeysSection />
+                <DevicesSection />
+              </div>
+          )}
 
-            <Tabs.Content value="notifications">
+          {activeTab === "notifications" && (
               <div className="space-y-10">
                 <div className="space-y-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
@@ -583,8 +452,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
               </div>
-            </Tabs.Content>
-          </Tabs.Root>
+          )}
 
         </ContentContainer>
       </div>

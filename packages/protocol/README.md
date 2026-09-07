@@ -24,7 +24,6 @@ flowchart LR
     Participant --> Context[Context]
     Participant --> Signal[Signal]
 
-    Premises[Premises] --> Context
     Context --> Scope[Effective scope]
     Signal --> Scope
     Community[Community membership and norms] --> Scope
@@ -74,8 +73,7 @@ The protocol does not attempt to be:
 | **Participant** | A human principal represented in the network. A participant may act directly or through one or more agents. |
 | **Agent** | A software actor authorized to act for a participant or community within a declared scope. |
 | **Signal** | A participant's actionable expression of intent: what they seek, offer, need, are building, are exploring, or can support. |
-| **Premise** | An atomic contextual claim about a participant, used to ground what signals are plausible or relevant. |
-| **Context** | A synthesized representation of premises, history, constraints, and community-specific relevance. |
+| **Context** | A synthesized representation of a participant's identity, history, constraints, and community-specific relevance. |
 | **Community** | A bounded discovery scope with membership, purpose, norms, and relevance criteria. |
 | **Membership** | The relationship between a participant and a community. Agents receive community authority through separate scoped permissions. |
 | **Candidate** | A possible counterpart or opportunity component identified during discovery but not yet surfaced. |
@@ -91,7 +89,6 @@ Some implementation APIs may expose historical names such as `intent`, `index`, 
 erDiagram
     PARTICIPANT ||--o{ AGENT : authorizes
     PARTICIPANT ||--o{ SIGNAL : expresses
-    PARTICIPANT ||--o{ PREMISE : asserts
     PARTICIPANT ||--o{ CONTEXT : represented_by
     PARTICIPANT ||--o{ MEMBERSHIP : holds
     AGENT ||--o{ AGENT_PERMISSION : receives
@@ -202,13 +199,13 @@ Signals have the following conceptual lifecycle:
 
 A signal MUST NOT be treated as active if it is outside the participant's authority, obviously insincere, unsafe to act on, or too vague to evaluate.
 
-### Premise and context
+### Context
 
-A premise is a small claim about a participant: background, role, current work, capability, location, affiliation, constraint, or declared preference. Premises ground discovery by determining whether a signal is plausible and which communities or counterparts are relevant.
+Context describes a participant: background, role, current work, capability, location, affiliation, constraints, and declared preferences. It grounds discovery by determining whether a signal is plausible and which communities or counterparts are relevant.
 
-Context is derived from premises. Context MAY be global to a participant or specific to a community. Community-specific context SHOULD emphasize facts relevant to that community's purpose and suppress irrelevant detail.
+Context MAY be global to a participant or specific to a community. Community-specific context SHOULD emphasize facts relevant to that community's purpose and suppress irrelevant detail.
 
-Premise and context updates SHOULD cause downstream discovery representations to refresh. Stale context SHOULD NOT be used when fresher participant-approved context exists.
+Context updates SHOULD cause downstream discovery representations to refresh. Stale context SHOULD NOT be used when fresher participant-approved context exists.
 
 ### Community
 
@@ -316,7 +313,7 @@ sequenceDiagram
 
 ### 1. Context construction
 
-The protocol collects participant-provided or participant-authorized material and turns it into premises and context. Context construction MUST preserve provenance and SHOULD prefer participant-approved information over inferred information.
+The protocol collects participant-provided or participant-authorized material and turns it into context. Context construction MUST preserve provenance and SHOULD prefer participant-approved information over inferred information.
 
 ### 2. Signal admission
 
@@ -328,7 +325,7 @@ The protocol determines the effective communities in which the signal can operat
 
 ### 4. Candidate generation
 
-The protocol generates candidates by comparing signals and context inside the effective scope. Candidate generation MAY use multiple strategies, including signal-to-signal, context-to-signal, premise-to-premise, semantic retrieval, and directed target construction.
+The protocol generates candidates by comparing signals and context inside the effective scope. Candidate generation MAY use multiple strategies, including signal-to-signal, context-to-signal, semantic retrieval, and directed target construction.
 
 Candidate generation is not surfacing. Candidate data MUST remain internal until evaluation and visibility checks pass.
 
@@ -395,7 +392,6 @@ The reference implementation exposes the protocol to agents through a Model Cont
 flowchart LR
     ExternalAgent[External agent] -->|MCP tools| McpServer[Index Network MCP server]
     FirstPartyAgent[First-party agent] -->|typed runtime| Runtime[Protocol runtime]
-    PersonalAgent[Personal agent] -->|MCP tools or REST polling| McpServer
 
     McpServer --> Identity[Identity resolution]
     Identity --> AgentGate[Agent registration and scope]
@@ -403,7 +399,7 @@ flowchart LR
     ScopedDeps --> Runtime
 
     Runtime --> Tools[Protocol tools]
-    Tools --> Graphs[Discovery, context, signal, negotiation graphs]
+    Tools --> Graphs[Discovery, context, signal graphs]
     Graphs --> Results[Bounded results]
     Results --> Runtime
     Runtime --> ParticipantOutput[Participant-facing output rules]

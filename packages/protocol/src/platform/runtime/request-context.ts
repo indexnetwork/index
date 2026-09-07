@@ -5,7 +5,7 @@ export interface ToolRequestContext {
   userEmail: string;
   scopeType?: "network" | "intent";
   scopeId?: string;
-  indexName?: string;
+  networkName?: string;
   sessionId?: string;
   agentId?: string;
 }

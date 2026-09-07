@@ -1,8 +1,7 @@
-import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { RateLimit } from '../guards/limiter.guard';
+import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
+import { agentService } from '../services/agent.service';
 import { ConversationService } from '../services/conversation.service';
-import { TaskService } from '../services/task.service';
 import { log } from '../lib/log';
 
 type RouteParams = Record<string, string>;
@@ -11,13 +10,12 @@ const logger = log.controller.from('conversation');
 
 /**
  * HTTP controller for conversation REST API endpoints.
- * Thin layer: parses requests, delegates to ConversationService and TaskService, formats responses.
+ * Thin layer: parses requests, delegates to ConversationService, formats responses.
  */
 @Controller('/conversations')
 export class ConversationController {
   constructor(
     private readonly conversationService: ConversationService,
-    private readonly taskService: TaskService,
   ) {}
 
   /**
@@ -28,80 +26,16 @@ export class ConversationController {
    * @returns JSON with conversations array
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async listConversations(_req: Request, user: AuthenticatedUser) {
+  @UseGuards(AuthGuard)
+  async getConversations(_req: Request, user: AuthenticatedUser) {
     try {
       const conversations = await this.conversationService.getConversations(user.id);
       return Response.json({ conversations });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('listConversations failed', { userId: user.id, error: message });
+      logger.error('getConversations failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
-  }
-
-  /**
-   * GET /conversations/negotiations — list A2A negotiation conversations for the authenticated user.
-   */
-  @Get('/negotiations')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async listNegotiations(_req: Request, user: AuthenticatedUser) {
-    try {
-      const conversations = await this.conversationService.getAgentConversations(user.id);
-      return Response.json({ conversations });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error('listNegotiations failed', { userId: user.id, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /** Owner-seat index for the debug negotiation console. */
-  @Get('/negotiations/task-index')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getNegotiationTaskIndex(_req: Request, user: AuthenticatedUser) {
-    const entries = await this.conversationService.getNegotiationTaskIndex(user.id);
-    return Response.json({ entries });
-  }
-
-  /** Debug state for one owned intent's PersonalAgent negotiation cycle. */
-  @Get('/negotiations/intent-cycle')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getIntentCycle(req: Request, user: AuthenticatedUser) {
-    const intentId = new URL(req.url).searchParams.get('intentId');
-    if (!intentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(intentId)) {
-      return Response.json({ error: 'A valid intentId is required' }, { status: 400 });
-    }
-    const cycle = await this.conversationService.getIntentCycleForIntent(user.id, intentId);
-    if (cycle === null) return Response.json({ error: 'Intent not found' }, { status: 404 });
-    return Response.json({ cycle });
-  }
-
-  /** Append-only PersonalAgent acts for this owner's intent. */
-  @Get('/negotiations/intent-cycle/timeline')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getIntentCycleTimeline(req: Request, user: AuthenticatedUser) {
-    const intentId = new URL(req.url).searchParams.get('intentId');
-    if (!intentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(intentId)) {
-      return Response.json({ error: 'A valid intentId is required' }, { status: 400 });
-    }
-    const entries = await this.conversationService.getIntentCycleTimelineForIntent(user.id, intentId);
-    if (entries === null) return Response.json({ error: 'Intent not found' }, { status: 404 });
-    return Response.json({ entries });
-  }
-
-  /** Owner-scoped debug detail for one seat of an intent negotiation. */
-  @Get('/negotiations/intent-cycle/:taskId')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getIntentCycleNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const intentId = new URL(req.url).searchParams.get('intentId');
-    const taskId = params?.taskId;
-    if (!intentId || !taskId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(intentId)) {
-      return Response.json({ error: 'A valid intentId and taskId are required' }, { status: 400 });
-    }
-    const negotiation = await this.conversationService.getIntentCycleNegotiationForIntent(user.id, intentId, taskId);
-    if (!negotiation) return Response.json({ error: 'Negotiation not found' }, { status: 404 });
-    return Response.json({ negotiation });
   }
 
   /**
@@ -112,7 +46,7 @@ export class ConversationController {
    * @returns JSON with created conversation
    */
   @Post('')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async createConversation(req: Request, user: AuthenticatedUser) {
     let body: { participants?: { participantId: string; participantType: 'user' | 'agent' }[] };
     try {
@@ -149,13 +83,13 @@ export class ConversationController {
    * GET /conversations/:id/messages — get messages for a conversation.
    * Accepts full UUID or short ID prefix.
    *
-   * @param req - Optional query params: limit, before, taskId
+   * @param req - Optional query params: limit, before, intentId
    * @param user - Authenticated user from AuthGuard
    * @param params - Route params containing the conversation ID or prefix
    * @returns JSON with messages array
    */
   @Get('/:id/messages')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(AuthGuard)
   async getMessages(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -171,7 +105,7 @@ export class ConversationController {
     const url = new URL(req.url);
     const limit = url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!, 10) : undefined;
     const before = url.searchParams.get('before') ?? undefined;
-    const taskId = url.searchParams.get('taskId') ?? undefined;
+    const intentId = url.searchParams.get('intentId') ?? undefined;
     const beforeSessionId = url.searchParams.get('beforeSessionId') ?? undefined;
     const sessionHistory = url.searchParams.get('sessionHistory') === 'true' || beforeSessionId !== undefined;
 
@@ -179,7 +113,6 @@ export class ConversationController {
       if (sessionHistory) {
         const history = await this.conversationService.getSessionHistory(conversationId, {
           userId: user.id,
-          taskId,
           beforeSessionId,
         });
         return Response.json({
@@ -187,13 +120,12 @@ export class ConversationController {
           sessionId: history.session?.id ?? null,
           hasPreviousSession: history.hasPreviousSession,
           previousSessionCursor: history.hasPreviousSession ? history.session?.id ?? null : null,
-          // IND-570: per-session opportunity attribution for section labelling.
-          sessionOpportunityId: history.sessionOpportunityId ?? null,
-          sessionOpportunityStatus: history.sessionOpportunityStatus ?? null,
         });
       }
-      const messages = await this.conversationService.getMessages(conversationId, { limit, before, taskId, userId: user.id });
-      return Response.json({ messages });
+      const messages = await this.conversationService.getMessages(conversationId, { limit, before, intentId, userId: user.id });
+      // The id is echoed because `agent` resolves to a conversation the caller
+      // has no other way to name.
+      return Response.json({ conversationId, messages });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.startsWith('Forbidden')) {
@@ -209,7 +141,7 @@ export class ConversationController {
    * Accepts full UUID or short ID prefix.
    */
   @Post('/:id/read')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async markConversationRead(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -237,15 +169,20 @@ export class ConversationController {
 
   /**
    * POST /conversations/:id/messages — send a message in a conversation.
-   * Accepts full UUID or short ID prefix.
+   * Accepts `agent`, a full UUID, or a short ID prefix.
    *
-   * @param req - Must include `parts` array in JSON body; optional `taskId`, `metadata`
+   * An agent-bound API key writing into its owner's agent DM speaks as the
+   * agent, and must say which signal it is speaking about; every other
+   * credential speaks as the authenticated user. A session token therefore
+   * cannot post as the agent.
+   *
+   * @param req - Must include `parts` array in JSON body; optional `metadata`
    * @param user - Authenticated user from AuthGuard
    * @param params - Route params containing the conversation ID or prefix
    * @returns JSON with created message
    */
   @Post('/:id/messages')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async sendMessage(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -258,9 +195,9 @@ export class ConversationController {
     }
     const conversationId = resolved.id;
 
-    let body: { parts?: unknown[]; taskId?: string; metadata?: Record<string, unknown> };
+    let body: { parts?: unknown[]; metadata?: Record<string, unknown> };
     try {
-      body = (await req.json()) as { parts?: unknown[]; taskId?: string; metadata?: Record<string, unknown> };
+      body = (await req.json()) as { parts?: unknown[]; metadata?: Record<string, unknown> };
     } catch {
       return Response.json({ error: 'Invalid request body' }, { status: 400 });
     }
@@ -269,10 +206,25 @@ export class ConversationController {
       return Response.json({ error: 'parts array is required' }, { status: 400 });
     }
 
+    // A key-authenticated caller writing into an agent DM writes as the
+    // owner's negotiator. The key names no agent, so the selection is what
+    // decides — with no negotiator chosen, the write stays a user message.
+    const asAgent = !isSessionAuthenticated(req)
+      && await this.conversationService.isAgentDm(conversationId)
+      && await agentService.getSelectedNegotiator(user.id) !== null;
+
+    if (asAgent && typeof body.metadata?.intentId !== 'string') {
+      return Response.json({ error: 'metadata.intentId is required' }, { status: 400 });
+    }
+
     try {
-      const msg = await this.conversationService.sendMessage(
-        conversationId, user.id, 'user', body.parts, { taskId: body.taskId, metadata: body.metadata }
-      );
+      const msg = asAgent
+        ? await this.conversationService.sendAgentMessage(
+          conversationId, body.parts, { metadata: body.metadata }
+        )
+        : await this.conversationService.sendMessage(
+          conversationId, user.id, 'user', body.parts, { metadata: body.metadata }
+        );
       return Response.json({ message: msg }, { status: 201 });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -292,8 +244,8 @@ export class ConversationController {
    * @returns JSON with conversation
    */
   @Post('/dm')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async getOrCreateDM(req: Request, user: AuthenticatedUser) {
+  @UseGuards(AuthGuard)
+  async getOrCreateDm(req: Request, user: AuthenticatedUser) {
     let body: { peerUserId?: string };
     try {
       body = (await req.json()) as { peerUserId?: string };
@@ -306,7 +258,7 @@ export class ConversationController {
     }
 
     try {
-      const conversation = await this.conversationService.getOrCreateDM(user.id, body.peerUserId);
+      const conversation = await this.conversationService.getOrCreateDm(user.id, body.peerUserId);
       // Return the same viewer-scoped summary shape as GET /conversations so
       // a thread opened directly can render match provenance immediately.
       const summary = (await this.conversationService.getConversations(user.id))
@@ -314,7 +266,7 @@ export class ConversationController {
       return Response.json({ conversation: summary ?? conversation });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('getOrCreateDM failed', { userId: user.id, error: message });
+      logger.error('getOrCreateDm failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -329,7 +281,7 @@ export class ConversationController {
    * @returns JSON with success status
    */
   @Patch('/:id/metadata')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async updateMetadata(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -376,7 +328,7 @@ export class ConversationController {
    * @returns JSON with success status
    */
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(AuthGuard)
   async hideConversation(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -403,141 +355,36 @@ export class ConversationController {
   }
 
   /**
-   * GET /conversations/:id/tasks — list all tasks for a conversation.
-   * Accepts full UUID or short ID prefix.
+   * GET /conversations/stream — the authenticated user's single SSE channel.
    *
-   * @param _req - The HTTP request object (unused)
-   * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID or prefix
-   * @returns JSON with tasks array
-   */
-  @Get('/:id/tasks')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async listTasks(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const rawId = params?.id;
-    if (!rawId) {
-      return Response.json({ error: 'Conversation ID required' }, { status: 400 });
-    }
-
-    const resolved = await this.conversationService.resolveId(rawId, user.id);
-    if ('error' in resolved) {
-      return Response.json({ error: resolved.error }, { status: resolved.status });
-    }
-    const conversationId = resolved.id;
-
-    try {
-      await this.conversationService.verifyParticipant(user.id, conversationId);
-      const tasks = await this.taskService.getTasksByConversation(conversationId);
-      return Response.json({ tasks });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith('Forbidden')) {
-        return Response.json({ error: message }, { status: 403 });
-      }
-      logger.error('listTasks failed', { userId: user.id, conversationId, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /**
-   * GET /conversations/:id/tasks/:taskId — get a single task.
-   * Accepts full UUID or short ID prefix for conversation ID.
-   *
-   * @param _req - The HTTP request object (unused)
-   * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID (or prefix) and task ID
-   * @returns JSON with task, or 404 if not found
-   */
-  @Get('/:id/tasks/:taskId')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getTask(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const rawId = params?.id;
-    const taskId = params?.taskId;
-    if (!rawId || !taskId) {
-      return Response.json({ error: 'Conversation ID and Task ID required' }, { status: 400 });
-    }
-
-    const resolved = await this.conversationService.resolveId(rawId, user.id);
-    if ('error' in resolved) {
-      return Response.json({ error: resolved.error }, { status: resolved.status });
-    }
-    const conversationId = resolved.id;
-
-    try {
-      await this.conversationService.verifyParticipant(user.id, conversationId);
-      const task = await this.taskService.getTask(taskId, conversationId);
-      if (!task) {
-        return Response.json({ error: 'Task not found' }, { status: 404 });
-      }
-      return Response.json({ task });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith('Forbidden')) {
-        return Response.json({ error: 'Task not found' }, { status: 404 });
-      }
-      logger.error('getTask failed', { userId: user.id, conversationId, taskId, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /**
-   * GET /conversations/:id/tasks/:taskId/artifacts — get artifacts for a task.
-   * Accepts full UUID or short ID prefix for conversation ID.
-   *
-   * @param _req - The HTTP request object (unused)
-   * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID (or prefix) and task ID
-   * @returns JSON with artifacts array
-   */
-  @Get('/:id/tasks/:taskId/artifacts')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getArtifacts(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const rawId = params?.id;
-    const taskId = params?.taskId;
-    if (!rawId || !taskId) {
-      return Response.json({ error: 'Conversation ID and Task ID required' }, { status: 400 });
-    }
-
-    const resolved = await this.conversationService.resolveId(rawId, user.id);
-    if ('error' in resolved) {
-      return Response.json({ error: resolved.error }, { status: resolved.status });
-    }
-    const conversationId = resolved.id;
-
-    try {
-      await this.conversationService.verifyParticipant(user.id, conversationId);
-      const artifacts = await this.taskService.getArtifacts(taskId, conversationId);
-      return Response.json({ artifacts });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith('Forbidden')) {
-        return Response.json({ error: 'Task not found' }, { status: 404 });
-      }
-      logger.error('getArtifacts failed', { userId: user.id, conversationId, taskId, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /**
-   * GET /conversations/stream — SSE endpoint for real-time conversation events.
-   * Delegates subscription to ConversationService and pipes events into SSE response.
+   * Carries every realtime frame for the user: conversation messages plus the
+   * notification frames (`opportunity.new`, `negotiation.*`, `intent.lifecycle`)
+   * that agents and desktop toasts read. Consumers discriminate on `type` and
+   * ignore what they do not handle.
    *
    * @param _req - The HTTP request object (unused)
    * @param user - Authenticated user from AuthGuard
    * @returns SSE event stream
    */
   @Get('/stream')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async stream(_req: Request, user: AuthenticatedUser) {
+  @UseGuards(AuthGuard)
+  async subscribe(_req: Request, user: AuthenticatedUser) {
+    let subscription;
+    try {
+      subscription = await this.conversationService.openEventStream(user.id);
+    } catch {
+      return Response.json({ error: 'Event stream is temporarily unavailable' }, { status: 503 });
+    }
+
     const encoder = new TextEncoder();
-    const { onMessage, cleanup } = this.conversationService.subscribe(user.id);
     let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
 
     const readableStream = new ReadableStream({
       start(controller) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected' })}\n\n`));
 
-        onMessage((data) => {
+        subscription.onMessage((data) => {
           try {
             controller.enqueue(encoder.encode(`data: ${data}\n\n`));
           } catch { /* stream closed */ }
@@ -547,9 +394,11 @@ export class ConversationController {
           try { controller.enqueue(encoder.encode(': keepalive\n\n')); } catch { clearInterval(keepaliveInterval!); }
         }, 15000);
       },
-      cancel() {
+      async cancel() {
+        if (cancelled) return;
+        cancelled = true;
         if (keepaliveInterval) clearInterval(keepaliveInterval);
-        cleanup();
+        await subscription.cleanup();
       },
     });
 

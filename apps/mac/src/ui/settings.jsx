@@ -388,8 +388,6 @@ function Toggle({ on, onClick, title, blurb }) {
 const NOTIFY_OPTIONS = [
   { id:"alignment", title:"an alignment surfaces",
     blurb:"index found someone worth meeting and wants to hand them over." },
-  { id:"question",  title:"a question comes up",
-    blurb:"someone on the other side needs an answer only you can give." },
   { id:"accepted",  title:"an intro is accepted",
     blurb:"someone said yes. the chat opens on both sides." },
   { id:"messages",  title:"a message arrives",
@@ -422,95 +420,268 @@ function NotificationsPane({ notify, toggle }) {
   );
 }
 
-/* ---------- pane 3 · api keys ---------- */
+/* ---------- pane 3 · access ---------- */
 
-const KEYS = [
-  { id:"k1", label:"personal access", key:"idx_live_8f3c…a91e", used:"2 hours ago" },
-  { id:"k2", label:"raycast script",  key:"idx_live_2b77…40dd", used:"6 days ago" },
-];
+const accessTh = {
+  textAlign:"left", padding:"6px 10px", borderBottom:"1px solid #000",
+  fontFamily:"var(--mac-mono)", fontSize:9, fontWeight:700,
+  textTransform:"uppercase", letterSpacing:0.5, color:"var(--ink-2)",
+};
+const accessTd = {
+  padding:"7px 10px", borderBottom:"1px solid rgba(0,0,0,0.12)",
+  fontFamily:"var(--mac-mono)", fontSize:11, color:"#000", whiteSpace:"nowrap",
+};
+const accessNote = {
+  margin:"0 0 10px", maxWidth:520,
+  fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
+};
+const accessHeading = {
+  margin:0, fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
+  textTransform:"uppercase", letterSpacing:0.6, color:"var(--ink-2)",
+};
 
-// Live pane exposes status and revocation only. Credential values and metadata
-// remain native and are never projected into WebKit.
-function LiveApiKeyPane() {
-  const signedIn = !!(window.IndexApp && window.IndexApp.isAuthed && window.IndexApp.isAuthed());
-  const revoke = () => { if (window.IndexApp) window.IndexApp.logout(); };
+function accessDay(value) {
+  if (!value) return "never";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "never"
+    : date.toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
+}
+
+function maskKey(start) {
+  return start ? `${start}${"*".repeat(24)}` : "unavailable";
+}
+
+// The same labels the web access page uses, read off the user agent the device
+// grant recorded when the client signed in.
+function describeDevice(userAgent) {
+  if (!userAgent) return "unknown device";
+  if (userAgent.startsWith("Index/")) return "index for mac";
+  if (userAgent.startsWith("index-cli")) return "index cli";
+  if (userAgent.includes("Hermes")) return "hermes agent";
+  if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return "web browser";
+  return userAgent.slice(0, 32);
+}
+
+function RetryLink({ onClick }) {
   return (
-    <div>
-      <p style={{
-        margin:"0 0 14px", maxWidth:520,
-        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
-      }}>
-        this mac is signed in with a single access key stored in your keychain.
-        revoking it signs you out here and stops it working immediately.
-      </p>
-      <div style={{
-        border:"1px solid #000", background:"#fff", boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
-        padding:"10px 12px",
-        display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-      }}>
-        <div style={{ minWidth:0 }}>
-          <div style={{
-            fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:600, color:"#000",
-          }}>this mac</div>
-          <div style={{
-            marginTop:3, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-          }}>{signedIn ? "stored securely · value hidden" : "signed out"}</div>
-        </div>
-        <button
-          onClick={revoke}
-          style={{
-            flex:"0 0 auto",
-            fontFamily:"var(--mac-mono)", fontSize:12, padding:"6px 14px",
-            border:"1px solid #000", background:"#fff", color:"var(--ink-warn)",
-            boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-          }}>revoke & sign out</button>
-      </div>
-    </div>
+    <button
+      onClick={onClick}
+      style={{
+        fontFamily:"var(--mac-sans)", fontSize:12, border:"none", background:"none",
+        color:"var(--ink-2)", textDecoration:"underline", cursor:"pointer", padding:0,
+      }}>retry</button>
   );
 }
 
-function ApiKeysPane() {
+// Revoking is irreversible and one row looks much like the next, so the button
+// asks once. There is no confirm() here: this shell implements only the alert
+// panel, so window.confirm would answer false without ever showing anything.
+function RevokeButton({ onConfirm, busy }) {
+  const [armed, setArmed] = useState(false);
   return (
-    <div>
-      <p style={{
-        margin:"0 0 14px", maxWidth:520,
-        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
-      }}>
-        keys let other tools act as you on the network. revoke one and it stops
-        working immediately.
-      </p>
+    <button
+      onClick={() => { if (armed) { onConfirm(); setArmed(false); } else setArmed(true); }}
+      onBlur={() => setArmed(false)}
+      disabled={busy}
+      style={{
+        fontFamily:"var(--mac-mono)", fontSize:11, padding:"3px 10px",
+        border:"1px solid #000", background: armed ? "var(--ink-warn)" : "#fff",
+        color: armed ? "#fff" : "var(--ink-warn)",
+        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor: busy ? "default" : "pointer",
+      }}>{armed ? "sure?" : "revoke"}</button>
+  );
+}
 
-      <div style={{ display:"grid", gap:9 }}>
-        {KEYS.map(k => (
-          <div key={k.id} style={{
-            border:"1px solid #000", background:"#fff", boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
-            padding:"10px 12px",
-            display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+// Access mirrors the web settings page: the account's API keys, then every
+// session it is signed in on. Key values are never stored here — a freshly
+// minted key is held only until the panel is dismissed.
+function AccessPane() {
+  const [keys, setKeys] = useState(null);
+  const [devices, setDevices] = useState(null);
+  const [currentId, setCurrentId] = useState(null);
+  const [minted, setMinted] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [keysError, setKeysError] = useState(null);
+  const [devicesError, setDevicesError] = useState(null);
+
+  const app = window.IndexApp;
+
+  // The two lists are fetched independently and fail independently: they sit on
+  // different limiters, so one being unavailable must not hide the other.
+  const reload = React.useCallback(async () => {
+    if (!app || !app.listApiKeys) return;
+    const reason = (e) => (e && e.message ? e.message : "could not load");
+    const [keyPage, devicePage] = await Promise.allSettled([app.listApiKeys(), app.listDevices()]);
+
+    if (keyPage.status === "fulfilled") {
+      setKeys((keyPage.value && keyPage.value.apiKeys) || []);
+      setKeysError(null);
+    } else setKeysError(reason(keyPage.reason));
+
+    if (devicePage.status === "fulfilled") {
+      setDevices((devicePage.value && devicePage.value.devices) || []);
+      setCurrentId((devicePage.value && devicePage.value.currentId) || null);
+      setDevicesError(null);
+    } else setDevicesError(reason(devicePage.reason));
+  }, [app]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const run = async (work, setError) => {
+    setBusy(true);
+    try { await work(); await reload(); }
+    catch (e) { setError(e && e.message ? e.message : "request failed"); }
+    finally { setBusy(false); }
+  };
+
+  const generate = () => run(async () => {
+    const names = new Set((keys || []).map(k => k.name));
+    let name = "Personal";
+    for (let n = 2; names.has(name); n += 1) name = `Personal ${n}`;
+    const created = await app.createApiKey(name);
+    if (created && created.key) setMinted(created.key);
+  }, setKeysError);
+
+  if (keys === null && devices === null && !keysError && !devicesError) {
+    return <p style={accessNote}>loading…</p>;
+  }
+
+  return (
+    <div style={{ display:"grid", gap:22 }}>
+      <div>
+        <div style={{
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          gap:12, marginBottom:8,
+        }}>
+          <p style={accessHeading}>api keys</p>
+          <button
+            onClick={generate}
+            disabled={busy}
+            style={{
+              fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
+              border:"1px solid #000", background:"#FF8A00", color:"#000", fontWeight:700,
+              boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", cursor: busy ? "default" : "pointer",
+            }}>generate key</button>
+        </div>
+
+        <p style={accessNote}>
+          a key authenticates you in personal agents, mcp clients, and any
+          other client.
+        </p>
+
+        {keysError ? (
+          <p style={accessNote}>{keysError} · <RetryLink onClick={reload}/></p>
+        ) : keys === null || keys.length === 0 ? (
+          <p style={accessNote}>{keys === null ? "loading…" : "no api keys yet."}</p>
+        ) : (
+          <div style={{
+            border:"1px solid #000", background:"#fff",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", overflowX:"auto",
           }}>
-            <div style={{ minWidth:0 }}>
-              <div style={{
-                fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:600, color:"#000",
-              }}>{k.label}</div>
-              <div style={{
-                marginTop:3, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-              }}>{k.key} · used {k.used}</div>
-            </div>
-            <button style={{
-              flex:"0 0 auto",
-              fontFamily:"var(--mac-mono)", fontSize:12, padding:"6px 14px",
-              border:"1px solid #000", background:"#fff", color:"var(--ink-warn)",
-              boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-            }}>revoke</button>
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr>
+                  <th style={accessTh}>key</th>
+                  <th style={accessTh}>created</th>
+                  <th style={accessTh}>last used</th>
+                  <th style={{ ...accessTh, textAlign:"right" }}>actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keys.map(k => (
+                  <tr key={k.id}>
+                    <td style={{ ...accessTd, color:"var(--ink-2)" }}>{maskKey(k.start)}</td>
+                    <td style={accessTd}>{accessDay(k.createdAt)}</td>
+                    <td style={accessTd}>{accessDay(k.lastRequest)}</td>
+                    <td style={{ ...accessTd, textAlign:"right" }}>
+                      <RevokeButton
+                        busy={busy}
+                        onConfirm={() => run(() => app.revokeApiKey(k.id), setKeysError)}/>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))}
+        )}
+
+        {minted && (
+          <div style={{
+            marginTop:10, border:"1px solid #000", background:"#FFF6E5",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", padding:"10px 12px",
+          }}>
+            <p style={{
+              margin:"0 0 6px", fontFamily:"var(--mac-mono)", fontSize:11,
+              fontWeight:700, color:"#000",
+            }}>copy this key now — it won&apos;t be shown again</p>
+            <code style={{
+              display:"block", fontFamily:"var(--mac-mono)", fontSize:11,
+              color:"#000", wordBreak:"break-all", userSelect:"text",
+            }}>{minted}</code>
+            <button
+              onClick={() => setMinted(null)}
+              style={{
+                marginTop:8, fontFamily:"var(--mac-mono)", fontSize:10,
+                border:"none", background:"none", color:"var(--ink-2)",
+                textDecoration:"underline", cursor:"pointer", padding:0,
+              }}>dismiss</button>
+          </div>
+        )}
       </div>
 
-      <button style={{
-        marginTop:12,
-        fontFamily:"var(--mac-mono)", fontSize:11, padding:"6px 14px",
-        border:"1px solid #000", background:"#FF8A00", color:"#000", fontWeight:700,
-        boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", cursor:"pointer",
-      }}>+ new key</button>
+      <div>
+        <p style={{ ...accessHeading, marginBottom:8 }}>devices</p>
+        <p style={accessNote}>
+          where you are signed in. the mac app, cli and personal agents each hold
+          their own session, so signing one out here leaves the others alone.
+        </p>
+
+        {devicesError ? (
+          <p style={accessNote}>{devicesError} · <RetryLink onClick={reload}/></p>
+        ) : devices === null || devices.length === 0 ? (
+          <p style={accessNote}>{devices === null ? "loading…" : "no active devices."}</p>
+        ) : (
+          <div style={{
+            border:"1px solid #000", background:"#fff",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.22)", overflowX:"auto",
+          }}>
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr>
+                  <th style={accessTh}>device</th>
+                  <th style={accessTh}>signed in</th>
+                  <th style={accessTh}>expires</th>
+                  <th style={{ ...accessTh, textAlign:"right" }}>actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {devices.map(d => (
+                  <tr key={d.id}>
+                    <td style={accessTd}>
+                      {describeDevice(d.userAgent)}
+                      {d.id === currentId && (
+                        <span style={{ marginLeft:6, fontSize:10, color:"var(--ink-2)" }}>this mac</span>
+                      )}
+                    </td>
+                    <td style={accessTd}>{accessDay(d.createdAt)}</td>
+                    <td style={accessTd}>{accessDay(d.expiresAt)}</td>
+                    <td style={{ ...accessTd, textAlign:"right" }}>
+                      <RevokeButton
+                        busy={busy}
+                        onConfirm={() => (
+                          d.id === currentId
+                            ? app.logout()
+                            : run(() => app.revokeDevice(d.id), setDevicesError)
+                        )}/>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -522,13 +693,6 @@ function ApiKeysPane() {
 //            it back to sign-in. The titlebar gadget uses this too.
 // onDone  , the single committing path. Defaults to onClose so the ordinary
 //            settings pane behaves exactly as before.
-// A public-research enrichment result is "usable" for the review when it filled
-// in a bio or discovered at least one social — otherwise we fall through to the
-// context/preview drafts below.
-function usableEnriched(res) {
-  const p = res && res.profile;
-  return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
-}
 
 /** Always one website row to type into, even before there is a website. */
 function websiteRows(sites) {
@@ -545,7 +709,34 @@ function fillBlankHandles(current, found) {
   return merged;
 }
 
-function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false, enrich = false, enriched = null }) {
+// The baseline the form opens on, and what "reset" restores to: the account
+// record, with the public-research lookup filling in every blank it found, and
+// the name the person confirmed on the way in winning over both. Ordinary
+// settings passes neither a lookup nor a name, so it is just the account record.
+// Socials are normalized on the way in so the fields hold a bare username: the
+// API returns {label, value} with value as a whole URL.
+function assembleProfile(ME, enriched, name) {
+  const stored = splitProfileSocials(ME.socials);
+  const found = splitProfileSocials(enriched && enriched.profile ? enriched.profile.socials : []);
+  const p = (enriched && enriched.profile) || {};
+  return {
+    name: name || ME.name || "",
+    email: ME.email || "",
+    location: ME.location || p.location || "",
+    intro: ME.intro || p.intro || "",
+    // Keyed by platform, not a list: every field is always on screen so it can
+    // be emptied and filled again. `websites` always keeps one row to type in.
+    socials: fillBlankHandles(stored.handles, found.handles),
+    websites: websiteRows(found.websites.length ? found.websites : stored.websites),
+    photo: ME.photo || null,
+  };
+}
+
+// firstRun , this is the getting-started pass rather than the settings pane:
+//            saving also confirms onboarding.
+// enriched , the public-research lookup the caller already ran, or null.
+// name     , the name confirmed on the card before the lookup.
+function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false, firstRun = false, enriched = null, name = "" }) {
   const env = (typeof useIndexEnv === "function") ? useIndexEnv() : { live: false };
   // The signed-in user, mirrored onto INDEX_DATA.ME once the snapshot loads.
   // Live-only: empty when nothing has loaded yet, never a demo identity.
@@ -553,63 +744,16 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   const live = !!(env.live && window.IndexApp && window.IndexApp.isAuthed());
   const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
-  // What the agent assembled, the baseline "reset" restores to.
-  // Socials are normalized on the way in so the fields hold a bare username:
-  // the API returns {label, value} with value as a whole URL.
-  const stored = splitProfileSocials(ME.socials);
-  const assembled = useRef({
-    name: ME.name || "", email: ME.email || "", location: ME.location || "",
-    intro: ME.intro || "",
-    // Keyed by platform, not a list: every field is always on screen so it can
-    // be emptied and filled again. `websites` always keeps one row to type in.
-    socials: stored.handles,
-    websites: websiteRows(stored.websites),
-    photo: ME.photo || null,
-  });
+  const assembled = useRef(assembleProfile(ME, enriched, name));
   const [form, setForm] = useState(assembled.current);
   // In-session edits (ME.notify) win over the durable native store; the
   // defaults only apply on a truly fresh install. `messages` predates neither:
   // older saves without it fall back to on, matching notificationEventAllowed.
   const [notify, setNotify] = useState({
-    alignment: true, question: true, accepted: true, digest: false, messages: true,
+    alignment: true, accepted: true, digest: false, messages: true,
     ...((window.INDEX_NATIVE && window.INDEX_NATIVE.notifyPrefs) || {}),
     ...(ME.notify || {}),
   });
-
-  // Enrichment-backed getting started: adopt POST /enrichment/enrich prefill when
-  // the parent already ran it on the setting-up screen.
-  const [drafting, setDrafting] = useState(enrich && live && !usableEnriched(enriched));
-  useEffect(() => {
-    if (!enrich || !live) { setDrafting(false); return; }
-    let cancelled = false;
-    const adopt = (next) => {
-      assembled.current = { ...assembled.current, ...next };
-      setForm(f => ({ ...f, ...next }));
-    };
-    (async () => {
-      try {
-        const res = enriched;
-        const p = res && res.profile;
-        if (p && (String(p.intro || "").trim() || (p.socials && p.socials.length))) {
-          const found = splitProfileSocials(p.socials);
-          const intro = p.intro || "";
-          const location = p.location || "";
-          adopt({
-            name: assembled.current.name || p.name || "",
-            location: assembled.current.location || location,
-            intro: assembled.current.intro || intro,
-            socials: fillBlankHandles(assembled.current.socials, found.handles),
-            websites: websiteRows(
-              found.websites.length ? found.websites : assembled.current.websites
-            ),
-          });
-        }
-      } catch (e) { /* keep assembled /auth/me values */ }
-      if (!cancelled) setDrafting(false);
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggle = (id) => setNotify(n => ({ ...n, [id]: !n[id] }));
@@ -658,7 +802,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         socials,
         ...(avatarKey ? { avatar: avatarKey } : {}),
       }).catch(() => {});
-      if (enrich && window.IndexApp && window.IndexApp.confirmOnboardingProfile) {
+      if (firstRun && window.IndexApp && window.IndexApp.confirmOnboardingProfile) {
         await window.IndexApp.confirmOnboardingProfile().catch(() => {});
       }
     }
@@ -694,9 +838,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             <div style={{ padding:"14px 24px", borderBottom:"2px solid #000" }}>
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-              }}>{drafting
-                ? "pulling together your profile…"
-                : "here's what i pulled together. make sure it's right."}</div>
+              }}>here's what i pulled together. make sure it's right.</div>
             </div>
           ) : (
             <div style={{
@@ -712,7 +854,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
                   options={[
                     { value:"profile",  label:"profile" },
                     { value:"notify",   label:"notifications" },
-                    { value:"keys",     label:"api keys" },
+                    { value:"keys",     label:"access" },
                   ]}
                 />
               </div>
@@ -725,7 +867,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
           }}>
             {tab === "profile" && <ProfilePane me={ME} form={form} set={set} profileOnly={profileOnly}/>}
             {tab === "notify"  && <NotificationsPane notify={notify} toggle={toggle}/>}
-            {tab === "keys"    && (live ? <LiveApiKeyPane/> : <ApiKeysPane/>)}
+            {tab === "keys"    && <AccessPane/>}
           </div>
 
           <div style={{

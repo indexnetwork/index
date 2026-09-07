@@ -3,7 +3,7 @@
 cd "$(dirname "$0")/.." || exit 1
 
 # The hot-reload loop is a development workflow: default to the development
-# build (web inspector + login-keychain owner credential fallback).
+# build (web inspector + Application Support owner credential fallback).
 export INDEX_DEVELOPMENT_BUILD="${INDEX_DEVELOPMENT_BUILD:-1}"
 
 snapshot() {

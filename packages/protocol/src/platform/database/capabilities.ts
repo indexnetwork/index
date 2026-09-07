@@ -5,41 +5,25 @@
  * visible in one line.
  */
 
-import type { NegotiationGraphDatabase } from './negotiation.js';
+import type { NegotiationContextDatabase } from './negotiation.js';
 import type { Database } from '../database.js';
 
 
 /**
- * Database interface narrowed for Premise Graph operations.
- * Provides premise lifecycle: create, read, update, and network assignment.
- *
- * Access layer: UserDatabase (user's own premises)
- */
-export type PremiseGraphDatabase = Pick<
-  Database,
-  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext' | 'findSimilarActivePremise' | 'getUser' | 'updateUser'
->;
-
-/**
- * Composite database interface for Chat Graph.
- * Includes direct ChatGraph operations plus all methods needed by
- * internally composed subgraphs (ProfileGraph, OpportunityGraph, IntentGraph, NetworkGraph).
- *
- * Use this type when ChatGraph orchestrates subgraphs internally.
+ * Composite database interface for a tool composition that reaches every
+ * subgraph (OpportunityGraph, IntentGraph, NetworkGraph).
  *
  * Access layer: Both UserDatabase + SystemDatabase (orchestrates all operations)
  */
-export type ChatGraphCompositeDatabase = Pick<
+export type CompositeToolDatabase = Pick<
   Database,
-  // Direct ChatGraph operations
   | 'getProfile'
-  // The chat/MCP discovery path builds an OpportunityGraph too, and its
-  // terminal stage records candidates.
-  | 'upsertDiscoveryMatchCandidates'
+  // The MCP discovery path builds an OpportunityGraph too, and its terminal
+  // stage opens the pairs it scored.
+  | 'openCounterparties'
   | 'getActiveIntents'
-  | 'getActiveIntentsAcrossIndexes'
-  | 'getIntentsInIndexForMember'
-  // ProfileGraph subgraph requirements
+  | 'getActiveIntentsAcrossNetworks'
+  | 'getIntentsInNetworkForMember'
   | 'getUser'
   | 'updateUser'
   | 'getUserSocials'
@@ -49,13 +33,10 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'createIntent'
   | 'updateIntent'
   | 'archiveIntent'
-  | 'deleteIntentIndexAssociations'
+  | 'deleteIntentNetworkAssociations'
   | 'expireOpportunitiesByIntentActor'
   | 'transitionIntentLifecycle'
   | 'compensateFailedResume'
-  | 'getProposalForOwner'
-  | 'revisePendingProposal'
-  | 'confirmProposalIntent'
   // OpportunityGraph subgraph requirements (getProfile already included)
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
@@ -75,9 +56,9 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getHydeDocumentsForSource'
   | 'saveHydeDocument'
   | 'getIntent'
-  // NetworkGraph subgraph requirements (index created intents in user's indexes)
-  | 'getPublicIndexesNotJoined'
-  | 'getUserIndexIds'
+  // NetworkGraph subgraph requirements (assign created intents to user's networks)
+  | 'getPublicNetworksNotJoined'
+  | 'getUserNetworkIds'
   | 'getAssignmentNetworkMembershipsForUser'
   | 'getAssignmentNetworkIdsForUser'
   | 'getNetworkMemberships'
@@ -88,56 +69,37 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getIntentForIndexing'
   | 'getNetworkMemberContext'
   | 'getNetworkAssignmentContext'
-  | 'isIntentAssignedToIndex'
+  | 'isIntentAssignedToNetwork'
   | 'assignIntentToNetwork'
   | 'assignIntentToNetworkIfMember'
-  | 'unassignIntentFromIndex'
+  | 'unassignIntentFromNetwork'
   | 'getNetworkIdsForIntent'
-  | 'getIntentIndexScores'
-  // Index Ownership Operations (owner-only)
-  | 'getOwnedIndexes'
-  | 'isIndexOwner'
+  | 'getIntentNetworkScores'
+  // Network Ownership Operations (owner-only)
+  | 'getOwnedNetworks'
+  | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getNetworkMembersForOwner'
   | 'getNetworkMembersForMember'
-  | 'getMembersFromUserIndexes'
+  | 'getMembersFromUserNetworks'
   | 'getNetworkIntentsForOwner'
   | 'getNetworkIntentsForMember'
-  | 'updateIndexSettings'
+  | 'updateNetworkSettings'
   | 'softDeleteNetwork'
   | 'deleteProfile'
   | 'getProfileByUserId'
   | 'createNetwork'
   | 'getNetworkMemberCount'
   | 'addMemberToNetwork'
-  | 'removeMemberFromIndex'
-  // ProfileGraph post-enrichment ghost deduplication
-  // ProfileGraph aggregate mode (premise-to-profile materialization)
-  // Premise lifecycle (CRUD + network assignment)
-  | 'getPremisesForUser'
-  | 'getPremisesForUserInNetworks'
-  | 'createPremise'
-  | 'getPremise'
-  | 'updatePremise'
-  | 'assignPremiseToNetwork'
-  | 'getPremiseNetworks'
-  // Premise-to-premise discovery (path D) in OpportunityGraph
-  | 'searchPremisesBySimilarity'
-  | 'searchPremisesBySimilarityBatch'
+  | 'removeMemberFromNetwork'
   // User context text for discovery in OpportunityGraph
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
-> & Pick<
-  NegotiationGraphDatabase,
-  // Orphan heal in OpportunityGraph persist node
-  | 'getNegotiationTaskForOpportunity'
-  // negotiateNode bumps the round once per (intentId) in a kickoff batch
-  | 'bumpIntentNegotiationBatch'
->;
+> & NegotiationContextDatabase;
 
 /**
  * Database interface for Opportunity Graph operations.
- * Includes prep/scope (network membership, intents, index details), persist (create, dedupe),
+ * Includes prep/scope (network membership, intents, network details), persist (create, dedupe),
  * and CRUD operations (read, update status, send).
  *
  * Access layer: SystemDatabase (cross-user opportunity operations)
@@ -145,7 +107,7 @@ export type ChatGraphCompositeDatabase = Pick<
 export type OpportunityGraphDatabase = Pick<
   Database,
   | 'getProfile'
-  | 'upsertDiscoveryMatchCandidates'
+  | 'openCounterparties'
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'
@@ -153,14 +115,14 @@ export type OpportunityGraphDatabase = Pick<
   | 'updateOpportunityStatusIfNetworkEligible'
   | 'opportunityExistsBetweenActors'
   | 'findOpportunitiesByActors'
-  | 'getUserIndexIds'
+  | 'getUserNetworkIds'
   | 'getNetworkMemberships'
   | 'getActiveNetworkMembershipPairs'
   | 'getActiveIntents'
   | 'getNetworkIdsForIntent'
   | 'getNetwork'
   | 'getNetworkMemberCount'
-  | 'getIntentIndexScores'
+  | 'getIntentNetworkScores'
   | 'getNetworkMemberContext'
   | 'getNetworkAssignmentContext'
   // Read/update/send modes
@@ -169,18 +131,11 @@ export type OpportunityGraphDatabase = Pick<
   | 'updateOpportunityStatus'
   | 'stampOpportunityActorAction'
   | 'isNetworkMember'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'getUser'
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
-  // IND-567 Fix A: fetch candidate premise text for evaluator (prevents empty-text query_premise false-positives)
-  | 'getPremise'
-  // Premise-to-premise discovery (path D)
-  | 'getPremisesForUser'
-  | 'getPremisesForUserInNetworks'
-  | 'searchPremisesBySimilarity'
-  | 'searchPremisesBySimilarityBatch'
   // User context text for discovery
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
@@ -188,13 +143,6 @@ export type OpportunityGraphDatabase = Pick<
   | 'getHydeDocumentsForSource'
   // IND-567: Rejection cool-down (optional — adapters may omit)
   | 'getRecentlyRejectedOpportunityCounterparties'
-> & Pick<
-  NegotiationGraphDatabase,
-  // Orphan heal: check if a prior negotiating opportunity has a stale task
-  | 'getNegotiationTaskForOpportunity'
-  // negotiateNode bumps the round once per (intentId) in a kickoff batch and
-  // passes it to every open() in that batch — a round is the batch, not one opportunity.
-  | 'bumpIntentNegotiationBatch'
 >;
 export interface OutcomeOutbox {
   event: unknown;
@@ -216,7 +164,7 @@ export type OpportunityControllerDatabase = Pick<
   | 'opportunityExistsBetweenActors'
   | 'findOpportunitiesByActors'
   | 'acceptSiblingOpportunities'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getUser'
   | 'getNetwork'
@@ -236,15 +184,15 @@ export type OpportunityControllerDatabase = Pick<
 /**
  * Database interface narrowed for Intent Graph operations.
  * Provides state population (getActiveIntents), action execution (create/update/archive),
- * and read operations (query intents; getIntentsInIndexForMember for network-scoped reads).
+ * and read operations (query intents; getIntentsInNetworkForMember for network-scoped reads).
  *
  * Access layer: UserDatabase (mutations on own intents) + SystemDatabase (network-scoped reads)
  */
 export type IntentGraphDatabase = Pick<
   Database,
   | 'getActiveIntents'
-  | 'getActiveIntentsAcrossIndexes'
-  | 'getIntentsInIndexForMember'
+  | 'getActiveIntentsAcrossNetworks'
+  | 'getIntentsInNetworkForMember'
   | 'createIntent'
   | 'updateIntent'
   | 'archiveIntent'
@@ -252,51 +200,43 @@ export type IntentGraphDatabase = Pick<
   | 'isNetworkMember'
   | 'getNetworkIntentsForMember'
   | 'getUser'
-  // Global user_context paragraph, read to verify an owner-edited proposal.
-  // Never used to rewrite a description: intents derive from what the user said.
-  | 'getUserContext'
-  | 'assignIntentToNetwork'
+  // Create action links the new intent to exactly the networks the caller named.
+  | 'assignIntentToNetworkIfMember'
   // Archive action's full cleanup (network associations, referencing opportunities)
-  | 'deleteIntentIndexAssociations'
+  | 'deleteIntentNetworkAssociations'
   | 'expireOpportunitiesByIntentActor'
   // Status transition action (pause/resume)
   | 'transitionIntentLifecycle'
   | 'compensateFailedResume'
-  // Confirm action (chat/MCP proposal → persisted intent). Ownership is
-  // enforced by the proposal row itself (owner-scoped) and by the caller
-  // for archive/transition, same as create/update today.
-  | 'getProposalForOwner'
-  | 'revisePendingProposal'
-  | 'confirmProposalIntent'
 >;
 
 /**
  * Database interface narrowed for Network Graph CRUD operations.
- * Handles create, read, update, delete of indexes (communities).
+ * Handles create, read, update, delete of networks (communities).
  *
  * Access layer: UserDatabase (CRUD on own networks and memberships)
  */
 export type NetworkGraphDatabase = Pick<
   Database,
   | 'getNetworkMemberships'
-  | 'getOwnedIndexes'
-  | 'getPublicIndexesNotJoined'
-  | 'isIndexOwner'
+  | 'getOwnedNetworks'
+  | 'getPublicNetworksNotJoined'
+  | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getNetwork'
   | 'createNetwork'
   | 'addMemberToNetwork'
-  | 'updateIndexSettings'
+  | 'updateNetworkSettings'
   | 'softDeleteNetwork'
   | 'getNetworkMemberCount'
 >;
 
 /**
- * Database interface narrowed for Intent Index Graph operations.
- * Provides intent/index context and assignment for intent–index evaluation.
+ * Database interface narrowed for Intent Network Graph operations.
+ * Provides intent/network context and assignment for intent–network evaluation.
  * (Migrated from the old NetworkGraphDatabase.)
  *
- * Access layer: UserDatabase (own intent assignment) + SystemDatabase (index context)
+ * Access layer: UserDatabase (own intent assignment) + SystemDatabase (network context)
  */
 export type IntentNetworkGraphDatabase = Pick<
   Database,
@@ -304,15 +244,15 @@ export type IntentNetworkGraphDatabase = Pick<
   | 'getNetworkMemberContext'
   | 'getNetworkAssignmentContext'
   | 'getNetwork'
-  | 'isIntentAssignedToIndex'
+  | 'isIntentAssignedToNetwork'
   | 'assignIntentToNetworkIfMember'
-  | 'unassignIntentFromIndex'
+  | 'unassignIntentFromNetwork'
   | 'getIntent'
   | 'isNetworkMember'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'getNetworkIdsForIntent'
   | 'getNetworkIntentsForMember'
-  | 'getIntentsInIndexForMember'
+  | 'getIntentsInNetworkForMember'
 >;
 
 /**
@@ -324,10 +264,10 @@ export type IntentNetworkGraphDatabase = Pick<
 export type NetworkMembershipGraphDatabase = Pick<
   Database,
   | 'isNetworkMember'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'getNetworkWithPermissions'
   | 'addMemberToNetwork'
-  | 'removeMemberFromIndex'
+  | 'removeMemberFromNetwork'
   | 'getNetworkMembersForMember'
 >;
 
@@ -344,7 +284,7 @@ export type HydeGraphDatabase = Pick<
 
 /**
  * Database interface for Radar Graph (opportunity radar view).
- * Load opportunities, enrich with profile/index, and support presenter context.
+ * Load opportunities, enrich with profile/network, and support presenter context.
  *
  * Access layer: UserDatabase (own opportunities and profile)
  */
@@ -356,9 +296,4 @@ export type RadarGraphDatabase = Pick<
   | 'getActiveIntents'
   | 'getNetwork'
   | 'getUser'
-> & Pick<
-  NegotiationGraphDatabase,
-  | 'getNegotiationTaskForOpportunity'
-  | 'getNegotiationMessages'
-  | 'getArtifactsForTask'
->;
+> & NegotiationContextDatabase;

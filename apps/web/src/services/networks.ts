@@ -36,10 +36,10 @@ const MY_MEMBERS_RECENT_CACHE_TTL_MS = 1500;
 const myMembersInFlight = new Map<string, Promise<{ members: Member[] }>>();
 const myMembersRecent = new Map<string, { data: { members: Member[] }; timestamp: number }>();
 
-export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
-  // Get all networks with pagination
-  getNetworks: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network>> => {
-    const response = await api.get<APIResponse<Network>>(`/networks?page=${page}&limit=${limit}`);
+export const createNetworksService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
+  // Get all networks the signed-in user is a member of
+  getNetworks: async (): Promise<PaginatedResponse<Network>> => {
+    const response = await api.get<APIResponse<Network>>('/networks');
     return {
       data: response.networks || [],
       pagination: response.pagination || { current: 1, total: 0, count: 0, totalCount: 0 }
@@ -47,13 +47,13 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Get networks shared between the current user and a target user
-  getSharedIndexes: async (userId: string): Promise<Array<{ id: string; title: string; _count: { members: number } }>> => {
+  getSharedNetworks: async (userId: string): Promise<Array<{ id: string; title: string; _count: { members: number } }>> => {
     const response = await api.get<{ networks: Array<{ id: string; title: string; _count: { members: number } }> }>(`/networks/shared/${userId}`);
     return response.networks || [];
   },
 
   // Discover public networks (networks that anyone can join)
-  discoverPublicIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network & { isMember?: boolean }>> => {
+  discoverPublicNetworks: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network & { isMember?: boolean }>> => {
     const response = await api.get<APIResponse<Network & { isMember?: boolean }>>(`/networks/discovery/public?page=${page}&limit=${limit}`);
     return {
       data: response.networks || [],
@@ -71,7 +71,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Get network by share code (public access)
-  getIndexByShareCode: async (code: string): Promise<Network> => {
+  getNetworkByShareCode: async (code: string): Promise<Network> => {
     const response = await api.get<APIResponse<Network>>(`/networks/share/${code}`);
     if (!response.network) {
       throw new Error('Network not found');
@@ -80,7 +80,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Upload network image (returns URL to use in create/update)
-  uploadIndexImage: async (file: File): Promise<string> => {
+  uploadNetworkImage: async (file: File): Promise<string> => {
     const result = await api.uploadFile<{ imageUrl?: string }>('/storage/network-images', file, undefined, 'image');
     if (!result?.imageUrl) {
       throw new Error('Failed to upload network image');
@@ -89,12 +89,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Create new network
-  createNetwork: async (data: CreateNetworkRequest): Promise<Network & { masterKey?: string }> => {
-    const response = await api.post<APIResponse<Network> & { masterKey?: string }>('/networks', data);
+  createNetwork: async (data: CreateNetworkRequest): Promise<Network> => {
+    const response = await api.post<APIResponse<Network>>('/networks', data);
     if (!response.network) {
       throw new Error('Failed to create network');
     }
-    return { ...response.network, ...(response.masterKey ? { masterKey: response.masterKey } : {}) };
+    return response.network;
   },
 
   // Update network
@@ -250,7 +250,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Join a public network
-  joinIndex: async (networkId: string): Promise<{ network: Network; membership?: Member; alreadyMember?: boolean }> => {
+  joinNetwork: async (networkId: string): Promise<{ network: Network; membership?: Member; alreadyMember?: boolean }> => {
     const response = await api.post<{
       message: string;
       network: Network;
@@ -288,72 +288,28 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     };
   },
 
-  // Get current user's overview for a network: intents, premises, user_context (EDG-53)
+  // Get current user's overview for a network: their intents
   getNetworkOverview: async (networkId: string): Promise<{
     intents: Array<{ id: string; payload: string; summary?: string | null; createdAt: string; userId: string; userName: string }>;
-    premises: Array<{ id: string; text: string; summary: string | null; createdAt: string }>;
-    userContext: { text: string; generatedAt: string } | null;
   }> => {
     const response = await api.get<{
       intents: Array<{ id: string; payload: string; summary?: string | null; createdAt: string; userId: string; userName: string }>;
-      premises: Array<{ id: string; text: string; summary: string | null; createdAt: string }>;
-      userContext: { text: string; generatedAt: string } | null;
     }>(`/networks/${networkId}/overview`);
     return {
       intents: response.intents || [],
-      premises: response.premises || [],
-      userContext: response.userContext ?? null,
     };
   },
 
-  // CSV Import — parse a large CSV file server-side
-  parseCsvImport: async (networkId: string, file: File): Promise<{
-    valid: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>;
-    invalid: Array<{ row: Record<string, string>; reason: string }>;
-  }> => {
-    return api.uploadFile(`/networks/${networkId}/members/import/parse`, file, undefined, 'file');
-  },
-
-  // CSV Import — confirm import of parsed rows. For experiment networks the
-  // backend emails the network owner(s) one summary message with every minted
-  // API key as an inline CSV; per-user invitation emails are not sent.
-  importMembers: async (networkId: string, members: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>): Promise<{
-    imported: number;
-    skipped: number;
-    ownersNotified: number;
-  }> => {
-    return api.post(`/networks/${networkId}/members/import`, { members });
-  },
-
-  // Invite a single member to an experiment network by email
-  inviteMember: async (networkId: string, email: string, name?: string): Promise<{ user: { id: string; email: string }; created: boolean; alreadyMember: boolean; agentProvisioned: boolean }> => {
+  // Invite a single member to a network by email
+  inviteMember: async (networkId: string, email: string, name?: string): Promise<{ user: { id: string; email: string }; created: boolean; alreadyMember: boolean }> => {
     return api.post(`/networks/${networkId}/members/invite`, { email, name });
-  },
-
-  // Resend invitation to an existing member
-  resendInvite: async (
-    networkId: string,
-    memberId: string,
-  ): Promise<{ rotated: boolean; email: string }> => {
-    return api.post(`/networks/${networkId}/members/${memberId}/resend-invite`, {});
-  },
-
-  // Rotate the master key on a network. Plaintext is returned
-  // exactly once; the old key stops working immediately.
-  rotateMasterKey: async (networkId: string): Promise<{ masterKey: string }> => {
-    return api.post<{ masterKey: string }>(`/networks/${networkId}/rotate-master-key`, {});
-  },
-
-  // Enable a master key on a network. Plaintext is returned exactly once.
-  enableMasterKey: async (networkId: string): Promise<{ masterKey: string }> => {
-    return api.post<{ masterKey: string }>(`/networks/${networkId}/master-key`, {});
   },
 });
 
 // Non-authenticated service for public endpoints
-export const indexesService = {
+export const networksService = {
   // Get network by share code (public access, no auth required)
-  getIndexByShareCode: async (code: string): Promise<Network> => {
+  getNetworkByShareCode: async (code: string): Promise<Network> => {
     const response = await apiClient.getPublic<APIResponse<Network>>(`/networks/share/${code}`);
     if (!response.network) {
       throw new Error('Network not found');
@@ -365,5 +321,5 @@ export const indexesService = {
 // Hook for using networks service with proper error handling
 export function useNetworkService() {
   const api = useAuthenticatedAPI();
-  return useMemo(() => createIndexesService(api), [api]);
+  return useMemo(() => createNetworksService(api), [api]);
 }

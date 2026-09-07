@@ -72,18 +72,15 @@ window.IndexApp = (function () {
   }
   function login() { return post("login"); }
   let logoutInFlight = false;
+  // Signing out must not depend on the bridge answering a request first: it is
+  // the bridge that logout shuts down, so a failing call would leave the key in
+  // the Keychain with no way to retry. Swift always replies through
+  // __indexAuthChanged, which clears the in-flight latch.
   function logout() {
     if (!hasBridge()) return false;
     if (logoutInFlight) return true;
     logoutInFlight = true;
-    const api = getClient();
-    Promise.resolve(api ? api.auth.me() : null)
-      .then((response) => {
-        const user = response && (response.user || response);
-        return post("completeLogout", { ownerId: user && user.id ? user.id : null });
-      })
-      .catch(() => { logoutInFlight = false; });
-    return true;
+    return post("completeLogout");
   }
 
   // Swift answers a detectHarnesses post via window.__indexHarnessesDetected.
@@ -101,17 +98,18 @@ window.IndexApp = (function () {
     });
   }
 
-  // Swift answers a setupHermes post (writes ~/.hermes/.env, installs the
-  // indexnetwork/hermes-plugin) via window.__indexHermesSetup.
+  // Swift answers a setupHermes post (writes ~/.hermes/.env with the owner's
+  // stored key, installs the indexnetwork/hermes-plugin) via
+  // window.__indexHermesSetup. The page never sees the key.
   const hermesWaiters = [];
   window.__indexHermesSetup = function (result) {
     while (hermesWaiters.length) hermesWaiters.shift()(result || {});
   };
-  function setupHermes(apiKey) {
+  function setupHermes() {
     if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
     return new Promise((resolve) => {
       hermesWaiters.push(resolve);
-      window.webkit.messageHandlers.indexAuth.postMessage({ action: "setupHermes", value: apiKey });
+      post("setupHermes");
     });
   }
   // Undo: uninstall the plugin and scrub Index credentials from ~/.hermes/.env.
@@ -121,47 +119,6 @@ window.IndexApp = (function () {
       hermesWaiters.push(resolve);
       post("teardownHermes");
     });
-  }
-
-  // ---- generation-fenced Hermes runtime bridge (kept for native recovery) ---
-
-  function hasHermesRuntimeBridge() {
-    return !!(window.webkit && window.webkit.messageHandlers
-      && window.webkit.messageHandlers.hermesRuntime);
-  }
-
-  function runtimeRequestId() {
-    if (window.crypto && typeof window.crypto.randomUUID === "function") {
-      return window.crypto.randomUUID();
-    }
-    return `runtime-${Math.random().toString(36).slice(2)}-${performance.now()}`;
-  }
-
-  const hermesRuntimeBridge = window.IndexApi.createHermesRuntimeBridge({
-    createRequestId: runtimeRequestId,
-    postMessage:(message) => {
-      if (!hasHermesRuntimeBridge()) throw new Error("no native Hermes runtime bridge");
-      window.webkit.messageHandlers.hermesRuntime.postMessage(message);
-    },
-  });
-
-  // Swift emits this credential-free callback only after dequeueing the request
-  // on its trusted serial queue. Only then does JS start the execution timeout.
-  window.__indexHermesRuntimeProgress = function (progress) {
-    hermesRuntimeBridge.receiveProgress(progress);
-  };
-
-  // Late replies after timeout/abort are consumed as unknown and cannot settle
-  // a later request because the production bridge already removed the waiter.
-  window.__indexHermesRuntimeResult = function (result) {
-    hermesRuntimeBridge.receive(result);
-  };
-
-  function hermesRuntime(command, payload, options) {
-    if (!hasHermesRuntimeBridge()) {
-      return Promise.reject(new Error("no native Hermes runtime bridge"));
-    }
-    return hermesRuntimeBridge.request(command, payload || {}, options || {});
   }
 
   // Swift publishes only an authentication-state boolean, never credential material.
@@ -226,13 +183,13 @@ window.IndexApp = (function () {
     const features = meR.ok ? (meR.value.features || {}) : {};
     const intents = intentR.ok ? normalizeList(intentR.value, "intents") : [];
 
-    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks: [], intents, questions: [], radarItems: [] });
+    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks: [], intents, radarItems: [] });
     return {
       snapshot,
       me: mapMe(user),
       networks: [],
       features,
-      raw: { user, features, networks: [], intents, questions: [], radarItems: [] },
+      raw: { user, features, networks: [], intents, radarItems: [] },
     };
   }
 
@@ -319,7 +276,6 @@ window.IndexApp = (function () {
       members: (n._count && n._count.members) || n.memberCount || 0,
       role,
       joined,
-      hasMasterKey: n.hasMasterKey === true,
       hidden: n.hidden === true,
       privacy: joinPolicy === "anyone" ? "public" : "private",
       joinPolicy,
@@ -352,6 +308,34 @@ window.IndexApp = (function () {
     return c ? c.auth.completeOnboarding(body) : Promise.reject(new Error("no api client"));
   }
 
+  // ---- access settings ----------------------------------------------------
+
+  // Keys and devices are read straight through the native request bridge: the
+  // page states a route, Swift attaches the credential. Devices come from our
+  // own /auth/devices, not Better Auth's list-sessions, because that one
+  // returns every session's token and the bridge rejects credential material.
+  async function accessRequest(method, path, body) {
+    if (!hasAPIBridge()) throw new Error("no api bridge");
+    const response = await nativeAPIBridge.request(
+      body === undefined
+        ? { kind:"http", method, path }
+        : { kind:"http", method, path, body }
+    );
+    // The bridge rejects transport failures itself and resolves everything else
+    // as { status, body }, so the HTTP status is the only success signal here.
+    if (response.status < 200 || response.status >= 300) {
+      const detail = response.body && (response.body.error || response.body.message);
+      throw new Error(detail || `request failed (${response.status})`);
+    }
+    return response.body;
+  }
+
+  function listApiKeys() { return accessRequest("GET", "/auth/api-key/list"); }
+  function createApiKey(name) { return accessRequest("POST", "/auth/api-key/create", { name }); }
+  function revokeApiKey(keyId) { return accessRequest("POST", "/auth/api-key/delete", { keyId }); }
+  function listDevices() { return accessRequest("GET", "/auth/devices"); }
+  function revokeDevice(sessionId) { return accessRequest("POST", "/auth/devices/revoke", { sessionId }); }
+
   // Run public profile prefill (POST /enrichment/enrich) for the authenticated user.
   function triggerEnrichment(hints) {
     const c = getClient();
@@ -360,45 +344,6 @@ window.IndexApp = (function () {
   }
 
   // ---- bounded native SSE -------------------------------------------------
-
-  // POST /chat/stream. There is one server persona, so the request names no
-  // persona field. Resolves with
-  // the session id (from the X-Session-Id response header) once the stream ends.
-  // onSession fires as soon as headers arrive, so mid-stream events (e.g.
-  // user_question) can be resolved against the conversation right away.
-  async function streamChat({ message, sessionId, scopeType, scopeId, onEvent, onSession, signal }) {
-    // A half-supplied scope is a caller bug, not a request to drop the scope.
-    // This used to send `if (scopeType && scopeId)`, so a null scopeId silently
-    // downgraded the turn to unscoped — which this app has no surface for
-    // (the API answers a scopeless api-key turn with 403).
-    // Fail here, where the caller is named, rather than at the server.
-    if (Boolean(scopeType) !== Boolean(scopeId)) {
-      throw new Error(
-        `streamChat needs scopeType and scopeId together (got scopeType=${JSON.stringify(scopeType)}, scopeId=${JSON.stringify(scopeId)})`,
-      );
-    }
-
-    const body = { message };
-    if (sessionId) body.sessionId = sessionId;
-    if (scopeType) { body.scopeType = scopeType; body.scopeId = scopeId; }
-
-    let immediateSession = sessionId || null;
-    const receive = (event) => {
-      if (event && event.type === "native_headers") {
-        immediateSession = event.headers && event.headers["x-session-id"] || immediateSession;
-        if (immediateSession && onSession) { try { onSession(immediateSession); } catch (e) { /* ignore */ } }
-        return;
-      }
-      if (onEvent) onEvent(event);
-    };
-    const response = await nativeAPIBridge.request(
-      { kind:"sse", method:"POST", path:"/chat/stream", body },
-      { signal, onEvent:receive, timeoutMs:300000 },
-    );
-    const resolvedSession = response.headers["x-session-id"] || immediateSession || null;
-    if (resolvedSession && resolvedSession !== immediateSession && onSession) { try { onSession(resolvedSession); } catch (e) { /* ignore */ } }
-    return resolvedSession;
-  }
 
   // GET /conversations/stream, live inbox events. Returns an abort handle.
   function streamInbox(onEvent) {
@@ -441,17 +386,15 @@ window.IndexApp = (function () {
   }
 
   // App-wide OS notification pipeline, mirroring the Hermes Desktop plugin
-  // (packages/hermes-plugin/desktop/tail.js): realtime SSE for question/
-  // opportunity events plus a 60s snapshot catch-up, and the conversation
-  // stream for messages — realtime-only, own messages suppressed, fail-closed
-  // until the signed-in identity is known. Dedupe keys persist to localStorage
-  // best-effort; losing them across a relaunch is safe because the first
-  // snapshot after boot primes the seen-set without toasting.
+  // (packages/hermes-plugin/desktop/tail.js): one realtime SSE stream carrying
+  // opportunity/question frames and messages alike. Everything is
+  // realtime-only, own sends suppressed, fail-closed until the signed-in
+  // identity is known. Dedupe keys persist to localStorage best-effort.
   function startDesktopNotifications({ getUserId, getPrefs = notifyPrefs } = {}) {
     const N = window.IndexApi || {};
     if (!N.composeNotification) return () => {};
     let stopped = false;
-    const state = { hasSnapshot: false, notifiedEntities: readNotified() };
+    const state = { notifiedEntities: readNotified() };
 
     function readNotified() {
       try {
@@ -467,9 +410,11 @@ window.IndexApp = (function () {
       const copy = N.composeNotification(event, { avatarUrl });
       if (copy) notify(copy);
     }
-    function onRealtime(event, suppressOwnMessage) {
+    function onRealtime(event) {
       if (stopped || !event || event.type === "connected") return;
-      if (suppressOwnMessage && N.isOwnMessage(event, getUserId ? getUserId() : null)) return;
+      // Own-send suppression is a message question: notification frames have no
+      // sender, and isOwnMessage fails closed on anything without `message`.
+      if (event.message && N.isOwnMessage(event, getUserId ? getUserId() : null)) return;
       if (!N.notificationEventAllowed(event, getPrefs ? getPrefs() : null)) return;
       if (!N.composeNotification(event)) return;
       const remembered = N.rememberNotificationEntity(state.notifiedEntities, N.notificationEntityKey(event));
@@ -500,104 +445,12 @@ window.IndexApp = (function () {
       return () => { if (controller) controller.abort(); };
     }
 
-    const closeNotifications = keepStream("/notifications/stream", (e) => onRealtime(e, false));
-    const closeInbox = keepStream("/conversations/stream", (e) => onRealtime(e, true));
-
-    let reconciling = false;
-    async function reconcile() {
-      if (stopped || reconciling) return;
-      reconciling = true;
-      try {
-        const response = await nativeAPIBridge.request({
-          kind:"http", method:"GET", path:"/notifications/snapshot",
-        });
-        if (stopped) return;
-        const payload = response.body;
-        const result = N.reconcileNotificationSnapshot(payload, state);
-        state.hasSnapshot = result.state.hasSnapshot;
-        state.notifiedEntities = result.state.notifiedEntities;
-        persistNotified();
-        const prefs = getPrefs ? getPrefs() : null;
-        for (const event of result.notifications) {
-          if (!stopped && N.notificationEventAllowed(event, prefs)) send(event);
-        }
-      } catch (e) { /* the next reconciliation retries */ }
-      finally { reconciling = false; }
-    }
-    reconcile();
-    const snapshotTimer = setInterval(reconcile, 60000);
+    const closeStream = keepStream("/conversations/stream", onRealtime);
 
     return function dispose() {
       stopped = true;
-      clearInterval(snapshotTimer);
-      closeNotifications();
-      closeInbox();
+      closeStream();
     };
-  }
-
-  // ---- MCP tools/call -----------------------------------------------------
-
-  // Single structured tools/call through native /mcp. Used for intent creation
-  // and agent registration (SessionOnly REST create rejects owner API keys).
-  async function mcpCall(tool, args) {
-    const response = await nativeAPIBridge.request({
-      kind:"mcp", tool, arguments: args || {},
-    });
-    const rpc = response.body;
-    if (!rpc) throw new Error(`MCP ${tool} returned no response`);
-    if (rpc.error) throw new Error(rpc.error.message || `MCP ${tool} failed`);
-    const result = rpc.result || {};
-    if (result.isError) throw new Error(extractMcpText(result) || `MCP ${tool} reported an error`);
-    return parseMcpResult(result);
-  }
-
-  async function createIntent(description) {
-    return mcpCall("create_intent", { description, autoApprove: true });
-  }
-
-  async function registerAgent(input) {
-    const payload = await mcpCall("register_agent", {
-      name: input.name,
-      ...(input.description ? { description: input.description } : {}),
-      ...(input.permissions ? { permissions: input.permissions } : {}),
-    });
-    // tool results arrive wrapped: { success, data: { message, agent } } or flat
-    const agent = (payload && payload.data && payload.data.agent)
-      || (payload && payload.agent)
-      || null;
-    if (!agent) throw new Error((payload && payload.error) || "registration failed");
-    return agent;
-  }
-
-  // Chat turns embed proposals as ```intent_proposal fenced JSON blocks, the
-  // same format the web app and CLI confirm through POST /intents/confirm.
-  function parseIntentProposals(text) {
-    if (!text) return [];
-    const out = [];
-    const re = /```intent_proposal\s*\n([\s\S]*?)\n```/g;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      try {
-        const p = JSON.parse(m[1]);
-        if (p && p.proposalId && p.description) out.push(p);
-      } catch (e) { /* skip malformed block */ }
-    }
-    return out;
-  }
-
-  // MCP tool results carry a content[] array; the structured payload lives in
-  // structuredContent when present, otherwise as JSON text in the first block.
-  function parseMcpResult(result) {
-    if (result.structuredContent) return result.structuredContent;
-    const text = extractMcpText(result);
-    if (!text) return {};
-    try { return JSON.parse(text); } catch (e) { return { text }; }
-  }
-
-  function extractMcpText(result) {
-    const content = Array.isArray(result.content) ? result.content : [];
-    const block = content.find((c) => c && c.type === "text" && typeof c.text === "string");
-    return block ? block.text : "";
   }
 
   return {
@@ -618,13 +471,8 @@ window.IndexApp = (function () {
     detectHarnesses,
     setupHermes,
     teardownHermes,
-    hermesRuntime,
     onAuthChanged,
     onDeepLink,
-    createIntent,
-    registerAgent,
-    parseIntentProposals,
-    streamChat,
     streamInbox,
     notify,
     setNotifyPrefs,
@@ -633,6 +481,11 @@ window.IndexApp = (function () {
     confirmOnboardingProfile,
     completeOnboarding,
     triggerEnrichment,
+    listApiKeys,
+    createApiKey,
+    revokeApiKey,
+    listDevices,
+    revokeDevice,
   };
 })();
 

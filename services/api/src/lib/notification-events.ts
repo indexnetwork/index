@@ -25,22 +25,3 @@ export function onOpportunityNotification(
   notificationEmitter.on('opportunity', handler);
   return () => notificationEmitter.off('opportunity', handler);
 }
-
-/** Payload emitted when a Telegram notification should be delivered to a user. */
-export interface TelegramNotificationPayload {
-  userId: string;
-  message: string;
-  /** Optional URL buttons shown below the message: [{ text, url }] */
-  inlineButtons?: Array<{ text: string; url: string }>;
-}
-
-export function emitTelegramNotification(payload: TelegramNotificationPayload): void {
-  notificationEmitter.emit('telegram', payload);
-}
-
-export function onTelegramNotification(
-  handler: (payload: TelegramNotificationPayload) => void,
-): () => void {
-  notificationEmitter.on('telegram', handler);
-  return () => notificationEmitter.off('telegram', handler);
-}

@@ -105,25 +105,21 @@ export const userService = new UserService();
 
 **Example: Service with Protocol Adapters (When Creating Graphs)**
 ```typescript
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { IntentGraphFactory } from '@indexnetwork/protocol';
+import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { EnrichmentGraphFactory } from '../lib/protocol/graphs/enrichment/enrichment.graph';
 
-export class EnrichmentGenerationService {
-  private db: Database;
-  private embedder: Embedder;
-  private factory: EnrichmentGraphFactory;
+export class IntentIndexingService {
+  private factory: IntentGraphFactory;
 
   constructor() {
     // Use protocol adapters to create graph factory
-    this.db = new ChatDatabaseAdapter();
-    this.embedder = new EmbedderAdapter();
-    this.factory = new EnrichmentGraphFactory(this.db, this.embedder);
+    this.factory = new IntentGraphFactory(new IntentDatabaseAdapter(), new EmbedderAdapter());
   }
 
-  async generateEnrichment(userId: string) {
+  async index(userId: string, payload: string) {
     const graph = this.factory.createGraph();
-    return await graph.invoke({ userId });
+    return await graph.invoke({ userId, payload });
   }
 }
 ```
@@ -230,26 +226,21 @@ export class UserService {
 
 **Using Protocol Adapters (When Creating Graphs):**
 ```typescript
-import type { Database } from '../lib/protocol/interfaces/database.interface';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { IntentGraphFactory } from '@indexnetwork/protocol';
+import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { EnrichmentGraphFactory } from '../lib/protocol/graphs/enrichment/enrichment.graph';
 
-export class EnrichmentService {
-  private db: Database;
-  private embedder: Embedder;
-  private factory: EnrichmentGraphFactory;
+export class IntentIndexingService {
+  private factory: IntentGraphFactory;
 
   constructor() {
     // Use protocol adapters to create graph factory
-    this.db = new ChatDatabaseAdapter();
-    this.embedder = new EmbedderAdapter();
-    this.factory = new EnrichmentGraphFactory(this.db, this.embedder);
+    this.factory = new IntentGraphFactory(new IntentDatabaseAdapter(), new EmbedderAdapter());
   }
 
-  async generateEnrichment(userId: string) {
+  async index(userId: string, payload: string) {
     const graph = this.factory.createGraph();
-    return await graph.invoke({ userId });
+    return await graph.invoke({ userId, payload });
   }
 }
 ```

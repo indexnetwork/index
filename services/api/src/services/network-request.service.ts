@@ -2,7 +2,6 @@ import { and, eq, isNull, sql, inArray } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
-import { NetworkMembershipEvents } from '../events/network_membership.event';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { networkRequestApprovedTemplate, networkRequestNeedsChangesTemplate } from '../lib/email/templates';
 import { staffNotificationEmails } from '../lib/staff';
@@ -276,16 +275,6 @@ export class NetworkRequestService {
       return { decision, updated, requesterId, membershipCreated: false } as const;
     });
 
-    if (outcome.decision === 'approve' && outcome.membershipCreated) {
-      try {
-        NetworkMembershipEvents.onMemberAdded(outcome.requesterId, networkId);
-      } catch (err) {
-        logger.warn('Member-added hook failed (non-fatal)', {
-          networkId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
     this.emailRequester(outcome.decision, outcome.updated, outcome.requesterId).catch((err) =>
       logger.error('Review email failed', { networkId, decision: outcome.decision, error: err }),
     );

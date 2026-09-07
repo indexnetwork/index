@@ -5,8 +5,8 @@ export type IntentDiscoveryTrigger = {
   triggerIntentId: string;
   options: Record<string, never>;
 } & (
-  | { networkId: string; indexScope?: never }
-  | { networkId?: never; indexScope: string[] }
+  | { networkId: string; networkScope?: never }
+  | { networkId?: never; networkScope: string[] }
 );
 
 export type DiscoveryGraphInvokeOptions = IntentDiscoveryTrigger;
@@ -24,7 +24,7 @@ export function buildIntentDiscoveryTrigger(input: {
     operationMode: 'create',
     ...(input.networkIds.length === 1
       ? { networkId: input.networkIds[0]! }
-      : { indexScope: [...input.networkIds] }),
+      : { networkScope: [...input.networkIds] }),
     triggerIntentId: input.triggerIntentId,
     options: {},
   };

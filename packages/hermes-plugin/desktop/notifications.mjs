@@ -10,10 +10,6 @@ function notificationId(event, preferredField) {
 
 export function notificationEntityKey(event) {
   if (!event || typeof event.type !== 'string') return null
-  if (event.type.indexOf('question.') === 0) {
-    const id = notificationId(event, 'questionId')
-    return id ? `question:${id}` : null
-  }
   if (event.type.indexOf('opportunity.') === 0) {
     const id = notificationId(event, 'opportunityId')
     return id ? `opportunity:${id}` : null
@@ -51,7 +47,7 @@ const PLUGIN_ACTIVATE_URL = '/index-network'
 
 export function composeNotification(event) {
   if (!event || typeof event.type !== 'string') return null
-  if (event.type.indexOf('question.') === 0 || event.type.indexOf('opportunity.') === 0) {
+  if (event.type.indexOf('opportunity.') === 0) {
     if (typeof event.title !== 'string' || !event.title.trim()) return null
     return {
       title: event.title,
@@ -104,65 +100,5 @@ export function rememberNotificationEntity(notifiedEntities, key) {
   return {
     notifiedEntities: current.concat(key).slice(-MAX_NOTIFIED_ENTITIES),
     isNew: true,
-  }
-}
-
-export function snapshotNotificationEvents(payload) {
-  if (!payload || !Array.isArray(payload.events)) return null
-  return payload.events.filter((event) => {
-    if (!event || typeof event.type !== 'string') return false
-    const persistedType = event.type.indexOf('question.') === 0 || event.type.indexOf('opportunity.') === 0
-    return persistedType && notificationEntityKey(event) && composeNotification(event)
-  })
-}
-
-export function reconcileNotificationSnapshot(payload, previousState) {
-  const events = snapshotNotificationEvents(payload)
-  const state = previousState || { hasSnapshot: false, notifiedEntities: [] }
-  if (events === null) return { state, notifications: [] }
-
-  let notifiedEntities = normalizedNotifiedEntities(state.notifiedEntities)
-  const notifications = []
-  for (let index = 0; index < events.length; index += 1) {
-    const event = events[index]
-    const remembered = rememberNotificationEntity(notifiedEntities, notificationEntityKey(event))
-    notifiedEntities = remembered.notifiedEntities
-    if (state.hasSnapshot && remembered.isNew) notifications.push(event)
-  }
-
-  return {
-    state: { hasSnapshot: true, notifiedEntities },
-    notifications,
-  }
-}
-
-export async function reconcileDesktopNotificationState(ctx, state, notify) {
-  if (state.stopped || state.reconciling) return
-  state.reconciling = true
-  try {
-    const currentUserId = await refreshNotificationIdentity(function () {
-      return ctx.rest('/auth/status', { method: 'GET' })
-    })
-    if (state.stopped) return
-    state.currentUserId = currentUserId
-
-    const payload = await ctx.rest('/notifications/snapshot', { method: 'GET' })
-    if (state.stopped) return
-    const result = reconcileNotificationSnapshot(payload, {
-      hasSnapshot: state.hasSnapshot,
-      notifiedEntities: state.notifiedEntities,
-    })
-    if (state.stopped) return
-    state.hasSnapshot = result.state.hasSnapshot
-    state.notifiedEntities = result.state.notifiedEntities
-
-    if (state.stopped) return
-    ctx.storage.set(NOTIFIED_ENTITIES_KEY, state.notifiedEntities)
-    for (let index = 0; index < result.notifications.length; index += 1) {
-      if (state.stopped) return
-      notify(result.notifications[index])
-    }
-  } finally {
-    state.reconciling = false
   }
 }

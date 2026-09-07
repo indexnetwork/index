@@ -4,19 +4,19 @@ Index is a macOS 13+ WKWebView client with a native, credential-free request bri
 
 ## Security model
 
-The signed app stores one ordinary Better Auth API key in the Keychain. Raw credentials and authorization headers never enter browser JavaScript, WebKit storage, Application Support records, logs, callback URLs, or generated HTML.
+The signed app stores one Better Auth session token — this device's own session — in the Keychain. Raw credentials and authorization headers never enter browser JavaScript, WebKit storage, Application Support records, logs, callback URLs, or generated HTML.
 
 The native `indexAPI` bridge accepts only the exact bundled main document and document generation. JavaScript supplies structured, allowlisted requests; Swift constructs the fixed API/MCP URLs, reads the owner credential natively, validates body/schema/resource bounds, and returns sanitized data only. It permits bounded REST, upload, and SSE operations (32 pending requests, 1 MiB ordinary request/response, 8 MiB decoded images, 64 KiB events, 256 events; 30-second ordinary and five-minute stream deadlines). It never accepts a browser-supplied URL, header, credential, or transport override.
 
 ## Owner sign-in
 
-Login opens the web `/cli-auth` page (the same state-bound handshake the CLI uses) with a loopback callback on `http://127.0.0.1:<port>/callback`. The callback returns an ordinary 90-day API key plus its key ID; the app verifies the Keychain write/read-back before treating login as complete.
+Login opens the web `/cli-auth` page (the same state-bound handshake the CLI uses) with a loopback callback on `http://127.0.0.1:<port>/callback`. The page runs the device authorization grant against the owner's browser session and returns only a short-lived device code, which the app exchanges at `/api/auth/device/token` for its own 30-day session; the app verifies the Keychain write/read-back before treating login as complete. There is no approval prompt: the page mints and approves the code itself, so no externally supplied code can enter the grant, and the loopback binding is what keeps that safe.
 
-Logout quarantines bridge work, pauses/scrubs Hermes local activity, revokes the exact API key via `/auth/cli-credential/revoke`, verifies denial, then deletes the Keychain item. Uncertain network or persistence outcomes retain the credential and never claim logout completed.
+Logout quarantines bridge work, pauses/scrubs Hermes local activity, deletes the Keychain item, then revokes the session server-side with its own token. A failed Keychain deletion retains the credential and never claims logout completed. A failed revocation still signs the app out locally; the device can also be revoked from Index web settings.
 
 ## Hermes runtime
 
-The native app may show the same owner controls as the web, but it is not required for direct Hermes use. The Hermes plugin authenticates with an ordinary agent-bound API key supplied via the `INDEX_API_KEY` environment variable. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule and preserves unrelated Hermes state.
+The native app may show the same owner controls as the web, but it is not required for direct Hermes use. The Hermes plugin authenticates with a device session token supplied via the `INDEX_SESSION_TOKEN` environment variable. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule and preserves unrelated Hermes state.
 
 ## Build and source checks
 
@@ -31,6 +31,17 @@ Generated HTML must be regenerated through `assemble.py`, never hand-edited. The
 ## Direct Developer ID distribution
 
 Production distribution is direct Developer ID distribution, not the Mac App Store. It requires macOS 13+, Universal 2 artifacts, Hardened Runtime, Developer ID signing, notarization, stapling, checksums, immutable production HTTPS endpoint inputs, and a clean-account acceptance run. **App Sandbox is not a production requirement** for this direct-distribution model; release validation rejects unexpected sandbox/debug entitlements rather than requiring them.
+
+Pushes to `dev` and `main` that touch `apps/mac` run `.github/workflows/mac-app-release.yml`: Developer ID sign, notarize the app, package the branded DMG, notarize that, and attach `Index.dmg` to a rolling release.
+
+| Branch | Release | Download |
+| --- | --- | --- |
+| `dev` | prerelease `mac-dev` | `https://github.com/indexnetwork/index/releases/download/mac-dev/Index.dmg` |
+| `main` | `mac` (latest) | `https://github.com/indexnetwork/index/releases/download/mac/Index.dmg` |
+
+Required Actions secrets (fail closed if any are missing): `MAC_CODESIGN_P12`, `MAC_CODESIGN_P12_PASSWORD`, `MAC_CODESIGN_IDENTITY`, `MAC_APP_IDENTIFIER_PREFIX`, `MAC_PROVISIONING_PROFILE`, `MAC_NOTARY_KEY`, `MAC_NOTARY_KEY_ID`, `MAC_NOTARY_ISSUER`. Pull requests do not produce a DMG; they stay on the ad-hoc compile in `mac-app-build.yml`.
+
+`./scripts/notarize.sh` and `./scripts/dmg.sh` accept either a local `NOTARYTOOL_PROFILE` or CI's `NOTARYTOOL_KEY` / `NOTARYTOOL_KEY_ID` / `NOTARYTOOL_ISSUER`.
 
 ### Development: Hot-Reload Mode
 
@@ -149,6 +160,6 @@ NOTARYTOOL_PROFILE='<local-keychain-profile>' ./scripts/dmg.sh
 xcrun stapler validate dist/Index.dmg
 ```
 
-`./scripts/dmg.sh` revalidates the signed, stapled bundle, lays out the branded disk image, notarizes it, and staples `dist/Index.dmg`. The DMG is the handoff artifact.
+`./scripts/dmg.sh` revalidates the signed, stapled bundle, lays out the branded disk image, notarizes it, and staples `dist/Index.dmg`. The local DMG is for debugging; GitHub Releases are the distribution path. Replace `scripts/dmg-background.png` (540×380) and `scripts/dmg-background@2x.png` (1080×760) to change the Finder window art; keep those sizes so they match the icon layout. The mounted-disk glyph (title bar / desktop) is `.VolumeIcon.icns`, copied from the app's `AppIcon.icns`.
 
 Record only redacted commands and pass/fail status in PR evidence; never IDs, credentials, certificate subjects, or profile names.

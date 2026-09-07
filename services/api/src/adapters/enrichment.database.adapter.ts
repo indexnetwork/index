@@ -1,6 +1,6 @@
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 
-import { readPremisesForUser, schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, normalizeTelegramSocialValue, persistProfileIdentityToUser, sql } from './database.shared';
+import { schema, OnboardingState, UserIdentity, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, normalizeTelegramSocialValue, persistProfileIdentityToUser } from './database.shared';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 
 export class EnrichmentDatabaseAdapter {
@@ -73,37 +73,6 @@ export class EnrichmentDatabaseAdapter {
       .where(eq(schema.userSocials.userId, userId))
       .orderBy(asc(schema.userSocials.createdAt), asc(schema.userSocials.id));
     return rows.map(r => ({ id: r.id, userId: r.userId, label: r.label, value: r.value }));
-  }
-
-  /**
-   * Finds telegram socials owned by any user whose stored value resolves to the
-   * given bare handle. Used by MCP identity verification to detect whether a
-   * telegram handle is already owned by another user. Each stored value is
-   * normalized in SQL to its bare handle before comparison — a leading `@` or
-   * `t.me`/`telegram.me` URL prefix is stripped and everything from the first
-   * `/`, `?`, or `#` is dropped — so handles stored as `@h`, `https://t.me/h`,
-   * `https://t.me/h/`, or `https://t.me/h?start=x` all match, which a fixed
-   * candidate list would miss.
-   * @param handle - Bare telegram handle (no `@`, no URL), already extracted by the caller.
-   * @returns Matching telegram social rows with their owning userId.
-   */
-  async findTelegramHandleOwners(handle: string): Promise<Array<{ userId: string; label: string; value: string }>> {
-    const normalized = handle.trim().toLowerCase();
-    if (!normalized) return [];
-    const rows = await this.database.select({
-      userId: schema.userSocials.userId,
-      label: schema.userSocials.label,
-      value: schema.userSocials.value,
-    })
-      .from(schema.userSocials)
-      .where(and(
-        eq(schema.userSocials.label, 'telegram'),
-        eq(
-          sql<string>`lower((regexp_split_to_array(regexp_replace(${schema.userSocials.value}, '^(@|(https?://)?(t\\.me|telegram\\.me)/)', '', 'i'), '[/?#]'))[1])`,
-          normalized,
-        ),
-      ));
-    return rows.map(r => ({ userId: r.userId, label: r.label, value: r.value }));
   }
 
   async setUserSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
@@ -188,28 +157,6 @@ export class EnrichmentDatabaseAdapter {
     return this.hydeAdapter.saveHydeDocument(data);
   }
 
-
-
-
-  /**
-   * Retrieve premises for a user, optionally filtered by status.
-   * Used by the profile graph in `aggregate` mode to synthesize profile from active premises.
-   * @param userId - The user whose premises to retrieve
-   * @param status - Optional status filter (`ACTIVE`, `RETRACTED`, or `EXPIRED`)
-   * @returns Array of premise records
-   */
-  async getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[] | null;
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  }>> {
-    return readPremisesForUser(userId, status);
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

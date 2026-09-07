@@ -30,8 +30,8 @@ const ASYNC_CANDIDATE_TIMEOUT_MS = 50_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
 
 const FAST_TOOLS = new Set([
-  "create_intent_index",
-  "delete_intent_index",
+  "add_intent_to_network",
+  "remove_intent_from_network",
   "search_intents",
   "read_networks",
   "update_network",
@@ -39,16 +39,8 @@ const FAST_TOOLS = new Set([
   "delete_network",
   "create_network_membership",
   "delete_network_membership",
-  "confirm_opportunity_delivery",
   "read_docs",
   "read_own_agent",
-  "register_agent",
-  "list_agents",
-  "update_agent",
-  "delete_agent",
-  "grant_agent_permission",
-  "revoke_agent_permission",
-  "retract_premise",
 ]);
 
 const ASYNC_CANDIDATE_TOOLS = new Set([
@@ -56,9 +48,6 @@ const ASYNC_CANDIDATE_TOOLS = new Set([
   "create_intent",
   "update_intent",
   "scrape_url",
-  "respond_to_negotiation",
-  "create_premise",
-  "update_premise",
 ]);
 
 export function getToolTimeoutPolicy(toolName: string): ToolTimeoutPolicy {

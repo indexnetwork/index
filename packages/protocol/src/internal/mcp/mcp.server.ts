@@ -15,15 +15,11 @@ import { McpResolvedIdentitySchema } from '../../platform/auth/mcp.js';
 import { CANONICAL_GUIDANCE_SUMMARY } from '../shared/agent/canonical-guidance.js';
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
-import { deriveAllowedNetworkIds, isToolAllowedInScope, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
+import { deriveAllowedNetworkIds, isToolAllowedInScope } from '../shared/agent/tool.scope.js';
 import { createToolRegistry } from '../shared/agent/tool.registry.js';
-import type { ToolRegistryDeps } from '../shared/agent/tool.registry.js';
-import { bindOwnerApprovalProvenance } from '../opportunities/opportunity.owner-provenance.js';
 import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
-import type { McpAuthorizationObserver, McpCapabilityDecision, McpCapabilityPolicyOptions, McpCapabilitySubject, McpPolicyAgentSnapshot } from './mcp.authorization-policy.js';
-import { buildMcpAuthorizationDenialEvent, McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpActivityCaller, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
 
 const logger = protocolLogger('McpServer');
 
@@ -49,14 +45,12 @@ const mcpToolMetadataCache = new Map<string, McpToolRegistrationMetadata[]>();
  * the cached metadata set is automatically invalidated.
  */
 export function getMcpToolMetadataCacheKey(deps: Pick<ToolDeps,
-  'chatSession' | 'agentDatabase' | 'agentDispatcher'
+  'agentDatabase'
 >): string {
   // Contact tools are omitted from the MCP surface entirely (IND-596), so no
   // Request-scoped input can change the MCP tool set.
   return [
-    `chat:${deps.chatSession ? '1' : '0'}`,
     `agent:${deps.agentDatabase ? '1' : '0'}`,
-    `negotiation:${deps.agentDispatcher ? '1' : '0'}`,
   ].join('|');
 }
 
@@ -76,7 +70,7 @@ export function clearMcpToolMetadataCacheForTests(): void {
  * Does NOT store tool handlers — those remain request-scoped because they
  * capture per-request userDb/systemDb.
  */
-export function getCachedMcpToolMetadata(deps: ToolRegistryDeps): readonly McpToolRegistrationMetadata[] {
+export function getCachedMcpToolMetadata(deps: ToolDeps): readonly McpToolRegistrationMetadata[] {
   const cacheKey = getMcpToolMetadataCacheKey(deps);
   const cached = mcpToolMetadataCache.get(cacheKey);
   if (cached) return cached;
@@ -234,43 +228,14 @@ export interface ScopedDepsFactory {
   create(userId: string, allowedNetworkIds: string[]): Pick<ToolDeps, 'userDb' | 'systemDb'>;
 }
 
-/**
- * Promotes a network-scoped agent's bound network into the resolved tool
- * context as the implicit chat scope. Every tool derives its focused network
- * from the `scopeType`/`scopeId` envelope; without this step scoped API-key
- * calls would still resolve an unscoped/global view.
- *
- * No-op when there is no scope, or when an explicit scope is already set
- * (a user-driven network-scoped chat must keep precedence over the agent
- * binding — which would be a strict subset anyway, since the API key cannot
- * reach beyond its bound network).
- */
-export const applyNetworkScopeToContext = (
-  context: ResolvedToolContext,
-  networkScopeId: string | null | undefined,
-): void => {
-  if (!networkScopeId) return;
-  if (context.scopeType && context.scopeId) return;
-
-  const scope = scopeFromNetworkId(networkScopeId);
-  context.scopeType = scope.scopeType;
-  context.scopeId = scope.scopeId;
-
-  const bound = context.userNetworks.find((m) => m.networkId === networkScopeId);
-  if (!bound) return;
-
-  context.indexName = bound.networkTitle;
-  context.scopedIndex = {
-    id: bound.networkId,
-    title: bound.networkTitle,
-    prompt: bound.indexPrompt ?? null,
-  };
-  const isOwner = bound.permissions?.includes('owner') ?? false;
-  context.scopedMembershipRole = isOwner ? 'owner' : 'member';
-  context.isOwner = isOwner;
-};
-
-export { ONBOARDING_ALLOWED } from './mcp.authorization-policy.js';
+/** Tools visible on the REST Tool API while web/CLI onboarding is incomplete. MCP does not use this allowlist. */
+export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
+  'read_docs',
+  'research_profile',
+  'read_networks',
+  'create_network_membership',
+  'create_intent',
+]);
 
 /**
  * Builds the onboarding gate message for REST Tool API callers. Condensed
@@ -283,7 +248,7 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     : `1. Ask the user for their name and a short self-description.`;
 
   const communityStep = ctx.networkId
-    ? `3. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
+    ? `3. (Skipped — user is already in "${ctx.networkName ?? 'their community'}".)`
     : `3. Call read_networks() and let the user pick communities to join via create_network_membership(networkId=...).`;
 
   const allowedList = Array.from(ONBOARDING_ALLOWED).join(', ');
@@ -296,7 +261,7 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `${nameStep}\n` +
     `2. Call research_profile(...) with any identity hints the user gives (name, LinkedIn, GitHub, X, Telegram, website). Present the suggested profile and confirm it with the user in conversation.\n` +
     `${communityStep}\n` +
-    `4. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted. Discovery is optional after that, never mandatory.`
+    `4. Ask what the user is looking for and call create_intent(description="...", networkIds=[...]) so the first signal is persisted. Discovery is optional after that, never mandatory.`
   );
 }
 
@@ -348,9 +313,6 @@ NEVER dump raw JSON or expose IDs (except actionable ones like conversationId). 
 # Authentication & Opportunity Lifecycle
 API key in \`x-api-key\` header. Opportunities: draft → pending → accepted/rejected. Agent acceptance ≠ owner approval. Only call update_opportunity with accepted after explicit user confirmation.
 
-# Paused Negotiations
-A negotiation can PAUSE while its opportunity still reads \`negotiating\` — opportunity status never answers "is anything waiting on the user?". list_negotiations/get_negotiation annotate a paused negotiation with \`pause\` (\`reason\`, plus the private question/recommendation \`payload\` when this user's own side is the one paused). There is no separate answer tool: resuming means submitting the next turn via respond_to_negotiation, same as any other turn.
-
 # Tool Guidance
 Read each tool's description for usage rules (when, prerequisites, follow-ups). Tools contain workflow patterns.
 
@@ -368,11 +330,9 @@ export function extractBearerToken(req: Request): string | undefined {
 }
 
 export function createMcpServer(
-  deps: ToolRegistryDeps,
+  deps: ToolDeps,
   authResolver: McpAuthResolver,
   scopedDepsFactory: ScopedDepsFactory,
-  policyOptions: McpCapabilityPolicyOptions = {},
-  authorizationObserver?: McpAuthorizationObserver,
 ): McpServer {
   const server = new McpServer(
     { name: 'index-network', version: '1.0.0' },
@@ -380,51 +340,23 @@ export function createMcpServer(
   );
 
   const toolMetadata = getCachedMcpToolMetadata(deps);
-  const capabilityPolicy = new McpCapabilityPolicy(policyOptions);
-
-  // Fail-closed authorization observability: emit a safe, secret-free denial
-  // event at the host boundary. Never let an observer failure change the
-  // decision or surface a credential — the denial stands regardless.
-  const observeDenial = (input: {
-    phase: 'tools/call' | 'tools/list';
-    toolName: string;
-    subject: McpCapabilitySubject;
-    decision: McpCapabilityDecision;
-  }): void => {
-    if (!authorizationObserver) return;
-    try {
-      authorizationObserver.onCapabilityDenied(buildMcpAuthorizationDenialEvent(input));
-    } catch (err) {
-      logger.debug('MCP authorization observer threw — ignoring', {
-        toolName: input.toolName,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  };
 
   type AuthenticatedMcpRequest = {
     identity: McpResolvedIdentity;
-    agent: McpPolicyAgentSnapshot | null;
-    preliminarySubject: McpCapabilitySubject;
   };
 
   type ResolvedMcpRequest = AuthenticatedMcpRequest & {
     context: ResolvedToolContext;
-    subject: McpCapabilitySubject;
   };
 
-  // Both snapshots are scoped to this MCP server/connection. Permission
-  // changes therefore apply only after the caller reconnects or refreshes
-  // its session. They are never shared with the static tool metadata cache,
-  // so a different server/principal cannot inherit decisions.
+  // Both snapshots are scoped to this MCP server/connection, and are never
+  // shared with the static tool metadata cache.
   let authenticatedRequest: Promise<AuthenticatedMcpRequest> | undefined;
   let resolvedRequest: Promise<ResolvedMcpRequest> | undefined;
 
   const extractAuthInput = (httpReq: Request): McpAuthInput => ({
     bearerToken: extractBearerToken(httpReq),
     apiKey: httpReq.headers.get('x-api-key') ?? undefined,
-    telegramHandle: httpReq.headers.get('x-index-telegram-handle') ?? undefined,
-    telegramUsername: httpReq.headers.get('x-index-telegram-username') ?? undefined,
   });
 
   const getAuthenticatedRequest = (httpReq: Request): Promise<AuthenticatedMcpRequest> => {
@@ -435,35 +367,7 @@ export function createMcpServer(
         await authResolver.resolveIdentity(extractAuthInput(httpReq)),
       );
 
-      const agentRecord = identity.agentId
-        ? await deps.agentDatabase?.getAgentWithRelations(identity.agentId) ?? null
-        : null;
-      const agent: McpPolicyAgentSnapshot | null = agentRecord
-        ? {
-            id: agentRecord.id,
-            ownerId: agentRecord.ownerId,
-            type: agentRecord.type,
-            status: agentRecord.status,
-            permissions: agentRecord.permissions.map((permission) => ({
-              agentId: permission.agentId,
-              userId: permission.userId,
-              scope: permission.scope,
-              scopeId: permission.scopeId,
-              actions: [...permission.actions],
-            })),
-          }
-        : null;
-
-      return {
-        identity,
-        agent,
-        // This snapshot is sufficient to reject forged/hidden calls before
-        // resolving chat context.
-        preliminarySubject: resolveMcpCapabilitySubject({
-          identity,
-          agent,
-        }),
-      };
+      return { identity };
     })();
     return authenticatedRequest;
   };
@@ -478,51 +382,11 @@ export function createMcpServer(
         userId: authenticated.identity.userId,
           });
       context.isMcp = true;
-      if (authenticated.identity.agentId) {
-        context.agentId = authenticated.identity.agentId;
-      }
-      // Trusted provenance seam (IND-593): only the server-resolved session
-      // identity — never a caller-supplied field — marks a direct MCP owner
-      // interaction for the opportunity owner-approval boundary. The
-      // capability-local extension deliberately keeps this field out of the
-      // shared helper's negotiations/question cycle.
-      bindOwnerApprovalProvenance(context, {
-        surface: 'mcp',
-        sessionAuthenticated: authenticated.identity.isSessionAuth === true,
-      });
-      applyNetworkScopeToContext(context, authenticated.identity.networkScopeId);
+      context.isSessionAuth = authenticated.identity.isSessionAuth === true;
 
-      const subject = resolveMcpCapabilitySubject({
-        identity: authenticated.identity,
-        agent: authenticated.agent,
-      });
-      // Bind the typed resolved caller context so tools with
-      // permission-projected output (read_activity_summary) can apply the
-      // centralized projection without re-deriving principal state.
-      context.mcpCaller = resolveMcpActivityCaller(subject);
-
-      return {
-        ...authenticated,
-        context,
-        subject,
-      };
+      return { ...authenticated, context };
     })();
     return resolvedRequest;
-  };
-
-  const capabilityDeniedResult = (_decision: McpCapabilityDecision) => {
-    const message = 'This capability is not available to the authenticated principal. Reconnect or refresh the session after an administrator changes permissions.';
-    return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({
-          error: 'Capability not authorized',
-          code: 'MCP_CAPABILITY_DENIED',
-          message,
-        }),
-      }],
-      isError: true,
-    };
   };
 
   for (const toolDef of toolMetadata) {
@@ -549,77 +413,9 @@ export function createMcpServer(
             };
           }
 
-          // Resolve the request-local auth/agent snapshot, then repeat the exact
-          // tools/list policy decision before chat context, scoped DB, registry,
-          // or handler work. This is the forged-call fail-closed boundary.
-          const authenticated = await getAuthenticatedRequest(httpReq);
-          const preliminaryDecision = capabilityPolicy.authorize(
-            authenticated.preliminarySubject,
-            toolName,
-          );
-          if (!preliminaryDecision.allowed) {
-            observeDenial({
-              phase: 'tools/call',
-              toolName,
-              subject: authenticated.preliminarySubject,
-              decision: preliminaryDecision,
-            });
-            return capabilityDeniedResult(preliminaryDecision);
-          }
-
-          const resolved = await getResolvedRequest(httpReq);
-          const decision = capabilityPolicy.authorize(resolved.subject, toolName);
-          if (!decision.allowed) {
-            observeDenial({
-              phase: 'tools/call',
-              toolName,
-              subject: resolved.subject,
-              decision,
-            });
-            return capabilityDeniedResult(decision);
-          }
-
-          const { identity, context } = resolved;
-          const { userId, agentId } = identity;
+          const { identity, context } = await getResolvedRequest(httpReq);
+          const { userId } = identity;
           reportUserId = userId;
-
-          // Per-principal MCP throttle. Runs BEFORE any DB work so a throttled
-          // call short-circuits cheaply. The /mcp transport bypasses the
-          // controller-level RateLimit guard, so this is the only volume cap on
-          // tool calls — it stops an over-eager agent from cascading itself into
-          // provider rate limits.
-          if (deps.mcpRateLimiter) {
-            // Throttling is best-effort: never let a limiter failure (or a host
-            // implementation that throws instead of failing open) break tool
-            // dispatch. Treat any error as "allowed".
-            let decision: Awaited<ReturnType<NonNullable<typeof deps.mcpRateLimiter>>> | null = null;
-            try {
-              decision = await deps.mcpRateLimiter({
-                userId,
-                ...(agentId ? { agentId } : {}),
-                toolName,
-              });
-            } catch (rlErr) {
-              logger.warn('MCP rate limiter threw — failing open', {
-                toolName,
-                error: rlErr instanceof Error ? rlErr.message : String(rlErr),
-              });
-            }
-            if (decision && !decision.allowed) {
-              const retryAfterSec = decision.retryAfterSec ?? 60;
-              return {
-                content: [{
-                  type: 'text' as const,
-                  text: JSON.stringify({
-                    error: 'Rate limit exceeded',
-                    message: `Too many ${toolName} calls in a short period. Wait ${retryAfterSec}s before retrying.`,
-                    retryAfterSec,
-                  }),
-                }],
-                isError: true,
-              };
-            }
-          }
 
           reportContext = context;
 
@@ -699,7 +495,6 @@ export function createMcpServer(
                 toolName,
               },
               context: {
-                agentId: reportContext?.agentId,
                 scopeType: reportContext?.scopeType,
                 scopeId: reportContext?.scopeId,
               },
@@ -716,8 +511,8 @@ export function createMcpServer(
   }
 
   // McpServer's default tools/list handler exposes every registered tool.
-  // Replace it with a principal-aware inventory built from the same static
-  // metadata and the same policy used above for tools/call.
+  // Replace it with a scope-aware inventory built from the same static
+  // metadata the tools/call lookup uses.
   server.server.setRequestHandler('tools/list', async (_request, ctx) => {
     const httpReq = ctx.http?.req;
     if (!httpReq) {
@@ -725,21 +520,13 @@ export function createMcpServer(
     }
 
     const resolved = await getResolvedRequest(httpReq);
-    const visibleNames = new Set(
-      capabilityPolicy.visibleToolNames(
-        resolved.subject,
-        // The static metadata is scope-free (it is cached across principals),
-        // so the focused scope is applied here — an intent-scoped session must
-        // not advertise a tool it cannot call.
-        toolMetadata
-          .filter((tool) => isToolAllowedInScope(tool.name, resolved.context))
-          .map((tool) => tool.name),
-      ),
-    );
 
     return {
+      // The static metadata is scope-free (it is cached across principals), so
+      // the focused scope is applied here — an intent-scoped session must not
+      // advertise a tool it cannot call.
       tools: toolMetadata
-        .filter((tool) => visibleNames.has(tool.name))
+        .filter((tool) => isToolAllowedInScope(tool.name, resolved.context))
         .map((tool) => ({
           name: tool.name,
           description: tool.description,

@@ -17,7 +17,7 @@ interface Frontmatter {
   [key: string]: string | undefined;
 }
 
-function parseFrontmatter(fileContents: string): { data: Frontmatter; content: string } {
+export function parseFrontmatter(fileContents: string): { data: Frontmatter; content: string } {
   const lines = fileContents.split('\n');
 
   // Check if file starts with ---
@@ -62,7 +62,7 @@ function parseFrontmatter(fileContents: string): { data: Frontmatter; content: s
   return { data, content };
 }
 
-function transformAssetPaths(content: string, slug: string): string {
+export function transformAssetPaths(content: string, slug: string): string {
   // Transform markdown image syntax: ![alt](image.jpg) -> ![alt](/blog/slug/image.jpg)
   // Only transform relative paths (not starting with / or http)
   let transformed = content.replace(

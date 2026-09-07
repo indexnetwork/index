@@ -36,7 +36,6 @@ const localModelMockSpecs = [
   "/negotiations/tests/negotiation.agent.spec.ts",
   "/negotiations/tests/negotiation.summarizer.spec.ts",
   "/negotiations/tests/negotiator-timeout.spec.ts",
-  "/premises/tests/premise.analyzer.spec.ts",
 ];
 const runsSpec = (spec: string) => process.argv.some((arg) => arg.endsWith(spec));
 const runsModelConfigSpec = modelConfigSpecs.some(runsSpec);
@@ -64,15 +63,6 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
       return { lenses: [{ label, corpus, reasoning: "Deterministic source-test lens." }] };
     }
     if (agent === "hydeGenerator") return { hypotheticalDocument: "A relevant professional collaborator with complementary goals." };
-    if (agent === "intentIndexer" || agent === "premiseIndexer") {
-      return { indexScore: 0.8, memberScore: 0.6, reasoning: "Deterministic source-test relevance." };
-    }
-    if (agent === "premiseAnalyzer") {
-      return { reasoning: "Deterministic source-test analysis.", speechActType: "DECLARATIVE", felicityAuthority: 80, felicitySincerity: 80, felicityClarity: 80, semanticEntropy: 0.2 };
-    }
-    if (agent === "premiseDecomposer") {
-      return { reasoning: "Deterministic source-test decomposition.", premises: [], retractedPremiseIds: [], revisedBio: null };
-    }
     if (agent === "intentReconciler") return { actions: [] };
     if (agent === "intentVerifier") {
       return { reasoning: "Deterministic source-test verification.", classification: "ASSERTIVE", felicity_scores: { clarity: 80, authority: 80, sincerity: 80 }, semantic_entropy: 0.2, referential_anchor: null, referential_breadth: "narrow", missing_selectional_constraints: [], specificity_warning: null, flags: [] };

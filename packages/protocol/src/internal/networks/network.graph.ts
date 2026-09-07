@@ -86,11 +86,11 @@ export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
     const projectMembership = (m: Awaited<ReturnType<typeof deps.database.getNetworkMemberships>>[number]) => ({
       networkId: m.networkId,
       title: m.networkTitle,
-      prompt: m.indexPrompt,
+      prompt: m.networkPrompt,
       autoAssign: m.autoAssign,
       joinedAt: m.joinedAt,
     });
-    const projectOwned = (o: Awaited<ReturnType<typeof deps.database.getOwnedIndexes>>[number]) => ({
+    const projectOwned = (o: Awaited<ReturnType<typeof deps.database.getOwnedNetworks>>[number]) => ({
       networkId: o.id,
       title: o.title,
       prompt: o.prompt,
@@ -100,10 +100,10 @@ export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
     });
 
     try {
-      const [allMemberships, ownedIndexes, publicIndexesResult] = await Promise.all([
+      const [allMemberships, ownedNetworks, publicNetworksResult] = await Promise.all([
         deps.database.getNetworkMemberships(state.userId),
-        deps.database.getOwnedIndexes(state.userId),
-        deps.database.getPublicIndexesNotJoined(state.userId),
+        deps.database.getOwnedNetworks(state.userId),
+        deps.database.getPublicNetworksNotJoined(state.userId),
       ]);
 
       // If network-scoped and not showAll, return just that network.
@@ -121,7 +121,7 @@ export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
           };
         }
         const scopedMembership = allMemberships.find((m) => m.networkId === networkId);
-        const scopedOwned = ownedIndexes.find((o) => o.id === networkId);
+        const scopedOwned = ownedNetworks.find((o) => o.id === networkId);
         const memberOf = [
           ...(scopedMembership ? [projectMembership(scopedMembership)] : []),
         ];
@@ -142,7 +142,7 @@ export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
       }
 
       // Include public networks available to join
-      const publicNetworks = publicIndexesResult.networks.map((idx) => ({
+      const publicNetworks = publicNetworksResult.networks.map((idx) => ({
         networkId: idx.id,
         title: idx.title,
         prompt: idx.prompt,
@@ -153,9 +153,9 @@ export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
       return {
         readResult: {
           memberOf: allMemberships.map(projectMembership),
-          owns: ownedIndexes.map(projectOwned),
+          owns: ownedNetworks.map(projectOwned),
           publicNetworks,
-          stats: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length, publicNetworksCount: publicNetworks.length },
+          stats: { memberOfCount: allMemberships.length, ownsCount: ownedNetworks.length, publicNetworksCount: publicNetworks.length },
         },
       };
     } catch (err) {
@@ -252,12 +252,12 @@ export async function updateNode(state: NetworkState, deps: NetworkGraphDeps) {
     }
 
     try {
-      const isOwner = await deps.database.isIndexOwner(networkId, state.userId);
+      const isOwner = await deps.database.isNetworkOwner(networkId, state.userId);
       if (!isOwner) {
         return { mutationResult: { success: false, error: "You can only modify networks you own." } };
       }
 
-      await deps.database.updateIndexSettings(networkId, state.userId, state.updateInput ?? {});
+      await deps.database.updateNetworkSettings(networkId, state.userId, state.updateInput ?? {});
 
       return {
         mutationResult: {
@@ -286,7 +286,7 @@ export async function deleteNode(state: NetworkState, deps: NetworkGraphDeps) {
     }
 
     try {
-      const isOwner = await deps.database.isIndexOwner(networkId, state.userId);
+      const isOwner = await deps.database.isNetworkOwner(networkId, state.userId);
       if (!isOwner) {
         return { mutationResult: { success: false, error: "You can only delete networks you own." } };
       }

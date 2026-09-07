@@ -2,9 +2,9 @@
  * Pure desktop-notification helpers for the macOS shell.
  *
  * Adapted from packages/hermes-plugin/desktop/notifications.mjs so both
- * desktop surfaces share one event vocabulary (question.* / opportunity.*
- * persisted events plus realtime conversation `message` events) and the same
- * dedupe/snapshot semantics. The Mac compose additionally returns an activate
+ * desktop surfaces share one event vocabulary (opportunity.* persisted events
+ * plus realtime conversation `message` events) and the same dedupe/snapshot
+ * semantics. The Mac compose additionally returns an activate
  * `url` (an index:// deep link the Swift tap handler feeds back through the
  * normal deep-link pipeline) and, for messages, an `imageUrl` used as the
  * notification's sender-avatar attachment.
@@ -34,10 +34,6 @@ function notificationId(event, preferredField) {
  */
 export function notificationEntityKey(event) {
   if (!event || typeof event.type !== 'string') return null;
-  if (event.type.indexOf('question.') === 0) {
-    const id = notificationId(event, 'questionId');
-    return id ? `question:${id}` : null;
-  }
   if (event.type.indexOf('opportunity.') === 0) {
     const id = notificationId(event, 'opportunityId');
     return id ? `opportunity:${id}` : null;
@@ -66,16 +62,15 @@ export function isOwnMessage(event, currentUserId) {
 
 /**
  * Gate an event on the user's notification preferences (settings pane).
- * `alignment` gates opportunity.*, `question` gates question.*, `messages`
- * gates conversation messages. Absent prefs (or unknown types) fail open.
+ * `alignment` gates opportunity.*, `messages` gates conversation messages.
+ * Absent prefs (or unknown types) fail open.
  * @param {Object} event
- * @param {{ alignment?: boolean, question?: boolean, messages?: boolean } | null} prefs
+ * @param {{ alignment?: boolean, messages?: boolean } | null} prefs
  * @returns {boolean}
  */
 export function notificationEventAllowed(event, prefs) {
   if (!event || typeof event.type !== 'string') return false;
   if (!prefs || typeof prefs !== 'object') return true;
-  if (event.type.indexOf('question.') === 0) return prefs.question !== false;
   if (event.type.indexOf('opportunity.') === 0) return prefs.alignment !== false;
   if (event.type === 'message' || event.type.indexOf('message.') === 0) {
     return prefs.messages !== false;
@@ -97,15 +92,6 @@ export function notificationEventAllowed(event, prefs) {
 export function composeNotification(event, options) {
   const opts = options || {};
   if (!event || typeof event.type !== 'string') return null;
-  if (event.type.indexOf('question.') === 0) {
-    if (typeof event.title !== 'string' || !event.title.trim()) return null;
-    const id = notificationId(event, 'questionId');
-    return {
-      title: event.title,
-      body: typeof event.body === 'string' ? event.body : '',
-      ...(id ? { url: `index://q/${encodeURIComponent(id)}` } : {}),
-    };
-  }
   if (event.type.indexOf('opportunity.') === 0) {
     if (typeof event.title !== 'string' || !event.title.trim()) return null;
     const id = notificationId(event, 'opportunityId');
@@ -172,49 +158,5 @@ export function rememberNotificationEntity(notifiedEntities, key) {
   return {
     notifiedEntities: current.concat(key).slice(-MAX_NOTIFIED_ENTITIES),
     isNew: true,
-  };
-}
-
-/**
- * Snapshot catch-up accepts only the persisted question/opportunity envelope;
- * messages are realtime-only and never replay from a snapshot.
- * @param {Object} payload
- * @returns {Array<Object> | null}
- */
-export function snapshotNotificationEvents(payload) {
-  if (!payload || !Array.isArray(payload.events)) return null;
-  return payload.events.filter((event) => {
-    if (!event || typeof event.type !== 'string') return false;
-    const persistedType = event.type.indexOf('question.') === 0 || event.type.indexOf('opportunity.') === 0;
-    return persistedType && notificationEntityKey(event) && composeNotification(event);
-  });
-}
-
-/**
- * Fold a snapshot into the dedupe state. The first snapshot after launch
- * primes the seen-set without toasting (hasSnapshot=false), so a relaunch
- * never replays everything already pending; later snapshots toast only what
- * is genuinely new.
- * @param {Object} payload
- * @param {{ hasSnapshot: boolean, notifiedEntities: Array<string> } | null} previousState
- * @returns {{ state: { hasSnapshot: boolean, notifiedEntities: Array<string> }, notifications: Array<Object> }}
- */
-export function reconcileNotificationSnapshot(payload, previousState) {
-  const events = snapshotNotificationEvents(payload);
-  const state = previousState || { hasSnapshot: false, notifiedEntities: [] };
-  if (events === null) return { state, notifications: [] };
-
-  let notifiedEntities = normalizedNotifiedEntities(state.notifiedEntities);
-  const notifications = [];
-  for (let index = 0; index < events.length; index += 1) {
-    const event = events[index];
-    const remembered = rememberNotificationEntity(notifiedEntities, notificationEntityKey(event));
-    notifiedEntities = remembered.notifiedEntities;
-    if (state.hasSnapshot && remembered.isNew) notifications.push(event);
-  }
-
-  return {
-    state: { hasSnapshot: true, notifiedEntities },
-    notifications,
   };
 }

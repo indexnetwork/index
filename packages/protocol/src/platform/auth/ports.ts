@@ -13,16 +13,12 @@ export interface McpAuthResolver {
    *
    * @param input - Transport-neutral auth input DTO with credential fields
    *   extracted at the MCP transport edge.
-   * @returns The authenticated user's UUID, optional agent UUID, auth method,
-   *   and `networkScopeId` if the caller's API key is bound to a network-scoped
-   *   agent.
+   * @returns The authenticated user's UUID and the auth method. A key names a
+   *   user and nothing else: there is no agent or network binding to read off
+   *   it.
    *
-   *   When `networkScopeId` is set, the MCP server promotes it into the
-   *   canonical `{ scopeType: 'network', scopeId }` envelope. Downstream tools
-   *   derive concrete allowed network IDs from that envelope plus memberships.
-   *
-   *   `isSessionAuth` is true for OAuth/JWT bearer sessions — the agent-
-   *   registration gate in the MCP server is skipped for these callers.
+   *   `isSessionAuth` is true for OAuth/JWT bearer sessions, which are the only
+   *   callers allowed the owner-control and agent-admin tools.
    *
    * @throws Error if authentication fails (no token, invalid token, etc.)
    */

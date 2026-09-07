@@ -5,14 +5,12 @@ capability façades decide what is supported.
 
 | Area | Used by | Responsibility |
 | --- | --- | --- |
-| `agents/`, `chat/` | `ChatGraphFactory`, tool registry | Chat runtime, personas, streaming, and agent registration |
-| `intents/` | `Intents`, tool registry | Signal lifecycle, intake, verification, and indexing |
+| `agents/` | Tool registry | Agent registry and permission tools |
+| `intents/` | `Intents`, tool registry | Signal lifecycle, clarification, and verification |
 | `networks/` | `Networks`, tool registry | Community lifecycle, membership, and assignments |
-| `contexts/`, `enrichment/`, `premises/` | Public-profile research tools and premise lifecycle | Parallel-backed profile suggestions and participant premise decomposition |
+| `contexts/`, `enrichment/` | Public-profile research tools | Parallel-backed profile suggestions |
 | `discovery/` | Opportunity and context workflows | HyDE search preparation and retrieval |
-| `opportunities/` | Opportunity/Radar factories, tool registry | Matching, presentation, delivery, and radar |
-| `negotiations/`, `questions/` | Negotiation factory, tool registry | Bilateral negotiation and decision questions |
-| `maintenance/` | Scheduler host | Periodic radar-health and expiration work |
+| `opportunities/` | Opportunity/Radar factories, tool registry | Matching, presentation, radar, and the read-only negotiation context loader |
 | `mcp/` | `createMcpServer` | MCP transport composition and authorization |
 | `shared/` | Internal implementation only | Cross-cutting model, tool-runtime, schemas, observability, and utilities |
 

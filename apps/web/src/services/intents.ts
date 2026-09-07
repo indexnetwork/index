@@ -2,21 +2,7 @@ import type { Intent, PaginatedResponse, APIResponse } from '../types';
 
 export type IntentLifecycleStatus = 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
 export type MutableIntentLifecycleStatus = Extract<IntentLifecycleStatus, 'ACTIVE' | 'PAUSED'>;
-export type DiscoveryProgressStatus = 'queued' | 'running' | 'retrying' | 'completed' | 'failed' | 'blocked' | 'unknown';
-export interface DiscoveryProgress {
-  status: DiscoveryProgressStatus;
-  attempt: number;
-  maxAttempts: number;
-  assignedCommunityCount: number;
-  processedCommunityCount: number;
-  possibleOverlapCount: number;
-  conversationsStartedCount: number;
-  queuedAt: string | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  updatedAt: string | null;
-}
-export type IntentDetail = Intent & { warming?: boolean; networks?: Array<{ id: string; title: string }>; discoveryProgress?: DiscoveryProgress };
+export type IntentDetail = Intent & { warming?: boolean; networks?: Array<{ id: string; title: string }> };
 
 export interface IntentStatusResult {
   id: string;

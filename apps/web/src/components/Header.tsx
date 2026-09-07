@@ -6,11 +6,9 @@ import { useEffect, useState, useRef } from 'react';
 interface HeaderProps {
   showHeaderButtons?: boolean;
   forcePublicView?: boolean;
-  /** Preserve the CTA-button row height when buttons are hidden. */
-  keepButtonSpace?: boolean;
 }
 
-export default function Header({ showHeaderButtons = true, forcePublicView: _forcePublicView = false, keepButtonSpace = false }: HeaderProps) {
+export default function Header({ showHeaderButtons = true, forcePublicView: _forcePublicView = false }: HeaderProps) {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -142,7 +140,6 @@ export default function Header({ showHeaderButtons = true, forcePublicView: _for
             </button>
           </div>
         )}
-        {!showHeaderButtons && keepButtonSpace && <div aria-hidden className="h-9 sm:h-11" />}
       </header>
 
       {/* Mobile dropdown menu */}

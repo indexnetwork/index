@@ -1,4 +1,4 @@
-"""Direct HTTP transport authenticated with the INDEX_API_KEY environment key."""
+"""Direct HTTP transport authenticated with this device's Index session token."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ _DEFAULT_MCP = "https://protocol.index.network/mcp"
 
 _API_KEY_HELP = (
     "Sign in from the Hermes dashboard (log in with browser), or set "
-    "INDEX_API_KEY in the Hermes environment as a manual override."
+    "INDEX_SESSION_TOKEN in the Hermes environment as a manual override."
 )
 
 
@@ -30,17 +30,21 @@ class TransportError(RuntimeError):
 
 
 class EnvironmentCredentialTransport:
-    """The production transport: plain HTTPS with an `x-api-key` header."""
+    """The production transport: plain HTTPS with a bearer session token."""
 
     def __init__(self) -> None:
-        self._api_key = os.environ.get("INDEX_API_KEY", "").strip()
+        self._api_key = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
         if not self._api_key:
             raise TransportError("api_key_missing", _API_KEY_HELP)
         self._api = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
         self._mcp = os.environ.get("INDEX_MCP_URL", _DEFAULT_MCP).strip() or _DEFAULT_MCP
 
     def _headers(self, *, content_type: str = "application/json", accept: str = "application/json") -> dict[str, str]:
-        return {"x-api-key": self._api_key, "Content-Type": content_type, "Accept": accept}
+        return {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": content_type,
+            "Accept": accept,
+        }
 
     @staticmethod
     def _timeout() -> float:

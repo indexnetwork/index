@@ -72,6 +72,15 @@ function injectMeta(template: string, meta: PageMeta, pathname: string): string 
   return html;
 }
 
+// The root route also renders the signed-in app, so the marketing copy cannot
+// be prerendered into `#root` the way the blog pages are.
+function injectHomeNoscript(html: string, fragment: string): string {
+  return html.replace(
+    '<div id="root"></div>',
+    `<div id="root"></div>\n    <noscript>${fragment}</noscript>`,
+  );
+}
+
 function stripPreviewSurface(html: string): string {
   return html
     .replace(
@@ -82,13 +91,12 @@ function stripPreviewSurface(html: string): string {
     .replace(/<title>[^<]*<\/title>\s*/i, "<title></title>");
 }
 
-function isDocumentNavigation(req: Request): boolean {
-  if (req.method !== "GET" && req.method !== "HEAD") return false;
-
-  return (
-    req.headers.get("sec-fetch-mode") === "navigate" ||
-    req.headers.get("accept")?.toLowerCase().includes("text/html") === true
-  );
+// A missing hashed chunk must fail as a 404 rather than resolve to the SPA
+// shell, otherwise stale-chunk recovery (lazy-route-recovery.ts) reloads into
+// HTML served as JavaScript.
+function looksLikeMissingAsset(pathname: string): boolean {
+  if (pathname.startsWith("/assets/")) return true;
+  return /\.[a-z0-9]+$/i.test(pathname) && !pathname.endsWith(".html");
 }
 
 function notFound(req: Request): Response {
@@ -104,13 +112,18 @@ function notFound(req: Request): Response {
 /**
  * Creates the production web request handler.
  *
- * Document navigations receive the SPA entrypoint, while missing assets and
- * non-document requests fail as real 404s instead of receiving HTML.
+ * Static files win, then a directory's `index.html` (the prerendered blog),
+ * then the SPA entrypoint for any other extensionless path. Missing assets
+ * fail as real 404s instead of receiving HTML.
  */
 export function createWebHandler(options: WebHandlerOptions = {}): (req: Request) => Response {
   const distDir = options.distDir ?? DEFAULT_DIST;
   const template = options.template ?? readFileSync(join(distDir, "index.html"), "utf-8");
   const metaMap = options.metaMap ?? buildMetaMap(distDir);
+  const homeNoscriptPath = join(distDir, "noscript-home.html");
+  const homeNoscript = existsSync(homeNoscriptPath)
+    ? readFileSync(homeNoscriptPath, "utf-8")
+    : "";
 
   return (req: Request): Response => {
     const reqUrl = new URL(req.url);
@@ -145,12 +158,27 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
       });
     }
 
-    if (pathname.startsWith("/assets/") || !isDocumentNavigation(req)) {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      return notFound(req);
+    }
+
+    const indexPath = join(filePath, "index.html");
+    if (pathname !== "/" && existsSync(indexPath) && statSync(indexPath).isFile()) {
+      return new Response(req.method === "HEAD" ? null : Bun.file(indexPath), {
+        headers: {
+          "Cache-Control": HTML_CACHE_CONTROL,
+          "Content-Type": "text/html; charset=utf-8",
+        },
+      });
+    }
+
+    if (looksLikeMissingAsset(pathname)) {
       return notFound(req);
     }
 
     const meta = resolvePageMeta(metaMap, pathname);
     let html = meta ? injectMeta(template, meta, pathname) : template;
+    if (pathname === "/" && homeNoscript) html = injectHomeNoscript(html, homeNoscript);
     if (suppressPreview) html = stripPreviewSurface(html);
 
     return new Response(req.method === "HEAD" ? null : html, {

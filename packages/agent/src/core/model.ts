@@ -1,8 +1,6 @@
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-/** The default model for the run loop. Matches the negotiator's default, so
- * an agent and its negotiations run on the same model unless you say
- * otherwise. */
+/** The default model for the run loop. */
 export const DEFAULT_MODEL = "google/gemini-3.7-flash";
 
 export interface ToolCall {
@@ -74,14 +72,7 @@ class TransientError extends Error {
   }
 }
 
-/**
- * A minimal OpenRouter chat client that supports tool calling.
- *
- * `@indexnetwork/a2a/negotiator` ships its own `OpenRouterClient`, but it sends
- * no `tools` and reads only `choices[0].message.content` — tool calls would
- * be dropped on the floor. That client stays responsible for negotiation
- * turns; this one drives the agent loop.
- */
+/** A minimal OpenRouter chat client that supports tool calling. */
 export class ModelClient {
   private readonly apiKey: string;
   private readonly model: string;

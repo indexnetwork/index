@@ -9,11 +9,8 @@ import { createAuth, type AuthSecondaryStorage } from './betterauth';
 const authDb = new AuthDatabaseAdapter();
 
 /**
- * Shared Redis secondary storage — used by Better Auth's rateLimit block so
- * auth-endpoint throttling shares the same Redis instance as the app-level
- * rate limiter (keyspace prefix: 'better-auth:'). Only constructed when Redis
- * is actually configured; otherwise Better Auth falls back to its built-in
- * in-memory rate limiter (fine for local dev).
+ * Shared Redis secondary storage. Only constructed when Redis is actually
+ * configured; otherwise Better Auth uses its built-in in-memory store.
  */
 const secondaryStorage: AuthSecondaryStorage | undefined = isRedisConfigured()
   ? {

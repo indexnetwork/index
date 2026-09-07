@@ -9,17 +9,14 @@ export const REQUIRED_TEST_DATABASE_OBJECTS = [
   'public.network_members',
   'public.intents',
   'public.intent_networks',
-  'public.intent_proposals',
   'public.opportunities',
-  'public.questions',
   'public.conversations',
   'public.messages',
-  'public.tasks',
+  'public.negotiations',
+  'public.negotiation_turns',
   'public.agents',
   'public.apikey',
-  'public.negotiator_memories',
   'public.opportunity_outcome_events',
-  'public.questions_recovery_recipient_intent_fingerprint_uniq',
 ] as const;
 
 export const REQUIRED_TEST_DATABASE_COLUMNS = [

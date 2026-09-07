@@ -3,7 +3,8 @@ import { log } from '../lib/log';
 import { RadarGraphFactory, presentOpportunity, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache } from '@indexnetwork/protocol';
 
-import { ChatDatabaseAdapter, chatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
@@ -20,7 +21,7 @@ const updateStatusLogger = log.service.from("OpportunityService.updateOpportunit
  * terminal status explicitly (e.g. `?status=expired`) for a history view — that
  * path bypasses this default.
  */
-const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
+const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'accepted'];
 
 /**
  * Default statuses for the per-network community list. Stricter than
@@ -30,7 +31,7 @@ const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 's
  * checks membership, with no per-actor guard, so surfacing `latent` would leak
  * pre-draft candidates to every member. Live community statuses only.
  */
-const DEFAULT_NETWORK_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
+const DEFAULT_NETWORK_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'accepted'];
 
 function sanitizeOpportunityForResponse<T extends Opportunity>(
   opportunity: T,
@@ -56,8 +57,6 @@ interface OpportunityStatusUpdateResult {
 interface IntentScopeOptions {
   scopeType?: 'intent';
   scopeId?: string;
-  /** Internal clamp derived from a network-scoped API-key principal. */
-  networkScopeId?: string;
   /**
    * Verified provenance of the owner action, set ONLY by controller entry
    * points that represent a genuine explicit human owner action (REST session
@@ -139,23 +138,6 @@ async function appendMatchProvenance(
   await (database as MatchProvenanceDatabase).appendMatchProvenance(conversationId, provenance);
 }
 
-function matchesAgentNetworkScope(
-  opportunity: Pick<Opportunity, 'actors'>,
-  userId: string,
-  networkScopeId?: string,
-): boolean {
-  if (!networkScopeId) return true;
-  const callerAnchored = opportunity.actors.some(
-    (actor) => actor.userId === userId && actor.networkId === networkScopeId,
-  );
-  if (!callerAnchored) return false;
-  const participantIds = new Set(opportunity.actors.map((actor) => actor.userId));
-  return [...participantIds].every((participantId) => opportunity.actors.some(
-    (actor) => actor.userId === participantId && actor.networkId === networkScopeId,
-  ));
-}
-
-
 /** Events emitted after opportunity lifecycle changes (e.g. create, expire). */
 export type OpportunityCreatedPayload = { opportunity: Opportunity };
 export type OpportunityExpiredPayload = { opportunity: Opportunity };
@@ -177,7 +159,7 @@ export class OpportunityServiceEvents extends EventEmitter {
  * Emits opportunity events (created, expired) after transactional writes so subscribers see consistent state.
  *
  * RESPONSIBILITIES:
- * - List opportunities for users and indexes
+ * - List opportunities for users and networks
  * - Get and present individual opportunities
  * - Discover opportunities via HyDE graph
  * - Create manual opportunities
@@ -216,51 +198,24 @@ interface OpportunityPresentationDeps {
   gatherContext?: typeof gatherPresenterContext;
 }
 
-/**
- * Negotiation-closure seam for the owner verdict.
- *
- * An owner accept/reject is a user action on the OPPORTUNITY, outside the
- * negotiation loop — but the pairing it decides may still have a live
- * negotiation, and `NegotiationGraph`'s owner-close lane is the terminal write
- * on a negotiation task: it records the outcome artifact, completes the task,
- * and re-runs the all-paused check that arms each seat's drain-generation job.
- *
- * Production composes the conversation adapter's task read with the single
- * compiled graph; specs pass a fake pair.
- */
-export interface OwnerVerdictNegotiationCloser {
-  /** The opportunity's live (non-completed) negotiation, or null when it never negotiated. */
-  liveNegotiationId(opportunityId: string): Promise<string | null>;
-  /** Close the task after this service has committed the owner's opportunity verdict. */
-  close(input: {
-    negotiationId: string;
-    verdict: 'pending' | 'reject';
-    reasoning: string;
-    byUserId: string;
-  }): Promise<{ status: string; error?: string }>;
-}
-
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private cache: OpportunityCache;
   private presenter: OpportunityPresenter | null = null;
   private readonly presenterDb: PresenterDatabase;
   private readonly gatherPresentationContext: typeof gatherPresenterContext;
-  private readonly deliveryCache: RedisCacheAdapter;
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
   private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
-  /** Injected only by specs; production resolves the real graph lazily. */
-  private readonly negotiationCloser: OwnerVerdictNegotiationCloser | null;
-
+  /** Closes the negotiation underneath an opportunity the owner has ended. */
+  private readonly negotiations: Pick<NegotiationDatabaseAdapter, 'closeForOpportunities'> = negotiationDatabaseAdapter;
   constructor(
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
     outcomeRecorder: OutcomeFeedbackRecorderLike = outcomeFeedbackRecorder,
     presentation: OpportunityPresentationDeps = {},
-    negotiationCloser: OwnerVerdictNegotiationCloser | null = null,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
@@ -268,81 +223,7 @@ export class OpportunityService {
     this.presenterDb = presentation.presenterDatabase
       ?? chatDatabaseAdapter as unknown as PresenterDatabase;
     this.gatherPresentationContext = presentation.gatherContext ?? gatherPresenterContext;
-    this.deliveryCache = new RedisCacheAdapter();
     this.outcomeRecorder = outcomeRecorder;
-    this.negotiationCloser = negotiationCloser;
-  }
-
-  /**
-   * The negotiation closer is imported lazily so loading this service does not
-   * compile the negotiation graph or open the queue connection behind its
-   * reflect enqueue.
-   */
-  private async getNegotiationCloser(): Promise<OwnerVerdictNegotiationCloser> {
-    if (this.negotiationCloser) return this.negotiationCloser;
-    const { negotiationGraph } = await import('../lib/negotiation/negotiation-graph');
-    return {
-      liveNegotiationId: async (opportunityId: string) =>
-        (await conversationDatabaseAdapter.getNegotiationTaskForOpportunity(opportunityId))?.id ?? null,
-      close: (input) => negotiationGraph.invoke({
-        negotiationId: input.negotiationId,
-        close: { reason: 'owner_verdict', verdict: input.verdict, reasoning: input.reasoning },
-        byUserId: input.byUserId,
-      }),
-    };
-  }
-
-  /**
-   * End the pairing's negotiation, if it still has one, on the owner's verdict.
-   *
-   * The graph's owner-close lane records the outcome artifact, completes the
-   * task, and re-runs the all-paused check so each
-   * bound seat's current drain-generation job can finally be enqueued. It leaves
-   * the opportunity status this method already wrote alone.
-   *
-   * A match that never negotiated has no task and nothing happens here.
-   *
-   * Best-effort immediately: the owner's decision is already committed and
-   * their request must not fail because this follow-up is unavailable. Any
-   * active task left behind beside an accepted/rejected opportunity remains a
-   * durable watchdog candidate and is retried on the next bounded sweep.
-   */
-  private async closeNegotiationForOwnerVerdict(
-    opportunityId: string,
-    action: 'accepted' | 'rejected',
-    byUserId: string,
-  ): Promise<void> {
-    try {
-      const closer = await this.getNegotiationCloser();
-      const negotiationId = await closer.liveNegotiationId(opportunityId);
-      if (!negotiationId) return;
-      const result = await closer.close({
-        negotiationId,
-        // An accept closes the negotiation on its promotable outcome — the
-        // owner's own `accepted` is the status, already written above. A
-        // reject closes it as a reject. There is no third verdict: the graph's
-        // vocabulary is the negotiation's, not the owner's.
-        verdict: action === 'rejected' ? 'reject' : 'pending',
-        reasoning: action === 'rejected'
-          ? 'Closed by the owner declining this match.'
-          : 'Closed by the owner accepting this match.',
-        byUserId,
-      });
-      if (result.status === 'error') {
-        updateStatusLogger.error('negotiation close failed after owner verdict (non-blocking)', {
-          opportunityId,
-          negotiationId,
-          action,
-          error: result.error,
-        });
-      }
-    } catch (err) {
-      updateStatusLogger.error('negotiation close failed after owner verdict (non-blocking)', {
-        opportunityId,
-        action,
-        error: err,
-      });
-    }
   }
 
   private getPresenter(): OpportunityPresenter {
@@ -430,7 +311,7 @@ export class OpportunityService {
   async getOpportunitiesForUser(
     userId: string,
     options?: {
-      status?: 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+      status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       statuses?: OpportunityStatus[];
       networkId?: string;
       scopeType?: 'intent';
@@ -565,7 +446,7 @@ export class OpportunityService {
     const contextNetworkId = opp.context?.networkId;
     const actorNetworkId = otherActors[0]?.networkId ?? myActor?.networkId;
     const networkIdForDisplay = contextNetworkId ?? actorNetworkId;
-    const [indexRecord, ...userRecords] = await Promise.all([
+    const [networkRecord, ...userRecords] = await Promise.all([
       networkIdForDisplay ? this.db.getNetwork(networkIdForDisplay) : Promise.resolve(null),
       ...otherPartyIds.map((uid) => this.db.getUser(uid)),
     ]);
@@ -595,7 +476,7 @@ export class OpportunityService {
       otherParties,
       category: opp.interpretation.category,
       confidence: confidenceNum,
-      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
+      network: networkRecord ? { id: networkRecord.id, title: networkRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
       status: opp.status,
       primaryActionLabel: getPrimaryActionLabel(myActor.role),
       createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
@@ -638,9 +519,6 @@ export class OpportunityService {
       return { error: 'Not authorized to update this opportunity', status: 403 };
     }
     if (!matchesSelectedIntentScope(opp, userId, options)) {
-      return { error: 'Opportunity not found', status: 404 };
-    }
-    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
       return { error: 'Opportunity not found', status: 404 };
     }
 
@@ -701,18 +579,16 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
+    // The owner's verdict ends the negotiation; Index closes it rather than
+    // asking a seat to decline. Both seats see it closed on their next read.
+    if (status === 'accepted' || status === 'rejected' || status === 'expired') {
+      await this.negotiations.closeForOpportunities([opportunityId]);
+    }
+
     // Fire shadow mining only when a genuinely NEW event was inserted (idempotent
     // retries and duplicates set inserted=false), and only now — after commit.
     if (prepared && outbox?.result.inserted) {
       this.outcomeRecorder.triggerMine(prepared.scope);
-    }
-
-    // An owner verdict on a NEGOTIATED pairing has to end the negotiation too.
-    // The reflect trigger waits for every task in each bound seat's round to
-    // stop working, so a reject or accept that flips only the opportunity
-    // leaves its task `working` forever and prevents that drain from enqueueing.
-    if (captureAction) {
-      await this.closeNegotiationForOwnerVerdict(opportunityId, captureAction, userId);
     }
 
     if (!counterpart) {
@@ -739,9 +615,9 @@ export class OpportunityService {
   }
 
   /**
-   * Transition a `pending`/`draft` opportunity to `accepted` and surface the
+   * Transition a pending opportunity to `accepted` and surface the
    * h2h conversation to navigate to. Used by the frontend's "Start Chat"
-   * button on both ambient and orchestrator opportunity cards.
+   * button.
    *
    * **Step ordering is failure-safe, not wrapped in a single transaction.**
    * The four writes run in an order chosen so a partial failure never leaves
@@ -790,9 +666,6 @@ export class OpportunityService {
       if (!matchesSelectedIntentScope(opp, userId, options)) {
         return { error: 'Opportunity not found', status: 404 };
       }
-      if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
-        return { error: 'Opportunity not found', status: 404 };
-      }
       const counterpart = resolveCounterpart(opp.actors, userId);
       if (!counterpart) {
         return { error: 'Opportunity has no counterpart to chat with', status: 400 };
@@ -833,9 +706,6 @@ export class OpportunityService {
       return { error: 'Not authorized to start chat for this opportunity', status: 403 };
     }
     if (!matchesSelectedIntentScope(opp, userId, options)) {
-      return { error: 'Opportunity not found', status: 404 };
-    }
-    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
       return { error: 'Opportunity not found', status: 404 };
     }
 
@@ -931,7 +801,7 @@ export class OpportunityService {
   }
 
   /**
-   * Get opportunities for a specific index.
+   * Get opportunities for a specific network.
    *
    * @param networkId - The network ID
    * @param userId - User requesting (for authorization)
@@ -942,15 +812,15 @@ export class OpportunityService {
     networkId: string,
     userId: string,
     options?: {
-      status?: 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+      status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       statuses?: OpportunityStatus[];
       limit?: number;
       offset?: number;
     }
   ) {
-    logger.verbose('Getting opportunities for index', { networkId, userId, options });
+    logger.verbose('Getting opportunities for network', { networkId, userId, options });
 
-    const isOwner = await this.db.isIndexOwner(networkId, userId);
+    const isOwner = await this.db.isNetworkOwner(networkId, userId);
     const isMember = await this.db.isNetworkMember(networkId, userId);
 
     if (!isOwner && !isMember) {
@@ -1067,7 +937,7 @@ export class OpportunityService {
 
 
   /**
-   * Check if user has permission to create opportunities in an index.
+   * Check if user has permission to create opportunities in a network.
    *
    * @param creatorId - User creating the opportunity
    * @param parties - Parties involved
@@ -1079,7 +949,7 @@ export class OpportunityService {
     parties: Array<{ userId: string }>,
     networkId: string
   ): Promise<{ allowed: boolean }> {
-    const isOwner = await this.db.isIndexOwner(networkId, creatorId);
+    const isOwner = await this.db.isNetworkOwner(networkId, creatorId);
     const isSelfIncluded = parties.some((p) => p.userId === creatorId);
 
     if (isOwner) return { allowed: true };

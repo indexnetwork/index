@@ -6,7 +6,7 @@ export interface ScopeMembership {
 }
 
 /** A corpus that can be searched through inferred semantic lenses. */
-export type HydeTargetCorpus = "profiles" | "intents" | "premises";
+export type HydeTargetCorpus = "profiles" | "intents";
 
 export interface Lens {
   label: string;
@@ -18,16 +18,6 @@ export interface Lens {
 export interface DebugMetaAgent {
   name: string;
   durationMs: number;
-}
-
-export interface IntentIndexingResult {
-  indexScore: number;
-  memberScore: number;
-  reasoning: string;
-}
-
-export interface IntentNetworkIndexer {
-  indexIntent(intent: string, indexPrompt: string | null, memberPrompt: string | null, sourceName?: string | null, networkContext?: string | null): Promise<IntentIndexingResult | null>;
 }
 
 export const NEGOTIATION_MAX_TURNS_CHAT = 4;

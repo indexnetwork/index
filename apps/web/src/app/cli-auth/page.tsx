@@ -1,22 +1,44 @@
 import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
-import { apiClient } from "@/lib/api";
 import AuthForm from "@/components/AuthForm";
-import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, parseCliAuthRequest, type CliAuthRequest } from "@/lib/cli-auth";
+import { ensureLandingFonts } from "@/app/landing/Nav";
+import { buildCliDeviceCodeCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequest, DEVICE_CLIENT_ID, type CliAuthRequest } from "@/lib/cli-auth";
+
+import "./cli-auth.css";
+
+function Status({ title, message, ok }: { title: string; message: string; ok?: boolean }) {
+  return (
+    <div className="cli-auth__status">
+      {ok && (
+        <div className="cli-auth__check">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#0b1612" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        </div>
+      )}
+      <h1>{title}</h1>
+      <p>{message}</p>
+    </div>
+  );
+}
 
 /**
- * CLI authentication bridge page.
+ * Device sign-in bridge page.
  *
- * Opened by `index login` — exchanges the user's existing browser session
- * for a revocable CLI API key and redirects to the local callback server.
+ * Opened by `index login`, the Mac app and Hermes — runs the device
+ * authorization grant against the owner's browser session and redirects the
+ * approved code to the local callback server, which exchanges it for a session
+ * of its own.
  *
  * Query params: callback, exact version=2, and one-time state.
  *
  * Flow:
  *   1. Fail closed on malformed/unknown protocol combinations
- *   2. If user has a session cookie, mint a version-tagged CLI API key
- *   3. Return the state-bound api_key/key_id/state callback fields
+ *   2. If the user has a session cookie, mint a device code, claim it and
+ *      approve it — the page owns every step, so there is nothing to prompt
+ *      for and no caller-supplied code can enter the grant
+ *   3. Return the state-bound device_code/state callback fields
  *   4. If no session, show the sign-in form inline; Better Auth returns to
  *      this exact validated request after login
  */
@@ -31,6 +53,10 @@ function CliAuthPage() {
     request ? null : "Invalid sign-in request. Start the sign-in from the Index app, or run `index login` from the CLI.",
   );
   const exchangeStartedRef = useRef(false);
+
+  useEffect(() => {
+    ensureLandingFonts();
+  }, []);
 
   useEffect(() => {
     if (!request || exchangeStartedRef.current) return;
@@ -51,24 +77,34 @@ function CliAuthPage() {
           return;
         }
 
-        // Mint a non-web API-key principal so CLI chat keeps compatibility
-        // orchestrator behavior without creating a session-JWT web bypass.
-        const credential = await apiClient.post<{ key: string; id: string; expiresAt: string }>(
-          "/auth/cli-credential",
-          buildCliCredentialCreateBody(authRequest),
-        );
-        if (!credential.key || !credential.id || !credential.expiresAt) {
+        const requested = await authClient.device.code({
+          client_id: DEVICE_CLIENT_ID,
+          scope: "openid profile",
+        });
+        const deviceCode = requested.data?.device_code;
+        const userCode = requested.data?.user_code;
+        if (!deviceCode || !userCode) {
           setStatus("error");
-          setError("Failed to obtain credentials. Please try signing in again.");
+          setError("Failed to start device sign-in. Please try again from the app.");
+          return;
+        }
+
+        // Reading the code with a session claims it for this owner, which is
+        // what makes it approvable; approval then only ever binds a code this
+        // page just minted.
+        await authClient.device({ query: { user_code: userCode } });
+        const approved = await authClient.device.approve({ userCode });
+        if (!approved.data?.success) {
+          setStatus("error");
+          setError("Failed to authorize this device. Please try again from the app.");
           return;
         }
 
         setStatus("redirecting");
-        window.location.href = buildCliApiKeyCallbackUrl(
+        window.location.href = buildCliDeviceCodeCallbackUrl(
           authRequest.callback,
           authRequest.state,
-          credential.key,
-          credential.id,
+          deviceCode,
         );
       } catch {
         setStatus("error");
@@ -80,10 +116,13 @@ function CliAuthPage() {
   }, [request]);
 
   return (
-    <div className="flex-1 flex items-center justify-center bg-white">
-      <div className="text-center max-w-sm w-full px-6">
+    <div className="cli-auth">
+      <nav className="cli-auth__nav">
+        <img src="/landing/index-wordmark.svg" alt="Index Network" />
+      </nav>
+      <main className="cli-auth__main">
         {status === "login" && request && (
-          <div className="auth auth-light text-left">
+          <div className="auth cli-auth__form">
             <AuthForm
               callbackURL={`${window.location.origin}${buildCliAuthReturnPath(window.location.pathname, request)}`}
               onAuthenticated={() => window.location.reload()}
@@ -91,24 +130,15 @@ function CliAuthPage() {
           </div>
         )}
         {status === "loading" && (
-          <>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Signing you in</h1>
-            <p className="text-sm text-gray-500">Connecting to your account...</p>
-          </>
+          <Status title="Signing you in" message="Connecting to your account..." />
         )}
         {status === "redirecting" && (
-          <>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Signed in</h1>
-            <p className="text-sm text-gray-500">Returning to the app... You can close this window.</p>
-          </>
+          <Status ok title="Authentication complete" message="You may now close this window" />
         )}
         {status === "error" && (
-          <>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Authorization failed</h1>
-            <p className="text-sm text-gray-500">{error}</p>
-          </>
+          <Status title="Authorization failed" message={error ?? ""} />
         )}
-      </div>
+      </main>
     </div>
   );
 }
