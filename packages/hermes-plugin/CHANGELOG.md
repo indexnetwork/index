@@ -8,6 +8,15 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: one realtime relay instead of two.** The `/notifications/stream`
+  SSE proxy and the `/notifications/socket` WebSocket relay are removed; the
+  user's whole event stream — messages and opportunity frames alike — arrives
+  over `/conversations/stream` and `/conversations/socket`, following the API's
+  merge of the two upstream streams. Desktop OS notifications listen on that one
+  socket and suppress own sends only for messages. The `/notifications/snapshot`
+  proxy is removed with the upstream endpoint, so OS alerts are realtime-only;
+  the 60-second timer now only refreshes the signed-in identity that own-send
+  suppression needs. Requires an API at 0.113.0 or newer.
 - **BREAKING: the plugin authenticates with `INDEX_SESSION_TOKEN`, not
   `INDEX_API_KEY`.** Browser login now redeems the device code returned by
   `/cli-auth` for this device's own session and persists that, sending it as

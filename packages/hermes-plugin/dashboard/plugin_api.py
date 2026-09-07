@@ -1937,7 +1937,7 @@ def _conversation_stream():
 
 @full_router.get("/conversations/stream")
 def conversations_stream():
-    """SSE proxy for realtime conversation events (new messages)."""
+    """SSE proxy for the user's realtime events (messages and notifications)."""
     if StreamingResponse is None:
         return {"success": False, "error": "Streaming is not available in this environment."}
     return StreamingResponse(
@@ -1949,46 +1949,8 @@ def conversations_stream():
 
 @full_router.websocket("/conversations/socket")
 async def conversations_socket(websocket: WebSocket) -> None:
-    """Authenticated Hermes WebSocket relay for realtime conversation events."""
+    """Authenticated Hermes WebSocket relay for the user's realtime events."""
     await _relay_sse_to_websocket(websocket, "/conversations/stream")
-
-
-def _notification_stream():
-    """Relay transport-owned notification SSE to Hermes clients."""
-    try:
-        yield from tools.get_transport().stream_sse("/notifications/stream")
-    except Exception as exc:  # noqa: BLE001
-        message = json.dumps({"type": "error", "error": str(exc)})
-        yield f"data: {message}\n\n".encode("utf-8")
-
-
-@full_router.get("/notifications/stream")
-def notifications_stream():
-    """SSE proxy for realtime notification events (opportunities)."""
-    if StreamingResponse is None:
-        return {"success": False, "error": "Streaming is not available in this environment."}
-    return StreamingResponse(
-        _notification_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
-    )
-
-
-@full_router.websocket("/notifications/socket")
-async def notifications_socket(websocket: WebSocket) -> None:
-    """Authenticated Hermes WebSocket relay for realtime notification events."""
-    await _relay_sse_to_websocket(websocket, "/notifications/stream")
-
-
-def _notification_snapshot_request() -> Any:
-    """Fetch persisted notifications through the credential-free transport."""
-    return tools.get_transport().request_rest("GET", "/notifications/snapshot")
-
-
-@full_router.get("/notifications/snapshot")
-async def notifications_snapshot() -> Any:
-    """Proxy persisted actionable notifications without rewriting upstream JSON."""
-    return await asyncio.to_thread(_notification_snapshot_request)
 
 
 router.include_router(full_router)

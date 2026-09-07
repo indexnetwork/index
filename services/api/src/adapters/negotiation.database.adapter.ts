@@ -7,7 +7,7 @@
  */
 import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, negotiations, negotiationTurns, networkMembers, opportunities, or, sql, users } from './database.shared';
 
-import { publishNotificationStreamEvent } from '../lib/notification-stream-events';
+import { publishUserEvent } from '../lib/user-events';
 
 export type NegotiationTurnAction = 'propose' | 'counter' | 'accept' | 'decline';
 export type NegotiationOutcome = 'agreed' | 'declined' | 'closed';
@@ -143,7 +143,7 @@ async function announceOpened(opened: OpenedNegotiation[]): Promise<void> {
 
   for (const { userId, intentId, count: opportunityCount } of counts.values()) {
     try {
-      await publishNotificationStreamEvent(userId, {
+      await publishUserEvent(userId, {
         type: 'negotiation.opened',
         id: `${intentId}:opened:${Date.now()}`,
         title: 'Your turn',

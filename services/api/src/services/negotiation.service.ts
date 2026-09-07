@@ -2,7 +2,7 @@ import { pairKeyOf } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
-import { publishNotificationStreamEvent } from '../lib/notification-stream-events';
+import { publishUserEvent } from '../lib/user-events';
 
 const logger = log.service.from('NegotiationService');
 
@@ -168,9 +168,9 @@ export class NegotiationService {
    * @param userId - The seat owner to notify.
    * @param event - The frame to publish on that owner's channel.
    */
-  private async notify(userId: string, event: Parameters<typeof publishNotificationStreamEvent>[1]): Promise<void> {
+  private async notify(userId: string, event: Parameters<typeof publishUserEvent>[1]): Promise<void> {
     try {
-      await publishNotificationStreamEvent(userId, event);
+      await publishUserEvent(userId, event);
     } catch (error) {
       logger.error('Failed to publish negotiation event', {
         userId,

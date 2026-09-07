@@ -4285,67 +4285,6 @@ export function rememberNotificationEntity(notifiedEntities, key) {
     isNew: true,
   }
 }
-
-export function snapshotNotificationEvents(payload) {
-  if (!payload || !Array.isArray(payload.events)) return null
-  return payload.events.filter((event) => {
-    if (!event || typeof event.type !== 'string') return false
-    const persistedType = event.type.indexOf('opportunity.') === 0
-    return persistedType && notificationEntityKey(event) && composeNotification(event)
-  })
-}
-
-export function reconcileNotificationSnapshot(payload, previousState) {
-  const events = snapshotNotificationEvents(payload)
-  const state = previousState || { hasSnapshot: false, notifiedEntities: [] }
-  if (events === null) return { state, notifications: [] }
-
-  let notifiedEntities = normalizedNotifiedEntities(state.notifiedEntities)
-  const notifications = []
-  for (let index = 0; index < events.length; index += 1) {
-    const event = events[index]
-    const remembered = rememberNotificationEntity(notifiedEntities, notificationEntityKey(event))
-    notifiedEntities = remembered.notifiedEntities
-    if (state.hasSnapshot && remembered.isNew) notifications.push(event)
-  }
-
-  return {
-    state: { hasSnapshot: true, notifiedEntities },
-    notifications,
-  }
-}
-
-export async function reconcileDesktopNotificationState(ctx, state, notify) {
-  if (state.stopped || state.reconciling) return
-  state.reconciling = true
-  try {
-    const currentUserId = await refreshNotificationIdentity(function () {
-      return ctx.rest('/auth/status', { method: 'GET' })
-    })
-    if (state.stopped) return
-    state.currentUserId = currentUserId
-
-    const payload = await ctx.rest('/notifications/snapshot', { method: 'GET' })
-    if (state.stopped) return
-    const result = reconcileNotificationSnapshot(payload, {
-      hasSnapshot: state.hasSnapshot,
-      notifiedEntities: state.notifiedEntities,
-    })
-    if (state.stopped) return
-    state.hasSnapshot = result.state.hasSnapshot
-    state.notifiedEntities = result.state.notifiedEntities
-
-    if (state.stopped) return
-    ctx.storage.set(NOTIFIED_ENTITIES_KEY, state.notifiedEntities)
-    for (let index = 0; index < result.notifications.length; index += 1) {
-      if (state.stopped) return
-      notify(result.notifications[index])
-    }
-  } finally {
-    state.reconciling = false
-  }
-}
-
 ;
 /**
  * Desktop plugin TAIL fragment — concatenated by build.mjs after the shared
@@ -4393,10 +4332,9 @@ function ensureAssets() {
   return assetsPromise
 }
 
-// Native OS alerts use only the authenticated Hermes SDK doors. Opportunity
-// sockets use canonical persisted dedupe with the 60-second snapshot fallback;
-// messages remain realtime-only and fail closed until the current user's
-// identity is known.
+// Native OS alerts use only the authenticated Hermes SDK doors. One socket
+// carries the user's whole event stream: every frame is realtime-only, deduped
+// by entity key, and messages fail closed until the identity is known.
 function socketEventPayload(value) {
   const data = value && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value
   if (typeof data !== 'string') return data
@@ -4431,11 +4369,13 @@ function sendOsNotification(ctx, event) {
   } catch (e) { /* synchronous host errors are fail-open too */ }
 }
 
-function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
+function notifyRealtimeEvent(ctx, state, rawEvent) {
   if (state.stopped) return
   const event = socketEventPayload(rawEvent)
   if (!event || event.type === 'connected') return
-  if (suppressOwnMessage && isOwnMessage(event, state.currentUserId)) return
+  // Own-send suppression is a message question: notification frames have no
+  // sender, and isOwnMessage fails closed on anything without `message`.
+  if (event.message && isOwnMessage(event, state.currentUserId)) return
   if (!composeNotification(event)) return
   const remembered = rememberNotificationEntity(state.notifiedEntities, notificationEntityKey(event))
   if (!remembered.isNew) return
@@ -4444,47 +4384,42 @@ function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
   sendOsNotification(ctx, event)
 }
 
-function reconcileDesktopSnapshot(ctx, state) {
-  reconcileDesktopNotificationState(ctx, state, function (event) {
-    sendOsNotification(ctx, event)
-  }).catch(function () { /* the next 60-second reconciliation retries */ })
+// Own-send suppression fails closed until the identity is known, and the user
+// can sign in after the plugin registers, so keep re-reading it.
+function refreshDesktopIdentity(ctx, state) {
+  refreshNotificationIdentity(function () {
+    return ctx.rest('/auth/status', { method: 'GET' })
+  }).then(function (userId) {
+    if (!state.stopped) state.currentUserId = userId
+  })
 }
 
 function startDesktopNotifications(ctx) {
   const stored = ctx.storage.get(NOTIFIED_ENTITIES_KEY, [])
   const state = {
     currentUserId: null,
-    hasSnapshot: false,
     notifiedEntities: Array.isArray(stored) ? stored.slice(-MAX_NOTIFIED_ENTITIES) : [],
-    reconciling: false,
     stopped: false,
   }
-  let notificationSocket = null
-  let conversationSocket = null
+  let eventSocket = null
 
   if (typeof ctx.socket === 'function') {
     try {
-      notificationSocket = ctx.socket('/notifications/socket', function (event) {
-        notifyRealtimeEvent(ctx, state, event, false)
+      eventSocket = ctx.socket('/conversations/socket', function (event) {
+        notifyRealtimeEvent(ctx, state, event)
       })
-    } catch (e) { /* snapshot reconciliation remains available */ }
-    try {
-      conversationSocket = ctx.socket('/conversations/socket', function (event) {
-        notifyRealtimeEvent(ctx, state, event, true)
-      })
-    } catch (e) { /* messages intentionally have no catch-up path */ }
+    } catch (e) { /* hosts without socket support get no OS alerts */ }
   }
 
-  reconcileDesktopSnapshot(ctx, state)
-  const snapshotTimer = window.setInterval(function () {
-    reconcileDesktopSnapshot(ctx, state)
+  refreshDesktopIdentity(ctx, state)
+  const identityTimer = window.setInterval(function () {
+    refreshDesktopIdentity(ctx, state)
   }, 60000)
 
   return function dispose() {
     state.stopped = true
-    window.clearInterval(snapshotTimer)
-    disposeDesktopSocket(notificationSocket)
-    disposeDesktopSocket(conversationSocket)
+    window.clearInterval(identityTimer)
+    disposeDesktopSocket(eventSocket)
   }
 }
 

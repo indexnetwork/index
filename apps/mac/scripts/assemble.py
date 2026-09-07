@@ -33,7 +33,6 @@ API_EXPORTS = [
     "NOTIFIED_ENTITIES_KEY", "MAX_NOTIFIED_ENTITIES",
     "notificationEntityKey", "isOwnMessage", "notificationEventAllowed",
     "composeNotification", "rememberNotificationEntity",
-    "snapshotNotificationEvents", "reconcileNotificationSnapshot",
     "SOCIAL_PREFIX", "EDITABLE_PLATFORMS", "parseSocial", "firstSocialValue",
     "socialPlatformOf", "socialHandleOf", "socialHrefOf", "socialApiLabelOf",
     "buildSocialHref", "normalizeSocial", "splitProfileSocials", "buildProfileSocials",

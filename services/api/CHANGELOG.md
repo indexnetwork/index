@@ -9,6 +9,34 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: one SSE stream per user.** Notifications and conversation messages
+  share the Redis channel `events:user:<userId>` and the single endpoint
+  `GET /conversations/stream`; `GET /notifications/stream` is deleted. Frames are
+  unchanged — notification frames stay pointer-shaped, messages keep their text
+  inline — so consumers discriminate on `type` and ignore the rest.
+  The surviving stream also waits for Redis to acknowledge the subscription and
+  buffers frames published before the consumer attaches, which the conversation
+  stream previously dropped. `lib/notification-stream-events.ts` and
+  `lib/conversation-events.ts` merged into `lib/user-events.ts`, and
+  `NotificationService` is gone.
+- **The realtime frame vocabulary is "user event", not "notification".**
+  `NotificationStreamEvent`, `NotificationStreamPublisher` and
+  `publishNotificationStreamEvent` are `UserEvent`, `UserEventPublisher` and
+  `publishUserEvent`; `notification-delivery.service.ts` and
+  `notification-projection.ts` are one `services/opportunity-event.service.ts`
+  exporting `OpportunityEventService`. Internal only — every frame's JSON is
+  byte-identical, and the words "notification" and "notify" stay where they mean
+  an OS toast or a delivery preference (`user_notification_settings`,
+  `notifyOnOpportunity`, staff emails, the desktop composers).
+- **BREAKING: `GET /notifications/snapshot` is deleted.** Notifications are
+  realtime-only: a client that is not connected when an opportunity becomes
+  actionable will not be told about it, and reads the opportunity from
+  `GET /opportunities` instead. `NotificationController`,
+  `NotificationDeliveryService.snapshot` and the adapter's
+  `getNotificationSnapshotOpportunities` query are gone, so the
+  `/notifications` prefix no longer exists.
+
 ### Added
 - **Native clients sign in as devices, not as API keys.** Better Auth's
   `deviceAuthorization` plugin is registered and `/api/auth/device*` is proxied,

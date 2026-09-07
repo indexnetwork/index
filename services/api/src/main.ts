@@ -18,11 +18,9 @@ import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
 import { SubscribeController } from './controllers/subscribe.controller';
 import { ConversationController } from './controllers/conversation.controller';
-import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
-import { NotificationService } from './services/notification.service';
-import { NotificationDeliveryService } from './services/notification-delivery.service';
+import { OpportunityEventService } from './services/opportunity-event.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
 import { log, sanitizeForLog } from './lib/log';
@@ -40,7 +38,7 @@ import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
-import { publishNotificationStreamEvent } from './lib/notification-stream-events';
+import { publishUserEvent } from './lib/user-events';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
 // emoji, LOG_LEVEL, Sentry, embedding redaction + payload truncation).
@@ -64,15 +62,15 @@ setTimingWrapper((name, fn) => traceAppOperation(
 
 setRequestContextStore(hostRequestContext);
 
-const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
-const notificationDeliveryService = new NotificationDeliveryService({
-  opportunities: notificationOpportunityAdapter,
-  getIdentity: (userId) => notificationOpportunityAdapter.getProfile(userId),
-  publish: publishNotificationStreamEvent,
+const opportunityEventAdapter = new OpportunityDatabaseAdapter();
+const opportunityEventService = new OpportunityEventService({
+  opportunities: opportunityEventAdapter,
+  getIdentity: (userId) => opportunityEventAdapter.getProfile(userId),
+  publish: publishUserEvent,
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
-OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
+OpportunityEvents.onActionable = (payload) => opportunityEventService.publishOpportunityActionable(payload);
 
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
@@ -143,10 +141,6 @@ controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService()));
-controllerInstances.set(
-  NotificationController,
-  new NotificationController(new NotificationService(), notificationDeliveryService),
-);
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(DebugController, new DebugController());
 const toolService = new ToolService();

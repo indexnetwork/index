@@ -72,7 +72,7 @@ There is no policy document and no dossier. The agent DM is the memory. Untagged
 
 ### Events
 
-Delivered over `GET /notifications/stream`. Every first-party client receives them through `index agent watch`; the hosted seat receives them in process. Anything else polls `list_negotiations`. A push URL on the agent record can be added when a reachable harness asks for it; nothing needs it to work.
+Delivered over `GET /conversations/stream`, the user's single event stream. Every first-party client receives them through `index agent watch`; the hosted seat receives them in process. Anything else polls `list_negotiations`. A push URL on the agent record can be added when a reachable harness asks for it; nothing needs it to work.
 
 Index to the agent
 

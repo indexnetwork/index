@@ -355,8 +355,12 @@ export class ConversationController {
   }
 
   /**
-   * GET /conversations/stream — SSE endpoint for real-time conversation events.
-   * Delegates subscription to ConversationService and pipes events into SSE response.
+   * GET /conversations/stream — the authenticated user's single SSE channel.
+   *
+   * Carries every realtime frame for the user: conversation messages plus the
+   * notification frames (`opportunity.new`, `negotiation.*`, `intent.lifecycle`)
+   * that agents and desktop toasts read. Consumers discriminate on `type` and
+   * ignore what they do not handle.
    *
    * @param _req - The HTTP request object (unused)
    * @param user - Authenticated user from AuthGuard
@@ -365,15 +369,22 @@ export class ConversationController {
   @Get('/stream')
   @UseGuards(AuthGuard)
   async subscribe(_req: Request, user: AuthenticatedUser) {
+    let subscription;
+    try {
+      subscription = await this.conversationService.openEventStream(user.id);
+    } catch {
+      return Response.json({ error: 'Event stream is temporarily unavailable' }, { status: 503 });
+    }
+
     const encoder = new TextEncoder();
-    const { onMessage, cleanup } = this.conversationService.subscribe(user.id);
     let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
 
     const readableStream = new ReadableStream({
       start(controller) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected' })}\n\n`));
 
-        onMessage((data) => {
+        subscription.onMessage((data) => {
           try {
             controller.enqueue(encoder.encode(`data: ${data}\n\n`));
           } catch { /* stream closed */ }
@@ -383,9 +394,11 @@ export class ConversationController {
           try { controller.enqueue(encoder.encode(': keepalive\n\n')); } catch { clearInterval(keepaliveInterval!); }
         }, 15000);
       },
-      cancel() {
+      async cancel() {
+        if (cancelled) return;
+        cancelled = true;
         if (keepaliveInterval) clearInterval(keepaliveInterval);
-        cleanup();
+        await subscription.cleanup();
       },
     });
 

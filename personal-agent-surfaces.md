@@ -91,7 +91,7 @@ Index keeps its own copy of every negotiation, independent of which A2A server h
 
 ### Events
 
-Two directions. To the agent: over `GET /notifications/stream` for an agent outside the host, direct event hooks inside it. To the human: the same stream, feeding desktop toasts and the web. Inbound A2A messages from a counterparty reach the agent's handler directly and never pass through Index. An intent edit re-fires discovery, so the next `candidates.ready` follows it and needs no event of its own.
+Two directions. To the agent: over `GET /conversations/stream`, the user's single event stream, for an agent outside the host, direct event hooks inside it. To the human: the same stream, feeding desktop toasts and the web. Inbound A2A messages from a counterparty reach the agent's handler directly and never pass through Index. An intent edit re-fires discovery, so the next `candidates.ready` follows it and needs no event of its own.
 
 Index to the agent
 

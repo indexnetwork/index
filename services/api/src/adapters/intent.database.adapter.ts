@@ -3,7 +3,7 @@ import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, Crea
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
-import { publishNotificationStreamEvent, type IntentLifecycleWireStatus } from '../lib/notification-stream-events';
+import { publishUserEvent, type IntentLifecycleWireStatus } from '../lib/user-events';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 
 
@@ -33,7 +33,7 @@ async function publishIntentLifecycle(
   lifecycleVersionMs: number,
 ): Promise<void> {
   try {
-    await publishNotificationStreamEvent(userId, {
+    await publishUserEvent(userId, {
       type: 'intent.lifecycle',
       id: `${intentId}:${lifecycleVersionMs}`,
       ...LIFECYCLE_WIRE_COPY[status],
