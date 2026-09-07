@@ -2259,10 +2259,13 @@
     );
   }
 
-  function SettingUpScreen() {
+  // The caller can hand it its own lines: the profile fetch and the public
+  // research pass both wait behind this card, and saying the same three things
+  // twice would read as the loader repeating rather than as two pieces of work.
+  function SettingUpScreen(props) {
     // Indeterminate bar + staggered status lines while enrichment runs.
     // No brand mark, loading gif, or live-dot — keep the Hermes card quiet.
-    const lines = [
+    const lines = (props && props.lines) || [
       "Getting a sense of you…",
       "Working out what you're into…",
       "Almost there.",
@@ -2384,6 +2387,43 @@
     );
   }
 
+  // Mac AskName parity: the one thing the agent cannot work out on its own,
+  // asked before it goes looking. A name is what the public research runs on,
+  // and the account name from a browser handshake is often a handle or wrong.
+  //
+  // Deliberately the sign-in card's shape rather than the review form's: asking
+  // one thing inside a form built to review a whole profile leaves a screen of
+  // fields nobody can fill in yet.
+  function AskNameCard(props) {
+    const nameState = React.useState(props.initialName || "");
+    const name = nameState[0];
+    const setName = nameState[1];
+    const ready = !!name.trim();
+    return React.createElement("div", { className: "index-dashboard__login" },
+      React.createElement("form", {
+        className: "index-dashboard__login-card",
+        onSubmit: function (e) { e.preventDefault(); if (ready) props.onSubmit(name.trim()); },
+      },
+        React.createElement("h1", { className: "index-dashboard__ask-name-title" }, "What's your name?"),
+        React.createElement("p", { className: "index-dashboard__login-copy" },
+          "I'll use it to find what's already public about you, so you don't have to type it all out."),
+        React.createElement("input", {
+          className: "index-dashboard__ask-name-input",
+          value: name,
+          autoFocus: true,
+          placeholder: "Your name",
+          "aria-label": "Your name",
+          onChange: function (e) { setName(e.target.value); },
+        }),
+        React.createElement(Button, {
+          type: "submit",
+          className: "index-dashboard__login-btn",
+          disabled: !ready,
+        }, "Continue"),
+      ),
+    );
+  }
+
   function usableEnriched(res) {
     const p = res && res.profile;
     return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
@@ -2417,9 +2457,10 @@
     const avatarPreviewState = useState(null);
     const avatarPreview = avatarPreviewState[0];
     const setAvatarPreview = avatarPreviewState[1];
-    const draftingState = useState(!!props.gettingStarted);
-    const drafting = draftingState[0];
-    const setDrafting = draftingState[1];
+    // First run only, in Mac's screen order: "name" → "looking-up" → "review".
+    const stepState = useState("name");
+    const step = stepState[0];
+    const setStep = stepState[1];
     const assembledRef = useRef(null);
 
     const readOnly = !!props.readOnly;
@@ -2481,39 +2522,39 @@
             throw new Error((payload && payload.error) || "Profile could not be loaded.");
           }
           applyProfile(payload.profile || {});
-          if (!gettingStarted) return null;
-          setDrafting(true);
-          return fetchPluginJSON(API + "/onboarding/enrich", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          }).then(function (enriched) {
-            if (enriched && enriched.success !== false && usableEnriched(enriched)) {
-              adoptEnrichment(enriched, {
-                name: assembledRef.current.name,
-                intro: assembledRef.current.intro,
-                location: assembledRef.current.location,
-                avatar: assembledRef.current.avatar,
-                context: assembledRef.current.context,
-                socials: assembledRef.current.socials,
-                email: assembledRef.current.email,
-                id: assembledRef.current.id,
-                timezone: assembledRef.current.timezone,
-                notificationPreferences: assembledRef.current.notificationPreferences,
-              });
-            }
-          }).catch(function () { /* keep the baseline profile */ });
+          return null;
         })
         .catch(function (err) {
           setPanelError(err && err.message ? err.message : String(err));
         })
         .finally(function () {
           setLoading(false);
-          setDrafting(false);
         });
     }
 
     useEffect(function () { load(); }, []);
+
+    // First run: the public research runs on the name just confirmed rather than
+    // on whatever the handshake supplied, and the confirmed name then wins over
+    // both the account record and whatever the lookup returns. Nothing found is
+    // not a failure — the review just opens on the baseline profile.
+    function continueFromName(confirmed) {
+      assembledRef.current = Object.assign({}, assembledRef.current, { name: confirmed });
+      setForm(assembledRef.current);
+      setStep("looking-up");
+      fetchPluginJSON(API + "/onboarding/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: confirmed }),
+      })
+        .then(function (enriched) {
+          if (enriched && enriched.success !== false && usableEnriched(enriched)) {
+            adoptEnrichment(enriched, Object.assign({}, assembledRef.current, { name: confirmed }));
+          }
+        })
+        .catch(function () { /* keep the baseline profile */ })
+        .finally(function () { setStep("review"); });
+    }
 
     function patchForm(patch) {
       setForm(function (prev) { return Object.assign({}, prev, patch); });
@@ -2865,7 +2906,7 @@
             React.createElement(Button, {
               type: "button",
               className: gettingStarted ? "index-dashboard__getting-started-btn" : undefined,
-              disabled: saving || (gettingStarted ? drafting : !dirty),
+              disabled: saving || (!gettingStarted && !dirty),
               onClick: save,
             }, saving
               ? (gettingStarted ? "Confirming…" : "Saving…")
@@ -2875,15 +2916,30 @@
         : null,
     );
 
-    // Mac parity: keep the review form hidden until enrichment finishes, and show
-    // the setting-up screen (brand + motion + status lines) in the meantime.
-    if (gettingStarted && (loading || drafting || !form)) {
-      return React.createElement("div", { className: "index-dashboard__getting-started" },
-        React.createElement(SettingUpScreen),
-      );
-    }
+    // Mac parity: first run is three screens in sequence — confirm the name,
+    // look the person up behind the loader, then review what came back. The
+    // review form only ever appears filled.
     if (gettingStarted) {
-      return React.createElement("div", { className: "index-dashboard__getting-started" }, panel);
+      const wrap = function (child) {
+        return React.createElement("div", { className: "index-dashboard__getting-started" }, child);
+      };
+      if (loading || !form) return wrap(React.createElement(SettingUpScreen));
+      if (step === "name") {
+        return wrap(React.createElement(AskNameCard, {
+          initialName: form.name,
+          onSubmit: continueFromName,
+        }));
+      }
+      if (step === "looking-up") {
+        return wrap(React.createElement(SettingUpScreen, {
+          lines: [
+            "Looking you up…",
+            "Reading what's already public…",
+            "Almost there.",
+          ],
+        }));
+      }
+      return wrap(panel);
     }
     return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose }, panel);
   }

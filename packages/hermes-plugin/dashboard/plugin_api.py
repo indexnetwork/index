@@ -1621,9 +1621,14 @@ def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[st
 
 
 @full_router.post("/onboarding/enrich")
-def onboarding_enrich(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Run Mac-parity sync public research (`POST /enrichment/enrich`) for first-run review."""
-    payload = tools._api_request("POST", "/enrichment/enrich")
+def onboarding_enrich(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Run Mac-parity sync public research (`POST /enrichment/enrich`) for first-run review.
+
+    The name the person confirmed on the first-run card is forwarded as the hint,
+    since the account name from a browser handshake is often a handle or wrong.
+    """
+    hints = {"name": _text((body or {}).get("name"))}
+    payload = tools._api_request("POST", "/enrichment/enrich", hints)
     if payload.get("success") is False:
         return payload
     profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}

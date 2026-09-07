@@ -2046,6 +2046,29 @@
   align-self: stretch;
 }
 
+/* First-run name card — the sign-in card's shell with a question in it. */
+.index-dashboard__ask-name-title {
+  margin: 0;
+  color: var(--color-card-foreground, inherit);
+  font-size: 1.15rem;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.index-dashboard__ask-name-input {
+  align-self: stretch;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: calc(var(--radius, 0.75rem) * 0.6);
+  background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);
+  color: var(--color-card-foreground, inherit);
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: center;
+}
+
 .index-dashboard__login-manual {
   margin: 0;
   font-size: 0.85rem;

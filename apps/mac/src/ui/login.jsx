@@ -36,10 +36,10 @@ function SignInButton({ children, primary, onClick, disabled }) {
 // ("reading your public profile", "pulling in what people already say about
 // you"), which is both cold and, in the case of what other people say, not
 // something index looks at. These are the agent thinking out loud instead.
-// The caller can hand it its own lines: the boot pass and the public-research
-// pass both wait behind this window, and saying the same three things twice
-// would read as the loader repeating rather than as two pieces of work.
-function BuildingProfile({ onDone, lines = [
+// The caller can hand it its own title and lines: the boot pass and the
+// public-research pass both wait behind this window, and saying the same things
+// twice would read as the loader repeating rather than as two pieces of work.
+function BuildingProfile({ onDone, title = "setting up", lines = [
   "getting a sense of you…",
   "working out what you're into…",
   "almost there.",
@@ -54,7 +54,7 @@ function BuildingProfile({ onDone, lines = [
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
     }}>
-      <MacWindow title="setting up" style={{ width: 420 }}>
+      <MacWindow title={title} style={{ width: 420 }}>
         <div style={{ padding:"26px 28px 24px", textAlign:"center" }}>
           <div style={{
             display:"flex", justifyContent:"center",

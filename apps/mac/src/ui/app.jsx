@@ -291,17 +291,16 @@ function App() {
 
   // The "building" screen doubles as the boot loader: fetch the live snapshot,
   // then drop into the signals hub. Falls back to demo data when unauthenticated.
+  // Two GETs and no artificial floor: the real wait at first run is the lookup
+  // after the name card, and padding this one only made the same window appear
+  // twice in a few seconds.
   useEffect(() => {
     if (screen !== "building") return;
     let cancelled = false;
     (async () => {
       let loaded = null;
       if (nativeAuthed() && window.IndexApp) {
-        const [snap] = await Promise.all([
-          window.IndexApp.loadSnapshot().catch(() => null),
-          new Promise((r) => setTimeout(r, 1400)),
-        ]);
-        loaded = snap;
+        loaded = await window.IndexApp.loadSnapshot().catch(() => null);
       }
       if (cancelled) return;
       let needsProfile = false;
@@ -507,11 +506,13 @@ function App() {
                                        initialName={(me && me.name) || ""}
                                        onSubmit={(name) => { setConfirmedName(name); setScreen("looking-up"); }}
                                        onSignOut={signOut}/>}
-        {screen === "looking-up"  && <BuildingProfile lines={[
-                                       "looking you up…",
-                                       "reading what's already public…",
-                                       "almost there.",
-                                     ]}/>}
+        {screen === "looking-up"  && <BuildingProfile
+                                       title="looking you up"
+                                       lines={[
+                                         "looking you up…",
+                                         "reading what's already public…",
+                                         "almost there.",
+                                       ]}/>}
         {screen === "onboarding"  && <Settings
                                        initialTab="profile"
                                        profileOnly
