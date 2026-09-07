@@ -37,7 +37,7 @@ Usage:
 
 Commands:
   opportunity   Create a pending opportunity and publish opportunity.new via
-                NotificationDeliveryService (SSE).
+                OpportunityEventService (SSE).
   message       Insert a real conversation message from a counterpart so the
                 production conversation SSE publishes type:message.
 
@@ -111,9 +111,9 @@ async function main(): Promise<void> {
   const { closeRedisConnection } = await import('../adapters/cache.adapter');
   const {
     userEventChannel,
-    publishNotificationStreamEvent,
+    publishUserEvent,
   } = await import('../lib/user-events');
-  const { NotificationDeliveryService } = await import('../services/notification-delivery.service');
+  const { OpportunityEventService } = await import('../services/opportunity-event.service');
 
   async function resolveUserByEmail(email: string): Promise<{ id: string; email: string; name: string | null }> {
     const [row] = await db
@@ -178,17 +178,17 @@ async function main(): Promise<void> {
         status: 'pending',
       });
 
-      const delivery = new NotificationDeliveryService({
+      const opportunityEvents = new OpportunityEventService({
         opportunities,
         getIdentity: buildProfileFromUser,
-        publish: publishNotificationStreamEvent,
+        publish: publishUserEvent,
       });
-      await delivery.publishOpportunityActionable({
+      await opportunityEvents.publishOpportunityActionable({
         opportunity: { id: created.id, status: created.status },
       });
 
       console.log('Created opportunity', created.id);
-      console.log('Published opportunity.new via NotificationDeliveryService');
+      console.log('Published opportunity.new via OpportunityEventService');
       console.log('  channel:', userEventChannel(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);
       console.log('  counterpart:', counterpart.email, `(${counterpart.id})`);

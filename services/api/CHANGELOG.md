@@ -20,6 +20,15 @@ section before promoting to `main`).
   stream previously dropped. `lib/notification-stream-events.ts` and
   `lib/conversation-events.ts` merged into `lib/user-events.ts`, and
   `NotificationService` is gone.
+- **The realtime frame vocabulary is "user event", not "notification".**
+  `NotificationStreamEvent`, `NotificationStreamPublisher` and
+  `publishNotificationStreamEvent` are `UserEvent`, `UserEventPublisher` and
+  `publishUserEvent`; `notification-delivery.service.ts` and
+  `notification-projection.ts` are one `services/opportunity-event.service.ts`
+  exporting `OpportunityEventService`. Internal only — every frame's JSON is
+  byte-identical, and the words "notification" and "notify" stay where they mean
+  an OS toast or a delivery preference (`user_notification_settings`,
+  `notifyOnOpportunity`, staff emails, the desktop composers).
 - **BREAKING: `GET /notifications/snapshot` is deleted.** Notifications are
   realtime-only: a client that is not connected when an opportunity becomes
   actionable will not be told about it, and reads the opportunity from

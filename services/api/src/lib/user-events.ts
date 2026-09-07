@@ -35,15 +35,19 @@ export type UserEventType =
  */
 export type IntentLifecycleWireStatus = 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
 
-/** User-scoped notification frame — composed on the server before publish. */
-export interface NotificationStreamEvent {
+/**
+ * Every frame except `message`: a pointer at the record that moved, plus copy
+ * composed on the server for a desktop toast. Messages are published by
+ * {@link publishConversationMessageEvent} and carry their text inline instead.
+ */
+export interface UserEvent {
   type: Exclude<UserEventType, 'message'>;
   id: string;
   title: string;
   body: string;
   /**
-   * Absolute deep link to the surface that resolves the notification, when
-   * the frame has one.
+   * Absolute deep link to the surface that resolves the event, when the frame
+   * has one.
    */
   link?: string;
   /**
@@ -54,9 +58,9 @@ export interface NotificationStreamEvent {
 }
 
 /** Injectable delivery boundary shared by realtime publication and isolated tests. */
-export type NotificationStreamPublisher = (
+export type UserEventPublisher = (
   userId: string,
-  event: NotificationStreamEvent,
+  event: UserEvent,
 ) => Promise<void>;
 
 interface ConversationEventParticipant {
@@ -85,11 +89,11 @@ export function userEventChannel(userId: string): string {
 }
 
 /**
- * Publishes a user-scoped notification event to Redis for SSE consumers.
+ * Publishes a user-scoped event to Redis for SSE consumers.
  */
-export async function publishNotificationStreamEvent(
+export async function publishUserEvent(
   userId: string,
-  event: NotificationStreamEvent,
+  event: UserEvent,
 ): Promise<void> {
   if (!userId) return;
   const publisher = getRedisClient();
