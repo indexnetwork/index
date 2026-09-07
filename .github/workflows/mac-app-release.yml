@@ -1,0 +1,125 @@
+# Signs, notarizes, and publishes dist/Index.dmg to a rolling GitHub Release.
+#
+# PRs stay on mac-app-build.yml (ad-hoc compile). This job is the
+# distributable: Developer ID + notarized app + notarized DMG.
+#
+# Durable downloads:
+#   dev  → …/releases/download/mac-dev/Index.dmg  (prerelease)
+#   main → …/releases/download/mac/Index.dmg
+name: Release macOS DMG
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - "apps/mac/**"
+      - ".github/workflows/mac-app-release.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: mac-app-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      MAC_CODESIGN_P12: ${{ secrets.MAC_CODESIGN_P12 }}
+      MAC_CODESIGN_P12_PASSWORD: ${{ secrets.MAC_CODESIGN_P12_PASSWORD }}
+      MAC_CODESIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_IDENTITY }}
+      MAC_APP_IDENTIFIER_PREFIX: ${{ secrets.MAC_APP_IDENTIFIER_PREFIX }}
+      MAC_PROVISIONING_PROFILE: ${{ secrets.MAC_PROVISIONING_PROFILE }}
+      MAC_NOTARY_KEY: ${{ secrets.MAC_NOTARY_KEY }}
+      MAC_NOTARY_KEY_ID: ${{ secrets.MAC_NOTARY_KEY_ID }}
+      MAC_NOTARY_ISSUER: ${{ secrets.MAC_NOTARY_ISSUER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require signing secrets
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in MAC_CODESIGN_P12 MAC_CODESIGN_P12_PASSWORD MAC_CODESIGN_IDENTITY \
+            MAC_APP_IDENTIFIER_PREFIX MAC_PROVISIONING_PROFILE \
+            MAC_NOTARY_KEY MAC_NOTARY_KEY_ID MAC_NOTARY_ISSUER; do
+            if [ -z "${!name}" ]; then
+              echo "missing secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Channel
+        id: channel
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "link_host=index.network" >> "$GITHUB_OUTPUT"
+            echo "tag=mac" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "title=Index macOS" >> "$GITHUB_OUTPUT"
+          else
+            echo "link_host=dev.index.network" >> "$GITHUB_OUTPUT"
+            echo "tag=mac-dev" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "title=Index macOS (dev)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@b2e261033a9e248f91a9b57201e8d1e12b15a24e # v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.MAC_CODESIGN_P12 }}
+          p12-password: ${{ secrets.MAC_CODESIGN_P12_PASSWORD }}
+
+      - name: Write provisioning profile and notary key
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$MAC_PROVISIONING_PROFILE" | base64 -D > "$RUNNER_TEMP/Index.provisionprofile"
+          printf '%s\n' "$MAC_NOTARY_KEY" > "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Shell syntax check
+        working-directory: apps/mac
+        run: bash -n scripts/build.sh scripts/link-host.sh scripts/provisioning-profile.sh scripts/notary-submit.sh scripts/notarize.sh scripts/dmg.sh
+
+      - name: Build, notarize, and package DMG
+        working-directory: apps/mac
+        env:
+          INDEX_LINK_HOST: ${{ steps.channel.outputs.link_host }}
+          INDEX_APP_IDENTIFIER_PREFIX: ${{ secrets.MAC_APP_IDENTIFIER_PREFIX }}
+          CODESIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_IDENTITY }}
+          PROVISIONING_PROFILE: ${{ runner.temp }}/Index.provisionprofile
+          NOTARYTOOL_KEY: ${{ runner.temp }}/AuthKey.p8
+          NOTARYTOOL_KEY_ID: ${{ secrets.MAC_NOTARY_KEY_ID }}
+          NOTARYTOOL_ISSUER: ${{ secrets.MAC_NOTARY_ISSUER }}
+        run: |
+          set -euo pipefail
+          ./scripts/build.sh
+          ./scripts/notarize.sh
+          open -a Finder
+          ./scripts/dmg.sh
+          xcrun stapler validate dist/Index.dmg
+
+      - name: Publish GitHub Release
+        working-directory: apps/mac
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.channel.outputs.tag }}
+          TITLE: ${{ steps.channel.outputs.title }}
+          PRERELEASE: ${{ steps.channel.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          test -f dist/Index.dmg
+          notes="Index.dmg from ${GITHUB_SHA} on ${GITHUB_REF_NAME}."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/Index.dmg --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes "$notes"
+          elif [ "$PRERELEASE" = "true" ]; then
+            gh release create "$TAG" dist/Index.dmg --target "$GITHUB_SHA" --title "$TITLE" --notes "$notes" --prerelease
+          else
+            gh release create "$TAG" dist/Index.dmg --target "$GITHUB_SHA" --title "$TITLE" --notes "$notes" --latest
+          fi
