@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { createSeat, runNegotiation, type Action, type Negotiation, type NegotiationClient, type NegotiationHost, type TurnInput } from './agent-negotiation.session';
+import { NegotiationAgent, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
 
 export interface DemoPrincipal {
   id: string;
@@ -45,7 +45,7 @@ export function parseScenario(value: unknown): DemoScenario {
   }) };
 }
 
-/** A disposable host: real personal agents, private Q&A, and an in-memory turn log. */
+/** A disposable negotiation record and UI observer; the agent library owns execution. */
 export class NegotiationDemo extends EventEmitter {
   readonly transcript: TranscriptEntry[] = [];
   phase: 'ready' | 'running' | 'question' | 'settled' | 'error' | 'stopped' = 'ready';
@@ -68,6 +68,12 @@ export class NegotiationDemo extends EventEmitter {
     this.emit('change');
   }
 
+  private progress(status: string): void {
+    if (this.pending || this.phase === 'settled' || this.phase === 'error' || this.phase === 'stopped') return;
+    this.phase = 'running';
+    this.update(status);
+  }
+
   private append(entry: TranscriptEntry): void {
     this.transcript.push(entry);
     this.emit('change');
@@ -87,7 +93,12 @@ export class NegotiationDemo extends EventEmitter {
     });
   }
 
-  private client(ownerId: string): NegotiationClient {
+  /**
+   * Bind the in-memory transport to one of this match's principals.
+   * @param ownerId - The user whose agent reads and submits turns.
+   * @returns Tools' transport with authoritative turn order and settlement checks.
+   */
+  client(ownerId: string): NegotiationClient {
     return {
       readNegotiation: async () => this.read(ownerId),
       submitTurn: async (_id: string, turn: TurnInput) => {
@@ -110,19 +121,17 @@ export class NegotiationDemo extends EventEmitter {
     };
   }
 
-  /**
-   * Run until settlement, failure, or cancellation; principal questions await answer().
-   * @returns When the session ends. Failures remain visible in phase/status.
-   */
-  async run(): Promise<void> {
-    if (this.phase !== 'ready') throw new Error('Start a new demo to run another scenario.');
-    this.phase = 'running';
-    const host: NegotiationHost = {
-      status: (message) => { this.phase = 'running'; this.update(message); },
-      turn: (owner, input) => this.append({ channel: 'shared', ownerId: owner.id, kind: 'turn', text: input.message, action: input.action }),
-      retry: (owner, attempt, reason) => this.update(`${owner.name}: model retry ${attempt} — ${reason}`),
+  /** @returns Per-match observers and a human reply channel for the library runtime. */
+  get host(): NegotiationHost {
+    return {
+      status: (message) => this.progress(message),
+      turn: (owner, input) => {
+        this.append({ channel: 'shared', ownerId: owner.id, kind: 'turn', text: input.message, action: input.action });
+        this.emit('negotiation.updated');
+      },
+      retry: (owner, attempt, reason) => this.progress(`${owner.name}: model retry ${attempt} — ${reason}`),
       step: (owner, step) => {
-        if (step.kind === 'tool') this.update(`${owner.name}: ${step.name} ${step.error ? `— ${step.error}` : 'completed'}`);
+        if (step.kind === 'tool') this.progress(`${owner.name}: ${step.name} ${step.error ? `— ${step.error}` : 'completed'}`);
       },
       ask: (owner, question) => {
         if (this.controller.signal.aborted) return Promise.resolve(null);
@@ -139,23 +148,18 @@ export class NegotiationDemo extends EventEmitter {
       output: (owner, result) => {
         if (result.output.trim()) this.append({ channel: 'private', ownerId: owner.id, kind: 'message', text: result.output });
       },
+      end: (record) => {
+        if (this.phase === 'error') return;
+        this.phase = record.settledAt ? 'settled' : 'stopped';
+        this.update(`${record.outcome ?? 'Stopped without settlement'} · ${record.turnCount} A2A turns`);
+      },
+      error: (_owner, reason) => {
+        if (this.phase === 'error') return;
+        this.phase = 'error';
+        this.update(reason);
+        this.stop();
+      },
     };
-    try {
-      const seats = this.principals.map((principal) => createSeat({
-        owner: { id: principal.id, name: principal.name },
-        intent: { id: `intent-${principal.id}`, payload: principal.intent },
-        instructions: principal.instructions,
-        client: this.client(principal.id),
-      }, this.opportunityId, host));
-      const record = await runNegotiation(seats, this.opportunityId, host, this.controller.signal);
-      if (this.controller.signal.aborted) return;
-      this.phase = record.settledAt ? 'settled' : 'stopped';
-      this.update(`${record.outcome ?? 'Stopped without settlement'} · ${record.turnCount} A2A turns`);
-    } catch (error) {
-      if (this.controller.signal.aborted) return;
-      this.phase = 'error';
-      this.update(error instanceof Error ? error.message : String(error));
-    }
   }
 
   /**
@@ -202,42 +206,64 @@ export class NegotiationDemo extends EventEmitter {
   }
 }
 
-/** A selectable user roster with one independent, retained negotiation per pair. */
+/** A post-match simulation with one parallel negotiation for every distinct user pair. */
 export class NegotiationLab extends EventEmitter {
   readonly users: DemoPrincipal[];
   readonly negotiations = new Map<string, NegotiationDemo>();
+  readonly agents = new Map<string, NegotiationAgent>();
   private selection: [DemoPrincipal, DemoPrincipal];
-  private readonly runs: Promise<void>[] = [];
 
   constructor(scenario: DemoScenario) {
     super();
     this.users = scenario.users;
     this.selection = [this.users[0], this.users[1]];
+    for (let index = 0; index < this.users.length; index++) {
+      for (const other of this.users.slice(index + 1)) {
+        const principals = [this.users[index], other] as const;
+        const id = `local:${principals.map(({ id }) => id).sort().map(encodeURIComponent).join(':')}`;
+        const demo = new NegotiationDemo(principals, id);
+        demo.on('change', () => this.emit('change'));
+        demo.on('negotiation.updated', () => {
+          for (const principal of principals) void this.agents.get(principal.id)!.receive({ kind: 'negotiation.updated', opportunityId: id });
+        });
+        this.negotiations.set(id, demo);
+      }
+    }
+    for (const user of this.users) {
+      const clientFor = (id: string) => this.negotiations.get(id)!.client(user.id);
+      this.agents.set(user.id, new NegotiationAgent({
+        owner: { id: user.id, name: user.name }, instructions: user.instructions,
+        client: {
+          readNegotiation: (id) => clientFor(id).readNegotiation(id),
+          submitTurn: (id, turn) => clientFor(id).submitTurn(id, turn),
+        },
+      }, (id) => this.negotiations.get(id)!.host));
+    }
   }
 
   /** @returns The users displayed on the left and right, in that order. */
   get selectedUsers(): readonly [DemoPrincipal, DemoPrincipal] { return this.selection; }
 
-  /** @returns The selected pair's session, creating it without model work on first access. */
+  /** @returns The selected pair's existing session without changing its execution. */
   get active(): NegotiationDemo {
     const id = `local:${this.selection.map(({ id }) => id).sort().map(encodeURIComponent).join(':')}`;
-    let demo = this.negotiations.get(id);
-    if (!demo) {
-      demo = new NegotiationDemo([...this.selection], id);
-      demo.on('change', () => this.emit('change'));
-      this.negotiations.set(id, demo);
-    }
-    return demo;
+    return this.negotiations.get(id)!;
   }
 
-  /** Start the selected pair once; returning to a pair keeps its existing agents. */
-  start(): void {
-    const demo = this.active;
-    if (demo.phase === 'ready') this.runs.push(demo.run());
+  /** Deliver simulated matches to the always-on agents, which own their negotiation lifecycles. */
+  matchAll(): void {
+    for (const demo of this.negotiations.values()) {
+      for (const principal of demo.principals) {
+        void this.agents.get(principal.id)!.receive({
+          kind: 'opportunity.matched', opportunityId: demo.opportunityId,
+          intent: { id: `intent-${principal.id}`, payload: principal.intent },
+        });
+      }
+    }
   }
 
   /**
-   * Change one side and run that pair if it has not been visited yet.
+   * Change the displayed user without starting or restarting any negotiation.
    * @param side - The left or right user selector.
    * @param userId - A user in this scenario, distinct from the opposite side.
    * @throws When the user is unknown or already selected on the opposite side.
@@ -249,18 +275,17 @@ export class NegotiationLab extends EventEmitter {
     if (this.selection[1 - index].id === userId) throw new Error('Select two different users.');
     this.selection[index] = user;
     this.emit('change');
-    this.start();
   }
 
-  /** Cancel every visited pair, release pending questions, and await outstanding model work. */
+  /** Cancel every pair, release pending questions, and await outstanding model work. */
   async stop(): Promise<void> {
     for (const demo of this.negotiations.values()) demo.stop();
-    await Promise.all(this.runs);
+    await Promise.all([...this.agents.values()].map((agent) => agent.stop()));
   }
 
-  /** @returns Every visited pair's shared turns and private conversations, grouped by pair. */
+  /** @returns Every pair's shared turns and private conversations, grouped by pair. */
   markdown(): string {
-    return '# Local negotiation lab transcript\n\nReal agents, simulated negotiations. Includes all visited pairs’ private conversations. No live Index records changed.\n\n'
+    return '# Local negotiation lab transcript\n\nReal agents, simulated negotiations. Includes all pairs’ private conversations. No live Index records changed.\n\n'
       + [...this.negotiations.values()].map((demo) => demo.markdown()).join('\n---\n\n');
   }
 }

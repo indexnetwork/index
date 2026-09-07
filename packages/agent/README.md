@@ -2,6 +2,10 @@
 
 A personal agent that a host runs on someone's behalf.
 
+`Agent` provides the model/tool loop. `NegotiationAgent` is the long-lived
+per-user runtime for matches: the host initializes it once and delivers events,
+and the library schedules that user's negotiation turns automatically.
+
 It works the way Claude Code, Hermes or OpenClaw do — a system prompt, a set
 of tools, and a loop that runs until the work is done. Two things make it
 different:
@@ -140,10 +144,61 @@ hands the arguments to the host, which supplies the result by resuming. That
 is all `askUserTool()` is — anything else needing a human or another system
 can work the same way.
 
-### Inbox and tick
+### Always-on negotiations
 
-Unattended, the run is the unit of work, not the event. Every event for an
-intent lands in that intent's `Inbox` and waits; a run reads the whole
+Initialize one `NegotiationAgent` per user. The host supplies that user's private
+instructions, authenticated transport, and a per-opportunity observer/reply
+channel. These are infrastructure ports; the library owns prompts, tools,
+turn-order checks, question resumption, and negotiation scheduling.
+
+```ts
+import { NegotiationAgent } from "@indexnetwork/agent";
+
+const agent = new NegotiationAgent(
+  { owner: { id: user.id, name: user.name }, instructions, client },
+  (opportunityId) => observersFor(user.id, opportunityId),
+);
+
+// A match immediately creates an isolated conversation and checks whose turn it is.
+void agent.receive({
+  kind: "opportunity.matched",
+  opportunityId,
+  intent: { id: intent.id, payload: intent.statement },
+});
+
+// Relay persisted turn changes, including settlement, to the participants.
+void agent.receive({ kind: "negotiation.updated", opportunityId });
+
+// When the host shuts down:
+await agent.stop();
+```
+
+`NegotiationClient` supplies `readNegotiation()` and `submitTurn()`; it holds
+credentials outside model context. `NegotiationHost` observes status, turns,
+retries, tool steps, output, completion, and errors. Its `ask()` promise supplies
+the principal's private answer, or `null` to stop that negotiation unanswered.
+Transport and UI code relay events and answers; they never choose whose agent
+to run next.
+
+Matches run concurrently, including multiple matches for the same user. Each
+opportunity keeps a separate agent conversation and at most one active run for
+that user. Duplicate match events reuse the existing session; updates arriving
+during a run are coalesced and read again afterward. A pending question holds
+only its own negotiation. Settlement or failure ends that session while the
+personal runtime remains available for later matches. `stop()` cancels model
+calls and pending answer waits across all of this user's sessions.
+
+There is at most one submission attempt per turn, with no automatic write
+retry, and a 12-turn limit per negotiation. The runtime's session state is
+currently in memory. A server can initialize this runtime and deliver the same
+events; server startup, event subscriptions, and restart recovery are outside
+this package's current host wiring. The local lab and REST runner in
+`scripts/agent-negotiation*` both use this runtime.
+
+### Batched inbox work
+
+For a host that batches generic tool work through `Agent.run()`, an intent's
+`Inbox` queues events until a tick; a run reads the whole
 batch in one context, so the same question from three counterparties is
 one question, and a settled match can end the rest.
 

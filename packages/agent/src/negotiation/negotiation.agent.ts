@@ -1,4 +1,6 @@
-import { Agent, askUserTool, type PendingQuestion, type RunResult, type Step, type Tool } from '@indexnetwork/agent';
+import { Agent } from '../core/agent.ts';
+import { askUserTool, type Tool } from '../core/tools.ts';
+import type { PendingQuestion, RunResult, Step } from '../core/types.ts';
 
 export interface User {
   id: string;
@@ -40,6 +42,8 @@ export interface NegotiationHost {
   step(owner: User, step: Step): void;
   ask(owner: User, question: PendingQuestion): Promise<string | null>;
   output(owner: User, result: RunResult): void;
+  end(record: Negotiation): void;
+  error(owner: User, reason: string): void;
 }
 
 /**
@@ -49,7 +53,7 @@ export interface NegotiationHost {
  * @param host - Displays messages and obtains human answers; never chooses a turn.
  * @returns The agent and transport guards, reset on each new turn.
  */
-export function createSeat(participant: { owner: User; intent: Intent; instructions: string; client: NegotiationClient }, opportunityId: string, host: NegotiationHost) {
+function createSeat(participant: { owner: User; intent: Intent; instructions: string; client: NegotiationClient }, opportunityId: string, host: NegotiationHost) {
   const { owner, intent, instructions, client } = participant;
   const turn = { attempted: false, submitted: false, writeError: false, awaitingAnswer: false };
   const readTool: Tool = {
@@ -126,46 +130,122 @@ export function createSeat(participant: { owner: User; intent: Intent; instructi
   return { owner, client, agent, turn };
 }
 
-/**
- * Drive both private agents through the same turn and question/resume path.
- * @param seats - The two principals, each with a separate client and history.
- * @param opportunityId - The one negotiation to drive.
- * @param host - Transcript display and human input, independent of transport.
- * @param signal - Cancels model work when the host closes.
- * @returns The last record when settled or the human stops without answering.
- * @throws On failure, no progress, cancellation, or the 12-turn safety limit.
- */
-export async function runNegotiation(seats: ReturnType<typeof createSeat>[], opportunityId: string, host: NegotiationHost, signal: AbortSignal): Promise<Negotiation> {
-  let record = await seats[0].client.readNegotiation(opportunityId);
-  for (let turns = 0; turns < 12 && !record.settledAt; turns++) {
-    signal.throwIfAborted();
-    const seat = seats.find(({ owner }) => owner.id === record.awaitingUserId);
-    if (!seat) throw new Error('Index is not awaiting either principal. Stopping without choosing a turn.');
-    record = await seat.client.readNegotiation(opportunityId);
-    if (record.settledAt) break;
-    if (record.awaitingUserId !== seat.owner.id) throw new Error('The awaiting seat changed outside this host. Inspect Index before restarting.');
-    Object.assign(seat.turn, { attempted: false, submitted: false, writeError: false, awaitingAnswer: false });
-    host.status(`Running ${seat.owner.name ?? seat.owner.id} for turn ${record.turnCount + 1}…`);
-    const onStep = (step: Step) => {
-      if (step.kind === 'ask') seat.turn.awaitingAnswer = true;
-      host.step(seat.owner, step);
-    };
-    let result = await seat.agent.run(`Read negotiation ${opportunityId} and decide your next turn under my instructions.`, { onStep, signal });
-    while (result.end === 'needs-input' && !seat.turn.attempted) {
-      signal.throwIfAborted();
-      const answer = await host.ask(seat.owner, result.pending!);
-      if (!answer?.trim()) return await seat.client.readNegotiation(opportunityId);
-      signal.throwIfAborted();
-      seat.turn.awaitingAnswer = false;
-      result = await seat.agent.run(answer, { messages: result.messages, onStep, signal });
+export type NegotiationEvent =
+  | { kind: 'opportunity.matched'; opportunityId: string; intent: Intent }
+  | { kind: 'negotiation.updated'; opportunityId: string };
+
+interface Session {
+  opportunityId: string;
+  seat: ReturnType<typeof createSeat>;
+  host: NegotiationHost;
+  controller: AbortController;
+  notified: boolean;
+  stopped: boolean;
+  running?: Promise<void>;
+}
+
+/** One always-on personal negotiator: match events create independent, concurrent sessions. */
+export class NegotiationAgent {
+  private readonly sessions = new Map<string, Session>();
+  private stopped = false;
+
+  constructor(
+    private readonly participant: { owner: User; instructions: string; client: NegotiationClient },
+    private readonly host: (opportunityId: string) => NegotiationHost,
+  ) {}
+
+  /**
+   * Receive a match or a persisted turn update and automatically take this user's turn.
+   * @param event - A match carries this user's intent; updates refer to an existing match.
+   * @returns Completion of the current work for this opportunity. Other matches run independently.
+   * @throws When an update arrives before its match has been registered.
+   */
+  receive(event: NegotiationEvent): Promise<void> {
+    if (this.stopped) return Promise.resolve();
+    let session = this.sessions.get(event.opportunityId);
+    if (!session) {
+      if (event.kind !== 'opportunity.matched') throw new Error(`Unknown match: ${event.opportunityId}`);
+      const host = this.host(event.opportunityId);
+      session = {
+        opportunityId: event.opportunityId,
+        seat: createSeat({ ...this.participant, intent: event.intent }, event.opportunityId, host),
+        host, controller: new AbortController(), notified: false, stopped: false,
+      };
+      this.sessions.set(event.opportunityId, session);
     }
-    signal.throwIfAborted();
-    host.output(seat.owner, result);
-    record = await seat.client.readNegotiation(opportunityId);
-    if (seat.turn.writeError) throw new Error('A turn was rejected or its response was lost. Inspect the fresh Index transcript before restarting; no POST was retried.');
-    if (result.end !== 'done') throw new Error(`Agent stopped with ${result.end}. Not advancing the negotiation automatically.`);
-    if (!seat.turn.submitted) throw new Error('Agent finished without recording a turn. No progress; stopping without inventing a decision.');
+    if (session.stopped) return Promise.resolve();
+    session.notified = true;
+    return this.drain(session);
   }
-  if (!record.settledAt) throw new Error('Stopped at the 12-turn safety limit without settlement. No outcome was assumed.');
-  return record;
+
+  private drain(session: Session): Promise<void> {
+    if (session.running) return session.running;
+    session.running = this.run(session).finally(() => {
+      session.running = undefined;
+      if (session.notified && !session.stopped && !this.stopped) return this.drain(session);
+    });
+    return session.running;
+  }
+
+  private async run(session: Session): Promise<void> {
+    const { opportunityId, seat, host, controller } = session;
+    const { signal } = controller;
+    try {
+      while (session.notified && !session.stopped) {
+        session.notified = false;
+        signal.throwIfAborted();
+        let record = await seat.client.readNegotiation(opportunityId);
+        if (record.settledAt) { session.stopped = true; host.end(record); return; }
+        if (record.awaitingUserId !== seat.owner.id) continue;
+        if (record.turnCount >= 12) throw new Error('Stopped at the 12-turn safety limit without settlement. No outcome was assumed.');
+        Object.assign(seat.turn, { attempted: false, submitted: false, writeError: false, awaitingAnswer: false });
+        host.status(`Running ${seat.owner.name ?? seat.owner.id} for turn ${record.turnCount + 1}…`);
+        const onStep = (step: Step) => {
+          if (step.kind === 'ask') seat.turn.awaitingAnswer = true;
+          host.step(seat.owner, step);
+        };
+        let result = await seat.agent.run(`Read negotiation ${opportunityId} and decide your next turn under my instructions.`, { onStep, signal });
+        while (result.end === 'needs-input' && !seat.turn.attempted) {
+          signal.throwIfAborted();
+          let abort!: () => void;
+          const cancelled = new Promise<null>((resolve) => { abort = () => resolve(null); });
+          signal.addEventListener('abort', abort, { once: true });
+          let answer: string | null;
+          try {
+            answer = await Promise.race([host.ask(seat.owner, result.pending!), cancelled]);
+          } finally {
+            signal.removeEventListener('abort', abort);
+          }
+          signal.throwIfAborted();
+          if (!answer?.trim()) {
+            session.stopped = true;
+            host.end(await seat.client.readNegotiation(opportunityId));
+            return;
+          }
+          seat.turn.awaitingAnswer = false;
+          result = await seat.agent.run(answer, { messages: result.messages, onStep, signal });
+        }
+        signal.throwIfAborted();
+        host.output(seat.owner, result);
+        record = await seat.client.readNegotiation(opportunityId);
+        if (seat.turn.writeError) throw new Error('A turn was rejected or its response was lost. Inspect the fresh Index transcript before restarting; no POST was retried.');
+        if (result.end !== 'done') throw new Error(`Agent stopped with ${result.end}. Not advancing the negotiation automatically.`);
+        if (!seat.turn.submitted) throw new Error('Agent finished without recording a turn. No progress; stopping without inventing a decision.');
+        if (record.settledAt) { session.stopped = true; host.end(record); }
+      }
+    } catch (error) {
+      session.stopped = true;
+      if (!signal.aborted) host.error(seat.owner, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /**
+   * Shut down this user's negotiations, including sessions waiting for human replies.
+   * @returns When all outstanding work has stopped.
+   */
+  async stop(): Promise<void> {
+    this.stopped = true;
+    for (const session of this.sessions.values()) session.controller.abort();
+    await Promise.all([...this.sessions.values()].map((session) => session.running));
+  }
 }

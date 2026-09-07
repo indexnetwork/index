@@ -268,7 +268,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       }
     });
     const otherQuestions = [...lab.negotiations.values()].filter((session) => session !== demo && session.pending).length;
-    status.content = `${demo.status} · Visited pairs: ${lab.negotiations.size}${otherQuestions ? ` · Other pairs awaiting answers: ${otherQuestions}` : ''}${renderer.width < 100 ? ' · Widen terminal to 100+ columns for more space.' : ''}`;
+    status.content = `${demo.status} · Matches: ${lab.negotiations.size}${otherQuestions ? ` · Other pairs awaiting answers: ${otherQuestions}` : ''}${renderer.width < 100 ? ' · Widen terminal to 100+ columns for more space.' : ''}`;
     status.fg = demo.phase === 'error' ? '#f88a8a' : demo.pending ? COLORS.question : COLORS.muted;
   }
 
@@ -334,8 +334,10 @@ in-memory negotiations; no Index API keys, database, or server are used.
 
 Scenario: { "users": [{ "id", "name", "intent", "instructions" }, ...] }
 Click the name above either side or press Ctrl+U to change that user. Select with
-Up/Down + Enter or click a user. The opposite user is excluded. Each visited pair
-runs once and keeps its history, questions, and drafts when you switch away.
+Up/Down + Enter or click a user. The opposite user is excluded. All distinct user
+pairs are simulated matches and start in parallel on launch (66 with 12 users).
+Selection only changes the displayed conversation. Each pair keeps its history,
+questions, and drafts when you switch away.
 Click either side to act as that user. Click or use Up/Down to highlight an
 agent-provided option, then Enter to confirm. Select Custom reply or click the
 text box to write your own answer. Esc returns from editing to the choices.
@@ -362,7 +364,7 @@ async function main(): Promise<void> {
   });
   try {
     mountNegotiationTui(renderer, lab);
-    lab.start();
+    lab.matchAll();
     await closed;
   } finally {
     renderer.destroy();

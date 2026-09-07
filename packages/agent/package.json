@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A host-run personal agent: one identity, scopeable to an intent, that can stop to ask its party a question.",
   "license": "MIT",
   "type": "module",

@@ -5,9 +5,11 @@
 The local lab includes **12 selectable users** and runs real `@indexnetwork/agent`
 instances against in-memory negotiations. No Index API, database, frontend, or
 Index credentials are used.
-It shares the REST runner's prompts and host coordination in
-`agent-negotiation.session.ts`; `Agent.run()` still owns the model/tool loop,
-question suspension, and private conversation history.
+The host initializes one long-lived `NegotiationAgent` per user from
+`@indexnetwork/agent` and delivers simulated match and turn-update events.
+The library owns turn scheduling, prompts, tools, question resumption, and private
+conversation history. The TUI supplies records and human answers and observes
+the selected pair; it does not run or schedule agents.
 
 ```bash
 # From this worktree. The env file supplies OPENROUTER_API_KEY.
@@ -31,14 +33,20 @@ Use a terminal at least 100 columns wide (120+ recommended):
   **Ctrl+U**, to open its user picker. Click a user to switch, or use **↑ / ↓**
   and **Enter**. **Esc** cancels. The opposite side's user is excluded so a user
   cannot negotiate with themselves. Both sides can select from the same roster.
-- The first two users start automatically. Each new pair starts when selected;
-  the center pane shows only that pair's shared turns. Returning to a pair,
+- This lab simulates the stage **after matching**: every distinct user pair is
+  treated as a match. All **66 negotiations start automatically in parallel**
+  when the bundled 12-user scenario launches. Match events trigger the library's
+  agents, which check authoritative turn order before acting. A question pauses
+  only its own negotiation; other pairs continue independently, including other
+  matches involving the same user.
+- User selection only changes the displayed conversation; the center pane
+  shows that pair's shared turns. Returning to a pair,
   including with left/right positions reversed, restores its existing session.
   Questions, private conversations, and drafts stay with their **pair and user**.
   Personal answers are not copied into other negotiations.
-- Previously visited pairs continue until they need a human answer, settle, or
-  stop. The status bar counts other pairs waiting for answers. Unvisited pairs
-  make no model calls; the lab does not start all 66 possible pairs at once.
+- Pairs continue in the background until they need a human answer, settle, or
+  stop. The status bar shows the total matches and counts other pairs waiting
+  for answers. Selecting a pair never starts or restarts its agents.
 - Click a side pane to act as that user, or use **Tab / Shift+Tab** to change
   focus. The focused pane has a blue border; a pending question is highlighted.
 - The reply picker shows a **highlighted row with a `›` marker**. Click a
@@ -62,9 +70,9 @@ Use a terminal at least 100 columns wide (120+ recommended):
 - **Ctrl+J** adds a newline. Mouse wheel or **PageUp / PageDown** scrolls the
   selected transcript, or the open user picker. The center pane cannot send messages.
 - Agents take turns autonomously. Settlement or failure stays on screen for
-  inspection. **Ctrl+C** cancels outstanding work for **all visited pairs**,
+  inspection. **Ctrl+C** cancels outstanding work for **all pairs**,
   restores the terminal, and prints the path of a private Markdown transcript
-  grouped by pair. It includes all visited users' private messages; do not share it as
+  grouped by pair. It includes all users' private messages; do not share it as
   if it were only the public negotiation.
 
 The bundled roster is Alice, Bob, Carla, Diego, Emma, Farah, Gabriel, Hana, Ivan,
@@ -90,9 +98,11 @@ normal OpenRouter usage. No live commitments are created by the local lab.
 
 ## REST runner
 
-The standalone terminal host in `agent-negotiation.ts` injects real Index REST
-tools into two separate `@indexnetwork/agent` sessions. The API and agent library
-are unchanged. This is a controlled, single-negotiation host, not an API-hosted
+The standalone terminal host in `agent-negotiation.ts` binds real Index REST
+clients to two long-lived `NegotiationAgent` instances from `@indexnetwork/agent`.
+It sends each a match event and relays acknowledged turn updates to both agents.
+They use the same event-driven library runtime as the TUI. This is a controlled,
+single-negotiation host, not an API-hosted
 runner: no A2A, SSE watcher, background scheduling, DMs, or restart recovery.
 
 ## Who decides what
@@ -102,8 +112,8 @@ and private conversation history. It sees the counterparty only through the
 shared Index negotiation. Neither model receives an API key, the other
 principal's instructions, or their private answers.
 
-The host follows Index's `awaitingUserId`, runs that agent, and records the
-agent's chosen turn **without an approval prompt**. The prompts—not a scripted
+Each library agent follows Index's `awaitingUserId` and submits its chosen turn
+through its own client **without an approval prompt**. The prompts—not a scripted
 negotiation or a host decision tree—tell agents to:
 
 - Pursue the principal's actual intent within their authority, not agreement
@@ -175,8 +185,9 @@ answer stops without fabricating a reply. Without an interactive terminal, the
 host prints the question and stops unanswered. A question never becomes an
 Index negotiation turn by itself.
 
-After an acknowledged turn, the other agent runs automatically if Index is
-still open. The session stops on settlement, an unanswered question, a failed
+After an acknowledged turn, the host relays a turn-update event; the library
+automatically runs the agent whose turn it is if Index is still open. The session
+stops on settlement, an unanswered question, a failed
 or uncertain write, an agent making no progress, the agent's step limit, or a
 fixed 12-turn session ceiling. Reaching a ceiling does **not** mean agreement
 or decline. There is at most one POST attempt per agent turn and no automatic

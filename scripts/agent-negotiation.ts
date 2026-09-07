@@ -2,7 +2,7 @@
 /** Standalone REST host. No API-server or database imports. */
 import { createInterface } from 'node:readline/promises';
 
-import { createSeat, runNegotiation, type Intent, type Negotiation, type NegotiationClient, type NegotiationHost, type TurnInput, type User } from './agent-negotiation.session';
+import { NegotiationAgent, type NegotiationIntent as Intent, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput, type NegotiationUser as User } from '@indexnetwork/agent';
 
 /** Index transport belongs to this host, never to the agent library. */
 class IndexClient implements NegotiationClient {
@@ -57,8 +57,8 @@ Runs both principals' agents, following Index's turn order without per-turn appr
 Each instructions file belongs to the corresponding key's owner and stays private
 from the other agent. Only principal questions need terminal input; without a TTY,
 a question stops the session unanswered. Empty answers also stop, without a reply.
-Stops on settlement, a failure/no progress, or a 12-turn safety limit. No SSE,
-background scheduling, DMs, or restart state. Never give either key to a model.
+Stops on settlement, a failure/no progress, or a 12-turn safety limit. No SSE
+subscriptions, DMs, or restart state. Never give either key to a model.
 `;
 
 function showState(record: Negotiation, owners: User[]): void {
@@ -109,12 +109,16 @@ async function main(): Promise<void> {
   }
   if (!process.env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY is required to run the agents.');
   const terminal = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
-  const controller = new AbortController();
+  const agents: NegotiationAgent[] = [];
+  let finish!: () => void;
+  let failure: string | undefined;
+  const finished = new Promise<void>((resolve) => { finish = resolve; });
   const host: NegotiationHost = {
     status: (message) => console.log(`\n${message}`),
     turn: (owner, input, result) => {
       console.log(`\n${owner.name ?? owner.id} [${input.action}]: ${input.message}`);
       console.log(`Recorded by Index; turnCount=${result.turnCount}, outcome=${result.outcome ?? 'open'}`);
+      for (const agent of agents) void agent.receive({ kind: 'negotiation.updated', opportunityId });
     },
     retry: (owner, attempt, reason) => console.error(`${owner.name ?? owner.id}: model retry ${attempt}: ${reason}`),
     step: (_owner, step) => {
@@ -132,12 +136,19 @@ async function main(): Promise<void> {
       return answer;
     },
     output: (_owner, result) => console.log(`Agent ended: ${result.end}\n${result.output}`),
+    end: () => finish(),
+    error: (_owner, reason) => { failure = reason; finish(); },
   };
   try {
-    await runNegotiation(participants.map((participant) => createSeat(participant, opportunityId, host)), opportunityId, host, controller.signal);
+    agents.push(...participants.map((participant) => new NegotiationAgent(participant, () => host)));
+    participants.forEach((participant, index) => {
+      void agents[index].receive({ kind: 'opportunity.matched', opportunityId, intent: participant.intent });
+    });
+    await finished;
+    if (failure) throw new Error(failure);
   } finally {
-    controller.abort();
     terminal?.close();
+    await Promise.all(agents.map((agent) => agent.stop()));
     console.log('\nFresh Index transcript:');
     showState(await first.client.readNegotiation(opportunityId), owners);
   }
