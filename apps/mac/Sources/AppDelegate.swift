@@ -636,7 +636,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             }
         } else {
 #if INDEX_DEVELOPMENT_BUILD
-            ownerCredentialStore = OwnerCredentialStore(developmentLoginKeychain: IndexKeychainStore())
+            ownerCredentialStore = OwnerCredentialStore()
 #else
             ownerStartupFailure = "This build has no authorized owner Keychain group. Use a signed Index build."
 #endif

@@ -2840,7 +2840,7 @@
         : null,
       (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
         tabButton("profile", "Profile Settings"),
-        tabButton("notifications", "Notification Settings"),
+        tabButton("notifications", "Notifications"),
       ),
       panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
       loading || !form

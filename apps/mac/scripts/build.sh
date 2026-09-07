@@ -77,7 +77,12 @@ write_associated_domains_entitlements "$LINK_HOST" "$ENTITLEMENTS" "$APP_KEYCHAI
 
 sign_ad_hoc() {
     echo "==> Ad-hoc code signing (local dev only, not distributable)"
-    codesign --force --deep --sign - "${APP}" 2>&1 | grep -v "replacing existing signature" || true
+    # Default ad-hoc designated requirements are CDHash-based, so Keychain
+    # "Always Allow" dies on every rebuild. Pin the DR to the bundle id.
+    codesign --force --deep --sign - \
+        --identifier network.index.system6 \
+        -r '=designated => identifier "network.index.system6"' \
+        "${APP}" 2>&1 | grep -v "replacing existing signature" || true
     echo "==> WARNING: universal links (https://${LINK_HOST}/o|u|c/...) will NOT open"
     echo "    this build. They need a Developer ID-signed, notarized app plus an"
     echo "    apple-app-site-association listing <TEAM_ID>.network.index.system6."
