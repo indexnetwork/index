@@ -386,12 +386,12 @@ window.IndexApp = (function () {
   }
 
   // App-wide OS notification pipeline, mirroring the Hermes Desktop plugin
-  // (packages/hermes-plugin/desktop/tail.js): realtime SSE for question/
-  // opportunity events plus a 60s snapshot catch-up, and the conversation
-  // stream for messages — realtime-only, own messages suppressed, fail-closed
-  // until the signed-in identity is known. Dedupe keys persist to localStorage
-  // best-effort; losing them across a relaunch is safe because the first
-  // snapshot after boot primes the seen-set without toasting.
+  // (packages/hermes-plugin/desktop/tail.js): one realtime SSE stream carrying
+  // opportunity/question frames and messages alike, plus a 60s snapshot
+  // catch-up for the opportunity frames. Messages are realtime-only, own sends
+  // suppressed, fail-closed until the signed-in identity is known. Dedupe keys
+  // persist to localStorage best-effort; losing them across a relaunch is safe
+  // because the first snapshot after boot primes the seen-set without toasting.
   function startDesktopNotifications({ getUserId, getPrefs = notifyPrefs } = {}) {
     const N = window.IndexApi || {};
     if (!N.composeNotification) return () => {};
@@ -412,9 +412,11 @@ window.IndexApp = (function () {
       const copy = N.composeNotification(event, { avatarUrl });
       if (copy) notify(copy);
     }
-    function onRealtime(event, suppressOwnMessage) {
+    function onRealtime(event) {
       if (stopped || !event || event.type === "connected") return;
-      if (suppressOwnMessage && N.isOwnMessage(event, getUserId ? getUserId() : null)) return;
+      // Own-send suppression is a message question: notification frames have no
+      // sender, and isOwnMessage fails closed on anything without `message`.
+      if (event.message && N.isOwnMessage(event, getUserId ? getUserId() : null)) return;
       if (!N.notificationEventAllowed(event, getPrefs ? getPrefs() : null)) return;
       if (!N.composeNotification(event)) return;
       const remembered = N.rememberNotificationEntity(state.notifiedEntities, N.notificationEntityKey(event));
@@ -445,8 +447,7 @@ window.IndexApp = (function () {
       return () => { if (controller) controller.abort(); };
     }
 
-    const closeNotifications = keepStream("/notifications/stream", (e) => onRealtime(e, false));
-    const closeInbox = keepStream("/conversations/stream", (e) => onRealtime(e, true));
+    const closeStream = keepStream("/conversations/stream", onRealtime);
 
     let reconciling = false;
     async function reconcile() {
@@ -475,8 +476,7 @@ window.IndexApp = (function () {
     return function dispose() {
       stopped = true;
       clearInterval(snapshotTimer);
-      closeNotifications();
-      closeInbox();
+      closeStream();
     };
   }
 

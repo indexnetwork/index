@@ -9,6 +9,18 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: one SSE stream per user.** Notifications and conversation messages
+  share the Redis channel `events:user:<userId>` and the single endpoint
+  `GET /conversations/stream`; `GET /notifications/stream` is deleted. Frames are
+  unchanged — notification frames stay pointer-shaped, messages keep their text
+  inline — so consumers discriminate on `type` and ignore the rest.
+  `GET /notifications/snapshot` is untouched. The surviving stream also waits for
+  Redis to acknowledge the subscription and buffers frames published before the
+  consumer attaches, which the conversation stream previously dropped.
+  `lib/notification-stream-events.ts` and `lib/conversation-events.ts` merged
+  into `lib/user-events.ts`, and `NotificationService` is gone.
+
 ### Added
 - **Native clients sign in as devices, not as API keys.** Better Auth's
   `deviceAuthorization` plugin is registered and `/api/auth/device*` is proxied,

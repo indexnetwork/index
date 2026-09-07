@@ -1,6 +1,6 @@
 import { buildProfileFromUser, schema, Conversation, ConversationSession, ConversationSummary, Message, ResolvedParticipant, SYSTEM_AGENT_ID, and, asc, count, db, desc, eq, gt, inArray, intents, isNull, lt, ne, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
-import { publishConversationMessageEvent } from '../lib/conversation-events';
+import { publishConversationMessageEvent } from '../lib/user-events';
 import { log } from '../lib/log';
 
 const logger = log.lib.from('conversation-database');

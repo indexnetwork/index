@@ -3,7 +3,7 @@ import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, Crea
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
-import { publishNotificationStreamEvent, type IntentLifecycleWireStatus } from '../lib/notification-stream-events';
+import { publishNotificationStreamEvent, type IntentLifecycleWireStatus } from '../lib/user-events';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 
 

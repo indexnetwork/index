@@ -2,7 +2,7 @@ import type { OpportunityRow, UserIdentity } from '../adapters/database.shared';
 import type { OpportunityDatabaseAdapter } from '../adapters/opportunity.database.adapter';
 import type { OpportunityActionablePayload } from '../events/opportunity.event';
 import { log } from '../lib/log';
-import type { NotificationStreamEvent, NotificationStreamPublisher } from '../lib/notification-stream-events';
+import type { NotificationStreamEvent, NotificationStreamPublisher } from '../lib/user-events';
 // eslint-disable-next-line boundaries/dependencies -- task-owned pure projection shared by realtime and snapshots.
 import { actionableRecipientIds, boundedNotificationLabel, buildOpportunityNotificationEvent, counterpartForRecipient } from './notification-projection';
 

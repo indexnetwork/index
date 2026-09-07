@@ -110,9 +110,9 @@ async function main(): Promise<void> {
   const { buildProfileFromUser } = await import('../adapters/database.shared');
   const { closeRedisConnection } = await import('../adapters/cache.adapter');
   const {
-    notificationStreamChannel,
+    userEventChannel,
     publishNotificationStreamEvent,
-  } = await import('../lib/notification-stream-events');
+  } = await import('../lib/user-events');
   const { NotificationDeliveryService } = await import('../services/notification-delivery.service');
 
   async function resolveUserByEmail(email: string): Promise<{ id: string; email: string; name: string | null }> {
@@ -189,7 +189,7 @@ async function main(): Promise<void> {
 
       console.log('Created opportunity', created.id);
       console.log('Published opportunity.new via NotificationDeliveryService');
-      console.log('  channel:', notificationStreamChannel(recipient.id));
+      console.log('  channel:', userEventChannel(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);
       console.log('  counterpart:', counterpart.email, `(${counterpart.id})`);
       console.log('  snapshot: GET /api/notifications/snapshot will include this row');
@@ -209,7 +209,7 @@ async function main(): Promise<void> {
     console.log('Inserted message', message.id);
     console.log('Published type:message via conversation adapter SSE');
     console.log('  conversation:', conversation.id);
-    console.log('  channel: conversations:user:' + recipient.id);
+    console.log('  channel:', userEventChannel(recipient.id));
     console.log('  sender:', counterpart.email, `(${counterpart.id})`);
     console.log('  recipient:', recipient.email, `(${recipient.id})`);
     console.log('  text:', text);

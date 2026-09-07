@@ -44,10 +44,10 @@ function ensureAssets() {
   return assetsPromise
 }
 
-// Native OS alerts use only the authenticated Hermes SDK doors. Opportunity
-// sockets use canonical persisted dedupe with the 60-second snapshot fallback;
-// messages remain realtime-only and fail closed until the current user's
-// identity is known.
+// Native OS alerts use only the authenticated Hermes SDK doors. One socket
+// carries the user's whole event stream: opportunity frames use canonical
+// persisted dedupe with the 60-second snapshot fallback; messages remain
+// realtime-only and fail closed until the current user's identity is known.
 function socketEventPayload(value) {
   const data = value && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value
   if (typeof data !== 'string') return data
@@ -82,11 +82,13 @@ function sendOsNotification(ctx, event) {
   } catch (e) { /* synchronous host errors are fail-open too */ }
 }
 
-function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
+function notifyRealtimeEvent(ctx, state, rawEvent) {
   if (state.stopped) return
   const event = socketEventPayload(rawEvent)
   if (!event || event.type === 'connected') return
-  if (suppressOwnMessage && isOwnMessage(event, state.currentUserId)) return
+  // Own-send suppression is a message question: notification frames have no
+  // sender, and isOwnMessage fails closed on anything without `message`.
+  if (event.message && isOwnMessage(event, state.currentUserId)) return
   if (!composeNotification(event)) return
   const remembered = rememberNotificationEntity(state.notifiedEntities, notificationEntityKey(event))
   if (!remembered.isNew) return
@@ -110,20 +112,14 @@ function startDesktopNotifications(ctx) {
     reconciling: false,
     stopped: false,
   }
-  let notificationSocket = null
-  let conversationSocket = null
+  let eventSocket = null
 
   if (typeof ctx.socket === 'function') {
     try {
-      notificationSocket = ctx.socket('/notifications/socket', function (event) {
-        notifyRealtimeEvent(ctx, state, event, false)
+      eventSocket = ctx.socket('/conversations/socket', function (event) {
+        notifyRealtimeEvent(ctx, state, event)
       })
-    } catch (e) { /* snapshot reconciliation remains available */ }
-    try {
-      conversationSocket = ctx.socket('/conversations/socket', function (event) {
-        notifyRealtimeEvent(ctx, state, event, true)
-      })
-    } catch (e) { /* messages intentionally have no catch-up path */ }
+    } catch (e) { /* snapshot reconciliation still covers opportunities */ }
   }
 
   reconcileDesktopSnapshot(ctx, state)
@@ -134,8 +130,7 @@ function startDesktopNotifications(ctx) {
   return function dispose() {
     state.stopped = true
     window.clearInterval(snapshotTimer)
-    disposeDesktopSocket(notificationSocket)
-    disposeDesktopSocket(conversationSocket)
+    disposeDesktopSocket(eventSocket)
   }
 }
 

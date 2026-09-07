@@ -2,7 +2,7 @@ import { pairKeyOf } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
-import { publishNotificationStreamEvent } from '../lib/notification-stream-events';
+import { publishNotificationStreamEvent } from '../lib/user-events';
 
 const logger = log.service.from('NegotiationService');
 

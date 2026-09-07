@@ -7,7 +7,7 @@
  */
 import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, negotiations, negotiationTurns, networkMembers, opportunities, or, sql, users } from './database.shared';
 
-import { publishNotificationStreamEvent } from '../lib/notification-stream-events';
+import { publishNotificationStreamEvent } from '../lib/user-events';
 
 export type NegotiationTurnAction = 'propose' | 'counter' | 'accept' | 'decline';
 export type NegotiationOutcome = 'agreed' | 'declined' | 'closed';

@@ -3,8 +3,15 @@ import { log } from '../lib/log';
 import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
+import { userEventChannel } from '../lib/user-events';
 
 const logger = log.service.from('ConversationService');
+
+/** A live subscription on one user's event channel. */
+export interface UserEventSubscription {
+  onMessage(handler: (data: string) => void): void;
+  cleanup(): Promise<void>;
+}
 
 /** Well-known conversation id for the caller's own agent DM. */
 export const AGENT_DM_ID = 'agent';
@@ -221,30 +228,58 @@ export class ConversationService {
   }
 
   /**
-   * Creates a dedicated Redis subscriber for a user's conversation events.
+   * Opens a dedicated Redis subscriber on a user's event channel — messages and
+   * notification frames alike, since one channel carries both.
+   *
+   * Resolves only after Redis acknowledges the subscription, and buffers frames
+   * that arrive before the consumer registers its handler, so a publish racing
+   * the connection is delivered rather than dropped.
+   *
    * @param userId - User to subscribe for
    * @returns Object with `onMessage` handler registration and `cleanup` teardown function
+   * @throws Error if Redis refuses the subscription
    */
-  subscribe(userId: string) {
+  async openEventStream(userId: string): Promise<UserEventSubscription> {
     const sub = createRedisClient();
-    const channel = `conversations:user:${userId}`;
-    let cancelled = false;
+    const channel = userEventChannel(userId);
+    let handler: ((data: string) => void) | null = null;
+    let buffered: string[] = [];
+    let cleaned = false;
+
+    sub.on('message', (receivedChannel: string, data: string) => {
+      if (cleaned || receivedChannel !== channel) return;
+      if (handler) handler(data);
+      else buffered.push(data);
+    });
+
+    try {
+      await sub.subscribe(channel);
+    } catch (error: unknown) {
+      cleaned = true;
+      buffered = [];
+      try { await sub.disconnect(); } catch { /* best-effort cleanup */ }
+      logger.error('Redis subscribe failed', {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     return {
-      onMessage(handler: (data: string) => void) {
-        sub.on('message', (_ch: string, data: string) => {
-          if (!cancelled) handler(data);
-        });
-        sub.subscribe(channel).catch((err) => {
-          logger.error('Redis subscribe failed', {
-            userId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
+      onMessage(nextHandler) {
+        if (cleaned) return;
+        handler = nextHandler;
+        const pending = buffered;
+        buffered = [];
+        for (const data of pending) handler(data);
       },
-      cleanup() {
-        cancelled = true;
-        sub.unsubscribe(channel).then(() => sub.disconnect()).catch(() => {});
+      async cleanup() {
+        if (cleaned) return;
+        cleaned = true;
+        handler = null;
+        buffered = [];
+        try { await sub.unsubscribe(channel); } catch { /* disconnect still runs */ }
+        try { await sub.disconnect(); } catch { /* best-effort cleanup */ }
       },
     };
   }

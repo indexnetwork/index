@@ -290,7 +290,7 @@ final class NativeAPIRequestBridge {
         "data:image/webp;base64": ("image/webp", "webp"),
     ]
     static let allowedSSERoutes: Set<String> = [
-        "GET /notifications/stream", "GET /conversations/stream",
+        "GET /conversations/stream",
     ]
     static let allowedMCPTools: Set<String> = ["create_intent"]
 
@@ -673,7 +673,7 @@ final class NativeAPIRequestBridge {
     }
 
     private static func isAllowedSSEBody(method: String, path: String, body: NativeJSONValue?) -> Bool {
-        if method == "GET" && ["/notifications/stream", "/conversations/stream"].contains(path) {
+        if method == "GET" && path == "/conversations/stream" {
             return body == nil
         }
         return false

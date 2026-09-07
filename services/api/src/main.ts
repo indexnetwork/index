@@ -21,7 +21,6 @@ import { ConversationController } from './controllers/conversation.controller';
 import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
-import { NotificationService } from './services/notification.service';
 import { NotificationDeliveryService } from './services/notification-delivery.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
@@ -40,7 +39,7 @@ import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
-import { publishNotificationStreamEvent } from './lib/notification-stream-events';
+import { publishNotificationStreamEvent } from './lib/user-events';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
 // emoji, LOG_LEVEL, Sentry, embedding redaction + payload truncation).
@@ -145,7 +144,7 @@ controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService()));
 controllerInstances.set(
   NotificationController,
-  new NotificationController(new NotificationService(), notificationDeliveryService),
+  new NotificationController(notificationDeliveryService),
 );
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(DebugController, new DebugController());
