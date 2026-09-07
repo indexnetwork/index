@@ -94,6 +94,14 @@ cp "$BG" "$MOUNT/.background/dmg-background.png"
 cp "$BG2X" "$MOUNT/.background/dmg-background@2x.png"
 chflags hidden "$MOUNT/.background"
 
+ICON="$APP_PATH/Contents/Resources/AppIcon.icns"
+[ -f "$ICON" ] || { echo "missing app icon: $ICON" >&2; exit 1; }
+command -v SetFile >/dev/null || { echo "SetFile not found (Xcode CLT)" >&2; exit 1; }
+cp "$ICON" "$MOUNT/.VolumeIcon.icns"
+SetFile -c icnC "$MOUNT/.VolumeIcon.icns"
+chflags hidden "$MOUNT/.VolumeIcon.icns"
+SetFile -a C "$MOUNT"
+
 echo "==> Styling Finder window"
 attempt=0
 until osascript <<APPLESCRIPT
