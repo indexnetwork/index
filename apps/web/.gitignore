@@ -45,6 +45,7 @@ yarn-error.log*
 
 # blog build output
 /public/blog/
+/public/noscript-home.html
 
 # playwright
 test-results/
