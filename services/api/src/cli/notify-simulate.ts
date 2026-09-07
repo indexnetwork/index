@@ -37,7 +37,7 @@ Usage:
 
 Commands:
   opportunity   Create a pending opportunity and publish opportunity.new via
-                NotificationDeliveryService (SSE + snapshot).
+                NotificationDeliveryService (SSE).
   message       Insert a real conversation message from a counterpart so the
                 production conversation SSE publishes type:message.
 
@@ -192,7 +192,6 @@ async function main(): Promise<void> {
       console.log('  channel:', userEventChannel(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);
       console.log('  counterpart:', counterpart.email, `(${counterpart.id})`);
-      console.log('  snapshot: GET /api/notifications/snapshot will include this row');
       return;
     }
 

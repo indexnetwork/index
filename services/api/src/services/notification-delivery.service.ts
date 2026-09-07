@@ -3,29 +3,19 @@ import type { OpportunityDatabaseAdapter } from '../adapters/opportunity.databas
 import type { OpportunityActionablePayload } from '../events/opportunity.event';
 import { log } from '../lib/log';
 import type { NotificationStreamEvent, NotificationStreamPublisher } from '../lib/user-events';
-// eslint-disable-next-line boundaries/dependencies -- task-owned pure projection shared by realtime and snapshots.
-import { actionableRecipientIds, boundedNotificationLabel, buildOpportunityNotificationEvent, counterpartForRecipient } from './notification-projection';
+// eslint-disable-next-line boundaries/dependencies -- task-owned pure projection for realtime frames.
+import { actionableRecipientIds, buildOpportunityNotificationEvent, counterpartForRecipient } from './notification-projection';
 
 const logger = log.service.from('NotificationDelivery');
 
 export interface NotificationDeliveryDependencies {
-  opportunities: Pick<OpportunityDatabaseAdapter, 'getOpportunity' | 'getNotificationSnapshotOpportunities'>;
+  opportunities: Pick<OpportunityDatabaseAdapter, 'getOpportunity'>;
   getIdentity: (userId: string) => Promise<UserIdentity | null>;
   publish: NotificationStreamPublisher;
 }
 
 export class NotificationDeliveryService {
   constructor(private readonly deps: NotificationDeliveryDependencies) {}
-
-  private async opportunityCounterpartLabel(
-    opportunity: OpportunityRow,
-    recipientId: string,
-  ): Promise<string | undefined> {
-    const counterpart = counterpartForRecipient(opportunity, recipientId);
-    if (!counterpart) return undefined;
-    const identity = await this.deps.getIdentity(counterpart.userId);
-    return boundedNotificationLabel(identity?.identity.name);
-  }
 
   private async projectOpportunity(
     opportunity: OpportunityRow,
@@ -76,15 +66,5 @@ export class NotificationDeliveryService {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  }
-
-  async snapshot(userId: string): Promise<NotificationStreamEvent[]> {
-    const opportunities = await this.deps.opportunities.getNotificationSnapshotOpportunities(userId);
-    const actionableOpportunities = opportunities.filter((opportunity) =>
-      actionableRecipientIds(opportunity).includes(userId));
-    const opportunityEvents = await Promise.all(
-      actionableOpportunities.map((opportunity) => this.projectOpportunity(opportunity, userId)),
-    );
-    return opportunityEvents;
   }
 }

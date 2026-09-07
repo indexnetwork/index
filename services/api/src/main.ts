@@ -18,7 +18,6 @@ import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
 import { SubscribeController } from './controllers/subscribe.controller';
 import { ConversationController } from './controllers/conversation.controller';
-import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
 import { NotificationDeliveryService } from './services/notification-delivery.service';
@@ -142,10 +141,6 @@ controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService()));
-controllerInstances.set(
-  NotificationController,
-  new NotificationController(notificationDeliveryService),
-);
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(DebugController, new DebugController());
 const toolService = new ToolService();

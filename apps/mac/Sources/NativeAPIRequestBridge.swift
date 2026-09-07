@@ -276,7 +276,6 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/auth/devices$"#), ("POST", #"^/auth/devices/revoke$"#),
         ("GET", #"^/auth/api-key/list$"#),
         ("POST", #"^/auth/api-key/(?:create|delete)$"#),
-        ("GET", #"^/notifications/snapshot$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
         ("POST", #"^/conversations/(?:dm|[^/?]+/messages)$"#),

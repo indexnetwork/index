@@ -387,16 +387,14 @@ window.IndexApp = (function () {
 
   // App-wide OS notification pipeline, mirroring the Hermes Desktop plugin
   // (packages/hermes-plugin/desktop/tail.js): one realtime SSE stream carrying
-  // opportunity/question frames and messages alike, plus a 60s snapshot
-  // catch-up for the opportunity frames. Messages are realtime-only, own sends
-  // suppressed, fail-closed until the signed-in identity is known. Dedupe keys
-  // persist to localStorage best-effort; losing them across a relaunch is safe
-  // because the first snapshot after boot primes the seen-set without toasting.
+  // opportunity/question frames and messages alike. Everything is
+  // realtime-only, own sends suppressed, fail-closed until the signed-in
+  // identity is known. Dedupe keys persist to localStorage best-effort.
   function startDesktopNotifications({ getUserId, getPrefs = notifyPrefs } = {}) {
     const N = window.IndexApi || {};
     if (!N.composeNotification) return () => {};
     let stopped = false;
-    const state = { hasSnapshot: false, notifiedEntities: readNotified() };
+    const state = { notifiedEntities: readNotified() };
 
     function readNotified() {
       try {
@@ -449,33 +447,8 @@ window.IndexApp = (function () {
 
     const closeStream = keepStream("/conversations/stream", onRealtime);
 
-    let reconciling = false;
-    async function reconcile() {
-      if (stopped || reconciling) return;
-      reconciling = true;
-      try {
-        const response = await nativeAPIBridge.request({
-          kind:"http", method:"GET", path:"/notifications/snapshot",
-        });
-        if (stopped) return;
-        const payload = response.body;
-        const result = N.reconcileNotificationSnapshot(payload, state);
-        state.hasSnapshot = result.state.hasSnapshot;
-        state.notifiedEntities = result.state.notifiedEntities;
-        persistNotified();
-        const prefs = getPrefs ? getPrefs() : null;
-        for (const event of result.notifications) {
-          if (!stopped && N.notificationEventAllowed(event, prefs)) send(event);
-        }
-      } catch (e) { /* the next reconciliation retries */ }
-      finally { reconciling = false; }
-    }
-    reconcile();
-    const snapshotTimer = setInterval(reconcile, 60000);
-
     return function dispose() {
       stopped = true;
-      clearInterval(snapshotTimer);
       closeStream();
     };
   }

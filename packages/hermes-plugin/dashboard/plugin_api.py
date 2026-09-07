@@ -1953,15 +1953,4 @@ async def conversations_socket(websocket: WebSocket) -> None:
     await _relay_sse_to_websocket(websocket, "/conversations/stream")
 
 
-def _notification_snapshot_request() -> Any:
-    """Fetch persisted notifications through the credential-free transport."""
-    return tools.get_transport().request_rest("GET", "/notifications/snapshot")
-
-
-@full_router.get("/notifications/snapshot")
-async def notifications_snapshot() -> Any:
-    """Proxy persisted actionable notifications without rewriting upstream JSON."""
-    return await asyncio.to_thread(_notification_snapshot_request)
-
-
 router.include_router(full_router)
