@@ -1,6 +1,6 @@
 import { log } from '../lib/log';
 import { Intents } from '@indexnetwork/protocol';
-import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
+import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
 import { IntentEvents } from '../events/intent.event';
@@ -71,27 +71,35 @@ export class IntentService {
   }
 
   /**
-   * Create one intent and share it in exactly the networks the owner named.
+   * Create one intent and share it in the owner's networks.
    *
    * The graph infers, verifies and persists the signal, then writes an
-   * `intent_networks` row per id. A network the caller is not a member of is
-   * rejected outright rather than silently dropped.
+   * `intent_networks` row per id. Naming networks shares it in exactly those,
+   * and a network the caller is not a member of is rejected outright rather
+   * than silently dropped. Naming none shares it in every network the owner
+   * currently belongs to: discovery only admits an intent in the networks it
+   * is assigned to, so an unlinked signal would reach nobody.
    *
    * @param userId - The authenticated owner.
    * @param description - The signal text as the owner wrote it.
-   * @param networkIds - Networks to share it in; may be empty.
+   * @param networkIds - Networks to share it in; empty means all memberships.
    * @returns The created intent id and the networks it was linked to.
-   * @throws {IntentNetworkMembershipError} When an id is not a current membership.
+   * @throws {IntentNetworkMembershipError} When a named id is not a current membership.
    */
   async create(
     userId: string,
     description: string,
     networkIds: string[],
   ): Promise<{ id: string; networkIds: string[] }> {
-    logger.verbose('Creating intent', { userId, networkCount: networkIds.length });
+    const targetNetworkIds = networkIds.length > 0
+      ? networkIds
+      : (await chatDatabaseAdapter.getAssignmentNetworkMembershipsForUser(userId))
+        .map((membership) => membership.networkId);
+
+    logger.verbose('Creating intent', { userId, networkCount: targetNetworkIds.length });
 
     const result = await this.intentGraph.invoke(
-      { userId, userProfile: '', inputContent: description, networkIds },
+      { userId, userProfile: '', inputContent: description, networkIds: targetNetworkIds },
       { recursionLimit: 100 },
     ) as {
       executionResults?: Array<{ actionType: string; success: boolean; intentId?: string; error?: string; linkedNetworkIds?: string[] }>;
@@ -105,6 +113,8 @@ export class IntentService {
     }
 
     const linked = created.linkedNetworkIds ?? [];
+    // Only the ids the caller named are a hard requirement: a membership that
+    // ends between the lookup above and the write must not fail the create.
     const missing = networkIds.filter((networkId) => !linked.includes(networkId));
     if (missing.length > 0) {
       throw new IntentNetworkMembershipError(missing[0]);

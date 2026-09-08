@@ -10,6 +10,14 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **`POST /intents` with no `networkIds` shares the signal in every network the
+  owner belongs to.** Naming networks still shares it in exactly those, and a
+  non-membership is still rejected; only the unspecified case changed. It used
+  to create an unlinked signal that discovery then skipped fail-closed, so
+  `/i/new` — which sends no ids and says "going out to everywhere" — produced
+  signals that reached nobody. A transitional default: the picker comes back
+  once choosing networks is something people expect to do. The MCP
+  `create_intent` tool is unchanged and still links exactly what it names.
 - **BREAKING: one SSE stream per user.** Notifications and conversation messages
   share the Redis channel `events:user:<userId>` and the single endpoint
   `GET /conversations/stream`; `GET /notifications/stream` is deleted. Frames are
