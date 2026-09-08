@@ -20,13 +20,20 @@ observes agent state. Selecting a pane does not schedule agent work.
 
 ```bash
 # From this worktree. The env file supplies OPENROUTER_API_KEY.
-bun --env-file=.env.development run agent:tui packages/agent-tui/scenarios/negotiation.json
+bun --env-file=.env.development run agent:tui
 ```
 
-The command accepts one to three ordered model IDs after the scenario path:
+Choose a scenario with **↑ / ↓ and Enter**, or click its filename. **Esc** or
+**Ctrl+C** exits. The chooser lists JSON files in this package's `scenarios/`
+directory; agents start only after selection.
+
+From the package directory, use `bun --env-file=../../.env.development run start`.
+Both commands find the same scenarios, independently of the working directory.
+
+The command accepts one to three ordered model IDs:
 
 ```bash
-bun --env-file=.env.development run agent:tui packages/agent-tui/scenarios/negotiation.json \
+bun --env-file=.env.development run agent:tui \
   google/gemini-3.8-flash anthropic/claude-haiku-4.5
 ```
 
@@ -111,7 +118,8 @@ Use a terminal at least 100 columns wide (120+ recommended):
 
 The bundled roster is Alice, Bob, Carla, Diego, Emma, Farah, Gabriel, Hana, Ivan,
 Jules, Kai, and Leila, with different roles, goals, and collaboration limits.
-Copy and edit the scenario JSON to change users, intents, and private instructions:
+Copy and edit the scenario JSON in `packages/agent-tui/scenarios/` to add a
+choice with different users, intents, and private instructions:
 
 ```json
 {
@@ -132,8 +140,11 @@ normal OpenRouter usage. No live commitments are created by the local lab.
 
 ## Package boundaries
 
-- `src/main.ts` loads the scenario and credentials, constructs the model and
-  terminal renderer, starts the lab, and saves the private transcript on exit.
+- `src/main.ts` discovers scenarios, loads the selected one and credentials,
+  constructs the model and terminal renderer, starts the lab, and saves the
+  private transcript on exit.
+- `src/scenario.chooser.ts` handles startup selection and cancellation before
+  the lab is initialized.
 - `src/negotiation.lab.ts` initializes the real agents, maintains simulated A2A
   records, and delivers match events and updates after successful writes.
   It can run without mounting a terminal view. Its model dependency is required.
@@ -172,5 +183,5 @@ bun run agent:tui --help
 ```
 
 Use the live command above in a terminal or an isolated `tmux` session to check
-both user selectors, background A2A progress, free messages, question answers,
-drafts, and Ctrl+C transcript export.
+scenario selection and cancellation, both user selectors, background A2A progress,
+free messages, question answers, drafts, and Ctrl+C transcript export.
