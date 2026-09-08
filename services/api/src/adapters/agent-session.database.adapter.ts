@@ -2,7 +2,7 @@ import type { PrincipalMessage, PrincipalState, PrincipalStore } from '@indexnet
 import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
-import { agentSessions, intents, messages, type Message } from '../schemas/database.schema';
+import { agentSessions, agents, intents, messages, type Message } from '../schemas/database.schema';
 
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { SYSTEM_AGENT_ID } from './database.shared';
@@ -25,6 +25,19 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
     this.execution = { userId, intentId, token: crypto.randomUUID() };
   }
 
+  /** @param userId - Owning principal. @param intentId - Owned intent. @returns Its persisted checkpoint and lease. */
+  static async readSession(userId: string, intentId: string) {
+    const [row] = await db.select().from(agentSessions).where(and(eq(agentSessions.userId, userId), eq(agentSessions.intentId, intentId)));
+    return row ? { ...row, state: row.state as PrincipalState | null } : null;
+  }
+
+  /** @param id - Receipt returned by the agent after an atomic input checkpoint. @returns Its canonical conversation message. */
+  static async readMessage(id: string): Promise<Message> {
+    const [message] = await db.select().from(messages).where(eq(messages.id, id));
+    if (!message) throw new Error('The personal-agent input was not persisted.');
+    return message;
+  }
+
   /** @param tx - The caller's transaction. @param execution - Its session fence. @throws When ownership expired or moved to another process. */
   static async assertOwner(tx: Transaction, execution: AgentExecution): Promise<void> {
     const [row] = await tx.select({ token: agentSessions.leaseToken }).from(agentSessions).where(and(
@@ -41,6 +54,11 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
     if (!intent) throw new Error('The selected intent does not belong to this principal.');
     const conversation = await this.conversations.getOrCreateAgentDm(userId);
     const row = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${userId}`}, 0))`);
+      const [external] = await tx.select({ id: agents.id }).from(agents).where(and(
+        eq(agents.ownerId, userId), eq(agents.type, 'external'), eq(agents.handleNegotiations, true), isNull(agents.deletedAt),
+      )).limit(1);
+      if (external) throw new Error('This principal has selected an external negotiation executor.');
       await tx.insert(agentSessions).values({ userId, intentId, conversationId: conversation.id }).onConflictDoNothing();
       const [acquired] = await tx.update(agentSessions).set({
         leaseToken: token, leaseExpiresAt: sql`now() + ${LEASE_SECONDS} * interval '1 second'`, updatedAt: new Date(),

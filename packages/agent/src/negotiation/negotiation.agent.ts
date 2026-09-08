@@ -161,6 +161,7 @@ export class NegotiationAgent {
       this.remember(record);
     }));
     await this.checkpoint();
+    if (this.stopped) return;
     this.inbox.resume();
     for (const task of this.tasks.values()) { task.notified = true; void this.drain(task); }
   }
@@ -191,12 +192,15 @@ export class NegotiationAgent {
   /** @returns Questions waiting behind the currently presented question. */
   get queuedQuestions(): number { return this.inbox.queuedQuestions; }
 
+  /** @returns Whether this principal runtime has stopped or lost persistence. */
+  get stopped(): boolean { return this.controller.signal.aborted; }
+
   /**
    * Send a private message to the personal agent when no question is displayed.
    * @param text - The principal's message; replies arrive through conversation updates.
-   * @returns Whether a nonempty message was accepted; answer the displayed question when one exists.
+   * @returns The persisted message, or null when a question must be answered instead.
    */
-  async message(text: string): Promise<boolean> {
+  async message(text: string): Promise<PrincipalMessage | null> {
     await this.start();
     return this.inbox.message(text);
   }
@@ -205,9 +209,9 @@ export class NegotiationAgent {
    * Answer the current H2A question and resume its match.
    * @param questionId - The exact question shown to the human, independent of UI selection.
    * @param text - The principal's answer, kept private with its originating match.
-   * @returns Whether a nonempty answer matched the current question.
+   * @returns The persisted answer, or null when the displayed question changed.
    */
-  async answer(questionId: string, text: string): Promise<boolean> {
+  async answer(questionId: string, text: string): Promise<PrincipalMessage | null> {
     await this.start();
     return this.inbox.answer(questionId, text);
   }
@@ -414,6 +418,7 @@ export class NegotiationAgent {
    */
   async stop(opportunityId?: string): Promise<void> {
     if (opportunityId === undefined) this.controller.abort();
+    await this.starting?.catch(() => {});
     const tasks = [...this.tasks.values()].filter((task) => opportunityId === undefined || task.opportunityId === opportunityId);
     for (const task of tasks) { task.stopped = true; task.controller.abort(); }
     const communication = opportunityId === undefined ? this.inbox.stop() : this.inbox.cancel(opportunityId);

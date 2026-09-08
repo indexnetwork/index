@@ -1,7 +1,6 @@
 import { EventEmitter } from 'node:events';
 
 import { NegotiationAgent, type Model, type Negotiation, type NegotiationHost } from '@indexnetwork/agent';
-import type { NegotiationTuiHost, TuiNegotiation, TuiPrincipal } from '@indexnetwork/agent-tui';
 import { NEGOTIATION_GUIDANCE } from '@indexnetwork/protocol';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
@@ -11,11 +10,22 @@ import { IntentDatabaseAdapter } from '../../adapters/intent.database.adapter';
 import { negotiationService, type NegotiationDetail } from '../../services/negotiation.service';
 import { userEventChannel } from '../user-events';
 
-/** Local API composition: persistence and protocol operations are injected into independent personal agents. */
-export class ApiNegotiationHost extends EventEmitter implements NegotiationTuiHost {
+export interface ApiPrincipal {
+  id: string; userId: string; name: string; intentId: string; intent: string; principalContext: string;
+}
+export interface ObservedNegotiation {
+  opportunityId: string;
+  principals: readonly [ApiPrincipal, ApiPrincipal];
+  transcript: { ownerId: string; text: string; action: Negotiation['turns'][number]['action'] }[];
+  phase: string;
+  status: string;
+}
+
+/** API composition shared by the server and CLI; persistence and protocol operations are injected into independent agents. */
+export class ApiNegotiationHost extends EventEmitter {
   readonly title = 'NEGOTIATION LAB · API database';
   readonly agents = new Map<string, NegotiationAgent>();
-  readonly negotiations = new Map<string, TuiNegotiation>();
+  readonly negotiations = new Map<string, ObservedNegotiation>();
   agentStatus = '';
   private subscriber?: ReturnType<typeof createRedisClient>;
   private refresh?: ReturnType<typeof setInterval>;
@@ -24,7 +34,7 @@ export class ApiNegotiationHost extends EventEmitter implements NegotiationTuiHo
   private stopped = false;
   private readonly versions = new Map<string, string>();
 
-  constructor(readonly users: readonly TuiPrincipal[], model: Model) {
+  constructor(readonly users: readonly ApiPrincipal[], model: Model) {
     super();
     for (const principal of users) {
       const store = new AgentSessionDatabaseAdapter(principal.userId, principal.intentId);
@@ -57,7 +67,7 @@ export class ApiNegotiationHost extends EventEmitter implements NegotiationTuiHo
   }
 
   /** @returns Existing active intents and confirmed profile context; no profile synthesis or scenario seeding. */
-  static async principals(): Promise<TuiPrincipal[]> {
+  static async principals(): Promise<ApiPrincipal[]> {
     return (await new IntentDatabaseAdapter().listAgentPrincipals()).map((row) => ({
       id: row.intentId, userId: row.userId, intentId: row.intentId, name: row.name, intent: row.intent,
       principalContext: row.confirmedProfile ? JSON.stringify({ confirmedProfile: row.confirmedProfile }) : 'No confirmed profile is available. Ask for missing personal facts.',
@@ -91,7 +101,7 @@ export class ApiNegotiationHost extends EventEmitter implements NegotiationTuiHo
     return { ...record, settledAt: record.settledAt?.toISOString() ?? null };
   }
 
-  private observe(principal: TuiPrincipal, record: NegotiationDetail): void {
+  private observe(principal: ApiPrincipal, record: NegotiationDetail): void {
     const other = this.users.find((user) => user.userId === record.counterparty.userId && user.intentId === record.counterparty.intentId)
       ?? { id: record.counterparty.intentId, userId: record.counterparty.userId, intentId: record.counterparty.intentId, name: record.counterparty.name ?? record.counterparty.userId, intent: record.counterparty.statement, principalContext: '' };
     const previous = this.negotiations.get(record.opportunityId);

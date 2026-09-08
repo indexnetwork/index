@@ -19,7 +19,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.70.1",
+      "version": "0.71.0",
       "dependencies": {
         "@better-auth/api-key": "1.6.11",
         "@indexnetwork/protocol": "workspace:*",

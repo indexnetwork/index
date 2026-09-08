@@ -1,6 +1,7 @@
 import './startup.env';
 
 import * as Sentry from '@sentry/bun';
+import { ModelClient } from '@indexnetwork/agent';
 
 import { DebugController } from './controllers/debug.controller';
 import { ToolController } from './controllers/tool.controller';
@@ -20,6 +21,7 @@ import { SubscribeController } from './controllers/subscribe.controller';
 import { ConversationController } from './controllers/conversation.controller';
 import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
+import { PersonalAgentService } from './services/personal-agent.service';
 import { OpportunityEventService } from './services/opportunity-event.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
@@ -81,6 +83,7 @@ const GLOBAL_PREFIX = '/api';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
+const personalAgents = new PersonalAgentService(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
 
 // Warm up the PostgresSaver checkpointer at boot so the first graph run
 // doesn't pay the table-setup round trip and misconfiguration surfaces at
@@ -140,7 +143,7 @@ controllerInstances.set(NegotiationController, new NegotiationController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
-controllerInstances.set(ConversationController, new ConversationController(new ConversationService()));
+controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), personalAgents));
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(DebugController, new DebugController());
 const toolService = new ToolService();
@@ -419,11 +422,13 @@ Bun.serve({
 });
 
 logger.info('Server running', { port: PORT });
+void personalAgents.start();
 
 
 // Graceful shutdown
 const shutdown = async () => {
   logger.info('Shutting down...');
+  await personalAgents.stop();
   await Sentry.close(2000);
   process.exit(0);
 };

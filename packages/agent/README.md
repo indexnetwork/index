@@ -297,14 +297,16 @@ replays an uncertain submission.
 messages. `save(state, newMessages)` must persist both atomically under exclusive
 session ownership. `close()` releases ownership. The agent owns the checkpoint
 format, stable message/question IDs, pending requests, and restart reconciliation.
-Human `message()` and `answer()` calls resolve only after persistence; storage
-failure stops the runtime. `stop()` preserves outstanding work and the displayed
+Human `message()` and `answer()` calls return the persisted input entry, or
+`null` when rejected (for example, when the displayed question changed). They
+resolve only after persistence; storage failure stops the runtime. `stop()` preserves outstanding work and the displayed
 question. Match working transcripts are temporary and regenerated from fresh
 protocol observations after restart.
 
 The [scenario TUI](../agent-tui/README.md) injects `MemoryPrincipalStore`. The
-[API runner](../../services/api/README.md) injects a Postgres session store with
-leases and revision fencing. Neither `agent` nor `protocol` imports the other;
+[API server and TUI](../../services/api/README.md) inject a Postgres session store
+with leases and revision fencing. The normal API server owns runtime lifecycle
+independently of connected clients. Neither `agent` nor `protocol` imports the other;
 the host composes their contracts.
 
 ### Batched inbox work

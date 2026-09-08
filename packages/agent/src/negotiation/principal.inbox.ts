@@ -139,17 +139,17 @@ export class PrincipalInbox {
   /**
    * Receive a direct message when no question is displayed.
    * @param text - The principal's private message to their personal agent.
-   * @returns Whether the message was nonempty and accepted for a reply.
+   * @returns The persisted input, or null when it cannot be accepted.
    */
-  async message(text: string): Promise<boolean> {
-    if (this.stopped || this.currentQuestion || !text.trim()) return false;
+  async message(text: string): Promise<PrincipalMessage | null> {
+    if (this.stopped || this.currentQuestion || !text.trim()) return null;
     const message = this.append({ kind: 'user', text: text.trim(), matches: [] });
     this.incomingMessages.push(message);
     this.host.input();
     this.reviewController?.abort();
     await this.host.changed();
     this.schedule(0);
-    return true;
+    return message;
   }
 
   /**
@@ -180,20 +180,20 @@ export class PrincipalInbox {
    * Record an answer and reconsider all waiting negotiations.
    * @param questionId - The exact displayed question.
    * @param text - The principal's private answer.
-   * @returns Whether the answer matched the current question and was nonempty.
+   * @returns The persisted answer, or null when the displayed question changed.
    */
-  async answer(questionId: string, text: string): Promise<boolean> {
+  async answer(questionId: string, text: string): Promise<PrincipalMessage | null> {
     const question = this.currentQuestion;
-    if (this.stopped || !question || question.id !== questionId || !text.trim()) return false;
+    if (this.stopped || !question || question.id !== questionId || !text.trim()) return null;
     this.currentQuestion = null;
     this.host.input();
     this.reviewController?.abort();
-    this.append({ kind: 'answer', questionId, text: text.trim(), matches: question.matches, scope: question.scope });
+    const message = this.append({ kind: 'answer', questionId, text: text.trim(), matches: question.matches, scope: question.scope });
     const released = this.requests.splice(0);
     await this.host.changed();
     for (const request of released) request.resolve();
     this.schedule(0);
-    return true;
+    return message;
   }
 
   /** @param opportunityId - The stopped match whose requests should be released. */

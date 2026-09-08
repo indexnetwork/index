@@ -38,7 +38,9 @@ bun run --cwd services/api agent:tui
 
 This local development command loads the root `.env.development`. It uses the
 API's Postgres and Redis connections and real existing users, intents, matches,
-and H2A messages. No HTTP server needs to be running.
+and H2A messages. Run this standalone command with the normal API server stopped
+so it can acquire the selected sessions. The normal server now starts agents
+automatically; both entry points use the same exclusive session leases.
 
 Choose principal/intent sessions with Space or a click, then Enter to start.
 Select intents belonging to at least two users. Only selected personal agents
@@ -57,6 +59,9 @@ restores the conversation, pending question, related requests, and outstanding
 work, then rereads the A2A records. Session leases prevent two local processes
 from running the same principal/intent. Ctrl+C releases leases and retains state;
 a crashed process's lease expires after 60 seconds.
+
+For single-user testing through normal HTTP authentication and the web app,
+see [the API's live testing instructions](../../services/api/README.md#personal-agents-and-live-web-testing).
 
 ## Controls
 
