@@ -1,6 +1,6 @@
 import { runLoop } from "./loop.ts";
 import { MemoryMessageStore } from "./sessions.ts";
-import { ModelClient, type ModelMessage } from "./model.ts";
+import type { Model, ModelMessage } from "./model.ts";
 import { defaultTools, type Tool } from "./tools.ts";
 import type { AgentIdentity, Intent, MessageStore, RunResult, Step } from "./types.ts";
 
@@ -35,19 +35,10 @@ export interface AgentOptions {
    */
   tools?: Tool<never>[];
 
-  /** OpenRouter model for the agent loop. Defaults to
-   * `google/gemini-3.7-flash`. */
-  model?: string;
-  /** OpenRouter API key. Falls back to `OPENROUTER_API_KEY`. */
-  apiKey?: string;
+  /** Model capability constructed by the host, shared across this agent's tasks. */
+  model: Model;
   /** Step cap for `run()`. Defaults to 10. */
   maxSteps?: number;
-  /** How long one model request may take, in ms. Defaults to 120s. A hung
-   * connection otherwise stalls the agent until someone interrupts it. */
-  timeout?: number;
-  /** Model attempts per step, including the first. Defaults to 3; only
-   * transient failures are retried. */
-  attempts?: number;
   /** Fires before a model call is retried. A retry looks like slowness
    * from the outside, so a host with a UI generally wants to say so. */
   onRetry?: (attempt: number, reason: string) => void;
@@ -74,6 +65,10 @@ export interface AgentOptions {
 
 export interface RunOptions {
   maxSteps?: number;
+  /** Working transcript for this task. Concurrent tasks use separate stores. */
+  history?: MessageStore;
+  /** Tools scoped to this task; the agent's identity and model stay shared. */
+  tools?: Tool<never>[];
   /** The conversation so far — pass `messages` from a previous result to
    * continue it, including resuming a run that stopped on a question.
    * Omit it to fall back to the agent's `history` store instead; passing
@@ -97,7 +92,7 @@ export class Agent {
   readonly intent?: Intent;
   readonly tools: Tool<never>[];
 
-  private readonly model: ModelClient;
+  private readonly model: Model;
   private readonly maxSteps: number;
   /** This agent's conversation with its party. */
   private readonly history: MessageStore;
@@ -108,13 +103,7 @@ export class Agent {
     this.intent = options.intent;
     this.tools = options.tools ?? defaultTools();
 
-    this.model = new ModelClient({
-      apiKey: options.apiKey,
-      model: options.model,
-      timeout: options.timeout,
-      attempts: options.attempts,
-      onRetry: options.onRetry,
-    });
+    this.model = options.model;
     this.maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
     this.history = options.history ?? new MemoryMessageStore();
   }
@@ -171,21 +160,23 @@ export class Agent {
   async run(input: string, options: RunOptions = {}): Promise<RunResult> {
     // A host can pass `messages` message-style, lean on a shared `history`
     // store, or both — whichever arrived travels into this run.
-    const messages = options.messages ?? this.history.list();
+    const history = options.history ?? this.history;
+    const messages = options.messages ?? history.list();
 
     const result = await runLoop({
       model: this.model,
       systemPrompt: this.instructions(),
-      tools: this.tools,
+      tools: options.tools ?? this.tools,
       messages,
       input,
       maxSteps: options.maxSteps ?? this.maxSteps,
       context: { agent: this, signal: options.signal },
       onStep: options.onStep,
+      onRetry: this.options.onRetry,
       signal: options.signal,
     });
 
-    this.history.save(result.messages);
+    history.save(result.messages);
     return result;
   }
 }

@@ -1,0 +1,28 @@
+{
+  "name": "@indexnetwork/agent-tui",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "A live terminal testing platform for personal agents and parallel negotiations.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "start": "bun run --cwd ../protocol build && bun run --cwd ../agent build && bun src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && eslint src",
+    "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target bun --format esm --packages external && tsc --project tsconfig.build.json"
+  },
+  "dependencies": {
+    "@indexnetwork/agent": "workspace:*",
+    "@opentui/core": "0.5.10",
+    "@indexnetwork/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "5.9.3"
+  }
+}

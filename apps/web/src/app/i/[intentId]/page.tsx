@@ -7,6 +7,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
+import NegotiationConversation from "@/components/NegotiationConversation";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -200,6 +201,8 @@ export default function IntentDetailPage() {
   // Below lg the Radar is the primary content and the negotiator column opens
   // as an off-canvas sheet; this is its open state.
   const [negotiatorPanelOpen, setNegotiatorPanelOpen] = useState(false);
+  const [expandedMatches, setExpandedMatches] = useState<Set<string>>(() => new Set());
+  const [matchFocus, setMatchFocus] = useState<{ id: string }>();
 
   useLayoutEffect(() => {
     activeIntentIdRef.current = intentId;
@@ -209,6 +212,7 @@ export default function IntentDetailPage() {
     setArchiveTargetId(null);
     setArchiving(false);
     setNegotiatorPanelOpen(false);
+    setExpandedMatches(new Set());
   }, [intentId]);
 
   const scope = useMemo(
@@ -322,6 +326,15 @@ export default function IntentDetailPage() {
     }
     void loadOpportunities(true);
   }, [loadOpportunities, selectedBucket]);
+
+  useEffect(() => {
+    const timer = setInterval(() => { void loadOpportunities(true); }, 5_000);
+    return () => clearInterval(timer);
+  }, [loadOpportunities]);
+
+  useEffect(() => {
+    if (matchFocus) document.getElementById(`radar-match-${matchFocus.id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [matchFocus]);
 
   const handleArchive = useCallback(async () => {
     if (!archiveTargetId || archiving) return;
@@ -591,7 +604,7 @@ export default function IntentDetailPage() {
                 className="mb-4 inline-flex items-center gap-2 self-start rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 lg:hidden"
               >
                 <MessageCircle className="h-4 w-4" />
-                Negotiator
+                Your personal agent
               </button>
             </div>
             </>
@@ -616,7 +629,7 @@ export default function IntentDetailPage() {
                   data-testid="negotiator-sheet"
                   data-state={negotiatorPanelOpen ? "open" : "closed"}
                   role={negotiatorPanelOpen ? "dialog" : undefined}
-                  aria-label="Negotiator"
+                  aria-label="Your personal agent"
                   className={cn(
                     "fixed inset-y-0 right-0 z-[100] flex w-[min(85vw,24rem)] flex-col bg-white p-4 shadow-xl",
                     "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
@@ -635,17 +648,24 @@ export default function IntentDetailPage() {
                     </button>
                   </div>
                   <Panel
-                    title="Negotiator"
-                    description="Your negotiator, scoped to this signal — ask what it's doing, steer it, or answer its questions."
+                    title="Your personal agent"
+                    description="One private conversation for this intent, across all your matches."
                     className="min-h-0 flex-1"
                   >
-                    {intentId && <IntentNegotiatorChat key={intentId} intentId={intentId} />}
+                    {intentId && <IntentNegotiatorChat key={intentId} intentId={intentId} onSelectMatch={(id) => {
+                      const item = opportunities.find((entry) => entry.opportunityId === id);
+                      if (!item) return;
+                      setSelectedBucket(bucketOf(item));
+                      setExpandedMatches((current) => new Set(current).add(id));
+                      setMatchFocus({ id });
+                      setNegotiatorPanelOpen(false);
+                    }} />}
                   </Panel>
                 </div>
                 <div data-testid="radar-column" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden">
                 <Panel
                   title="Radar"
-                  description="Opportunities the network surfaced for this signal."
+                  description="Matches for this intent. Expand a match to follow its agents’ conversation."
                   className="flex-1"
                   media={
                     <img
@@ -693,14 +713,11 @@ export default function IntentDetailPage() {
                   ) : (
                     <div className="space-y-3">
                       {visibleOpportunities.map((item) => (
+                        <article key={item.opportunityId} id={`radar-match-${item.opportunityId}`} className="overflow-hidden rounded-lg border border-gray-200">
                           <OpportunityCard
-                            key={item.opportunityId}
                             card={item}
                             currentStatus={
                               opportunityStatusMap[item.opportunityId]
-                            }
-                            pendingActionable={
-                              ((opportunityStatusMap[item.opportunityId] as OpportunityLifecycleStatus | undefined) ?? item.status) !== "pending"
                             }
                             onPrimaryAction={(
                               oppId,
@@ -734,6 +751,13 @@ export default function IntentDetailPage() {
                               !!opportunityActionLoading[item.opportunityId]
                             }
                           />
+                          {intentId && <NegotiationConversation intentId={intentId} opportunityId={item.opportunityId}
+                            expanded={expandedMatches.has(item.opportunityId)} onToggle={() => setExpandedMatches((current) => {
+                              const next = new Set(current);
+                              if (next.has(item.opportunityId)) next.delete(item.opportunityId); else next.add(item.opportunityId);
+                              return next;
+                            })} />}
+                        </article>
                       ))}
                     </div>
                   )}

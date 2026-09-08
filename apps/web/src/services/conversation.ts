@@ -30,6 +30,26 @@ export interface ConversationMessage {
   createdAt: string;
 }
 
+export interface PrincipalQuestion {
+  id: string;
+  question: string;
+  options?: string[];
+  scope: 'intent' | 'match';
+  matches: { opportunityId: string; counterparty: { id: string; name: string | null } }[];
+}
+
+export interface PersonalAgentState {
+  status: 'running' | 'starting' | 'paused' | 'external' | 'unavailable';
+  pending: PrincipalQuestion | null;
+  queuedQuestions: number;
+}
+
+export interface ConversationHistory {
+  conversationId: string;
+  messages: ConversationMessage[];
+  agent?: PersonalAgentState;
+}
+
 /** One session slice of a conversation's history, with a cursor to the previous session. */
 export interface ConversationSessionHistory {
   messages: ConversationMessage[];
@@ -52,13 +72,13 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
    * The resolved id comes back with them: `AGENT_DM_ID` is the only way to
    * address the caller's own agent DM, and this is where it becomes a real one.
    */
-  getMessages: async (conversationId: string, opts?: { limit?: number; before?: string; intentId?: string }): Promise<{ conversationId: string; messages: ConversationMessage[] }> => {
+  getMessages: async (conversationId: string, opts?: { limit?: number; before?: string; intentId?: string }): Promise<ConversationHistory> => {
     const params = new URLSearchParams();
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.before) params.set('before', opts.before);
     if (opts?.intentId) params.set('intentId', opts.intentId);
     const qs = params.toString();
-    return api.get<{ conversationId: string; messages: ConversationMessage[] }>(`/conversations/${conversationId}/messages${qs ? `?${qs}` : ''}`);
+    return api.get<ConversationHistory>(`/conversations/${conversationId}/messages${qs ? `?${qs}` : ''}`);
   },
 
   /**
@@ -72,8 +92,8 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   },
 
   /** Send a message to a conversation. */
-  sendMessage: async (conversationId: string, parts: unknown[], opts?: { metadata?: Record<string, unknown> }): Promise<ConversationMessage> => {
-    const response = await api.post<{ message: ConversationMessage }>(`/conversations/${conversationId}/messages`, { parts, metadata: opts?.metadata });
+  sendMessage: async (conversationId: string, parts: unknown[], opts?: { metadata?: Record<string, unknown>; questionId?: string | null }): Promise<ConversationMessage> => {
+    const response = await api.post<{ message: ConversationMessage }>(`/conversations/${conversationId}/messages`, { parts, metadata: opts?.metadata, questionId: opts?.questionId });
     return response.message;
   },
 

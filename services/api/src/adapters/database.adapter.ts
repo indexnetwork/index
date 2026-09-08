@@ -386,8 +386,8 @@ export function createSystemDatabase(
      * Discovery counterparties. Intentionally unscoped: a pair has two sides,
      * and each is read by its own principal's agent.
      */
-    openCounterparties: (pairs: Parameters<NegotiationDatabaseAdapter['openCounterparties']>[0]) =>
-      negotiationDatabaseAdapter.openCounterparties(pairs),
+    openCounterparties: (...args: Parameters<NegotiationDatabaseAdapter['openCounterparties']>) =>
+      negotiationDatabaseAdapter.openCounterparties(...args),
     /**
      * Retrieves an opportunity by ID without scope check.
      * @remarks Intentionally unscoped -- used by the negotiation graph and opportunity

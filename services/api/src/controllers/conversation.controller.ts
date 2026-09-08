@@ -2,6 +2,7 @@ import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../gu
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { agentService } from '../services/agent.service';
 import { ConversationService } from '../services/conversation.service';
+import { PersonalAgentError, type PersonalAgentService } from '../services/personal-agent.service';
 import { log } from '../lib/log';
 
 type RouteParams = Record<string, string>;
@@ -16,6 +17,7 @@ const logger = log.controller.from('conversation');
 export class ConversationController {
   constructor(
     private readonly conversationService: ConversationService,
+    private readonly personalAgents: PersonalAgentService,
   ) {}
 
   /**
@@ -125,8 +127,11 @@ export class ConversationController {
       const messages = await this.conversationService.getMessages(conversationId, { limit, before, intentId, userId: user.id });
       // The id is echoed because `agent` resolves to a conversation the caller
       // has no other way to name.
-      return Response.json({ conversationId, messages });
+      const agent = intentId && await this.conversationService.isAgentDm(conversationId)
+        ? await this.personalAgents.state(user.id, intentId) : undefined;
+      return Response.json({ conversationId, messages, agent });
     } catch (err: unknown) {
+      if (err instanceof PersonalAgentError) return Response.json({ error: err.message }, { status: err.status });
       const message = err instanceof Error ? err.message : String(err);
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: message }, { status: 403 });
@@ -195,9 +200,9 @@ export class ConversationController {
     }
     const conversationId = resolved.id;
 
-    let body: { parts?: unknown[]; metadata?: Record<string, unknown> };
+    let body: { parts?: unknown[]; metadata?: Record<string, unknown>; questionId?: string | null };
     try {
-      body = (await req.json()) as { parts?: unknown[]; metadata?: Record<string, unknown> };
+      body = (await req.json()) as typeof body;
     } catch {
       return Response.json({ error: 'Invalid request body' }, { status: 400 });
     }
@@ -209,8 +214,9 @@ export class ConversationController {
     // A key-authenticated caller writing into an agent DM writes as the
     // owner's negotiator. The key names no agent, so the selection is what
     // decides — with no negotiator chosen, the write stays a user message.
+    const agentDm = await this.conversationService.isAgentDm(conversationId);
     const asAgent = !isSessionAuthenticated(req)
-      && await this.conversationService.isAgentDm(conversationId)
+      && agentDm
       && await agentService.getSelectedNegotiator(user.id) !== null;
 
     if (asAgent && typeof body.metadata?.intentId !== 'string') {
@@ -218,6 +224,17 @@ export class ConversationController {
     }
 
     try {
+      if (agentDm && !asAgent) {
+        if (typeof body.metadata?.intentId !== 'string') throw new PersonalAgentError('metadata.intentId is required.', 400);
+        if (body.questionId !== undefined && body.questionId !== null && typeof body.questionId !== 'string') throw new PersonalAgentError('questionId must name the displayed question.', 400);
+        const parts = body.parts as { kind?: string; text?: string }[];
+        if (!parts.every((part) => part && part.kind === 'text' && typeof part.text === 'string')) throw new PersonalAgentError('Personal-agent messages must contain text.', 400);
+        const text = parts.map((part) => part.text).join('\n').trim();
+        if (!text) throw new PersonalAgentError('Message text is required.', 400);
+        const message = await this.personalAgents.send({ userId: user.id, intentId: body.metadata.intentId,
+          conversationId, text, questionId: body.questionId ?? null });
+        if (message) return Response.json({ message }, { status: 201 });
+      }
       const msg = asAgent
         ? await this.conversationService.sendAgentMessage(
           conversationId, body.parts, { metadata: body.metadata }
@@ -227,6 +244,7 @@ export class ConversationController {
         );
       return Response.json({ message: msg }, { status: 201 });
     } catch (err: unknown) {
+      if (err instanceof PersonalAgentError) return Response.json({ error: err.message }, { status: err.status });
       const message = err instanceof Error ? err.message : String(err);
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: message }, { status: 403 });

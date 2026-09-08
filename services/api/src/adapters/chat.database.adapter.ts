@@ -2094,9 +2094,9 @@ export class ChatDatabaseAdapter {
 
   // Discovery counterparties (delegate to NegotiationDatabaseAdapter)
   async openCounterparties(
-    pairs: Parameters<NegotiationDatabaseAdapter['openCounterparties']>[0],
+    ...args: Parameters<NegotiationDatabaseAdapter['openCounterparties']>
   ) {
-    return negotiationDatabaseAdapter.openCounterparties(pairs);
+    return negotiationDatabaseAdapter.openCounterparties(...args);
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)

@@ -19,6 +19,3 @@ export interface DebugMetaAgent {
   name: string;
   durationMs: number;
 }
-
-export const NEGOTIATION_MAX_TURNS_CHAT = 4;
-export const NEGOTIATION_MAX_TURNS_AMBIENT = 6;

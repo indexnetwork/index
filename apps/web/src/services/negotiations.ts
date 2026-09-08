@@ -28,6 +28,7 @@ export interface NegotiationSummary {
   updatedAt: string;
   counterparty: {
     userId: string;
+    intentId: string;
     name: string | null;
     avatar: string | null;
     statement: string;
@@ -36,6 +37,12 @@ export interface NegotiationSummary {
 
 export interface NegotiationDetail extends NegotiationSummary {
   turns: NegotiationTurn[];
+  protocol: {
+    availableActions: NegotiationTurnAction[];
+    blockedReason: string | null;
+    maxTurns: number;
+    messageLimit: number;
+  };
 }
 
 export const createNegotiationService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({

@@ -17,6 +17,69 @@ bun run db:migrate    # Apply migrations
 bun run db:studio     # Drizzle Studio (DB GUI)
 ```
 
+## Personal agents and live web testing
+
+From the repository root, run these in separate terminals:
+
+```bash
+bun run dev:api
+bun run dev:web
+```
+
+The API loads the root `.env.development`. Use the disposable development
+database with the migrations applied. Open the web app, sign in normally, and
+open an intent. Its private H2A chat accepts a message whenever no question is
+displayed; otherwise the same input answers that exact question. Suggested
+answers and custom drafts stay attached to the displayed question. Radar keeps
+its Needs you, Waiting, Connected, and Closed categories, with an expandable
+A2A conversation inside each match. Pending matches retain Start Chat and Skip.
+
+The normal API server starts agents for active intents at boot and reconciles
+new intents, profile/intent changes, and selected external executors every five
+seconds. Agents run with no browser or TUI connected. Shutdown saves outstanding
+work and releases session leases. Restart restores pending questions and resumes
+matches from current protocol records.
+
+`GET /api/conversations/agent/messages?intentId=<id>` returns that intent's H2A
+history and `agent` state (`status`, `pending`, `queuedQuestions`). Send text to
+`POST /api/conversations/agent/messages` with `parts: [{ kind: "text", text }]`,
+`metadata: { intentId }`, and the displayed `questionId`, or `null` for a direct
+message. A successful response contains the persisted message; a changed
+question returns 409 without recording the input. Normal authentication and
+intent ownership checks apply.
+
+`PersonalAgentService` owns runtime lifecycle and HTTP input routing; its
+injected model and shared `ApiNegotiationHost` supply infrastructure. Input is
+handled by the API process owning the session. An external executor selection
+revokes local execution leases atomically and uses the existing external message
+transport. Removing that selection lets the server restore its local agent.
+
+## Personal-agent TUI
+
+From the repository root:
+
+```bash
+bun run --cwd services/api agent:tui
+# Optional ordered OpenRouter model IDs:
+bun run --cwd services/api agent:tui google/gemini-3.8-flash anthropic/claude-haiku-4.5
+```
+
+Uses the root `.env.development`, existing database principals/intents, and the
+API's negotiation services. Space selects principal/intent sessions; Enter starts
+all selected agents. No HTTP server or login is needed for this trusted local
+command. HTTP guards are unchanged. Models, the session store, protocol guidance,
+and protocol-backed reads/writes are injected into `@indexnetwork/agent`.
+
+`packages/protocol` owns participation rules and consent/transition gates;
+`packages/agent` owns reasoning, parallel matches, and the shared H2A inbox.
+The API composes both. It persists `protocol_*` domain tables, `agent_sessions`
+checkpoints/leases, and intent-tagged H2A `messages` in the owner's existing DM.
+A2A agreement remains pending human approval. Stop the normal API server before
+using this standalone TUI for the same intents: each session has one runtime
+owner, shared across both entry points.
+
+See [agent-tui controls and behavior](../../packages/agent-tui/README.md).
+
 ## Tests
 
 Use a repo-root `.env.test` that points to a dedicated disposable database:

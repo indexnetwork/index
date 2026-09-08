@@ -52,6 +52,11 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 | **MCP** | `createMcpServer` plus `ScopedDepsFactory`, the one type needed to call it. The capability policy was deleted in 52.0.0: every authenticated caller reaches the same tool surface. |
 | **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories are package-internal — compose them through `createMcpServer` or `createToolRegistry`. |
 
+`Negotiations`, `NegotiationDatabase`, the opening and turn decision functions,
+the observation function, and `negotiationTurnSchema` are stable. Hosts must
+evaluate supplied decision callbacks against locked current state and commit
+their effects atomically. `openCounterparties` takes the protocol opening callback.
+
 ### Experimental
 
 Marked `@experimental` in `src/index.ts`. May change in a **minor** release without

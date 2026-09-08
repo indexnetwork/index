@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Agent } from "./agent.ts";
+import { ModelClient } from "./model.ts";
 import { MemoryMessageStore } from "./sessions.ts";
 import { call, mockModel, restoreFetch } from "./test-helpers.ts";
 import { askUserTool, type Tool } from "./tools.ts";
@@ -10,8 +11,12 @@ afterEach(restoreFetch);
  * agent is told the date so it can resolve "next Tuesday"; a test that
  * asserts the prompt shouldn't drift with the calendar. */
 const TODAY = new Date("2026-08-28T09:00:00Z");
+// ICU punctuation differs across hosts; the fixed date and transcript are the contract.
+const TODAY_DATE = TODAY.toLocaleDateString("en-GB", {
+  timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric",
+});
 const TODAY_LINE =
-  'Today is Friday, 28 August 2026. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.';
+  `Today is ${TODAY_DATE}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`;
 const TOOL_DISCIPLINE_LINE =
   "Only call a tool from the list you were actually given this turn — what's offered can change as your situation does, so a capability you used before, or one that would make sense here, may not be available right now. If what you need isn't in that list, say so or ask, rather than calling a name you expect to exist.";
 
@@ -23,7 +28,7 @@ function agent(
   return new Agent({
     identity: { name: "Alice's Agent", id: "did:example:alice" },
     systemPrompt,
-    apiKey: "test-key",
+    model: new ModelClient({ apiKey: "test-key" }),
     now: () => TODAY,
     tools,
     ...options,
@@ -386,11 +391,8 @@ describe("asking the user", () => {
   });
 });
 
-describe("model options reach the client", () => {
-  // `timeout`, `attempts` and `onRetry` are forwarded to the ModelClient
-  // in the constructor. model.test.ts covers the client; this covers the
-  // seam, which no other test reads.
-  test("timeout, attempts and onRetry are forwarded to the model client", async () => {
+describe("injected model", () => {
+  test("uses the supplied client's timeout and attempts and reports retries", async () => {
     mockModel([
       // Never answers, but honours the deadline the client attached.
       (init) =>
@@ -401,10 +403,8 @@ describe("model options reach the client", () => {
     const agent = new Agent({
       identity: { name: "Alice's Agent", id: "did:example:alice" },
       systemPrompt: "You act for Alice.",
-      apiKey: "test-key",
+      model: new ModelClient({ apiKey: "test-key", timeout: 50, attempts: 2 }),
       tools: [],
-      timeout: 50,
-      attempts: 2,
       onRetry: (attempt, reason) => retries.push([attempt, reason]),
     });
 

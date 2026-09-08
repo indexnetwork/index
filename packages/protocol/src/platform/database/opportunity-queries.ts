@@ -1,3 +1,5 @@
+import type { NegotiationOpening, NegotiationOpeningDecision } from '../../protocol/negotiation.rules.js';
+
 /**
  * Database operations for HyDE documents and the opportunity lifecycle.
  */
@@ -94,7 +96,7 @@ export interface DatabaseOpportunityQueries {
    * counterparty's run already opened is skipped and the result is exactly the
    * set the caller still owes a `negotiation.turn`.
    */
-  openCounterparties(pairs: CreateIntentCounterpartyData[]): Promise<OpenedNegotiation[]>;
+  openCounterparties(pairs: CreateIntentCounterpartyData[], decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation[]>;
 
   /**
    * Atomically create only while every actor still has an active membership on

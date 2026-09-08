@@ -36,10 +36,10 @@ type Counts = Record<string, number>;
 
 async function readCounts(): Promise<Counts> {
   const rows = await db.execute<{ t: string; n: string }>(sql`
-    SELECT 'opportunities' AS t, count(*)::text AS n FROM opportunities
-    UNION ALL SELECT 'negotiations', count(*)::text FROM negotiations
-    UNION ALL SELECT 'negotiation_turns', count(*)::text FROM negotiation_turns
-    UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM opportunity_outcome_events
+    SELECT 'opportunities' AS t, count(*)::text AS n FROM protocol_opportunities
+    UNION ALL SELECT 'negotiations', count(*)::text FROM protocol_negotiations
+    UNION ALL SELECT 'negotiation_turns', count(*)::text FROM protocol_negotiation_turns
+    UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM protocol_opportunity_outcome_events
     UNION ALL SELECT 'agent_participant_convs', count(*)::text FROM conversations c
       WHERE EXISTS (
         SELECT 1 FROM conversation_participants p
@@ -63,9 +63,9 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
         WHERE p.conversation_id = c.id AND p.participant_type = 'agent'
       )
     `);
-    await tx.execute(sql`DELETE FROM opportunity_outcome_events`);
+    await tx.execute(sql`DELETE FROM protocol_opportunity_outcome_events`);
     // negotiations (and their turns) cascade from the opportunity.
-    await tx.execute(sql`DELETE FROM opportunities`);
+    await tx.execute(sql`DELETE FROM protocol_opportunities`);
   });
   return readCounts();
 }

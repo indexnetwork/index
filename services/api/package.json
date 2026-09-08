@@ -1,12 +1,12 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.113.0",
+  "version": "0.114.0",
   "license": "MIT",
   "private": true,
   "scripts": {
-    "predev": "bun run --cwd ../../packages/protocol build",
+    "predev": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build",
     "dev": "NODE_ENV=development bun --watch --preload ./src/instrument.ts src/main.ts",
-    "build": "bun run --cwd ../../packages/protocol build && tsc",
+    "build": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && tsc",
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
@@ -22,7 +22,8 @@
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
-    "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts"
+    "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
+    "agent:tui": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && bun src/cli/agent-tui.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",
@@ -47,7 +48,8 @@
     "postgres": "^3.4.7",
     "resend": "^4.0.1",
     "uuid": "^11.1.0",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "@indexnetwork/agent": "workspace:*"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "1.4.5",
@@ -58,7 +60,8 @@
     "@types/uuid": "^10.0.0",
     "drizzle-kit": "^0.31.9",
     "typescript": "^5.3.3",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.15",
+    "@indexnetwork/agent-tui": "workspace:*"
   },
   "packageManager": "bun@1.3.6",
   "resolutions": {

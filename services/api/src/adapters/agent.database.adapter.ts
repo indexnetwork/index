@@ -253,6 +253,10 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         .update(schema.agents)
         .set({ handleNegotiations: true, status: 'active', updatedAt: new Date() })
         .where(eq(schema.agents.id, target.id));
+      // Selecting an external executor fences any server or TUI runtime before
+      // the binding is acknowledged. Its next checkpoint or turn cannot commit.
+      await tx.update(schema.agentSessions).set({ leaseToken: null, leaseExpiresAt: null })
+        .where(eq(schema.agentSessions.userId, input.ownerId));
       return target.id;
     });
 

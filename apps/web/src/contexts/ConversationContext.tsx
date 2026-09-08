@@ -323,6 +323,17 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
           switch (data.type) {
             case 'connected':
               setIsConnected(true);
+              void refreshNegotiationsRef.current();
+              break;
+            case 'negotiation.turn':
+            case 'negotiation.settled':
+            case 'negotiation.opened':
+            case 'intent.lifecycle':
+              if (negotiationsRefreshTimeoutRef.current) clearTimeout(negotiationsRefreshTimeoutRef.current);
+              negotiationsRefreshTimeoutRef.current = setTimeout(() => {
+                negotiationsRefreshTimeoutRef.current = null;
+                void refreshNegotiationsRef.current();
+              }, 100);
               break;
             case 'message': {
               const msg = data.message as ConversationMessage;

@@ -20,7 +20,7 @@ export function restoreFetch(): void {
 export function mockModel(
   replies: (Partial<ModelMessage> | ((init?: RequestInit) => Response | Promise<Response>))[],
 ) {
-  const requests: { model: string; messages: ModelMessage[]; tools?: unknown[] }[] = [];
+  const requests: { models: string[]; messages: ModelMessage[]; tools?: unknown[] }[] = [];
   let call = 0;
 
   globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
