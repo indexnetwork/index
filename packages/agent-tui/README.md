@@ -25,8 +25,8 @@ Override the shared model client's ordered model list with one to three IDs:
 bun --env-file=.env.development run agent:tui google/gemini-3.8-flash anthropic/claude-haiku-4.5
 ```
 
-The model client owns rate-limit waiting and model switching. No API keys,
-HTTP server, Redis, or database are required for the scenario host. Ctrl+C stops
+The model client owns rate-limit waiting and model switching. No HTTP server,
+Redis, or database are required for the scenario host. Ctrl+C stops
 all agents and saves a private Markdown transcript in a temporary directory.
 Each scenario launch starts fresh.
 
