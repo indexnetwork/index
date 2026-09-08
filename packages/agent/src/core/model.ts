@@ -29,6 +29,24 @@ export interface ToolDefinition {
   function: { name: string; description: string; parameters: Record<string, unknown> };
 }
 
+/** Per-call cancellation and reporting, including when hosts share a model client. */
+export interface ModelRequestOptions {
+  signal?: AbortSignal;
+  onRetry?: (attempt: number, reason: string) => void;
+}
+
+/** The model capability supplied by the host to the agent loop. */
+export interface Model {
+  /**
+   * @param messages - The conversation for this call.
+   * @param tools - Available tool definitions.
+   * @param options - Per-call cancellation and retry reporting.
+   * @returns The assistant's text or tool calls.
+   * @throws On cancellation or a model failure.
+   */
+  complete(messages: ModelMessage[], tools?: ToolDefinition[], options?: ModelRequestOptions): Promise<ModelMessage>;
+}
+
 export interface ModelClientOptions {
   apiKey?: string;
   /** One to three ordered OpenRouter models. Replaces DEFAULT_MODELS. */
@@ -43,9 +61,6 @@ export interface ModelClientOptions {
   /** Attempts for transient failures, including the first. Defaults to 3.
    * Rate limits wait until recovery or cancellation without spending this budget. */
   attempts?: number;
-  /** Fires before each retry. Worth surfacing: a request being retried
-   * looks exactly like a slow one from the outside. */
-  onRetry?: (attempt: number, reason: string) => void;
 }
 
 /** Long enough for a slow model, short enough to notice a hang. */
@@ -108,13 +123,12 @@ class TransientError extends Error {
 }
 
 /** A minimal OpenRouter chat client that supports tool calling. */
-export class ModelClient {
+export class ModelClient implements Model {
   private readonly apiKey: string;
   private readonly models: readonly string[];
   private readonly cooldownKey: string;
   private readonly timeout: number;
   private readonly attempts: number;
-  private readonly onRetry?: (attempt: number, reason: string) => void;
 
   constructor(options: ModelClientOptions = {}) {
     const apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY;
@@ -129,7 +143,6 @@ export class ModelClient {
     this.cooldownKey = JSON.stringify([apiKey, this.models]);
     this.timeout = options.timeout ?? DEFAULT_TIMEOUT;
     this.attempts = Math.max(1, options.attempts ?? DEFAULT_ATTEMPTS);
-    this.onRetry = options.onRetry;
   }
 
   /**
@@ -141,19 +154,20 @@ export class ModelClient {
    * cancellation. Other transient failures are bounded by `attempts`.
    * @param messages - The conversation to continue, unchanged across retries.
    * @param tools - Functions available to every model in the list.
-   * @param signal - Cancels both requests and cooldown waits.
+   * @param options - Cancels requests and cooldown waits, and reports retries to this caller.
    * @returns The assistant's text or tool calls.
    * @throws On cancellation, a permanent error, or exhausted transient retries.
    */
   async complete(
     messages: ModelMessage[],
     tools: ToolDefinition[] = [],
-    signal?: AbortSignal,
+    options: ModelRequestOptions = {},
   ): Promise<ModelMessage> {
+    const { signal, onRetry } = options;
     let failures = 0;
     let rateLimits = 0;
     for (let attempt = 1; ; attempt++) {
-      await this.waitForQuota(attempt, signal);
+      await this.waitForQuota(attempt, options);
       try {
         return await this.send(messages, tools, signal);
       } catch (cause) {
@@ -177,14 +191,14 @@ export class ModelClient {
         if (++failures >= this.attempts) {
           throw new Error(`OpenRouter did not answer after ${attempt} attempts: ${cause.message}`, { cause });
         }
-        this.onRetry?.(attempt + 1, cause.message);
+        onRetry?.(attempt + 1, cause.message);
         await this.pause(cause.retryAfter ?? 2 ** (failures - 1) * 1_000, signal);
       }
     }
   }
 
   /** New calls also wait; one session's 429 must not trigger a retry storm. */
-  private async waitForQuota(attempt: number, signal?: AbortSignal): Promise<void> {
+  private async waitForQuota(attempt: number, { signal, onRetry }: ModelRequestOptions): Promise<void> {
     while (true) {
       signal?.throwIfAborted();
       const remaining = (cooldowns.get(this.cooldownKey) ?? 0) - Date.now();
@@ -192,7 +206,7 @@ export class ModelClient {
         cooldowns.delete(this.cooldownKey);
         return;
       }
-      this.onRetry?.(attempt, `OpenRouter rate limited; retrying in ${Math.ceil(remaining / 1_000)}s.`);
+      onRetry?.(attempt, `OpenRouter rate limited; retrying in ${Math.ceil(remaining / 1_000)}s.`);
       await this.pause(remaining + Math.random() * RETRY_JITTER, signal);
     }
   }

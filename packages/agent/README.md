@@ -24,7 +24,7 @@ One agent per party, with one identity. `for()` scopes it to an intent —
 that narrows what it's working on, never who it is.
 
 ```ts
-const agent = new Agent({ identity, systemPrompt, tools });  // one per party
+const agent = new Agent({ identity, systemPrompt, tools, model });  // one per party
 const raising = agent.for("Raise a 400k pre-seed round");     // same identity
 ```
 
@@ -50,9 +50,10 @@ bun add @indexnetwork/agent
 ## Usage
 
 ```ts
-import { Agent, askUserTool, type Tool } from "@indexnetwork/agent";
+import { Agent, ModelClient, askUserTool, type Tool } from "@indexnetwork/agent";
 
 const agent = new Agent({
+  model: new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY }),
   identity: { name: "Tomas's Agent", id: "did:example:tomas" },
   systemPrompt:
     "You act for Tomas. Ask him directly about anything you have not been told — " +
@@ -146,20 +147,30 @@ can work the same way.
 
 ### Models and quota recovery
 
-Pass an ordered `models` list when initializing an `Agent`, or in the third
-argument to `NegotiationAgent`:
+The host constructs a model implementation and injects it into `Agent` or
+`NegotiationAgent`. The supplied `ModelClient` implements OpenRouter access:
 
 ```ts
+import { Agent, ModelClient, NegotiationAgent } from "@indexnetwork/agent";
+
 const models = ["google/gemini-3.8-flash", "anthropic/claude-haiku-4.5"];
-const agent = new Agent({ identity, systemPrompt, models });
-const negotiator = new NegotiationAgent(participant, host, { models });
+const model = new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY, models });
+const agent = new Agent({ identity, systemPrompt, model });
+const negotiator = new NegotiationAgent(participant, host, { model });
 ```
 
 OpenRouter accepts one to three models; an injected list replaces the defaults
-completely. This replaces the former
-`model` option; use `models: [modelId]` for a single model. Omitting the list uses
+completely. Use `models: [modelId]` for a single model. Omitting the list uses
 `DEFAULT_MODELS` in [core/model.ts](src/core/model.ts), which also owns all retry
-and cooldown policy. Both negotiation scripts inherit that policy.
+and cooldown policy. The TUI and REST host use that same implementation.
+
+`Agent` and `NegotiationAgent` require a `model` object; model IDs, credentials,
+timeouts, and retry attempts belong to `ModelClient`, not the agent constructors.
+The agent loop depends only on the exported `Model.complete(messages, tools,
+options)` contract. Its per-call options contain `signal` and `onRetry`. A host
+may share one model client across principals: each call retains its own
+cancellation and retry observer, while conversations stay on their agents.
+The loop does not read model credentials or construct an OpenRouter client.
 
 OpenRouter handles provider selection and ordered model fallback. If it still
 returns a rate limit, agents using the same key and list in this process share
@@ -167,7 +178,8 @@ a cooldown based on `Retry-After` or `X-RateLimit-Reset`, including headers in
 error metadata. Without a hint, waits grow from 30 seconds to 5 minutes, with
 jitter to spread retries. Quota failures wait until recovery or cancellation;
 they do not exhaust the normal three-attempt budget for transient failures.
-`onRetry` reports waits, and shutdown interrupts them immediately. Authentication,
+The agent's `onRetry` callback (or `NegotiationHost.retry`) reports waits, and shutdown
+interrupts them immediately. Authentication,
 credit, and invalid-request errors fail promptly. Individual provider quotas
 are left to OpenRouter; there are no local per-model request counters.
 
@@ -189,6 +201,7 @@ const agent = new NegotiationAgent(
     client,
   },
   host,
+  { model },
 );
 
 // Register a separate A2A match under this personal agent and intent.
@@ -222,6 +235,8 @@ Direct principal messages have kind `user`; the agent's replies have kind
 conversation rather than a displayed match question.
 An error with a null opportunity ID means the principal communication loop
 failed, and the runtime shuts down that principal/intent.
+Hosts deliver update events after successful writes. The optional `turn()`
+observer reports a submission; event delivery does not depend on that callback.
 
 All matches share one `Agent` instance, H2A history, and accepted commitments.
 Each A2A match keeps its own task, record, and temporary model/tool transcript.
@@ -274,8 +289,9 @@ There is at most one submission attempt per turn, with no automatic write
 retry, and a 12-turn limit per negotiation. The runtime's session state is
 currently in memory. A server can initialize this runtime and deliver the same
 events; server startup, event subscriptions, and restart recovery are outside
-this package's current host wiring. The local lab and REST runner in
-`scripts/agent-negotiation*` both use this runtime.
+this package's current host wiring. The local lab in
+[`packages/agent-tui`](../agent-tui/README.md) and REST runner in
+[`scripts/agent-negotiation.ts`](../../scripts/agent-negotiation.ts) both use this runtime.
 
 ### Batched inbox work
 
@@ -314,5 +330,5 @@ than repeated. It's read as UTC; a host whose party lives elsewhere passes
 an instant shifted into that timezone, and a test passes a fixed one:
 
 ```ts
-new Agent({ identity, systemPrompt, now: () => new Date("2026-08-31T09:00:00Z") });
+new Agent({ identity, systemPrompt, model, now: () => new Date("2026-08-31T09:00:00Z") });
 ```

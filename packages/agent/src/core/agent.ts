@@ -1,6 +1,6 @@
 import { runLoop } from "./loop.ts";
 import { MemoryMessageStore } from "./sessions.ts";
-import { ModelClient, type ModelMessage } from "./model.ts";
+import type { Model, ModelMessage } from "./model.ts";
 import { defaultTools, type Tool } from "./tools.ts";
 import type { AgentIdentity, Intent, MessageStore, RunResult, Step } from "./types.ts";
 
@@ -35,18 +35,10 @@ export interface AgentOptions {
    */
   tools?: Tool<never>[];
 
-  /** One to three ordered OpenRouter models, replacing core/model.ts defaults. */
-  models?: readonly string[];
-  /** OpenRouter API key. Falls back to `OPENROUTER_API_KEY`. */
-  apiKey?: string;
+  /** Model capability constructed by the host, shared across this agent's tasks. */
+  model: Model;
   /** Step cap for `run()`. Defaults to 10. */
   maxSteps?: number;
-  /** How long one model request may take, in ms. Defaults to 120s. A hung
-   * connection otherwise stalls the agent until someone interrupts it. */
-  timeout?: number;
-  /** Attempts for transient model failures. Defaults to 3. Rate limits
-   * wait until recovery or cancellation without spending this budget. */
-  attempts?: number;
   /** Fires before a model call is retried. A retry looks like slowness
    * from the outside, so a host with a UI generally wants to say so. */
   onRetry?: (attempt: number, reason: string) => void;
@@ -100,7 +92,7 @@ export class Agent {
   readonly intent?: Intent;
   readonly tools: Tool<never>[];
 
-  private readonly model: ModelClient;
+  private readonly model: Model;
   private readonly maxSteps: number;
   /** This agent's conversation with its party. */
   private readonly history: MessageStore;
@@ -111,13 +103,7 @@ export class Agent {
     this.intent = options.intent;
     this.tools = options.tools ?? defaultTools();
 
-    this.model = new ModelClient({
-      apiKey: options.apiKey,
-      models: options.models,
-      timeout: options.timeout,
-      attempts: options.attempts,
-      onRetry: options.onRetry,
-    });
+    this.model = options.model;
     this.maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
     this.history = options.history ?? new MemoryMessageStore();
   }
@@ -186,6 +172,7 @@ export class Agent {
       maxSteps: options.maxSteps ?? this.maxSteps,
       context: { agent: this, signal: options.signal },
       onStep: options.onStep,
+      onRetry: this.options.onRetry,
       signal: options.signal,
     });
 

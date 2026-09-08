@@ -6,7 +6,6 @@
       "name": "index-monorepo",
       "devDependencies": {
         "@eslint/js": "^10.0.1",
-        "@opentui/core": "0.5.10",
         "eslint": "^9.39.1",
         "eslint-import-resolver-typescript": "^4.4.4",
         "eslint-plugin-boundaries": "^6.0.2",
@@ -68,6 +67,18 @@
     "packages/agent": {
       "name": "@indexnetwork/agent",
       "version": "0.2.0",
+      "devDependencies": {
+        "@types/bun": "1.3.14",
+        "typescript": "5.9.3",
+      },
+    },
+    "packages/agent-tui": {
+      "name": "@indexnetwork/agent-tui",
+      "version": "0.1.0",
+      "dependencies": {
+        "@indexnetwork/agent": "workspace:*",
+        "@opentui/core": "0.5.10",
+      },
       "devDependencies": {
         "@types/bun": "1.3.14",
         "typescript": "5.9.3",
@@ -408,6 +419,8 @@
     "@humanwhocodes/retry": ["@humanwhocodes/retry@0.4.3", "", {}, "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ=="],
 
     "@indexnetwork/agent": ["@indexnetwork/agent@workspace:packages/agent"],
+
+    "@indexnetwork/agent-tui": ["@indexnetwork/agent-tui@workspace:packages/agent-tui"],
 
     "@indexnetwork/api": ["@indexnetwork/api@workspace:services/api"],
 

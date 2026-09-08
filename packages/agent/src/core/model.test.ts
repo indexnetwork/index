@@ -114,7 +114,7 @@ describe("ModelClient timeouts and retries", () => {
     const controller = new AbortController();
 
     try {
-      const pending = client.complete([], [], controller.signal);
+      const pending = client.complete([], [], { signal: controller.signal });
       setTimeout(() => controller.abort(), 50);
       await expect(pending).rejects.toThrow();
       await Bun.sleep(200);

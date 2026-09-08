@@ -40,7 +40,7 @@ export interface NegotiationClient {
 
 export interface NegotiationHost {
   status(opportunityId: string, message: string, phase: 'running' | 'question'): void;
-  turn(owner: User, input: TurnInput, record: Negotiation): void;
+  turn?(owner: User, input: TurnInput, record: Negotiation): void;
   retry(owner: User, attempt: number, reason: string): void;
   step(opportunityId: string, owner: User, step: Step): void;
   /** Observe the principal's H2A history and active question through the runtime. */
@@ -100,11 +100,12 @@ export class NegotiationAgent {
   constructor(
     private readonly participant: { owner: User; intent: Intent; instructions: string; client: NegotiationClient },
     private readonly host: NegotiationHost,
-    options: Pick<AgentOptions, 'models'> = {},
+    options: Pick<AgentOptions, 'model' | 'now'>,
   ) {
     const { owner, intent, instructions } = participant;
     this.agent = new Agent({
-      models: options.models,
+      model: options.model,
+      now: options.now,
       identity: { id: owner.id, name: owner.name ?? owner.id },
       intent: { id: intent.id, statement: intent.payload },
       systemPrompt: [
@@ -236,7 +237,7 @@ export class NegotiationAgent {
             const record = await client.submitTurn(task.opportunityId, inputTurn);
             turn.submitted = true;
             this.remember(record);
-            this.host.turn(owner, inputTurn, record);
+            this.host.turn?.(owner, inputTurn, record);
             return record;
           } catch (error) {
             turn.writeError = true;

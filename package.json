@@ -9,7 +9,8 @@
     "packages/cli",
     "packages/claude-plugin",
     "packages/hermes-plugin",
-    "packages/agent"
+    "packages/agent",
+    "packages/agent-tui"
   ],
   "scripts": {
     "dev": "bash scripts/dev.sh",
@@ -35,7 +36,7 @@
     "db:playground:reset": "bun scripts/playground-reset.ts",
     "db:playground:resume": "cd services/api && bun src/cli/resume-playground-intents.ts",
     "agent:negotiate": "bun run --cwd packages/agent build && bun scripts/agent-negotiation.ts",
-    "agent:tui": "bun run --cwd packages/agent build && bun scripts/agent-negotiation.tui.ts",
+    "agent:tui": "bun run --cwd packages/agent build && bun packages/agent-tui/src/main.ts",
     "sync:lockfile-versions": "bun scripts/sync-lockfile-versions.ts",
     "check:lockfile-versions": "bun scripts/sync-lockfile-versions.ts --check",
     "pr:snapshot": "bun scripts/pr-snapshot.ts",
@@ -49,7 +50,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@opentui/core": "0.5.10",
     "eslint": "^9.39.1",
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-boundaries": "^6.0.2",

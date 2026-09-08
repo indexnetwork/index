@@ -15,7 +15,8 @@ export { Inbox, TICK_MS } from "./core/inbox.ts";
 export type { InboxEvent, InboxOptions } from "./core/inbox.ts";
 
 export { MemoryMessageStore } from "./core/sessions.ts";
-export type { ModelMessage } from "./core/model.ts";
+export { ModelClient } from "./core/model.ts";
+export type { Model, ModelClientOptions, ModelMessage, ModelRequestOptions, ToolDefinition } from "./core/model.ts";
 
 export type {
   AgentIdentity,

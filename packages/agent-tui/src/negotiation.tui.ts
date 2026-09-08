@@ -1,14 +1,9 @@
-#!/usr/bin/env bun
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import type { PrincipalQuestion } from '@indexnetwork/agent';
-import { BoxRenderable, createCliRenderer, ScrollBoxRenderable, TextareaRenderable, TextRenderable, type CliRenderer, type KeyEvent } from '@opentui/core';
+import { BoxRenderable, ScrollBoxRenderable, TextareaRenderable, TextRenderable, type CliRenderer, type KeyEvent } from '@opentui/core';
 
-import { NegotiationLab, parseScenario } from './agent-negotiation.demo';
+import { NegotiationLab, type DemoPrincipal } from './negotiation.lab';
 
-const COLORS = { background: '#10151e', text: '#dce4ef', muted: '#8996aa', border: '#364255', focus: '#77b8ff', question: '#f4c773', answer: '#8dd9b7' };
+export const COLORS = { background: '#10151e', text: '#dce4ef', muted: '#8996aa', border: '#364255', focus: '#77b8ff', question: '#f4c773', answer: '#8dd9b7' };
 
 interface Pane {
   box: BoxRenderable;
@@ -35,7 +30,8 @@ interface Pane {
  * @param lab - The user/intent conversations and separate match records.
  */
 export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab): void {
-  let demo = lab.active;
+  const selectedUsers: [DemoPrincipal, DemoPrincipal] = [lab.users[0], lab.users[1]];
+  let demo = lab.negotiation(selectedUsers[0].id, selectedUsers[1].id);
   const root = new BoxRenderable(renderer, { id: 'negotiation-lab', width: '100%', height: '100%', flexDirection: 'column', backgroundColor: COLORS.background });
   renderer.root.add(root);
   root.add(new TextRenderable(renderer, { content: ` NEGOTIATION LAB · ${lab.users.length} users · real agents / local simulation`, fg: COLORS.focus, height: 1, flexShrink: 0 }));
@@ -80,7 +76,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
 
   function chooseUser(index: number, ownerId: string): void {
     panes[index].users!.visible = false;
-    lab.selectUser(index === 0 ? 'left' : 'right', ownerId);
+    selectedUsers[index === 0 ? 0 : 1] = lab.users.find(({ id }) => id === ownerId)!;
     focus(index);
   }
 
@@ -91,7 +87,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
     if (pane.users.visible) {
       clear(pane.users);
       pane.userRows = [];
-      const opposite = lab.selectedUsers[index === 0 ? 1 : 0];
+      const opposite = selectedUsers[index === 0 ? 1 : 0];
       lab.users.filter(({ id }) => id !== opposite.id).forEach((user, userIndex) => {
         const button = new BoxRenderable(renderer, {
           id: `user-${index}-${userIndex}`, width: '100%', height: 1, flexShrink: 0,
@@ -110,7 +106,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
   }
 
   for (let index = 0; index < 3; index++) {
-    const principal = index === 1 ? undefined : lab.selectedUsers[index === 0 ? 0 : 1];
+    const principal = index === 1 ? undefined : selectedUsers[index === 0 ? 0 : 1];
     const box = new BoxRenderable(renderer, {
       id: `pane-${index}`,
       flexDirection: 'column', flexGrow: principal ? 3 : 4, flexBasis: 0, minWidth: 0,
@@ -184,9 +180,9 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
   function render(): void {
     if (renderer.isDestroyed) return;
     for (const pane of panes) if (pane.ownerId) drafts.set(pane.ownerId, pane.input!.plainText);
-    demo = lab.active;
+    demo = lab.negotiation(selectedUsers[0].id, selectedUsers[1].id);
     panes.forEach((pane, index) => {
-      const principal = index === 1 ? undefined : lab.selectedUsers[index === 0 ? 0 : 1];
+      const principal = index === 1 ? undefined : selectedUsers[index === 0 ? 0 : 1];
       if (principal && pane.ownerId !== principal.id) {
         clear(pane.history);
         pane.displayed = 0;
@@ -201,7 +197,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
         clear(pane.history);
         pane.displayed = 0;
         pane.opportunityId = demo.opportunityId;
-        append(pane.history, lab.selectedUsers.map(({ name }) => name).join(' ↔ '), 'Shared agent turns for this match.', COLORS.muted);
+        append(pane.history, selectedUsers.map(({ name }) => name).join(' ↔ '), 'Shared agent turns for this match.', COLORS.muted);
       }
       const agent = principal ? lab.agents.get(principal.id)! : undefined;
       if (agent) {
@@ -267,7 +263,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
         row.label.fg = highlighted ? COLORS.text : COLORS.muted;
         row.label.content = `${highlighted ? '›' : ' '} ${row.name}${row.ownerId === pane.ownerId ? ' · active' : ''}`;
       });
-      pane.box.title = principal ? ` H2A · ${principal.name}${pending ? ' · needs you' : ''} ` : ` A2A · ${lab.selectedUsers.map(({ name }) => name).join(' ↔ ')} `;
+      pane.box.title = principal ? ` H2A · ${principal.name}${pending ? ' · needs you' : ''} ` : ` A2A · ${selectedUsers.map(({ name }) => name).join(' ↔ ')} `;
       pane.box.borderColor = selected === index ? COLORS.focus : pending ? COLORS.question : COLORS.border;
       pane.box.titleColor = pending ? COLORS.question : selected === index ? COLORS.focus : COLORS.muted;
       if (pane.hint) {
@@ -343,62 +339,3 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
   });
   focus(0);
 }
-
-const USAGE = `Usage: bun run agent:tui <scenario.json>
-
-Requires OPENROUTER_API_KEY and an interactive terminal. Uses real agents and
-in-memory negotiations; no Index API keys, database, or server are used.
-
-Scenario: { "users": [{ "id", "name", "intent", "instructions" }, ...] }
-Click the name above either side or press Ctrl+U to change that user. Select with
-Up/Down + Enter or click a user. The opposite user is excluded. All distinct user
-pairs are simulated matches and start in parallel on launch (66 with 12 users).
-Each user has one H2A conversation and draft for their intent, across all matches.
-The center shows the selected pair's A2A turns. Questions identify their match;
-answering one resumes that match even while another pair is displayed.
-H2A shows focused questions and meaningful outcomes, with routine A2A progress
-kept in the center. Related requests can share an intent-wide question without
-changing it while you answer; match-specific approvals remain separate.
-Click either side to act as that user. Click or use Up/Down to highlight an
-agent-provided option, then Enter to confirm. Select Custom reply or click the
-text box to write your own answer. Esc returns from editing to the choices.
-When no question is active, Enter sends the text to your personal agent instead.
-Ask about your negotiations or give new instructions in the same H2A conversation.
-Tab cycles panes; Ctrl+J adds a newline; mouse wheel or PgUp/PgDn scrolls history.
-Ctrl+C stops all agents and exports each H2A conversation once, followed by A2A turns.
-Rerun the command for a fresh lab with an edited user roster.
-`;
-
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  if (args.length === 1 && args[0] === '--help') { console.log(USAGE); return; }
-  if (args.length !== 1) throw new Error(USAGE);
-  const scenario = parseScenario(await Bun.file(args[0]).json());
-  if (!process.env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY is required.');
-  if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('Run the TUI in an interactive terminal.');
-  const lab = new NegotiationLab(scenario);
-  const transcriptPath = join(mkdtempSync(join(tmpdir(), 'index-negotiation-')), 'transcript.md');
-  let close!: () => void;
-  const closed = new Promise<void>((resolve) => { close = resolve; });
-  const renderer = await createCliRenderer({
-    useMouse: true, autoFocus: false, exitOnCtrlC: true, consoleMode: 'disabled',
-    backgroundColor: COLORS.background,
-    onDestroy: close,
-  });
-  try {
-    mountNegotiationTui(renderer, lab);
-    lab.matchAll();
-    await closed;
-  } finally {
-    renderer.destroy();
-    await lab.stop();
-    writeFileSync(transcriptPath, lab.markdown(), { mode: 0o600 });
-    console.log(`\nPrivate transcript saved: ${transcriptPath}`);
-    if ([...lab.negotiations.values()].some((demo) => demo.phase === 'error')) process.exitCode = 1;
-  }
-}
-
-if (import.meta.main) main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});

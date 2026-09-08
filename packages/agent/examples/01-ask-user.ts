@@ -10,7 +10,7 @@
  *
  *   OPENROUTER_API_KEY=... bun run examples/01-ask-user.ts
  */
-import { Agent, askUserTool, type Tool } from "../src/index.ts";
+import { Agent, ModelClient, askUserTool, type Tool } from "../src/index.ts";
 import { answerUntilDone, logStep } from "./shared.ts";
 
 // Stands in for an Index Network operation the host injects. This package
@@ -43,6 +43,7 @@ const findMatches: Tool<{ looking_for: string }> = {
 };
 
 const agent = new Agent({
+  model: new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY }),
   identity: { name: "Tomas's Agent", id: "did:example:tomas" },
   systemPrompt:
     "You act for Tomas. Before committing him to anything with a number attached — a day rate, a budget, a start date — you must ask him first, with the ask_user tool rather than in your reply: he may not read a reply for days, and the tool is what reaches him. Never assume a figure he has not given you.",

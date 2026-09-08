@@ -2,11 +2,11 @@
 /** Standalone REST host. No API-server or database imports. */
 import { createInterface } from 'node:readline/promises';
 
-import { NegotiationAgent, type NegotiationIntent as Intent, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput, type NegotiationUser as User } from '@indexnetwork/agent';
+import { ModelClient, NegotiationAgent, type NegotiationIntent as Intent, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput, type NegotiationUser as User } from '@indexnetwork/agent';
 
 /** Index transport belongs to this host, never to the agent library. */
 class IndexClient implements NegotiationClient {
-  constructor(private readonly origin: string, private readonly apiKey: string) {}
+  constructor(private readonly origin: string, private readonly apiKey: string, private readonly updated: (id: string) => void) {}
 
   /** @returns The authenticated owner, whose identity cannot be supplied by the model. */
   async me(): Promise<User> {
@@ -30,7 +30,9 @@ class IndexClient implements NegotiationClient {
    * @throws When Index rejects the turn or the request fails. Never retries a POST.
    */
   async submitTurn(id: string, turn: TurnInput): Promise<Negotiation> {
-    return (await this.request<{ negotiation: Negotiation }>(`/negotiations/${encodeURIComponent(id)}/turns`, turn)).negotiation;
+    const record = (await this.request<{ negotiation: Negotiation }>(`/negotiations/${encodeURIComponent(id)}/turns`, turn)).negotiation;
+    this.updated(id);
+    return record;
   }
 
   private async request<T>(path: string, turn?: TurnInput): Promise<T> {
@@ -83,13 +85,16 @@ async function main(): Promise<void> {
   if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
     throw new Error('INDEX_API_URL must be an HTTP(S) origin without credentials, a path, query, or fragment.');
   }
+  const agents: NegotiationAgent[] = [];
   const participants = [];
   for (const [env, path] of [['INDEX_API_KEY', instructionsPath], ['INDEX_COUNTERPARTY_API_KEY', counterpartyInstructionsPath]]) {
     const apiKey = process.env[env];
     if (!apiKey) throw new Error(`${env} is required. Supply separate keys for the two principals.`);
     const instructions = (await Bun.file(path).text()).trim();
     if (!instructions) throw new Error(`${path} is empty. Supply that principal’s preferences and limits.`);
-    const client = new IndexClient(origin.origin, apiKey);
+    const client = new IndexClient(origin.origin, apiKey, (id) => {
+      for (const agent of agents) void agent.receive({ kind: 'negotiation.updated', opportunityId: id });
+    });
     const owner = await client.me();
     const initial = await client.readNegotiation(opportunityId);
     const intent = await client.readIntent(initial.intentId);
@@ -108,8 +113,8 @@ async function main(): Promise<void> {
     return;
   }
   if (!process.env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY is required to run the agents.');
+  const model = new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY });
   const terminal = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
-  const agents: NegotiationAgent[] = [];
   let finish!: () => void;
   let failure: string | undefined;
   const finished = new Promise<void>((resolve) => { finish = resolve; });
@@ -119,7 +124,6 @@ async function main(): Promise<void> {
     turn: (owner, input, result) => {
       console.log(`\n${owner.name ?? owner.id} [${input.action}]: ${input.message}`);
       console.log(`Recorded by Index; turnCount=${result.turnCount}, outcome=${result.outcome ?? 'open'}`);
-      for (const agent of agents) void agent.receive({ kind: 'negotiation.updated', opportunityId });
     },
     retry: (owner, attempt, reason) => console.error(`${owner.name ?? owner.id}: model retry ${attempt}: ${reason}`),
     step: (_id, _owner, step) => {
@@ -158,7 +162,7 @@ async function main(): Promise<void> {
             if (!closing) { failure = String(error); finish(); }
           });
         },
-      });
+      }, { model });
       return agent;
     }));
     participants.forEach((_participant, index) => {

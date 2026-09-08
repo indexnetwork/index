@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Agent } from "./agent.ts";
+import { ModelClient } from "./model.ts";
 import { MemoryMessageStore } from "./sessions.ts";
 import { call, mockModel, restoreFetch } from "./test-helpers.ts";
 import { askUserTool, type Tool } from "./tools.ts";
@@ -23,7 +24,7 @@ function agent(
   return new Agent({
     identity: { name: "Alice's Agent", id: "did:example:alice" },
     systemPrompt,
-    apiKey: "test-key",
+    model: new ModelClient({ apiKey: "test-key" }),
     now: () => TODAY,
     tools,
     ...options,
@@ -386,11 +387,8 @@ describe("asking the user", () => {
   });
 });
 
-describe("model options reach the client", () => {
-  // `timeout`, `attempts` and `onRetry` are forwarded to the ModelClient
-  // in the constructor. model.test.ts covers the client; this covers the
-  // seam, which no other test reads.
-  test("timeout, attempts and onRetry are forwarded to the model client", async () => {
+describe("injected model", () => {
+  test("uses the supplied client's timeout and attempts and reports retries", async () => {
     mockModel([
       // Never answers, but honours the deadline the client attached.
       (init) =>
@@ -401,10 +399,8 @@ describe("model options reach the client", () => {
     const agent = new Agent({
       identity: { name: "Alice's Agent", id: "did:example:alice" },
       systemPrompt: "You act for Alice.",
-      apiKey: "test-key",
+      model: new ModelClient({ apiKey: "test-key", timeout: 50, attempts: 2 }),
       tools: [],
-      timeout: 50,
-      attempts: 2,
       onRetry: (attempt, reason) => retries.push([attempt, reason]),
     });
 

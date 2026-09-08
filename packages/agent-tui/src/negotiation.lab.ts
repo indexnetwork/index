@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { NegotiationAgent, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
+import { NegotiationAgent, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
 
 export interface DemoPrincipal {
   id: string;
@@ -104,16 +104,13 @@ export class NegotiationDemo extends EventEmitter {
         } else {
           this.awaitingUserId = this.principals.find((principal) => principal.id !== ownerId)!.id;
         }
-        return this.read(ownerId);
+        const record = this.read(ownerId);
+        this.transcript.push({ ownerId, text: turn.message, action: turn.action });
+        this.emit('change');
+        this.emit('negotiation.updated');
+        return record;
       },
     };
-  }
-
-  /** @param ownerId - The author of a persisted A2A turn. @param input - The public decision. */
-  turn(ownerId: string, input: TurnInput): void {
-    this.transcript.push({ ownerId, text: input.message, action: input.action });
-    this.emit('change');
-    this.emit('negotiation.updated');
   }
 
   /** @param record - The final authoritative state observed by an agent. */
@@ -156,12 +153,10 @@ export class NegotiationLab extends EventEmitter {
   readonly negotiations = new Map<string, NegotiationDemo>();
   readonly agents = new Map<string, NegotiationAgent>();
   agentStatus = '';
-  private selection: [DemoPrincipal, DemoPrincipal];
 
-  constructor(scenario: DemoScenario) {
+  constructor(scenario: DemoScenario, options: { model: Model }) {
     super();
     this.users = scenario.users;
-    this.selection = [this.users[0], this.users[1]];
     for (let index = 0; index < this.users.length; index++) {
       for (const other of this.users.slice(index + 1)) {
         const principals = [this.users[index], other] as const;
@@ -178,7 +173,6 @@ export class NegotiationLab extends EventEmitter {
       const clientFor = (id: string) => this.negotiations.get(id)!.client(user.id);
       const host: NegotiationHost = {
         status: (id, message, phase) => this.negotiations.get(id)!.progress(message, phase),
-        turn: (owner, input, record) => this.negotiations.get(record.opportunityId)!.turn(owner.id, input),
         retry: (owner, attempt, reason) => {
           this.agentStatus = (owner.name ?? owner.id) + ': model retry ' + attempt + ' · ' + reason;
           this.emit('change');
@@ -208,17 +202,22 @@ export class NegotiationLab extends EventEmitter {
           readNegotiation: (id) => clientFor(id).readNegotiation(id),
           submitTurn: (id, turn) => clientFor(id).submitTurn(id, turn),
         },
-      }, host));
+      }, host, options));
     }
   }
 
-  /** @returns The users displayed on the left and right, in that order. */
-  get selectedUsers(): readonly [DemoPrincipal, DemoPrincipal] { return this.selection; }
-
-  /** @returns The selected pair's A2A record without changing execution or H2A state. */
-  get active(): NegotiationDemo {
-    const id = `local:${this.selection.map(({ id }) => id).sort().map(encodeURIComponent).join(':')}`;
-    return this.negotiations.get(id)!;
+  /**
+   * Read a simulated pair without changing execution or H2A state.
+   * @param leftId - One principal's ID.
+   * @param rightId - The other principal's ID.
+   * @returns The pair's public A2A record.
+   * @throws When these users do not have a simulated match.
+   */
+  negotiation(leftId: string, rightId: string): NegotiationDemo {
+    const id = `local:${[leftId, rightId].sort().map(encodeURIComponent).join(':')}`;
+    const record = this.negotiations.get(id);
+    if (!record) throw new Error(`Unknown match: ${leftId} / ${rightId}`);
+    return record;
   }
 
   /** Deliver simulated matches to the always-on agents, which own their negotiation lifecycles. */
@@ -228,21 +227,6 @@ export class NegotiationLab extends EventEmitter {
         void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: demo.opportunityId });
       }
     }
-  }
-
-  /**
-   * Change the displayed user without starting or restarting any negotiation.
-   * @param side - The left or right user selector.
-   * @param userId - A user in this scenario, distinct from the opposite side.
-   * @throws When the user is unknown or already selected on the opposite side.
-   */
-  selectUser(side: 'left' | 'right', userId: string): void {
-    const user = this.users.find(({ id }) => id === userId);
-    if (!user) throw new Error(`Unknown user: ${userId}`);
-    const index = side === 'left' ? 0 : 1;
-    if (this.selection[1 - index].id === userId) throw new Error('Select two different users.');
-    this.selection[index] = user;
-    this.emit('change');
   }
 
   /** Cancel model work, release human questions, and stop all match records. */
