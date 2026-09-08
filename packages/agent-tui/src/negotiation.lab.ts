@@ -1,6 +1,10 @@
 import { EventEmitter } from 'node:events';
 
-import { NegotiationAgent, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
+import { MemoryPrincipalStore, NegotiationAgent, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
+
+import { NEGOTIATION_GUIDANCE, Negotiations, decideNegotiationOpening, type NegotiationState } from '@indexnetwork/protocol';
+
+import type { TuiPrincipal } from './negotiation.tui';
 
 export interface DemoPrincipal {
   id: string;
@@ -54,9 +58,11 @@ export class NegotiationDemo extends EventEmitter {
   private outcome: string | null = null;
   private settledAt: string | null = null;
 
-  constructor(readonly principals: readonly [DemoPrincipal, DemoPrincipal], readonly opportunityId: string) {
+  constructor(readonly principals: readonly [TuiPrincipal, TuiPrincipal], readonly opportunityId: string) {
     super();
-    this.awaitingUserId = principals[0].id;
+    const decision = decideNegotiationOpening({ userA: principals[0].userId, userB: principals[1].userId, intentA: principals[0].intentId, intentB: principals[1].intentId, eligible: true });
+    if (!decision) throw new Error('This pair is not eligible to negotiate.');
+    this.awaitingUserId = decision.awaitingUserId;
   }
 
   /** @param status - The library's progress for this match. @param phase - Whether it is running or awaiting its principal. */
@@ -67,17 +73,43 @@ export class NegotiationDemo extends EventEmitter {
     this.emit('change');
   }
 
-  private read(ownerId: string): Negotiation {
-    const other = this.principals.find((principal) => principal.id !== ownerId)!;
+  private async read(ownerId: string): Promise<Negotiation> {
+    const other = this.principals.find((principal) => principal.userId !== ownerId)!;
     return structuredClone({
       opportunityId: this.opportunityId,
-      intentId: `intent-${ownerId}`,
+      intentId: this.principals.find((principal) => principal.userId === ownerId)!.intentId,
       awaitingUserId: this.awaitingUserId,
       outcome: this.outcome,
       settledAt: this.settledAt,
       turnCount: this.turns.length,
-      counterparty: { userId: other.id, name: other.name, statement: other.intent },
+      protocol: (await this.protocol().observe(this.opportunityId, ownerId))!,
+      counterparty: { userId: other.userId, name: other.name, statement: other.intent },
       turns: this.turns,
+    });
+  }
+
+  private state(): NegotiationState {
+    return { initiatorUserId: this.principals[0].userId, responderUserId: this.principals[1].userId,
+      awaitingUserId: this.awaitingUserId, outcome: this.outcome as NegotiationState['outcome'],
+      settled: this.settledAt !== null, eligible: true, turns: this.turns };
+  }
+
+  private protocol(): Negotiations {
+    return new Negotiations({
+      readNegotiationState: async () => this.state(),
+      commitNegotiationTurn: async (_id, ownerId, turn, decide) => {
+        this.controller.signal.throwIfAborted();
+        const decision = decide(this.state());
+        if (!decision.ok) return decision;
+        this.turns.push({ turnIndex: decision.turnIndex, seatUserId: ownerId, action: turn.action, message: turn.message });
+        this.outcome = decision.outcome;
+        this.settledAt = decision.outcome ? new Date().toISOString() : null;
+        this.awaitingUserId = decision.awaitingUserId;
+        this.transcript.push({ ownerId, text: turn.message, action: turn.action });
+        this.emit('change');
+        this.emit('negotiation.updated');
+        return decision;
+      },
     });
   }
 
@@ -90,24 +122,9 @@ export class NegotiationDemo extends EventEmitter {
     return {
       readNegotiation: async () => this.read(ownerId),
       submitTurn: async (_id: string, turn: TurnInput) => {
-        this.controller.signal.throwIfAborted();
-        if (this.settledAt) throw new Error('This negotiation is already settled.');
-        if (this.awaitingUserId !== ownerId) throw new Error('It is not your turn.');
-        if (turn.action === 'propose' && this.turns.length !== 0) throw new Error('propose is only valid as the opening turn.');
-        if (turn.action === 'counter' && this.turns.length === 0) throw new Error('counter needs a standing offer.');
-        if (turn.action === 'accept' && (!this.turns.length || this.turns.at(-1)!.seatUserId === ownerId)) throw new Error('accept needs an offer from the other principal.');
-        this.turns.push({ turnIndex: this.turns.length, seatUserId: ownerId, ...turn });
-        if (turn.action === 'accept' || turn.action === 'decline') {
-          this.outcome = turn.action === 'accept' ? 'agreed' : 'declined';
-          this.settledAt = new Date().toISOString();
-          this.awaitingUserId = null;
-        } else {
-          this.awaitingUserId = this.principals.find((principal) => principal.id !== ownerId)!.id;
-        }
-        const record = this.read(ownerId);
-        this.transcript.push({ ownerId, text: turn.message, action: turn.action });
-        this.emit('change');
-        this.emit('negotiation.updated');
+        const decision = await this.protocol().execute(this.opportunityId, ownerId, turn);
+        if (!decision.ok) throw new Error(decision.rejection);
+        const record = await this.read(ownerId);
         return record;
       },
     };
@@ -117,7 +134,7 @@ export class NegotiationDemo extends EventEmitter {
   end(record: Negotiation): void {
     if (this.phase === 'error') return;
     this.phase = record.settledAt ? 'settled' : 'stopped';
-    this.status = (record.outcome ?? 'Stopped without settlement') + ' · ' + record.turnCount + ' A2A turns';
+    this.status = (record.outcome ?? record.protocol.blockedReason ?? 'Stopped without settlement') + ' · ' + record.turnCount + ' A2A turns';
     this.emit('change');
   }
 
@@ -140,7 +157,7 @@ export class NegotiationDemo extends EventEmitter {
 
   /** @returns Only this match's public A2A turns. */
   markdown(): string {
-    const names = new Map(this.principals.map((principal) => [principal.id, principal.name]));
+    const names = new Map(this.principals.map((principal) => [principal.userId, principal.name]));
     return '# A2A · ' + this.principals.map(({ name }) => name).join(' ↔ ') + '\n\n'
       + this.transcript.map((entry, index) => '## ' + (index + 1) + '. ' + names.get(entry.ownerId) + ' · ' + entry.action + '\n\n' + entry.text).join('\n\n')
       + '\n\n## Status\n\n' + this.status + '\n';
@@ -149,14 +166,15 @@ export class NegotiationDemo extends EventEmitter {
 
 /** One H2A conversation per user/intent, with one parallel A2A record per match. */
 export class NegotiationLab extends EventEmitter {
-  readonly users: DemoPrincipal[];
+  readonly title = 'NEGOTIATION LAB · local simulation';
+  readonly users: TuiPrincipal[];
   readonly negotiations = new Map<string, NegotiationDemo>();
   readonly agents = new Map<string, NegotiationAgent>();
   agentStatus = '';
 
   constructor(scenario: DemoScenario, options: { model: Model }) {
     super();
-    this.users = scenario.users;
+    this.users = scenario.users.map((user) => ({ id: 'intent-' + user.id, userId: user.id, name: user.name, intentId: 'intent-' + user.id, intent: user.intent, principalContext: user.instructions }));
     for (let index = 0; index < this.users.length; index++) {
       for (const other of this.users.slice(index + 1)) {
         const principals = [this.users[index], other] as const;
@@ -170,7 +188,7 @@ export class NegotiationLab extends EventEmitter {
       }
     }
     for (const user of this.users) {
-      const clientFor = (id: string) => this.negotiations.get(id)!.client(user.id);
+      const clientFor = (id: string) => this.negotiations.get(id)!.client(user.userId);
       const host: NegotiationHost = {
         status: (id, message, phase) => this.negotiations.get(id)!.progress(message, phase),
         retry: (owner, attempt, reason) => {
@@ -185,7 +203,7 @@ export class NegotiationLab extends EventEmitter {
         end: (record) => this.negotiations.get(record.opportunityId)!.end(record),
         error: (id, owner, reason) => {
           const affected = id === null
-            ? [...this.negotiations.values()].filter((demo) => demo.phase !== 'settled' && demo.principals.some((principal) => principal.id === owner.id))
+            ? [...this.negotiations.values()].filter((demo) => demo.phase !== 'settled' && demo.principals.some((principal) => principal.userId === owner.id))
             : [this.negotiations.get(id)!];
           for (const demo of affected) {
             demo.error(reason);
@@ -195,29 +213,16 @@ export class NegotiationLab extends EventEmitter {
         },
       };
       this.agents.set(user.id, new NegotiationAgent({
-        owner: { id: user.id, name: user.name },
-        intent: { id: 'intent-' + user.id, payload: user.intent },
-        instructions: user.instructions,
+        owner: { id: user.userId, name: user.name },
+        intent: { id: user.intentId, payload: user.intent },
+        principalContext: user.principalContext,
+        guidance: NEGOTIATION_GUIDANCE,
         client: {
           readNegotiation: (id) => clientFor(id).readNegotiation(id),
           submitTurn: (id, turn) => clientFor(id).submitTurn(id, turn),
         },
-      }, host, options));
+      }, host, { ...options, store: new MemoryPrincipalStore() }));
     }
-  }
-
-  /**
-   * Read a simulated pair without changing execution or H2A state.
-   * @param leftId - One principal's ID.
-   * @param rightId - The other principal's ID.
-   * @returns The pair's public A2A record.
-   * @throws When these users do not have a simulated match.
-   */
-  negotiation(leftId: string, rightId: string): NegotiationDemo {
-    const id = `local:${[leftId, rightId].sort().map(encodeURIComponent).join(':')}`;
-    const record = this.negotiations.get(id);
-    if (!record) throw new Error(`Unknown match: ${leftId} / ${rightId}`);
-    return record;
   }
 
   /** Deliver simulated matches to the always-on agents, which own their negotiation lifecycles. */

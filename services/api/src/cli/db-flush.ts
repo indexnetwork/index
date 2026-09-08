@@ -35,21 +35,22 @@ function printResult(result: { ok: boolean; error?: string }, opts: GlobalOpts) 
 async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
   try {
     const tables = [
-      'intent_networks',
+      'agent_sessions',
+      'protocol_intent_networks',
       'messages',
-      'negotiation_turns',
-      'negotiations',
+      'protocol_negotiation_turns',
+      'protocol_negotiations',
       'conversation_metadata',
       'conversation_participants',
       'conversations',
-      'opportunities',
+      'protocol_opportunities',
       'user_notification_settings',
-      'hyde_documents',
-      'intents',
-      'agents',
+      'protocol_hyde_documents',
+      'protocol_intents',
+      'protocol_agents',
       'apikey',
-      'network_members',
-      'networks',
+      'protocol_network_members',
+      'protocol_networks',
       'users',
     ];
 

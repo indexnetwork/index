@@ -104,7 +104,7 @@ jobs:
         run: bun run --cwd packages/agent check
 
       - name: Check agent TUI
-        run: bun run --cwd packages/agent-tui check
+        run: bun run --cwd packages/agent-tui check && bun run --cwd packages/agent-tui build
 
   protocol-architecture:
     # Keep the architectural dependency checks visible as separate CI checks so

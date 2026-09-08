@@ -27,3 +27,6 @@ export type {
   RunResult,
   Step,
 } from "./core/types.ts";
+
+export { MemoryPrincipalStore } from './negotiation/principal.state.ts';
+export type { PrincipalStore, PrincipalState } from './negotiation/principal.state.ts';

@@ -7,6 +7,8 @@
  */
 import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, negotiations, negotiationTurns, networkMembers, opportunities, or, sql, users } from './database.shared';
 
+import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-session.database.adapter';
+
 import { publishUserEvent } from '../lib/user-events';
 
 export type NegotiationTurnAction = 'propose' | 'counter' | 'accept' | 'decline';
@@ -71,6 +73,7 @@ export interface NegotiationView {
   createdAt: Date;
   updatedAt: Date;
   counterparty: {
+    intentId: string;
     userId: string;
     name: string | null;
     avatar: string | null;
@@ -83,21 +86,40 @@ export interface NegotiationDetail extends NegotiationView {
   turns: NegotiationTurnRecord[];
 }
 
-/** Why a turn was refused. The service maps these onto status codes. */
-export type SubmitTurnRejection =
-  | 'not_found'
-  | 'not_a_seat'
-  | 'already_settled'
-  | 'not_your_turn'
-  | 'propose_not_first'
-  | 'counter_is_first'
-  | 'accept_without_offer'
-  | 'signal_inactive'
-  | 'raced';
+/** Structural host contracts; protocol supplies all policy callbacks. */
+export interface NegotiationState {
+  initiatorUserId: string;
+  responderUserId: string;
+  awaitingUserId: string | null;
+  outcome: NegotiationOutcome | null;
+  settled: boolean;
+  /** Both intents are active, assigned to this network, and owned by current members. */
+  eligible: boolean;
+  turns: { seatUserId: string; action: NegotiationTurnAction; message: string }[];
+}
+export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'signal_inactive'
+  | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn' | 'propose_not_first'
+  | 'counter_is_first' | 'accept_without_offer';
+export interface NegotiationOpening {
+  userA: string;
+  userB: string;
+  intentA: string;
+  intentB: string;
+  eligible: boolean;
+}
+export type NegotiationOpeningDecision = { awaitingUserId: string; opportunityStatus: 'negotiating' } | null;
+export type NegotiationDecision = { ok: false; rejection: NegotiationRejection } | {
+  ok: true;
+  turnIndex: number;
+  awaitingUserId: string | null;
+  outcome: 'agreed' | 'declined' | null;
+  opportunityStatus: 'negotiating' | 'pending' | 'rejected';
+  blockedReason: 'turn_limit' | null;
+};
 
-export type SubmitTurnResult =
-  | { ok: true; negotiation: NegotiationRow; turnIndex: number; otherSeatUserId: string; settled: NegotiationOutcome | null }
-  | { ok: false; rejection: SubmitTurnRejection };
+export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string; expectedTurnCount: number }
+export type SubmitTurnRejection = NegotiationRejection;
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** Postgres unique-violation. A second turn at the same index is a lost race, not an error. */
 function isUniqueViolation(error: unknown): boolean {
@@ -178,10 +200,10 @@ export class NegotiationDatabaseAdapter {
    * @param pairs - The scored pairs to open.
    * @returns One entry per pair that became a new opportunity.
    */
-  async openCounterparties(pairs: IntentCounterpartyPair[]): Promise<OpenedNegotiation[]> {
+  async openCounterparties(pairs: IntentCounterpartyPair[], decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation[]> {
     const opened: OpenedNegotiation[] = [];
     for (const pair of pairs) {
-      const result = await this.open(pair);
+      const result = await this.open(pair, decide);
       if (result) opened.push(result);
     }
     await announceOpened(opened);
@@ -248,7 +270,7 @@ export class NegotiationDatabaseAdapter {
    * @param pair - The scored pair to materialize.
    * @returns The opened negotiation, or null when it was already open or could not be opened.
    */
-  private async open(pair: IntentCounterpartyPair): Promise<OpenedNegotiation | null> {
+  private async open(pair: IntentCounterpartyPair, decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation | null> {
     try {
       return await db.transaction(async (tx) => {
         await tx.execute(sql`
@@ -261,18 +283,15 @@ export class NegotiationDatabaseAdapter {
           .where(eq(negotiations.pairKey, pair.pairKey)).limit(1);
         if (existing) return null;
 
-        // Both parties must still be on the network. The persist node used to
-        // hold this (createOpportunityIfNetworkEligible); the row is born here
-        // now, so the check belongs here — inside the same transaction, so a
-        // membership cannot be revoked between the check and the insert.
-        const members = await tx.select({ userId: networkMembers.userId })
-          .from(networkMembers)
-          .where(and(
-            eq(networkMembers.networkId, pair.networkId),
-            inArray(networkMembers.userId, [pair.userA, pair.userB]),
-          ));
-        const present = new Set(members.map((row) => row.userId));
-        if (!present.has(pair.userA) || !present.has(pair.userB)) return null;
+        const seats = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
+          .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, pair.networkId)))
+          .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, pair.networkId)))
+          .where(and(inArray(intents.id, [pair.intentA, pair.intentB]), liveIntentWhere()))
+          .orderBy(asc(intents.id)).for('share');
+        const decision = decide({ ...pair, eligible:
+          seats.some((seat) => seat.id === pair.intentA && seat.userId === pair.userA)
+          && seats.some((seat) => seat.id === pair.intentB && seat.userId === pair.userB) });
+        if (!decision) return null;
 
         const [row] = await tx.insert(opportunities).values({
           detection: {
@@ -295,7 +314,7 @@ export class NegotiationDatabaseAdapter {
           confidence: String(pair.score / 100),
           // Born negotiating. There is no pre-kickoff state any more: the row
           // exists because someone is opening it right now.
-          status: 'negotiating',
+          status: decision.opportunityStatus,
           updatedAt: new Date(),
           metadata: { evidence: pair.evidence ?? [] },
         } as never).returning();
@@ -308,7 +327,7 @@ export class NegotiationDatabaseAdapter {
           initiatorIntentId: pair.intentA,
           responderUserId: pair.userB,
           responderIntentId: pair.intentB,
-          awaitingUserId: pair.userA,
+          awaitingUserId: decision.awaitingUserId,
           updatedAt: new Date(),
         }).returning();
         if (!negotiation) return null;
@@ -383,29 +402,17 @@ export class NegotiationDatabaseAdapter {
    * @param userId - The caller, who must own one of the two seats.
    * @returns The record as that seat sees it, or null when absent or not theirs.
    */
-  async getForUser(opportunityId: string, userId: string): Promise<NegotiationDetail | null> {
-    const [row] = await db.select().from(negotiations)
-      .where(eq(negotiations.opportunityId, opportunityId)).limit(1);
-    if (!row) return null;
-    if (row.initiatorUserId !== userId && row.responderUserId !== userId) return null;
-
-    const [view] = await this.toViews([row], userId);
-    if (!view) return null;
-
-    const turns = await db.select().from(negotiationTurns)
-      .where(eq(negotiationTurns.negotiationId, row.id))
-      .orderBy(asc(negotiationTurns.turnIndex));
-
-    return {
-      ...view,
-      turns: turns.map((turn) => ({
-        turnIndex: turn.turnIndex,
-        seatUserId: turn.seatUserId,
-        action: turn.action,
-        message: turn.message,
-        createdAt: turn.createdAt,
-      })),
-    };
+  async getForUser(opportunityId: string, userId: string): Promise<(NegotiationDetail & { state: NegotiationState }) | null> {
+    return db.transaction(async (tx) => {
+      const [row] = await tx.select().from(negotiations)
+        .where(eq(negotiations.opportunityId, opportunityId)).limit(1).for('share');
+      if (!row || (row.initiatorUserId !== userId && row.responderUserId !== userId)) return null;
+      const [view] = await this.toViews([row], userId, tx);
+      if (!view) return null;
+      const turns = await tx.select().from(negotiationTurns).where(eq(negotiationTurns.negotiationId, row.id))
+        .orderBy(asc(negotiationTurns.turnIndex));
+      return { ...view, turnCount: turns.length, turns, state: await this.state(tx, row) };
+    });
   }
 
   /**
@@ -420,80 +427,73 @@ export class NegotiationDatabaseAdapter {
    * @param turn - The decision and its message.
    * @returns The applied turn, or the reason it was refused.
    */
-  async submitTurn(
+  async commitNegotiationTurn(
     opportunityId: string,
     callerUserId: string,
-    turn: { action: NegotiationTurnAction; message: string },
-  ): Promise<SubmitTurnResult> {
+    turn: NegotiationTurnInput,
+    decide: (state: NegotiationState | null) => NegotiationDecision,
+    execution?: AgentExecution,
+  ): Promise<NegotiationDecision> {
     try {
       return await db.transaction(async (tx) => {
+        if (execution) {
+          if (execution.userId !== callerUserId) throw new Error('Execution belongs to another principal.');
+          await AgentSessionDatabaseAdapter.assertOwner(tx, execution);
+        }
         const [negotiation] = await tx.select().from(negotiations)
-          .where(eq(negotiations.opportunityId, opportunityId)).limit(1);
-        if (!negotiation) return { ok: false, rejection: 'not_found' } as const;
-
-        const isInitiator = negotiation.initiatorUserId === callerUserId;
-        const isResponder = negotiation.responderUserId === callerUserId;
-        if (!isInitiator && !isResponder) return { ok: false, rejection: 'not_a_seat' } as const;
-        if (negotiation.settledAt) return { ok: false, rejection: 'already_settled' } as const;
-
-        // Read under the transaction: a pause landing mid-turn must lose to the
-        // turn already in flight, not half-apply behind it.
-        const [live] = await tx.select({ value: count() }).from(intents)
-          .where(and(
-            inArray(intents.id, [negotiation.initiatorIntentId, negotiation.responderIntentId]),
-            liveIntentWhere(),
-          ));
-        if ((live?.value ?? 0) < 2) return { ok: false, rejection: 'signal_inactive' } as const;
-
-        if (negotiation.awaitingUserId !== callerUserId) return { ok: false, rejection: 'not_your_turn' } as const;
-
-        const priorTurns = await tx.select().from(negotiationTurns)
-          .where(eq(negotiationTurns.negotiationId, negotiation.id))
-          .orderBy(asc(negotiationTurns.turnIndex));
-        const turnIndex = priorTurns.length;
-        const previous = priorTurns[turnIndex - 1];
-
-        // `propose` is the screening turn and only exists at the head of the
-        // log; every later non-terminal turn is a `counter`.
-        if (turn.action === 'propose' && turnIndex !== 0) return { ok: false, rejection: 'propose_not_first' } as const;
-        if (turn.action === 'counter' && turnIndex === 0) return { ok: false, rejection: 'counter_is_first' } as const;
-        if (turn.action === 'accept' && (!previous || previous.seatUserId === callerUserId)) {
-          return { ok: false, rejection: 'accept_without_offer' } as const;
-        }
-
+          .where(eq(negotiations.opportunityId, opportunityId)).limit(1).for('update');
+        if (execution && negotiation && (negotiation.initiatorUserId === callerUserId ? negotiation.initiatorIntentId : negotiation.responderIntentId) !== execution.intentId) throw new Error('Execution belongs to another intent.');
+        const state = negotiation ? await this.state(tx, negotiation, true) : null;
+        const decision = decide(state);
+        if (!decision.ok || !negotiation) return decision;
         await tx.insert(negotiationTurns).values({
-          negotiationId: negotiation.id,
-          turnIndex,
-          seatUserId: callerUserId,
-          action: turn.action,
-          message: turn.message,
+          negotiationId: negotiation.id, turnIndex: decision.turnIndex,
+          seatUserId: callerUserId, action: turn.action, message: turn.message.trim(),
         });
-
-        const otherSeatUserId = isInitiator ? negotiation.responderUserId : negotiation.initiatorUserId;
-        const settled: NegotiationOutcome | null =
-          turn.action === 'accept' ? 'agreed'
-            : turn.action === 'decline' ? 'declined'
-              : null;
-
-        const [updated] = await tx.update(negotiations)
-          .set(settled
-            ? { outcome: settled, settledAt: new Date(), awaitingUserId: null, updatedAt: new Date() }
-            : { awaitingUserId: otherSeatUserId, updatedAt: new Date() })
-          .where(eq(negotiations.id, negotiation.id))
-          .returning();
-
-        if (settled) {
-          await tx.update(opportunities)
-            .set({ status: settled === 'agreed' ? 'pending' : 'rejected', updatedAt: new Date() })
-            .where(eq(opportunities.id, opportunityId));
-        }
-
-        return { ok: true, negotiation: updated ?? negotiation, turnIndex, otherSeatUserId, settled } as const;
+        const now = new Date();
+        await tx.update(negotiations).set({
+          awaitingUserId: decision.awaitingUserId, outcome: decision.outcome,
+          settledAt: decision.outcome ? now : null, updatedAt: now,
+        }).where(eq(negotiations.id, negotiation.id));
+        await tx.update(opportunities).set({ status: decision.opportunityStatus, updatedAt: now })
+          .where(eq(opportunities.id, opportunityId));
+        return decision;
       });
     } catch (error) {
       if (isUniqueViolation(error)) return { ok: false, rejection: 'raced' };
       throw error;
     }
+  }
+
+  /** @param opportunityId - Match identity. @param userId - Reading seat. @returns Current facts for protocol observation. */
+  async readNegotiationState(opportunityId: string, userId: string): Promise<NegotiationState | null> {
+    return db.transaction(async (tx) => {
+      const [row] = await tx.select().from(negotiations).where(eq(negotiations.opportunityId, opportunityId)).limit(1);
+      if (!row || (row.initiatorUserId !== userId && row.responderUserId !== userId)) return null;
+      return this.state(tx, row);
+    });
+  }
+
+  private async state(tx: Transaction, row: NegotiationRow, lock = false): Promise<NegotiationState> {
+    const [opportunity] = await tx.select({ context: opportunities.context, status: opportunities.status }).from(opportunities)
+      .where(eq(opportunities.id, row.opportunityId));
+    const networkId = (opportunity?.context as { networkId?: string } | null)?.networkId;
+    let eligible = false;
+    if (networkId) {
+      let query = tx.select({ id: intents.id, userId: intents.userId }).from(intents)
+        .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, networkId)))
+        .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, networkId)))
+        .where(and(inArray(intents.id, [row.initiatorIntentId, row.responderIntentId]), liveIntentWhere()))
+        .orderBy(asc(intents.id)).$dynamic();
+      if (lock) query = query.for('share');
+      const seats = await query;
+      eligible = opportunity?.status === 'negotiating'
+        && seats.some((seat) => seat.id === row.initiatorIntentId && seat.userId === row.initiatorUserId)
+        && seats.some((seat) => seat.id === row.responderIntentId && seat.userId === row.responderUserId);
+    }
+    const turns = await tx.select().from(negotiationTurns).where(eq(negotiationTurns.negotiationId, row.id)).orderBy(asc(negotiationTurns.turnIndex));
+    return { initiatorUserId: row.initiatorUserId, responderUserId: row.responderUserId,
+      awaitingUserId: row.awaitingUserId, outcome: row.outcome, settled: row.settledAt !== null, eligible, turns };
   }
 
   /**
@@ -549,7 +549,7 @@ export class NegotiationDatabaseAdapter {
   }
 
   /** Resolve each row into the shape its reader's seat is allowed to see. */
-  private async toViews(rows: NegotiationRow[], userId: string): Promise<NegotiationView[]> {
+  private async toViews(rows: NegotiationRow[], userId: string, connection: typeof db | Transaction = db): Promise<NegotiationView[]> {
     if (rows.length === 0) return [];
 
     const counterpartOf = (row: NegotiationRow) => row.initiatorUserId === userId
@@ -558,11 +558,11 @@ export class NegotiationDatabaseAdapter {
 
     const counterparts = rows.map(counterpartOf);
     const [people, statements, turnCounts] = await Promise.all([
-      db.select({ id: users.id, name: users.name, avatar: users.avatar }).from(users)
+      connection.select({ id: users.id, name: users.name, avatar: users.avatar }).from(users)
         .where(inArray(users.id, [...new Set(counterparts.map((c) => c.userId))])),
-      db.select({ id: intents.id, payload: intents.payload, summary: intents.summary }).from(intents)
+      connection.select({ id: intents.id, payload: intents.payload, summary: intents.summary }).from(intents)
         .where(inArray(intents.id, [...new Set(counterparts.map((c) => c.intentId))])),
-      db.select({ negotiationId: negotiationTurns.negotiationId, count: count() })
+      connection.select({ negotiationId: negotiationTurns.negotiationId, count: count() })
         .from(negotiationTurns)
         .where(inArray(negotiationTurns.negotiationId, rows.map((row) => row.id)))
         .groupBy(negotiationTurns.negotiationId),
@@ -585,6 +585,7 @@ export class NegotiationDatabaseAdapter {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         counterparty: {
+          intentId: counterpart.intentId,
           userId: counterpart.userId,
           name: person?.name ?? null,
           avatar: person?.avatar ?? null,

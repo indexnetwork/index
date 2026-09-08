@@ -1,3 +1,5 @@
+import { NEGOTIATION_GUIDANCE } from '../../../protocol/negotiation.rules.js';
+
 /**
  * Canonical guidance for Index Network protocol operations.
  *
@@ -160,37 +162,7 @@ Approved signals are evaluated in the background. Use list_opportunities only to
 ### Opportunity Acceptance
 Accepting an opportunity expresses interest in the connection. Owner acceptance (explicit user confirmation) is required for any escalation.`,
 
-  negotiations: `## Negotiations
-
-**Negotiation** is how agents and users coordinate to reach decisions about matches. Two distinct gates govern acceptance:
-
-### Agent-to-Agent (A2A) Acceptance
-When two agent services coordinate on behalf of their users, they may reach agreement that a match is worth pursuing. Agents veto, accept, or defer based on their user's context. This is A2A acceptance.
-
-### Owner Approval (Human Confirmation)
-When a human user explicitly confirms in conversation "Yes, I want to pursue this connection", that is owner approval. Owner approval is a separate, human-driven gate.
-
-### Critical Rule
-**A2A acceptance is not owner approval.** Agents can accept while humans have not yet approved. The system tracks these separately:
-- A2A acceptance: Agents vetted the match and recommend it
-- Owner approval: The human explicitly confirmed
-
-These gates are independent. Do not conflate them.
-
-### Negotiation Workflow
-1. Discovery creates draft opportunity
-2. A2A coordination (agents evaluate viability)
-3. A2A acceptance (agents agree to propose)
-4. Opportunity sent to recipient (pending)
-5. Owner review (human reads match reasoning)
-6. Owner approval (human confirms)
-7. Escalation (via native surfaces, not MCP)
-
-### Rules
-- Track A2A and owner approval separately
-- Never accept without explicit user approval
-- Always surface reasoning to owner
-- Human-to-human messaging is not MCP`,
+  negotiations: NEGOTIATION_GUIDANCE,
 
   workflows: `## Common Tool Workflows
 

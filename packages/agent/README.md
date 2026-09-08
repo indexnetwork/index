@@ -156,7 +156,7 @@ import { Agent, ModelClient, NegotiationAgent } from "@indexnetwork/agent";
 const models = ["google/gemini-3.8-flash", "anthropic/claude-haiku-4.5"];
 const model = new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY, models });
 const agent = new Agent({ identity, systemPrompt, model });
-const negotiator = new NegotiationAgent(participant, host, { model });
+const negotiator = new NegotiationAgent(participant, host, { model, store });
 ```
 
 OpenRouter accepts one to three models; an injected list replaces the defaults
@@ -186,9 +186,10 @@ are left to OpenRouter; there are no local per-model request counters.
 ### Always-on negotiations
 
 Initialize one `NegotiationAgent` per principal/intent. The host supplies the
-principal's private instructions, authenticated transport, and one observer for
-their conversation and match activity. These are infrastructure ports; the
-library owns prompts, tools, turn-order checks, questions, and scheduling.
+principal's confirmed context, protocol guidance and observations, transport,
+a session store, and an observer for conversation and match activity. The
+library owns reasoning, questions, H2A communication, checkpoints, and scheduling.
+The host's protocol owns eligibility, available actions, limits, and transitions.
 
 ```ts
 import { NegotiationAgent } from "@indexnetwork/agent";
@@ -197,12 +198,14 @@ const agent = new NegotiationAgent(
   {
     owner: { id: user.id, name: user.name },
     intent: { id: intent.id, payload: intent.statement },
-    instructions,
+    principalContext,
+    guidance, // Supplied by the protocol used by this host.
     client,
   },
   host,
-  { model },
+  { model, store }, // PrincipalStore: load, atomic save, close.
 );
+await agent.start();
 
 // Register a separate A2A match under this personal agent and intent.
 void agent.receive({
@@ -216,8 +219,8 @@ void agent.receive({ kind: "negotiation.updated", opportunityId });
 // Show agent.conversation and agent.pending when host.conversation() fires.
 // Answer the displayed question; otherwise send a message to the personal agent.
 const question = agent.pending;
-if (question) agent.answer(question.id, humanInput);
-else agent.message(humanInput);
+if (question) await agent.answer(question.id, humanInput);
+else await agent.message(humanInput);
 
 // When the host shuts down:
 await agent.stop();
@@ -285,13 +288,24 @@ the affected match while the personal agent remains available for other work.
 `stop(opportunityId)` cancels one match and releases its questions; `stop()`
 cancels all model calls and answer waits for this principal/intent.
 
-There is at most one submission attempt per turn, with no automatic write
-retry, and a 12-turn limit per negotiation. The runtime's session state is
-currently in memory. A server can initialize this runtime and deliver the same
-events; server startup, event subscriptions, and restart recovery are outside
-this package's current host wiring. The local lab in
-[`packages/agent-tui`](../agent-tui/README.md) and REST runner in
-[`scripts/agent-negotiation.ts`](../../scripts/agent-negotiation.ts) both use this runtime.
+Each turn makes at most one submission attempt against an observed turn count.
+The injected protocol advertises actions and limits, and the host validates its
+transition against current state when committing. The agent never blindly
+replays an uncertain submission.
+
+`PrincipalStore.load()` returns the private checkpoint and chronological H2A
+messages. `save(state, newMessages)` must persist both atomically under exclusive
+session ownership. `close()` releases ownership. The agent owns the checkpoint
+format, stable message/question IDs, pending requests, and restart reconciliation.
+Human `message()` and `answer()` calls resolve only after persistence; storage
+failure stops the runtime. `stop()` preserves outstanding work and the displayed
+question. Match working transcripts are temporary and regenerated from fresh
+protocol observations after restart.
+
+The [scenario TUI](../agent-tui/README.md) injects `MemoryPrincipalStore`. The
+[API runner](../../services/api/README.md) injects a Postgres session store with
+leases and revision fencing. Neither `agent` nor `protocol` imports the other;
+the host composes their contracts.
 
 ### Batched inbox work
 

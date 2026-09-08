@@ -1,187 +1,120 @@
 # @indexnetwork/agent-tui
 
-Private Bun workspace for exercising real personal agents in a local terminal.
-The package depends on `@indexnetwork/agent` and owns its OpenTUI dependency.
-Production integration follows `services/api → protocol → agent`; neither the
-protocol nor the API depends on this testing host.
+A terminal testing platform for personal agents. It displays one H2A conversation
+per principal/intent and a separate A2A conversation per match. Agent behavior is
+owned by `@indexnetwork/agent`; participation rules belong to
+`@indexnetwork/protocol`.
 
-## Local three-pane TUI
+## Run a scenario
 
-The local lab includes **12 selectable users** and runs real `@indexnetwork/agent`
-instances against in-memory negotiations. No Index API, database, frontend, or
-Index credentials are used.
-The host initializes one long-lived `NegotiationAgent` per user/intent from
-`@indexnetwork/agent` and delivers simulated match and turn-update events.
-The library owns turn scheduling, prompts, tools, question resumption, and private
-conversation history. There is **one H2A conversation per user/intent** and
-**one A2A conversation per match**. The lab supplies simulated records and events.
-The TUI owns the displayed users, focus, and drafts, sends principal input, and
-observes agent state. Selecting a pane does not schedule agent work.
+From the repository root:
 
 ```bash
-# From this worktree. The env file supplies OPENROUTER_API_KEY.
+bun install
 bun --env-file=.env.development run agent:tui
 ```
 
-Choose a scenario with **↑ / ↓ and Enter**, or click its filename. **Esc** or
-**Ctrl+C** exits. The chooser lists JSON files in this package's `scenarios/`
-directory; agents start only after selection.
+Requires `OPENROUTER_API_KEY` and an interactive terminal. Choose a JSON scenario
+with Up/Down + Enter or a click. The default roster has 12 users and 66 simulated
+matches. All matches start automatically in the background. Changing a pane only
+changes what you see.
 
-From the package directory, use `bun --env-file=../../.env.development run start`.
-Both commands find the same scenarios, independently of the working directory.
-
-The command accepts one to three ordered model IDs:
+Override the shared model client's ordered model list with one to three IDs:
 
 ```bash
-bun --env-file=.env.development run agent:tui \
-  google/gemini-3.8-flash anthropic/claude-haiku-4.5
+bun --env-file=.env.development run agent:tui google/gemini-3.8-flash anthropic/claude-haiku-4.5
 ```
 
-The CLI constructs the OpenRouter client and injects it into the lab. Without
-model IDs, it uses the agent package's defaults. Credentials, model selection,
-retry policy, and cooldowns are implemented by `ModelClient` in the agent package;
-the lab and terminal do not implement another model client.
+The model client owns rate-limit waiting and model switching. No API keys,
+HTTP server, Redis, or database are required for the scenario host. Ctrl+C stops
+all agents and saves a private Markdown transcript in a temporary directory.
+Each scenario launch starts fresh.
 
-Use a terminal at least 100 columns wide (120+ recommended):
+## Run against the API database
 
-```text
-┌─ H2A · Alice ──────┬─ A2A · negotiation ──┬─ H2A · Bob ─────────┐
-│ Alice ▾ · 1/12    │     Alice ↔ Bob     │ Bob ▾ · 2/12       │
-│ Intent + mandate  │                     │ Intent + mandate   │
-│ Private chat      │ Shared agent turns  │ Private chat       │
-│ Your messages     │                     │ Your messages      │
-├───────────────────┤     Read-only       ├────────────────────┤
-│ Message as Alice… │                     │ Message as Bob…    │
-└───────────────────┴─────────────────────┴────────────────────┘
+```bash
+bun run --cwd services/api agent:tui
 ```
 
-- Click the **user name above either side**, or focus that side and press
-  **Ctrl+U**, to open its user picker. Click a user to switch, or use **↑ / ↓**
-  and **Enter**. **Esc** cancels. The opposite side's user is excluded so a user
-  cannot negotiate with themselves. Both sides can select from the same roster.
-- This lab simulates the stage **after matching**: every distinct user pair is
-  treated as a match. All **66 negotiations start automatically in parallel**
-  when the bundled 12-user scenario launches. Match events trigger the library's
-  agents, which check authoritative turn order before acting. A question pauses
-  only its own negotiation; other pairs continue independently, including other
-  matches involving the same user.
-- User selection changes the displayed users; the center pane shows their
-  pair's shared turns. Each side shows its user's **single H2A conversation**
-  across all matches. Changing the opposite user preserves that H2A history,
-  scroll position, and draft. Drafts also follow a user between left and right.
-- H2A shows questions and meaningful, consolidated outcomes. Routine A2A
-  progress and per-turn model summaries stay out of the human conversation.
-  The PA reviews relevant background events in short batches and can stay silent.
-  You can also message your PA at any time when no question is displayed, for
-  example “Any active negotiations?” or a new preference. Direct messages get
-  a reply ahead of background updates, using that user's match state and H2A history.
-- Each principal has **one active question**, labeled **For this intent** for
-  shared facts or **About [counterparty]** for a match-specific decision. If a
-  related request arrives while you answer, it can join the existing question
-  internally; the displayed question, options, scope, and draft stay stable.
-  Other details and approvals remain queued. All waiting requests reconsider
-  your answer before another question appears. Other users never receive the
-  private answers.
-- Pairs continue in the background until they need a human answer, settle, or
-  stop. The status bar shows **12 H2A conversations, 66 A2A matches**, and the
-  number of principals awaiting answers. Selecting a pair never starts or
-  restarts its agents.
-- Click a side pane to act as that user, or use **Tab / Shift+Tab** to change
-  focus. The focused pane has a blue border; a pending question is highlighted.
-- The reply picker shows a **highlighted row with a `›` marker**. Click a
-  suggested answer or use **↑ / ↓** to select it, then **Enter** to confirm.
-  Clicking an answer only selects it—it does not immediately send it. No Alt
-  shortcuts or terminal modifier configuration are needed.
-- The last row is always **Custom reply…**. Select it and press **Enter**, or
-  click the text box, to write your own answer. **Esc** returns from the editor
-  to the picker. Arrow keys edit text normally while the editor is focused.
-- Suggestions come from `request_principal_input.options`. The negotiation
-  prompt and tool schema request **2–4 suggested answers for every focused question**, including
-  neutral self-description categories when personal facts are missing. A choice
-  becomes a fact only after the principal confirms it; the TUI does not invent
-  answers. **Custom reply…** remains available for every question.
-- **Enter** answers that user's displayed question ID, even if it concerns
-  a different match from the center pane. **With no active question, Enter sends
-  a message to that user's personal agent.** Empty input and stale question
-  answers are rejected; unsent drafts stay with their user until sent.
-- Both selected options and custom replies are recorded in the private
-  transcript and resume the same agent; answering does not itself create a
-  shared A2A turn.
-- **Ctrl+J** adds a newline. Mouse wheel or **PageUp / PageDown** scrolls the
-  selected transcript, or the open user picker. The center pane cannot send messages.
-- Agents take turns autonomously. Settlement or failure stays on screen for
-  inspection. **Ctrl+C** cancels outstanding work for **all pairs**,
-  restores the terminal, and prints the path of a private Markdown transcript
-  containing each user's H2A history once, followed by the separate A2A match
-  transcripts. It includes all users' private messages; do not share it as if
-  it were only the public negotiation.
+This local development command loads the root `.env.development`. It uses the
+API's Postgres and Redis connections and real existing users, intents, matches,
+and H2A messages. No HTTP server needs to be running.
 
-The bundled roster is Alice, Bob, Carla, Diego, Emma, Farah, Gabriel, Hana, Ivan,
-Jules, Kai, and Leila, with different roles, goals, and collaboration limits.
-Copy and edit the scenario JSON in `packages/agent-tui/scenarios/` to add a
-choice with different users, intents, and private instructions:
+Choose principal/intent sessions with Space or a click, then Enter to start.
+Select intents belonging to at least two users. Only selected personal agents
+run; an unselected counterparty needs its own runtime to respond. Each selected
+agent handles all its existing and newly received matches independently of the
+visible pair. Normal API discovery creates new matches; the TUI does not seed
+users or bypass matching.
+
+The command calls API services as the selected principals directly. This is a
+trusted local testing entry point; HTTP authentication, scope checks, and human
+consent gates remain enforced. A principal with a selected external negotiation
+executor must release that binding before its local agent can run.
+
+H2A messages and checkpoints are persisted in the same transaction. Restarting
+restores the conversation, pending question, related requests, and outstanding
+work, then rereads the A2A records. Session leases prevent two local processes
+from running the same principal/intent. Ctrl+C releases leases and retains state;
+a crashed process's lease expires after 60 seconds.
+
+## Controls
+
+| Control | Action |
+| --- | --- |
+| Click a name / Ctrl+U | Choose the principal/intent for that side |
+| Up/Down, Enter | Select and confirm a user or suggested answer |
+| Tab | Move between H2A, A2A, and H2A panes |
+| Ctrl+N | Cycle through matches between the selected intents |
+| Enter in the text box | Answer the displayed question, or message the personal agent when none is active |
+| Custom reply / click the text box | Write an answer in your own words |
+| Esc | Return from custom editing to choices, or close a selector |
+| Ctrl+J | Insert a newline |
+| Mouse wheel / PgUp / PgDn | Scroll the selected history |
+| Ctrl+C | Stop the local run |
+
+Drafts follow their principal/intent. Questions keep their ID, wording, scope,
+and match references while you answer. Related requests for an intent-wide fact
+can join an existing question internally; approvals remain specific to a match.
+Routine A2A progress stays in the center; the principal agent decides which
+questions and outcomes deserve an H2A message. An unmatched pair shows an empty
+A2A pane.
+
+## Scenario format
+
+Add a JSON file under `scenarios/`:
 
 ```json
 {
   "users": [
-    { "id": "alice", "name": "Alice", "intent": "...", "instructions": "..." },
-    { "id": "bob", "name": "Bob", "intent": "...", "instructions": "..." }
+    { "id": "alice", "name": "Alice", "intent": "Find a design partner", "instructions": "I am a frontend engineer. Ask before committing me to work." },
+    { "id": "bob", "name": "Bob", "intent": "Find an engineering partner", "instructions": "I am a product designer. Ask before committing me to work." }
   ]
 }
 ```
 
-Each user needs a unique, nonempty `id`, plus a name, intent, and instructions.
-At least two users are required. This replaces the old `left`/`right` scenario
-format. Rerun the command for a fresh lab; there is no live profile editor or
-restart recovery. You answer the fictional users' questions
-in the TUI—no canned human replies are supplied. The model may agree, decline,
-or ask questions; the host does not choose that outcome. Model calls incur
-normal OpenRouter usage. No live commitments are created by the local lab.
+IDs must be unique; all four fields are required. Scenario `instructions` are
+private fixture context injected as the agent's `principalContext`. The API host
+instead supplies confirmed profile fields, the current intent, and that intent's
+stored H2A conversation. Neither host invents profile facts from an intent.
 
-## Package boundaries
+## Host injection
 
-- `src/main.ts` discovers scenarios, loads the selected one and credentials,
-  constructs the model and terminal renderer, starts the lab, and saves the
-  private transcript on exit.
-- `src/scenario.chooser.ts` handles startup selection and cancellation before
-  the lab is initialized.
-- `src/negotiation.lab.ts` initializes the real agents, maintains simulated A2A
-  records, and delivers match events and updates after successful writes.
-  It can run without mounting a terminal view. Its model dependency is required.
-- `src/negotiation.tui.ts` renders the lab and handles human input through
-  `message()` and `answer()`. It owns left/right selection and drafts.
+`mountNegotiationTui(renderer, host)` takes a `NegotiationTuiHost`: selectable
+principal/intent entries, agent conversation/input handles, observed match records,
+and a change event. It neither selects models nor schedules negotiations.
+`NegotiationLab` implements this interface with in-memory storage and the protocol
+capability. `ApiNegotiationHost` in `services/api` implements it with API services
+and durable agent sessions. The libraries do not import one another; each host
+composes them.
 
-The package exports `NegotiationLab`, `parseScenario`, and `mountNegotiationTui`:
-
-```ts
-import { ModelClient } from '@indexnetwork/agent';
-import { NegotiationLab, parseScenario, mountNegotiationTui } from '@indexnetwork/agent-tui';
-
-const model = new ModelClient({ apiKey, models });
-const lab = new NegotiationLab(parseScenario(scenarioJson), { model });
-mountNegotiationTui(renderer, lab);
-lab.matchAll();
-// At host shutdown:
-await lab.stop();
-```
-
-The model is shared; each principal's conversation and per-call cancellation and
-retry reporting remain separate. Agent behavior, including question grouping,
-approval scope, H2A communication, and concurrent match scheduling, stays in
-`@indexnetwork/agent`. The simulated host exercises that contract; it does not
-verify the API's persistence implementation. State lasts for the current process.
-
-For the separate REST host, see [its documentation](../../scripts/agent-negotiation.md).
-
-## Verification
+The protocol advertises available actions, validates submissions against the
+current turn count, enforces 12 total A2A turns, and leaves an exhausted match
+undecided. A2A agreement moves an opportunity to pending human review.
 
 ```bash
-bun install
 bun run --cwd packages/agent check
+bun run --cwd packages/protocol build
 bun run --cwd packages/agent-tui check
-bun run agent:tui --help
+bun run --cwd packages/agent-tui build
 ```
-
-Use the live command above in a terminal or an isolated `tmux` session to check
-scenario selection and cancellation, both user selectors, background A2A progress,
-free messages, question answers, drafts, and Ctrl+C transcript export.

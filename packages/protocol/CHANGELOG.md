@@ -10,6 +10,24 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 > itemized. From `2.0.0` onward, keep this file updated as part of every release
 > (bump `package.json` and the `[Unreleased]` section before promoting to `main`).
 
+
+## 54.0.0
+
+### Breaking changes
+
+- Add the `Negotiations` participation capability, current-state observations,
+  protocol guidance, and atomic host commit contract. Submissions carry the
+  observed `expectedTurnCount`; stale decisions are refused.
+- `openCounterparties` now receives a protocol decision callback that hosts must
+  evaluate against current network membership and active intent assignments.
+- Replace `NEGOTIATION_MAX_TURNS_AMBIENT` (and the private chat limit) with one
+  `NEGOTIATION_MAX_TURNS` of 12. Exhaustion blocks further turns with no outcome;
+  A2A agreement advances only to pending human approval.
+- The API host renames domain tables with `protocol_` prefixes, adds private
+  `agent_sessions`, and composes the independent agent library through its local
+  TUI runner. Forward migrations preserve existing records.
+
+
 ## Release model
 
 Every push to `dev` publishes `<package.json version>-rc.<run>.<attempt>` under

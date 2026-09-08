@@ -1,7 +1,32 @@
-import type { PrincipalQuestion } from '@indexnetwork/agent';
+import type { NegotiationAgent, PrincipalQuestion, NegotiationAction } from '@indexnetwork/agent';
 import { BoxRenderable, ScrollBoxRenderable, TextareaRenderable, TextRenderable, type CliRenderer, type KeyEvent } from '@opentui/core';
 
-import { NegotiationLab, type DemoPrincipal } from './negotiation.lab';
+/** An independently selectable principal/intent conversation. */
+export interface TuiPrincipal {
+  id: string;
+  userId: string;
+  name: string;
+  intentId: string;
+  intent: string;
+  principalContext: string;
+}
+export interface TuiNegotiation {
+  opportunityId: string;
+  principals: readonly [TuiPrincipal, TuiPrincipal];
+  transcript: readonly { ownerId: string; text: string; action: NegotiationAction }[];
+  phase: string;
+  status: string;
+}
+/** The view consumes agent conversations and host observations without orchestrating either. */
+export interface NegotiationTuiHost {
+  title: string;
+  users: readonly TuiPrincipal[];
+  agents: ReadonlyMap<string, Pick<NegotiationAgent, 'conversation' | 'pending' | 'queuedQuestions' | 'message' | 'answer'>>;
+  negotiations: ReadonlyMap<string, TuiNegotiation>;
+  agentStatus: string;
+  on(event: 'change', listener: () => void): unknown;
+  off(event: 'change', listener: () => void): unknown;
+}
 
 export const COLORS = { background: '#10151e', text: '#dce4ef', muted: '#8996aa', border: '#364255', focus: '#77b8ff', question: '#f4c773', answer: '#8dd9b7' };
 
@@ -16,6 +41,7 @@ interface Pane {
   editingReply: boolean;
   shownQuestion?: PrincipalQuestion | null;
   displayed: number;
+  sending?: boolean;
   opportunityId?: string;
   ownerId?: string;
   selector?: TextRenderable;
@@ -29,16 +55,19 @@ interface Pane {
  * @param renderer - Owns terminal mouse, keyboard, and resize handling.
  * @param lab - The user/intent conversations and separate match records.
  */
-export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab): void {
-  const selectedUsers: [DemoPrincipal, DemoPrincipal] = [lab.users[0], lab.users[1]];
-  let demo = lab.negotiation(selectedUsers[0].id, selectedUsers[1].id);
+export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHost): void {
+  const selectedUsers: [TuiPrincipal, TuiPrincipal] = [lab.users[0], lab.users.find((user) => user.userId !== lab.users[0].userId)!];
+  let matchIndex = 0;
+  let pairKey = '';
+  let demo: TuiNegotiation | undefined;
+  const matches = () => [...lab.negotiations.values()].filter((match) => selectedUsers.every((user) => match.principals.some(({ id }) => id === user.id)));
   const root = new BoxRenderable(renderer, { id: 'negotiation-lab', width: '100%', height: '100%', flexDirection: 'column', backgroundColor: COLORS.background });
   renderer.root.add(root);
-  root.add(new TextRenderable(renderer, { content: ` NEGOTIATION LAB · ${lab.users.length} users · real agents / local simulation`, fg: COLORS.focus, height: 1, flexShrink: 0 }));
+  root.add(new TextRenderable(renderer, { content: ` ${lab.title} · ${lab.users.length} principal/intent sessions`, fg: COLORS.focus, height: 1, flexShrink: 0 }));
   const board = new BoxRenderable(renderer, { id: 'panes', flexDirection: 'row', flexGrow: 1, minHeight: 0, gap: 1 });
   root.add(board);
-  const status = new TextRenderable(renderer, { id: 'session-status', content: demo.status, fg: COLORS.muted, height: 2, flexShrink: 0, wrapMode: 'word' });
-  const help = new TextRenderable(renderer, { content: ' Click name/Ctrl+U: change user · ↑↓: select · Enter: confirm · Esc: back · Tab: pane · Ctrl+J: newline · PgUp/PgDn/wheel: scroll · Ctrl+C: quit + save all pairs', fg: COLORS.muted, height: 2, flexShrink: 0, wrapMode: 'word' });
+  const status = new TextRenderable(renderer, { id: 'session-status', content: '', fg: COLORS.muted, height: 2, flexShrink: 0, wrapMode: 'word' });
+  const help = new TextRenderable(renderer, { content: ' Click name/Ctrl+U: change user · ↑↓: select · Enter: confirm · Esc: back · Tab: pane · Ctrl+J: newline · PgUp/PgDn/wheel: scroll · Ctrl+N: next match · Ctrl+C: quit', fg: COLORS.muted, height: 2, flexShrink: 0, wrapMode: 'word' });
   root.add(status);
   root.add(help);
 
@@ -88,14 +117,14 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       clear(pane.users);
       pane.userRows = [];
       const opposite = selectedUsers[index === 0 ? 1 : 0];
-      lab.users.filter(({ id }) => id !== opposite.id).forEach((user, userIndex) => {
+      lab.users.filter(({ userId }) => userId !== opposite.userId).forEach((user, userIndex) => {
         const button = new BoxRenderable(renderer, {
           id: `user-${index}-${userIndex}`, width: '100%', height: 1, flexShrink: 0,
           onMouseDown: (event) => { event.stopPropagation(); chooseUser(index, user.id); },
         });
-        const label = new TextRenderable(renderer, { content: user.name, height: 1 });
+        const label = new TextRenderable(renderer, { content: user.name + " · " + user.intent, height: 1 });
         button.add(label);
-        pane.userRows.push({ box: button, label, ownerId: user.id, name: user.name });
+        pane.userRows.push({ box: button, label, ownerId: user.id, name: user.name + " · " + user.intent });
         pane.users!.add(button);
       });
       pane.userIndex = pane.userRows.findIndex(({ ownerId }) => ownerId === pane.ownerId);
@@ -159,17 +188,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
           { name: 'return', shift: true, action: 'newline' },
           { name: 'j', ctrl: true, action: 'newline' },
         ],
-        onSubmit: () => {
-          const agent = lab.agents.get(pane.ownerId!)!;
-          const sent = pane.shownQuestion
-            ? agent.answer(pane.shownQuestion.id, pane.input!.plainText)
-            : agent.message(pane.input!.plainText);
-          if (sent) {
-            pane.input!.clear();
-          } else {
-            pane.hint!.content = pane.input!.plainText.trim() ? 'Could not send. Draft kept.' : 'Enter a message or answer.';
-          }
-        },
+        onSubmit: () => { void send(pane, pane.input!.plainText); },
       });
       box.add(pane.input);
     } else {
@@ -177,10 +196,32 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
     }
   }
 
+  async function send(pane: Pane, text: string): Promise<void> {
+    if (pane.sending) return;
+    const ownerId = pane.ownerId!;
+    const agent = lab.agents.get(ownerId)!;
+    const question = pane.shownQuestion;
+    const draft = pane.input!.plainText;
+    pane.sending = true;
+    try {
+      const sent = question ? await agent.answer(question.id, text) : await agent.message(text);
+      if (sent) {
+        drafts.delete(ownerId);
+        if (pane.ownerId === ownerId && pane.input!.plainText === draft) pane.input!.clear();
+      } else if (pane.ownerId === ownerId) pane.hint!.content = 'Could not send. Draft kept.';
+    } catch (error) {
+      if (!renderer.isDestroyed) pane.hint!.content = 'Could not save: ' + (error instanceof Error ? error.message : String(error));
+    } finally { pane.sending = false; }
+  }
+
   function render(): void {
     if (renderer.isDestroyed) return;
     for (const pane of panes) if (pane.ownerId) drafts.set(pane.ownerId, pane.input!.plainText);
-    demo = lab.negotiation(selectedUsers[0].id, selectedUsers[1].id);
+    const key = selectedUsers.map(({ id }) => id).join('\0');
+    if (key !== pairKey) { pairKey = key; matchIndex = 0; }
+    const available = matches();
+    matchIndex = Math.min(matchIndex, Math.max(0, available.length - 1));
+    demo = available[matchIndex];
     panes.forEach((pane, index) => {
       const principal = index === 1 ? undefined : selectedUsers[index === 0 ? 0 : 1];
       if (principal && pane.ownerId !== principal.id) {
@@ -192,12 +233,12 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
         pane.input!.setText(drafts.get(principal.id) ?? '');
         pane.selector!.content = ' ' + principal.name + ' ▾ · ' + (lab.users.findIndex(({ id }) => id === principal.id) + 1) + '/' + lab.users.length;
         append(pane.history, 'Intent', principal.intent, COLORS.muted);
-        append(pane.history, 'Private instructions', principal.instructions, COLORS.muted);
-      } else if (!principal && pane.opportunityId !== demo.opportunityId) {
+        append(pane.history, 'Principal context', principal.principalContext, COLORS.muted);
+      } else if (!principal && pane.opportunityId !== (demo?.opportunityId ?? pairKey)) {
         clear(pane.history);
         pane.displayed = 0;
-        pane.opportunityId = demo.opportunityId;
-        append(pane.history, selectedUsers.map(({ name }) => name).join(' ↔ '), 'Shared agent turns for this match.', COLORS.muted);
+        pane.opportunityId = demo?.opportunityId ?? pairKey;
+        append(pane.history, selectedUsers.map(({ name }) => name).join(' ↔ '), demo ? `Match ${matchIndex + 1}/${available.length} · ${demo.opportunityId} · Ctrl+N changes match.` : 'No negotiation between these selected intents.', COLORS.muted);
       }
       const agent = principal ? lab.agents.get(principal.id)! : undefined;
       if (agent) {
@@ -211,9 +252,9 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
             entry.kind === 'question' ? COLORS.question : human ? COLORS.answer : COLORS.focus);
         }
       } else {
-        while (pane.displayed < demo.transcript.length) {
+        while (demo && pane.displayed < demo.transcript.length) {
           const entry = demo.transcript[pane.displayed++];
-          const name = demo.principals.find(({ id }) => id === entry.ownerId)!.name;
+          const name = demo.principals.find(({ userId }) => userId === entry.ownerId)!.name;
           append(pane.history, name + "'s agent · " + entry.action, entry.text, COLORS.focus);
         }
       }
@@ -277,11 +318,11 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       }
     });
     const waiting = [...lab.agents.values()].filter((agent) => agent.pending).length;
-    status.content = demo.status + ' · H2A: ' + lab.agents.size + ' · A2A: ' + lab.negotiations.size
+    status.content = (demo?.status ?? 'No match selected') + ' · H2A: ' + lab.agents.size + ' · A2A: ' + lab.negotiations.size
       + (waiting ? ' · Principals awaiting answers: ' + waiting : '')
       + (lab.agentStatus ? ' · ' + lab.agentStatus : '')
       + (renderer.width < 100 ? ' · Widen terminal to 100+ columns for more space.' : '');
-    status.fg = demo.phase === 'error' ? '#f88a8a' : waiting ? COLORS.question : COLORS.muted;
+    status.fg = demo?.phase === 'error' ? '#f88a8a' : waiting ? COLORS.question : COLORS.muted;
   }
 
   const onKey = (key: KeyEvent) => {
@@ -291,6 +332,10 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
     if (key.name === 'tab') {
       key.preventDefault();
       focus((selected + (key.shift ? 2 : 1)) % 3);
+    } else if (key.name === 'n' && key.ctrl) {
+      key.preventDefault();
+      matchIndex = (matchIndex + 1) % Math.max(1, matches().length);
+      render();
     } else if (key.name === 'u' && key.ctrl) {
       key.preventDefault();
       toggleUsers(selected);
@@ -319,9 +364,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationLab):
       const option = question.options?.[pane.choiceIndex];
       if (option === undefined) {
         pane.editingReply = true;
-      } else if (agent!.answer(question.id, option)) {
-        pane.input!.clear();
-      }
+      } else { void send(pane, option); }
       focus(selected);
     } else if (key.name === 'pageup' || key.name === 'pagedown') {
       key.preventDefault();

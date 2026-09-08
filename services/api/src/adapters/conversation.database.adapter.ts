@@ -483,7 +483,7 @@ export class ConversationDatabaseAdapter {
     metadata?: Record<string, unknown> | null;
     extensions?: string[];
   }): Promise<Message> {
-    const message = await this.insertMessageWithConversationSession({
+    const message = await db.transaction((tx) => this.insertMessageWithConversationSession(tx, {
       id: crypto.randomUUID(),
       conversationId: data.conversationId,
       senderId: data.senderId,
@@ -491,14 +491,20 @@ export class ConversationDatabaseAdapter {
       parts: data.parts,
       metadata: data.metadata ?? null,
       extensions: data.extensions ?? null,
-    });
+    }));
+    await this.publishMessage(message);
+    return message;
+  }
+
+  /** @param message - A message whose containing transaction has committed. */
+  async publishMessage(message: Message): Promise<void> {
 
     // All message writers converge here. Publish only after persistence, and
     // only to authenticated owners represented by the stored participant rows.
     try {
-      const senderUserId = data.senderId.startsWith('agent:')
-        ? data.senderId.slice('agent:'.length)
-        : data.senderId;
+      const senderUserId = message.senderId.startsWith('agent:')
+        ? message.senderId.slice('agent:'.length)
+        : message.senderId;
       // The owner's agent has no `users` row, so it needs its name spelled out;
       // this is what the agent DM notification is titled with.
       const [sender] = senderUserId === SYSTEM_AGENT_ID ? [] : await db
@@ -513,26 +519,26 @@ export class ConversationDatabaseAdapter {
           ...(senderName ? { senderName } : {}),
           ...(sender?.avatar?.trim() ? { senderAvatar: sender.avatar.trim() } : {}),
         },
-        await this.getParticipants(data.conversationId),
+        await this.getParticipants(message.conversationId),
       );
     } catch (error) {
       logger.error('Failed to publish conversation SSE event', {
-        conversationId: data.conversationId,
+        conversationId: message.conversationId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
 
-    return message;
   }
 
   /**
    * Persist a message under the durable session selected for the
    * conversation's activity window.
    *
+   * @param tx - Transaction shared with the caller's checkpoint or message operation.
    * @param data - Fully normalized message fields.
    * @returns The newly persisted message.
    */
-  private async insertMessageWithConversationSession(data: {
+  async insertMessageWithConversationSession(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], data: {
     id: string;
     conversationId: string;
     senderId: string;
@@ -540,65 +546,64 @@ export class ConversationDatabaseAdapter {
     parts: unknown[];
     metadata: Record<string, unknown> | null;
     extensions: string[] | null;
+    createdAt?: Date;
   }): Promise<Message> {
-    return db.transaction(async (tx) => {
-      await tx.execute(sql`
-        SELECT pg_advisory_xact_lock(
-          hashtextextended(${`conversation-session:${data.conversationId}`}, 0)
-        )
-      `);
+    await tx.execute(sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${`conversation-session:${data.conversationId}`}, 0)
+      )
+    `);
 
-      const now = new Date();
-      let sessionId: string;
+    const now = data.createdAt ?? new Date();
+    let sessionId: string;
 
-      const [currentSession] = await tx
-        .select()
-        .from(schema.conversationSessions)
-        .where(eq(schema.conversationSessions.conversationId, data.conversationId))
-        .orderBy(
-          desc(schema.conversationSessions.lastMessageAt),
-          desc(schema.conversationSessions.startedAt),
-          desc(schema.conversationSessions.id),
-        )
-        .limit(1);
+    const [currentSession] = await tx
+      .select()
+      .from(schema.conversationSessions)
+      .where(eq(schema.conversationSessions.conversationId, data.conversationId))
+      .orderBy(
+        desc(schema.conversationSessions.lastMessageAt),
+        desc(schema.conversationSessions.startedAt),
+        desc(schema.conversationSessions.id),
+      )
+      .limit(1);
 
-      const startsNewSession = !currentSession
-        || now.getTime() - currentSession.lastMessageAt.getTime() > CHAT_SESSION_GAP_MS;
-      if (startsNewSession) {
-        sessionId = crypto.randomUUID();
-        await tx.insert(schema.conversationSessions).values({
-          id: sessionId,
-          conversationId: data.conversationId,
-          startedAt: now,
-          lastMessageAt: now,
-        });
-      } else {
-        sessionId = currentSession.id;
-        await tx
-          .update(schema.conversationSessions)
-          .set({ lastMessageAt: now })
-          .where(eq(schema.conversationSessions.id, sessionId));
-      }
-
-      const [message] = await tx
-        .insert(schema.messages)
-        .values({ ...data, sessionId, createdAt: now })
-        .returning();
-
+    const startsNewSession = !currentSession
+      || now.getTime() - currentSession.lastMessageAt.getTime() > CHAT_SESSION_GAP_MS;
+    if (startsNewSession) {
+      sessionId = crypto.randomUUID();
+      await tx.insert(schema.conversationSessions).values({
+        id: sessionId,
+        conversationId: data.conversationId,
+        startedAt: now,
+        lastMessageAt: now,
+      });
+    } else {
+      sessionId = currentSession.id;
       await tx
-        .update(schema.conversations)
-        .set({ lastMessageAt: now, updatedAt: now })
-        .where(eq(schema.conversations.id, data.conversationId));
-      await tx
-        .update(schema.conversationParticipants)
-        .set({ hiddenAt: null })
-        .where(and(
-          eq(schema.conversationParticipants.conversationId, data.conversationId),
-          eq(schema.conversationParticipants.participantId, data.senderId),
-        ));
+        .update(schema.conversationSessions)
+        .set({ lastMessageAt: now })
+        .where(eq(schema.conversationSessions.id, sessionId));
+    }
 
-      return message;
-    });
+    const [message] = await tx
+      .insert(schema.messages)
+      .values({ ...data, sessionId, createdAt: now })
+      .returning();
+
+    await tx
+      .update(schema.conversations)
+      .set({ lastMessageAt: now, updatedAt: now })
+      .where(eq(schema.conversations.id, data.conversationId));
+    await tx
+      .update(schema.conversationParticipants)
+      .set({ hiddenAt: null })
+      .where(and(
+        eq(schema.conversationParticipants.conversationId, data.conversationId),
+        eq(schema.conversationParticipants.participantId, data.senderId),
+      ));
+
+    return message;
   }
 
   /**

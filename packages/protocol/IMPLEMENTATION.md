@@ -25,10 +25,20 @@ organized by function behind a single exported class, `Intents`: files sit flat
 and named for what they do, with `graph/` the one multi-file stage
 that keep a directory.
 
-Negotiation is host-owned. The package authors no turns and exposes no
-negotiation tools; it only reads the turn log through `NegotiationContextDatabase`
-to present an opportunity. Listing negotiations and submitting a turn are the
-host's REST surface.
+`Negotiations` is the autonomous participation capability. It observes current
+state and returns protocol guidance, available actions, and block reasons. Its
+execute path passes a pure protocol decision function into the host's transaction:
+the host locks current membership, intent, and negotiation state, evaluates the
+function, and atomically applies the turn and opportunity transition.
+`openCounterparties` likewise receives the protocol's opening decision callback.
+The protocol enforces 12 total turns, leaving exhausted matches undecided, and
+A2A agreement only advances to pending owner review. `NegotiationContextDatabase`
+continues to provide scoped turn logs for opportunity presentation.
+
+Personal-agent reasoning and H2A communication live in the independent
+`@indexnetwork/agent` package. The API imports both libraries and supplies
+persistence, principal context, models, and events. The scenario TUI uses the same
+protocol capability with memory storage. Neither library imports the other.
 
 ## Boundary model
 
@@ -73,6 +83,7 @@ The package defines interfaces — your application provides the concrete implem
 | `IntegrationAdapter` | OAuth and external tool actions |
 | `IntentFollowUp` | Post-persist intent follow-up (HyDE, resume discovery) |
 | `ProfileEnricher` | Enrich profiles from external sources |
+| `NegotiationDatabase` | Current negotiation state and atomic commit with the supplied protocol decision function |
 | `NegotiationContextDatabase` | Read-only negotiation turn log, for opportunity presentation (folded into `CompositeToolDatabase`) |
 
 **Optional** (enable specific capabilities; omit to run without that feature):

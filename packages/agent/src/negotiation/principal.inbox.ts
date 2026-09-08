@@ -14,6 +14,9 @@ export interface MatchReference {
 
 /** One human-facing entry, which can concern several negotiations. */
 export interface PrincipalMessage {
+  id: string;
+  createdAt: string;
+  questionId?: string;
   kind: 'question' | 'answer' | 'user' | 'message';
   matches: readonly MatchReference[];
   text: string;
@@ -37,9 +40,16 @@ interface InputRequest extends PendingQuestion {
   resolve(note?: string): void;
 }
 
-interface Outcome {
+export interface Outcome {
   match: MatchReference;
   result: Negotiation | { error: string };
+}
+
+export interface InboxState {
+  incomingMessageIds: string[];
+  requests: Omit<InputRequest, 'resolve'>[];
+  outcomes: Outcome[];
+  question: PrincipalQuestion | null;
 }
 
 interface Decision {
@@ -67,7 +77,6 @@ export class PrincipalInbox {
   private readonly requests: InputRequest[] = [];
   private readonly outcomes = new Map<string, Outcome>();
   private currentQuestion: PrincipalQuestion | null = null;
-  private sequence = 0;
   private timer?: ReturnType<typeof setTimeout>;
   private running?: Promise<void>;
   private reviewController?: AbortController;
@@ -81,8 +90,42 @@ export class PrincipalInbox {
       acceptedCommitments: Negotiation[];
       negotiations: { opportunityId: string; stopped: boolean; record?: Negotiation }[];
     },
-    private readonly host: { changed(): void; input(): void; error(reason: string): void },
+    private readonly host: { changed(): Promise<void>; input(): void; error(reason: string): void },
   ) {}
+
+  /** @returns The resumable inbox, excluding the separately stored H2A transcript. */
+  snapshot(): InboxState {
+    return structuredClone({ incomingMessageIds: this.incomingMessages.map(({ id }) => id),
+      requests: this.requests.map(({ resolve: _resolve, ...request }) => request),
+      outcomes: [...this.outcomes.values()], question: this.currentQuestion });
+  }
+
+  /** @param state - Saved inbox. @param messages - Canonical, chronological H2A entries. */
+  restore(state: InboxState | undefined, messages: PrincipalMessage[]): void {
+    this.messages.push(...messages);
+    if (!state) return;
+    this.incomingMessages.push(...messages.filter(({ id }) => state.incomingMessageIds.includes(id)));
+    this.requests.push(...state.requests.map((request) => ({ ...request, resolve: () => {} })));
+    for (const outcome of state.outcomes) this.outcomes.set(outcome.match.opportunityId, outcome);
+    this.currentQuestion = state.question;
+  }
+
+  /** Restart background communication after the host's current match records have been read. */
+  resume(): void { this.schedule(0); }
+
+  /** @param opportunityId - A restored match with a saved request. @returns Its existing wait, without asking again. */
+  waitFor(opportunityId: string): Promise<string | undefined> | undefined {
+    const request = this.requests.find((entry) => entry.match.opportunityId === opportunityId);
+    if (!request) return undefined;
+    return new Promise((resolve) => { request.resolve = resolve; });
+  }
+
+  private append(entry: Omit<PrincipalMessage, 'id' | 'createdAt'>): PrincipalMessage {
+    const timestamp = Math.max(Date.now(), this.messages.length ? Date.parse(this.messages[this.messages.length - 1]!.createdAt) + 1 : 0);
+    const message = { id: crypto.randomUUID(), createdAt: new Date(timestamp).toISOString(), ...entry };
+    this.messages.push(message);
+    return message;
+  }
 
   /** @returns The principal's canonical H2A transcript. */
   get conversation(): readonly PrincipalMessage[] { return this.messages; }
@@ -98,14 +141,13 @@ export class PrincipalInbox {
    * @param text - The principal's private message to their personal agent.
    * @returns Whether the message was nonempty and accepted for a reply.
    */
-  message(text: string): boolean {
+  async message(text: string): Promise<boolean> {
     if (this.stopped || this.currentQuestion || !text.trim()) return false;
-    const message: PrincipalMessage = { kind: 'user', text: text.trim(), matches: [] };
-    this.messages.push(message);
+    const message = this.append({ kind: 'user', text: text.trim(), matches: [] });
     this.incomingMessages.push(message);
     this.host.input();
     this.reviewController?.abort();
-    this.host.changed();
+    await this.host.changed();
     this.schedule(0);
     return true;
   }
@@ -119,9 +161,8 @@ export class PrincipalInbox {
   request(match: MatchReference, question: PendingQuestion & { scope: QuestionScope }): Promise<string | undefined> {
     if (this.stopped) return Promise.resolve(undefined);
     return new Promise((resolve) => {
-      this.requests.push({ ...question, id: String(++this.sequence), match, reviewed: false, resolve });
-      this.host.changed();
-      this.schedule();
+      this.requests.push({ ...question, id: crypto.randomUUID(), match, reviewed: false, resolve });
+      void this.host.changed().then(() => this.schedule(), () => resolve(undefined));
     });
   }
 
@@ -132,7 +173,7 @@ export class PrincipalInbox {
    */
   outcome(match: MatchReference, result: Outcome['result']): void {
     this.outcomes.set(match.opportunityId, { match, result });
-    this.schedule();
+    void this.host.changed().then(() => this.schedule(), () => {});
   }
 
   /**
@@ -141,21 +182,22 @@ export class PrincipalInbox {
    * @param text - The principal's private answer.
    * @returns Whether the answer matched the current question and was nonempty.
    */
-  answer(questionId: string, text: string): boolean {
+  async answer(questionId: string, text: string): Promise<boolean> {
     const question = this.currentQuestion;
     if (this.stopped || !question || question.id !== questionId || !text.trim()) return false;
     this.currentQuestion = null;
     this.host.input();
     this.reviewController?.abort();
-    this.messages.push({ kind: 'answer', text: text.trim(), matches: question.matches, scope: question.scope });
-    for (const request of this.requests.splice(0)) request.resolve();
-    this.host.changed();
+    this.append({ kind: 'answer', questionId, text: text.trim(), matches: question.matches, scope: question.scope });
+    const released = this.requests.splice(0);
+    await this.host.changed();
+    for (const request of released) request.resolve();
     this.schedule(0);
     return true;
   }
 
   /** @param opportunityId - The stopped match whose requests should be released. */
-  cancel(opportunityId: string): void {
+  async cancel(opportunityId: string): Promise<void> {
     const removed = this.requests.filter((request) => request.match.opportunityId === opportunityId);
     if (!removed.length) return;
     this.reviewController?.abort();
@@ -165,9 +207,9 @@ export class PrincipalInbox {
     }
     for (const request of removed) {
       this.requests.splice(this.requests.indexOf(request), 1);
-      request.resolve();
     }
-    this.host.changed();
+    await this.host.changed();
+    for (const request of removed) request.resolve();
     this.schedule(0);
   }
 
@@ -177,11 +219,7 @@ export class PrincipalInbox {
     clearTimeout(this.timer);
     this.timer = undefined;
     this.reviewController?.abort();
-    this.currentQuestion = null;
-    for (const request of this.requests.splice(0)) request.resolve();
-    this.incomingMessages.length = 0;
-    this.outcomes.clear();
-    this.host.changed();
+    for (const request of this.requests) request.resolve();
     await this.running;
   }
 
@@ -250,10 +288,10 @@ export class PrincipalInbox {
       }
       if (decision.action === 'reply') {
         this.incomingMessages.splice(0, incomingMessages.length);
-        this.messages.push({ kind: 'message', text: decision.message!.trim(), matches: [] });
-        this.host.changed();
+        this.append({ kind: 'message', text: decision.message!.trim(), matches: [] });
+        await this.host.changed();
       } else {
-        this.apply(decision, requests, outcomes);
+        await this.apply(decision, requests, outcomes);
       }
     } catch (error) {
       if (!controller.signal.aborted && !this.stopped) this.host.error(error instanceof Error ? error.message : String(error));
@@ -286,12 +324,13 @@ export class PrincipalInbox {
     }
   }
 
-  private apply(decision: Decision, requests: InputRequest[], outcomes: Outcome[]): void {
+  private async apply(decision: Decision, requests: InputRequest[], outcomes: Outcome[]): Promise<void> {
+    const released: InputRequest[] = [];
     if (decision.action === 'reconsider') {
       for (const id of decision.relatedRequestIds!) {
         const request = requests.find((entry) => entry.id === id)!;
         this.requests.splice(this.requests.indexOf(request), 1);
-        request.resolve(decision.message!.trim());
+        released.push(request);
       }
     } else {
       for (const request of requests) request.reviewed = true;
@@ -302,9 +341,9 @@ export class PrincipalInbox {
           id: request.id, question: request.question, options: request.options, scope: request.scope,
           matches: [request, ...related].map((entry) => entry.match),
         };
-        this.messages.push({ kind: 'question', text: request.question, options: request.options, scope: request.scope, matches: this.currentQuestion.matches });
+        this.append({ kind: 'question', questionId: request.id, text: request.question, options: request.options, scope: request.scope, matches: this.currentQuestion.matches });
       } else if (decision.action === 'update') {
-        this.messages.push({ kind: 'message', text: decision.message!.trim(), matches: outcomes.filter((event) => decision.opportunityIds!.includes(event.match.opportunityId)).map((event) => event.match) });
+        this.append({ kind: 'message', text: decision.message!.trim(), matches: outcomes.filter((event) => decision.opportunityIds!.includes(event.match.opportunityId)).map((event) => event.match) });
       }
       if (this.currentQuestion) {
         for (const request of requests) if (decision.relatedRequestIds?.includes(request.id) && request.id !== this.currentQuestion.id) request.attachedTo = this.currentQuestion.id;
@@ -312,6 +351,7 @@ export class PrincipalInbox {
         for (const event of outcomes) if (this.outcomes.get(event.match.opportunityId) === event) this.outcomes.delete(event.match.opportunityId);
       }
     }
-    this.host.changed();
+    await this.host.changed();
+    for (const request of released) request.resolve(decision.message!.trim());
   }
 }
