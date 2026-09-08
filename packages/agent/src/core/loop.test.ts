@@ -11,8 +11,12 @@ afterEach(restoreFetch);
  * agent is told the date so it can resolve "next Tuesday"; a test that
  * asserts the prompt shouldn't drift with the calendar. */
 const TODAY = new Date("2026-08-28T09:00:00Z");
+// ICU punctuation differs across hosts; the fixed date and transcript are the contract.
+const TODAY_DATE = TODAY.toLocaleDateString("en-GB", {
+  timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric",
+});
 const TODAY_LINE =
-  'Today is Friday, 28 August 2026. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.';
+  `Today is ${TODAY_DATE}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`;
 const TOOL_DISCIPLINE_LINE =
   "Only call a tool from the list you were actually given this turn — what's offered can change as your situation does, so a capability you used before, or one that would make sense here, may not be available right now. If what you need isn't in that list, say so or ask, rather than calling a name you expect to exist.";
 
