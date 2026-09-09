@@ -1,0 +1,59 @@
+{
+  "users": [
+    {
+      "id": "alice",
+      "name": "Alice Morgan",
+      "instructions": "I am a frontend engineer in Lisbon exploring accessible collaboration tools for small volunteer teams. I have sketches, no users yet, and six hours a week on weekday evenings. I want to learn whether this could become a bootstrapped business with a cofounder; I am not ready to quit my job and have no hiring budget. Discuss a small prototype and complementary responsibilities. Ask me before choosing a project scope, sharing ownership, or committing to a recurring schedule.",
+      "intents": [
+        {
+          "id": "accessible-team-tool",
+          "intent": "Find a product design collaborator and possible cofounder to explore an accessible task-planning tool for volunteer teams, starting with a small prototype alongside our day jobs."
+        }
+      ]
+    },
+    {
+      "id": "bob",
+      "name": "Bob Okafor",
+      "instructions": "I am a product designer in Lisbon with experience simplifying complex interfaces. I can contribute five hours a week, mostly Wednesday evenings and Saturday mornings. I want a collaborator who will talk to prospective users before building and might share a small sustainable business later. I can exchange design work for an equally involved engineering contribution, but not join as an unpaid contractor. Ask me which problem to pursue and before agreeing to interviews, deadlines, or founder terms.",
+      "intents": [
+        {
+          "id": "small-team-product",
+          "intent": "Meet an engineer who wants to turn small teams' confusing workflows into a clear, keyboard-friendly product; explore the problem together before deciding whether to become cofounders."
+        }
+      ]
+    },
+    {
+      "id": "carla",
+      "name": "Carla Mendes",
+      "instructions": "I am a UX researcher in Porto who conducts interviews and usability studies for accessibility prototypes. I am seeking paid project work, not a cofounder role or equity-only compensation. I have two weekday half-days available per month and can work remotely in English or Portuguese. Clarify the research question, recruitment responsibility, and whether a budget exists. Ask me before quoting fees or agreeing to participant recruitment and dates. Do not offer unpaid research.",
+      "intents": [
+        {
+          "id": "paid-discovery-research",
+          "intent": "Find an early product team that needs paid user research to identify barriers in an accessibility-focused collaboration prototype."
+        }
+      ]
+    },
+    {
+      "id": "diego",
+      "name": "Diego Salas",
+      "instructions": "I am a mobile engineer in Barcelona building an offline personal journaling app as a learning project. I can spend four hours on weekends and have no hiring budget. My goal is a usable personal tool, not a startup or a team task manager. I am open to a voluntary design partnership with shared portfolio credit. Clarify whether the other person's desired product and motivation fit. Ask me before accepting scope, release dates, or ownership terms.",
+      "intents": [
+        {
+          "id": "offline-journal",
+          "intent": "Find a designer to make a private mobile journal easy to navigate without looking at the screen, as a modest weekend side project."
+        }
+      ]
+    },
+    {
+      "id": "gabriel",
+      "name": "Gabriel Weber",
+      "instructions": "I am a backend engineer in Berlin interested in data minimization. A local collective currently organizes shared chores in a spreadsheet; I can describe its workflow but have not promised it software. I have three hours a week for six weeks and can use synthetic data only. I prefer an open-source experiment and have not decided whether a commercial collaboration would interest me. Ask me about that tradeoff if it matters, and before committing time, licensing, or access to the collective.",
+      "intents": [
+        {
+          "id": "collective-chore-planner",
+          "intent": "Find someone who can turn a collective's messy chore spreadsheet into a simple shared planner; I can build the data layer and want to explore a small, privacy-conscious experiment."
+        }
+      ]
+    }
+  ]
+}

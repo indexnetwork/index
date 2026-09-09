@@ -19,8 +19,12 @@ Choose a JSON scenario from packages/agent-tui/scenarios with Up/Down + Enter or
 click it. Esc or Ctrl+C exits the chooser. Agents start only after selection.
 
 Scenario users have id, name, instructions, and intents: [{ id, intent }, ...].
-The default has 12 users with two intents each: 24 personal agents and 264 matches
-between different users' intents, running independently in the background.
+The six bundled scenarios have 5–10 users and 5–14 intents, covering collaborators,
+research and learning peers, creative partners, local friendships, career mentors,
+and community projects. Filenames sort alphabetically, with the five-user
+cofounder scenario first. Each user-intent pair has a personal agent. All intent
+pairs between different users are simulated matches (10–87 per bundled scenario),
+running independently in the background.
 Each user starts on the board with their first intent. Users/Ctrl+U opens the
 roster: Space/click toggles users, Enter applies, Esc cancels. Keep at least two.
 Click an intent header or press Ctrl+T to switch that user's intent with Up/Down

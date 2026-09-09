@@ -1,0 +1,89 @@
+{
+  "users": [
+    {
+      "id": "nadia",
+      "name": "Nadia El-Amin",
+      "instructions": "I am a short-fiction writer in Bristol with drafts about an imaginary harbor. For an audio piece, I want to work with a musician on a six-minute story; I can record a rough reading and spend two evenings a month, but have no commissioning budget. Ask me before choosing a draft, a release plan, or rights. Separately, I want to make a small illustrated neighborhood zine on weekends, sharing printing costs within a limit I have not set. Ask me about that limit and editorial direction before promising either.",
+      "intents": [
+        {
+          "id": "harbor-audio-story",
+          "intent": "Find a musician or sound artist to turn a short fictional harbor story into an intimate spoken-word audio piece, developing the sound and writing together."
+        },
+        {
+          "id": "neighborhood-zine",
+          "intent": "Find an illustrator or print designer to make a small zine of invented neighborhood stories and street sketches for a local arts table."
+        }
+      ]
+    },
+    {
+      "id": "owen",
+      "name": "Owen Price",
+      "instructions": "I am a musician in Cardiff making quiet acoustic loops and field recordings. For a narrative collaboration, I can contribute an original short score over six weeks in return for shared creative credit; ask me before agreeing to edits, release rights, or a delivery date. Separately, I am exploring a one-night Bristol performance and need a visual collaborator. No venue or ticket revenue is confirmed. I can travel on Saturdays, but ask me before booking a show, paying expenses, or promising anyone a share of income.",
+      "intents": [
+        {
+          "id": "music-with-narrative",
+          "intent": "Meet a writer or filmmaker whose quiet, place-based narrative could develop alongside acoustic loops and found sounds in a short collaborative piece."
+        },
+        {
+          "id": "live-visual-partner",
+          "intent": "Find a visual artist to explore a small live performance in Bristol where projected images respond to improvised music."
+        }
+      ]
+    },
+    {
+      "id": "cleo",
+      "name": "Cleo Duarte",
+      "instructions": "I am a Bristol illustrator learning risograph printing. I can draw on weekends and want an equal creative partnership on a short print run, not an unpaid illustration commission. I like everyday scenes with a strange fictional twist and can explain print constraints. I am not taking animation work. Ask me before agreeing to page count, printing costs, credit, or selling the finished work.",
+      "intents": [
+        {
+          "id": "illustrated-local-folklore",
+          "intent": "Find a writer to invent little legends around ordinary streets and pair them with two-color drawings in a collaboratively edited printed booklet."
+        }
+      ]
+    },
+    {
+      "id": "mateo",
+      "name": "Mateo Ruiz",
+      "instructions": "I am a documentary filmmaker in Bristol editing a four-minute essay about changing dockside spaces from footage I shot myself. I need an original score and am open to sharing creative decisions, but the piece is nonfiction. I have a rough cut and hope to finish in two months; there is no music budget. Ask me before sharing footage, changing the story, committing to a festival deadline, or agreeing to music rights and credit.",
+      "intents": [
+        {
+          "id": "dockside-film-score",
+          "intent": "Find a composer interested in shaping a reflective documentary about dockside spaces, with room for music to influence the edit rather than just fill the background."
+        }
+      ]
+    },
+    {
+      "id": "priya",
+      "name": "Priya Shah",
+      "instructions": "I am a motion designer in Manchester offering paid visual design for live music. I can deliver projection files remotely but cannot travel or operate them at a show. My availability is one weekday per week over the next month. I need an agreed brief and fee, rather than speculative ticket revenue. Ask me before quoting a price, setting revision limits, or licensing source files.",
+      "intents": [
+        {
+          "id": "paid-concert-visuals",
+          "intent": "Find a musician or producer commissioning animated projection loops and visual storytelling for a confirmed live performance."
+        }
+      ]
+    },
+    {
+      "id": "ezra",
+      "name": "Ezra Blake",
+      "instructions": "I am a commercial producer in London seeking collaborators for a fifteen-second harbor-themed outdoor clothing advertisement. This is paid client work with a fixed brief and a three-week delivery target, not an experimental arts partnership. I can discuss the brief but cannot approve fees or exclusivity myself. Ask me before offering a contract, obtaining reuse rights to an existing story, or sharing client materials.",
+      "intents": [
+        {
+          "id": "harbor-brand-story",
+          "intent": "Find a writer and sound collaborator for a harbor-inspired storytelling campaign: a concise branded film with a clear product message."
+        }
+      ]
+    },
+    {
+      "id": "yuki",
+      "name": "Yuki Tanaka",
+      "instructions": "I am an animation student in Bristol experimenting with projected silhouettes that change in response to sound. I want a collaborator to improvise with while I learn; I can meet locally on alternate Saturdays for six weeks. I have made small demos but have never operated a public show and do not own a projector. Ask me before committing to a performance, renting equipment, or choosing how recordings and credit will be shared.",
+      "intents": [
+        {
+          "id": "responsive-silhouettes",
+          "intent": "Find someone who improvises with instruments or voice to experiment with moving silhouettes that follow the sound, starting with a studio session rather than a booked show."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "users": [
+    {
+      "id": "farah",
+      "name": "Farah Ahmed",
+      "instructions": "I coordinate volunteers for a small Leeds community group. For a monthly repair cafe, I can organize arrivals and explain volunteer roles, but we have no confirmed venue or spending budget. Ask me before booking space or promising a date and staffing. Separately, I am exploring a neighbor check-in rota during hot weather, with two hours a week for planning. I cannot provide residents' contact details or authorize others to make visits. Ask me about the group boundaries and consent process before agreeing to a rota or involving residents.",
+      "intents": [
+        {
+          "id": "repair-cafe-team",
+          "intent": "Find local repair volunteers and a space coordinator to explore a monthly Leeds repair cafe that helps neighbors keep useful belongings in use."
+        },
+        {
+          "id": "hot-weather-neighbor-support",
+          "intent": "Meet Leeds organizers who want to plan practical neighbor support during hot weather, linking a simple check-in rota with clear information about cool public places."
+        }
+      ]
+    },
+    {
+      "id": "leila",
+      "name": "Leila Haddad",
+      "instructions": "I organize a multilingual community resource directory in Leeds and can explain residents' information needs. For a summer guide, I want volunteers to check public opening hours and whether routes and entrances are usable; I have three hours a week and no translation budget. Ask me before publishing entries, choosing languages, or promising updates. Separately, I want to exchange my plain-language editing with repair organizers for help planning clear printed instructions. I am not a repair specialist. Ask me before taking an event role or committing to print costs.",
+      "intents": [
+        {
+          "id": "cool-places-directory",
+          "intent": "Find neighbors who can help make a clear, multilingual guide to shaded routes and cool public places in Leeds, grounded in what people can actually reach and use."
+        },
+        {
+          "id": "repair-event-information-exchange",
+          "intent": "Exchange plain-language editing with local repair organizers: I can simplify visitor instructions and want to learn how to make a welcoming community event work."
+        }
+      ]
+    },
+    {
+      "id": "ivan",
+      "name": "Ivan Petrov",
+      "instructions": "I am a data analyst in Edinburgh who previously lived in Leeds. For a community energy project, I can volunteer two remote hours a week using public or aggregated energy data, with no access to household bills or authority to recommend purchases. Ask me before choosing deliverables, licensing, or a timeline. Separately, I want to co-design one beginner workshop about reading energy charts, ideally with an experienced facilitator. I can explain graphs but have never led a community workshop. Ask me before choosing an audience, date, or travel plan.",
+      "intents": [
+        {
+          "id": "community-energy-comparison",
+          "intent": "Find a community energy organizer who needs help making public, aggregated energy data understandable before deciding which local efficiency ideas deserve further investigation."
+        },
+        {
+          "id": "energy-chart-workshop",
+          "intent": "Find a community educator to co-design a beginner session on reading energy charts, combining my data skills with their experience helping people learn together."
+        }
+      ]
+    },
+    {
+      "id": "hana",
+      "name": "Hana Sato",
+      "instructions": "I am a content designer in Leeds. For resource-directory work I am seeking a paid engagement to write and test plain-language information; ask me before quoting fees or agreeing to scope and dates, and do not offer free professional content work. Separately, I mend clothes as a hobby and would enjoy volunteering at one small Sunday mending circle each month. I can show basic hand stitches, not repair machines or run an entire event. Ask me before committing to a session, bringing supplies, or taking responsibility for someone else's garment.",
+      "intents": [
+        {
+          "id": "paid-community-information-design",
+          "intent": "Find a community or climate project with a budget for plain-language resource information, including testing whether residents can understand the next step."
+        },
+        {
+          "id": "neighbor-mending-circle",
+          "intent": "Meet Leeds neighbors who want to repair clothes together at a small volunteer mending circle, sharing simple hand-sewing skills and conversation."
+        }
+      ]
+    },
+    {
+      "id": "musa",
+      "name": "Musa Diallo",
+      "instructions": "I am a bicycle mechanic in Leeds and want to help neighbors learn to fix punctures and adjust basic fittings. I can volunteer one Sunday afternoon a month and bring hand tools. I am not offering electrical repairs, donated replacement parts, or a full workshop service. I need to understand the expected bikes, group size, and available space. Ask me before committing to an event, lending tools, or agreeing to repairs beyond my stated scope.",
+      "intents": [
+        {
+          "id": "neighbor-bike-repair",
+          "intent": "Find a local organizer who can bring neighbors and a suitable space together for a small bicycle repair session; I can share practical skills that keep bikes in everyday use."
+        }
+      ]
+    },
+    {
+      "id": "elena",
+      "name": "Elena Kovacs",
+      "instructions": "I am a retired science teacher in Leeds with four hours free on weekday mornings. I want a useful community learning project, and can help people describe observations and read simple charts without assuming technical knowledge. I am curious about where people can rest out of the sun and can check public places on foot. I cannot verify medical claims or speak for a venue. Ask me before leading a workshop, publishing observations, or committing to regular information updates.",
+      "intents": [
+        {
+          "id": "everyday-cooling-knowledge",
+          "intent": "Meet neighbors and data-minded volunteers to make everyday knowledge about summer comfort useful: notice places to rest, compare observations, and explain findings in plain language."
+        }
+      ]
+    },
+    {
+      "id": "tariq",
+      "name": "Tariq Khan",
+      "instructions": "I help organize a community energy cooperative in Bradford. We have public area-level consumption figures and want to understand their limits before selecting an efficiency project. I can explain local priorities and meet online on Thursday evenings, but I cannot authorize spending or release household records. This is a volunteer scoping exercise, not a request for installation plans. Ask me before naming a pilot site, taking on a reporting deadline, or committing the cooperative to a recommendation.",
+      "intents": [
+        {
+          "id": "understand-neighborhood-energy",
+          "intent": "Find an analyst who can help our community group turn area-level energy figures into questions residents can discuss before choosing a local efficiency project."
+        }
+      ]
+    },
+    {
+      "id": "petra",
+      "name": "Petra Lind",
+      "instructions": "I am a climate-project business developer in Malmo looking for organizations interested in producing independently verified carbon credits for sale. My focus is measurable emissions accounting, a viable commercial arrangement, and multi-year participation. I am not recruiting volunteers for local mutual aid or informal education. I can discuss a potential project's fit remotely but cannot promise certification, revenue, or funding. Ask me before requesting project records, proposing commercial terms, or committing to an assessment.",
+      "intents": [
+        {
+          "id": "commercial-community-carbon-project",
+          "intent": "Find community climate project organizers interested in exploring a commercial carbon-credit program with formal emissions measurement and a multi-year commitment."
+        }
+      ]
+    },
+    {
+      "id": "soren",
+      "name": "Soren Hansen",
+      "instructions": "I am a Leeds allotment gardener hoping to start a small neighborhood growing and compost group. I can teach seed propagation and spend Saturday afternoons with a regular team. I do not control any land and cannot promise tree planting, access to an allotment, or quick temperature reductions. I care about long-term shared stewardship more than a one-day event. Ask me before agreeing to a site, recurring duties, buying materials, or bringing additional volunteers.",
+      "intents": [
+        {
+          "id": "shared-growing-and-compost",
+          "intent": "Find neighbors interested in practical climate resilience through a shared growing and compost project, starting by finding a site and a team willing to look after it over time."
+        }
+      ]
+    },
+    {
+      "id": "dev",
+      "name": "Dev Shah",
+      "instructions": "I coordinate a small makerspace in Leeds. I want to connect local skill-sharers with neighbors and can propose a Sunday afternoon introduction to our committee. Room use, fees, tool access, and volunteer supervision still need committee approval; I cannot promise them. Our tables suit hand sewing and small mechanical repairs, and we have no outdoor growing space. Ask me which event to put forward and before reserving a date or advertising that the space is available.",
+      "intents": [
+        {
+          "id": "community-skill-sharing-space",
+          "intent": "Meet local organizers and practical skill-sharers to explore a small Sunday repair or mending event at a Leeds makerspace, subject to agreeing a workable scope with its committee."
+        }
+      ]
+    }
+  ]
+}

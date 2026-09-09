@@ -1,0 +1,115 @@
+{
+  "users": [
+    {
+      "id": "asha",
+      "name": "Asha Raman",
+      "instructions": "I am a secondary-school teacher in Birmingham exploring a move into learning-experience design. For mentorship, I want help translating teaching experience into a small portfolio for salaried roles; I can meet Wednesday lunchtime once a month and have no coaching budget. Ask me before selecting a portfolio project or sending work to someone. Separately, I want a Saturday morning peer group to practice interview stories. I can offer facilitation and feedback, but ask me before joining a recurring cohort or discussing my job search with my employer.",
+      "intents": [
+        {
+          "id": "learning-design-mentor",
+          "intent": "Find a learning-experience designer willing to mentor a teacher through an initial portfolio and help distinguish transferable skills from things I still need to learn."
+        },
+        {
+          "id": "career-change-practice-peers",
+          "intent": "Meet other career changers for reciprocal interview practice and encouragement on Saturday mornings, focusing on how to explain experience from a different industry."
+        }
+      ]
+    },
+    {
+      "id": "ben",
+      "name": "Ben Ortiz",
+      "instructions": "I am a senior learning designer in Manchester who moved from adult education into software training. For mentorship, I can offer one free thirty-minute remote conversation each month on a Wednesday lunchtime, with practical feedback on one portfolio item. I cannot provide a job referral or ongoing coaching; ask me before accepting a mentee or reviewing materials. Separately, I want reciprocal conversations with accessibility practitioners to improve how I design training. I can share facilitation methods but not employer course files. Ask me before agreeing to a workshop or sharing examples.",
+      "intents": [
+        {
+          "id": "mentor-education-transition",
+          "intent": "Meet an educator moving into learning design who would value a bounded monthly mentoring conversation about portfolio choices and working on software training teams."
+        },
+        {
+          "id": "accessible-learning-peers",
+          "intent": "Find accessibility and learning-design peers to exchange practical ways of making workplace training easier to use, with each person bringing a different professional perspective."
+        }
+      ]
+    },
+    {
+      "id": "kai",
+      "name": "Kai Williams",
+      "instructions": "I am a QA engineer in Sheffield considering a move into paid accessibility testing. For career mentoring, I need perspective on skill gaps and scoping work; I can meet remotely one weekday evening a month. I am not qualified to promise certification and have not decided between employment and freelancing. Ask me about that choice before settling a development plan. Separately, I want peers to rehearse a short testing talk, with reciprocal feedback on Saturday afternoons. Ask me before sharing a draft publicly or signing me up to speak.",
+      "intents": [
+        {
+          "id": "accessibility-career-mentor",
+          "intent": "Find an experienced accessibility testing practitioner to discuss moving from general QA into paid accessibility work and identify a realistic first learning project."
+        },
+        {
+          "id": "testing-talk-peer-circle",
+          "intent": "Meet software quality peers who want to rehearse short technical talks and exchange supportive feedback before presenting to a wider professional community."
+        }
+      ]
+    },
+    {
+      "id": "emma",
+      "name": "Emma Brooks",
+      "instructions": "I am an accessibility consultant in Nottingham who reviews keyboard and screen-reader experiences. I can offer one voluntary thirty-minute mentoring conversation per month on a weekday evening, including how I learned to scope testing work. Formal product reviews and ongoing coaching are paid work and outside that offer. I cannot certify someone else's competence from a conversation. Ask me before accepting a mentee, selecting a date, or turning general advice into a review of a real product.",
+      "intents": [
+        {
+          "id": "mentor-new-accessibility-practitioner",
+          "intent": "Meet a tester entering accessibility practice for a bounded mentoring exchange about learning through real interfaces, describing limitations, and defining a useful review scope."
+        }
+      ]
+    },
+    {
+      "id": "luis",
+      "name": "Luis Torres",
+      "instructions": "I am a former hospitality supervisor in Birmingham who has finished a frontend coding course. I am applying for my first developer role and want mutual practice explaining teamwork and problem-solving, not another paid course. Saturday mornings suit me. I can review someone else's interview stories even if we are entering different professions. Ask me before joining a group, sharing my CV, or agreeing to an application deadline.",
+      "intents": [
+        {
+          "id": "transferable-experience-practice",
+          "intent": "Find fellow career changers to practice turning experience from earlier jobs into clear interview examples and keep each other company during a first job search in a new field."
+        }
+      ]
+    },
+    {
+      "id": "fatima",
+      "name": "Fatima Noor",
+      "instructions": "I am a learning designer in Leeds with seven years of experience creating training for mixed reading and digital skill levels. I want peer exchange rather than a regular mentee, and I would like to learn more about testing accessibility with assistive technology. I can share invented lesson examples over an asynchronous discussion or one Friday lunchtime a month. Ask me before agreeing to a public session, using employer material, or taking responsibility for someone's training redesign.",
+      "intents": [
+        {
+          "id": "inclusive-training-community",
+          "intent": "Meet industry peers who help people learn software when dense instructions get in the way; exchange plain-language learning design and practical accessibility testing approaches."
+        }
+      ]
+    },
+    {
+      "id": "noah",
+      "name": "Noah Sinclair",
+      "instructions": "I am a recruiter in London filling on-site senior frontend roles that require at least five years of production experience. I am looking for hiring conversations with qualified candidates, not offering career-change mentoring or a peer support group. Clarify experience and location before proposing an introduction. I cannot promise an interview or change a client's requirements. Ask me before passing on a CV or contacting a candidate outside this conversation.",
+      "intents": [
+        {
+          "id": "senior-frontend-hiring-network",
+          "intent": "Expand my frontend career network by meeting experienced engineers considering a full-time on-site senior role in London."
+        }
+      ]
+    },
+    {
+      "id": "grace",
+      "name": "Grace Liu",
+      "instructions": "I am a Toronto product manager in financial software considering a move into climate-related software. I have substantial product experience but little climate-domain knowledge. I want peers making an industry transition, not entry-level coding instruction, and can exchange experience navigating regulated products. I am available weekdays from 18:00 Toronto time, which may not suit European peers. Ask me before joining a recurring group, sharing employer details, or agreeing to a mentor relationship.",
+      "intents": [
+        {
+          "id": "industry-transition-peers",
+          "intent": "Find experienced professionals moving into climate-related work to compare learning plans, practice explaining a sector change, and exchange what we know from our previous industries."
+        }
+      ]
+    },
+    {
+      "id": "pavel",
+      "name": "Pavel Novak",
+      "instructions": "I am a staff software engineer in Prague who gets nervous giving talks. I want a reciprocal practice partner, and I can offer clear feedback on technical explanations while receiving feedback on pacing and audience assumptions. My available slot is alternate Saturdays from 15:00 to 16:00 Prague time. I am not hiring or offering ongoing career coaching. Ask me before agreeing to a recurring session, recording a rehearsal, or inviting an audience.",
+      "intents": [
+        {
+          "id": "technical-storytelling-peer",
+          "intent": "Meet a software practitioner who wants a friendly rehearsal audience for a short professional talk; exchange feedback on making technical stories understandable."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "users": [
+    {
+      "id": "amara",
+      "name": "Amara Mensah",
+      "instructions": "I recently moved to Glasgow and want friendships that can grow through small repeated activities. For walks, I prefer a gentle hour on paved paths on Saturday mornings, with time to talk and sit down; ask me before choosing a meeting place or sharing contact details. Separately, I would enjoy swapping vegetarian recipes over a Sunday lunch once a month. I am not ready to host strangers at home and have not chosen a spending limit. Ask me about a public venue and budget for that plan; agreeing to a walk does not commit me to a lunch group.",
+      "intents": [
+        {
+          "id": "gentle-weekend-walks",
+          "intent": "Meet a local friend for unhurried Saturday walks in Glasgow, discovering riverside paths and having a conversation without a fitness target."
+        },
+        {
+          "id": "vegetarian-recipe-friends",
+          "intent": "Find a few Glasgow friends who enjoy exchanging vegetarian recipes and could try an occasional Sunday lunch together in a public setting."
+        }
+      ]
+    },
+    {
+      "id": "ewan",
+      "name": "Ewan McLeod",
+      "instructions": "I have lived in Glasgow for ten years and work from home. For my outdoor intent, I would like company spotting common birds by the river on Saturday mornings; I am happy to go slowly and lend spare binoculars. Ask me before settling a route or time. Separately, I am new to cooperative board games and want a relaxed Wednesday evening group that finishes by 21:00. I prefer a quiet cafe to a pub and have not picked a venue or budget. Ask me before joining a regular group or booking a table.",
+      "intents": [
+        {
+          "id": "riverside-bird-company",
+          "intent": "Find someone to spend a slow Saturday morning noticing birds along Glasgow's riverside paths; no bird knowledge needed, just curiosity and company."
+        },
+        {
+          "id": "cooperative-game-friends",
+          "intent": "Meet Glasgow friends for beginner-friendly cooperative board games on early Wednesday evenings, with conversation and no pressure to win."
+        }
+      ]
+    },
+    {
+      "id": "sofia",
+      "name": "Sofia Rios",
+      "instructions": "I am a nurse in Glasgow whose rotating shifts make weekly clubs difficult. I enjoy vegetarian cooking and want reciprocal friendships rather than teaching a cooking class. I can usually find one Sunday afternoon a month, but my next rota is not confirmed. A shared public kitchen or an inexpensive cafe would work; I cannot host at home. Ask me before promising a date, paying a venue deposit, or agreeing to prepare food for a group.",
+      "intents": [
+        {
+          "id": "monthly-food-and-company",
+          "intent": "Find local people to trade meat-free meal ideas and get to know each other over occasional Sunday food meetups that fit around shift work."
+        }
+      ]
+    },
+    {
+      "id": "hamish",
+      "name": "Hamish Reid",
+      "instructions": "I am an experienced trail runner in Glasgow training for an endurance event. I want a partner for hilly twenty-kilometer runs starting at 06:30 on Saturdays, not a leisurely walk or a beginner coaching commitment. I enjoy chatting while running but need to keep my training pace. Clarify distance, terrain, and experience before suggesting an outing. Ask me before agreeing to a route, travel arrangement, or recurring training plan.",
+      "intents": [
+        {
+          "id": "weekend-outdoor-training",
+          "intent": "Find a regular weekend outdoor activity partner near Glasgow for long hill runs and endurance training before the day gets busy."
+        }
+      ]
+    },
+    {
+      "id": "noura",
+      "name": "Noura Haddad",
+      "instructions": "I moved to Edinburgh recently and visit Glasgow by train about once a month. I like sketching buildings, but I am an amateur and mainly want company and a reason to explore. I would enjoy a short stroll followed by drawing at a cafe, with people free to chat rather than draw. I cannot promise weekly Glasgow meetings. Ask me before choosing a visit date, buying travel tickets, or joining a recurring group.",
+      "intents": [
+        {
+          "id": "city-sketching-company",
+          "intent": "Meet friendly people in Glasgow for occasional slow city explorations, sketchbook stops, and a cafe conversation when I visit from Edinburgh."
+        }
+      ]
+    },
+    {
+      "id": "callum",
+      "name": "Callum Fraser",
+      "instructions": "I am a Glasgow parent looking for adult conversation during the school day. I can meet Tuesdays or Thursdays between 10:00 and 11:30 and will have a toddler in a pushchair. Evenings and weekends are already committed to family activities. I prefer paved park paths with places to stop and do not need the other person to be a parent. Ask me before choosing a meeting spot or sharing any family details.",
+      "intents": [
+        {
+          "id": "weekday-park-friend",
+          "intent": "Find a nearby friend for easy daytime park walks and conversation in Glasgow while I push a toddler, without turning it into a formal parent group."
+        }
+      ]
+    },
+    {
+      "id": "mei",
+      "name": "Mei Tan",
+      "instructions": "I have lived in Glasgow for four years and enjoy explaining cooperative games to newcomers. I want peers to spend time with, not customers or a competitive league. Wednesday evenings from 18:30 to 20:30 suit me, and I can bring a small game to a quiet cafe. My outing budget is six pounds, excluding transport. Ask me before reserving a table, buying a new game, or inviting additional people.",
+      "intents": [
+        {
+          "id": "shared-puzzle-evenings",
+          "intent": "Find local friends to solve tabletop puzzles together over a drink on Wednesday evenings; I can bring games where everyone works toward the same goal."
+        }
+      ]
+    },
+    {
+      "id": "isla",
+      "name": "Isla Campbell",
+      "instructions": "I am a Glasgow resident who enjoys loud live music and wants friends who like discovering unfamiliar bands. Friday nights after 22:00 are my free time; I work most weekend days. I am looking for social company, not professional music contacts or a daytime club. I have not set a ticket budget for the next outing. Ask me before booking a show, agreeing to travel together, or sharing my phone number.",
+      "intents": [
+        {
+          "id": "late-night-gig-friends",
+          "intent": "Meet Glasgow friends for late Friday gigs and spontaneous music discoveries, with people happy to stay out after the early evening crowds leave."
+        }
+      ]
+    }
+  ]
+}
