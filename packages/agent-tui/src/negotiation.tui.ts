@@ -1,5 +1,5 @@
 import type { NegotiationAgent, PrincipalQuestion, NegotiationAction } from '@indexnetwork/agent';
-import { BoxRenderable, ScrollBoxRenderable, TextareaRenderable, TextRenderable, type CliRenderer, type KeyEvent } from '@opentui/core';
+import { BoxRenderable, ScrollBoxRenderable, TextareaRenderable, TextRenderable, fg, t, type CliRenderer, type KeyEvent } from '@opentui/core';
 
 /** An independently selectable principal/intent conversation. */
 export interface TuiPrincipal {
@@ -78,7 +78,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
   let pairKey = '';
   let opportunityId = '';
   let displayedTurns = 0;
-  const matches = () => [...lab.negotiations.values()].filter((match) => roster.every((user) => match.principals.some(({ id }) => id === user.current.id)));
+  const matches = () => [...lab.negotiations.values()].filter((match) => expanded.every((user) => match.principals.some(({ id }) => id === user.current.id)));
   const root = new BoxRenderable(renderer, { id: 'negotiation-lab', width: '100%', height: '100%', flexDirection: 'column', backgroundColor: COLORS.background });
   renderer.root.add(root);
   const header = new BoxRenderable(renderer, { height: 1, flexShrink: 0, flexDirection: 'row' });
@@ -223,10 +223,10 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
       if (expanded[index].id === lastSession) index--;
       expanded.splice(index, 1);
     }
-    a2a.visible = roster.length === 2 && expanded.length === 2 && renderer.width >= 122;
+    a2a.visible = expanded.length === 2;
     if (selected === null && !a2a.visible) selected = lastSession;
     if (a2a.visible) {
-      const right = panes.get(roster[1].current.id)!.box;
+      const right = panes.get(expanded[1].current.id)!.box;
       const children = board.getChildren();
       if (children.indexOf(a2a) + 1 !== children.indexOf(right)) board.insertBefore(a2a, right);
     }
@@ -393,10 +393,11 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
       const pending = agents.filter((agent) => agent.pending).length;
       const queued = agents.reduce((sum, agent) => sum + agent.queuedQuestions, 0);
       entry.visible = roster.includes(user) && !expanded.includes(user);
-      entry.content = `${user.name}\n${user.current.intent}\n${pending ? `? ${pending}` : '·'}${queued ? ` · ${queued} queued` : ''}`;
-      entry.fg = pending ? COLORS.question : COLORS.muted;
+      const highlight = fg(pending ? COLORS.question : COLORS.muted);
+      entry.fg = COLORS.muted;
+      entry.content = t`${highlight(user.name)}\n${user.current.intent}\n${highlight(pending ? `? ${pending}` : '·')}${queued ? ` · ${queued} queued` : ''}`;
     }
-    const key = roster.length === 2 ? roster.map(({ current }) => current.id).join('\0') : '';
+    const key = expanded.length === 2 ? expanded.map(({ current }) => current.id).join('\0') : '';
     if (key !== pairKey) { pairKey = key; matchIndex = 0; }
     let demo: TuiNegotiation | undefined;
     if (a2a.visible) {
@@ -408,14 +409,14 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
         opportunityId = nextId;
         clear(sharedHistory);
         displayedTurns = 0;
-        append(sharedHistory, roster.map(({ name }) => name).join(' ↔ '), demo ? `Match ${matchIndex + 1}/${available.length} · ${demo.opportunityId} · Ctrl+N changes match.` : 'No negotiation between these selected intents.', COLORS.muted);
+        append(sharedHistory, expanded.map(({ name }) => name).join(' ↔ '), demo ? `Match ${matchIndex + 1}/${available.length} · ${demo.opportunityId} · Ctrl+N changes match.` : 'No negotiation between these selected intents.', COLORS.muted);
       }
       while (demo && displayedTurns < demo.transcript.length) {
         const entry = demo.transcript[displayedTurns++];
         const name = demo.principals.find(({ userId }) => userId === entry.ownerId)!.name;
         append(sharedHistory, name + "'s agent · " + entry.action, entry.text, COLORS.focus);
       }
-      a2a.title = ` A2A · ${roster.map(({ name }) => name).join(' ↔ ')} `;
+      a2a.title = ` A2A · ${expanded.map(({ name }) => name).join(' ↔ ')} `;
       a2a.borderColor = selected === null ? COLORS.focus : COLORS.border;
       a2a.titleColor = selected === null ? COLORS.focus : COLORS.muted;
     }
@@ -454,7 +455,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
     } else if (key.name === 'tab') {
       key.preventDefault();
       const order: (string | null)[] = roster.map(({ id }) => id);
-      if (a2a.visible) order.splice(1, 0, null);
+      if (a2a.visible) order.splice(order.indexOf(expanded[0].id) + 1, 0, null);
       focus(order[(order.indexOf(selected) + (key.shift ? -1 : 1) + order.length) % order.length]);
     } else if (key.name === 'o' && key.ctrl) {
       key.preventDefault();

@@ -2,7 +2,7 @@
 
 A terminal testing platform for personal agents. It displays one pane per selected
 user, with an intent selector and an independent H2A conversation for each
-user–intent pair. A two-user board can also display its selected intents' A2A
+user–intent pair. Two expanded users also display their selected intents' A2A
 conversation. Agent behavior is
 owned by `@indexnetwork/agent`; participation rules belong to
 `@indexnetwork/protocol`.
@@ -90,13 +90,16 @@ The roster requires at least two distinct users. Expanded chats share the width
 equally, targeting at least 40 columns each. Overflow collapses from the end of
 roster order while preserving the focused user. A 24-column scrollable list shows
 collapsed users, their selected intent, and counts of pending and queued questions
-across their intents. Selecting a collapsed user displaces another chat if needed.
+across their intents. Names and question indicators highlight only while a question
+awaits input; queue counts stay muted. Selecting a collapsed user displaces another
+chat if needed.
 Widening restores automatically collapsed chats; manually collapsed chats stay
 collapsed until selected.
 
-A2A appears between two expanded users at 122 columns or wider. It hides before
-H2A chats collapse, and always stays hidden with three or more users on the board,
-including collapsed users. An unmatched pair shows an empty A2A pane.
+A2A appears between exactly two expanded users, including when other users are
+collapsed. The two chats share space with A2A, becoming narrower when needed to
+keep the negotiation visible. With one or three or more expanded users, A2A is
+hidden. An unmatched pair shows an empty A2A pane.
 
 Each user–intent pair retains its agent, draft, history and scroll position,
 suggested-answer selection, pending questions, and in-flight sends through intent,

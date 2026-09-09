@@ -30,9 +30,10 @@ Header [−]/Ctrl+O collapses a chat; at least one stays expanded. Overflow coll
 from the end of roster order, preserving focus and targeting 40 columns per chat.
 Click a collapsed user to expand them. Widening restores automatic collapses;
 manual collapses stay until selected. The scrollable list shows pending questions.
-A2A is visible only with two users on the board, both expanded, at 122+ columns.
-Ctrl+N cycles their selected intents' matches. Three or more board users always
-hide A2A, including when some users are collapsed. All agents keep running.
+A2A appears between exactly two expanded users, even with other users collapsed.
+The chats share space with A2A at narrower widths. Ctrl+N cycles the expanded
+users' selected intents' matches. Other expanded counts hide A2A. All agents keep
+running.
 Related requests can share an intent-wide question without changing it while you
 answer; match-specific approvals remain separate.
 Click a chat to act as that user. Click or use Up/Down to highlight an
