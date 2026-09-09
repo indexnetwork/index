@@ -9,7 +9,7 @@ import type { TuiPrincipal } from './negotiation.tui';
 export interface DemoPrincipal {
   id: string;
   name: string;
-  intent: string;
+  intents: { id: string; intent: string }[];
   instructions: string;
 }
 
@@ -27,22 +27,38 @@ export interface TranscriptEntry {
  * Validate a user-editable local scenario before starting model work.
  * @param value - Parsed JSON containing the selectable user roster.
  * @returns Users with stable IDs, names, intents, and private instructions.
- * @throws When fewer than two users are supplied, a field is empty, or IDs repeat.
+ * @throws When fewer than two users are supplied, a user has no intents, a field is empty, or IDs repeat within a roster.
  */
 export function parseScenario(value: unknown): DemoScenario {
   const users = value && typeof value === 'object' ? (value as Record<string, unknown>).users : undefined;
   if (!Array.isArray(users) || users.length < 2) throw new Error('Scenario.users must contain at least two users.');
   const ids = new Set<string>();
   return { users: users.map((raw: unknown, index) => {
-    if (!raw || typeof raw !== 'object') throw new Error(`Scenario.users[${index}] must contain id, name, intent, and instructions.`);
+    if (!raw || typeof raw !== 'object') throw new Error(`Scenario.users[${index}] must contain id, name, intents, and instructions.`);
     const principal = {} as DemoPrincipal;
-    for (const field of ['id', 'name', 'intent', 'instructions'] as const) {
+    for (const field of ['id', 'name', 'instructions'] as const) {
       const text = (raw as Record<string, unknown>)[field];
       if (typeof text !== 'string' || !text.trim()) throw new Error(`Scenario.users[${index}].${field} must be a nonempty string.`);
       principal[field] = text.trim();
     }
     if (ids.has(principal.id)) throw new Error(`Duplicate user ID: ${principal.id}`);
     ids.add(principal.id);
+    const intents = (raw as Record<string, unknown>).intents;
+    if (!Array.isArray(intents) || !intents.length) throw new Error(`Scenario.users[${index}].intents must contain at least one intent.`);
+    const intentIds = new Set<string>();
+    principal.intents = intents.map((rawIntent: unknown, intentIndex) => {
+      const path = `Scenario.users[${index}].intents[${intentIndex}]`;
+      if (!rawIntent || typeof rawIntent !== 'object') throw new Error(`${path} must contain id and intent.`);
+      const intent = {} as DemoPrincipal['intents'][number];
+      for (const field of ['id', 'intent'] as const) {
+        const text = (rawIntent as Record<string, unknown>)[field];
+        if (typeof text !== 'string' || !text.trim()) throw new Error(`${path}.${field} must be a nonempty string.`);
+        intent[field] = text.trim();
+      }
+      if (intentIds.has(intent.id)) throw new Error(`Duplicate intent ID for ${principal.id}: ${intent.id}`);
+      intentIds.add(intent.id);
+      return intent;
+    });
     return principal;
   }) };
 }
@@ -174,9 +190,13 @@ export class NegotiationLab extends EventEmitter {
 
   constructor(scenario: DemoScenario, options: { model: Model }) {
     super();
-    this.users = scenario.users.map((user) => ({ id: 'intent-' + user.id, userId: user.id, name: user.name, intentId: 'intent-' + user.id, intent: user.intent, principalContext: user.instructions }));
+    this.users = scenario.users.flatMap((user) => user.intents.map((intent) => {
+      const id = [user.id, intent.id].map(encodeURIComponent).join(':');
+      return { id, userId: user.id, name: user.name, intentId: id, intent: intent.intent, principalContext: user.instructions };
+    }));
     for (let index = 0; index < this.users.length; index++) {
       for (const other of this.users.slice(index + 1)) {
+        if (this.users[index].userId === other.userId) continue;
         const principals = [this.users[index], other] as const;
         const id = `local:${principals.map(({ id }) => id).sort().map(encodeURIComponent).join(':')}`;
         const demo = new NegotiationDemo(principals, id);
@@ -203,7 +223,7 @@ export class NegotiationLab extends EventEmitter {
         end: (record) => this.negotiations.get(record.opportunityId)!.end(record),
         error: (id, owner, reason) => {
           const affected = id === null
-            ? [...this.negotiations.values()].filter((demo) => demo.phase !== 'settled' && demo.principals.some((principal) => principal.userId === owner.id))
+            ? [...this.negotiations.values()].filter((demo) => demo.phase !== 'settled' && demo.principals.some((principal) => principal.id === user.id))
             : [this.negotiations.get(id)!];
           for (const demo of affected) {
             demo.error(reason);
