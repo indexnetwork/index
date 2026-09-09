@@ -135,6 +135,11 @@ class NativeAgent:
             if not result.get("success"):
                 raise ValueError(result.get("error") or "Hermes could not create the native schedule.")
             existing = result["job"]
+        elif not existing["enabled"]:
+            result = json.loads(self.ctx.dispatch_tool("cronjob_manage", {"action": "resume", "job_id": existing["job_id"]}, session_id=session_id))
+            if not result.get("success"):
+                raise ValueError(result.get("error") or "Hermes could not resume the native schedule.")
+            existing = result["job"]
         with self.store.transaction() as db:
             self.store.bind(db, {**(binding or {}), "account": agent["ownerId"], "agentId": agent["id"],
                                  "jobId": existing["job_id"], "source": native["source"]})
@@ -149,6 +154,8 @@ class NativeAgent:
             binding = self.operations.selected(db)
             if not native or native["source"] != binding["source"]:
                 raise ValueError("Only the configured gateway owner may focus an intent.")
+            if native.get("error"):
+                raise ValueError(native["error"] + " Send a new message to focus this intent.")
             intent_id = args.get("intentId")
             context = self.operations.context(binding["account"], intent_id)
             state = self.store.load(db, binding["account"], intent_id)
