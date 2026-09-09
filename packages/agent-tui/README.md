@@ -17,10 +17,11 @@ bun --env-file=.env.development run agent:tui
 ```
 
 Requires `OPENROUTER_API_KEY` and an interactive terminal. Choose a JSON scenario
-with Up/Down + Enter or a click. The default roster has 12 users, two intents per
-user, and 264 simulated matches between different users' intents. All 24 personal
-agents and their matches run independently of the visible board. Changing users,
-intents, or collapsed panes only changes what you see.
+with Up/Down + Enter or a click. The chooser displays filenames in alphabetical
+order, starting with the five-user cofounder scenario. The six bundled scenarios
+have 5–10 users, 5–14 intents, and 10–87 simulated matches. Every user–intent pair
+has its own personal agent; all agents and matches run independently of the visible
+board. Changing users, intents, or collapsed panes only changes what you see.
 
 Override the shared model client's ordered model list with one to three IDs:
 
@@ -32,6 +33,36 @@ The model client owns rate-limit waiting and model switching. No HTTP server,
 Redis, or database are required for the scenario host. Ctrl+C stops
 all agents and saves a private Markdown transcript in a temporary directory.
 Each scenario launch starts fresh.
+
+## Bundled scenarios
+
+All personas are fictional. The scenarios explore social discovery through
+complementary needs, shared interests, and useful next steps. They include promising
+overlaps, adjacent interests that need clarification, and plausible mismatches in
+goals, availability, experience, location, or commitment. Similar wording can hide
+different goals, while different wording can describe a useful connection.
+
+| Scenario | Purpose | Users | Intents | Simulated matches |
+| --- | --- | --- | --- | --- |
+| [05-users-05-intents-cofounders-and-project-collaborators.json](scenarios/05-users-05-intents-cofounders-and-project-collaborators.json) | Explore complementary engineering, design, and research skills; distinguish a possible cofounder relationship from paid work or a bounded side project. | 5 | 5 | 10 |
+| [06-users-08-intents-research-and-learning-peers.json](scenarios/06-users-08-intents-research-and-learning-peers.json) | Connect related research questions, study partners, and reciprocal methods learning; clarify prediction versus causal understanding and academic versus community goals. | 6 | 8 | 26 |
+| [07-users-09-intents-creative-collaborators.json](scenarios/07-users-09-intents-creative-collaborators.json) | Bring writers, musicians, filmmakers, and designers together around complementary practices; explore medium, creative credit, paid briefs, and experimental work. | 7 | 9 | 34 |
+| [08-users-10-intents-local-friendships-and-activity-partners.json](scenarios/08-users-10-intents-local-friendships-and-activity-partners.json) | Help newcomers and residents find friendship through walks, food, games, and other activities; clarify pace, travel, schedules, and comfort with a first meeting. | 8 | 10 | 43 |
+| [09-users-12-intents-career-mentors-and-industry-peers.json](scenarios/09-users-12-intents-career-mentors-and-industry-peers.json) | Explore career transitions, bounded mentorship, reciprocal learning, and professional community; distinguish peer support and mentoring from recruiting. | 9 | 12 | 63 |
+| [10-users-14-intents-community-and-climate-projects.json](scenarios/10-users-14-intents-community-and-climate-projects.json) | Connect organizers, volunteers, and specialists around repair, summer comfort, and community energy; clarify resources, authority, and local versus commercial climate goals. | 10 | 14 | 87 |
+
+The respective intent counts per user are `1,1,1,1,1`, `2,2,1,1,1,1`,
+`2,2,1,1,1,1,1`, `2,2,1,1,1,1,1,1`, `2,2,2,1,1,1,1,1,1`, and
+`2,2,2,2,1,1,1,1,1,1`. Every intent is paired with every intent belonging to a
+different user; the same user's intents are never paired together. These counts
+describe exhaustive simulation pairs, not predicted relevant connections.
+
+Multi-intent personas have separate aims and decisions within their shared private
+instructions, exercising independent H2A conversations. The instructions describe
+known facts, preferences, and choices that need human input, such as setting a
+scope, agreeing to a meeting, or sharing creative work. Agents determine relevance
+and outcomes during the run; fixtures contain no scripted transcripts or required
+successful connections.
 
 ## Run against the API database
 

@@ -1,0 +1,78 @@
+{
+  "users": [
+    {
+      "id": "mira",
+      "name": "Mira Patel",
+      "instructions": "I am a transport PhD student in Rotterdam studying walking decisions in hot weather, using public street and weather data. For the route-choice research, I can contribute two hours a week and need help understanding lived experience; ask me before setting a joint research question, authorship, or collecting new data. Separately, I want a peer to work through causal-inference exercises on Tuesday evenings in local time. I know regression but am new to causal diagrams. Ask me before choosing a course or recurring study schedule.",
+      "intents": [
+        {
+          "id": "heat-route-choice",
+          "intent": "Find a research peer exploring how shade and perceived heat change the routes people choose to walk, combining street data with accounts of everyday journeys."
+        },
+        {
+          "id": "causal-inference-study",
+          "intent": "Find a study partner to learn causal inference through weekly exercises and discuss when an observed transport pattern supports a causal claim."
+        }
+      ]
+    },
+    {
+      "id": "jonas",
+      "name": "Jonas Berg",
+      "instructions": "I am an environmental science master's student in Copenhagen with experience analyzing temperature sensors in R. My research interest is pedestrian comfort at street scale, not predicting a city's average temperature. For a research collaboration I can meet remotely on alternate Friday afternoons; ask me before sharing unpublished measurements or committing to a field visit. Separately, I can teach basic R in exchange for learning qualitative interviewing, one hour on Sunday afternoons. Ask me to agree an exchange format; that offer is not ongoing statistical consulting.",
+      "intents": [
+        {
+          "id": "pedestrian-comfort",
+          "intent": "Find someone studying pedestrians' heat perception to compare their questions with street-level temperature measurements and explore a joint analysis."
+        },
+        {
+          "id": "methods-exchange",
+          "intent": "Exchange beginner R and plotting help for practice designing and conducting qualitative interviews with a patient learning peer."
+        }
+      ]
+    },
+    {
+      "id": "salma",
+      "name": "Salma Idrissi",
+      "instructions": "I am an anthropology master's student in Rotterdam interested in how residents describe comfortable and uncomfortable public places. I can explain interview design and thematic analysis, and I want to learn enough plotting to communicate patterns. I am available on Sunday afternoons for a reciprocal methods exchange. Existing interview transcripts cannot be shared; we can practice with invented examples. Ask me before choosing a study project, contacting participants, or agreeing to a recurring collaboration.",
+      "intents": [
+        {
+          "id": "stories-and-street-data",
+          "intent": "Find a quantitative learning peer to connect stories about everyday walks with simple visualizations; I can exchange qualitative interviewing practice for help making sense of street data."
+        }
+      ]
+    },
+    {
+      "id": "theo",
+      "name": "Theo Park",
+      "instructions": "I am a software developer in Seoul taking my first probability course. I want a friendly peer to solve introductory problems, not a tutor doing my assignments or a research collaborator. I can meet Sundays from 19:00 to 20:00 Seoul time and prefer someone near my level. Causal inference sounds interesting but I have not studied regression. Ask me before changing the subject level, enrolling in a course, or committing to a study group.",
+      "intents": [
+        {
+          "id": "intro-probability",
+          "intent": "Find a beginner probability study partner for weekly practice on conditional probability and Bayes' rule, with time to explain mistakes to each other."
+        }
+      ]
+    },
+    {
+      "id": "lin",
+      "name": "Lin Chen",
+      "instructions": "I am a machine-learning practitioner in Singapore working on a public-data urban heat prediction benchmark. I want to improve out-of-sample accuracy on satellite image tiles and can trade modeling notes asynchronously. I am not investigating why individuals choose walking routes and have no time for fieldwork. Clarify the unit of analysis and whether predictive evaluation is actually shared. Ask me before committing code, compute spending, or a joint submission.",
+      "intents": [
+        {
+          "id": "heat-prediction-benchmark",
+          "intent": "Find an urban heat research peer to compare satellite-based temperature prediction models and improve a public benchmark's held-out accuracy."
+        }
+      ]
+    },
+    {
+      "id": "rosa",
+      "name": "Rosa Alvarez",
+      "instructions": "I am a community librarian in Valencia, not an academic researcher. Neighbors keep informal notes about which routes feel comfortable in summer, and I want to help them read maps and charts. I can offer experience running bilingual Spanish-English learning sessions, with one remote weekday morning a month. I cannot authorize sharing neighbors' notebooks. Ask me before inviting anyone to a session or agreeing to turn community learning into a publication.",
+      "intents": [
+        {
+          "id": "summer-walk-map-learning",
+          "intent": "Meet a patient data-minded peer who can help a neighborhood learning circle turn 'this street feels cooler' observations into understandable maps; exchange public-workshop experience for visualization skills."
+        }
+      ]
+    }
+  ]
+}
