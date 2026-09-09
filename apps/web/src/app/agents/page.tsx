@@ -48,7 +48,7 @@ export default function AgentsPage() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentDescription, setNewAgentDescription] = useState('');
-  const [selecting, setSelecting] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -87,6 +87,12 @@ export default function AgentsPage() {
     [agents],
   );
 
+  // No registered agent bound to negotiations means the Index-hosted agent runs them.
+  const selectedNegotiator = useMemo(
+    () => personalAgents.find((agent) => agent.handleNegotiations) ?? null,
+    [personalAgents],
+  );
+
   async function refreshAgents() {
     const next = await agentsService.list();
     setAgents(next);
@@ -112,17 +118,25 @@ export default function AgentsPage() {
     }
   }
 
-  async function handleSelectNegotiator(agent: Agent) {
-    const next = !agent.handleNegotiations;
-    setSelecting(agent.id);
+  /**
+   * @param agent - The registered agent to bind, or null to hand negotiations
+   *   back to the Index-hosted agent by clearing the current binding.
+   */
+  async function handleSelectNegotiator(agent: Agent | null) {
+    const target = agent ?? selectedNegotiator;
+    if (!target) {
+      return;
+    }
+
+    setSelecting(true);
     try {
-      await agentsService.update(agent.id, { handleNegotiations: next });
+      await agentsService.update(target.id, { handleNegotiations: agent !== null });
       await refreshAgents();
-      success(next ? `${agent.name} handles negotiations` : 'No agent handles negotiations');
+      success(agent ? `${agent.name} handles negotiations` : 'Index Negotiator handles negotiations');
     } catch (err) {
       error('Failed to set the negotiator', err instanceof Error ? err.message : undefined);
     } finally {
-      setSelecting(null);
+      setSelecting(false);
     }
   }
 
@@ -227,18 +241,20 @@ export default function AgentsPage() {
                       <tr className="border-b border-gray-100 last:border-b-0">
                         <td className="px-4 py-2">
                           <input
-                            type="checkbox"
-                            checked={false}
-                            disabled
+                            type="radio"
+                            name="negotiator"
+                            checked={selectedNegotiator === null}
+                            onChange={() => handleSelectNegotiator(null)}
+                            disabled={selecting}
                             aria-label="Index Negotiator handles negotiations"
-                            className="w-4 h-4 accent-black"
+                            className="w-4 h-4 accent-black disabled:cursor-not-allowed"
                           />
                         </td>
                         <td className="px-4 py-2">
                           <span className="text-sm text-gray-700">Index Negotiator</span>
-                          <span className="ml-2 text-xs text-gray-400 font-ibm-plex-mono">not yet active</span>
+                          <span className="ml-2 text-xs text-gray-400 font-ibm-plex-mono">hosted</span>
                           <p className="text-xs text-gray-400 font-ibm-plex-mono mt-0.5">
-                            Hosted by Index. It does not run yet, so negotiations wait for your own agent.
+                            Hosted by Index. Runs for your active intents.
                           </p>
                         </td>
                         <td className="px-4 py-2 text-xs text-gray-400 font-ibm-plex-mono">—</td>
@@ -249,10 +265,11 @@ export default function AgentsPage() {
                         <tr key={agent.id} className="border-b border-gray-100 last:border-b-0">
                           <td className="px-4 py-2">
                             <input
-                              type="checkbox"
+                              type="radio"
+                              name="negotiator"
                               checked={agent.handleNegotiations}
                               onChange={() => handleSelectNegotiator(agent)}
-                              disabled={selecting !== null}
+                              disabled={selecting}
                               aria-label={`${agent.name} handles negotiations`}
                               className="w-4 h-4 accent-black disabled:cursor-not-allowed"
                             />
@@ -288,10 +305,6 @@ export default function AgentsPage() {
                     </tbody>
                   </table>
                 </div>
-
-                {personalAgents.length === 0 ? (
-                  <p className="text-xs text-gray-400 font-ibm-plex-mono">No personal agents yet.</p>
-                ) : null}
               </div>
             </div>
           )}
