@@ -1,11 +1,11 @@
 # Index CLI
 
-Command-line interface for [Index Network](https://index.network). Chat with the AI agent, manage signals, and discover opportunities — all from your terminal.
+Command-line interface for [Index Network](https://index.network). Message your hosted personal agent, manage signals, and discover opportunities — all from your terminal.
 
 ## Installation
 
 ```bash
-npm install -g @indexnetwork/cli
+npm install -g @indexnetwork/cli@0.24.0
 ```
 
 ## Quick Start
@@ -46,9 +46,31 @@ index login --api-url <url>     # Custom server URL
 
 Credentials are stored in `~/.index/credentials.json`. Browser login explicitly requests protocol v2 and binds the loopback callback with a one-time state. Only a short-lived device code travels through the redirect; the CLI exchanges it at `/api/auth/device/token` for its own session token and sends that as `Authorization: Bearer`. There is no approval prompt, because the web page mints and approves the code itself — no code from anywhere else can enter the grant. A re-login revokes the session it replaces, so logins do not pile up.
 
-**Rolling deploy order:** v2 clients require the v2 web bridge and intentionally reject callbacks from older web deployments that cannot return the bound state. On dev, this CLI is an RC: wait for both the API and web deployments to succeed before testing v2 login. Do not relax state validation to make a new CLI work against old web.
+For noninteractive calls, set exactly one credential:
 
-The v1 login contract (`session_token` callback, Bearer API-key fallback, `--token` manual flow) is removed. So is API-key login: existing `credentials.json` files holding a key are treated as signed out; run `index login` again.
+```bash
+export INDEX_API_URL='https://protocol.index.network'
+export INDEX_API_KEY='<api-key>'
+index --api-url "$INDEX_API_URL" tool list --json
+```
+
+`INDEX_SESSION_TOKEN` uses Bearer authentication; `INDEX_API_KEY` uses `x-api-key`.
+Setting both fails. Environment credentials take precedence over stored browser
+login. The API origin resolves from `--api-url`, then `INDEX_API_URL`, then the
+stored credential URL, then `https://protocol.index.network`. Integrations pass
+the origin explicitly. Agent management and other session-only operations still require a session.
+
+### `index tool` and `index agent`
+
+```bash
+index tool list --json
+index tool call read_docs --query '{}' --json
+index tool call read_docs --query '{"topic":"workflows"}' --json
+index agent me --json
+```
+
+Tool discovery includes the actual input schemas. `--query` must be a JSON
+object; tool failures produce a structured error and a nonzero exit status.
 
 ### `index logout`
 
@@ -76,15 +98,20 @@ index intent remove-from-network <id> <network-id> # Remove a signal from a netw
 
 ### `index negotiation`
 
-Inspect agent negotiations — the autonomous turn-by-turn exchanges between broker agents that evaluate whether an opportunity exists.
+Read current negotiations and submit structured turns using full opportunity IDs.
 
 ```bash
-index negotiation list                     # List your agent's negotiations
-index negotiation list --limit 10          # Limit results
-index negotiation list --since 1d          # Negotiations from the last 24 hours
-index negotiation list --since 2026-04-01  # Since a specific date
-index negotiation show <id>               # Show turn-by-turn details (accepts short ID)
+index negotiation list [--intent-id <id>] [--state open|settled]
+index negotiation show <opportunity-id> --json
+index negotiation turn <opportunity-id> --action propose --message "..." --expected-turn-count 0 --json
 ```
+
+Actions are `propose`, `counter`, `accept`, and `decline`. Read the detail's
+`protocol.availableActions` and current `turnCount` before submitting. The
+server enforces eligibility and stale-count protection. The CLI preserves all
+turns and protocol guidance and never retries a rejected or uncertain write.
+Agreement between agents remains separate from the owner's opportunity approval.
+`--limit`, `--since`, and `--status` are unsupported negotiation filters.
 
 ### `index opportunity`
 
@@ -119,19 +146,33 @@ index network invite <id> user@email # Invite directly by email
 
 ### `index conversation`
 
-Unified conversation command for AI agent chat and human-to-human messaging. Supports streaming responses, inline markdown formatting, tool call indicators, and special blocks (signal proposals, opportunities).
+Read and message the hosted personal agent within a signal, or use human DMs.
 
 ```bash
-index conversation                          # Interactive AI chat REPL
-index conversation "find me collaborators"  # One-shot message to AI agent
-index conversation --session <id>           # Resume an AI chat session
-index conversation sessions                 # List AI chat sessions
-index conversation list                     # List all conversations (H2A + H2H)
-index conversation with <user-id>           # Open or resume a DM
-index conversation show <id>               # Show messages
-index conversation send <id> <msg>         # Send a message
-index conversation stream                  # Real-time SSE stream
+index conversation show agent --intent-id <id> --json
+index conversation send agent "..." --intent-id <id> --json
+index conversation send agent "..." --intent-id <id> --question-id <pending-question-id> --json
+index conversation list
+index conversation with <user-id>
+index conversation show <conversation-id> [--limit <n>]
+index conversation send <conversation-id> "..."
+index conversation stream --json
 ```
+
+Agent reads include availability and the pending question. An answer must carry
+the current question ID and its intent scope; stale refusals are surfaced directly.
+Human messages retain their existing conversation IDs. SSE emits one JSON event
+record per line. There is no local agent runtime or interactive chat session.
+
+### `index onboarding`
+
+```bash
+index onboarding confirm-profile --json
+index onboarding complete [--intent-id <id>] --json
+```
+
+Confirm a profile only after the owner reviews it. Completion uses the server's
+profile-confirmation and first-signal prerequisites; it does not bypass them.
 
 ### `index profile`
 
@@ -161,6 +202,10 @@ index sync                             # Sync to ~/.index/context.json
 index sync --json                      # Output to stdout as JSON
 ```
 
+`--json` emits one parseable result or error on stdout. Progress goes to stderr;
+HTTP and tool failures exit nonzero. Sync fails if any required context read
+fails, without saving partial context.
+
 ## Examples: Reviewing Opportunities
 
 Approved signals are evaluated in the background. `opportunity list` only reviews persisted results; it does not start evaluation.
@@ -189,11 +234,9 @@ index opportunity reject <id>
 | -------------------- | ----- | --------------------------------------------------------------- |
 | `--api-url <url>`    |       | Override API server (default: `https://protocol.index.network`) |
 | `--app-url <url>`    |       | Override app URL for login (default: `https://index.network`)   |
-| `--session <id>`     | `-s`  | Resume a specific chat session                                  |
 | `--archived`         |       | Include archived signals (intent list)                          |
 | `--status <status>`  |       | Filter opportunities by status                                  |
 | `--limit <n>`        |       | Limit number of results                                         |
-| `--since <date>`     |       | Filter by time: ISO date or duration like `1h`, `2d`, `1w`      |
 | `--prompt <text>`    | `-p`  | Network description (for `network create`)                      |
 | `--title <text>`     |       | Network title (for `network update`)                            |
 | `--objective <text>` |       | Focus objective (for `scrape`)                                  |
@@ -206,16 +249,13 @@ index opportunity reject <id>
 
 ```bash
 # Run directly with Bun (no build step)
-bun src/main.ts conversation
+bun src/main.ts tool list --json
 
 # Build for all platforms
 bun run build
 
 # Build for current platform only (fast dev builds)
 bun scripts/build.ts --current
-
-# Run tests
-bun test
 
 # Dry-run publish
 bun scripts/publish.ts --dry-run

@@ -100,7 +100,7 @@ const envSchema = z.object({
   RUN_REDIS_INTEGRATION_TESTS: optionalOne,
   RUN_LOCAL_API_E2E: optionalOne,
 
-  // 9. MCP / tool runtime
+  // 9. Tool runtime
 
   // 11. Observability
   SENTRY_DSN: optionalUrl,
@@ -164,7 +164,7 @@ function collectEnvWarnings(): string[] {
     }
   };
 
-  warnMissing('API_URL', 'set the deployed API origin so MCP configs, connect links, and webhooks do not fall back to defaults.');
+  warnMissing('API_URL', 'set the deployed API origin so CLI setup, connect links, and webhooks do not fall back to defaults.');
   warnMissing('WEB_APP_URL', 'set the deployed web app origin for auth and notifications.');
   warnMissingAny(['REDIS_URL', 'REDIS_HOST'], 'set Railway Redis; otherwise cache/locks/SSE may target localhost or in-memory fallbacks.');
   warnMissing('S3_ENDPOINT', 'set the Railway bucket endpoint when using Tigris/S3-compatible storage.');

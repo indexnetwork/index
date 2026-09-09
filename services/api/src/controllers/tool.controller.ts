@@ -45,7 +45,7 @@ export class ToolController {
     try {
       body = await req.json() as Record<string, unknown>;
     } catch {
-      body = {};
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
     const parsed = InvokeSchema.safeParse(body);
@@ -57,7 +57,7 @@ export class ToolController {
     }
 
     try {
-      const result = await this.toolService.invokeTool(user.id, toolName, parsed.data.query);
+      const result = await this.toolService.invokeTool(user.id, toolName, parsed.data.query, req.signal);
       return Response.json(result);
     } catch (err) {
       if (err instanceof ChatContextAccessError) {

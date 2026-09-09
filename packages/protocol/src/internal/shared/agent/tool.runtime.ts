@@ -156,6 +156,7 @@ async function invokeToolRuntimeInner(input: ToolInvocationRuntimeInput): Promis
   });
 
   try {
+    if (combined.signal.aborted) throw makeAbortError(timedOut, input.toolName, policy);
     const run = () => input.tool.handler({ context: input.context, query: input.query });
     const toolPromise = requestContext.run(
       {

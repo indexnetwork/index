@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import * as Tabs from "@radix-ui/react-tabs";
+import { useEffect, useState } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import CopyableBox from "@/components/CopyableBox";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { buildMcpConfigs } from "@/lib/mcp-config";
+import { buildCliSetup } from "@/lib/cli-config";
 import { apiKeysService, type ApiKeyInfo } from "@/services/api-keys";
 
 function hasActiveSelection(): boolean {
@@ -34,7 +33,7 @@ function InlineSetupPanel({
   apiKey: string;
   onDismiss: () => void;
 }) {
-  const { claudeConfig } = useMemo(() => buildMcpConfigs(apiKey), [apiKey]);
+  const cliSetup = buildCliSetup(apiKey);
   const [keyCopied, setKeyCopied] = useState(false);
 
   async function copyKey() {
@@ -48,8 +47,6 @@ function InlineSetupPanel({
     }
   }
 
-  const tabTriggerClass =
-    "px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent -mb-px data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:text-gray-400";
 
   return (
     <div className="mt-4 border border-amber-200 rounded-sm bg-amber-50/50 p-4 space-y-4">
@@ -90,20 +87,12 @@ function InlineSetupPanel({
         </button>
       </div>
 
-      <Tabs.Root defaultValue="claude" className="w-full">
-        <Tabs.List className="flex w-full gap-0 border-b border-amber-200 mb-4">
-          <Tabs.Trigger value="claude" className={tabTriggerClass}>
-            MCP
-          </Tabs.Trigger>
-        </Tabs.List>
-
-        <Tabs.Content value="claude" className="space-y-3">
-          <CopyableBox value={claudeConfig} />
-          <p className="text-xs text-gray-400 font-ibm-plex-mono">
-            Add to ~/.claude/settings.json (global) or .mcp.json (per-project)
-          </p>
-        </Tabs.Content>
-      </Tabs.Root>
+      <div className="space-y-3">
+        <CopyableBox value={cliSetup} />
+        <p className="text-xs text-gray-400 font-ibm-plex-mono">
+          Configure your agent's environment with this API key. Use only one of INDEX_API_KEY or INDEX_SESSION_TOKEN.
+        </p>
+      </div>
 
       <button
         type="button"
@@ -213,7 +202,7 @@ export default function ApiKeysSection() {
           </div>
 
           <p className="text-xs text-gray-400 font-ibm-plex-mono">
-            A key authenticates you in personal agents, MCP clients, and any other client.
+            A key authenticates you in personal agents, CLI clients, and any other client.
           </p>
 
           {keys.length === 0 ? (

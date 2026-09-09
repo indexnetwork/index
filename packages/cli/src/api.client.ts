@@ -1,14 +1,14 @@
 /**
  * HTTP client for the Index Network protocol API.
  *
- * All methods attach the stored Bearer token and handle
+ * All methods attach the selected session or API-key credential and handle
  * common error patterns (401, network errors).
  */
 
-import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
+import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationDetail, NegotiationTurnAction, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
 
 // Re-export all types for backward compatibility
-export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
+export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
 
 /** HTTP error retaining a parsed structured response for JSON/advisory clients. */
 export class ApiError extends Error {
@@ -36,13 +36,15 @@ export class ApiClient {
    * @param baseUrl - Protocol server base URL (e.g. `http://localhost:3001`).
    * @param token - Device session token.
    */
-  constructor(baseUrl: string, token: string) {
+  constructor(baseUrl: string, token: string, private readonly credentialKind: "session" | "apiKey" = "session") {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
   }
 
   private authHeaders(): Record<string, string> {
-    return { Authorization: `Bearer ${this.token}` };
+    return this.credentialKind === "apiKey"
+      ? { "x-api-key": this.token }
+      : { Authorization: `Bearer ${this.token}` };
   }
 
   /**
@@ -309,9 +311,11 @@ export class ApiClient {
    * @returns The created message object.
    * @throws Error on auth failure or network error.
    */
-  async sendMessage(conversationId: string, text: string): Promise<ConversationMessage> {
+  async sendMessage(conversationId: string, text: string, intentId?: string, questionId?: string): Promise<ConversationMessage> {
     const res = await this.post(`/api/conversations/${conversationId}/messages`, {
-      parts: [{ type: "text", text }],
+      parts: [{ kind: "text", text }],
+      ...(intentId ? { metadata: { intentId } } : {}),
+      ...(questionId ? { questionId } : {}),
     });
     const body = (await res.json()) as { message: ConversationMessage };
     return body.message;
@@ -356,20 +360,16 @@ export class ApiClient {
   /**
    * List negotiations for the authenticated user.
    *
-   * @param opts - Optional filters (limit, offset).
+   * @param opts - Optional intentId and open/settled state filters.
    * @returns Array of negotiation objects.
    * @throws Error on auth failure or network error.
    */
   async listNegotiations(opts?: NegotiationListOptions): Promise<Negotiation[]> {
-    const me = await this.getMe();
     const params = new URLSearchParams();
-    if (opts?.limit) params.set("limit", String(opts.limit));
-    if (opts?.offset) params.set("offset", String(opts.offset));
-    if (opts?.since) params.set("since", opts.since);
+    if (opts?.intentId) params.set("intentId", opts.intentId);
+    if (opts?.state) params.set("state", opts.state);
     const qs = params.toString();
-    const path = qs
-      ? `/api/users/${me.id}/negotiations?${qs}`
-      : `/api/users/${me.id}/negotiations`;
+    const path = `/api/negotiations${qs ? `?${qs}` : ""}`;
     const res = await this.get(path);
     const body = (await res.json()) as { negotiations: Negotiation[] };
     return body.negotiations;
@@ -391,8 +391,47 @@ export class ApiClient {
    * @throws Error on auth failure or network error.
    */
   async callTool(toolName: string, query: Record<string, unknown> = {}): Promise<ToolResult> {
-    const res = await this.post(`/api/tools/${toolName}`, { query });
-    return (await res.json()) as ToolResult;
+    const res = await this.post(`/api/tools/${encodeURIComponent(toolName)}`, { query });
+    const result = await res.json() as ToolResult;
+    if (result.success === false) throw new ApiError(result.error ?? "Tool failed", res.status, result);
+    return result;
+  }
+
+  /** Read the tool metadata and registered schemas. */
+  async listTools(): Promise<unknown> {
+    return (await this.get("/api/tools")).json();
+  }
+
+  /** Read the current agent selection. */
+  async getAgent(): Promise<unknown> {
+    return (await this.get("/api/agents/me")).json();
+  }
+
+  /** Read a negotiation directly by opportunity ID, including protocol guidance. */
+  async getNegotiation(opportunityId: string): Promise<NegotiationDetail> {
+    const body = await (await this.get(`/api/negotiations/${encodeURIComponent(opportunityId)}`)).json() as { negotiation: NegotiationDetail };
+    return body.negotiation;
+  }
+
+  /** Submit one observed turn; rejected or uncertain writes are never replayed. */
+  async submitNegotiationTurn(opportunityId: string, turn: { action: NegotiationTurnAction; message: string; expectedTurnCount: number }): Promise<NegotiationDetail> {
+    const body = await (await this.post(`/api/negotiations/${encodeURIComponent(opportunityId)}/turns`, turn)).json() as { negotiation: NegotiationDetail };
+    return body.negotiation;
+  }
+
+  /** Read the scoped personal-agent conversation and availability. */
+  async getAgentConversation(intentId: string): Promise<unknown> {
+    return (await this.get(`/api/conversations/agent/messages?${new URLSearchParams({ intentId })}`)).json();
+  }
+
+  /** Explicitly confirm the owner's profile. */
+  async confirmProfile(): Promise<unknown> {
+    return (await this.post("/api/auth/onboarding/confirm-profile", {})).json();
+  }
+
+  /** Complete onboarding, subject to server prerequisites. */
+  async completeOnboarding(intentId?: string): Promise<unknown> {
+    return (await this.post("/api/auth/onboarding/complete", { intentId })).json();
   }
 
   // ── Private helpers ──────────────────────────────────────────────
@@ -459,13 +498,6 @@ export class ApiClient {
    * @throws Error with a descriptive message.
    */
   private async handleError(res: Response): Promise<never> {
-    if (res.status === 401) {
-      throw new ApiError(
-        "Session expired or invalid. Run `index login` to re-authenticate.",
-        res.status,
-      );
-    }
-
     let message = `HTTP ${res.status}`;
     let response: unknown;
     try {

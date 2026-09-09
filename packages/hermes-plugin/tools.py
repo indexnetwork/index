@@ -28,7 +28,7 @@ from .transport import get_transport, reset_transport, set_transport_for_tests
 INDEX_APP_BASE_URL = "https://index.network"
 _MAX_APP_URL_WALK_DEPTH = 16
 _OPEN_URL_TIMEOUT_SECONDS = 15
-_FORWARDED_MCP_TOOLS = frozenset(
+_FORWARDED_TOOLS = frozenset(
     {
         "research_profile",
         "create_intent",
@@ -138,80 +138,10 @@ def _with_app_urls(payload: Any) -> Any:
         return payload
 
 
-def _parse_json(data: str) -> Any:
-    return json.loads(data)
-
-
-def _parse_sse(data: str) -> Any:
-    """Return the last JSON data payload from an SSE response."""
-    last_payload: Any = None
-    data_lines: list[str] = []
-
-    def flush() -> None:
-        nonlocal last_payload, data_lines
-        if not data_lines:
-            return
-        raw = "\n".join(data_lines).strip()
-        data_lines = []
-        if not raw or raw == "[DONE]":
-            return
-        last_payload = _parse_json(raw)
-
-    for line in data.splitlines():
-        if not line.strip():
-            flush()
-            continue
-        if line.startswith("data:"):
-            data_lines.append(line[5:].lstrip())
-    flush()
-
-    if last_payload is None:
-        raise ValueError("SSE response did not include a JSON data payload")
-    return last_payload
-
-
-def _decode_tool_result(message: dict[str, Any]) -> dict[str, Any]:
-    if "error" in message:
-        err = message.get("error") or {}
-        if isinstance(err, dict):
-            return {
-                "success": False,
-                "error": str(err.get("message") or "Index MCP request failed."),
-                "code": err.get("code"),
-            }
-        return {"success": False, "error": str(err)}
-
-    result = message.get("result")
-    if not isinstance(result, dict):
-        return {"success": True, "data": result}
-
-    content = result.get("content")
-    if isinstance(content, list):
-        texts = [item.get("text") for item in content if isinstance(item, dict) and item.get("type") == "text"]
-        text = "\n".join(str(item) for item in texts if item is not None).strip()
-        if text:
-            try:
-                parsed_text = _parse_json(text)
-            except json.JSONDecodeError:
-                parsed_text = None
-            if isinstance(parsed_text, dict):
-                # An MCP capability denial / tool error comes back as a JSON dict
-                # (e.g. {"error": ..., "code": "MCP_CAPABILITY_DENIED"}) with no
-                # "success" key while result.isError is true. Without this, callers
-                # that check `payload.get("success") is False` would read the
-                # denial as success. Derive success from isError when absent.
-                if "success" not in parsed_text:
-                    parsed_text["success"] = not bool(result.get("isError"))
-                return parsed_text
-            return {"success": not bool(result.get("isError")), "text": text}
-
-    return {"success": not bool(result.get("isError")), "data": result}
-
-
-def _call_index_mcp(tool_name: str, arguments: dict[str, Any]) -> str:
+def _call_index_tool(tool_name: str, arguments: dict[str, Any]) -> str:
     try:
-        result = get_transport().call_mcp(tool_name, arguments)
-        return _json(_with_app_urls(_decode_tool_result({"result": result})))
+        result = get_transport().call_tool(tool_name, arguments)
+        return _json(_with_app_urls(result))
     except TransportError as exc:
         return _json(exc.as_payload())
     except Exception as exc:  # noqa: BLE001 - Hermes handlers must not raise.
@@ -236,31 +166,31 @@ def _api_request(
         return _error_payload(f"Index transport response could not be processed: {exc}")
 
 
-def index_forwarded_mcp_tool(tool_name: str, args: dict, **kwargs) -> str:
-    """Forward a Hermes tool call to an allowlisted Index MCP tool."""
+def index_forwarded_tool(tool_name: str, args: dict, **kwargs) -> str:
+    """Forward a Hermes tool call to an allowlisted Index CLI tool."""
     del kwargs
-    if tool_name not in _FORWARDED_MCP_TOOLS:
-        return _error(f"Unsupported Index MCP tool: {tool_name}")
+    if tool_name not in _FORWARDED_TOOLS:
+        return _error(f"Unsupported Index CLI tool: {tool_name}")
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")
-    return _call_index_mcp(tool_name, args)
+    return _call_index_tool(tool_name, args)
 
 
-def make_mcp_tool_handler(tool_name: str):
-    """Create a Hermes handler for an allowlisted pass-through Index MCP tool."""
-    if tool_name not in _FORWARDED_MCP_TOOLS:
-        raise ValueError(f"Unsupported Index MCP tool: {tool_name}")
+def make_tool_handler(tool_name: str):
+    """Create a Hermes handler for an allowlisted pass-through Index CLI tool."""
+    if tool_name not in _FORWARDED_TOOLS:
+        raise ValueError(f"Unsupported Index CLI tool: {tool_name}")
 
     def handler(args: dict, **kwargs) -> str:
-        return index_forwarded_mcp_tool(tool_name, args, **kwargs)
+        return index_forwarded_tool(tool_name, args, **kwargs)
 
     handler.__name__ = f"index_{tool_name}"
-    handler.__doc__ = f"Forward to the Index MCP {tool_name} tool."
+    handler.__doc__ = f"Forward to the Index CLI {tool_name} tool."
     return handler
 
 
 def index_read_intents(args: dict, **kwargs) -> str:
-    """Read Index Network intents through the canonical MCP read_intents tool."""
+    """Read Index Network intents through the canonical HTTP read_intents tool."""
     del kwargs
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")
@@ -287,7 +217,7 @@ def index_read_intents(args: dict, **kwargs) -> str:
     if page is not None:
         arguments["page"] = page
 
-    return _call_index_mcp("read_intents", arguments)
+    return _call_index_tool("read_intents", arguments)
 
 
 def _url_opener_command(url: str, system: str | None = None) -> list[str] | None:

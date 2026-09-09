@@ -1,5 +1,5 @@
 /**
- * `list_opportunities` — the persisted opportunity feed for chat and MCP.
+ * `list_opportunities` — the persisted opportunity feed for tool callers.
  *
  * Split out of `opportunity.tools.ts`: the listing is by far the largest of the
  * three opportunity tools, and it is the only one that renders cards.
@@ -20,7 +20,7 @@ import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { selectOpportunityFeed } from "./opportunity.feed-selection.js";
 
 
-import { CHAT_DISPLAY_LIMIT, attachOpportunityAppLink, attachProfileLink } from "./opportunity.tools.cards.js";
+import { CHAT_DISPLAY_LIMIT } from "./opportunity.tools.cards.js";
 import { logger } from "./opportunity.tools.cards.js";
 
 /** Builds the `list_opportunities` tool against the host's capabilities. */
@@ -231,19 +231,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                 status: opp.status,
               };
 
-              // For MCP callers, attach the agent-facing profile link and the
-              // opportunity deep link so the agent never has to fabricate
-              // either. Accepting still happens in the Index app behind an
-              // authenticated call — the deep link only opens the card.
-              if (context.isMcp) {
-                attachProfileLink(cardData as Record<string, unknown> & { opportunityId: string }, {
-                  counterpartUserId,
-                  frontendUrl: deps.frontendUrl,
-                });
-                attachOpportunityAppLink(cardData as Record<string, unknown> & { opportunityId: string }, {
-                  frontendUrl: deps.frontendUrl,
-                });
-              }
 
               return cardData;
             } catch (err) {
@@ -288,7 +275,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
         count: cardDataList.length,
         summary: `You have ${cardDataList.length} opportunity(ies)`,
         message: buildOpportunityPresentation(cardDataList, {
-          isMcp: context.isMcp ?? false,
           leadIn: `You have ${cardDataList.length} opportunity(ies).`,
         }),
         ...(listDebugSteps.length ? { debugSteps: listDebugSteps } : {}),

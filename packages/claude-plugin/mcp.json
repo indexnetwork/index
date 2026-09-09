@@ -1,6 +1,0 @@
-{
-  "index-network": {
-    "type": "http",
-    "url": "https://protocol.index.network/mcp"
-  }
-}

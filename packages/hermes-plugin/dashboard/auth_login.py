@@ -32,14 +32,14 @@ _LEGACY_KEY_ID_ENV = "INDEX_API_KEY_ID"
 _CALLBACK_HOST = "127.0.0.1"
 _LOGIN_TIMEOUT_SECONDS = 180.0
 _DEVICE_CLIENT_ID = "index-device"
-# Mirrors env_transport: INDEX_API_URL already ends in /api, so auth paths hang
-# directly off it rather than off the bare origin.
-_DEFAULT_API = "https://protocol.index.network/api"
+# INDEX_API_URL is the same bare API origin used by the CLI.
+_DEFAULT_API = "https://protocol.index.network"
 
 
 def api_root() -> str:
     """Resolve the API root (including its `/api` prefix) for auth calls."""
-    return os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
+    origin = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
+    return origin + "/api"
 
 _lock = threading.Lock()
 _session: "_LoginSession | None" = None

@@ -11,6 +11,15 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 > (bump `package.json` and the `[Unreleased]` section before promoting to `main`).
 
 
+## 55.0.0
+
+### Breaking changes
+
+- Remove MCP serving and authentication exports: `createMcpServer`, `ScopedDepsFactory`, `McpAuthResolver`, `McpAuthInput`, `McpResolvedIdentity`, `buildMcpOnboardingMessage`, and `ONBOARDING_ALLOWED`.
+- Remove `createOpportunityVerdictTools`, the registry `surface` option, and MCP-only tool context/dependency fields. Hosts compose scoped tools through `createToolRegistry` and `invokeToolRuntime`; owner approval remains a separate explicit HTTP operation.
+- External agents use the HTTP API through CLI 0.24.0. `read_docs` now serves canonical HTTP/CLI workflows, and utility tools use one shared registry. Shared execution limits, cancellation, ownership, and network scoping remain in place.
+- Remove the direct MCP SDK dependency. The API host removes `/mcp` and MCP OAuth discovery and drops only the three obsolete OAuth tables.
+
 ## 54.0.1 - 2026-09-09
 
 ### Changed

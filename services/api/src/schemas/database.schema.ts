@@ -167,56 +167,6 @@ export const deviceCodes = pgTable('device_code', {
   userCodeIdx: index('device_code_user_code_idx').on(table.userCode),
 }));
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Better Auth MCP OAuth tables
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const oauthApplications = pgTable('oauth_application', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name: text('name').notNull(),
-  icon: text('icon'),
-  metadata: text('metadata'),
-  clientId: text('client_id').notNull().unique(),
-  clientSecret: text('client_secret'),
-  redirectUrls: text('redirect_urls').notNull(),
-  type: text('type').notNull(),
-  disabled: boolean('disabled').default(false),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => ({
-  userIdIdx: index('oauth_application_user_id_idx').on(table.userId),
-}));
-
-export const oauthAccessTokens = pgTable('oauth_access_token', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  accessToken: text('access_token').notNull().unique(),
-  refreshToken: text('refresh_token').unique(),
-  accessTokenExpiresAt: timestamp('access_token_expires_at').notNull(),
-  refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
-  clientId: text('client_id').notNull().references(() => oauthApplications.clientId, { onDelete: 'cascade' }),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
-  scopes: text('scopes').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => ({
-  clientIdIdx: index('oauth_access_token_client_id_idx').on(table.clientId),
-  userIdIdx: index('oauth_access_token_user_id_idx').on(table.userId),
-}));
-
-export const oauthConsents = pgTable('oauth_consent', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  clientId: text('client_id').notNull().references(() => oauthApplications.clientId, { onDelete: 'cascade' }),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  scopes: text('scopes').notNull(),
-  consentGiven: boolean('consent_given').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => ({
-  clientIdIdx: index('oauth_consent_client_id_idx').on(table.clientId),
-  userIdIdx: index('oauth_consent_user_id_idx').on(table.userId),
-}));
-
 /**
  * API keys, owned and managed entirely by the Better Auth `apiKey` plugin.
  * Keys are hashed before storage; the raw secret is only returned on creation.
@@ -400,7 +350,7 @@ export const intents = pgTable('protocol_intents', {
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   /**
    * When the intent's first background discovery run completed successfully
-   * (any path: web discovery queue or async MCP discovery-run). Null until
+   * (from background discovery). Null until
    * then. Read-side "warming" derivation clears as soon as this is stamped,
    * instead of waiting out the 24-hour freshness window (IND-482).
    */

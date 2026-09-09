@@ -65,7 +65,7 @@ export function focusedNetworkLabel(scope: ToolScopeEnvelope & { networkName?: s
  * A session pinned to one signal exists to refine that signal, so creating a
  * DIFFERENT one there is not a capability the caller has. Both surfaces that
  * build a toolset — the chat tool factory and the shared tool registry behind
- * MCP/REST — apply this from here, so neither has to remember the rule. The
+ * HTTP — apply this from here, so neither has to remember the rule. The
  * runtime handlers still refuse independently; those refusals document the
  * invariant and cover any caller that builds a toolset without a scope.
  */

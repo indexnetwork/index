@@ -5,9 +5,7 @@ import { error, redactSensitiveFields } from './tool.helpers.js';
 import { createEnrichmentTools } from '../../enrichment/enrichment.tools.js';
 import { Intents } from '../../../capabilities/intents.js';
 import { Networks } from '../../../capabilities/networks.js';import { createOpportunityTools } from "../../opportunities/opportunity.tools.js";
-import { createOpportunityVerdictTools } from "../../opportunities/opportunity.verdict.tools.js";
 import { createUtilityTools } from './utility.tools.js';
-import type { ToolSurface } from './utility.tools.js';
 import { createAgentTools } from '../../agents/agent.tools.js';
 import { isToolAllowedInScope, type ToolScopeEnvelope } from './tool.scope.js';
 import { protocolLogger } from '../observability/protocol.logger.js';
@@ -16,11 +14,6 @@ import { requestContext } from '../observability/request-context.js';
 const logger = protocolLogger('ToolRegistry');
 
 export interface CreateToolRegistryOptions {
-  /**
-   * Tool-surface profile. The default `'rest'` profile (direct HTTP Tool API)
-   * exposes `scrape_url`. The restricted `'mcp'` profile omits it (IND-596/597).
-   */
-  surface?: ToolSurface;
   /**
    * The caller's focused scope. Tools a scope makes impossible are left out of
    * the registry entirely, so they are neither listed nor callable. Omit for an
@@ -35,12 +28,11 @@ export interface CreateToolRegistryOptions {
  * accept { context, query } and return a JSON string.
  *
  * @param deps - Shared tool dependencies (graphs, database, embedder, etc.)
- * @param options - Surface profile selecting the MCP-restricted or full REST set.
+ * @param options - Optional caller scope used to select callable tools.
  * @returns Map of tool name to raw tool definition.
  */
 export function createToolRegistry(deps: ToolDeps, options: CreateToolRegistryOptions = {}): ToolRegistry {
   const registry: ToolRegistry = new Map();
-  const isMcpSurface = options.surface === 'mcp';
 
   // defineTool that captures raw handlers into the registry
   function defineTool<T extends z.ZodType>(opts: {
@@ -89,17 +81,8 @@ export function createToolRegistry(deps: ToolDeps, options: CreateToolRegistryOp
   Intents.createTools(dt, deps);
   Networks.createTools(dt, deps);
   createOpportunityTools(dt, deps);
-  // Utility tools always register read_docs; on the MCP surface scrape_url is
-  // omitted and read_docs guidance is sanitized (IND-597).
-  createUtilityTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
+  createUtilityTools(dt, deps);
   createAgentTools(dt, deps);
-  // The MCP owner-verdict tools. MCP-only, deliberately — the REST Tool API's
-  // API-key principals must never gain an owner-verdict lever. The capability
-  // matrix admits verdicts for session humans only; the handler re-checks
-  // `context.isSessionAuth`.
-  if (isMcpSurface) {
-    createOpportunityVerdictTools(dt, deps);
-  }
 
   // Scope exclusions are applied after composition so every domain is covered
   // by one rule rather than each createTools() call remembering it. The
@@ -113,6 +96,6 @@ export function createToolRegistry(deps: ToolDeps, options: CreateToolRegistryOp
     }
   }
 
-  logger.verbose('Tool registry created', { toolCount: registry.size, surface: options.surface ?? 'rest' });
+  logger.verbose('Tool registry created', { toolCount: registry.size });
   return registry;
 }

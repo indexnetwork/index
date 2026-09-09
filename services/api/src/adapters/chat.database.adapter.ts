@@ -891,7 +891,7 @@ export class ChatDatabaseAdapter {
   }
 
   // The Intent Graph's archive/transition/confirm actions reach these through
-  // this composite adapter when compiled for chat/MCP tools; delegate straight
+  // this composite adapter when compiled for HTTP tools tools; delegate straight
   // to IntentDatabaseAdapter, the single implementation of each.
   deleteIntentNetworkAssociations(intentId: string): ReturnType<IntentDatabaseAdapter['deleteIntentNetworkAssociations']> {
     return this.intentAdapter.deleteIntentNetworkAssociations(intentId);

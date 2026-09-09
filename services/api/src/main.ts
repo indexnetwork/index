@@ -29,7 +29,6 @@ import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
-import { mcpHandler } from './controllers/mcp.controller';
 import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
@@ -153,7 +152,6 @@ logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
 function classifyRequestSubsystem(pathname: string): string {
   if (pathname === '/throw-error') return 'sentry-test';
-  if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return 'mcp';
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
   if (pathname.startsWith('/api/tools')) return 'protocol';
   if (pathname.startsWith('/api/')) return 'controller';
@@ -232,10 +230,6 @@ Bun.serve({
       // The trailing slash matters — a bare `/api/auth/device` prefix would also
       // swallow our own /api/auth/devices list.
       '/api/auth/device/',
-      // MCP OAuth endpoints
-      '/api/auth/mcp/',
-      '/.well-known/oauth-authorization-server',
-      '/.well-known/oauth-protected-resource',
     ];
     // The grant's claim step is the bare `/api/auth/device` with a user_code
     // query, so it is matched exactly rather than by prefix.
@@ -258,10 +252,6 @@ Bun.serve({
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
-    // MCP Streamable HTTP endpoint (OPTIONS already handled globally above)
-    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
-      return mcpHandler(req, corsHeaders);
-    }
 
     // Iterate over controllers and routes to find a match.
 

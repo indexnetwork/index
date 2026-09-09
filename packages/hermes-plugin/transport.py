@@ -39,7 +39,7 @@ class IndexTransport(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def call_mcp(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod

@@ -6,7 +6,7 @@ Index is a macOS 13+ WKWebView client with a native, credential-free request bri
 
 The signed app stores one Better Auth session token — this device's own session — in the Keychain. Raw credentials and authorization headers never enter browser JavaScript, WebKit storage, Application Support records, logs, callback URLs, or generated HTML.
 
-The native `indexAPI` bridge accepts only the exact bundled main document and document generation. JavaScript supplies structured, allowlisted requests; Swift constructs the fixed API/MCP URLs, reads the owner credential natively, validates body/schema/resource bounds, and returns sanitized data only. It permits bounded REST, upload, and SSE operations (32 pending requests, 1 MiB ordinary request/response, 8 MiB decoded images, 64 KiB events, 256 events; 30-second ordinary and five-minute stream deadlines). It never accepts a browser-supplied URL, header, credential, or transport override.
+The native `indexAPI` bridge accepts only the exact bundled main document and document generation. JavaScript supplies structured, allowlisted requests; Swift constructs the fixed HTTP API URLs, reads the owner credential natively, validates body/schema/resource bounds, and returns sanitized data only. The `tool` operation permits only `create_intent` through `POST /api/tools/create_intent` with `{query}`. It permits bounded REST, upload, and SSE operations (32 pending requests, 1 MiB ordinary request/response, 8 MiB decoded images, 64 KiB events, 256 events; 30-second ordinary and five-minute stream deadlines). It never accepts a browser-supplied URL, header, credential, or transport override.
 
 ## Owner sign-in
 
@@ -16,7 +16,7 @@ Logout quarantines bridge work, pauses/scrubs Hermes local activity, deletes the
 
 ## Hermes runtime
 
-The native app may show the same owner controls as the web, but it is not required for direct Hermes use. The Hermes plugin authenticates with a device session token supplied via the `INDEX_SESSION_TOKEN` environment variable. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule and preserves unrelated Hermes state.
+The native app may show the same owner controls as the web, but it is not required for direct Hermes use. Hermes setup installs `@indexnetwork/cli@0.24.0` before configuring the plugin. The Hermes plugin authenticates with a device session token supplied via the `INDEX_SESSION_TOKEN` environment variable. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule and preserves unrelated Hermes state.
 
 ## Build and source checks
 

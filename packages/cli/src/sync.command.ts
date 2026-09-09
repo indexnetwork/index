@@ -31,8 +31,8 @@ export async function handleSync(
   const context = {
     syncedAt: new Date().toISOString(),
     profile,
-    networks: networks.success ? networks.data : null,
-    intents: intents.success ? intents.data : null,
+    networks: networks.data,
+    intents: intents.data,
   };
 
   if (options.json) {

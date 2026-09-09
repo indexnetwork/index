@@ -1247,6 +1247,13 @@
       "when": 1788890961605,
       "tag": "0180_create_agent_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1788951020965,
+      "tag": "0181_drop_mcp_oauth_tables",
+      "breakpoints": true
     }
   ]
 }

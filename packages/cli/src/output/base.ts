@@ -30,10 +30,10 @@ export const USER_PROMPT = CYAN;
 
 /** Print an error message to stderr and optionally exit. */
 export function error(message: string, exitCode?: number): void {
+  if (process.argv.includes("--json")) throw new Error(message);
   console.error(`${RED}${BOLD}error${RESET}${RED}: ${message}${RESET}`);
-  if (exitCode !== undefined) {
-    process.exit(exitCode);
-  }
+  process.exitCode = exitCode ?? 1;
+  if (exitCode !== undefined) process.exit(exitCode);
 }
 
 /** Print a success message. */
@@ -43,7 +43,7 @@ export function success(message: string): void {
 
 /** Print an informational message. */
 export function info(message: string): void {
-  console.log(`${CYAN}${message}${RESET}`);
+  console.error(`${CYAN}${message}${RESET}`);
 }
 
 /** Print a warning message to stderr (keeps piped stdout output clean, e.g. --json). */
@@ -53,7 +53,7 @@ export function warn(message: string): void {
 
 /** Print a dim/secondary message. */
 export function dim(message: string): void {
-  console.log(`${GRAY}${message}${RESET}`);
+  console.error(`${GRAY}${message}${RESET}`);
 }
 
 /** Print a bold heading. */

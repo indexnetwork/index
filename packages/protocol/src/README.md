@@ -29,8 +29,8 @@ Those belong in the consuming host.
 
 Shared protocol instructions and their composition live in
 [`protocol/protocol.prompt.ts`](./protocol/protocol.prompt.ts). See the
-[consumer map](../IMPLEMENTATION.md#shared-protocol-instructions) for negotiation,
-MCP, and `read_docs` callers.
+[consumer map](../IMPLEMENTATION.md#shared-protocol-instructions) for negotiation and
+`read_docs` callers.
 
 Hosts provide request-context storage with `setRequestContextStore()` and log
 output with `setLoggerFactory()`. The package does not implement
@@ -75,14 +75,10 @@ Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled p
 | `internal/networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `internal/opportunities/opportunity.tools.ts` | `list_opportunities`, `update_opportunity` |
 | `internal/agents/agent.tools.ts` | `read_own_agent` |
-| `internal/shared/agent/utility.tools.ts` | `scrape_url`¹, `read_docs` |
+| `internal/shared/agent/utility.tools.ts` | `scrape_url`, `read_docs` |
 
-¹ REST-only: `scrape_url` is omitted from the MCP registry entirely
-  (IND-596/597). MCP does not gate on web/CLI onboarding. There is no
-  per-principal tool policy: a credential names a user, so every authenticated
-  caller reaches the same surface and the handlers own ownership and membership
-  checks. Agent CRUD is not a tool at all — agents are created and deleted from
-  a signed-in session over REST.
+Every authenticated caller reaches the same HTTP tool surface. Handlers enforce
+ownership and membership checks. Agent CRUD uses signed-in sessions over REST.
 
 ## Core Concepts
 

@@ -1414,7 +1414,7 @@ export async function gatherPresenterContext(
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// ── 5. MCP card prose ──
+// ── 5. Tool cards ──
 // ──────────────────────────────────────────────────────────────────────
 
 const CODE_FENCE = String.fromCharCode(96, 96, 96);
@@ -1426,7 +1426,7 @@ function sanitizeJsonForCodeFence(json: string): string {
 /**
  * Minimal shape consumed by buildOpportunityPresentation for prose rendering.
  * Card data objects in the codebase carry additional frontend-only fields;
- * only these are surfaced to MCP agents.
+ * these fields form the shared presentation.
  */
 export type OpportunityCardLike = Record<string, unknown> & {
   opportunityId: string;
@@ -1462,56 +1462,16 @@ function sanitizeOpportunityCardProse(card: OpportunityCardLike): OpportunityCar
   return sanitized;
 }
 
-/**
- * Format opportunity cards into the "opportunities" portion of a tool response.
- *
- * Web chat (`isMcp=false`): emits ```opportunity``` code fences with an
- * "include EXACTLY as-is" directive so the frontend card renderer can parse
- * and render interactive cards.
- *
- * MCP (`isMcp=true`): emits prose (name, reason, status, appUrl and profileUrl
- * when present, feedCategory when present) and includes `opportunityId` for
- * every card so the agent can act via the tools. The trailing instruction
- * reminds the agent to synthesize in natural language, to surface the `appUrl`
- * verbatim as the one link that opens the card, and to fabricate no other URL.
- * MCP clients have no card renderer, so code fences would surface as raw JSON
- * to end users.
- */
+/** Format opportunity cards for the shared tool response. */
 export function buildOpportunityPresentation(
   inputCards: OpportunityCardLike[],
   opts: {
-    isMcp: boolean;
     leadIn: string;
     label?: 'opportunity' | 'opportunities';
   },
 ): string {
   const cards = inputCards.map(sanitizeOpportunityCardProse);
   if (cards.length === 0) return opts.leadIn;
-
-  if (opts.isMcp) {
-    const prose = cards
-      .map((card, i) => {
-        const lines: string[] = [`${i + 1}. ${card.name ?? "Unknown"}`];
-        if (card.mainText) lines.push(`   ${card.mainText}`);
-        if (card.status) lines.push(`   status: ${card.status}`);
-        if (card.appUrl) lines.push(`   appUrl: ${card.appUrl}`);
-        if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
-        if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
-        lines.push(`   opportunityId: ${card.opportunityId}`);
-        return lines.join("\n");
-      })
-      .join("\n\n");
-    const idInstructions = `Use opportunityId values only when calling update_opportunity (send/accept/reject).`;
-    return (
-      `${opts.leadIn}\n\n${prose}\n\n` +
-      `Summarize these for the user in natural prose — mention first names and a brief match reason per connection. ` +
-      `For each card that has a profileUrl, link the person's name to it. Some cards may have no URL — render those as plain text and never fabricate URLs for them. ` +
-      `For each card that has an appUrl, show that link so the user can open the opportunity: it opens the card in the Index app when installed, and an Index web page otherwise. Show only an appUrl a tool returned — never assemble one from an opportunityId. ` +
-      `No link accepts on the user's behalf: accepting happens in the Index app (or via update_opportunity) — never invent an accept URL. ` +
-      `Do NOT print raw JSON, field labels, or opportunityIds. ` +
-      `${idInstructions}`
-    );
-  }
 
   const label = opts.label ?? (cards.length === 1 ? "opportunity" : "opportunities");
   const blocks = cards

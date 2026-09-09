@@ -4,7 +4,7 @@
 // IndexApi client from the credential-free native indexAPI bridge, exposes a
 // parallel snapshot load, native login/logout + an auth-changed subscription,
 // bounded native SSE for chat and the conversation inbox, and a single native
-// MCP tools/call for intent creation (which has no plain REST POST).
+// HTTP tool calls for intent creation.
 //
 // window.IndexApi is the inlined client+mappers bundle (assemble.py);
 // window.INDEX_DATA is the offline demo fallback. window.Api is kept as an alias
