@@ -35,6 +35,57 @@ Words you will see elsewhere in this doc: **network** = a community you are in; 
 
 ## Commands
 
+### Command reference
+
+Every exposed CLI command is listed below. Add `--json` for machine-readable
+results; `conversation stream --json` emits one event per line. Command-specific
+flags are listed in [Options](#options), and examples follow this reference.
+
+| Command | Function |
+| --- | --- |
+| `index help` | Show global help; also available as `index`, `index --help`, or `index -h`. |
+| `index version` | Show the installed version; also available as `index --version` or `index -v`. |
+| `index login` | Sign in through the browser and store this device's session. |
+| `index logout` | Revoke and clear the stored device session. |
+| `index tool list` | List the API's protocol functions, descriptions, and input schemas. |
+| `index tool call <name> --query '<json object>'` | Invoke any function in the [protocol tool reference](#protocol-tool-reference). |
+| `index agent me` | Read the agent selected to handle your negotiations. |
+| `index profile` | Show your own profile. |
+| `index profile show <user-id>` | Show another user's accessible profile. |
+| `index profile sync` | Research public profile information and return a suggested profile without persisting it. |
+| `index intent list` | List signals, with optional archived and result-limit filters. |
+| `index intent show <id>` | Show one signal. |
+| `index intent create <text>` | Create a signal from its description. |
+| `index intent update <id> <text>` | Update and reprocess a signal's description. |
+| `index intent archive <id>` | Archive a signal so it stops participating in discovery. |
+| `index intent add-to-network <id> <network-id>` | Share a signal in a network. |
+| `index intent remove-from-network <id> <network-id>` | Stop sharing a signal in a network. |
+| `index negotiation list` | List negotiations, optionally filtered by intent or open/settled state. |
+| `index negotiation show <opportunity-id>` | Read the negotiation's turns, current state, and available actions. |
+| `index negotiation turn <opportunity-id> --action <action> --message <text> --expected-turn-count <n>` | Submit one `propose`, `counter`, `accept`, or `decline` turn against the observed turn count. |
+| `index opportunity list` | List persisted opportunities, with optional status and result-limit filters. |
+| `index opportunity show <id>` | Show an opportunity's presentation and participants. |
+| `index opportunity accept <id>` | Request acceptance through the server's owner-approval flow. |
+| `index opportunity reject <id>` | Reject an opportunity. |
+| `index network list` | List your networks. |
+| `index network create <title>` | Create a network when eligible, or submit an early-access creation request. |
+| `index network show <id>` | Show a network and its members. |
+| `index network update <id> --title <text>` | Change a network's title. |
+| `index network delete <id>` | Delete a network you own. |
+| `index network join <id>` | Join an open network. |
+| `index network leave <id>` | Leave a network. |
+| `index network invite <id> <email>` | Invite a member by email. |
+| `index conversation list` | List your conversations. |
+| `index conversation with <user-id>` | Open or resume a human DM. |
+| `index conversation show <id>` | Read messages; use `agent --intent-id <id>` for the personal agent's scoped messages and pending question. |
+| `index conversation send <id> <text>` | Send a message; for `agent`, supply `--intent-id` and the displayed `--question-id` when answering a question. |
+| `index conversation stream` | Subscribe to conversation, negotiation, opportunity, and intent events over SSE. |
+| `index conversation help` | Show conversation-specific help. |
+| `index onboarding confirm-profile` | Confirm that the owner has reviewed their profile. |
+| `index onboarding complete` | Complete onboarding once profile confirmation and first-signal prerequisites are met. |
+| `index scrape <url>` | Extract text from a URL, optionally guided by an objective. |
+| `index sync` | Read your profile, networks, and signals into `~/.index/context.json`, or stdout with `--json`. |
+
 ### `index login`
 
 Authenticate with Index Network. Opens a browser window that runs the device authorization grant against your existing session (or a fresh login), then hands this machine a session of its own.
@@ -71,6 +122,39 @@ index agent me --json
 
 Tool discovery includes the actual input schemas. `--query` must be a JSON
 object; tool failures produce a structured error and a nonzero exit status.
+
+#### Protocol tool reference
+
+The API in this release exposes these 20 functions through `index tool call`.
+Run `index tool list --json` against your selected API to read each function's
+current input schema. The API enforces ownership, membership, and permission
+checks when a function is invoked.
+
+| Function | Purpose |
+| --- | --- |
+| `research_profile` | Research public identity information and return a suggested profile without persisting it. |
+| `read_intents` | Read accessible signals with user, network, and pagination filters. |
+| `create_intent` | Create a signal and link it to the explicitly supplied networks. |
+| `update_intent` | Revise and reprocess a signal's description. |
+| `delete_intent` | Archive a signal. |
+| `add_intent_to_network` | Share a signal in a network. |
+| `list_intent_networks` | List the networks a signal is shared in. |
+| `remove_intent_from_network` | Remove a signal's link to a network. |
+| `search_intents` | Search accessible signals by semantic similarity. |
+| `read_networks` | Read accessible networks and their details. |
+| `read_network_memberships` | Read network memberships and member information. |
+| `update_network` | Update a network's settings. |
+| `create_network` | Create a network, subject to the API's creation permissions. |
+| `delete_network` | Delete a network you own. |
+| `create_network_membership` | Join an open network or add a member when authorized. |
+| `delete_network_membership` | Remove a member from a network you own. |
+| `list_opportunities` | Read persisted opportunities and their presentation. |
+| `update_opportunity` | Request an opportunity status transition under the server's lifecycle rules. |
+| `scrape_url` | Extract text from a URL with an optional objective. |
+| `read_docs` | Read canonical protocol guidance, optionally narrowed to a topic. |
+
+Agent identity, negotiation turns, conversations, and onboarding use their
+dedicated commands above and the corresponding REST endpoints.
 
 ### `index logout`
 
@@ -236,10 +320,17 @@ index opportunity reject <id>
 | `--app-url <url>`    |       | Override app URL for login (default: `https://index.network`)   |
 | `--archived`         |       | Include archived signals (intent list)                          |
 | `--status <status>`  |       | Filter opportunities by status                                  |
-| `--limit <n>`        |       | Limit number of results                                         |
+| `--limit <n>`        |       | Positive result limit for intent/opportunity lists or conversation messages |
 | `--prompt <text>`    | `-p`  | Network description (for `network create`)                      |
 | `--title <text>`     |       | Network title (for `network update`)                            |
 | `--objective <text>` |       | Focus objective (for `scrape`)                                  |
+| `--query <json>`     |       | Required JSON object for `tool call`                            |
+| `--intent-id <id>`   |       | Filter negotiations, scope agent conversations, or select onboarding's first signal |
+| `--state <state>`    |       | Filter negotiations by `open` or `settled`                       |
+| `--action <action>`  |       | Required negotiation turn action: `propose`, `counter`, `accept`, or `decline` |
+| `--message <text>`   |       | Required message for a negotiation turn                         |
+| `--expected-turn-count <n>` | | Required observed nonnegative integer turn count for a negotiation turn |
+| `--question-id <id>` |       | Identify the displayed question when answering the personal agent |
 | `--json`             |       | Output raw JSON to stdout                                       |
 | `--help`             | `-h`  | Show help                                                       |
 | `--version`          | `-v`  | Show version                                                    |
