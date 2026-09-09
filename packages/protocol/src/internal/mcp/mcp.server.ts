@@ -12,7 +12,8 @@ import type { ServerContext, JsonSchemaType, Tool } from '@modelcontextprotocol/
 import type { McpAuthResolver } from '../../platform/auth/ports.js';
 import type { McpAuthInput, McpResolvedIdentity } from '../../platform/auth/mcp.js';
 import { McpResolvedIdentitySchema } from '../../platform/auth/mcp.js';
-import { CANONICAL_GUIDANCE_SUMMARY } from '../shared/agent/canonical-guidance.js';
+import { buildMcpInstructions } from '../../protocol/protocol.prompt.js';
+
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
 import { deriveAllowedNetworkIds, isToolAllowedInScope } from '../shared/agent/tool.scope.js';
@@ -302,22 +303,6 @@ function createMcpTraceEmitter(toolName: string, ctx: ServerContext): TraceEmitt
   };
 }
 
-export const MCP_INSTRUCTIONS = `
-${CANONICAL_GUIDANCE_SUMMARY}
-
-# Voice & Output Rules
-Calm, analytical, concise. Say "signal" not "intent", "community" not "index". Never use "search" — use "discover" or "find". Banned: leverage, optimize, unlock, scale, disrupt, AI-powered, act fast.
-
-NEVER dump raw JSON or expose IDs (except actionable ones like conversationId). Synthesize in natural language; surface top 1–3 points unless asked for full list. Fabricate nothing.
-
-# Authentication & Opportunity Lifecycle
-API key in \`x-api-key\` header. Opportunities: draft → pending → accepted/rejected. Agent acceptance ≠ owner approval. Only call update_opportunity with accepted after explicit user confirmation.
-
-# Tool Guidance
-Read each tool's description for usage rules (when, prerequisites, follow-ups). Tools contain workflow patterns.
-
-`.trim();
-
 /**
  * Extracts a Bearer token from an HTTP Authorization header.
  */
@@ -336,7 +321,7 @@ export function createMcpServer(
 ): McpServer {
   const server = new McpServer(
     { name: 'index-network', version: '1.0.0' },
-    { instructions: MCP_INSTRUCTIONS },
+    { instructions: buildMcpInstructions() },
   );
 
   const toolMetadata = getCachedMcpToolMetadata(deps);

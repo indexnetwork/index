@@ -29,7 +29,7 @@ agent's prompt text and the functions that compose it for both the API and TUI.
 | User, for an A2A turn | `buildNegotiationTurnPrompt` | `MATCH_INSTRUCTIONS`, current negotiation, private H2A history, accepted commitments, and any internal review note. |
 | User, for H2A communication | `buildPrincipalInboxPrompt` | `PRINCIPAL_INBOX_INSTRUCTIONS`, H2A history, incoming messages, the pending question, queued requests, outcomes, and commitments. Direct messages also receive match status snapshots. |
 
-[Protocol guidance](../protocol/src/protocol/negotiation.rules.ts) stays owned by
+[Protocol guidance](../protocol/src/protocol/protocol.prompt.ts) stays owned by
 `packages/protocol`. The [API host](../../services/api/src/lib/agent/negotiation.host.ts)
 injects it with confirmed profile context; the scenario TUI injects the same
 guidance with the scenario's private `instructions` as context.

@@ -43,12 +43,40 @@ protocol capability with memory storage. Neither library imports the other.
 ## Boundary model
 
 The package is migrating incrementally to a protocol kernel. `protocol/`
-contains portable, framework-free contracts; `platform/` contains host-facing
+contains portable, framework-free contracts and shared protocol instructions; `platform/` contains host-facing
 ports and supported runtime hooks; and `capabilities/` exposes small named
-behavior surfaces. Graphs, prompts, retrieval, and agent helpers remain
+behavior surfaces. Graphs, internal model prompts, retrieval, and agent helpers remain
 private implementation. These are source boundaries only: import supported
 symbols from `@indexnetwork/protocol`, not source subpaths. See
 [docs/protocol-kernel.md](./docs/protocol-kernel.md) for migration status.
+
+## Shared protocol instructions
+
+[`src/protocol/protocol.prompt.ts`](./src/protocol/protocol.prompt.ts) owns shared
+protocol instruction text and its composition. Static text lives in named
+constants; small pure builders assemble composed text. The module depends only
+on the negotiation limits, with no models, hosts, environment variables, or
+transport implementations.
+
+| Prompt or content | Consumer |
+|---|---|
+| `NEGOTIATION_GUIDANCE` | `protocol/negotiation.rules.ts`: `observeNegotiation` returns it to negotiation hosts; also the canonical `negotiations` topic |
+| `CANONICAL_GUIDANCE_SUMMARY`, `CANONICAL_GUIDANCE_TOPICS`, `CANONICAL_GUIDANCE_TOPICS_CONTENT` | `internal/shared/agent/utility.tools.ts`: `read_docs` summary, topic metadata, and canonical sections; the summary also starts MCP instructions and full REST/chat documentation |
+| `buildMcpInstructions()` | `internal/mcp/mcp.server.ts`: `createMcpServer` supplies the server instructions |
+| `REST_GUIDANCE_TOPICS_CONTENT`, `buildRestDocumentation()` | `internal/shared/agent/utility.tools.ts`: REST/chat `read_docs` sections and full documentation |
+| `buildUnknownCanonicalTopicMessage(topic)` | `internal/shared/agent/utility.tools.ts`: MCP `read_docs` response for an unmatched topic |
+
+`utility.tools.ts` keeps topic normalization, matching, surface selection, and
+response envelopes. `mcp.server.ts` keeps transport wiring, and
+`negotiation.rules.ts` keeps validation and transitions. Guidance and enforcement
+share limits from
+[`src/protocol/negotiation.constants.ts`](./src/protocol/negotiation.constants.ts).
+Internal model prompts and personal-agent prompt composition stay with their
+existing owners.
+
+These paths describe internal ownership, not new public APIs. The package root
+continues to export `NEGOTIATION_GUIDANCE`, `NEGOTIATION_MAX_TURNS`, and
+`NEGOTIATION_MESSAGE_LIMIT` directly from their owning modules.
 
 
 ## Install
@@ -230,7 +258,7 @@ asked for it, so the row is written at score 1 with `mode: manual_override`.
 
 ## MCP server
 
-The package exports a factory that registers every chat tool over the Model Context Protocol and attaches a canonical `instructions` block (`MCP_INSTRUCTIONS`) that every connecting runtime follows. The factory takes three arguments:
+The package exports a factory that registers every chat tool over the Model Context Protocol and attaches a canonical `instructions` block (composed by `buildMcpInstructions()`) that every connecting runtime follows. The factory takes three arguments:
 
 ```typescript
 import { createMcpServer, type McpAuthResolver } from "@indexnetwork/protocol";
@@ -280,9 +308,9 @@ MCP tools are bounded by `ToolInvocationRuntime`:
 Per-tool timeout overrides use `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`. Tool outputs are capped by `MCP_TOOL_MAX_OUTPUT_BYTES` (default `1000000`) or `MCP_TOOL_MAX_OUTPUT_<TOOL_NAME>_BYTES`; inbound MCP request bodies are capped by the backend with `MCP_MAX_REQUEST_BYTES` (default `1000000`). Runtime failures return JSON text envelopes with stable `code` values: `TOOL_TIMEOUT`, `TOOL_CANCELLED`, or `TOOL_OUTPUT_TOO_LARGE`.
 
 
-### `MCP_INSTRUCTIONS`
+### MCP instructions
 
-The instructions string is the single canonical behavioral contract for every runtime that connects to Index Network — voice, entity model, discovery-first rule, and output rules. Plugin skills and bootstrap scripts do **not** redefine this guidance; they defer to whatever ships in `MCP_INSTRUCTIONS`.
+The instructions string is the single canonical behavioral contract for every runtime that connects to Index Network — voice, entity model, discovery-first rule, and output rules. Plugin skills and bootstrap scripts do **not** redefine this guidance; they defer to the output of `buildMcpInstructions()` in `src/protocol/protocol.prompt.ts`.
 
 ## Publishing
 

@@ -77,7 +77,9 @@ export type { NetworkAssignmentMetadata } from "./protocol/schemas/network-assig
 export type { HydeTargetCorpus, Lens } from "./protocol/core.js";
 export type { DebugMetaAgent } from "./protocol/core.js";
 export { Negotiations } from './capabilities/negotiations.js';
-export { NEGOTIATION_MAX_TURNS, NEGOTIATION_MESSAGE_LIMIT, NEGOTIATION_GUIDANCE, decideNegotiationOpening, decideNegotiationTurn, observeNegotiation, negotiationTurnSchema } from './protocol/negotiation.rules.js';
+export { NEGOTIATION_MAX_TURNS, NEGOTIATION_MESSAGE_LIMIT } from './protocol/negotiation.constants.js';
+export { NEGOTIATION_GUIDANCE } from './protocol/protocol.prompt.js';
+export { decideNegotiationOpening, decideNegotiationTurn, observeNegotiation, negotiationTurnSchema } from './protocol/negotiation.rules.js';
 export type { NegotiationAction, NegotiationOutcome, NegotiationTurn, NegotiationState, NegotiationDecision, NegotiationRejection, NegotiationOpening, NegotiationOpeningDecision } from './protocol/negotiation.rules.js';
 export type { NegotiationDatabase } from './platform/database/negotiation.js';
 

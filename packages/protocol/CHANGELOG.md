@@ -11,6 +11,17 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 > (bump `package.json` and the `[Unreleased]` section before promoting to `main`).
 
 
+## 54.0.1 - 2026-09-09
+
+### Changed
+
+- Centralize shared negotiation guidance, MCP instructions, and `read_docs`
+  content and composition in `src/protocol/protocol.prompt.ts`. Emitted text,
+  topic matching, response envelopes, and package-root exports are unchanged.
+- Share negotiation limits between guidance and enforcement through
+  `src/protocol/negotiation.constants.ts`, and document prompt consumers in the
+  implementation guide.
+
 ## 54.0.0
 
 ### Breaking changes
