@@ -18,7 +18,7 @@ import type { Database } from '../database.js';
 export type CompositeToolDatabase = Pick<
   Database,
   | 'getProfile'
-  // The MCP discovery path builds an OpportunityGraph too, and its terminal
+  // The HTTP tool discovery path builds an OpportunityGraph too, and its terminal
   // stage opens the pairs it scored.
   | 'openCounterparties'
   | 'getActiveIntents'

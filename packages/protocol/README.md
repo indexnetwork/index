@@ -53,7 +53,7 @@ The graph is intentionally consent-centered: agents can construct context, disco
 3. **Semantic discovery** — matching is based on role fit, constraints, complementarity, and contextual relevance rather than exact keyword overlap.
 4. **Explainable surfacing** — every surfaced opportunity SHOULD include a legible reason: why these participants, why now, and what the next action might be.
 5. **Consent at relationship boundaries** — agents MAY discover and negotiate, but MUST NOT create or accept a relationship without explicit participant approval.
-6. **Agent interoperability** — first-party agents, personal agents, community agents, and external MCP clients SHOULD be able to participate under the same behavioral contract.
+6. **Agent interoperability** — first-party agents, personal agents, community agents, and external CLI clients SHOULD be able to participate under the same behavioral contract.
 
 ## Non-goals
 
@@ -386,14 +386,15 @@ The following invariants define the protocol's trust boundary:
 
 ## Interoperability
 
-The reference implementation exposes the protocol to agents through a Model Context Protocol (MCP) server and typed package APIs. MCP is the preferred interoperability surface for external agents because it provides tool discovery, runtime instructions, identity resolution, and bounded tool invocation.
+The reference implementation exposes the protocol through the HTTP API and typed package APIs. External agents use the Index CLI for tool discovery, canonical guidance through `read_docs`, and bounded tool invocation. The API resolves identity and enforces ownership, network scope, and protocol rules.
 
 ```mermaid
 flowchart LR
-    ExternalAgent[External agent] -->|MCP tools| McpServer[Index Network MCP server]
+    ExternalAgent[External agent] --> CLI[Index CLI]
+    CLI --> HTTP[Index HTTP API]
     FirstPartyAgent[First-party agent] -->|typed runtime| Runtime[Protocol runtime]
 
-    McpServer --> Identity[Identity resolution]
+    HTTP --> Identity[Identity resolution]
     Identity --> AgentGate[Agent registration and scope]
     AgentGate --> ScopedDeps[Scoped protocol dependencies]
     ScopedDeps --> Runtime
@@ -418,6 +419,6 @@ Implementations MAY expose additional transports, but they SHOULD preserve the s
 
 The canonical TypeScript implementation is `@indexnetwork/protocol`.
 
-- [IMPLEMENTATION.md](./IMPLEMENTATION.md) — package installation, adapters, graph factories, MCP server usage, and publishing.
+- [IMPLEMENTATION.md](./IMPLEMENTATION.md) — package installation, adapters, graph factories, HTTP tools and CLI usage, and publishing.
 - [STABILITY.md](./STABILITY.md) — public API contract and SemVer policy.
 - [CHANGELOG.md](./CHANGELOG.md) — release history.

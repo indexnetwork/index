@@ -18,9 +18,9 @@ export type NetworkToolDeps = Pick<ToolRegistryCompositionDeps,
  * Resolves the community this caller is hard-bound to, if any.
  *
  * A user-driven network-scoped chat carries `context.networkId`; a network-scoped
- * agent (personal/external API key bound to one community over MCP) instead
+ * agent (personal/external API key bound to one community over HTTP) instead
  * carries the focused scope envelope (`scopeType='network'`, `scopeId`) applied
- * at the MCP boundary, with `networkId` left unset. Both must clamp community
+ * at the HTTP boundary, with `networkId` left unset. Both must clamp community
  * and roster reads/writes to the exact bound community BEFORE any graph/adapter
  * work — not only via the scoped-deps data clamp — so a foreign community is
  * denied with a stable message and never read or mutated (IND-591).

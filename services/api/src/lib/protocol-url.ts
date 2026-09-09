@@ -5,8 +5,8 @@ let warnedMissingProtocolBaseUrl = false;
 /**
  * Resolve the public base URL of the protocol service.
  *
- * Protocol-host routes — short connect links (`/c/:code`) and the MCP endpoint
- * (`/mcp`) — are served ONLY by the protocol backend, so this consults only the
+ * Protocol-host routes — short connect links (`/c/:code`) and HTTP tool endpoints
+ * (`/api/tools`) — are served ONLY by the protocol backend, so this consults only the
  * protocol-host var (`API_URL`) and never the web app's `WEB_APP_URL`.
  * A frontend host (e.g. `index.network`) must never
  * leak into these URLs — it would 404 against the SPA instead of resolving on

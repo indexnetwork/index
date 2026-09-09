@@ -14,7 +14,6 @@ import type { ProfileEnricher } from "../../../platform/enrichment/ports.js";
 import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
 import type { Embedder } from "../../../platform/discovery/embedder.js";
 import type { AgentDatabase } from "../../agents/agent.repository.port.js";
-import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiation/verdict.js";
 
 export type IdentityContext = UserIdentity | null;
 
@@ -88,10 +87,6 @@ export interface ResolvedToolContext {
   hasName: boolean;
   /** Chat session ID when tools are used in a chat; used for draft opportunities (context.conversationId). */
   sessionId?: string;
-  /** True when the request originates from an MCP transport (no interactive UI available). */
-  isMcp?: boolean;
-  /** True when the host bound an authenticated owner session (never an API key). */
-  isSessionAuth?: boolean;
 }
 
 /**
@@ -130,13 +125,6 @@ interface ToolContextBindings {
   hydeCache: HydeCache;
   /** Queue for enqueuing follow-up intent processing (HyDE generation/deletion). */
   intentFollowUp: IntentFollowUp;
-  /**
-   * Host bridge for the `reject_opportunity` / `accept_opportunity` tools —
-   * the owner's VERDICT lane (#1471). Injected by the composition root;
-   * consumed by the MCP opportunity toolset, and only in an intent-scoped
-   * session (the counterparties are one signal's).
-   */
-  negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
   /** Factory for user-scoped database access. */
@@ -365,13 +353,6 @@ interface ToolDepsBindings {
   cache: Cache;
   enricher: ProfileEnricher;
   /**
-   * Host bridge behind the MCP-surface `reject_opportunity` /
-   * `accept_opportunity` owner-verdict tools (#1471, one surface over).
-   * Consumed only by the MCP tool registry surface, and only for
-   * session-authenticated owners (capability matrix + provenance re-check).
-   */
-  negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
-  /**
    * Test seam for opportunity card presentation helpers. Production
    * compositions leave this unset so tools construct the real presenter.
    */
@@ -422,7 +403,7 @@ export type ToolRegistryCompositionDeps = Omit<ToolDepsBindings,
   'embedder' | 'apiBaseUrl'
 >;
 
-/** Runtime-only hooks retained for MCP and existing host composition. */
+/** Runtime-only hooks for host composition. */
 type ToolRuntimeCompatibilityDeps = Pick<ToolDepsBindings,
   'embedder' | 'apiBaseUrl'
 >;

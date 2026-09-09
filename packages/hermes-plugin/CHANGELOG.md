@@ -1,5 +1,12 @@
 # Changelog
 
+
+## 0.36.0
+
+- Invoke Index tools through CLI 0.24.0 with explicit API origin, JSON output, and environment session credentials. Preserve dashboard, upload, and streaming HTTP operations.
+- `INDEX_API_URL` now takes the bare origin, without `/api`, matching the CLI. Update custom overrides when upgrading.
+- Require the matching CLI on the Hermes process PATH. Removed Index MCP configuration no longer applies.
+
 All notable changes to `@indexnetwork/hermes-plugin` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

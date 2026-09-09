@@ -566,7 +566,7 @@ function AccessPane() {
         </div>
 
         <p style={accessNote}>
-          a key authenticates you in personal agents, mcp clients, and any
+          a key authenticates you in personal agents, CLI clients, and any
           other client.
         </p>
 

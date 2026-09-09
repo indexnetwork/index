@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { toJsonSchema } from '@langchain/core/utils/json_schema';
 
 import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
@@ -64,6 +65,7 @@ export class ToolService {
    * @param userId - Authenticated user ID
    * @param toolName - Name of the tool to invoke (e.g. "read_intents")
    * @param query - Tool input object (validated against tool schema)
+   * @param signal - HTTP request cancellation signal
    * @returns Parsed tool result
    * @throws ChatContextAccessError if user/network context is invalid
    * @throws Error if tool not found or validation fails
@@ -72,6 +74,7 @@ export class ToolService {
     userId: string,
     toolName: string,
     query: Record<string, unknown> = {},
+    signal?: AbortSignal,
   ): Promise<unknown> {
     logger.verbose('Invoking tool', { userId, toolName });
 
@@ -113,7 +116,7 @@ export class ToolService {
     }
 
     // Execute handler through the shared runtime so direct REST tool calls use
-    // the same timeout and requestContext cancellation plumbing as MCP.
+    // the shared timeout and requestContext cancellation plumbing.
     let rawResult: string;
     try {
       rawResult = await invokeToolRuntime({
@@ -121,6 +124,7 @@ export class ToolService {
         tool,
         context,
         query: parseResult.data,
+        signal,
       });
     } catch (err) {
       const runtimeResult = toolRuntimeErrorToResult(err);
@@ -160,9 +164,7 @@ export class ToolService {
     this.cachedToolList = Array.from(registry.values()).map((t) => ({
       name: t.name,
       description: t.description,
-      schema: t.schema instanceof z.ZodType
-        ? JSON.parse(JSON.stringify((t.schema as z.ZodObject<z.ZodRawShape>).shape ? zodToJsonSchema(t.schema) : {}))
-        : {},
+      schema: toJsonSchema(t.schema as z.ZodType) as Record<string, unknown>,
     }));
 
     return this.cachedToolList;
@@ -211,43 +213,4 @@ export class ToolService {
 
     return this.compiledGraphs;
   }
-}
-
-/**
- * Minimal Zod-to-JSON-Schema conversion for tool listing.
- * Extracts field names and types from a ZodObject for API documentation.
- */
-function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
-  if (schema instanceof z.ZodObject) {
-    const shape = schema.shape;
-    const properties: Record<string, unknown> = {};
-    const required: string[] = [];
-    for (const [key, value] of Object.entries(shape)) {
-      const zodValue = value as z.ZodType;
-      properties[key] = zodToJsonSchema(zodValue);
-      if (!(zodValue instanceof z.ZodOptional) && !(zodValue instanceof z.ZodDefault)) {
-        required.push(key);
-      }
-    }
-    return { type: 'object', properties, ...(required.length ? { required } : {}) };
-  }
-  if (schema instanceof z.ZodString) return { type: 'string' };
-  if (schema instanceof z.ZodNumber) return { type: 'number' };
-  if (schema instanceof z.ZodBoolean) return { type: 'boolean' };
-  if (schema instanceof z.ZodArray) {
-    return { type: 'array', items: zodToJsonSchema((schema as z.ZodArray<z.ZodType>).element) };
-  }
-  if (schema instanceof z.ZodOptional) {
-    return zodToJsonSchema((schema as z.ZodOptional<z.ZodType>).unwrap());
-  }
-  if (schema instanceof z.ZodDefault) {
-    return zodToJsonSchema((schema as z.ZodDefault<z.ZodType>).removeDefault());
-  }
-  if (schema instanceof z.ZodEnum) {
-    return { type: 'string', enum: (schema as z.ZodEnum<[string, ...string[]]>).options };
-  }
-  if (schema instanceof z.ZodRecord) {
-    return { type: 'object', additionalProperties: true };
-  }
-  return { type: 'unknown' };
 }

@@ -32,7 +32,6 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 
 // ─── Interfaces (implement these to wire up your infrastructure) ───────────────
 
-export type { McpAuthResolver } from "./platform/auth/ports.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/discovery/cache.js";
 export type {
   CompositeToolDatabase,
@@ -68,10 +67,6 @@ export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 export { ChatContextDigestSchema, type ChatContextDigest } from "./protocol/schemas/chat-context.schema.js";
 export { UnderspecificationTypeSchema } from "./protocol/schemas/underspecification.schema.js";
 export type { UnderspecificationType } from "./protocol/schemas/underspecification.schema.js";
-export type {
-  McpAuthInput,
-  McpResolvedIdentity,
-} from "./platform/auth/mcp.js";
 export type { DiscoveryNegotiation } from "./protocol/schemas/discovery-question.schema.js";
 export type { NetworkAssignmentMetadata } from "./protocol/schemas/network-assignment.schema.js";
 export type { HydeTargetCorpus, Lens } from "./protocol/core.js";
@@ -123,10 +118,6 @@ export { createEnrichmentTools } from "./internal/enrichment/enrichment.tools.js
 export type { EnrichmentToolDeps } from "./internal/contexts/context.tools.port.js";
 export { normalizeTelegramHandle } from './internal/shared/utils/telegram-handle.js';
 
-// ─── MCP ──────────────────────────────────────────────────────────────────────
-
-export { createMcpServer, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./internal/mcp/mcp.server.js";
-export type { ScopedDepsFactory } from "./internal/mcp/mcp.server.js";
 
 // ─── Opportunity compatibility exports ─────────────────────────────────────
 /**
@@ -160,9 +151,6 @@ export type {
 export {
   createOpportunityTools,
 } from "./internal/opportunities/opportunity.tools.js";
-export {
-  createOpportunityVerdictTools,
-} from "./internal/opportunities/opportunity.verdict.tools.js";
 export {
   DISCOVERY_MIN_SIMILARITY,
   validateDiscoveryMinSimilarity,

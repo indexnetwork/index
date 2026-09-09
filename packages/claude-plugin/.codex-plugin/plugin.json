@@ -1,6 +1,6 @@
 {
   "name": "index-network",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Index Network - find the right people and let them find you.",
   "author": {
     "name": "Index Network",
@@ -9,20 +9,28 @@
   "homepage": "https://index.network",
   "repository": "https://github.com/indexnetwork/claude-plugin",
   "license": "MIT",
-  "keywords": ["discovery", "intents", "agents", "opportunities"],
-  "mcpServers": "./mcp.json",
+  "keywords": [
+    "discovery",
+    "intents",
+    "agents",
+    "opportunities"
+  ],
   "interface": {
     "displayName": "Index Network",
     "shortDescription": "Find relevant people, signals, and opportunities.",
     "longDescription": "Index Network helps manage signals, discover opportunities, and connect people through shared communities.",
     "developerName": "Index Network",
     "category": "Productivity",
-    "capabilities": ["MCP"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "websiteURL": "https://index.network",
     "defaultPrompt": [
       "Use Index Network to find relevant people for this signal.",
       "Use Index Network to see what is on my radar."
     ],
     "brandColor": "#111827"
-  }
+  },
+  "skills": "./skills/"
 }

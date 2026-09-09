@@ -7,7 +7,7 @@ native Hermes tool and what arguments are accepted.
 INDEX_READ_INTENTS = {
     "name": "index_read_intents",
     "description": (
-        "Read Index Network intents/signals through the authenticated Index MCP "
+        "Read Index Network intents/signals through the authenticated Index CLI "
         "server. Use this when the user asks what they are looking for, what "
         "signals they have, or what members of a specific network/community are "
         "seeking. With no parameters, returns the caller's own active intents. "
@@ -47,7 +47,7 @@ INDEX_READ_INTENTS = {
     },
 }
 
-FORWARDED_MCP_TOOLS = (
+FORWARDED_TOOLS = (
     "research_profile",
     "create_intent",
     "update_intent",
@@ -65,18 +65,18 @@ FORWARDED_MCP_TOOLS = (
 )
 
 
-def forwarded_mcp_schema(tool_name: str) -> dict:
-    """Build a Hermes schema for a pass-through Index MCP tool wrapper."""
+def forwarded_tool_schema(tool_name: str) -> dict:
+    """Build a Hermes schema for a pass-through Index CLI tool wrapper."""
     return {
         "name": f"index_{tool_name}",
         "description": (
-            f"Call the Index MCP `{tool_name}` tool with the provided JSON arguments. "
+            f"Call the Index CLI `{tool_name}` tool with the provided JSON arguments. "
             "Use this for Index capabilities that do not have a dedicated Hermes-native wrapper. "
-            "If unsure about arguments or workflow, call index_read_docs with topic='mcp_agent_guide' first."
+            "If unsure about arguments or workflow, call index_read_docs with topic='workflows' first."
         ),
         "parameters": {
             "type": "object",
-            "description": f"Arguments passed directly to the Index MCP `{tool_name}` tool.",
+            "description": f"Arguments passed directly to the Index CLI `{tool_name}` tool.",
             "additionalProperties": True,
             "required": [],
         },

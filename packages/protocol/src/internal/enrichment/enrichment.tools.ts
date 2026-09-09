@@ -1,5 +1,5 @@
 /**
- * MCP enrichment tools — public profile prefill only.
+ * Profile enrichment tools — public profile prefill only.
  */
 
 import { z } from "zod";

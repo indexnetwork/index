@@ -22,7 +22,7 @@ export { buildOpportunityPresentation } from "./opportunity.presentation.js";
 import { updateOpportunityStatus } from "./opportunity.graph.modes.js";
 import { createListOpportunitiesTool } from "./opportunity.tools.list.js";
 
-export { attachOpportunityAppLink, attachProfileLink, buildMinimalOpportunityCard, buildOpportunityAppUrl, buildProfileUrl } from "./opportunity.tools.cards.js";
+export { buildMinimalOpportunityCard, buildOpportunityAppUrl, buildProfileUrl } from "./opportunity.tools.cards.js";
 
 export function createOpportunityTools(defineTool: DefineTool, deps: OpportunityToolDeps) {
   const { systemDb } = deps;

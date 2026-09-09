@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.114.0",
+  "version": "0.115.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -34,7 +34,6 @@
     "@langchain/langgraph": "^1.4.12",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.0",
     "@langchain/openai": "^1.2.3",
-    "@modelcontextprotocol/server": "2.0.0",
     "@sentry/bun": "^10.55.0",
     "better-auth": "^1.5.6",
     "busboy": "^1.6.0",

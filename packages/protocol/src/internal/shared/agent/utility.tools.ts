@@ -1,8 +1,7 @@
 import { z } from "zod";
 
-import { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS, CANONICAL_GUIDANCE_TOPICS_CONTENT, REST_GUIDANCE_TOPICS_CONTENT, buildRestDocumentation, buildUnknownCanonicalTopicMessage } from "../../../protocol/protocol.prompt.js";
-
 import { requestContext } from "../observability/request-context.js";
+import { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS, CANONICAL_GUIDANCE_TOPICS_CONTENT } from "../../../protocol/protocol.prompt.js";
 
 import type { DefineTool, ToolRegistryCompositionDeps } from "./tool.helpers.js";
 import { success, error, normalizeUrl } from "./tool.helpers.js";
@@ -10,29 +9,12 @@ import { success, error, normalizeUrl } from "./tool.helpers.js";
 /** Host capabilities consumed by URL and profile utility tools. */
 type UtilityToolDeps = Pick<ToolRegistryCompositionDeps, "scraper">;
 
-/**
- * Tool-surface profile. The restricted `'mcp'` surface omits `scrape_url`
- * (IND-597) and sanitizes `read_docs` guidance so it never advertises the
- * contact/Gmail workflows removed from MCP (IND-596). The default `'rest'`
- * surface (direct HTTP Tool API + chat) retains full behavior.
- */
-export type ToolSurface = "mcp" | "rest";
-
-export interface CreateUtilityToolsOptions {
-  surface?: ToolSurface;
-}
-
 export function createUtilityTools(
   defineTool: DefineTool,
   deps: UtilityToolDeps,
-  options: CreateUtilityToolsOptions = {},
 ) {
   const { scraper } = deps;
-  const isMcpSurface = options.surface === "mcp";
-
-  // scrape_url is omitted from the MCP tool surface (IND-597). It remains
-  // available via the direct HTTP Tool API and the chat agent.
-  const scrapeUrl = isMcpSurface ? null : defineTool({
+  const scrapeUrl = defineTool({
     name: "scrape_url",
     description:
       "Extracts text content from a web URL — articles, LinkedIn/GitHub profiles, documentation, project pages, etc. " +
@@ -89,45 +71,13 @@ export function createUtilityTools(
     handler: async ({ context: _context, query }) => {
       const topic = query.topic?.trim().toLowerCase();
 
-      // Canonical guidance is the MCP read_docs foundation. When on MCP surface,
-      // legacy supplemental topics (entities, intents, opportunities, etc.) are
-      // omitted to avoid repeating the canonical source (IND-602/603).
-      // REST/chat surfaces retain full topic coverage for backwards compatibility.
-      if (isMcpSurface) {
-        // MCP surface: use canonical guidance only.
-        if (!topic) {
-          // Return summary of canonical guidance
-          return success({ content: CANONICAL_GUIDANCE_SUMMARY });
-        }
-        // Try to match canonical topic
-        const normalizedTopic = topic.replace(/_/g, "-").toLowerCase();
-        for (const canonicalTopic of CANONICAL_GUIDANCE_TOPICS) {
-          if (canonicalTopic === normalizedTopic || normalizedTopic.includes(canonicalTopic.split("-")[0])) {
-            return success({ topic: canonicalTopic, content: CANONICAL_GUIDANCE_TOPICS_CONTENT[canonicalTopic] });
-          }
-        }
-        // Unknown topic on MCP surface
-        return success({
-          content: buildUnknownCanonicalTopicMessage(topic),
-        });
-      }
-
-      if (topic) {
-        const normalizedTopic = topic.replace(/_/g, "-").toLowerCase();
-        const matched = Object.entries(REST_GUIDANCE_TOPICS_CONTENT).find(
-          ([key]) => key === normalizedTopic || key.includes(normalizedTopic) || normalizedTopic.includes(key)
-        );
-        if (matched) {
-          return success({ topic: matched[0], content: matched[1] });
-        }
-      }
-
-      // Return full documentation (summary + all topics)
-      return success({ content: buildRestDocumentation() });
+      if (!topic) return success({ content: CANONICAL_GUIDANCE_SUMMARY });
+      const normalizedTopic = topic.replace(/_/g, "-");
+      const canonicalTopic = CANONICAL_GUIDANCE_TOPICS.find((candidate) => candidate === normalizedTopic);
+      if (!canonicalTopic) return error(`Unknown topic "${topic}". Available topics: ${CANONICAL_GUIDANCE_TOPICS.join(", ")}.`);
+      return success({ topic: canonicalTopic, content: CANONICAL_GUIDANCE_TOPICS_CONTENT[canonicalTopic] });
     },
   });
 
-  return [scrapeUrl, readDocs].filter(
-    (tool): tool is Exclude<typeof tool, null> => tool !== null,
-  );
+  return [scrapeUrl, readDocs];
 }

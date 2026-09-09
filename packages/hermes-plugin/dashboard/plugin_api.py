@@ -161,7 +161,7 @@ auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOAR
 def _call_read_intents() -> dict[str, Any]:
     """Fetch all of the caller's non-archived intents across pages over REST `POST /intents/list`.
 
-    This is the Mac app's intent source: unlike MCP `read_intents` it includes PAUSED intents
+    This is the Mac app's intent source: unlike the `read_intents` tool it includes PAUSED intents
     and carries each intent's lifecycle `status`, which the pause/resume control needs.
     """
     all_intents: list[dict[str, Any]] = []
@@ -190,9 +190,7 @@ def _call_read_intents() -> dict[str, Any]:
 def _call_tool(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
     """Invoke an Index tool through the REST tool surface (`POST /tools/:toolName`).
 
-    This is the Mac app's tool path: it accepts the browser-login CLI credential,
-    whereas the MCP surface resolves that key to the enrollment-only principal and
-    denies identity tools such as research_profile.
+    The dashboard delegates authentication and execution to the Python transport.
     """
     return tools._api_request("POST", f"/tools/{quote(tool_name, safe='')}", {"query": args or {}})
 

@@ -44,12 +44,12 @@ def register(ctx):
         schema=schemas.INDEX_READ_INTENTS,
         handler=tools.index_read_intents,
     )
-    for tool_name in schemas.FORWARDED_MCP_TOOLS:
+    for tool_name in schemas.FORWARDED_TOOLS:
         ctx.register_tool(
             name=f"index_{tool_name}",
             toolset="index-network",
-            schema=schemas.forwarded_mcp_schema(tool_name),
-            handler=tools.make_mcp_tool_handler(tool_name),
+            schema=schemas.forwarded_tool_schema(tool_name),
+            handler=tools.make_tool_handler(tool_name),
         )
     for name, schema, handler in (
         ("index_agent_me", schemas.INDEX_AGENT_ME, tools.index_agent_me),

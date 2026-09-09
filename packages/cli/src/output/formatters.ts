@@ -577,7 +577,7 @@ export function messageList(messages: ConversationMessage[]): void {
       day: "numeric",
     });
     const textParts = msg.parts
-      .filter((p) => p.type === "text" && p.text)
+      .filter((p) => p.kind === "text" && p.text)
       .map((p) => p.text)
       .join("");
 

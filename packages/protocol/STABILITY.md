@@ -49,8 +49,7 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 | **Graph factories** | `*GraphFactory` classes (`OpportunityGraphFactory`, `HydeGraphFactory`, `RadarGraphFactory`). |
 | **Intents** | `Intents` — the whole signal capability as one class (lifecycle graph, verification, clarification, tools) plus `IntentsDeps` and the `Clarify*` types. Replaced the six separate intent exports in 18.0.0. |
 | **Agents** | Structured LLM agents (`OpportunityEvaluator`, …). |
-| **MCP** | `createMcpServer` plus `ScopedDepsFactory`, the one type needed to call it. The capability policy was deleted in 52.0.0: every authenticated caller reaches the same tool surface. |
-| **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories are package-internal — compose them through `createMcpServer` or `createToolRegistry`. |
+| **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories are package-internal — compose them through `createToolRegistry`. |
 
 `Negotiations`, `NegotiationDatabase`, the opening and turn decision functions,
 the observation function, and `negotiationTurnSchema` are stable. Hosts must

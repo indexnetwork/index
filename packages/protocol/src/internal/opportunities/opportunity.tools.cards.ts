@@ -83,38 +83,7 @@ export function buildOpportunityAppUrl(
   return `${base}/o/${opportunityId}`;
 }
 
-/**
- * Attach the agent-facing profile link for a counterpart to `card` (mutates
- * in place). Every counterpart has a profile page worth linking to — without
- * this, the agent gets a name with no URL attached and tends to fabricate
- * one. Accept/act guidance is plain text ("accept in the Index app"); no
- * actionable URLs are minted here.
- */
-export function attachProfileLink(
-  card: Record<string, unknown> & { opportunityId: string },
-  opts: {
-    counterpartUserId: string;
-    frontendUrl: string | undefined;
-  },
-): void {
-  const profileUrl = buildProfileUrl(opts.counterpartUserId, opts.frontendUrl);
-  if (profileUrl) card.profileUrl = profileUrl;
-}
 
-/**
- * Attach the opportunity deep link to `card` (mutates in place) so every MCP
- * client — Claude Desktop, the CLI, the web, Hermes — can hand the user one
- * clickable link to the card instead of fabricating one from an id.
- */
-export function attachOpportunityAppLink(
-  card: Record<string, unknown> & { opportunityId: string },
-  opts: {
-    frontendUrl: string | undefined;
-  },
-): void {
-  const appUrl = buildOpportunityAppUrl(card.opportunityId, opts.frontendUrl);
-  if (appUrl) card.appUrl = appUrl;
-}
 
 /**
  * Maximum number of opportunity cards to show per chat response.

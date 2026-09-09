@@ -6,7 +6,7 @@
  * pattern as network.command.ts and conversation.command.ts.
  */
 
-import { ApiError, type ApiClient } from "./api.client";
+import type { ApiClient } from "./api.client";
 import * as output from "./output";
 
 const OPPORTUNITY_HELP = `
@@ -120,25 +120,10 @@ async function opportunityStatusUpdate(
 ): Promise<void> {
   // Resolve short ID to full UUID via REST read.
   const opportunity = await client.getOpportunity(id);
-  if (status === "accepted") {
-    try {
-      const result = await client.updateOpportunityStatus(opportunity.id, "accepted");
-      if (json) { console.log(JSON.stringify(result)); return; }
-      output.success("Opportunity accepted.");
-    } catch (error) {
-      if (json && error instanceof ApiError) {
-        console.log(JSON.stringify(error.response ?? { error: error.message }));
-        return;
-      }
-      throw error;
-    }
-    return;
-  }
-
-  const result = await client.updateOpportunityStatus(opportunity.id, "rejected");
+  const result = await client.updateOpportunityStatus(opportunity.id, status);
   if (json) {
     console.log(JSON.stringify(result));
     return;
   }
-  output.success("Opportunity rejected.");
+  output.success(`Opportunity ${status}.`);
 }

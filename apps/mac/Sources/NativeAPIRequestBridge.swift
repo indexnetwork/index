@@ -27,7 +27,7 @@ indirect enum NativeJSONValue: Codable, Equatable {
     }
 }
 
-enum NativeAPIOperationKind: String, Codable { case http, upload, mcp, sse, cancel }
+enum NativeAPIOperationKind: String, Codable { case http, upload, tool, sse, cancel }
 
 struct NativeAPIOperation: Codable {
     let kind: NativeAPIOperationKind
@@ -239,7 +239,7 @@ final class NativeAPIRequestBridge {
     private static let exactOperationKeys: [NativeAPIOperationKind: [Set<String>]] = [
         .http: [["kind", "method", "path"], ["kind", "method", "path", "body"]],
         .upload: [["kind", "path", "fieldName", "basename", "dataUrl"]],
-        .mcp: [["kind", "tool", "arguments"]],
+        .tool: [["kind", "tool", "arguments"]],
         .sse: [["kind", "method", "path"], ["kind", "method", "path", "body"]],
         .cancel: [["kind", "targetRequestId"]],
     ]
@@ -291,10 +291,9 @@ final class NativeAPIRequestBridge {
     static let allowedSSERoutes: Set<String> = [
         "GET /conversations/stream",
     ]
-    static let allowedMCPTools: Set<String> = ["create_intent"]
+    static let allowedTools: Set<String> = ["create_intent"]
 
     private let apiBaseURL: URL
-    private let mcpURL: URL
     private let credentialProvider: () throws -> OwnerCredentialRecord?
     private let trustedMessage: (WKScriptMessage) -> Bool
     private let terminal: (NativeAPIResponse) -> Void
@@ -309,14 +308,12 @@ final class NativeAPIRequestBridge {
 
     init(
         apiBaseURL: URL,
-        mcpURL: URL,
         credentialProvider: @escaping () throws -> OwnerCredentialRecord?,
         trustedMessage: @escaping (WKScriptMessage) -> Bool,
         terminal: @escaping (NativeAPIResponse) -> Void,
         event: @escaping (NativeAPIEvent) -> Void
     ) {
         self.apiBaseURL = apiBaseURL
-        self.mcpURL = mcpURL
         self.credentialProvider = credentialProvider
         self.trustedMessage = trustedMessage
         self.terminal = terminal
@@ -391,10 +388,10 @@ final class NativeAPIRequestBridge {
                   Self.isAllowedSSEBody(method: method, path: path, body: operation.body) else {
                 throw NativeAPIRequestFailure.deniedOperation
             }
-        case .mcp:
-            guard let tool = operation.tool, Self.allowedMCPTools.contains(tool),
+        case .tool:
+            guard let tool = operation.tool, Self.allowedTools.contains(tool),
                   Self.isGloballyBoundedJSON(operation.arguments),
-                  Self.isAllowedMCPArguments(tool: tool, arguments: operation.arguments) else {
+                  Self.isAllowedToolArguments(tool: tool, arguments: operation.arguments) else {
                 throw NativeAPIRequestFailure.deniedOperation
             }
         case .upload:
@@ -433,9 +430,9 @@ final class NativeAPIRequestBridge {
     static func validateSSEBodyForFixture(method: String, path: String, body: NativeJSONValue?) -> Bool {
         isGloballyBoundedJSON(body) && isAllowedSSEBody(method: method, path: path, body: body)
     }
-    static func validateMCPForFixture(tool: String = "create_intent", arguments: NativeJSONValue?) -> Bool {
-        allowedMCPTools.contains(tool) && isGloballyBoundedJSON(arguments)
-            && isAllowedMCPArguments(tool: tool, arguments: arguments)
+    static func validateToolForFixture(tool: String = "create_intent", arguments: NativeJSONValue?) -> Bool {
+        allowedTools.contains(tool) && isGloballyBoundedJSON(arguments)
+            && isAllowedToolArguments(tool: tool, arguments: arguments)
     }
 
     private func execute(_ request: NativeAPIRequest) throws {
@@ -459,17 +456,13 @@ final class NativeAPIRequestBridge {
             }
             try perform(request, credential: credential, method: method, path: path,
                         body: request.operation.body, sse: true)
-        case .mcp:
-            guard let tool = request.operation.tool, Self.allowedMCPTools.contains(tool),
-                  Self.isAllowedMCPArguments(tool: tool, arguments: request.operation.arguments) else {
+        case .tool:
+            guard let tool = request.operation.tool, Self.allowedTools.contains(tool),
+                  Self.isAllowedToolArguments(tool: tool, arguments: request.operation.arguments) else {
                 throw NativeAPIRequestFailure.deniedOperation
             }
-            let rpc: NativeJSONValue = .object([
-                "jsonrpc": .string("2.0"), "id": .string(request.requestId),
-                "method": .string("tools/call"),
-                "params": .object(["name": .string(tool), "arguments": request.operation.arguments ?? .object([:])]),
-            ])
-            try performAbsolute(request, credential: credential, method: "POST", url: mcpURL, body: rpc, sse: false)
+            let body: NativeJSONValue = .object(["query": request.operation.arguments ?? .object([:])])
+            try perform(request, credential: credential, method: "POST", path: "/tools/\(tool)", body: body, sse: false)
         case .upload:
             try performUpload(request, credential: credential)
         case .cancel:
@@ -678,8 +671,14 @@ final class NativeAPIRequestBridge {
         return false
     }
 
-    private static func isAllowedMCPArguments(tool: String, arguments: NativeJSONValue?) -> Bool {
-        return false
+    private static func isAllowedToolArguments(tool: String, arguments: NativeJSONValue?) -> Bool {
+        guard tool == "create_intent" else { return false }
+        return exactTypedObject(arguments, required: ["description"], optional: ["networkIds"]) { item in
+            guard boundedString(item["description"], maximum: 65_536) else { return false }
+            guard let networkIds = item["networkIds"] else { return true }
+            guard case .array(let values) = networkIds, values.count <= 100 else { return false }
+            return values.allSatisfy { uuidIdentifier($0) }
+        }
     }
 
     private static func validNetworkMemberPermissions(_ value: NativeJSONValue?) -> Bool {
@@ -748,7 +747,6 @@ final class NativeAPIRequestBridge {
             transport.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         if sse { transport.setValue("text/event-stream", forHTTPHeaderField: "Accept") }
-        else if url == mcpURL { transport.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept") }
         start(requestId: request.requestId, transport: transport, sse: sse)
     }
 
