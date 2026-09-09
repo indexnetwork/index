@@ -25,7 +25,7 @@ agent loop. Select your external Hermes agent in Index, then in a **private Herm
 gateway conversation** ask Hermes to enable the Index personal agent. It calls
 `index_configure_personal_agent` with the selected agent's ID and creates a native
 schedule. Keep the gateway running. No additional model credential or worker is
-needed. This requires Index API 0.115.0 or newer and Hermes with
+needed. This requires Index API 0.116.0 or newer and Hermes with
 `pre_gateway_dispatch`, `pre_llm_call`, `post_llm_call`, `pre_tool_call`,
 `transform_llm_output`, native plugin skills, and the `cronjob_manage` tool. These
 interfaces were checked at Hermes commit `bf53ff00a7360826ec2c9e2949533160068a8fc8`.
