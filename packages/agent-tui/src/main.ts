@@ -18,22 +18,30 @@ Optionally supply one to three ordered OpenRouter model IDs to replace the defau
 Choose a JSON scenario from packages/agent-tui/scenarios with Up/Down + Enter or
 click it. Esc or Ctrl+C exits the chooser. Agents start only after selection.
 
-Scenario: { "users": [{ "id", "name", "intent", "instructions" }, ...] }
-Click the name above either side or press Ctrl+U to change that user. Select with
-Up/Down + Enter or click a user. The opposite user is excluded. All distinct user
-pairs are simulated matches and start in parallel on launch (66 with 12 users).
-Each user has one H2A conversation and draft for their intent, across all matches.
-The center shows the selected pair's A2A turns. Questions identify their match;
-answering one resumes that match even while another pair is displayed.
-H2A shows focused questions and meaningful outcomes, with routine A2A progress
-kept in the center. Related requests can share an intent-wide question without
-changing it while you answer; match-specific approvals remain separate.
-Click either side to act as that user. Click or use Up/Down to highlight an
+Scenario users have id, name, instructions, and intents: [{ id, intent }, ...].
+The default has 12 users with two intents each: 24 personal agents and 264 matches
+between different users' intents, running independently in the background.
+Each user starts on the board with their first intent. Users/Ctrl+U opens the
+roster: Space/click toggles users, Enter applies, Esc cancels. Keep at least two.
+Click an intent header or press Ctrl+T to switch that user's intent with Up/Down
+and Enter, or a click. Esc cancels. Each user-intent pair retains its own agent,
+H2A history, scroll position, draft, pending questions, choices, and in-flight sends.
+Header [−]/Ctrl+O collapses a chat; at least one stays expanded. Overflow collapses
+from the end of roster order, preserving focus and targeting 40 columns per chat.
+Click a collapsed user to expand them. Widening restores automatic collapses;
+manual collapses stay until selected. The scrollable list shows pending questions.
+A2A is visible only with two users on the board, both expanded, at 122+ columns.
+Ctrl+N cycles their selected intents' matches. Three or more board users always
+hide A2A, including when some users are collapsed. All agents keep running.
+Related requests can share an intent-wide question without changing it while you
+answer; match-specific approvals remain separate.
+Click a chat to act as that user. Click or use Up/Down to highlight an
 agent-provided option, then Enter to confirm. Select Custom reply or click the
 text box to write your own answer. Esc returns from editing to the choices.
 When no question is active, Enter sends the text to your personal agent instead.
 Ask about your negotiations or give new instructions in the same H2A conversation.
-Tab cycles panes; Ctrl+J adds a newline; mouse wheel or PgUp/PgDn scrolls history.
+Tab/Shift+Tab cycles users, expanding collapsed chats, and includes visible A2A.
+Ctrl+J adds a newline; mouse wheel or PgUp/PgDn scrolls history.
 Ctrl+C stops all agents and exports each H2A conversation once, followed by A2A turns.
 Rerun the command for a fresh lab with an edited user roster.
 `;
