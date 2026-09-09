@@ -1,10 +1,11 @@
 import './startup.env';
 
 import * as Sentry from '@sentry/bun';
+import { ModelClient } from '@indexnetwork/agent';
 
 import { DebugController } from './controllers/debug.controller';
-import { ToolController } from './controllers/tool.controller';
-import { ToolService } from './services/tool.service';
+import { DocsController } from './controllers/docs.controller';
+import { ScrapeController } from './controllers/scrape.controller';
 import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
 import { NetworkRequestController } from './controllers/network-request.controller';
@@ -18,8 +19,10 @@ import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
 import { SubscribeController } from './controllers/subscribe.controller';
 import { ConversationController } from './controllers/conversation.controller';
+import { EventsController } from './controllers/events.controller';
 import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
+import { PersonalAgentService } from './services/personal-agent.service';
 import { OpportunityEventService } from './services/opportunity-event.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
@@ -27,7 +30,6 @@ import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
-import { mcpHandler } from './controllers/mcp.controller';
 import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
@@ -81,6 +83,7 @@ const GLOBAL_PREFIX = '/api';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
+const personalAgents = new PersonalAgentService(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
 
 // Warm up the PostgresSaver checkpointer at boot so the first graph run
 // doesn't pay the table-setup round trip and misconfiguration surfaces at
@@ -140,19 +143,19 @@ controllerInstances.set(NegotiationController, new NegotiationController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
-controllerInstances.set(ConversationController, new ConversationController(new ConversationService()));
+const conversationService = new ConversationService();
+controllerInstances.set(ConversationController, new ConversationController(conversationService, personalAgents));
+controllerInstances.set(EventsController, new EventsController(conversationService));
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(DebugController, new DebugController());
-const toolService = new ToolService();
-controllerInstances.set(ToolController, new ToolController(toolService));
+controllerInstances.set(DocsController, new DocsController());
+controllerInstances.set(ScrapeController, new ScrapeController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
 function classifyRequestSubsystem(pathname: string): string {
   if (pathname === '/throw-error') return 'sentry-test';
-  if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return 'mcp';
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
-  if (pathname.startsWith('/api/tools')) return 'protocol';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
 }
@@ -229,10 +232,6 @@ Bun.serve({
       // The trailing slash matters — a bare `/api/auth/device` prefix would also
       // swallow our own /api/auth/devices list.
       '/api/auth/device/',
-      // MCP OAuth endpoints
-      '/api/auth/mcp/',
-      '/.well-known/oauth-authorization-server',
-      '/.well-known/oauth-protected-resource',
     ];
     // The grant's claim step is the bare `/api/auth/device` with a user_code
     // query, so it is matched exactly rather than by prefix.
@@ -255,10 +254,6 @@ Bun.serve({
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
-    // MCP Streamable HTTP endpoint (OPTIONS already handled globally above)
-    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
-      return mcpHandler(req, corsHeaders);
-    }
 
     // Iterate over controllers and routes to find a match.
 
@@ -289,7 +284,7 @@ Bun.serve({
             'http.route': fullPath,
             controller: target.name,
             handler: handlerName,
-            subsystem: fullPath.startsWith('/api/tools') ? 'protocol' : 'controller',
+            subsystem: 'controller',
           });
           logger.verbose('Matched route', { path: fullPath, handler: handlerName, params: routeParams });
           try {
@@ -366,7 +361,7 @@ Bun.serve({
             }
 
             captureAppException(error, {
-              subsystem: fullPath.startsWith('/api/tools') ? 'protocol' : 'controller',
+              subsystem: 'controller',
               operation: 'controller.route',
               tags: {
                 'http.method': method,
@@ -419,11 +414,13 @@ Bun.serve({
 });
 
 logger.info('Server running', { port: PORT });
+void personalAgents.start();
 
 
 // Graceful shutdown
 const shutdown = async () => {
   logger.info('Shutting down...');
+  await personalAgents.stop();
   await Sentry.close(2000);
   process.exit(0);
 };

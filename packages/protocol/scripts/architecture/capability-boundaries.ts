@@ -11,10 +11,9 @@
  * layered over a second per-capability `public/index.ts`. Three hops collapsed
  * to one, and the rule is now checkable by looking at the import path alone.
  *
- * interaction-composition is the one explicit all-capability point: the tool
- * composition root (shared/agent/tool.{registry,factory,helpers}) plus
- * maintenance. It is a composition root rather than a capability with a public
- * surface, so it has no barrel and reaching its implementation is permitted.
+ * interaction-composition is the one explicit all-capability point. It is a
+ * composition root rather than a capability with a public surface, so it has no
+ * barrel and reaching its implementation is permitted.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";

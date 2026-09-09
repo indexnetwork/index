@@ -10,6 +10,69 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 > itemized. From `2.0.0` onward, keep this file updated as part of every release
 > (bump `package.json` and the `[Unreleased]` section before promoting to `main`).
 
+
+## 56.0.0
+
+### Breaking changes
+
+- **The tool layer is gone.** `createToolRegistry`, `invokeToolRuntime`,
+  `toolRuntimeErrorToResult`, `getToolTimeoutPolicy`, `resolveChatContext`,
+  `createEnrichmentTools`, `createOpportunityTools`, `Intents.createTools`,
+  `Networks.createTools`, and the `ResolvedToolContext` / `ToolDeps` /
+  `RawToolDefinition` / `EnrichmentToolDeps` / `OpportunityToolDeps` /
+  `IntentToolDeps` / `NetworkToolDeps` types are removed, along with every
+  `*.tools.ts` factory, `tool.registry.ts`, `tool.runtime.ts`, and
+  `tool.helpers.ts`. Hosts expose capabilities as their own REST resources and
+  reach the protocol through the graph factories and capability classes, which
+  are unchanged. `@indexnetwork/agent`'s own `Tool` loop is a different thing
+  and is untouched.
+- **`ToolScopeType` is `ScopeType`** and `deriveAllowedNetworkIds` /
+  `deriveDiscoveryNetworkIds` moved to `internal/shared/agent/scope.ts`.
+- **`CompositeToolDatabase` is `CompositeDatabase`.** Same members.
+
+### Changed
+
+- Canonical guidance (`GET /api/docs` in the reference host) describes REST
+  resources and CLI commands instead of tool names, and the user event stream is
+  documented as `GET /api/events`.
+
+## 55.0.0
+
+### Breaking changes
+
+- Remove MCP serving and authentication exports: `createMcpServer`, `ScopedDepsFactory`, `McpAuthResolver`, `McpAuthInput`, `McpResolvedIdentity`, `buildMcpOnboardingMessage`, and `ONBOARDING_ALLOWED`.
+- Remove `createOpportunityVerdictTools`, the registry `surface` option, and MCP-only tool context/dependency fields. Hosts compose scoped tools through `createToolRegistry` and `invokeToolRuntime`; owner approval remains a separate explicit HTTP operation.
+- External agents use the HTTP API through CLI 0.24.0. `read_docs` now serves canonical HTTP/CLI workflows, and utility tools use one shared registry. Shared execution limits, cancellation, ownership, and network scoping remain in place.
+- Remove the direct MCP SDK dependency. The API host removes `/mcp` and MCP OAuth discovery and drops only the three obsolete OAuth tables.
+
+## 54.0.1 - 2026-09-09
+
+### Changed
+
+- Centralize shared negotiation guidance, MCP instructions, and `read_docs`
+  content and composition in `src/protocol/protocol.prompt.ts`. Emitted text,
+  topic matching, response envelopes, and package-root exports are unchanged.
+- Share negotiation limits between guidance and enforcement through
+  `src/protocol/negotiation.constants.ts`, and document prompt consumers in the
+  implementation guide.
+
+## 54.0.0
+
+### Breaking changes
+
+- Add the `Negotiations` participation capability, current-state observations,
+  protocol guidance, and atomic host commit contract. Submissions carry the
+  observed `expectedTurnCount`; stale decisions are refused.
+- `openCounterparties` now receives a protocol decision callback that hosts must
+  evaluate against current network membership and active intent assignments.
+- Replace `NEGOTIATION_MAX_TURNS_AMBIENT` (and the private chat limit) with one
+  `NEGOTIATION_MAX_TURNS` of 12. Exhaustion blocks further turns with no outcome;
+  A2A agreement advances only to pending human approval.
+- The API host renames domain tables with `protocol_` prefixes, adds private
+  `agent_sessions`, and composes the independent agent library through its local
+  TUI runner. Forward migrations preserve existing records.
+
+
 ## Release model
 
 Every push to `dev` publishes `<package.json version>-rc.<run>.<attempt>` under

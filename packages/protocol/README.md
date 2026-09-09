@@ -53,7 +53,7 @@ The graph is intentionally consent-centered: agents can construct context, disco
 3. **Semantic discovery** — matching is based on role fit, constraints, complementarity, and contextual relevance rather than exact keyword overlap.
 4. **Explainable surfacing** — every surfaced opportunity SHOULD include a legible reason: why these participants, why now, and what the next action might be.
 5. **Consent at relationship boundaries** — agents MAY discover and negotiate, but MUST NOT create or accept a relationship without explicit participant approval.
-6. **Agent interoperability** — first-party agents, personal agents, community agents, and external MCP clients SHOULD be able to participate under the same behavioral contract.
+6. **Agent interoperability** — first-party agents, personal agents, community agents, and external CLI clients SHOULD be able to participate under the same behavioral contract.
 
 ## Non-goals
 
@@ -177,7 +177,7 @@ A broader credential MUST NOT expand a narrower request. A narrower agent permis
 
 The protocol separates internal state from participant-facing language.
 
-Internal records MAY contain IDs, embeddings, scores, graph state, and tool names. Participant-facing responses MUST NOT expose these implementation details unless an identifier is directly actionable by the participant, such as a conversation identifier needed to open an accepted connection.
+Internal records MAY contain IDs, embeddings, scores, and graph state. Participant-facing responses MUST NOT expose these implementation details unless an identifier is directly actionable by the participant, such as a conversation identifier needed to open an accepted connection.
 
 ## Core objects
 
@@ -349,7 +349,7 @@ A conforming agent MUST:
 
 - act only within its authenticated participant and community scope,
 - preserve participant consent at send, accept, and connection boundaries,
-- avoid exposing internal IDs, raw tool results, embeddings, scores, or database field names,
+- avoid exposing internal IDs, raw graph results, embeddings, scores, or database field names,
 - distinguish known facts from inferred context,
 - ask for clarification when required information is missing,
 - use the protocol vocabulary in participant-facing output,
@@ -386,20 +386,20 @@ The following invariants define the protocol's trust boundary:
 
 ## Interoperability
 
-The reference implementation exposes the protocol to agents through a Model Context Protocol (MCP) server and typed package APIs. MCP is the preferred interoperability surface for external agents because it provides tool discovery, runtime instructions, identity resolution, and bounded tool invocation.
+The reference implementation exposes the protocol through a REST API and typed package APIs. External agents use the Index CLI against those resources, reading canonical guidance from `GET /api/docs`. The API resolves identity and enforces ownership, network scope, and protocol rules.
 
 ```mermaid
 flowchart LR
-    ExternalAgent[External agent] -->|MCP tools| McpServer[Index Network MCP server]
+    ExternalAgent[External agent] --> CLI[Index CLI]
+    CLI --> HTTP[Index REST API]
     FirstPartyAgent[First-party agent] -->|typed runtime| Runtime[Protocol runtime]
 
-    McpServer --> Identity[Identity resolution]
+    HTTP --> Identity[Identity resolution]
     Identity --> AgentGate[Agent registration and scope]
     AgentGate --> ScopedDeps[Scoped protocol dependencies]
     ScopedDeps --> Runtime
 
-    Runtime --> Tools[Protocol tools]
-    Tools --> Graphs[Discovery, context, signal graphs]
+    Runtime --> Graphs[Discovery, context, signal graphs]
     Graphs --> Results[Bounded results]
     Results --> Runtime
     Runtime --> ParticipantOutput[Participant-facing output rules]
@@ -418,6 +418,6 @@ Implementations MAY expose additional transports, but they SHOULD preserve the s
 
 The canonical TypeScript implementation is `@indexnetwork/protocol`.
 
-- [IMPLEMENTATION.md](./IMPLEMENTATION.md) — package installation, adapters, graph factories, MCP server usage, and publishing.
+- [IMPLEMENTATION.md](./IMPLEMENTATION.md) — package installation, adapters, graph factories, REST API and CLI usage, and publishing.
 - [STABILITY.md](./STABILITY.md) — public API contract and SemVer policy.
 - [CHANGELOG.md](./CHANGELOG.md) — release history.

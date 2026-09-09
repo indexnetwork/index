@@ -100,6 +100,12 @@ jobs:
       - name: Type check API
         run: cd services/api && bun run build
 
+      - name: Check agent
+        run: bun run --cwd packages/agent check
+
+      - name: Check agent TUI
+        run: bun run --cwd packages/agent-tui check && bun run --cwd packages/agent-tui build
+
   protocol-architecture:
     # Keep the architectural dependency checks visible as separate CI checks so
     # a failure names the violated invariant directly in the checks list.

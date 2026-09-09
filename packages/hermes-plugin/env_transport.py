@@ -1,17 +1,15 @@
-"""Direct HTTP transport authenticated with this device's Index session token."""
+"""Direct HTTP operations using this device's Index session token."""
 
 from __future__ import annotations
 
 import base64
 import json
 import os
-import secrets
 import urllib.error
 import urllib.request
 from typing import Any, Iterator
 
-_DEFAULT_API = "https://protocol.index.network/api"
-_DEFAULT_MCP = "https://protocol.index.network/mcp"
+_DEFAULT_API = "https://protocol.index.network"
 
 _API_KEY_HELP = (
     "Sign in from the Hermes dashboard (log in with browser), or set "
@@ -30,14 +28,14 @@ class TransportError(RuntimeError):
 
 
 class EnvironmentCredentialTransport:
-    """The production transport: plain HTTPS with a bearer session token."""
+    """The production transport for tool handlers, dashboard HTTP, uploads, and streams."""
 
     def __init__(self) -> None:
         self._api_key = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
         if not self._api_key:
             raise TransportError("api_key_missing", _API_KEY_HELP)
-        self._api = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
-        self._mcp = os.environ.get("INDEX_MCP_URL", _DEFAULT_MCP).strip() or _DEFAULT_MCP
+        self._origin = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
+        self._api = self._origin + "/api"
 
     def _headers(self, *, content_type: str = "application/json", accept: str = "application/json") -> dict[str, str]:
         return {
@@ -49,7 +47,7 @@ class EnvironmentCredentialTransport:
     @staticmethod
     def _timeout() -> float:
         try:
-            value = float(os.environ.get("INDEX_MCP_TIMEOUT_SECONDS", "30"))
+            value = float(os.environ.get("INDEX_HTTP_TIMEOUT_SECONDS", "30"))
             return value if value > 0 else 30.0
         except ValueError:
             return 30.0
@@ -123,37 +121,6 @@ class EnvironmentCredentialTransport:
                 "error": f"Index API request failed: {exc.reason}",
                 "code": "network_error",
             }
-
-    def call_mcp(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        data = json.dumps({
-            "jsonrpc": "2.0", "id": secrets.randbits(53), "method": "tools/call",
-            "params": {"name": tool_name, "arguments": arguments},
-        }).encode("utf-8")
-        request = urllib.request.Request(
-            self._mcp, data=data,
-            headers=self._headers(accept="application/json, text/event-stream"), method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self._timeout()) as response:
-                raw = response.read().decode("utf-8", errors="replace")
-                if "text/event-stream" in response.headers.get("Content-Type", "").lower():
-                    candidates = [line[5:].strip() for line in raw.splitlines() if line.startswith("data:") and line[5:].strip() != "[DONE]"]
-                    if not candidates:
-                        raise ValueError("SSE response did not contain data")
-                    envelope = json.loads(candidates[-1])
-                else:
-                    envelope = json.loads(raw)
-        except urllib.error.HTTPError as exc:
-            raise TransportError("mcp_http_error", f"Index MCP request failed with status {exc.code}.") from exc
-        except urllib.error.URLError as exc:
-            raise TransportError("network_error", f"Index MCP request failed: {exc.reason}") from exc
-        if not isinstance(envelope, dict) or "error" in envelope:
-            error = envelope.get("error") if isinstance(envelope, dict) else None
-            raise TransportError("mcp_error", str(error or "Index MCP request failed."))
-        result = envelope.get("result")
-        if not isinstance(result, dict):
-            raise TransportError("mcp_invalid_response", "Index MCP returned an invalid response.")
-        return result
 
     def disconnect(self) -> dict[str, Any]:
         self._api_key = ""

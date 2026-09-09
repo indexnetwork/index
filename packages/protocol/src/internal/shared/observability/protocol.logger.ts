@@ -10,7 +10,7 @@ import type { LoggerWithSource } from "./log.js";
 
 export type { LoggerWithSource };
 
-/** Create a protocol logger for a given source (e.g. "ChatTools", "DiscoverNodes"). */
+/** Create a protocol logger for a given source (e.g. "IntentGraph", "DiscoverNodes"). */
 export function protocolLogger(source: string): LoggerWithSource {
   return log.protocol.from(source);
 }

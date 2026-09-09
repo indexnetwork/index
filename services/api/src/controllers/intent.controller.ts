@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
-import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { Intents } from '@indexnetwork/protocol';
 import { IntentCreateRejectedError, IntentNetworkMembershipError, intentService } from '../services/intent.service';
 
@@ -22,11 +22,18 @@ const ClarifySchema = z.object({
 const StatusSchema = z.object({
   status: z.enum(['ACTIVE', 'PAUSED']),
 });
+const UpdateSchema = z.object({
+  description: z.string().trim().min(1, 'description is required').max(65_536),
+}).strict();
+const LinkSchema = z.object({
+  networkId: z.string().uuid('networkId must be a UUID'),
+}).strict();
 
 @Controller('/intents')
 export class IntentController {
   /**
-   * List intents with pagination and filters.
+   * List intents with pagination, filters, and an optional text query over
+   * the caller's own signals (`q`, matched against description and summary).
    */
   @Post('/list')
   @UseGuards(AuthGuard)
@@ -36,6 +43,7 @@ export class IntentController {
       limit?: number;
       archived?: boolean;
       sourceType?: string;
+      q?: string;
     };
 
     const result = await intentService.listIntents(user.id, {
@@ -43,6 +51,7 @@ export class IntentController {
       limit: body.limit,
       archived: body.archived,
       sourceType: body.sourceType,
+      q: body.q?.trim() || undefined,
     });
 
     return Response.json({
@@ -238,6 +247,110 @@ export class IntentController {
       },
       changed: result.changed,
     });
+  }
+
+  /**
+   * Rewrite an owned signal's description by ID or short prefix.
+   *
+   * @param req - Request with body `{ description: string }`.
+   * @param user - Authenticated owner.
+   * @param params - Route parameters containing the intent identifier.
+   * @returns The intent id and the description now stored.
+   */
+  @Patch('/:id')
+  @UseGuards(AuthGuard)
+  async update(req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = UpdateSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const result = await intentService.update(resolved.id, user.id, parsed.data.description);
+    if (result.kind === 'not_found') {
+      return Response.json({ error: 'Intent not found' }, { status: 404 });
+    }
+    if (result.kind === 'archived') {
+      return Response.json({ error: 'Archived intents cannot be updated' }, { status: 409 });
+    }
+    if (result.kind === 'rejected') {
+      return Response.json({ error: 'intent_rejected', code: 'intent_rejected', detail: result.detail }, { status: 422 });
+    }
+
+    return Response.json({ intentId: resolved.id, description: parsed.data.description });
+  }
+
+  /**
+   * List the communities an owned signal is shared in.
+   */
+  @Get('/:id/networks')
+  @UseGuards(AuthGuard)
+  async listNetworks(_req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const networkIds = await intentService.listNetworks(resolved.id, user.id);
+    if (!networkIds) {
+      return Response.json({ error: 'Intent not found' }, { status: 404 });
+    }
+    return Response.json({ networkIds });
+  }
+
+  /**
+   * Share an owned signal in one community.
+   *
+   * @param req - Request with body `{ networkId: string }`.
+   */
+  @Post('/:id/networks')
+  @UseGuards(AuthGuard)
+  async addToNetwork(req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = LinkSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const result = await intentService.addToNetwork(resolved.id, parsed.data.networkId, user.id);
+    if (result.kind === 'refused') {
+      return Response.json({ error: 'forbidden', detail: result.detail }, { status: 403 });
+    }
+    return Response.json({ success: true, message: result.message });
+  }
+
+  /**
+   * Withdraw an owned signal from one community.
+   */
+  @Delete('/:id/networks/:networkId')
+  @UseGuards(AuthGuard)
+  async removeFromNetwork(_req: Request, user: AuthenticatedUser, params: { id: string; networkId: string }) {
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const result = await intentService.removeFromNetwork(resolved.id, params.networkId, user.id);
+    if (result.kind === 'refused') {
+      return Response.json({ error: 'forbidden', detail: result.detail }, { status: 403 });
+    }
+    return Response.json({ success: true, message: result.message });
   }
 
   /**

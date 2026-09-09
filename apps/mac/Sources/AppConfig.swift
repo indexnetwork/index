@@ -23,7 +23,6 @@ enum AppConfig {
 
     /// The REST base including the `/api` prefix applied in services/api main.ts.
     static var apiBaseURL: String { trimTrailingSlash(apiURL) + "/api" }
-    static var mcpURL: String { trimTrailingSlash(apiURL) + "/mcp" }
     static var ownerKeychainAccessGroup: String? {
         let value = Bundle.main.object(forInfoDictionaryKey: "IndexOwnerKeychainAccessGroup") as? String
         return value?.isEmpty == false ? value : nil

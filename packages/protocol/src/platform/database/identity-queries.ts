@@ -284,7 +284,7 @@ export interface DatabaseIdentityQueries {
   } | null>;
 
   /**
-   * Get network by ID with permissions (e.g. joinPolicy). Used by chat tools for create_network_membership.
+   * Get network by ID with permissions (e.g. joinPolicy). Used when a member joins a community.
    */
   getNetworkWithPermissions(networkId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null>;
 

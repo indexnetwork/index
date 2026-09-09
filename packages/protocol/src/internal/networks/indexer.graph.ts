@@ -76,7 +76,7 @@ export class IntentNetworkGraphFactory {
 }
 
 /**
- * Persist an intent→network assignment, honouring membership, and shape the tool result.
+ * Persist an intent→network assignment, honouring membership, and shape the result.
  */
 export async function finalizeAssignment(
   deps: IntentNetworkGraphDeps,
@@ -226,7 +226,7 @@ export async function readNode(state: IntentNetworkState, deps: IntentNetworkGra
             links: networkIds.map((id) => ({ intentId, networkId: id })),
             count: networkIds.length,
             mode: "networks_for_intent",
-            note: "To show network titles, use read_networks.",
+            note: "Community titles come from the community read.",
           },
         };
       }
@@ -265,7 +265,7 @@ export async function readNode(state: IntentNetworkState, deps: IntentNetworkGra
             })),
             count: intents.length,
             mode: "intents_in_network",
-            note: "To show network title and full intent details, use read_networks and read_intents.",
+            note: "Community titles and full signal details come from the community and signal reads.",
           },
         };
       }
@@ -283,7 +283,7 @@ export async function readNode(state: IntentNetworkState, deps: IntentNetworkGra
           })),
           count: intents.length,
           mode: "intents_in_network",
-          note: "To show network title and full intent details, use read_networks and read_intents.",
+          note: "Community titles and full signal details come from the community and signal reads.",
         },
       };
     } catch (err) {

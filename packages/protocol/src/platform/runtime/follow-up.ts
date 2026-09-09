@@ -2,10 +2,10 @@
  * Host follow-up work the intent graph starts after a persist.
  */
 
-import type { ToolScopeType } from "../../protocol/core.js";
+import type { ScopeType } from "../../protocol/core.js";
 
 export interface IntentFollowUpScope {
-  scopeType?: ToolScopeType;
+  scopeType?: ScopeType;
   scopeId?: string;
   /** @deprecated networkScopeId is legacy; use `scopeType: 'network'` + `scopeId`. */
   networkScopeId?: string;

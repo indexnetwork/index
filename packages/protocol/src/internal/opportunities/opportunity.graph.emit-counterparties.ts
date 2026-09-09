@@ -1,3 +1,5 @@
+import { decideNegotiationOpening } from '../../protocol/negotiation.rules.js';
+
 /**
  * Discovery pipeline, terminal stage: open the pairs.
  *
@@ -70,7 +72,7 @@ export async function emitCounterpartiesNode(state: OpportunityState, deps: Oppo
 
     if (pairs.length === 0) return { opened: [] };
 
-    const opened = await deps.database.openCounterparties(pairs);
+    const opened = await deps.database.openCounterparties(pairs, decideNegotiationOpening);
     persistLog.info('Opened discovery counterparties', {
       triggerIntentId: state.triggerIntentId,
       count: pairs.length,

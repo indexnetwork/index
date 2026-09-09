@@ -10,9 +10,33 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: `/api/tools` is deleted; every capability is a named REST
+  resource.** `GET /api/tools` and `POST /api/tools/:toolName` are 404, and
+  `ToolController`, `ToolService` and `EnricherAdapter` are gone. What only the
+  tool layer could do is now routed: `PATCH /intents/:id` rewrites a signal
+  through the same intent graph, `GET/POST /intents/:id/networks` and
+  `DELETE /intents/:id/networks/:networkId` manage signal↔community links,
+  `POST /intents/list` accepts an optional `q` for own-signal text search,
+  `GET /networks/:id/intents` browses a community's signals,
+  `POST /scrape` reads a web page, and `GET /docs?topic=` serves canonical
+  protocol guidance. `GET /networks/:id/members` is open to any current member
+  instead of owners only, so it now answers with the member-scoped roster: no
+  `intro`, and `email` only on the caller's own row. The member writes stay
+  owner-only.
+- **BREAKING: `GET /api/conversations/stream` is `GET /api/events`.** No alias.
+  Frames are unchanged; the channel was never a conversation resource, so it
+  moved to its own `EventsController` and conversation CRUD stayed on
+  `/api/conversations`.
+- **`POST /intents` with no `networkIds` shares the signal in every network the
+  owner belongs to.** Naming networks still shares it in exactly those, and a
+  non-membership is still rejected; only the unspecified case changed. It used
+  to create an unlinked signal that discovery then skipped fail-closed, so
+  `/i/new` — which sends no ids and says "going out to everywhere" — produced
+  signals that reached nobody. A transitional default: the picker comes back
+  once choosing networks is something people expect to do.
 - **BREAKING: one SSE stream per user.** Notifications and conversation messages
   share the Redis channel `events:user:<userId>` and the single endpoint
-  `GET /conversations/stream`; `GET /notifications/stream` is deleted. Frames are
+  `GET /events`; `GET /notifications/stream` is deleted. Frames are
   unchanged — notification frames stay pointer-shaped, messages keep their text
   inline — so consumers discriminate on `type` and ignore the rest.
   The surviving stream also waits for Redis to acknowledge the subscription and

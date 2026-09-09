@@ -39,11 +39,14 @@ enum HermesSetup {
         guard let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] else {
             return ["ok": false, "error": "hermes binary not found on this mac"]
         }
+        let (cliStatus, cliOutput) = runCommand("/usr/bin/env", ["npm", "install", "--global", "@indexnetwork/cli@0.24.0"])
+        guard cliStatus == 0 else {
+            return ["ok": false, "error": "could not install Index CLI: \(String(cliOutput.suffix(300)))"]
+        }
         do {
             try writeEnv([
                 ("INDEX_SESSION_TOKEN", sessionToken),
-                ("INDEX_API_URL", AppConfig.apiBaseURL),
-                ("INDEX_MCP_URL", AppConfig.mcpURL),
+                ("INDEX_API_URL", AppConfig.apiURL),
             ])
         } catch {
             return ["ok": false, "error": "could not write ~/.hermes/.env"]
@@ -99,11 +102,11 @@ enum HermesSetup {
             if status != 0 {
                 return ["ok": false, "error": "hermes plugins remove: \(String(output.suffix(300)))"]
             }
-            removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
+            removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL"])
             restartGatewayIfRunning(hermes)
             return ["ok": true]
         }
-        removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
+        removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL"])
         return ["ok": true]
     }
 

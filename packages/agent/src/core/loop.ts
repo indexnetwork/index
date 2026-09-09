@@ -1,9 +1,9 @@
-import type { ModelClient, ModelMessage, ToolCall } from "./model.ts";
+import type { Model, ModelMessage, ModelRequestOptions, ToolCall } from "./model.ts";
 import { toolDefinition, type Tool, type ToolContext } from "./tools.ts";
 import type { PendingQuestion, RunResult, Step } from "./types.ts";
 
 export interface LoopOptions {
-  model: ModelClient;
+  model: Model;
   systemPrompt: string;
   tools: Tool<never>[];
   /** The conversation so far, excluding the system message. */
@@ -18,6 +18,7 @@ export interface LoopOptions {
   maxSteps: number;
   context: ToolContext;
   onStep?: (step: Step) => void;
+  onRetry?: ModelRequestOptions['onRetry'];
   signal?: AbortSignal;
 }
 
@@ -61,7 +62,7 @@ export async function runLoop(options: LoopOptions): Promise<RunResult> {
   let lastText = "";
 
   for (let step = 0; step < options.maxSteps; step++) {
-    const assistant = await model.complete(messages, definitions, signal);
+    const assistant = await model.complete(messages, definitions, { signal, onRetry: options.onRetry });
     messages.push(assistant);
 
     if (assistant.content) lastText = assistant.content;

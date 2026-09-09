@@ -891,8 +891,8 @@ export class ChatDatabaseAdapter {
   }
 
   // The Intent Graph's archive/transition/confirm actions reach these through
-  // this composite adapter when compiled for chat/MCP tools; delegate straight
-  // to IntentDatabaseAdapter, the single implementation of each.
+  // this composite adapter; delegate straight to IntentDatabaseAdapter, the
+  // single implementation of each.
   deleteIntentNetworkAssociations(intentId: string): ReturnType<IntentDatabaseAdapter['deleteIntentNetworkAssociations']> {
     return this.intentAdapter.deleteIntentNetworkAssociations(intentId);
   }
@@ -2094,9 +2094,9 @@ export class ChatDatabaseAdapter {
 
   // Discovery counterparties (delegate to NegotiationDatabaseAdapter)
   async openCounterparties(
-    pairs: Parameters<NegotiationDatabaseAdapter['openCounterparties']>[0],
+    ...args: Parameters<NegotiationDatabaseAdapter['openCounterparties']>
   ) {
-    return negotiationDatabaseAdapter.openCounterparties(pairs);
+    return negotiationDatabaseAdapter.openCounterparties(...args);
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)

@@ -16,7 +16,7 @@ It is now **wired into the mac app**: `scripts/assemble.py` inlines `client.mjs`
 
 The native macOS client holds its own Better Auth session, obtained through the device authorization grant that the web `/cli-auth` handshake runs on its behalf. The Swift shell stores the token only in the Keychain and supplies it directly to `NativeAPIRequestBridge` as `Authorization: Bearer`; JavaScript receives only credential-free structured operations and nonsecret authentication status. Credentials and authorization headers are never exposed to the WKWebView, browser callback, local storage, or logs.
 
-Native REST, MCP, upload, and bounded SSE requests are method/path allowlisted before the Swift bridge attaches the credential. Because the credential is a session rather than an API key, session-only routes such as agent management are reachable from this principal; key management stays out of the allowlist. Logout quarantines in-flight work, deletes Keychain state, and revokes the session server-side with its own token.
+Native REST, upload, and bounded SSE requests are method/path allowlisted before the Swift bridge attaches the credential. Because the credential is a session rather than an API key, session-only routes such as agent management are reachable from this principal; key management stays out of the allowlist. Logout quarantines in-flight work, deletes Keychain state, and revokes the session server-side with its own token.
 
 ## Current files
 
@@ -36,10 +36,9 @@ The client base URL includes `/api`, matching the global prefix applied in `serv
 - `opportunity.controller.ts`: `GET /opportunities`, `GET /opportunities/radar` (incl. `scopeType=intent`), `GET /opportunities/chat-context`, `GET /opportunities/:id`, `GET /opportunities/:id/invite-message`, `PATCH /opportunities/:id/status` (incl. intent scope), `POST /opportunities/:id/start-chat` (incl. intent scope)
 - `conversation.controller.ts`: `GET /conversations`, `GET /conversations/negotiations`, `GET /conversations/:id/messages`, `POST /conversations/:id/messages`, `POST /conversations/dm`, `PATCH /conversations/:id/metadata`, `DELETE /conversations/:id`
 - `agent.controller.ts`: `GET /agents` (read-only; management writes are session-only)
-- `tool.controller.ts`: `POST /tools/:toolName` (`client.tools.invoke`; used for the onboarding-allowed `preview_user_context` / `confirm_user_context`)
 - `enrichment.controller.ts`: `POST /enrichment/enrich` (`client.enrichment.trigger`; runs the full public-research enrichment inline and returns the resolved identity + discovered socials)
 
-Onboarding creates a real intent through the `create_intent` MCP tool via a single JSON-RPC `tools/call` to `/mcp` (`bridge.jsx`'s `mcpCall`), since intent creation has no plain REST POST. SSE endpoints are consumed directly via `fetch` (not through the resource methods): `POST /chat/stream` and `GET /conversations/stream`.
+Signal creation is `POST /intents` with `{description}`. JavaScript never receives credentials. User events use the bounded native SSE operation on `GET /events`.
 
 ## Data loading
 

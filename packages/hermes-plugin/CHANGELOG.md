@@ -1,5 +1,23 @@
 # Changelog
 
+
+## 0.37.0
+
+- Call the Index REST API directly over HTTPS instead of shelling out to
+  `index tool call`. Every plugin function maps to a resource: signals through
+  `/intents` (plus `/intents/:id/networks` for community links), communities
+  through `/networks` with a `/network-requests` fallback when creation is
+  staff-gated, opportunities through `/opportunities`, profile research through
+  `/enrichment`, and guidance through `/docs`. `index_create_network_membership`
+  is `index_join_network`; `index_search_intents` and `index_scrape_url` are
+  gone. The dashboard relays the user event stream from `/events`.
+
+## 0.36.0
+
+- Invoke Index tools through CLI 0.24.0 with explicit API origin, JSON output, and environment session credentials. Preserve dashboard, upload, and streaming HTTP operations.
+- `INDEX_API_URL` now takes the bare origin, without `/api`, matching the CLI. Update custom overrides when upgrading.
+- Require the matching CLI on the Hermes process PATH. Removed Index MCP configuration no longer applies.
+
 All notable changes to `@indexnetwork/hermes-plugin` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

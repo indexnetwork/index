@@ -30,18 +30,18 @@ export interface AssignmentResult {
  * }
  */
 export const IntentNetworkGraphState = Annotation.Root({
-  // --- Core Inputs (from ToolContext) ---
+  // --- Core Inputs (from the caller) ---
 
   /** User performing the action. Always required. */
   userId: Annotation<string>,
 
-  /** Target network for assign/read-by-network. From ToolContext or tool arg. */
+  /** Target network for assign/read-by-network. */
   networkId: Annotation<string | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,
   }),
 
-  /** Target intent for assign/read-by-intent. From tool arg. */
+  /** Target intent for assign/read-by-intent. */
   intentId: Annotation<string | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,

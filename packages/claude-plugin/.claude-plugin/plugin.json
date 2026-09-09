@@ -1,22 +1,6 @@
 {
   "name": "index-network",
-  "description": "Index Network — find the right people and let them find you.",
-  "version": "0.3.1",
-  "userConfig": {
-    "apiKey": {
-      "type": "string",
-      "title": "Index Network API Key",
-      "description": "API key for persistent auth. If omitted, OAuth is used on the first tool call.",
-      "sensitive": true
-    }
-  },
-  "mcpServers": {
-    "index-network": {
-      "type": "http",
-      "url": "https://protocol.index.network/mcp",
-      "headers": {
-        "x-api-key": "${user_config.apiKey}"
-      }
-    }
-  }
+  "description": "Index Network \u2014 find the right people and let them find you.",
+  "version": "0.6.0",
+  "skills": "./skills/"
 }

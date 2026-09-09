@@ -11,7 +11,7 @@
  * `getCorsHeaders` and `getTrustedOrigins` both read the same parsed set, so the
  * CORS layer cannot grant an origin that Better Auth would not also trust.
  *
- * Callers that send no `Origin` (CLI, MCP clients, Telegram webhooks) are
+ * Callers that send no `Origin` (CLI clients, Telegram webhooks) are
  * untouched: they get the base headers and no grant, exactly as before.
  */
 import { log } from './log';

@@ -18,9 +18,9 @@ export interface ModelSettings {
 
 /**
  * Runtime configuration for the protocol package.
- * When passed via `ToolContext.modelConfig`, all fields (`apiKey`, `baseURL`, `chatModel`,
+ * When passed explicitly, all fields (`apiKey`, `baseURL`, `chatModel`,
  * `chatReasoningEffort`) are honored by `ChatAgent` when the chat graph runs.
- * Other protocol agents don't read from `ToolContext` but may accept an explicit `ModelConfig`
+ * Other protocol agents may accept an explicit `ModelConfig`
  * as a direct parameter to `createModel()`.
  * All fields fall back to environment variables if not provided.
  */
@@ -124,7 +124,7 @@ const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 function instantiateModel(agent: string, cfg: ModelSettings, config?: ModelConfig): ChatOpenAI {
   const apiKey = config?.apiKey ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey?.trim()) {
-    throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required. Pass via the config argument, ToolContext.modelConfig.apiKey, or set the OPENROUTER_API_KEY environment variable.`);
+    throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required. Pass via the config argument or set the OPENROUTER_API_KEY environment variable.`);
   }
   // Hard upper bound on a single LLM call. Without this, langchain's HTTP
   // client waits until the upstream cuts the socket (~3 minutes via

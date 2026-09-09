@@ -1067,7 +1067,7 @@ This domain is for use in illustrative examples in documents...
 <!-- ═══════ ERRORS & STATUS ═══════ -->
 <div class="section" id="errors">
   <div class="section-title"><span class="dot" style="background:var(--red)"></span> Errors &amp; Status Messages <span class="cmd-label system">system</span></div>
-  <div class="section-desc">All message types: error, success, info, warning, dim, heading, status, toolActivity, confidenceBar.</div>
+  <div class="section-desc">All message types: error, success, info, warning, dim, heading, status, confidenceBar.</div>
 
   <div class="output-grid">
     <div class="terminal">
@@ -1140,12 +1140,9 @@ This domain is for use in illustrative examples in documents...
     </div>
 
     <div class="terminal">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">output.status / toolActivity (stderr)</span></div>
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">output.status (stderr)</span></div>
       <div class="terminal-body">  <span class="c-gray">thinking...</span><span class="dim">                    ← status: overwrites line</span>
-  <span class="c-gray">Processing your request...</span><span class="dim">     ← status: replaces previous</span>
-<span class="c-orange">&gt; Reading your profile...</span><span class="dim">       ← toolActivity: persistent</span>
-<span class="c-orange">&gt; Creating a new signal...</span><span class="dim">      ← toolActivity: persistent</span>
-<span class="c-orange">&gt; Proposing a new signal for game development</span><span class="dim">  ← tool_activity w/ description</span></div>
+  <span class="c-gray">Processing your request...</span><span class="dim">     ← status: replaces previous</span></div>
     </div>
 
     <div class="terminal">
@@ -1183,35 +1180,6 @@ This domain is for use in illustrative examples in documents...
   <span class="bold"> 50%</span>  <span class="c-green">#####</span><span class="c-gray">-----</span> <span class="c-gray">50%</span>
   <span class="bold"> 20%</span>  <span class="c-green">##</span><span class="c-gray">--------</span> <span class="c-gray">20%</span>
   <span class="bold">  0%</span>  <span class="c-gray">----------</span> <span class="c-gray">0%</span></div>
-    </div>
-
-    <div class="terminal full-width">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">All TOOL_DESCRIPTIONS (humanizeToolName)</span></div>
-      <div class="terminal-body"><span class="c-orange">&gt; Reading your profile...</span>             <span class="dim">read_user_contexts</span>
-<span class="c-orange">&gt; Creating your profile...</span>            <span class="dim">create_user_context</span>
-<span class="c-orange">&gt; Updating your profile...</span>            <span class="dim">update_user_context</span>
-<span class="c-orange">&gt; Fetching your active signals...</span>     <span class="dim">read_intents</span>
-<span class="c-orange">&gt; Creating a new signal...</span>            <span class="dim">create_intent</span>
-<span class="c-orange">&gt; Updating signal...</span>                  <span class="dim">update_intent</span>
-<span class="c-orange">&gt; Removing signal...</span>                  <span class="dim">delete_intent</span>
-<span class="c-orange">&gt; Adding signal to network...</span>        <span class="dim">add_intent_to_network</span>
-<span class="c-orange">&gt; Fetching signals in network...</span>      <span class="dim">list_intent_networks</span>
-<span class="c-orange">&gt; Removing signal from network...</span>     <span class="dim">remove_intent_from_network</span>
-<span class="c-orange">&gt; Checking your networks...</span>           <span class="dim">read_networks</span>
-<span class="c-orange">&gt; Creating a new network...</span>           <span class="dim">create_network</span>
-<span class="c-orange">&gt; Updating network...</span>                 <span class="dim">update_network</span>
-<span class="c-orange">&gt; Deleting network...</span>                 <span class="dim">delete_network</span>
-<span class="c-orange">&gt; Adding member to network...</span>         <span class="dim">create_network_membership</span>
-<span class="c-orange">&gt; Fetching network memberships...</span>     <span class="dim">read_network_memberships</span>
-<span class="c-orange">&gt; Searching for relevant connections...</span> <span class="dim">create_opportunities</span>
-<span class="c-orange">&gt; Listing your opportunities...</span>      <span class="dim">list_my_opportunities</span>
-<span class="c-orange">&gt; Updating opportunity status...</span>     <span class="dim">update_opportunity</span>
-<span class="c-orange">&gt; Reading content from URL...</span>         <span class="dim">scrape_url</span>
-<span class="c-orange">&gt; Looking up documentation...</span>        <span class="dim">read_docs</span>
-<span class="c-orange">&gt; Importing Gmail contacts...</span>        <span class="dim">import_gmail_contacts</span>
-<span class="c-orange">&gt; Importing contacts...</span>              <span class="dim">import_contacts</span>
-<span class="c-orange">&gt; Sending opportunity...</span>             <span class="dim">send_opportunity</span>
-<span class="c-orange">&gt; unknown tool name...</span>               <span class="dim">fallback: snake_case → spaces</span></div>
     </div>
 
     <div class="terminal">

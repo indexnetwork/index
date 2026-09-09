@@ -1,7 +1,7 @@
 /**
  * Scrape command handler for the Index CLI.
  *
- * Extracts content from a URL using the scrape_url tool.
+ * Extracts content from a URL through POST /api/scrape.
  */
 import type { ApiClient } from "./api.client";
 import * as output from "./output";
@@ -21,12 +21,10 @@ export async function handleScrape(
   const url = positionals[0];
   if (!url) { output.error("Usage: index scrape <url> [--objective <text>]", 1); return; }
   if (!options.json) output.info(`Scraping ${url}...`);
-  const result = await client.callTool("scrape_url", { url, objective: options.objective });
+  const result = await client.scrapeUrl(url, options.objective);
   if (options.json) { console.log(JSON.stringify(result)); return; }
-  if (!result.success) { output.error(result.error ?? "Scrape failed", 1); return; }
-  const data = result.data as { url: string; contentLength: number; content: string };
-  output.heading(`Content from ${data.url}`);
-  console.log(data.content);
-  output.dim(`\n  ${data.contentLength} characters extracted`);
+  output.heading(`Content from ${result.url}`);
+  console.log(result.content);
+  output.dim(`\n  ${result.contentLength} characters extracted`);
   console.log();
 }

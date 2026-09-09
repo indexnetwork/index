@@ -49,6 +49,17 @@ async function publishIntentLifecycle(
 }
 
 export class IntentDatabaseAdapter {
+  /** @returns Existing active principal/intent choices and only explicitly confirmed profile facts for the local agent host. */
+  async listAgentPrincipals() {
+    const rows = await db.select({ userId: schema.users.id, name: schema.users.name, intro: schema.users.intro,
+      location: schema.users.location, onboarding: schema.users.onboarding, intentId: schema.intents.id, intent: schema.intents.payload })
+      .from(schema.intents).innerJoin(schema.users, eq(schema.users.id, schema.intents.userId))
+      .where(and(isNull(schema.intents.archivedAt), activeIntentLifecycleWhere()))
+      .orderBy(schema.users.name, schema.intents.createdAt);
+    return rows.map((row) => ({ userId: row.userId, name: row.name, intentId: row.intentId, intent: row.intent,
+      confirmedProfile: row.onboarding?.profileConfirmedAt ? { name: row.name, intro: row.intro, location: row.location } : null }));
+  }
+
   /**
    * Retrieve a single user_context row (global when networkId is null), or null.
    * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the intent graph.
@@ -502,9 +513,10 @@ export class IntentDatabaseAdapter {
     limit: number;
     archived: boolean;
     sourceType?: string;
+    q?: string;
   }): Promise<{ rows: IntentListRow[]; total: number; totalWaitingOpportunities: number }> {
     const offset = (options.page - 1) * options.limit;
-    const where = ownIntentsListWhere(userId, { archived: options.archived, sourceType: options.sourceType });
+    const where = ownIntentsListWhere(userId, { archived: options.archived, sourceType: options.sourceType, q: options.q });
 
     const [rows, totalResult] = await Promise.all([
       db.select({

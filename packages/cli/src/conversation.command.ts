@@ -1,11 +1,11 @@
 /**
  * Conversation command handlers for the Index CLI.
  *
- * H2H (direct messaging) only. The H2A agent-chat surface (REPL, one-shot,
- * session listing) was removed with the in-process chat runtime.
+ * Human conversations and scoped hosted personal-agent messages over HTTP.
  */
 
 import type { ApiClient } from "./api.client";
+import { parseSSEEvents } from "./sse.parser";
 import * as output from "./output";
 
 const CONVERSATION_HELP = `
@@ -15,6 +15,8 @@ Conversation Commands:
   index conversation show <id>             Show messages (accepts short ID)
   index conversation show <id> --limit <n> Limit number of messages
   index conversation send <id> <message>   Send a message (accepts short ID)
+  index conversation show agent --intent-id <id>  Read scoped agent state
+  index conversation send agent <text> --intent-id <id> [--question-id <id>]
   index conversation stream                Listen for real-time events (SSE)
 `;
 
@@ -22,6 +24,8 @@ Conversation Commands:
 export interface ConversationOptions {
   limit?: number;
   json?: boolean;
+  intentId?: string;
+  questionId?: string;
 }
 
 /**
@@ -38,15 +42,19 @@ export async function handleConversation(
   positionals: string[],
   options?: ConversationOptions,
 ): Promise<void> {
-  // Agent chat over the CLI is gone. The H2H subcommands below are unaffected.
-  if (!subcommand) {
-    output.error(
-      "Agent chat is no longer available from the CLI. Use `index conversation list` "
-      + "for your conversations, or chat in the Index app.",
-      1,
-    );
+  if (positionals[0] === "agent" && (subcommand === "show" || subcommand === "send")) {
+    if (!options?.intentId) throw new Error("Personal-agent conversations require --intent-id <id>");
+    let result: unknown;
+    if (subcommand === "show") result = await client.getAgentConversation(options.intentId);
+    else {
+      const text = positionals.slice(1).join(" ");
+      if (!text.trim()) throw new Error("A message is required");
+      result = await client.sendMessage("agent", text, options.intentId, options.questionId);
+    }
+    console.log(JSON.stringify(result, null, options.json ? undefined : 2));
     return;
   }
+  if (!subcommand) throw new Error(CONVERSATION_HELP.trim());
 
   switch (subcommand) {
     case "list":
@@ -62,10 +70,10 @@ export async function handleConversation(
       await conversationSend(client, positionals[0], positionals.slice(1), options?.json);
       return;
     case "stream":
-      await conversationStream(client);
+      await conversationStream(client, options?.json);
       return;
     case "help":
-      console.log(CONVERSATION_HELP);
+      console.log(options?.json ? JSON.stringify({ help: CONVERSATION_HELP.trim() }) : CONVERSATION_HELP);
       return;
     default:
       output.error(`Unknown conversation subcommand: ${subcommand}`, 1);
@@ -159,11 +167,11 @@ async function conversationSend(
 /**
  * Open an SSE stream for real-time conversation events.
  */
-async function conversationStream(client: ApiClient): Promise<void> {
+async function conversationStream(client: ApiClient, json?: boolean): Promise<void> {
   output.info("Connecting to conversation stream...");
   output.dim("Press Ctrl+C to stop.\n");
 
-  const response = await client.streamConversationEvents();
+  const response = await client.streamEvents();
 
   if (!response.body) {
     output.error("No response body from stream endpoint.", 1);
@@ -181,31 +189,16 @@ async function conversationStream(client: ApiClient): Promise<void> {
 
       buffer += decoder.decode(value, { stream: true });
 
-      while (buffer.includes("\n\n")) {
-        const idx = buffer.indexOf("\n\n");
-        const raw = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-
-        for (const line of raw.split("\n")) {
-          if (line.startsWith(":")) continue; // keepalive comment
-          if (!line.startsWith("data:")) continue;
-
-          const jsonStr = line.slice("data:".length).trim();
-          if (!jsonStr) continue;
-
-          try {
-            const event = JSON.parse(jsonStr) as Record<string, unknown>;
-            const type = event.type as string;
-
-            if (type === "connected") {
-              output.success("Connected to conversation stream.");
-            } else {
-              output.dim(`[${type}] ${JSON.stringify(event)}`);
-            }
-          } catch {
-            // Malformed JSON — skip
-          }
-        }
+      // Normalize complete CRLF pairs after buffering so split chunks are safe.
+      buffer = buffer.replace(/\r\n/g, "\n");
+      const boundary = buffer.lastIndexOf("\n\n");
+      if (boundary < 0) continue;
+      const complete = buffer.slice(0, boundary + 2);
+      buffer = buffer.slice(boundary + 2);
+      for (const event of parseSSEEvents(complete)) {
+        const data: unknown = JSON.parse(event.data);
+        if (json) console.log(JSON.stringify({ event: event.event, data }));
+        else output.dim(JSON.stringify(data));
       }
     }
   } finally {

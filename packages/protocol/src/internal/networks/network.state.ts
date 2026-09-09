@@ -14,12 +14,12 @@ import { Annotation } from "@langchain/langgraph";
  * Setting `showAll: true` bypasses the restriction (admin use).
  */
 export const NetworkGraphState = Annotation.Root({
-  // --- Core Inputs (from ToolContext) ---
+  // --- Core Inputs (from the caller) ---
 
   /** User performing the action. Always required. */
   userId: Annotation<string>,
 
-  /** Target network ID. Required for read/update/delete. From ToolContext or tool arg. */
+  /** Target network ID. Required for read/update/delete. */
   networkId: Annotation<string | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,

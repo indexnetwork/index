@@ -12,7 +12,7 @@ import packageJson from "../package.json" with { type: "json" };
 
 import { parseArgs } from "./args.parser";
 import { CredentialStore } from "./auth.store";
-import { ApiClient } from "./api.client";
+import { ApiClient, ApiError } from "./api.client";
 import { handleLogin } from "./login.command";
 import { handleLogout } from "./logout.command";
 import { handleProfile } from "./profile.command";
@@ -23,6 +23,7 @@ import { handleNetwork } from "./network.command";
 import { handleConversation } from "./conversation.command";
 import { handleScrape } from "./scrape.command";
 import { handleSync } from "./sync.command";
+import { handleDocs } from "./docs.command";
 import { handleOnboarding } from "./onboarding.command";
 import * as output from "./output";
 
@@ -30,162 +31,39 @@ const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
 const VERSION = packageJson.version;
 
-/** Unicode box-drawing (rounded), same style as Honcho CLI. */
-const BOX = { tl: "\u256d", tr: "\u256e", bl: "\u2570", br: "\u256f", h: "\u2500", v: "\u2502" } as const;
+/** Print current commands as text or one machine-readable help result. */
+function renderHelp(json?: boolean): void {
+  const help = `Usage: index <command> [args] [options]
 
-function visualLen(s: string): number {
-  return output.stripAnsi(s).length;
-}
+  login [--app-url <url>]             Authenticate through the browser
+  logout                             Revoke and clear the stored session
+  docs [topic]                       Read the protocol's canonical guidance
+  agent me                           Read your selected personal agent
+  profile [show <user-id>|sync]       Read profiles or research public prefill
+  intent list|show|create|update|archive|networks|add-to-network|remove-from-network
+  network list|show|create|update|delete|join|leave|invite
+  opportunity list|show|accept|reject
+  negotiation list [--intent-id <id>] [--state open|settled]
+  negotiation show <opportunity-id>
+  negotiation turn <opportunity-id> --action propose|counter|accept|decline
+      --message <text> --expected-turn-count <n>
+  conversation list|with|show|send|stream
+  conversation show agent --intent-id <id>
+  conversation send agent <text> --intent-id <id> [--question-id <id>]
+  onboarding confirm-profile
+  onboarding complete [--intent-id <id>]
+  scrape <url> [--objective <text>]
+  sync                               Download profile, networks, and intents
 
-function padVisual(s: string, width: number): string {
-  return s + " ".repeat(Math.max(0, width - visualLen(s)));
-}
+Global options: --api-url <origin>, --json, --help, --version
+List options: --archived (intents), --status (opportunities), --limit <n>
+Intent list options: --query <text> (matches description and summary)
+Network options: --prompt <text> (create), --title <text> (update)
 
-/**
- * Print a bordered panel with a title in the top edge.
- *
- * @param title - Short label embedded after `╭─`
- * @param rows - Inner lines (no border chars); each should start with a leading space for alignment.
- */
-function panel(title: string, rows: string[]): void {
-  const innerW = Math.max(
-    52,
-    title.length + 4,
-    ...rows.map((r) => visualLen(r)),
-  );
-  const dashRun = Math.max(1, innerW - title.length - 3);
-  const innerTop = `${BOX.h} ${title} ${BOX.h.repeat(dashRun)}`;
-  console.log(`${output.GRAY}${BOX.tl}${innerTop}${BOX.tr}${output.RESET}`);
-  for (const row of rows) {
-    console.log(`${output.GRAY}${BOX.v}${output.RESET}${padVisual(row, innerW)}${output.GRAY}${BOX.v}${output.RESET}`);
-  }
-  console.log(`${output.GRAY}${BOX.bl}${BOX.h.repeat(innerW)}${BOX.br}${output.RESET}\n`);
-}
-
-function helpRowDim(leftW: number, left: string, right: string): string {
-  const pad = Math.max(0, leftW - left.length);
-  return ` ${output.GRAY}${left}${" ".repeat(pad)} ${right}${output.RESET}`;
-}
-
-function helpRowCmd(leftW: number, left: string, right: string): string {
-  const pad = Math.max(0, leftW - left.length);
-  return ` ${output.BOLD}${output.CYAN}${left}${output.RESET}${" ".repeat(pad)} ${right}`;
-}
-
-function helpRowCont(leftW: number, right: string): string {
-  return ` ${" ".repeat(leftW)} ${right}`;
-}
-
-/** Print grouped help (rounded panels). */
-function renderHelp(): void {
-  const gsLefts = [
-    "index login",
-    "index logout",
-    'index intent create "..."',
-    "index negotiation list",
-    "index opportunity list",
-  ];
-  const gsLW = Math.max(...gsLefts.map((s) => s.length));
-
-  const formsLefts = [
-    "index conversation list",
-    "index sync --json",
-    "index profile sync",
-    "index intent list",
-    "index negotiation list",
-    "index opportunity list",
-  ];
-  const formsLW = Math.max(...formsLefts.map((s) => s.length));
-
-  const cmdLefts = [
-    "pattern",
-    "example",
-    "intent",
-    "negotiation",
-    "opportunity",
-    "profile",
-    "conversation",
-    "network",
-    "scrape",
-    "sync",
-    "onboarding",
-  ];
-  const cmdLW = Math.max(...cmdLefts.map((s) => s.length));
-
-  const optLefts = [
-    "--api-url <url>",
-    "--app-url <url>",
-    "--archived",
-    "--status <status>",
-    "--limit <n>",
-    "--since <date>",
-    "--json",
-    "--objective <text>",
-    "--linkedin <url>",
-    "--github <url>",
-    "--twitter <url>",
-    "--title <text>",
-    "--details <text>",
-    "--help",
-    "--version",
-  ];
-  const optLW = Math.max(...optLefts.map((s) => s.length));
-
-  console.log();
-  console.log(
-    `  ${output.BOLD}${output.CYAN}I N D E X${output.RESET}  ${output.GRAY}cli${output.RESET}`,
-  );
-  console.log(`  ${output.GRAY}v${VERSION}${output.RESET}\n`);
-
-  panel("getting started", [
-    helpRowCmd(gsLW, "index login", "authenticate via browser"),
-    helpRowCmd(gsLW, "index logout", "clear stored session"),
-    helpRowCmd(gsLW, 'index intent create "..."', "describe what you're looking for"),
-    helpRowCmd(gsLW, "index negotiation list", "see agent debates in progress"),
-    helpRowCmd(gsLW, "index opportunity list", "see what was found for you"),
-  ]);
-
-  panel("common forms", [
-    helpRowCmd(formsLW, "index conversation list", "list your conversations"),
-    helpRowCmd(formsLW, "index sync --json", "print synced context as JSON"),
-    "",
-    helpRowCmd(formsLW, "index profile sync", "public research prefill"),
-    helpRowCmd(formsLW, "index intent list", "supports --archived and --limit"),
-    helpRowCmd(formsLW, "index negotiation list", "supports --since and --limit"),
-    helpRowCmd(formsLW, "index opportunity list", "supports --status and --limit"),
-  ]);
-
-  panel("commands", [
-    helpRowDim(cmdLW, "pattern", "index <command> [args] [options]"),
-    helpRowDim(cmdLW, "example", 'index intent create "looking for a CTO"'),
-    "",
-    helpRowCmd(cmdLW, "intent", "list · show · create · update · archive"),
-    helpRowCont(cmdLW, "add-to-network · remove-from-network"),
-    helpRowCmd(cmdLW, "negotiation", "list · show"),
-    "",
-    helpRowCmd(cmdLW, "profile", "show · sync"),
-    helpRowCmd(cmdLW, "conversation", "list · with · show · send · stream"),
-    helpRowCmd(cmdLW, "network", "list · create · show · update · delete"),
-    helpRowCont(cmdLW, "join · leave · invite"),
-    "",
-    helpRowCmd(cmdLW, "scrape", "extract content from a URL"),
-    helpRowCmd(cmdLW, "sync", "download your context locally"),
-    helpRowCmd(cmdLW, "onboarding", "finish account setup"),
-  ]);
-
-  panel("options", [
-    helpRowDim(optLW, "--api-url <url>", "override API server URL"),
-    helpRowDim(optLW, "--app-url <url>", "override app URL for login"),
-    helpRowDim(optLW, "--archived", "include archived signals"),
-    helpRowDim(optLW, "--status <status>", "filter opportunities by status"),
-    helpRowDim(optLW, "--limit <n>", "limit number of results"),
-    helpRowDim(optLW, "--since <date>", "filter by ISO date or duration"),
-    helpRowDim(optLW, "--json", "output raw JSON"),
-    helpRowDim(optLW, "--objective <text>", "objective for scrape command"),
-    helpRowDim(optLW, "--title <text>", "title for network update"),
-    helpRowDim(optLW, "--help", "show help for any command"),
-    helpRowDim(optLW, "--version", "show version"),
-  ]);
+Auth: INDEX_SESSION_TOKEN or INDEX_API_KEY, otherwise stored browser login.
+API origin: --api-url, INDEX_API_URL, stored login URL, production default.
+--json emits one result/error; conversation stream emits NDJSON events.`;
+  console.log(json ? JSON.stringify({ version: VERSION, help }) : `Index CLI ${VERSION}\n\n${help}`);
 }
 
 // ── Auth helper ──────────────────────────────────────────────────────
@@ -200,13 +78,13 @@ async function requireAuth(apiUrlOverride?: string): Promise<ApiClient> {
   const store = new CredentialStore();
   const creds = await store.load();
 
-  if (!creds) {
-    output.error("Not logged in. Run `index login` first.", 1);
-    process.exit(1); // TypeScript needs this for never return
-  }
-
-  const apiUrl = apiUrlOverride ?? creds.apiUrl;
-  return new ApiClient(apiUrl, creds.token);
+  const session = process.env.INDEX_SESSION_TOKEN || undefined;
+  const apiKey = process.env.INDEX_API_KEY || undefined;
+  if (session && apiKey) throw new Error("Set only one of INDEX_SESSION_TOKEN and INDEX_API_KEY");
+  const token = session ?? apiKey ?? creds?.token;
+  if (!token) throw new Error("Not logged in. Run `index login` or set INDEX_SESSION_TOKEN or INDEX_API_KEY.");
+  const apiUrl = apiUrlOverride ?? process.env.INDEX_API_URL ?? creds?.apiUrl ?? DEFAULT_API_URL;
+  return new ApiClient(apiUrl, token, apiKey ? "apiKey" : "session");
 }
 
 // ── Login / Logout ──────────────────────────────────────────────────
@@ -214,9 +92,9 @@ async function requireAuth(apiUrlOverride?: string): Promise<ApiClient> {
 /**
  * Handle the login command via the browser handshake.
  */
-async function runLogin(apiUrlOverride?: string, appUrlOverride?: string): Promise<void> {
+async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, json?: boolean): Promise<void> {
   const store = new CredentialStore();
-  const apiUrl = apiUrlOverride ?? DEFAULT_API_URL;
+  const apiUrl = apiUrlOverride ?? process.env.INDEX_API_URL ?? (await store.load())?.apiUrl ?? DEFAULT_API_URL;
   const appUrl = appUrlOverride ?? DEFAULT_APP_URL;
 
   // Browser flow: opens /cli-auth which exchanges existing session or starts OAuth
@@ -256,6 +134,11 @@ async function runLogin(apiUrlOverride?: string, appUrlOverride?: string): Promi
   output.dim("Waiting for authentication callback...");
   const result = await callbackPromise;
 
+  if (json) {
+    if (!result.success) throw new Error(result.error ?? "Login failed.");
+    console.log(JSON.stringify(result));
+    return;
+  }
   if (result.success) {
     try {
       const creds = await store.load();
@@ -276,8 +159,13 @@ async function runLogin(apiUrlOverride?: string, appUrlOverride?: string): Promi
 /**
  * Handle the logout command, revoking an exact CLI API key when possible.
  */
-async function runLogout(): Promise<void> {
+async function runLogout(json?: boolean): Promise<void> {
   const result = await handleLogout(new CredentialStore());
+  if (json) {
+    console.log(JSON.stringify(result));
+    if (!result.success) process.exitCode = 1;
+    return;
+  }
   if (result.success) {
     output.success(result.message);
     return;
@@ -298,19 +186,19 @@ async function main(): Promise<void> {
   // Commands that don't require authentication
   switch (args.command) {
     case "help":
-      renderHelp();
+      renderHelp(args.json);
       return;
     case "version":
-      console.log(VERSION);
+      console.log(args.json ? JSON.stringify({ version: VERSION }) : VERSION);
       return;
     case "unknown":
       output.error(`Unknown command: ${args.unknown}`, 1);
       return;
     case "login":
-      await runLogin(args.apiUrl, args.appUrl);
+      await runLogin(args.apiUrl, args.appUrl, args.json);
       return;
     case "logout":
-      await runLogout();
+      await runLogout(args.json);
       return;
   }
 
@@ -318,6 +206,13 @@ async function main(): Promise<void> {
   const client = await requireAuth(args.apiUrl);
 
   switch (args.command) {
+    case "docs":
+      await handleDocs(client, args.positionals?.[0], args.json);
+      return;
+    case "agent":
+      if (args.subcommand !== "me") throw new Error("Usage: index agent me");
+      console.log(JSON.stringify(await client.getAgent(), null, args.json ? undefined : 2));
+      return;
     case "profile":
       await handleProfile(
         client,
@@ -327,10 +222,6 @@ async function main(): Promise<void> {
           : (args.userId ? [args.userId] : []),
         {
           json: args.json,
-          linkedin: args.linkedin,
-          github: args.github,
-          twitter: args.twitter,
-          details: args.details,
         },
       );
       return;
@@ -342,6 +233,7 @@ async function main(): Promise<void> {
         limit: args.limit,
         json: args.json,
         targetId: args.targetId,
+        query: args.query,
       });
       return;
     case "opportunity":
@@ -356,8 +248,11 @@ async function main(): Promise<void> {
     case "negotiation":
       await handleNegotiation(client, args.subcommand, {
         targetId: args.targetId,
-        limit: args.limit,
-        since: args.since,
+        intentId: args.intentId,
+        state: args.state,
+        action: args.action,
+        message: args.message,
+        expectedTurnCount: args.expectedTurnCount,
         json: args.json,
       });
       return;
@@ -372,6 +267,8 @@ async function main(): Promise<void> {
       await handleConversation(client, args.subcommand, args.positionals ?? [], {
         limit: args.limit,
         json: args.json,
+        intentId: args.intentId,
+        questionId: args.questionId,
       });
       return;
     case "scrape":
@@ -381,7 +278,7 @@ async function main(): Promise<void> {
       });
       return;
     case "onboarding":
-      await handleOnboarding(client, args.subcommand, { json: args.json });
+      await handleOnboarding(client, args.subcommand, { json: args.json, intentId: args.intentId });
       return;
     case "sync":
       await handleSync(client, { json: args.json });
@@ -392,5 +289,10 @@ async function main(): Promise<void> {
 // ── Run ──────────────────────────────────────────────────────────────
 
 main().catch((err) => {
-  output.error(err instanceof Error ? err.message : String(err), 1);
+  if (process.argv.includes("--json")) {
+    console.log(JSON.stringify(err instanceof ApiError
+      ? { error: err.message, status: err.status, response: err.response }
+      : { error: err instanceof Error ? err.message : String(err) }));
+    process.exitCode = 1;
+  } else output.error(err instanceof Error ? err.message : String(err), 1);
 });

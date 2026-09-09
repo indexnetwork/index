@@ -1,7 +1,7 @@
 {
   "name": "@indexnetwork/hermes-plugin",
-  "version": "0.35.0",
-  "description": "Hermes-native Index Network plugin with MCP and REST tools",
+  "version": "0.37.0",
+  "description": "Hermes-native Index Network plugin with CLI tools and REST APIs",
   "license": "MIT",
   "type": "module",
   "homepage": "https://index.network",
@@ -26,7 +26,6 @@
     "!**/*.py[cod]"
   ],
   "scripts": {
-    "test": "node tests/desktop-notifications.mjs && python3 tests/smoke.py",
     "build:desktop": "node desktop/build.mjs"
   }
 }

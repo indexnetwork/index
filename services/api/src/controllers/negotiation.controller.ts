@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { negotiationService, type SubmitTurnRejection } from '../services/negotiation.service';
+import { negotiationService, negotiationTurnSchema as submitTurnSchema, type SubmitTurnRejection } from '../services/negotiation.service';
 import { networkService } from '../services/network.service';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
@@ -12,10 +12,6 @@ const logger = log.controller.from('negotiation');
 
 const uuidQuerySchema = z.string().uuid();
 const stateQuerySchema = z.enum(['open', 'settled']);
-const submitTurnSchema = z.object({
-  action: z.enum(['propose', 'counter', 'accept', 'decline']),
-  message: z.string().trim().min(1).max(4000),
-});
 const openNegotiationSchema = z.object({
   networkId: z.string().uuid('networkId must be a UUID'),
   initiatorIntentId: z.string().uuid('initiatorIntentId must be a UUID'),
@@ -32,6 +28,8 @@ const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: 
   counter_is_first: { status: 400, error: 'counter needs a turn to answer; use propose' },
   accept_without_offer: { status: 400, error: 'accept needs a standing offer from the other seat' },
   signal_inactive: { status: 409, error: 'A signal in this negotiation is paused or removed' },
+  turn_limit: { status: 409, error: 'The protocol turn limit was reached; the outcome remains undecided' },
+  invalid_turn: { status: 400, error: 'Invalid negotiation action or message' },
   raced: { status: 409, error: 'The other seat moved first; re-read the negotiation' },
 };
 

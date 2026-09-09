@@ -3,8 +3,8 @@
 // Defines the single window.IndexApp façade the screens talk to. It builds an
 // IndexApi client from the credential-free native indexAPI bridge, exposes a
 // parallel snapshot load, native login/logout + an auth-changed subscription,
-// bounded native SSE for chat and the conversation inbox, and a single native
-// MCP tools/call for intent creation (which has no plain REST POST).
+// bounded native SSE for chat and the conversation inbox, and native HTTP
+// requests for intent creation.
 //
 // window.IndexApi is the inlined client+mappers bundle (assemble.py);
 // window.INDEX_DATA is the offline demo fallback. window.Api is kept as an alias
@@ -345,11 +345,11 @@ window.IndexApp = (function () {
 
   // ---- bounded native SSE -------------------------------------------------
 
-  // GET /conversations/stream, live inbox events. Returns an abort handle.
+  // GET /events, live inbox events. Returns an abort handle.
   function streamInbox(onEvent) {
     const controller = new AbortController();
     nativeAPIBridge.request(
-      { kind:"sse", method:"GET", path:"/conversations/stream" },
+      { kind:"sse", method:"GET", path:"/events" },
       { signal:controller.signal, onEvent, timeoutMs:300000 },
     ).catch((e) => { /* aborted or network drop; caller may retry */ });
     return { close: () => controller.abort() };
@@ -445,7 +445,7 @@ window.IndexApp = (function () {
       return () => { if (controller) controller.abort(); };
     }
 
-    const closeStream = keepStream("/conversations/stream", onRealtime);
+    const closeStream = keepStream("/events", onRealtime);
 
     return function dispose() {
       stopped = true;

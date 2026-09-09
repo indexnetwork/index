@@ -937,7 +937,7 @@ describe('Opportunity Graph', () => {
             }),
           ]),
         }),
-      ]));
+      ]), expect.any(Function));
     });
 
   });

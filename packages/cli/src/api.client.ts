@@ -1,14 +1,14 @@
 /**
  * HTTP client for the Index Network protocol API.
  *
- * All methods attach the stored Bearer token and handle
+ * All methods attach the selected session or API-key credential and handle
  * common error patterns (401, network errors).
  */
 
-import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
+import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationDetail, NegotiationTurnAction, NegotiationListOptions, EnrichmentResult } from "./types";
 
 // Re-export all types for backward compatibility
-export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
+export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult } from "./types";
 
 /** HTTP error retaining a parsed structured response for JSON/advisory clients. */
 export class ApiError extends Error {
@@ -36,13 +36,15 @@ export class ApiClient {
    * @param baseUrl - Protocol server base URL (e.g. `http://localhost:3001`).
    * @param token - Device session token.
    */
-  constructor(baseUrl: string, token: string) {
+  constructor(baseUrl: string, token: string, private readonly credentialKind: "session" | "apiKey" = "session") {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
   }
 
   private authHeaders(): Record<string, string> {
-    return { Authorization: `Bearer ${this.token}` };
+    return this.credentialKind === "apiKey"
+      ? { "x-api-key": this.token }
+      : { Authorization: `Bearer ${this.token}` };
   }
 
   /**
@@ -122,6 +124,7 @@ export class ApiClient {
     if (options.archived !== undefined) body.archived = options.archived;
     if (options.sourceType !== undefined) body.sourceType = options.sourceType;
     if (options.page !== undefined) body.page = options.page;
+    if (options.query !== undefined) body.q = options.query;
 
     const res = await this.post("/api/intents/list", body);
     return (await res.json()) as IntentListResult;
@@ -140,9 +143,78 @@ export class ApiClient {
     return body.intent;
   }
 
+  /**
+   * Create one signal. With no network ids it is shared in every network the
+   * caller belongs to.
+   *
+   * @param description - The signal text.
+   * @param networkIds - Networks to share it in; omit for all memberships.
+   * @returns The created signal id and the networks it was linked to.
+   * @throws Error on auth failure, a refused description, or network error.
+   */
+  async createIntent(description: string, networkIds?: string[]): Promise<{ intentId: string; networkIds: string[] }> {
+    const res = await this.post("/api/intents", {
+      description,
+      ...(networkIds?.length ? { networkIds } : {}),
+    });
+    return (await res.json()) as { intentId: string; networkIds: string[] };
+  }
 
-  async updateIntent(intentId: string, description: string): Promise<ToolResult> {
-    return this.callTool("update_intent", { intentId, description });
+  /**
+   * Rewrite a signal's description.
+   *
+   * @param intentId - Full UUID or short prefix.
+   * @param description - The rewritten text.
+   * @throws Error on auth failure, a refused description, or network error.
+   */
+  async updateIntent(intentId: string, description: string): Promise<{ intentId: string; description: string }> {
+    const res = await this.patch(`/api/intents/${encodeURIComponent(intentId)}`, { description });
+    return (await res.json()) as { intentId: string; description: string };
+  }
+
+  /**
+   * Archive a signal, removing it from discovery.
+   *
+   * @param intentId - Full UUID or short prefix.
+   * @throws Error on auth failure, not found, or network error.
+   */
+  async archiveIntent(intentId: string): Promise<void> {
+    await this.patch(`/api/intents/${encodeURIComponent(intentId)}/archive`);
+  }
+
+  /**
+   * List the networks a signal is shared in.
+   *
+   * @param intentId - Full UUID or short prefix.
+   * @returns The linked network UUIDs.
+   * @throws Error on auth failure, not found, or network error.
+   */
+  async listIntentNetworks(intentId: string): Promise<string[]> {
+    const res = await this.get(`/api/intents/${encodeURIComponent(intentId)}/networks`);
+    const body = (await res.json()) as { networkIds: string[] };
+    return body.networkIds;
+  }
+
+  /**
+   * Share a signal in one network.
+   *
+   * @param intentId - Full UUID or short prefix.
+   * @param networkId - The network UUID.
+   * @throws Error on auth failure, refused membership, or network error.
+   */
+  async addIntentToNetwork(intentId: string, networkId: string): Promise<void> {
+    await this.post(`/api/intents/${encodeURIComponent(intentId)}/networks`, { networkId });
+  }
+
+  /**
+   * Withdraw a signal from one network, leaving the signal itself intact.
+   *
+   * @param intentId - Full UUID or short prefix.
+   * @param networkId - The network UUID.
+   * @throws Error on auth failure, refused membership, or network error.
+   */
+  async removeIntentFromNetwork(intentId: string, networkId: string): Promise<void> {
+    await this.del(`/api/intents/${encodeURIComponent(intentId)}/networks/${encodeURIComponent(networkId)}`);
   }
 
   // ── Network methods ─────────────────────────────────────────────
@@ -240,6 +312,30 @@ export class ApiClient {
     await this.post(`/api/networks/${id}/leave`, {});
   }
 
+  /**
+   * Update a network's settings. Owner-only.
+   *
+   * @param id - The network ID.
+   * @param settings - The fields to change (title, prompt).
+   * @returns The updated network object.
+   * @throws Error on auth failure, forbidden, or network error.
+   */
+  async updateNetwork(id: string, settings: { title?: string; prompt?: string }): Promise<Network> {
+    const res = await this.put(`/api/networks/${id}`, settings);
+    const body = (await res.json()) as { network: Network };
+    return body.network;
+  }
+
+  /**
+   * Delete a network. Owner-only.
+   *
+   * @param id - The network ID.
+   * @throws Error on auth failure, forbidden, or network error.
+   */
+  async deleteNetwork(id: string): Promise<void> {
+    await this.del(`/api/networks/${id}`);
+  }
+
   /** Invite a network member directly by email. */
   async inviteNetworkMember(
     networkId: string,
@@ -309,9 +405,11 @@ export class ApiClient {
    * @returns The created message object.
    * @throws Error on auth failure or network error.
    */
-  async sendMessage(conversationId: string, text: string): Promise<ConversationMessage> {
+  async sendMessage(conversationId: string, text: string, intentId?: string, questionId?: string): Promise<ConversationMessage> {
     const res = await this.post(`/api/conversations/${conversationId}/messages`, {
-      parts: [{ type: "text", text }],
+      parts: [{ kind: "text", text }],
+      ...(intentId ? { metadata: { intentId } } : {}),
+      ...(questionId ? { questionId } : {}),
     });
     const body = (await res.json()) as { message: ConversationMessage };
     return body.message;
@@ -328,7 +426,8 @@ export class ApiClient {
   }
 
   /**
-   * Open an SSE stream for real-time conversation events.
+   * Open the user's SSE channel — conversation messages and notification
+   * frames on one stream.
    *
    * Returns the raw Response so the caller can read the body
    * as a stream and parse SSE events incrementally.
@@ -336,8 +435,8 @@ export class ApiClient {
    * @returns The raw fetch Response with SSE body.
    * @throws Error on auth failure or network error.
    */
-  async streamConversationEvents(): Promise<Response> {
-    const res = await fetch(`${this.baseUrl}/api/conversations/stream`, {
+  async streamEvents(): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}/api/events`, {
       headers: {
         ...this.authHeaders(),
         Accept: "text/event-stream",
@@ -356,26 +455,22 @@ export class ApiClient {
   /**
    * List negotiations for the authenticated user.
    *
-   * @param opts - Optional filters (limit, offset).
+   * @param opts - Optional intentId and open/settled state filters.
    * @returns Array of negotiation objects.
    * @throws Error on auth failure or network error.
    */
   async listNegotiations(opts?: NegotiationListOptions): Promise<Negotiation[]> {
-    const me = await this.getMe();
     const params = new URLSearchParams();
-    if (opts?.limit) params.set("limit", String(opts.limit));
-    if (opts?.offset) params.set("offset", String(opts.offset));
-    if (opts?.since) params.set("since", opts.since);
+    if (opts?.intentId) params.set("intentId", opts.intentId);
+    if (opts?.state) params.set("state", opts.state);
     const qs = params.toString();
-    const path = qs
-      ? `/api/users/${me.id}/negotiations?${qs}`
-      : `/api/users/${me.id}/negotiations`;
+    const path = `/api/negotiations${qs ? `?${qs}` : ""}`;
     const res = await this.get(path);
     const body = (await res.json()) as { negotiations: Negotiation[] };
     return body.negotiations;
   }
 
-  // ── Profile and tool methods ────────────────────────────────────
+  // ── Profile, scrape, and docs methods ───────────────────────────
 
   async enrichProfile(): Promise<EnrichmentResult> {
     const res = await this.post("/api/enrichment/enrich", {});
@@ -383,16 +478,60 @@ export class ApiClient {
   }
 
   /**
-   * Invoke a tool by name via the HTTP tool API.
+   * Read the text of one public web page.
    *
-   * @param toolName - Tool name (e.g. 'read_intents', 'create_intent').
-   * @param query - Tool-specific query parameters.
-   * @returns Parsed tool result.
-   * @throws Error on auth failure or network error.
+   * @param url - The page to read; a bare domain is read as https.
+   * @param objective - Why it is being read; steers extraction.
+   * @returns The normalized url and its text.
+   * @throws Error on auth failure, unreadable page, or network error.
    */
-  async callTool(toolName: string, query: Record<string, unknown> = {}): Promise<ToolResult> {
-    const res = await this.post(`/api/tools/${toolName}`, { query });
-    return (await res.json()) as ToolResult;
+  async scrapeUrl(url: string, objective?: string): Promise<{ url: string; contentLength: number; content: string }> {
+    const res = await this.post("/api/scrape", { url, ...(objective ? { objective } : {}) });
+    return (await res.json()) as { url: string; contentLength: number; content: string };
+  }
+
+  /**
+   * Read the protocol's canonical guidance.
+   *
+   * @param topic - A canonical topic; omit for the summary and topic list.
+   * @returns The markdown content.
+   * @throws Error on auth failure, unknown topic, or network error.
+   */
+  async readDocs(topic?: string): Promise<{ topic?: string; topics?: string[]; content: string }> {
+    const path = topic ? `/api/docs?${new URLSearchParams({ topic })}` : "/api/docs";
+    return (await this.get(path)).json() as Promise<{ topic?: string; topics?: string[]; content: string }>;
+  }
+
+  /** Read the current agent selection. */
+  async getAgent(): Promise<unknown> {
+    return (await this.get("/api/agents/me")).json();
+  }
+
+  /** Read a negotiation directly by opportunity ID, including protocol guidance. */
+  async getNegotiation(opportunityId: string): Promise<NegotiationDetail> {
+    const body = await (await this.get(`/api/negotiations/${encodeURIComponent(opportunityId)}`)).json() as { negotiation: NegotiationDetail };
+    return body.negotiation;
+  }
+
+  /** Submit one observed turn; rejected or uncertain writes are never replayed. */
+  async submitNegotiationTurn(opportunityId: string, turn: { action: NegotiationTurnAction; message: string; expectedTurnCount: number }): Promise<NegotiationDetail> {
+    const body = await (await this.post(`/api/negotiations/${encodeURIComponent(opportunityId)}/turns`, turn)).json() as { negotiation: NegotiationDetail };
+    return body.negotiation;
+  }
+
+  /** Read the scoped personal-agent conversation and availability. */
+  async getAgentConversation(intentId: string): Promise<unknown> {
+    return (await this.get(`/api/conversations/agent/messages?${new URLSearchParams({ intentId })}`)).json();
+  }
+
+  /** Explicitly confirm the owner's profile. */
+  async confirmProfile(): Promise<unknown> {
+    return (await this.post("/api/auth/onboarding/confirm-profile", {})).json();
+  }
+
+  /** Complete onboarding, subject to server prerequisites. */
+  async completeOnboarding(intentId?: string): Promise<unknown> {
+    return (await this.post("/api/auth/onboarding/complete", { intentId })).json();
   }
 
   // ── Private helpers ──────────────────────────────────────────────
@@ -423,6 +562,20 @@ export class ApiClient {
       await this.handleError(res);
     }
 
+    return res;
+  }
+
+  private async put(path: string, body?: unknown): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...this.authHeaders(),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+
+    if (!res.ok) await this.handleError(res);
     return res;
   }
 
@@ -459,13 +612,6 @@ export class ApiClient {
    * @throws Error with a descriptive message.
    */
   private async handleError(res: Response): Promise<never> {
-    if (res.status === 401) {
-      throw new ApiError(
-        "Session expired or invalid. Run `index login` to re-authenticate.",
-        res.status,
-      );
-    }
-
     let message = `HTTP ${res.status}`;
     let response: unknown;
     try {

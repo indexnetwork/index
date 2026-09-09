@@ -37,30 +37,6 @@
       "oauth": {
         "clientName": "Pi Sentry"
       }
-    },
-    "index-main": {
-      "type": "http",
-      "url": "https://protocol.index.network/mcp",
-      "auth": "oauth",
-      "oauth": {
-        "clientName": "Pi Index Network Main"
-      }
-    },
-    "index-dev": {
-      "type": "http",
-      "url": "https://protocol.dev.index.network/mcp",
-      "auth": "oauth",
-      "oauth": {
-        "clientName": "Pi Index Network Dev"
-      }
-    },
-    "index-local": {
-      "type": "http",
-      "url": "http://localhost:3001/mcp",
-      "auth": "oauth",
-      "oauth": {
-        "clientName": "Pi Index Network Local"
-      }
     }
   }
 }

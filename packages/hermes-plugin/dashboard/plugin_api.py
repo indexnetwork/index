@@ -1,8 +1,8 @@
 """Index Network Hermes dashboard plugin backend.
 
 Mounted at /api/plugins/index-network/ by Hermes dashboard only in full mode. The routes reuse
-the plugin's native Index tool handlers so dashboard visibility and writes stay
-scoped to the API-key-authenticated principal.
+the plugin's Index transport so dashboard visibility and writes stay scoped to the
+API-key-authenticated principal.
 
 The dashboard is intent-centric: each intent carries its own opportunities
 ("radar"). Opportunities not tied to an intent land in a "general" bucket.
@@ -161,8 +161,8 @@ auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOAR
 def _call_read_intents() -> dict[str, Any]:
     """Fetch all of the caller's non-archived intents across pages over REST `POST /intents/list`.
 
-    This is the Mac app's intent source: unlike MCP `read_intents` it includes PAUSED intents
-    and carries each intent's lifecycle `status`, which the pause/resume control needs.
+    This is the Mac app's intent source: it includes PAUSED intents and carries each intent's
+    lifecycle `status`, which the pause/resume control needs.
     """
     all_intents: list[dict[str, Any]] = []
     last_error: dict[str, Any] | None = None
@@ -185,16 +185,6 @@ def _call_read_intents() -> dict[str, Any]:
     if not all_intents and last_error is not None:
         return last_error
     return {"success": True, "data": {"intents": all_intents, "count": len(all_intents)}}
-
-
-def _call_tool(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Invoke an Index tool through the REST tool surface (`POST /tools/:toolName`).
-
-    This is the Mac app's tool path: it accepts the browser-login CLI credential,
-    whereas the MCP surface resolves that key to the enrollment-only principal and
-    denies identity tools such as research_profile.
-    """
-    return tools._api_request("POST", f"/tools/{quote(tool_name, safe='')}", {"query": args or {}})
 
 
 def _web_url() -> str:
@@ -1929,7 +1919,7 @@ def send_message(conversation_id: str, body: dict[str, Any] | None = Body(defaul
 def _conversation_stream():
     """Relay transport-owned, bounded SSE polling to the dashboard tab."""
     try:
-        yield from tools.get_transport().stream_sse("/conversations/stream")
+        yield from tools.get_transport().stream_sse("/events")
     except Exception as exc:  # noqa: BLE001 - surface a sanitized stream frame.
         message = json.dumps({"type": "error", "error": str(exc)})
         yield f"data: {message}\n\n".encode("utf-8")
@@ -1950,7 +1940,7 @@ def conversations_stream():
 @full_router.websocket("/conversations/socket")
 async def conversations_socket(websocket: WebSocket) -> None:
     """Authenticated Hermes WebSocket relay for the user's realtime events."""
-    await _relay_sse_to_websocket(websocket, "/conversations/stream")
+    await _relay_sse_to_websocket(websocket, "/events")
 
 
 router.include_router(full_router)

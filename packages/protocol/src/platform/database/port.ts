@@ -391,6 +391,6 @@ export interface SystemDatabase {
 //
 // Graphs continue to use these narrowed types because:
 // 1. They receive the raw database adapter with userId passed per method
-// 2. Access control is enforced at the tool/factory layer via createUserDatabase/createSystemDatabase
+// 2. Access control is enforced by the host via createUserDatabase/createSystemDatabase
 // 3. These types ensure graphs only depend on methods they actually use
 // ═══════════════════════════════════════════════════════════════════════════════

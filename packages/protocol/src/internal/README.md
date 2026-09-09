@@ -5,14 +5,12 @@ capability façades decide what is supported.
 
 | Area | Used by | Responsibility |
 | --- | --- | --- |
-| `agents/` | Tool registry | Agent registry and permission tools |
-| `intents/` | `Intents`, tool registry | Signal lifecycle, clarification, and verification |
-| `networks/` | `Networks`, tool registry | Community lifecycle, membership, and assignments |
-| `contexts/`, `enrichment/` | Public-profile research tools | Parallel-backed profile suggestions |
-| `discovery/` | Opportunity and context workflows | HyDE search preparation and retrieval |
-| `opportunities/` | Opportunity/Radar factories, tool registry | Matching, presentation, radar, and the read-only negotiation context loader |
-| `mcp/` | `createMcpServer` | MCP transport composition and authorization |
-| `shared/` | Internal implementation only | Cross-cutting model, tool-runtime, schemas, observability, and utilities |
+| `agents/` | Agent registry ports | Agent records and permissions |
+| `intents/` | `Intents` | Signal lifecycle, clarification, and verification |
+| `networks/` | `Networks` | Community lifecycle, membership, and assignments |
+| `discovery/` | Opportunity workflows | HyDE search preparation and retrieval |
+| `opportunities/` | Opportunity/Radar factories | Matching, presentation, radar, and the read-only negotiation context loader |
+| `shared/` | Internal implementation only | Cross-cutting model, scope, schemas, observability, and utilities |
 
 Start from a root export or a capability façade, then follow its internal
 module/graph entry point. Do not treat sibling files as standalone APIs.

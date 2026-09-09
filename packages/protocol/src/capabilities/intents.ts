@@ -10,13 +10,11 @@
  *   intent.reconciler    candidate signals into create/update/expire actions
  *   intent.verifier      felicity and entropy verdicts
  *   intent.clarifier     a typed payload into a clarified payload plus questions
- *   intent.tools         the agent-facing tool definitions
  *
  * Only the graph keeps a directory. Nothing outside `intents/` imports any of
  * it; the layout may change freely as long as this class keeps its shape.
  */
 
-import type { DefineTool } from "../internal/shared/agent/tool.helpers.js";
 import type { IntentGraphDatabase } from "../platform/database.js";
 import type { EmbeddingGenerator } from "../platform/discovery/embedder.js";
 import type { IntentFollowUp } from "../platform/runtime/follow-up.js";
@@ -26,11 +24,9 @@ import { normalizeIntentDescription } from "../internal/intents/graph/intent.gra
 import { IntentClarifier } from "../internal/intents/intent.clarifier.js";
 import { ExplicitIntentInferrer } from "../internal/intents/intent.inferrer.js";
 import { IntentReconciler } from "../internal/intents/intent.reconciler.js";
-import { createIntentTools } from "../internal/intents/intent.tools.js";
 import { SemanticVerifier } from "../internal/intents/intent.verifier.js";
 
 import type { ClarifyAnswer, ClarifyInput, ClarifyQuestion, ClarifyQuestionOption, ClarifyResult } from "../internal/intents/intent.clarifier.js";
-import type { IntentToolDeps } from "../internal/intents/intent.tools.js";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -40,7 +36,6 @@ export type {
   ClarifyQuestion,
   ClarifyQuestionOption,
   ClarifyResult,
-  IntentToolDeps,
 };
 
 /**
@@ -135,10 +130,5 @@ export class Intents {
   /** Normalize a signal description to its persisted form. */
   public static normalizeDescription(description: string): string {
     return normalizeIntentDescription(description);
-  }
-
-  /** Register the agent-facing intent tools against a tool definer. */
-  public static createTools(defineTool: DefineTool, deps: IntentToolDeps) {
-    return createIntentTools(defineTool, deps);
   }
 }

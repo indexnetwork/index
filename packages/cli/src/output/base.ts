@@ -30,10 +30,10 @@ export const USER_PROMPT = CYAN;
 
 /** Print an error message to stderr and optionally exit. */
 export function error(message: string, exitCode?: number): void {
+  if (process.argv.includes("--json")) throw new Error(message);
   console.error(`${RED}${BOLD}error${RESET}${RED}: ${message}${RESET}`);
-  if (exitCode !== undefined) {
-    process.exit(exitCode);
-  }
+  process.exitCode = exitCode ?? 1;
+  if (exitCode !== undefined) process.exit(exitCode);
 }
 
 /** Print a success message. */
@@ -43,7 +43,7 @@ export function success(message: string): void {
 
 /** Print an informational message. */
 export function info(message: string): void {
-  console.log(`${CYAN}${message}${RESET}`);
+  console.error(`${CYAN}${message}${RESET}`);
 }
 
 /** Print a warning message to stderr (keeps piped stdout output clean, e.g. --json). */
@@ -53,7 +53,7 @@ export function warn(message: string): void {
 
 /** Print a dim/secondary message. */
 export function dim(message: string): void {
-  console.log(`${GRAY}${message}${RESET}`);
+  console.error(`${GRAY}${message}${RESET}`);
 }
 
 /** Print a bold heading. */
@@ -92,40 +92,6 @@ export function status(message: string): void {
 /** Clear the status line. */
 export function clearStatus(): void {
   process.stderr.write("\r\x1b[K");
-}
-
-/** Print a persistent tool activity line (clears any status first). */
-export function toolActivity(description: string): void {
-  process.stderr.write(`\r\x1b[K${ORANGE}> ${description}${RESET}\n`);
-}
-
-// ── Tool descriptions ───────────────────────────────────────────────
-
-/** Human-friendly descriptions for protocol tools (mirrors frontend). */
-const TOOL_DESCRIPTIONS: Record<string, string> = {
-  research_profile: "Researching your public profile...",
-  read_intents: "Fetching your active signals...",
-  create_intent: "Creating a new signal...",
-  update_intent: "Updating signal...",
-  delete_intent: "Removing signal...",
-  add_intent_to_network: "Adding signal to network...",
-  list_intent_networks: "Fetching signals in network...",
-  remove_intent_from_network: "Removing signal from network...",
-  read_networks: "Checking your networks...",
-  create_network: "Creating a new network...",
-  update_network: "Updating network...",
-  delete_network: "Deleting network...",
-  create_network_membership: "Adding member to network...",
-  read_network_memberships: "Fetching network memberships...",
-  list_opportunities: "Listing your opportunities...",
-  update_opportunity: "Updating opportunity status...",
-  scrape_url: "Reading content from URL...",
-  read_docs: "Looking up documentation...",
-};
-
-/** Get a human-friendly description for a raw tool name. */
-export function humanizeToolName(name: string): string {
-  return TOOL_DESCRIPTIONS[name] ?? name.replace(/_/g, " ") + "...";
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

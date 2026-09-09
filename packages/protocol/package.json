@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "53.0.0",
+  "version": "56.0.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -34,7 +34,6 @@
     "@langchain/core": "1.1.48",
     "@langchain/langgraph": "1.4.12",
     "@langchain/openai": "1.4.7",
-    "@modelcontextprotocol/server": "2.0.0",
     "@noble/hashes": "2.2.0",
     "zod": "3.25.76"
   },

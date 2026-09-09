@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { magicLink, bearer, jwt, mcp, deviceAuthorization } from "better-auth/plugins";
+import { magicLink, bearer, jwt, deviceAuthorization } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
 export const API_URL =
@@ -139,12 +139,7 @@ export function createAuth(deps: AuthDeps) {
           }),
         },
       }),
-      mcp({
-        loginPage: `${WEB_APP_URL}/login`,
-        // No consentPage needed: the mcp() plugin skips consent automatically when the
-        // authorization request does not include prompt=consent, which Claude Code never
-        // sends. The flow goes: /mcp/authorize → session check → code → callback.
-      }),
+
     ],
     advanced: {
       // Cookie attributes must match the scheme the API is actually served on.

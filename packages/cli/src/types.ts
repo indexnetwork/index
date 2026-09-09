@@ -61,6 +61,8 @@ export interface ListIntentsOptions {
   limit?: number;
   archived?: boolean;
   sourceType?: string;
+  /** Case-insensitive text match over the signal's description and summary. */
+  query?: string;
 }
 
 /** Result from POST /api/intents/list. */
@@ -228,7 +230,7 @@ export interface Conversation {
 
 /** A message part (A2A-compatible). */
 export interface MessagePart {
-  type: string;
+  kind: string;
   text?: string;
   [key: string]: unknown;
 }
@@ -245,44 +247,52 @@ export interface ConversationMessage {
 
 // ── Negotiation types ────────────────────────────────────────────────
 
-/** A speaker in a negotiation turn. */
-export interface NegotiationSpeaker {
-  id: string;
-  name: string;
-  avatar?: string | null;
-}
+export type NegotiationTurnAction = 'propose' | 'counter' | 'accept' | 'decline';
+export type NegotiationOutcome = 'agreed' | 'declined' | 'closed';
 
-/** A single turn in a negotiation. */
 export interface NegotiationTurn {
-  speaker: NegotiationSpeaker;
-  action: string;
-  reasoning: string;
-  suggestedRoles: { ownUser?: string; otherUser?: string } | null;
+  turnIndex: number;
+  seatUserId: string;
+  action: NegotiationTurnAction;
+  message: string;
   createdAt: string;
 }
 
-/** Outcome summary of a negotiation. */
-export interface NegotiationOutcome {
-  hasOpportunity: boolean;
-  role?: string;
-  turnCount?: number;
-  reason?: string;
-}
-
-/** A negotiation as returned by GET /api/users/:userId/negotiations. */
+/** One negotiation as the authenticated seat sees it. */
 export interface Negotiation {
   id: string;
-  counterparty: NegotiationSpeaker;
+  opportunityId: string;
+  /** The viewer's own signal behind this negotiation. */
+  intentId: string;
+  /** The seat whose turn it is; null once settled. */
+  awaitingUserId: string | null;
   outcome: NegotiationOutcome | null;
-  turns: NegotiationTurn[];
+  settledAt: string | null;
+  turnCount: number;
   createdAt: string;
+  updatedAt: string;
+  counterparty: {
+    userId: string;
+    intentId: string;
+    name: string | null;
+    avatar: string | null;
+    statement: string;
+  };
 }
 
-/** Options for listing negotiations. */
+export interface NegotiationDetail extends Negotiation {
+  turns: NegotiationTurn[];
+  protocol: {
+    availableActions: NegotiationTurnAction[];
+    blockedReason: string | null;
+    maxTurns: number;
+    messageLimit: number;
+  };
+}
+
 export interface NegotiationListOptions {
-  limit?: number;
-  offset?: number;
-  since?: string;
+  intentId?: string;
+  state?: "open" | "settled";
 }
 
 // ── Profile enrichment types ─────────────────────────────────────────
@@ -298,14 +308,4 @@ export interface EnrichedProfile {
 export interface EnrichmentResult {
   enriched: true;
   profile: EnrichedProfile;
-}
-
-// ── Tool types ───────────────────────────────────────────────────────
-
-/** Generic result from POST /api/tools/:toolName. */
-export interface ToolResult {
-  success: boolean;
-  data?: Record<string, unknown>;
-  error?: string;
-  [key: string]: unknown;
 }

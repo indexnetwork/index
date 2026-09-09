@@ -5,9 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "profile" | "intent" | "opportunity" | "negotiation" | "network" | "conversation" | "scrape" | "onboarding" | "sync" | "help" | "version" | "unknown";
-  /** @deprecated Unused. */
-  list: boolean;
+  command: "docs" | "agent" | "login" | "logout" | "profile" | "intent" | "opportunity" | "negotiation" | "network" | "conversation" | "scrape" | "onboarding" | "sync" | "help" | "version" | "unknown";
   /** Override the API base URL. */
   apiUrl?: string;
   /** Override the app URL (frontend, serves /cli-auth). */
@@ -15,7 +13,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
+  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -38,25 +36,21 @@ export interface ParsedCommand {
   json?: boolean;
   /** Objective for --objective flag (e.g. scrape). */
   objective?: string;
-  /** LinkedIn URL for profile create. */
-  linkedin?: string;
-  /** GitHub URL for profile create. */
-  github?: string;
-  /** Twitter URL for profile create. */
-  twitter?: string;
   /** Title for network update --title. */
   title?: string;
-  /** Details text for profile update --details. */
-  details?: string;
-  /** ISO date string for --since filter (e.g. negotiation list). */
-  since?: string;
+  query?: string;
+  state?: string;
+  action?: string;
+  message?: string;
+  expectedTurnCount?: number;
+  questionId?: string;
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["docs", "agent", "login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
 
 const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
 
-const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show"]);
+const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show", "turn"]);
 
 const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite", "update", "delete"]);
 
@@ -75,7 +69,7 @@ const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "strea
 export function parseArgs(args: string[]): ParsedCommand {
   const result: ParsedCommand = {
     command: "help",
-    list: false,
+    json: args.includes("--json"),
   };
 
   if (args.length === 0) {
@@ -87,6 +81,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   for (let j = 0; j < args.length; j++) {
     const a = args[j];
     if (a === "--api-url" || a === "--app-url") {
+      if (!args[j + 1] || args[j + 1].startsWith("--")) throw new Error(`Missing value for ${a}`);
       if (a === "--api-url") result.apiUrl = args[j + 1];
       else result.appUrl = args[j + 1];
       j++; // skip value
@@ -96,7 +91,11 @@ export function parseArgs(args: string[]): ParsedCommand {
     } else if (a === "--version" || a === "-v") {
       result.command = "version";
       return result;
-    } else if (!a.startsWith("--")) {
+    } else if (a === "--json") {
+      continue;
+    } else if (a.startsWith("-")) {
+      throw new Error(`Unknown option: ${a}`);
+    } else {
       commandIndex = j;
       break;
     }
@@ -123,13 +122,23 @@ export function parseArgs(args: string[]): ParsedCommand {
 
   while (i < args.length) {
     const arg = args[i];
+    if (arg === "--help" || arg === "-h") return { ...result, command: "help" };
+    if (arg === "--version" || arg === "-v") return { ...result, command: "version" };
+    if (["--api-url", "--app-url", "--status", "--limit", "--prompt", "-p", "--objective", "--title"].includes(arg)
+      && (!args[i + 1] || args[i + 1].startsWith("--"))) throw new Error(`Missing value for ${arg}`);
 
-    if (arg === "--list" || arg === "-l") {
-      result.list = true;
-      i++;
-    } else if (arg === "--session" || arg === "-s") {
-      // Retired with the CLI agent-chat surface; consume the value so the
-      // flag does not leak into positionals for older scripts.
+    if (["--query", "--state", "--action", "--message", "--intent-id", "--question-id", "--expected-turn-count"].includes(arg)) {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) throw new Error(`Missing value for ${arg}`);
+      switch (arg) {
+        case "--query": result.query = value; break;
+        case "--state": result.state = value; break;
+        case "--action": result.action = value; break;
+        case "--message": result.message = value; break;
+        case "--intent-id": result.intentId = value; break;
+        case "--question-id": result.questionId = value; break;
+        case "--expected-turn-count": result.expectedTurnCount = Number(value); break;
+      }
       i += 2;
     } else if (arg === "--api-url") {
       result.apiUrl = args[i + 1];
@@ -144,7 +153,8 @@ export function parseArgs(args: string[]): ParsedCommand {
       result.status = args[i + 1];
       i += 2;
     } else if (arg === "--limit") {
-      result.limit = parseInt(args[i + 1], 10);
+      result.limit = Number(args[i + 1]);
+      if (!Number.isSafeInteger(result.limit) || result.limit < 1) throw new Error("--limit must be a positive integer");
       i += 2;
     } else if (arg === "--prompt" || arg === "-p") {
       result.prompt = args[i + 1];
@@ -155,31 +165,36 @@ export function parseArgs(args: string[]): ParsedCommand {
     } else if (arg === "--objective") {
       result.objective = args[i + 1];
       i += 2;
-    } else if (arg === "--linkedin") {
-      result.linkedin = args[i + 1];
-      i += 2;
-    } else if (arg === "--github") {
-      result.github = args[i + 1];
-      i += 2;
-    } else if (arg === "--twitter") {
-      result.twitter = args[i + 1];
-      i += 2;
     } else if (arg === "--title") {
       result.title = args[i + 1];
       i += 2;
-    } else if (arg === "--details") {
-      result.details = args[i + 1];
-      i += 2;
-    } else if (arg === "--since") {
-      result.since = args[i + 1];
-      i += 2;
-    } else if (arg.startsWith("--")) {
-      // Skip unknown flags
-      i++;
+    } else if (arg.startsWith("-")) {
+      throw new Error(`Unknown option: ${arg}`);
     } else {
       positionals.push(arg);
       i++;
     }
+  }
+
+  const subcommands: Partial<Record<ParsedCommand["command"], Set<string>>> = {
+    agent: new Set(["me"]),
+    opportunity: OPPORTUNITY_SUBCOMMANDS, negotiation: NEGOTIATION_SUBCOMMANDS,
+    network: NETWORK_SUBCOMMANDS, conversation: CONVERSATION_SUBCOMMANDS,
+    intent: INTENT_SUBCOMMANDS, profile: new Set(["show", "sync"]),
+    onboarding: new Set(["confirm-profile", "complete"]),
+  };
+  const allowed = subcommands[result.command];
+  if (allowed && result.command !== "profile" && !positionals[0]) {
+    throw new Error(`Missing subcommand for index ${result.command}. Run index --help.`);
+  }
+  if (allowed && positionals[0] && !allowed.has(positionals[0])) {
+    throw new Error(`Unknown command: ${result.command} ${positionals[0]}`);
+  }
+
+  if (result.command === "agent") {
+    result.subcommand = positionals[0] as ParsedCommand["subcommand"];
+    result.positionals = positionals.slice(1);
+    return result;
   }
 
   // Opportunity subcommand parsing
@@ -200,6 +215,9 @@ export function parseArgs(args: string[]): ParsedCommand {
 
   // Negotiation subcommand parsing
   if (result.command === "negotiation") {
+    if (result.limit !== undefined || result.status !== undefined) {
+      throw new Error("Negotiation filters are --intent-id and --state only");
+    }
     const sub = positionals[0];
     if (sub && NEGOTIATION_SUBCOMMANDS.has(sub)) {
       result.subcommand = sub as ParsedCommand["subcommand"];
@@ -234,13 +252,13 @@ export function parseArgs(args: string[]): ParsedCommand {
   // Onboarding command: first positional is subcommand
   if (result.command === "onboarding" && positionals.length > 0) {
     const sub = positionals[0];
-    if (sub === "complete") {
-      result.subcommand = "complete";
+    if (sub === "complete" || sub === "confirm-profile") {
+      result.subcommand = sub;
     }
   }
 
-  // Scrape command: positionals are the URL and any extra args
-  if (result.command === "scrape") {
+  // Scrape takes a URL, docs takes an optional topic — both free positionals.
+  if (result.command === "scrape" || result.command === "docs") {
     result.positionals = positionals;
   }
 
@@ -273,7 +291,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   return result;
 }
 
-const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "add-to-network", "remove-from-network"]);
+const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "networks", "add-to-network", "remove-from-network"]);
 
 /**
  * Parse intent-specific positional arguments into subcommand, ID, or content.
@@ -293,6 +311,7 @@ function parseIntentArgs(positionals: string[], result: ParsedCommand): void {
   switch (result.subcommand) {
     case "show":
     case "archive":
+    case "networks":
       result.intentId = rest[0];
       break;
     case "create":

@@ -310,7 +310,7 @@ export async function queryNode(state: IntentState, deps: IntentGraphDeps) {
 
     try {
       // Scope-aware default: caller's intents across all reachable networks.
-      // Triggered when the tool layer passed networkScope and did not pick a
+      // Triggered when the host passed networkScope and did not pick a
       // specific networkId or queryUserId — i.e. "my intents" in a chat
       // where the agent's reach is more than one network.
       if (

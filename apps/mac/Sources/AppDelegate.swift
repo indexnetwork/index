@@ -653,11 +653,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func configureNativeAPIBridge() {
-        guard let api = URL(string: AppConfig.apiBaseURL),
-              let mcp = URL(string: AppConfig.mcpURL) else { return }
+        guard let api = URL(string: AppConfig.apiBaseURL) else { return }
         nativeAPIBridge = NativeAPIRequestBridge(
             apiBaseURL: api,
-            mcpURL: mcp,
             credentialProvider: { [weak self] in
                 try self?.ownerCredentialStore?.loadCredential()
             },

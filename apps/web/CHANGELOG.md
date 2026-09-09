@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+- Subscribe to the user event stream at `GET /api/events` (was
+  `/api/conversations/stream`), and make the CLI setup snippet smoke-test with
+  `index intent list --json` on CLI 0.25.0.
+
 ### Added
 - **Devices list in Settings.** Every session that can act as your account —
   browsers plus the Mac app, CLI and Hermes — with the device it came from, when
@@ -26,11 +31,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   handshake mints from the same client. Agent pages no longer show keys, setup
   wizards or a Permissions tab — an agent is a name, a status and notification
   preferences.
-- **You pick your negotiator on `/agents`.** The personal agent list is a
-  single-choice selector, so the one place that sets it is the list itself; the
-  "Handle negotiations on my behalf" checkbox is gone from the agent detail
-  page. The System Agents section is replaced by a static, disabled "Index
-  Negotiator" row labelled *not yet active*, because nothing runs it yet.
+- **You pick your negotiator on `/agents`, and Index is the default.** The list
+  is a single-choice radio selector, so the one place that sets it is the list
+  itself; the "Handle negotiations on my behalf" checkbox is gone from the agent
+  detail page. The System Agents section is replaced by an "Index Negotiator"
+  row that is selected whenever no registered agent is bound — the API runs that
+  hosted agent for your active intents — and choosing a registered agent hands
+  negotiations over. Choosing Index again hands them back.
 - Inviting someone to a network reports membership only. There is no
   "agent provisioned" state and no resend-invitation action, because the
   invitation carries no credential to refresh.

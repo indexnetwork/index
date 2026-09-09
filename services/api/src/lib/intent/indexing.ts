@@ -5,7 +5,7 @@ import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 import { buildProfileFromUser } from '../../adapters/database.shared';
 import { HydeGraphFactory, HydeGenerator, LensInferrer, deriveDiscoveryNetworkIds } from '@indexnetwork/protocol';
-import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentFollowUp, ToolScopeType } from '@indexnetwork/protocol';
+import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentFollowUp, ScopeType } from '@indexnetwork/protocol';
 import { intentDiscovery } from '../opportunity/discovery';
 
 /** Payload for jobs that generate HyDE documents for an intent. */
@@ -13,7 +13,7 @@ export interface IntentJobData {
   intentId: string;
   userId: string;
   /** Focused request scope type. Currently only `network` is supported. */
-  scopeType?: ToolScopeType;
+  scopeType?: ScopeType;
   /** Focused request scope id. When `scopeType === 'network'`, this is the focused network id. */
   scopeId?: string;
   /** @deprecated Use `scopeType: 'network'` + `scopeId`. */
@@ -25,9 +25,9 @@ export interface IntentDeleteData {
   intentId: string;
 }
 
-type IntentJobScope = { scopeType?: ToolScopeType; scopeId?: string };
+type IntentJobScope = { scopeType?: ScopeType; scopeId?: string };
 
-function resolveIntentJobScope(data: { scopeType?: ToolScopeType; scopeId?: string; networkScopeId?: string } | undefined): IntentJobScope {
+function resolveIntentJobScope(data: { scopeType?: ScopeType; scopeId?: string; networkScopeId?: string } | undefined): IntentJobScope {
   if (data?.scopeType === 'network' && data.scopeId?.trim()) {
     return { scopeType: 'network', scopeId: data.scopeId.trim() };
   }

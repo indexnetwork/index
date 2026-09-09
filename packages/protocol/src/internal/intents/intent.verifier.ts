@@ -1,5 +1,4 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
@@ -272,25 +271,5 @@ export class SemanticVerifier {
       logger.error("Error during invocation", { error });
       throw error;
     }
-  }
-
-  /**
-   * Factory method to expose the agent as a LangChain tool.
-   */
-  public static asTool() {
-    return tool(
-      async (args: { content: string; context: string }) => {
-        const agent = new SemanticVerifier();
-        return await agent.invoke(args.content, args.context);
-      },
-      {
-        name: 'semantic_verifier',
-        description: 'Verifies the semantic validity and felicity conditions of an intent.',
-        schema: z.object({
-          content: z.string().describe('The intent content to verify'),
-          context: z.string().describe('The user profile context')
-        })
-      }
-    );
   }
 }

@@ -25,7 +25,7 @@ export interface EnrichmentRequest {
 }
 
 /**
- * Converts a `UserSocial[]` array into the flat shape expected by enrichment tools.
+ * Converts a `UserSocial[]` array into the flat shape expected by profile enrichment.
  * Custom-labelled entries are collected into `websites[]`.
  *
  * @param socials - Row array from `user_socials`.

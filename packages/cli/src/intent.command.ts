@@ -11,11 +11,12 @@ import * as output from "./output";
 
 const INTENT_HELP = `
 Usage:
-  index intent list [--archived] [--limit <n>]  List your signals
+  index intent list [--archived] [--limit <n>] [--query <text>]  List your signals
   index intent show <id>                        Show signal details (accepts short ID)
   index intent create <content>                 Create a signal from text
   index intent update <id> <content>            Update a signal's description
   index intent archive <id>                     Archive a signal (accepts short ID)
+  index intent networks <id>                    List the networks a signal is shared in
   index intent add-to-network <id> <network-id>      Add a signal to a network
   index intent remove-from-network <id> <network-id> Remove a signal from a network
 `;
@@ -37,6 +38,7 @@ export async function handleIntent(
     limit?: number;
     json?: boolean;
     targetId?: string;
+    query?: string;
   },
 ): Promise<void> {
   if (!subcommand) {
@@ -53,6 +55,7 @@ export async function handleIntent(
       const result = await client.listIntents({
         archived: options.archived,
         limit: options.limit,
+        query: options.query,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
       output.heading("Signals");
@@ -83,18 +86,13 @@ export async function handleIntent(
         return;
       }
       if (!options.json) output.info("Processing signal...");
-      const result = await client.callTool("create_intent", {
-        description: options.intentContent,
-        ...(options.targetId ? { networkIds: [options.targetId] } : {}),
-      });
+      const result = await client.createIntent(
+        options.intentContent,
+        options.targetId ? [options.targetId] : undefined,
+      );
       if (options.json) { console.log(JSON.stringify(result)); return; }
-      if (!result.success) { output.error(result.error ?? "Failed to create signal", 1); return; }
-
-      const created = (result.data as { intents?: Array<{ description?: string }> })?.intents ?? [];
       output.success("Signal created.");
-      for (const intent of created) {
-        if (intent.description) output.dim(`  ${intent.description}`);
-      }
+      output.dim(`  shared in ${result.networkIds.length} network${result.networkIds.length === 1 ? "" : "s"}`);
       return;
     }
 
@@ -110,7 +108,6 @@ export async function handleIntent(
       if (!options.json) output.info("Updating signal...");
       const result = await client.updateIntent(options.intentId, options.intentContent);
       if (options.json) { console.log(JSON.stringify(result)); return; }
-      if (!result.success) { output.error(result.error ?? "Failed to update signal", 1); return; }
       output.success("Signal updated.");
       return;
     }
@@ -120,12 +117,22 @@ export async function handleIntent(
         output.error("Missing signal ID. Usage: index intent archive <id>", 1);
         return;
       }
-      // Resolve short ID to full UUID via REST read
-      const intent = await client.getIntent(options.intentId);
-      const result = await client.callTool("delete_intent", { intentId: intent.id });
-      if (options.json) { console.log(JSON.stringify(result)); return; }
-      if (!result.success) { output.error(result.error ?? "Failed to archive signal", 1); return; }
+      await client.archiveIntent(options.intentId);
+      if (options.json) { console.log(JSON.stringify({ success: true })); return; }
       output.success(`Signal ${options.intentId} archived.`);
+      return;
+    }
+
+    case "networks": {
+      if (!options.intentId) {
+        output.error("Usage: index intent networks <intent-id>", 1);
+        return;
+      }
+      const networkIds = await client.listIntentNetworks(options.intentId);
+      if (options.json) { console.log(JSON.stringify({ networkIds })); return; }
+      output.heading("Networks");
+      for (const networkId of networkIds) output.dim(`  ${networkId}`);
+      console.log();
       return;
     }
 
@@ -134,14 +141,8 @@ export async function handleIntent(
         output.error("Usage: index intent add-to-network <intent-id> <network-id>", 1);
         return;
       }
-      // Resolve short ID to full UUID — the tool rejects non-UUID intent IDs.
-      const intent = await client.getIntent(options.intentId);
-      const result = await client.callTool("add_intent_to_network", {
-        intentId: intent.id,
-        networkId: options.targetId,
-      });
-      if (options.json) { console.log(JSON.stringify(result)); return; }
-      if (!result.success) { output.error(result.error ?? "Failed to add signal to network", 1); return; }
+      await client.addIntentToNetwork(options.intentId, options.targetId);
+      if (options.json) { console.log(JSON.stringify({ success: true })); return; }
       output.success("Signal added to network.");
       return;
     }
@@ -151,14 +152,8 @@ export async function handleIntent(
         output.error("Usage: index intent remove-from-network <intent-id> <network-id>", 1);
         return;
       }
-      // Resolve short ID to full UUID — the tool rejects non-UUID intent IDs.
-      const intent = await client.getIntent(options.intentId);
-      const result = await client.callTool("remove_intent_from_network", {
-        intentId: intent.id,
-        networkId: options.targetId,
-      });
-      if (options.json) { console.log(JSON.stringify(result)); return; }
-      if (!result.success) { output.error(result.error ?? "Failed to remove signal from network", 1); return; }
+      await client.removeIntentFromNetwork(options.intentId, options.targetId);
+      if (options.json) { console.log(JSON.stringify({ success: true })); return; }
       output.success("Signal removed from network.");
       return;
     }

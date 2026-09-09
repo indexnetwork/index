@@ -1,12 +1,16 @@
-import { pairKeyOf } from '@indexnetwork/protocol';
+import { Negotiations, observeNegotiation, decideNegotiationOpening, pairKeyOf, type NegotiationTurn } from '@indexnetwork/protocol';
+
+import type { AgentExecution } from '../adapters/agent-session.database.adapter';
 
 import { log } from '../lib/log';
-import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
 import { publishUserEvent } from '../lib/user-events';
 
 const logger = log.service.from('NegotiationService');
 
-export type { NegotiationDetail, NegotiationTurnAction, NegotiationView, SubmitTurnRejection };
+export { negotiationTurnSchema } from '@indexnetwork/protocol';
+export type { NegotiationTurnAction, NegotiationView, SubmitTurnRejection };
+export type NegotiationDetail = StoredNegotiationDetail & { protocol: NonNullable<Awaited<ReturnType<Negotiations['observe']>>> };
 
 export interface SubmitTurnFailure {
   rejection: SubmitTurnRejection;
@@ -57,7 +61,10 @@ export class NegotiationService {
    * @returns The record as that seat sees it, or null.
    */
   async read(opportunityId: string, userId: string): Promise<NegotiationDetail | null> {
-    return this.negotiations.getForUser(opportunityId, userId);
+    const stored = await this.negotiations.getForUser(opportunityId, userId);
+    if (!stored) return null;
+    const { state, ...record } = stored;
+    return { ...record, protocol: observeNegotiation(state, userId) };
   }
 
   /**
@@ -76,36 +83,29 @@ export class NegotiationService {
   async submitTurn(
     opportunityId: string,
     callerUserId: string,
-    turn: { action: NegotiationTurnAction; message: string },
+    turn: NegotiationTurn,
+    execution?: AgentExecution,
   ): Promise<NegotiationDetail | SubmitTurnFailure> {
-    const result = await this.negotiations.submitTurn(opportunityId, callerUserId, turn);
+    const capability = new Negotiations({
+      readNegotiationState: (id, userId) => this.negotiations.readNegotiationState(id, userId),
+      commitNegotiationTurn: (id, userId, input, decide) => this.negotiations.commitNegotiationTurn(id, userId, input, decide, execution),
+    });
+    const result = await capability.execute(opportunityId, callerUserId, turn);
     if (!result.ok) return { rejection: result.rejection };
-
-    const { negotiation, turnIndex, otherSeatUserId, settled } = result;
-    const intentIdFor = (userId: string) => userId === negotiation.initiatorUserId
-      ? negotiation.initiatorIntentId
-      : negotiation.responderIntentId;
-
-    if (settled) {
-      await Promise.all([negotiation.initiatorUserId, negotiation.responderUserId].map((seatUserId) =>
-        this.notify(seatUserId, {
-          type: 'negotiation.settled',
-          id: `${opportunityId}:settled`,
-          title: 'A negotiation ended',
-          body: settled === 'agreed' ? 'Both agents agreed.' : 'One agent declined.',
-          data: { opportunityId, intentId: intentIdFor(seatUserId), outcome: settled },
-        })));
-    } else {
-      await this.notify(otherSeatUserId, {
-        type: 'negotiation.turn',
-        id: `${opportunityId}:${turnIndex + 1}`,
-        title: 'Your turn',
-        body: 'A negotiation is waiting on your agent.',
-        data: { opportunityId, intentId: intentIdFor(otherSeatUserId), turnIndex: turnIndex + 1 },
-      });
-    }
-
-    return await this.negotiations.getForUser(opportunityId, callerUserId) as NegotiationDetail;
+    const record = (await this.read(opportunityId, callerUserId))!;
+    const other = (await this.read(opportunityId, record.counterparty.userId))!;
+    const seats = [{ userId: callerUserId, intentId: record.intentId }, { userId: record.counterparty.userId, intentId: other.intentId }];
+    const ended = result.outcome !== null || result.blockedReason !== null;
+    await Promise.all(seats.filter((seat) => ended || seat.userId !== callerUserId).map((seat) => this.notify(seat.userId, {
+      type: result.outcome ? 'negotiation.settled' : 'negotiation.turn',
+      id: `${opportunityId}:${result.turnIndex + 1}`,
+      title: result.outcome ? 'A negotiation ended' : result.blockedReason ? 'A negotiation paused' : 'Your turn',
+      body: result.outcome === 'agreed' ? 'Both agents agreed; owner approval is still required.'
+        : result.outcome === 'declined' ? 'One agent declined.'
+          : result.blockedReason ? 'The turn limit was reached without deciding an outcome.' : 'A negotiation is waiting on your agent.',
+      data: { opportunityId, intentId: seat.intentId, outcome: result.outcome, blockedReason: result.blockedReason, turnIndex: result.turnIndex + 1 },
+    })));
+    return record;
   }
 
   /**
@@ -152,7 +152,7 @@ export class NegotiationService {
       reasoning: 'Opened directly by the network owner rather than by discovery, so it carries no compatibility score.',
       evidence: [],
       detection: { source: 'operator_open', createdBy: 'network-owner' },
-    }]);
+    }], decideNegotiationOpening);
     if (opened) return { kind: 'opened', negotiation: opened };
 
     // open() reports "already there" and "could not" identically, so the only
