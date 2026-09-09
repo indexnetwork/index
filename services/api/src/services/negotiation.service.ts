@@ -1,9 +1,7 @@
 import { Negotiations, observeNegotiation, decideNegotiationOpening, pairKeyOf, type NegotiationTurn } from '@indexnetwork/protocol';
 
-import type { AgentExecution } from '../adapters/agent-session.database.adapter';
-
 import { log } from '../lib/log';
-import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
 import { publishUserEvent } from '../lib/user-events';
 
 const logger = log.service.from('NegotiationService');
@@ -78,13 +76,14 @@ export class NegotiationService {
    * @param opportunityId - The negotiation's opportunity.
    * @param callerUserId - The seat submitting.
    * @param turn - The decision and its message.
+   * @param execution - Hosted lease or external executor binding checked in the write transaction.
    * @returns The negotiation as the caller now sees it, or the refusal reason.
    */
   async submitTurn(
     opportunityId: string,
     callerUserId: string,
     turn: NegotiationTurn,
-    execution?: AgentExecution,
+    execution?: NegotiationExecution,
   ): Promise<NegotiationDetail | SubmitTurnFailure> {
     const capability = new Negotiations({
       readNegotiationState: (id, userId) => this.negotiations.readNegotiationState(id, userId),

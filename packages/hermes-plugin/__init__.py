@@ -11,6 +11,7 @@ import shutil
 from pathlib import Path
 
 from . import schemas, tools, transport
+from .native_agent import NativeAgent, SKILL_PATH
 
 
 def _install_desktop_plugin():
@@ -38,6 +39,14 @@ def _install_desktop_plugin():
 def register(ctx):
     """Register the Index Network capabilities with Hermes."""
     _install_desktop_plugin()
+    native = NativeAgent(ctx)
+    ctx.register_skill(name="personal-agent", path=SKILL_PATH,
+                       description="Native Index personal-agent negotiation and private inbox review.")
+    for hook in ("pre_gateway_dispatch", "pre_llm_call", "pre_tool_call", "transform_llm_output", "post_llm_call"):
+        ctx.register_hook(hook, getattr(native, hook))
+    for name, schema in schemas.NATIVE_AGENT_SCHEMAS.items():
+        target = native if name in ("configure_personal_agent", "focus_intent") else native.operations
+        ctx.register_tool(name=f"index_{name}", toolset="index-network", schema=schema, handler=target.handler(name))
     for name, schema, handler in (
         ("index_read_intents", schemas.INDEX_READ_INTENTS, tools.index_read_intents),
         ("index_create_intent", schemas.INDEX_CREATE_INTENT, tools.index_create_intent),

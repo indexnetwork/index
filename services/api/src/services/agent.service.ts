@@ -69,7 +69,7 @@ export class AgentService {
    * @returns The selected negotiator and the owner's onboarding completion time.
    * @throws Error('Agent not found') when the user has selected no negotiator.
    */
-  async getMe(userId: string): Promise<{ agent: AgentRow; onboardingCompletedAt: string | null }> {
+  async getMe(userId: string): Promise<{ agent: AgentRow; onboardingCompletedAt: string | null; negotiationExecutorFence: true }> {
     const [agent, user] = await Promise.all([
       this.db.getSelectedNegotiator(userId),
       userDatabaseAdapter.findById(userId),
@@ -78,7 +78,7 @@ export class AgentService {
       throw new Error('Agent not found');
     }
 
-    return { agent, onboardingCompletedAt: user?.onboarding?.completedAt ?? null };
+    return { agent, onboardingCompletedAt: user?.onboarding?.completedAt ?? null, negotiationExecutorFence: true };
   }
 
   /**

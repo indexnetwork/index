@@ -7,6 +7,7 @@ import { AuthGuard } from '../guards/auth.guard';
 import { isStaff } from '../lib/staff';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
+import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
 const logger = log.controller.from('negotiation');
 
@@ -165,7 +166,7 @@ export class NegotiationController {
   /**
    * POST /negotiations/:opportunityId/turns — submit one structured decision.
    *
-   * @param req - Carries the action and its message.
+   * @param req - Carries the action and message, plus an optional executorId query fence for external runtimes.
    * @param user - The authenticated seat owner.
    * @param params - Carries the opportunity id.
    * @returns The negotiation after the turn, or the refusal.
@@ -175,6 +176,11 @@ export class NegotiationController {
   async submitTurn(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const opportunityId = params?.opportunityId;
     if (!opportunityId) return Response.json({ error: 'Missing opportunityId' }, { status: 400 });
+
+    const executorId = new URL(req.url).searchParams.get('executorId');
+    if (executorId !== null && !uuidQuerySchema.safeParse(executorId).success) {
+      return Response.json({ error: 'executorId must be a UUID' }, { status: 400 });
+    }
 
     let raw: unknown;
     try {
@@ -188,7 +194,16 @@ export class NegotiationController {
       return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid turn' }, { status: 400 });
     }
 
-    const result = await negotiationService.submitTurn(opportunityId, user.id, parsed.data);
+    let result;
+    try {
+      result = await negotiationService.submitTurn(opportunityId, user.id, parsed.data,
+        executorId ? { userId: user.id, agentId: executorId } : undefined);
+    } catch (error) {
+      if (error instanceof RuntimeConflictError) {
+        return Response.json({ error: 'The selected negotiation executor changed; stop this work' }, { status: 409 });
+      }
+      throw error;
+    }
     if ('rejection' in result) {
       const response = REJECTION_RESPONSES[result.rejection];
       logger.verbose('Turn refused', { userId: user.id, opportunityId, rejection: result.rejection });

@@ -25,6 +25,20 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Native personal-agent negotiation using Hermes's configured model, tools, skills,
+  and gateway scheduling. Rotating sweeps cover the selected owner's active intents.
+- A durable private inbox with stable questions, scoped native owner replies,
+  context revisions, and one submission attempt per match in each native run.
+- Shared instruction assets generated from `packages/agent`, and an atomic executor
+  check on turn submissions (requires Index API 0.115.0).
+
+### Operating requirements
+- Enable the personal agent from a private Hermes gateway conversation and keep
+  the gateway running. CLI/Desktop-only sessions retain the general Index tools.
+- Human connection approval remains separate from A2A agreement.
+
+
 ### Changed
 - **BREAKING: one realtime relay instead of two.** The `/notifications/stream`
   SSE proxy and the `/notifications/socket` WebSocket relay are removed; the
