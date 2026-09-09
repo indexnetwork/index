@@ -1,3 +1,5 @@
+import { buildAgentSystemPrompt } from "../prompts/agent.prompt.ts";
+
 import { runLoop } from "./loop.ts";
 import { MemoryMessageStore } from "./sessions.ts";
 import type { Model, ModelMessage } from "./model.ts";
@@ -6,21 +8,11 @@ import type { AgentIdentity, Intent, MessageStore, RunResult, Step } from "./typ
 
 const DEFAULT_MAX_STEPS = 10;
 
-function formatDate(now: Date): string {
-  return now.toLocaleDateString("en-GB", {
-    timeZone: "UTC",
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
 export interface AgentOptions {
   /** Who this agent acts for. Constant across every intent scope. */
   identity: AgentIdentity;
-  /** The standing instructions this agent runs under, supplied by whatever
-   * is hosting it. Used verbatim as the system message of the agent loop. */
+  /** Standing instructions supplied by the host. `instructions()` combines them
+   * with identity, date, tool-use guidance, and intent into the system message. */
   systemPrompt: string;
   /** What the agent is working on. Usually set with `for()` rather than
    * here; an agent without one is the unscoped agent. */
@@ -131,20 +123,12 @@ export class Agent {
   /** The system message the loop actually runs under: the host's standing
    * instructions, plus who this agent is, plus the current intent. */
   instructions(): string {
-    const parts = [
-      this.systemPrompt,
-      `You are ${this.identity.name}, acting on behalf of ${this.identity.id}.`,
-      // Without this the agent has no clock, and "next Tuesday" can only
-      // be repeated, never resolved.
-      `Today is ${formatDate((this.options.now ?? (() => new Date()))())}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`,
-      "Only call a tool from the list you were actually given this turn — what's offered can change as your situation does, so a capability you used before, or one that would make sense here, may not be available right now. If what you need isn't in that list, say so or ask, rather than calling a name you expect to exist.",
-    ];
-    if (this.intent) {
-      parts.push(
-        `Current intent: ${this.intent.statement}\nEverything you do in this session serves that intent. If something falls outside it, say so rather than acting.`,
-      );
-    }
-    return parts.join("\n\n");
+    return buildAgentSystemPrompt({
+      systemPrompt: this.systemPrompt,
+      identity: this.identity,
+      intent: this.intent,
+      now: (this.options.now ?? (() => new Date()))(),
+    });
   }
 
   // --- the agent loop ------------------------------------------------

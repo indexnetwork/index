@@ -18,6 +18,28 @@ different:
   represents can tell it, `run()` hands the question back rather than
   guessing or blocking.
 
+## Prompts
+
+Start at [prompts/agent.prompt.ts](src/prompts/agent.prompt.ts). It contains the
+agent's prompt text and the functions that compose it for both the API and TUI.
+
+| Model message | Composition | Context included |
+| --- | --- | --- |
+| System, shared by A2A and H2A | `buildNegotiationSystemPrompt` → `buildAgentSystemPrompt` | Agent instructions, injected protocol guidance and principal context, then identity, current date, tool-use instructions, and intent. |
+| User, for an A2A turn | `buildNegotiationTurnPrompt` | `MATCH_INSTRUCTIONS`, current negotiation, private H2A history, accepted commitments, and any internal review note. |
+| User, for H2A communication | `buildPrincipalInboxPrompt` | `PRINCIPAL_INBOX_INSTRUCTIONS`, H2A history, incoming messages, the pending question, queued requests, outcomes, and commitments. Direct messages also receive match status snapshots. |
+
+[Protocol guidance](../protocol/src/protocol/negotiation.rules.ts) stays owned by
+`packages/protocol`. The [API host](../../services/api/src/lib/agent/negotiation.host.ts)
+injects it with confirmed profile context; the scenario TUI injects the same
+guidance with the scenario's private `instructions` as context.
+
+Tool definitions are passed separately to the model. Their schemas and handlers
+live in [negotiation.agent.ts](src/negotiation/negotiation.agent.ts) for A2A and
+[principal.inbox.ts](src/negotiation/principal.inbox.ts) for H2A. The
+[model loop](src/core/loop.ts) sends the composed system message, working history,
+and user input, then appends assistant messages and tool results as the run proceeds.
+
 ## Purpose
 
 One agent per party, with one identity. `for()` scopes it to an intent —
