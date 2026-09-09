@@ -66,7 +66,7 @@ class NativeAgent:
                 native["error"] = str(exc)
                 return None
             native["intentId"] = intent_id
-            binding.update(intentId=intent_id, questionId=None, wake=True)
+            binding.update(intentId=intent_id, questionId=None, wake=True, wakeIntent=intent_id)
             self.store.save(db, binding["account"], intent_id, state)
             self.store.bind(db, binding)
         return None
@@ -158,7 +158,7 @@ class NativeAgent:
                 owner_input(state, native["text"], f'{native["source"]}:{native["messageId"]}')
                 native["intentId"] = intent_id
             self.store.save(db, binding["account"], intent_id, state)
-            binding.update(intentId=intent_id, questionId=None, wake=True)
+            binding.update(intentId=intent_id, questionId=None, wake=True, wakeIntent=intent_id)
             self.store.bind(db, binding)
             self.store.save_session(db, session_id, {"mode": "owner", "account": binding["account"],
                                     "agentId": binding["agentId"], "intentId": intent_id, "delivery": []})

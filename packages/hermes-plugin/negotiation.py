@@ -121,7 +121,13 @@ class NegotiationTools:
                 return {"account": binding["account"], "intents": intents, "negotiations": negotiations}
             if "batch" not in session:
                 intents.sort(key=lambda item: item["id"])
+                priority = next((item for item in intents if item["id"] == binding.get("wakeIntent")), None)
+                total = len(intents)
                 intents, binding["cursor"] = rotate(intents, binding.get("cursor", 0), 4)
+                if priority and priority not in intents:
+                    intents[-1] = priority
+                    binding["cursor"] = (binding["cursor"] - 1) % total
+                binding.pop("wakeIntent", None)
                 matches = []
                 for intent in intents:
                     state = self.store.load(db, binding["account"], intent["id"])
