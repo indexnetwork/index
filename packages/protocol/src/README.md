@@ -3,19 +3,19 @@
 This package implements the Index Network protocol. Its supported consumer
 import is the package root; source directories below are package-private.
 
-`protocol/` contains portable contracts, `platform/` contains host ports only,
+`protocol/` contains portable contracts and shared protocol instructions, `platform/` contains host ports only,
 `capabilities/` contains named executable behavior, and `internal/` contains all
-graphs, prompts, agents, retrieval, and implementation helpers. See
+graphs, internal model prompts, agents, retrieval, and implementation helpers. See
 [`../docs/protocol-kernel.md`](../docs/protocol-kernel.md).
 
 ## Directory Structure
 
 ```
 packages/protocol/src/
-  protocol/         Stable, framework-free protocol concepts and deterministic rules
+  protocol/         Stable, framework-free protocol concepts, rules, and shared instructions
   capabilities/     Small host-facing entry points for supported behaviors
   platform/         Host-supplied port contracts, grouped by concern
-  internal/         Graphs, prompts, agents, retrieval, tests, and implementation helpers
+  internal/         Graphs, internal model prompts, agents, retrieval, tests, and implementation helpers
   index.ts           Curated package API only
 ```
 
@@ -26,6 +26,11 @@ to import only from the package root. `platform/`
 defines TypeScript ports for a host to implement; it contains no adapter,
 controller, web, database, queue, cache, or dependency-wiring implementation.
 Those belong in the consuming host.
+
+Shared protocol instructions and their composition live in
+[`protocol/protocol.prompt.ts`](./protocol/protocol.prompt.ts). See the
+[consumer map](../IMPLEMENTATION.md#shared-protocol-instructions) for negotiation,
+MCP, and `read_docs` callers.
 
 Hosts provide request-context storage with `setRequestContextStore()` and log
 output with `setLoggerFactory()`. The package does not implement
