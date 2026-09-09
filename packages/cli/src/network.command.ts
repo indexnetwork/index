@@ -185,7 +185,7 @@ async function networkUpdate(
     return;
   }
 
-  const settings: Record<string, unknown> = {};
+  const settings: { title?: string; prompt?: string } = {};
   if (options.title) settings.title = options.title;
   if (options.prompt) settings.prompt = options.prompt;
   if (Object.keys(settings).length === 0) {
@@ -193,12 +193,8 @@ async function networkUpdate(
     return;
   }
 
-  const result = await client.callTool("update_network", { networkId: id, settings });
-  if (json) { console.log(JSON.stringify(result)); return; }
-  if (!result.success) {
-    output.error(result.error ?? "Network update failed", 1);
-    return;
-  }
+  const network = await client.updateNetwork(id, settings);
+  if (json) { console.log(JSON.stringify({ network })); return; }
   output.success("Network updated.");
 }
 
@@ -211,12 +207,8 @@ async function networkDelete(client: ApiClient, id: string | undefined, json?: b
     return;
   }
 
-  const result = await client.callTool("delete_network", { networkId: id });
-  if (json) { console.log(JSON.stringify(result)); return; }
-  if (!result.success) {
-    output.error(result.error ?? "Network deletion failed", 1);
-    return;
-  }
+  await client.deleteNetwork(id);
+  if (json) { console.log(JSON.stringify({ success: true })); return; }
   output.success("Network deleted.");
 }
 

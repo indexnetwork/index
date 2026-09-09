@@ -11,6 +11,31 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 > (bump `package.json` and the `[Unreleased]` section before promoting to `main`).
 
 
+## 56.0.0
+
+### Breaking changes
+
+- **The tool layer is gone.** `createToolRegistry`, `invokeToolRuntime`,
+  `toolRuntimeErrorToResult`, `getToolTimeoutPolicy`, `resolveChatContext`,
+  `createEnrichmentTools`, `createOpportunityTools`, `Intents.createTools`,
+  `Networks.createTools`, and the `ResolvedToolContext` / `ToolDeps` /
+  `RawToolDefinition` / `EnrichmentToolDeps` / `OpportunityToolDeps` /
+  `IntentToolDeps` / `NetworkToolDeps` types are removed, along with every
+  `*.tools.ts` factory, `tool.registry.ts`, `tool.runtime.ts`, and
+  `tool.helpers.ts`. Hosts expose capabilities as their own REST resources and
+  reach the protocol through the graph factories and capability classes, which
+  are unchanged. `@indexnetwork/agent`'s own `Tool` loop is a different thing
+  and is untouched.
+- **`ToolScopeType` is `ScopeType`** and `deriveAllowedNetworkIds` /
+  `deriveDiscoveryNetworkIds` moved to `internal/shared/agent/scope.ts`.
+- **`CompositeToolDatabase` is `CompositeDatabase`.** Same members.
+
+### Changed
+
+- Canonical guidance (`GET /api/docs` in the reference host) describes REST
+  resources and CLI commands instead of tool names, and the user event stream is
+  documented as `GET /api/events`.
+
 ## 55.0.0
 
 ### Breaking changes

@@ -100,9 +100,9 @@ tests are opt-in via `RUN_PAID_INTEGRATION_TESTS=1`,
 `RUN_LOCAL_API_E2E=1`, respectively. See
 [the getting-started guide](../../docs/guides/getting-started.md#testing).
 
-## Web onboarding chat boundary
+## Web onboarding boundary
 
-`POST /api/chat/onboarding/stream` is session-only and reloads the authoritative user before every turn. It persists the restricted `onboarding` persona unconditionally and rejects spoofed, mismatched, unknown, or completed-user access. `POST /api/tools/complete_onboarding` accepts an optional exact first-signal `intentId`, validates a durable profile-approval timestamp and an active owned signal created at or after it, and awaits the `users.onboarding` completion write.
+`POST /api/auth/onboarding/complete` accepts an optional exact first-signal `intentId`, validates a durable profile-approval timestamp and an active owned signal created at or after it, and awaits the `users.onboarding` completion write.
 
 ## More
 

@@ -14,7 +14,7 @@ export type TraceEmitter = (
         summary?: string;
       }
     | {
-        // Lightweight keep-alive/status line. Used by long-blocking tools
+        // Lightweight keep-alive/status line. Used by long-blocking graphs
         // so SSE transports do not idle out.
         type: "status";
         message: string;

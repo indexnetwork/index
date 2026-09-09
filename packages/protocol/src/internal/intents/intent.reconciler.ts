@@ -1,5 +1,4 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
@@ -183,25 +182,5 @@ export class IntentReconciler {
       logger.error("Error during invocation", { error });
       return { actions: [] };
     }
-  }
-
-  /**
-   * Factory method to expose the agent as a LangChain tool.
-   */
-  public static asTool() {
-    return tool(
-      async (args: { inferredIntents: string; activeIntents: string }) => {
-        const agent = new IntentReconciler();
-        return await agent.invoke(args.inferredIntents, args.activeIntents);
-      },
-      {
-        name: 'intent_reconciler',
-        description: 'Reconciles inferred intents with active intents to determine state changes.',
-        schema: z.object({
-          inferredIntents: z.string().describe('Formatted string of inferred intents'),
-          activeIntents: z.string().describe('Formatted string of active intents')
-        })
-      }
-    );
   }
 }

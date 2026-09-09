@@ -24,15 +24,15 @@ export async function handleSync(
   const me = await client.getMe();
   const [profile, networks, intents] = await Promise.all([
     client.getUser(me.id),
-    client.callTool("read_networks", {}),
-    client.callTool("read_intents", {}),
+    client.listNetworks(),
+    client.listIntents({ limit: 100 }),
   ]);
 
   const context = {
     syncedAt: new Date().toISOString(),
     profile,
-    networks: networks.data,
-    intents: intents.data,
+    networks,
+    intents: intents.intents,
   };
 
   if (options.json) {

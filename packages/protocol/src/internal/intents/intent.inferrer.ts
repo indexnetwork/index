@@ -1,5 +1,4 @@
 import { HumanMessage, SystemMessage, BaseMessage } from "@langchain/core/messages";
-import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
@@ -249,26 +248,5 @@ export class ExplicitIntentInferrer {
     });
 
     return formatted;
-  }
-
-  /**
-   * Factory method to expose the agent as a LangChain tool.
-   * Useful for composing agents into larger graphs.
-   */
-  public static asTool() {
-    return tool(
-      async (args: { content: string | null; profileContext: string }) => {
-        const agent = new ExplicitIntentInferrer();
-        return await agent.invoke(args.content, args.profileContext);
-      },
-      {
-        name: 'explicit_intent_inferrer',
-        description: 'Extracts explicit intents from user content and profile context.',
-        schema: z.object({
-          content: z.string().nullable().describe('The new content to analyze'),
-          profileContext: z.string().describe('The user profile context')
-        })
-      }
-    );
   }
 }

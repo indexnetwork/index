@@ -23,7 +23,7 @@ import { handleNetwork } from "./network.command";
 import { handleConversation } from "./conversation.command";
 import { handleScrape } from "./scrape.command";
 import { handleSync } from "./sync.command";
-import { handleTool } from "./tool.command";
+import { handleDocs } from "./docs.command";
 import { handleOnboarding } from "./onboarding.command";
 import * as output from "./output";
 
@@ -37,11 +37,10 @@ function renderHelp(json?: boolean): void {
 
   login [--app-url <url>]             Authenticate through the browser
   logout                             Revoke and clear the stored session
-  tool list                          Discover tools and their JSON schemas
-  tool call <name> --query '<json>'   Invoke a tool with a JSON object
+  docs [topic]                       Read the protocol's canonical guidance
   agent me                           Read your selected personal agent
   profile [show <user-id>|sync]       Read profiles or research public prefill
-  intent list|show|create|update|archive|add-to-network|remove-from-network
+  intent list|show|create|update|archive|networks|add-to-network|remove-from-network
   network list|show|create|update|delete|join|leave|invite
   opportunity list|show|accept|reject
   negotiation list [--intent-id <id>] [--state open|settled]
@@ -58,6 +57,7 @@ function renderHelp(json?: boolean): void {
 
 Global options: --api-url <origin>, --json, --help, --version
 List options: --archived (intents), --status (opportunities), --limit <n>
+Intent list options: --query <text> (matches description and summary)
 Network options: --prompt <text> (create), --title <text> (update)
 
 Auth: INDEX_SESSION_TOKEN or INDEX_API_KEY, otherwise stored browser login.
@@ -206,8 +206,8 @@ async function main(): Promise<void> {
   const client = await requireAuth(args.apiUrl);
 
   switch (args.command) {
-    case "tool":
-      await handleTool(client, args.subcommand, args.positionals?.[0], args.query, args.json);
+    case "docs":
+      await handleDocs(client, args.positionals?.[0], args.json);
       return;
     case "agent":
       if (args.subcommand !== "me") throw new Error("Usage: index agent me");
@@ -233,6 +233,7 @@ async function main(): Promise<void> {
         limit: args.limit,
         json: args.json,
         targetId: args.targetId,
+        query: args.query,
       });
       return;
     case "opportunity":

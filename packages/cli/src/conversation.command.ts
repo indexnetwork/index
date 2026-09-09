@@ -171,7 +171,7 @@ async function conversationStream(client: ApiClient, json?: boolean): Promise<vo
   output.info("Connecting to conversation stream...");
   output.dim("Press Ctrl+C to stop.\n");
 
-  const response = await client.streamConversationEvents();
+  const response = await client.streamEvents();
 
   if (!response.body) {
     output.error("No response body from stream endpoint.", 1);

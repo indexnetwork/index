@@ -271,13 +271,14 @@ export function activeOwnIntentsWhere(userId: string) {
 /**
  * Canonical predicate for the paginated own-intents list: ownership + an
  * archived toggle (archived rows when `archived` is true, active rows
- * otherwise) + an optional sourceType narrow. Shares the ownership/active spine
+ * otherwise) + an optional sourceType narrow + an optional case-insensitive
+ * text match over payload and summary. Shares the ownership/active spine
  * with {@link activeOwnIntentsWhere} so list `count()` totals and graph reads
  * agree for the same identity. See EDG-53.
  */
 export function ownIntentsListWhere(
   userId: string,
-  options: { archived: boolean; sourceType?: string },
+  options: { archived: boolean; sourceType?: string; q?: string },
 ) {
   const conditions = [
     eq(schema.intents.userId, userId),
@@ -288,6 +289,12 @@ export function ownIntentsListWhere(
   const validSourceTypes: SourceType[] = ['integration', 'discovery_form', 'enrichment'];
   if (options.sourceType && validSourceTypes.includes(options.sourceType as SourceType)) {
     conditions.push(eq(schema.intents.sourceType, options.sourceType as SourceType));
+  }
+  if (options.q) {
+    const pattern = `%${options.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    conditions.push(
+      or(ilike(schema.intents.payload, pattern), ilike(schema.intents.summary, pattern))!,
+    );
   }
   return and(...conditions);
 }

@@ -20,11 +20,6 @@ const capabilityImplementationAreas: Readonly<Record<string, readonly string[]>>
   agents: ["agents", "chat"],
   contexts: ["contexts", "enrichment"],
 };
-const capabilityCompositionRoots = new Set([
-  "internal/shared/agent/tool.factory.ts",
-  "internal/shared/agent/tool.registry.ts",
-]);
-
 async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory);
   const files: string[] = [];
@@ -77,9 +72,7 @@ for (const directory of boundaryDirectories) {
       const target = targetPathname.split("/")[0];
       if (from === "protocol" && target !== "protocol") violations.push(`${relative(packageRoot, file)} imports ${specifier}; protocol cannot import package code.`);
       if (from === "platform" && target !== "platform" && target !== "protocol") violations.push(`${relative(packageRoot, file)} imports ${specifier}; platform may import protocol types only.`);
-      if (from === "internal" && target === "capabilities" && !capabilityCompositionRoots.has(relative(sourceRoot, file))) {
-        violations.push(`${relative(packageRoot, file)} imports ${specifier}; internal cannot depend on capabilities.`);
-      }
+      if (from === "internal" && target === "capabilities") violations.push(`${relative(packageRoot, file)} imports ${specifier}; internal cannot depend on capabilities.`);
       if (from === "capabilities") {
         const facade = relative(sourceRoot, file).split("/")[1]?.replace(/\.ts$/, "");
         if (target === "capabilities" || target === "protocol" || target === "platform") continue;

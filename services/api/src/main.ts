@@ -4,8 +4,8 @@ import * as Sentry from '@sentry/bun';
 import { ModelClient } from '@indexnetwork/agent';
 
 import { DebugController } from './controllers/debug.controller';
-import { ToolController } from './controllers/tool.controller';
-import { ToolService } from './services/tool.service';
+import { DocsController } from './controllers/docs.controller';
+import { ScrapeController } from './controllers/scrape.controller';
 import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
 import { NetworkRequestController } from './controllers/network-request.controller';
@@ -19,6 +19,7 @@ import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
 import { SubscribeController } from './controllers/subscribe.controller';
 import { ConversationController } from './controllers/conversation.controller';
+import { EventsController } from './controllers/events.controller';
 import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
 import { PersonalAgentService } from './services/personal-agent.service';
@@ -142,18 +143,19 @@ controllerInstances.set(NegotiationController, new NegotiationController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
-controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), personalAgents));
+const conversationService = new ConversationService();
+controllerInstances.set(ConversationController, new ConversationController(conversationService, personalAgents));
+controllerInstances.set(EventsController, new EventsController(conversationService));
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(DebugController, new DebugController());
-const toolService = new ToolService();
-controllerInstances.set(ToolController, new ToolController(toolService));
+controllerInstances.set(DocsController, new DocsController());
+controllerInstances.set(ScrapeController, new ScrapeController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
 function classifyRequestSubsystem(pathname: string): string {
   if (pathname === '/throw-error') return 'sentry-test';
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
-  if (pathname.startsWith('/api/tools')) return 'protocol';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
 }
@@ -282,7 +284,7 @@ Bun.serve({
             'http.route': fullPath,
             controller: target.name,
             handler: handlerName,
-            subsystem: fullPath.startsWith('/api/tools') ? 'protocol' : 'controller',
+            subsystem: 'controller',
           });
           logger.verbose('Matched route', { path: fullPath, handler: handlerName, params: routeParams });
           try {
@@ -359,7 +361,7 @@ Bun.serve({
             }
 
             captureAppException(error, {
-              subsystem: fullPath.startsWith('/api/tools') ? 'protocol' : 'controller',
+              subsystem: 'controller',
               operation: 'controller.route',
               tags: {
                 'http.method': method,

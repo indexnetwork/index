@@ -39,10 +39,6 @@ class IndexTransport(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError
-
-    @abstractmethod
     def disconnect(self) -> dict[str, Any]:
         raise NotImplementedError
 

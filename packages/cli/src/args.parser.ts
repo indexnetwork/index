@@ -5,7 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "tool" | "agent" | "login" | "logout" | "profile" | "intent" | "opportunity" | "negotiation" | "network" | "conversation" | "scrape" | "onboarding" | "sync" | "help" | "version" | "unknown";
+  command: "docs" | "agent" | "login" | "logout" | "profile" | "intent" | "opportunity" | "negotiation" | "network" | "conversation" | "scrape" | "onboarding" | "sync" | "help" | "version" | "unknown";
   /** Override the API base URL. */
   apiUrl?: string;
   /** Override the app URL (frontend, serves /cli-auth). */
@@ -13,7 +13,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "call" | "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
+  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -46,7 +46,7 @@ export interface ParsedCommand {
   questionId?: string;
 }
 
-const KNOWN_COMMANDS = new Set(["tool", "agent", "login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["docs", "agent", "login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
 
 const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
 
@@ -177,7 +177,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   }
 
   const subcommands: Partial<Record<ParsedCommand["command"], Set<string>>> = {
-    tool: new Set(["list", "call"]), agent: new Set(["me"]),
+    agent: new Set(["me"]),
     opportunity: OPPORTUNITY_SUBCOMMANDS, negotiation: NEGOTIATION_SUBCOMMANDS,
     network: NETWORK_SUBCOMMANDS, conversation: CONVERSATION_SUBCOMMANDS,
     intent: INTENT_SUBCOMMANDS, profile: new Set(["show", "sync"]),
@@ -191,7 +191,7 @@ export function parseArgs(args: string[]): ParsedCommand {
     throw new Error(`Unknown command: ${result.command} ${positionals[0]}`);
   }
 
-  if (result.command === "tool" || result.command === "agent") {
+  if (result.command === "agent") {
     result.subcommand = positionals[0] as ParsedCommand["subcommand"];
     result.positionals = positionals.slice(1);
     return result;
@@ -257,8 +257,8 @@ export function parseArgs(args: string[]): ParsedCommand {
     }
   }
 
-  // Scrape command: positionals are the URL and any extra args
-  if (result.command === "scrape") {
+  // Scrape takes a URL, docs takes an optional topic — both free positionals.
+  if (result.command === "scrape" || result.command === "docs") {
     result.positionals = positionals;
   }
 
@@ -291,7 +291,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   return result;
 }
 
-const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "add-to-network", "remove-from-network"]);
+const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "networks", "add-to-network", "remove-from-network"]);
 
 /**
  * Parse intent-specific positional arguments into subcommand, ID, or content.
@@ -311,6 +311,7 @@ function parseIntentArgs(positionals: string[], result: ParsedCommand): void {
   switch (result.subcommand) {
     case "show":
     case "archive":
+    case "networks":
       result.intentId = rest[0];
       break;
     case "create":

@@ -1,4 +1,4 @@
-/** Max chars for main text in minimal opportunity cards (chat tool payload). Full text shown so cards are not truncated. */
+/** Max chars for main text in minimal opportunity cards. Full text shown so cards are not truncated. */
 export const MINIMAL_MAIN_TEXT_MAX_CHARS = 2000;
 
 /** Hardcoded button labels for opportunity cards (not LLM-generated). */

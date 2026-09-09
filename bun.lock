@@ -19,7 +19,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.73.0",
+      "version": "0.74.0",
       "dependencies": {
         "@better-auth/api-key": "1.6.11",
         "@indexnetwork/protocol": "workspace:*",
@@ -87,11 +87,11 @@
     },
     "packages/claude-plugin": {
       "name": "@indexnetwork/claude-plugin",
-      "version": "0.5.0",
+      "version": "0.6.0",
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
-      "version": "0.24.0",
+      "version": "0.25.0",
       "bin": {
         "index": "bin/index.cjs",
       },
@@ -107,11 +107,11 @@
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.36.0",
+      "version": "0.37.0",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "55.0.0",
+      "version": "56.0.0",
       "dependencies": {
         "@langchain/core": "1.1.48",
         "@langchain/langgraph": "1.4.12",
@@ -127,7 +127,7 @@
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.115.0",
+      "version": "0.116.0",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",

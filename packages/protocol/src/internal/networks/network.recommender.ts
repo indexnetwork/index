@@ -70,7 +70,7 @@ OUTPUT RULES:
  * Follows the shared agent pattern: `withStructuredOutput`, `invokeWithAbortSignal`,
  * null-on-error fallback.  `createStructuredModel` is called inside the constructor
  * (not at module level) so that importing this module does not require
- * OPENROUTER_API_KEY to be set — tests that import communities tools without a
+ * OPENROUTER_API_KEY to be set — tests that import the communities capability without a
  * live LLM env are unaffected.
  */
 export class NetworkRecommender {

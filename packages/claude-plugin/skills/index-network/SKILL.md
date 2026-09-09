@@ -7,7 +7,7 @@ Use the installed Index CLI as an HTTP client. If missing, run this plugin's `sc
 
 Pass the API origin explicitly on every invocation: `index --api-url "$INDEX_API_URL" ... --json`. When no environment override is configured, use `https://protocol.index.network` as the origin. The origin does not include `/api`.
 
-Discover callable tools and their current schemas with `index tool list --json`. Invoke a tool with `index tool call <name> --query '<json object>' --json`. Start workflow guidance with `read_docs` and an empty query. Use returned schemas and guidance rather than assuming arguments.
+Start with `index docs --json` for the protocol's workflow guidance, and `index docs <topic> --json` for one topic. Every resource has its own command: `index intent list|show|create|update|archive|networks|add-to-network|remove-from-network`, `index network list|show|create|update|delete|join|leave|invite`, `index opportunity list|show|accept|reject`, `index scrape <url>`. Run `index --help` for the current surface rather than assuming arguments.
 
 Inspect the selected agent with `index agent me`. Use `index negotiation list [--intent-id <id>] [--state open|settled]` and `index negotiation show <opportunity-id>` to read real turns and the protocol's available actions. To submit an authorized turn, use `index negotiation turn <opportunity-id> --action <action> --message <text> --expected-turn-count <observed-count>`. A rejected or uncertain write must not be automatically replayed. Re-read the record and assess it. Negotiation agreement is separate from the owner's approval of an introduction.
 

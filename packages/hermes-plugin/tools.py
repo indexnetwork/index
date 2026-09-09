@@ -28,23 +28,13 @@ from .transport import get_transport, reset_transport, set_transport_for_tests
 INDEX_APP_BASE_URL = "https://index.network"
 _MAX_APP_URL_WALK_DEPTH = 16
 _OPEN_URL_TIMEOUT_SECONDS = 15
-_FORWARDED_TOOLS = frozenset(
-    {
-        "research_profile",
-        "create_intent",
-        "update_intent",
-        "add_intent_to_network",
-        "list_intent_networks",
-        "search_intents",
-        "read_networks",
-        "read_network_memberships",
-        "update_network",
-        "create_network",
-        "create_network_membership",
-        "list_opportunities",
-        "update_opportunity",
-        "read_docs",
-    }
+_GUIDANCE_TOPICS = (
+    "identity-context",
+    "signals",
+    "communities-networks",
+    "opportunities",
+    "negotiations",
+    "workflows",
 )
 
 
@@ -138,16 +128,6 @@ def _with_app_urls(payload: Any) -> Any:
         return payload
 
 
-def _call_index_tool(tool_name: str, arguments: dict[str, Any]) -> str:
-    try:
-        result = get_transport().call_tool(tool_name, arguments)
-        return _json(_with_app_urls(result))
-    except TransportError as exc:
-        return _json(exc.as_payload())
-    except Exception as exc:  # noqa: BLE001 - Hermes handlers must not raise.
-        return _error(f"Index transport response could not be processed: {exc}")
-
-
 def _api_request(
     method: str,
     path: str,
@@ -166,58 +146,234 @@ def _api_request(
         return _error_payload(f"Index transport response could not be processed: {exc}")
 
 
-def index_forwarded_tool(tool_name: str, args: dict, **kwargs) -> str:
-    """Forward a Hermes tool call to an allowlisted Index CLI tool."""
-    del kwargs
-    if tool_name not in _FORWARDED_TOOLS:
-        return _error(f"Unsupported Index CLI tool: {tool_name}")
-    if not isinstance(args, dict):
-        return _error("Arguments must be an object.")
-    return _call_index_tool(tool_name, args)
+def _api_result(
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+    *,
+    no_content_payload: dict[str, Any] | None = None,
+) -> str:
+    return _json(_with_app_urls(_api_request(method, path, body, no_content_payload=no_content_payload)))
 
 
-def make_tool_handler(tool_name: str):
-    """Create a Hermes handler for an allowlisted pass-through Index CLI tool."""
-    if tool_name not in _FORWARDED_TOOLS:
-        raise ValueError(f"Unsupported Index CLI tool: {tool_name}")
+def _query(params: dict[str, Any]) -> str:
+    encoded = urllib.parse.urlencode({key: value for key, value in params.items() if value is not None})
+    return f"?{encoded}" if encoded else ""
 
-    def handler(args: dict, **kwargs) -> str:
-        return index_forwarded_tool(tool_name, args, **kwargs)
 
-    handler.__name__ = f"index_{tool_name}"
-    handler.__doc__ = f"Forward to the Index CLI {tool_name} tool."
-    return handler
+def _required_id(args: dict, key: str) -> tuple[str | None, str | None]:
+    value = _clean_string(args.get(key))
+    if value is None:
+        return None, f"{key} is required."
+    return value, None
 
 
 def index_read_intents(args: dict, **kwargs) -> str:
-    """Read Index Network intents through the canonical HTTP read_intents tool."""
+    """Read the caller's signals, or the signals shared in one community."""
     del kwargs
     if not isinstance(args, dict):
         return _error("Arguments must be an object.")
-
-    arguments: dict[str, Any] = {}
-
-    network_id = _clean_string(args.get("networkId"))
-    if network_id:
-        arguments["networkId"] = network_id
-
-    user_id = _clean_string(args.get("userId"))
-    if user_id:
-        arguments["userId"] = user_id
 
     limit, limit_error = _positive_int(args.get("limit"), "limit", maximum=100)
     if limit_error:
         return _error(limit_error)
-    if limit is not None:
-        arguments["limit"] = limit
-
     page, page_error = _positive_int(args.get("page"), "page")
     if page_error:
         return _error(page_error)
-    if page is not None:
-        arguments["page"] = page
 
-    return _call_index_tool("read_intents", arguments)
+    network_id = _clean_string(args.get("networkId"))
+    if network_id:
+        return _api_result("GET", f"/networks/{urllib.parse.quote(network_id)}/intents{_query({'limit': limit, 'page': page})}")
+
+    body: dict[str, Any] = {}
+    if limit is not None:
+        body["limit"] = limit
+    if page is not None:
+        body["page"] = page
+    query = _clean_string(args.get("query"))
+    if query:
+        body["q"] = query
+    if args.get("archived") is True:
+        body["archived"] = True
+    return _api_result("POST", "/intents/list", body)
+
+
+def index_create_intent(args: dict, **kwargs) -> str:
+    """Create a signal, shared in every community unless networkIds narrows it."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    description = _clean_string(args.get("description"))
+    if description is None:
+        return _error("description is required.")
+    body: dict[str, Any] = {"description": description}
+    network_ids = args.get("networkIds")
+    if isinstance(network_ids, list) and network_ids:
+        body["networkIds"] = [str(item) for item in network_ids]
+    return _api_result("POST", "/intents", body)
+
+
+def index_update_intent(args: dict, **kwargs) -> str:
+    """Rewrite a signal's description and reprocess it."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    intent_id, error = _required_id(args, "intentId")
+    if error:
+        return _error(error)
+    description = _clean_string(args.get("description"))
+    if description is None:
+        return _error("description is required.")
+    return _api_result("PATCH", f"/intents/{urllib.parse.quote(intent_id)}", {"description": description})
+
+
+def index_list_intent_networks(args: dict, **kwargs) -> str:
+    """List the communities a signal is shared in."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    intent_id, error = _required_id(args, "intentId")
+    if error:
+        return _error(error)
+    return _api_result("GET", f"/intents/{urllib.parse.quote(intent_id)}/networks")
+
+
+def index_add_intent_to_network(args: dict, **kwargs) -> str:
+    """Share a signal in one community."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    intent_id, intent_error = _required_id(args, "intentId")
+    if intent_error:
+        return _error(intent_error)
+    network_id, network_error = _required_id(args, "networkId")
+    if network_error:
+        return _error(network_error)
+    return _api_result(
+        "POST",
+        f"/intents/{urllib.parse.quote(intent_id)}/networks",
+        {"networkId": network_id},
+        no_content_payload={"success": True},
+    )
+
+
+def index_read_networks(args: dict, **kwargs) -> str:
+    """Read the communities the caller belongs to."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    return _api_result("GET", "/networks")
+
+
+def index_read_network_memberships(args: dict, **kwargs) -> str:
+    """Read one community's roster."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    network_id, error = _required_id(args, "networkId")
+    if error:
+        return _error(error)
+    return _api_result("GET", f"/networks/{urllib.parse.quote(network_id)}/members")
+
+
+def index_create_network(args: dict, **kwargs) -> str:
+    """Create a community, or submit an early-access request when not eligible."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    title = _clean_string(args.get("title"))
+    if title is None:
+        return _error("title is required.")
+    prompt = _clean_string(args.get("prompt"))
+    created = _api_request("POST", "/networks", {"title": title, **({"prompt": prompt} if prompt else {})})
+    if created.get("status") != 403:
+        return _json(created)
+    return _api_result("POST", "/network-requests", {"name": title, **({"purpose": prompt} if prompt else {})})
+
+
+def index_update_network(args: dict, **kwargs) -> str:
+    """Change a community's title or description. Owner only."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    network_id, error = _required_id(args, "networkId")
+    if error:
+        return _error(error)
+    settings: dict[str, Any] = {}
+    title = _clean_string(args.get("title"))
+    if title:
+        settings["title"] = title
+    prompt = _clean_string(args.get("prompt"))
+    if prompt:
+        settings["prompt"] = prompt
+    if not settings:
+        return _error("Supply title or prompt.")
+    return _api_result("PUT", f"/networks/{urllib.parse.quote(network_id)}", settings)
+
+
+def index_join_network(args: dict, **kwargs) -> str:
+    """Join an open community."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    network_id, error = _required_id(args, "networkId")
+    if error:
+        return _error(error)
+    return _api_result(
+        "POST",
+        f"/networks/{urllib.parse.quote(network_id)}/join",
+        {},
+        no_content_payload={"success": True},
+    )
+
+
+def index_list_opportunities(args: dict, **kwargs) -> str:
+    """Read persisted opportunities and their presentation."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    limit, limit_error = _positive_int(args.get("limit"), "limit", maximum=100)
+    if limit_error:
+        return _error(limit_error)
+    status = _clean_string(args.get("status"))
+    return _api_result("GET", f"/opportunities{_query({'status': status, 'limit': limit})}")
+
+
+def index_update_opportunity(args: dict, **kwargs) -> str:
+    """Move an opportunity to accepted or rejected. Accept only on owner approval."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    opportunity_id, error = _required_id(args, "opportunityId")
+    if error:
+        return _error(error)
+    status = _clean_string(args.get("status"))
+    if status not in {"accepted", "rejected"}:
+        return _error("status must be accepted or rejected.")
+    return _api_result(
+        "PATCH",
+        f"/opportunities/{urllib.parse.quote(opportunity_id)}/status",
+        {"status": status},
+    )
+
+
+def index_research_profile(args: dict, **kwargs) -> str:
+    """Research the owner's public identity without persisting the result."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    return _api_result("POST", "/enrichment/enrich", {})
+
+
+def index_read_docs(args: dict, **kwargs) -> str:
+    """Read the protocol's canonical guidance, optionally narrowed to one topic."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    topic = _clean_string(args.get("topic"))
+    if topic is not None and topic not in _GUIDANCE_TOPICS:
+        return _error(f"topic must be one of: {', '.join(_GUIDANCE_TOPICS)}.")
+    return _api_result("GET", f"/docs{_query({'topic': topic})}")
 
 
 def _url_opener_command(url: str, system: str | None = None) -> list[str] | None:

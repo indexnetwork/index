@@ -100,8 +100,6 @@ const envSchema = z.object({
   RUN_REDIS_INTEGRATION_TESTS: optionalOne,
   RUN_LOCAL_API_E2E: optionalOne,
 
-  // 9. Tool runtime
-
   // 11. Observability
   SENTRY_DSN: optionalUrl,
   SENTRY_ENVIRONMENT: z.string().optional(),

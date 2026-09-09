@@ -25,7 +25,7 @@ function combineAbortSignals(signals: AbortSignal[]): AbortSignal {
 
 /**
  * Returns a LangChain RunnableConfig carrying the active AbortSignal(s),
- * when tool/runtime execution installed one in AsyncLocalStorage or a caller
+ * when the host installed one in AsyncLocalStorage or a caller
  * supplied an explicit signal.
  */
 export function getAbortSignalConfig(signal?: AbortSignal): { signal: AbortSignal } | undefined {

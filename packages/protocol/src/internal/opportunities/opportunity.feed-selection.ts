@@ -1,11 +1,11 @@
-import type { CompositeToolDatabase, Opportunity, OpportunityStatus } from '../../platform/database.js';
+import type { CompositeDatabase, Opportunity, OpportunityStatus } from '../../platform/database.js';
 import { deduplicateByPerson, selectByComposition } from './opportunity.utils.js';
 
 const ACTIONABLE_FEED_STATUSES: OpportunityStatus[] = ['pending'];
 const FEED_FETCH_LIMIT = 30;
 
 export interface OpportunityFeedSelectionInput {
-  reader: Pick<CompositeToolDatabase, 'getOpportunitiesForUser'>;
+  reader: Pick<CompositeDatabase, 'getOpportunitiesForUser'>;
   viewerId: string;
   networkId?: string;
   intentScope: { scopeType?: 'intent'; scopeId?: string };
@@ -37,7 +37,7 @@ export async function selectOpportunityFeed(
   const skippedIds: string[] = [];
   const callerScoped = fetched.filter((opportunity) => {
     if (opportunity.actors.some((actor) => actor.userId === args.viewerId)) return true;
-    args.warn('list_opportunities: skipping opportunity where caller is not an actor', {
+    args.warn('Opportunity feed: skipping opportunity where caller is not an actor', {
       opportunityId: opportunity.id,
       viewerId: args.viewerId,
       actorUserIds: opportunity.actors

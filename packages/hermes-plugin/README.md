@@ -1,11 +1,10 @@
 # Index Network Hermes Plugin
 
-The Index plugin connects Hermes to Index through the CLI for tools and plain HTTPS for dashboard, uploads, and streams, authenticated with this device's own Index session.
+The Index plugin connects Hermes to Index over plain HTTPS against the Index REST API, authenticated with this device's own Index session.
 
 ## Connect
 
 ```bash
-npm install --global @indexnetwork/cli@0.24.0
 hermes plugins install indexnetwork/hermes-plugin
 ```
 
@@ -13,9 +12,9 @@ Connect to Index by opening the **Index** dashboard and choosing **log in with b
 
 Optional overrides: `INDEX_API_URL` (the bare API origin, without `/api`; defaults to `https://protocol.index.network`). Browser login pairs with the configured API environment (`INDEX_APP_BASE_URL` wins, else derived from `INDEX_API_URL`).
 
-Tool calls execute `index --api-url <origin> tool call <name> --query <json> --json`
-with an argument array and the session in the subprocess environment. Failures
-remain structured; rejected writes are never replayed.
+Every declared function is one request against a named REST resource
+(`/intents`, `/networks`, `/opportunities`, `/docs`). Failures remain structured;
+rejected writes are never replayed.
 
 The session authenticates you, not an agent. `GET /agents/me` returns the agent you selected as your negotiator in the web app; pick one there before expecting an answer.
 

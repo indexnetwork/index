@@ -20,9 +20,8 @@ packages/protocol/src/
 ```
 
 The existing domain-first implementation tree now lives under `internal/`.
-`Intents`, `Networks`, `Contexts`, `Opportunities`, `Agents`, and `Discovery`
-are executable capability modules; consumers continue
-to import only from the package root. `platform/`
+`Intents`, `Networks`, and `Negotiations` are executable capability modules;
+consumers continue to import only from the package root. `platform/`
 defines TypeScript ports for a host to implement; it contains no adapter,
 controller, web, database, queue, cache, or dependency-wiring implementation.
 Those belong in the consuming host.
@@ -30,7 +29,7 @@ Those belong in the consuming host.
 Shared protocol instructions and their composition live in
 [`protocol/protocol.prompt.ts`](./protocol/protocol.prompt.ts). See the
 [consumer map](../IMPLEMENTATION.md#shared-protocol-instructions) for negotiation and
-`read_docs` callers.
+guidance callers.
 
 Hosts provide request-context storage with `setRequestContextStore()` and log
 output with `setLoggerFactory()`. The package does not implement
@@ -53,7 +52,7 @@ output with `setLoggerFactory()`. The package does not implement
 
 | Agent | File | Used By |
 |-------|------|---------|
-| Intent Clarifier | `internal/intents/verification/intent.clarifier.ts` | Intent tools — checks specificity (entropy threshold) before persisting |
+| Intent Clarifier | `internal/intents/verification/intent.clarifier.ts` | Intent capability — checks specificity (entropy threshold) before persisting |
 | Intent Inferrer | `internal/intents/inference/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
 | Intent Reconciler | `internal/intents/inference/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
 | Intent Verifier | `internal/intents/verification/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
@@ -62,23 +61,7 @@ output with `setLoggerFactory()`. The package does not implement
 | HyDE Strategies | `internal/discovery/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
 | Lens Inferrer | `internal/discovery/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses targeting the intent corpus |
 | Opportunity Evaluator | `internal/opportunities/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
-| Opportunity Presenter | `internal/opportunities/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
-
-## Tools
-
-Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled per session by `internal/shared/agent/tool.factory.ts`.
-
-| File | Tools |
-|------|-------|
-| `internal/enrichment/enrichment.tools.ts` | `research_profile` |
-| `internal/intents/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `add_intent_to_network`, `list_intent_networks`, `remove_intent_from_network` |
-| `internal/networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
-| `internal/opportunities/opportunity.tools.ts` | `list_opportunities`, `update_opportunity` |
-| `internal/agents/agent.tools.ts` | `read_own_agent` |
-| `internal/shared/agent/utility.tools.ts` | `scrape_url`, `read_docs` |
-
-Every authenticated caller reaches the same HTTP tool surface. Handlers enforce
-ownership and membership checks. Agent CRUD uses signed-in sessions over REST.
+| Opportunity Presenter | `internal/opportunities/opportunity.presenter.ts` | Radar graph, opportunity presentation — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 
 ## Core Concepts
 
@@ -100,18 +83,18 @@ The system models human collaboration through a linguistic and information-theor
 
 The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` in `internal/opportunities/opportunity.utils.ts`; keep their source comments aligned with that reference when either changes.
 
-## How a Tool Call Flows Through the System
+## How a Request Flows Through the System
 
-A host runtime resolves a tool context and invokes a registered tool; the tool
-invokes subgraphs and returns a serialized result.
+The host resolves the authenticated principal in a REST controller, calls its
+service, and the service invokes the capability graphs.
 
 ### Example: "I'm looking for a React co-founder"
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Host as Host runtime
-    participant CI as create_intent
+    participant Host as POST /api/intents
+    participant CI as IntentService
     participant IC as IntentClarifier
     participant IG as Intent Graph
     participant CO as background_matcher
@@ -119,7 +102,7 @@ sequenceDiagram
     participant HG as HyDE Graph
 
     User->>Host: "I'm looking for a React co-founder"
-    Host->>CI: create_intent({content: "Looking for React co-founder", networkId})
+    Host->>CI: create({description: "Looking for React co-founder", networkIds})
 
     CI->>IC: Check semantic entropy
     Note over IC: Entropy acceptable — commissive act, specific enough
@@ -150,20 +133,17 @@ sequenceDiagram
     Host-->>User: intent created, 3 candidate matches persisted
 ```
 
-### Tool-to-Subgraph Mapping
+### Resource-to-Subgraph Mapping
 
 ```mermaid
 flowchart LR
-    subgraph tools [Tools]
-        PT[enrichment.tools]
-        IT[intent.tools]
-        IdxT[network.tools]
-        OT[opportunity.tools]
-        UT[utility.tools]
+    subgraph resources [REST resources]
+        IR["/api/intents"]
+        NR["/api/networks"]
+        OR["/api/opportunities"]
     end
 
     subgraph graphs [SubGraphs]
-        PG[Enrichment Graph]
         IG[Intent Graph]
         IxG[Network Graph]
         IMG[Membership Graph]
@@ -172,13 +152,12 @@ flowchart LR
         HG[HyDE Graph]
     end
 
-    PT --> PG
-    IT --> IG
-    IT --> IIG
-    IT --> OG
-    IdxT --> IxG
-    IdxT --> IMG
-    OT --> OG
+    IR --> IG
+    IR --> IIG
+    IR --> OG
+    NR --> IxG
+    NR --> IMG
+    OR --> OG
     OG --> HG
 ```
 
@@ -195,7 +174,7 @@ Handled by the **Intent Graph**:
 
 ### HyDE Pipeline
 
-Handled by the **HyDE Graph** and **Enrichment Graph**. The pipeline is **lens-based**: instead of hardcoded strategy names, the `LensInferrer` derives 1–N free-text lenses from the source text (and optional user context), each tagged with a target corpus that selects the generation template:
+Handled by the **HyDE Graph**. The pipeline is **lens-based**: instead of hardcoded strategy names, the `LensInferrer` derives 1–N free-text lenses from the source text (and optional user context), each tagged with a target corpus that selects the generation template:
 - **intents corpus**: Generates a complementary goal statement via meaning postulates — "If user A wants to invest, infer B wants funding" (the former *Reciprocal* strategy).
 - The former *Neighborhood* (discourse-frame) strategy was retired with the move to lenses; lens labels carry the contextual specificity instead (including location awareness).
 - The encoder acts as a **dense bottleneck** — hallucinated specifics (fake names, invented details) are filtered out; only the semantic relevance signal is preserved in the embedding.
@@ -226,7 +205,7 @@ Handled by the **Opportunity Graph**:
 | `internal/shared/observability/protocol.logger.ts` | Protocol-layer logging with call-scoped tracing |
 | `internal/shared/agent/model.config.ts` | Centralized model and OpenRouter configuration |
 | `internal/shared/agent/model-signal.ts` | Abort-signal-aware model invocation helper |
-| `internal/shared/agent/tool.runtime.ts` | Per-tool timeout/output-budget runtime and stable error envelopes |
+| `internal/shared/agent/scope.ts` | Derives the network scope a request may read and discover across |
 | `internal/shared/assignment/network-assignment.policy.ts` | Row metadata for a manual network assignment |
 | `internal/shared/network/metadata.renderer.ts` | Renders network metadata into prompt context |
 | `internal/opportunities/opportunity.presentation.ts` | Pure card text generation for opportunity display |

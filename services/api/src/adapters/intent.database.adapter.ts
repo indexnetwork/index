@@ -513,9 +513,10 @@ export class IntentDatabaseAdapter {
     limit: number;
     archived: boolean;
     sourceType?: string;
+    q?: string;
   }): Promise<{ rows: IntentListRow[]; total: number; totalWaitingOpportunities: number }> {
     const offset = (options.page - 1) * options.limit;
-    const where = ownIntentsListWhere(userId, { archived: options.archived, sourceType: options.sourceType });
+    const where = ownIntentsListWhere(userId, { archived: options.archived, sourceType: options.sourceType, q: options.q });
 
     const [rows, totalResult] = await Promise.all([
       db.select({

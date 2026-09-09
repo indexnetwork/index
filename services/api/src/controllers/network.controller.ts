@@ -89,13 +89,13 @@ export class NetworkController {
   }
 
   /**
-   * Get members of a network. Owner-only.
+   * Get the roster of a network. Any current member.
    */
   @Get('/:id/members')
   @UseGuards(AuthGuard)
   async getMembers(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      const members = await networkService.getMembersForOwner(params.id, user.id);
+      const members = await networkService.getMembers(params.id, user.id);
       logger.verbose('Members listed for network', { networkId: params.id, count: members.length });
       return Response.json({
         members,
@@ -415,6 +415,32 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Not a member')) {
+        return Response.json({ error: msg }, { status: 403 });
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * List the signals shared in a network, across all members. Members only.
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Get('/:id/intents')
+  @UseGuards(AuthGuard)
+  async getIntents(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    const url = new URL(req.url);
+    const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 50));
+
+    try {
+      const intents = await networkService.getNetworkIntents(params.id, user.id, { page, limit });
+      return Response.json({
+        intents: intents.map((intent) => ({ ...intent, createdAt: intent.createdAt.toISOString() })),
+        pagination: { page, limit, count: intents.length },
+      });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
         return Response.json({ error: msg }, { status: 403 });
       }
       throw err;

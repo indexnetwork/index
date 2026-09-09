@@ -61,6 +61,8 @@ export interface ListIntentsOptions {
   limit?: number;
   archived?: boolean;
   sourceType?: string;
+  /** Case-insensitive text match over the signal's description and summary. */
+  query?: string;
 }
 
 /** Result from POST /api/intents/list. */
@@ -306,14 +308,4 @@ export interface EnrichedProfile {
 export interface EnrichmentResult {
   enriched: true;
   profile: EnrichedProfile;
-}
-
-// ── Tool types ───────────────────────────────────────────────────────
-
-/** Generic result from POST /api/tools/:toolName. */
-export interface ToolResult {
-  success: boolean;
-  data?: Record<string, unknown>;
-  error?: string;
-  [key: string]: unknown;
 }

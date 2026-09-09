@@ -1,6 +1,6 @@
 # Index Network Hermes Dashboard
 
-The dashboard is the optional UI for the Index Hermes plugin. It is not an authority boundary: HTTP API and CLI tool calls go through the plugin's Python transport, which holds the `INDEX_SESSION_TOKEN` credential in the Hermes process environment. The dashboard-to-transport boundary is credential-free: the browser JavaScript never receives the token.
+The dashboard is the optional UI for the Index Hermes plugin. It is not an authority boundary: every HTTP API call goes through the plugin's Python transport, which holds the `INDEX_SESSION_TOKEN` credential in the Hermes process environment. The dashboard-to-transport boundary is credential-free: the browser JavaScript never receives the token.
 
 ## Connection and status
 

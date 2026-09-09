@@ -273,7 +273,7 @@ export function createSystemDatabase(
     getActiveIntentsAcrossNetworks: async (userId: string, networkIds: string[]) => {
       // Caller-only semantic: the method returns the *caller's own* intents.
       // Reject cross-user lookups at the systemDb boundary as defense-in-depth,
-      // even though the tool layer always passes context.userId today.
+      // even though every caller passes the authenticated user today.
       if (userId !== authUserId) {
         throw new Error('Access denied: getActiveIntentsAcrossNetworks is caller-only');
       }
@@ -324,13 +324,13 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     /**
      * Checks network membership without scope check.
-     * @remarks Intentionally unscoped -- used by agent graphs and tools that need to verify
+     * @remarks Intentionally unscoped -- used by agent graphs that need to verify
      * membership for any user (e.g. join flows, invitation acceptance).
      */
     isNetworkMember: (networkId: string, userId: string) => db.isNetworkMember(networkId, userId),
     /**
      * Checks network ownership without scope check.
-     * @remarks Intentionally unscoped -- used by agent graphs and tools that need to verify
+     * @remarks Intentionally unscoped -- used by agent graphs that need to verify
      * ownership for any user (e.g. permission checks during graph execution).
      */
     isNetworkOwner: (networkId: string, userId: string) => db.isNetworkOwner(networkId, userId),
@@ -390,8 +390,8 @@ export function createSystemDatabase(
       negotiationDatabaseAdapter.openCounterparties(...args),
     /**
      * Retrieves an opportunity by ID without scope check.
-     * @remarks Intentionally unscoped -- used by the negotiation graph and opportunity
-     * tools that need cross-actor access during the discovery pipeline.
+     * @remarks Intentionally unscoped -- used by the negotiation and opportunity
+     * graphs that need cross-actor access during the discovery pipeline.
      */
     getOpportunity: (id: string) => db.getOpportunity(id),
     findEnrichedReplacementOpportunities: (opportunityId: string) => db.findEnrichedReplacementOpportunities(opportunityId),

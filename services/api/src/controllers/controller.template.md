@@ -202,7 +202,7 @@ export async function indexIntent(userId: string, payload: string) {
 
 | Adapter | Interface | Purpose |
 |---------|-----------|---------|
-| `ChatDatabaseAdapter` | `CompositeToolDatabase` | Core protocol database operations |
+| `ChatDatabaseAdapter` | `CompositeDatabase` | Core protocol database operations |
 | `IntentDatabaseAdapter` | `IntentGraphDatabase` | Intent graph database operations |
 | `UserDatabaseAdapter` | — | User CRUD, findByEmail, create, deleteById |
 | `EnrichmentDatabaseAdapter` | — | Profile CRUD, getProfileRow |

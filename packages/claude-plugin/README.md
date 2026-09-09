@@ -11,4 +11,4 @@ index login --api-url https://protocol.index.network
 
 For noninteractive authentication, provide `INDEX_SESSION_TOKEN` or `INDEX_API_KEY` in the agent process environment. Set only one. Pass `--api-url` explicitly; use your API origin without `/api` (production: `https://protocol.index.network`). Browser login/logout remain available.
 
-Discover current schemas with `index tool list --json`; invoke tools with `index tool call <name> --query '<json object>' --json`. The skill explains negotiation and personal-agent commands and how to handle refusals.
+Read the protocol's guidance with `index docs --json`; every resource has its own command (`index intent`, `index network`, `index opportunity`, `index scrape`). The skill explains negotiation and personal-agent commands and how to handle refusals.

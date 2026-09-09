@@ -255,7 +255,7 @@ export interface DatabaseNetworkQueries {
 
   /**
    * Delete a user's profile (removes profile row).
-   * Used after confirmation in chat tools.
+   * Used after the owner confirms the assignment.
    *
    * @param userId - User whose profile to delete
    */

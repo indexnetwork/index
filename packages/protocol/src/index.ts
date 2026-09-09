@@ -7,8 +7,7 @@
 // surface is reviewable and changes are intentional.
 //
 // Stability tiers are defined in STABILITY.md. In short:
-//   • Stable       — Interfaces, Graph factories, Agents, the tool/runtime
-//                    helpers, and shared schemas.
+//   • Stable       — Interfaces, Graph factories, Agents, and shared schemas.
 //   • Experimental — Sections marked @experimental below (advanced graph state
 //                    types and internal helpers); may change in a minor release.
 // =============================================================================
@@ -16,25 +15,18 @@
 // ─── Public API (recommended for external consumers) ──────────────────────────
 
 export { getModelName } from "./internal/shared/agent/model.config.js";
-export type {
-  ResolvedToolContext,
-  ToolDeps,
-  RawToolDefinition,
-} from "./internal/shared/agent/tool.helpers.js";
-export { resolveChatContext } from "./internal/shared/agent/tool.helpers.js";
 export { ChatContextAccessError } from "./platform/runtime/errors.js";
-export { deriveAllowedNetworkIds, deriveDiscoveryNetworkIds } from "./internal/shared/agent/tool.scope.js";
-export type { ToolScopeType, ScopeMembership } from "./protocol/core.js";
+export { deriveAllowedNetworkIds, deriveDiscoveryNetworkIds } from "./internal/shared/agent/scope.js";
+export type { ScopeType, ScopeMembership } from "./protocol/core.js";
 export { requestContext, setRequestContextStore } from "./internal/shared/observability/request-context.js";
 export { setLoggerFactory } from "./internal/shared/observability/log.js";
 export { setTimingWrapper } from "./internal/shared/observability/performance.js";
-export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } from "./internal/shared/agent/tool.runtime.js";
 
 // ─── Interfaces (implement these to wire up your infrastructure) ───────────────
 
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/discovery/cache.js";
 export type {
-  CompositeToolDatabase,
+  CompositeDatabase,
   UserDatabase,
   SystemDatabase,
   OpportunityGraphDatabase,
@@ -74,6 +66,8 @@ export type { DebugMetaAgent } from "./protocol/core.js";
 export { Negotiations } from './capabilities/negotiations.js';
 export { NEGOTIATION_MAX_TURNS, NEGOTIATION_MESSAGE_LIMIT } from './protocol/negotiation.constants.js';
 export { NEGOTIATION_GUIDANCE } from './protocol/protocol.prompt.js';
+export { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS, CANONICAL_GUIDANCE_TOPICS_CONTENT } from './protocol/protocol.prompt.js';
+export type { CanonicalGuidanceTopic } from './protocol/protocol.prompt.js';
 export { decideNegotiationOpening, decideNegotiationTurn, observeNegotiation, negotiationTurnSchema } from './protocol/negotiation.rules.js';
 export type { NegotiationAction, NegotiationOutcome, NegotiationTurn, NegotiationState, NegotiationDecision, NegotiationRejection, NegotiationOpening, NegotiationOpeningDecision } from './protocol/negotiation.rules.js';
 export type { NegotiationDatabase } from './platform/database/negotiation.js';
@@ -81,17 +75,14 @@ export type { NegotiationDatabase } from './platform/database/negotiation.js';
 export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
 // ─── Networks ─────────────────────────────────────────────────────────────────
 // The whole capability behind one class: the community lifecycle graph, the
-// membership graph, signal assignment, and the agent-facing tools.
+// membership graph, and signal assignment.
 
 export { Networks } from "./capabilities/networks.js";
-export type {
-  NetworksDeps,
-  NetworkToolDeps,
-} from "./capabilities/networks.js";
+export type { NetworksDeps } from "./capabilities/networks.js";
 
 // ─── Intents ──────────────────────────────────────────────────────────────────
-// The whole capability behind one class: lifecycle graph, verification,
-// payload clarification, and the agent-facing tools.
+// The whole capability behind one class: lifecycle graph, verification, and
+// payload clarification.
 
 export { Intents } from "./capabilities/intents.js";
 export type {
@@ -101,7 +92,6 @@ export type {
   ClarifyQuestionOption,
   ClarifyResult,
   IntentsDeps,
-  IntentToolDeps,
 } from "./capabilities/intents.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
@@ -109,13 +99,6 @@ export type {
 export { HydeGenerator } from "./internal/discovery/hyde.generator.js";
 export { LensInferrer } from "./internal/discovery/lens.inferrer.js";
 
-// ─── Tools ────────────────────────────────────────────────────────────────────
-
-export { createToolRegistry } from "./internal/shared/agent/tool.registry.js";
-// Capability-owned tool entry points. These are explicit, narrow contracts;
-// capability implementation directories remain private to the package.
-export { createEnrichmentTools } from "./internal/enrichment/enrichment.tools.js";
-export type { EnrichmentToolDeps } from "./internal/contexts/context.tools.port.js";
 export { normalizeTelegramHandle } from './internal/shared/utils/telegram-handle.js';
 
 
@@ -148,9 +131,6 @@ export {
 export type {
   PresenterDatabase,
 } from "./internal/opportunities/opportunity.presentation.js";
-export {
-  createOpportunityTools,
-} from "./internal/opportunities/opportunity.tools.js";
 export {
   DISCOVERY_MIN_SIMILARITY,
   validateDiscoveryMinSimilarity,
@@ -212,9 +192,6 @@ export type {
   OutcomeLabel,
   OutcomeShadowResult,
 } from "./internal/opportunities/outcome/outcome.types.js";
-export type {
-  OpportunityToolDeps,
-} from "./internal/opportunities/opportunity.tools.port.js";
 export {
   RadarGraphFactory,
 } from "./internal/opportunities/radar/radar.graph.js";

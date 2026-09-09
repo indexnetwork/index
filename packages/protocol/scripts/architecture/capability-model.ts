@@ -98,9 +98,6 @@ export const DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES: ReadonlySet<Capability> 
 export function capabilityForSourcePath(pathFromSource: string): Capability | undefined {
   const normalized = implementationPath(pathFromSource);
   const [topLevel] = normalized.split("/");
-  if (topLevel === "shared" && /^shared\/agent\/tool\.(?:factory|registry|helpers)\.ts$/.test(normalized)) {
-    return "interaction-composition";
-  }
   return CAPABILITY_DIRECTORIES[topLevel];
 }
 

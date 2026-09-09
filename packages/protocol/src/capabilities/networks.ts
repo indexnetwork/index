@@ -12,33 +12,23 @@
  *   indexer.graph        signal↔community assignment, direct or model-evaluated
  *   indexer.state        that graph's channel state
  *   network.recommender  ranking public communities during onboarding
- *   network.tools        the agent-facing tool definitions
  *
  * No directories: every stage here is one or two files, so a folder per stage
  * would only add a hop. Nothing outside `networks/` imports any of it; the
  * layout may change freely as long as this class keeps its shape.
  */
 
-import type { DefineTool } from "../internal/shared/agent/tool.helpers.js";
 import type { IntentNetworkGraphDatabase, NetworkGraphDatabase, NetworkMembershipGraphDatabase } from "../platform/database.js";
 
 import { IntentNetworkGraphFactory } from "../internal/networks/indexer.graph.js";
 import { NetworkMembershipGraphFactory } from "../internal/networks/membership.graph.js";
 import { NetworkGraphFactory } from "../internal/networks/network.graph.js";
-import { createNetworkTools } from "../internal/networks/network.tools.js";
-
-import type { NetworkToolDeps } from "../internal/networks/network.tools.js";
-
-// ── Public types ──────────────────────────────────────────────────────────────
-
-export type { NetworkToolDeps };
 
 /**
  * Host capabilities the community graphs need.
  *
- * The field is optional so a host can construct `new Networks()` and reach
- * only {@link Networks.createTools}; each `create…Graph` method names the
- * dependency it requires.
+ * The field is optional so construction never fails; each `create…Graph`
+ * method names the dependency it requires.
  */
 export interface NetworksDeps {
   /**
@@ -96,13 +86,6 @@ export class Networks {
    */
   public createAssignmentGraph() {
     return new IntentNetworkGraphFactory(this.database("createAssignmentGraph")).createGraph();
-  }
-
-  // ── Stateless surface ───────────────────────────────────────────────────────
-
-  /** Register the agent-facing community tools against a tool definer. */
-  public static createTools(defineTool: DefineTool, deps: NetworkToolDeps) {
-    return createNetworkTools(defineTool, deps);
   }
 
   // ── Internals ───────────────────────────────────────────────────────────────

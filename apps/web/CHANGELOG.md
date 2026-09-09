@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+- Subscribe to the user event stream at `GET /api/events` (was
+  `/api/conversations/stream`), and make the CLI setup snippet smoke-test with
+  `index intent list --json` on CLI 0.25.0.
+
 ### Added
 - **Devices list in Settings.** Every session that can act as your account —
   browsers plus the Mac app, CLI and Hermes — with the device it came from, when

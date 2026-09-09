@@ -5,7 +5,7 @@ Command-line interface for [Index Network](https://index.network). Message your 
 ## Installation
 
 ```bash
-npm install -g @indexnetwork/cli@0.24.0
+npm install -g @indexnetwork/cli@0.25.0
 ```
 
 ## Quick Start
@@ -47,17 +47,17 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index version` | Show the installed version; also available as `index --version` or `index -v`. |
 | `index login` | Sign in through the browser and store this device's session. |
 | `index logout` | Revoke and clear the stored device session. |
-| `index tool list` | List the API's protocol functions, descriptions, and input schemas. |
-| `index tool call <name> --query '<json object>'` | Invoke any function in the [protocol tool reference](#protocol-tool-reference). |
+| `index docs [topic]` | Read canonical protocol guidance, optionally narrowed to a topic. |
 | `index agent me` | Read the agent selected to handle your negotiations. |
 | `index profile` | Show your own profile. |
 | `index profile show <user-id>` | Show another user's accessible profile. |
 | `index profile sync` | Research public profile information and return a suggested profile without persisting it. |
-| `index intent list` | List signals, with optional archived and result-limit filters. |
+| `index intent list` | List signals, with optional archived, text-query, and result-limit filters. |
 | `index intent show <id>` | Show one signal. |
 | `index intent create <text>` | Create a signal from its description. |
 | `index intent update <id> <text>` | Update and reprocess a signal's description. |
 | `index intent archive <id>` | Archive a signal so it stops participating in discovery. |
+| `index intent networks <id>` | List the networks a signal is shared in. |
 | `index intent add-to-network <id> <network-id>` | Share a signal in a network. |
 | `index intent remove-from-network <id> <network-id>` | Stop sharing a signal in a network. |
 | `index negotiation list` | List negotiations, optionally filtered by intent or open/settled state. |
@@ -102,7 +102,7 @@ For noninteractive calls, set exactly one credential:
 ```bash
 export INDEX_API_URL='https://protocol.index.network'
 export INDEX_API_KEY='<api-key>'
-index --api-url "$INDEX_API_URL" tool list --json
+index --api-url "$INDEX_API_URL" intent list --json
 ```
 
 `INDEX_SESSION_TOKEN` uses Bearer authentication; `INDEX_API_KEY` uses `x-api-key`.
@@ -111,50 +111,16 @@ login. The API origin resolves from `--api-url`, then `INDEX_API_URL`, then the
 stored credential URL, then `https://protocol.index.network`. Integrations pass
 the origin explicitly. Agent management and other session-only operations still require a session.
 
-### `index tool` and `index agent`
+### `index docs` and `index agent`
 
 ```bash
-index tool list --json
-index tool call read_docs --query '{}' --json
-index tool call read_docs --query '{"topic":"workflows"}' --json
+index docs                       # Summary plus the list of topics
+index docs workflows --json
 index agent me --json
 ```
 
-Tool discovery includes the actual input schemas. `--query` must be a JSON
-object; tool failures produce a structured error and a nonzero exit status.
-
-#### Protocol tool reference
-
-The API in this release exposes these 20 functions through `index tool call`.
-Run `index tool list --json` against your selected API to read each function's
-current input schema. The API enforces ownership, membership, and permission
-checks when a function is invoked.
-
-| Function | Purpose |
-| --- | --- |
-| `research_profile` | Research public identity information and return a suggested profile without persisting it. |
-| `read_intents` | Read accessible signals with user, network, and pagination filters. |
-| `create_intent` | Create a signal and link it to the explicitly supplied networks. |
-| `update_intent` | Revise and reprocess a signal's description. |
-| `delete_intent` | Archive a signal. |
-| `add_intent_to_network` | Share a signal in a network. |
-| `list_intent_networks` | List the networks a signal is shared in. |
-| `remove_intent_from_network` | Remove a signal's link to a network. |
-| `search_intents` | Search accessible signals by semantic similarity. |
-| `read_networks` | Read accessible networks and their details. |
-| `read_network_memberships` | Read network memberships and member information. |
-| `update_network` | Update a network's settings. |
-| `create_network` | Create a network, subject to the API's creation permissions. |
-| `delete_network` | Delete a network you own. |
-| `create_network_membership` | Join an open network or add a member when authorized. |
-| `delete_network_membership` | Remove a member from a network you own. |
-| `list_opportunities` | Read persisted opportunities and their presentation. |
-| `update_opportunity` | Request an opportunity status transition under the server's lifecycle rules. |
-| `scrape_url` | Extract text from a URL with an optional objective. |
-| `read_docs` | Read canonical protocol guidance, optionally narrowed to a topic. |
-
-Agent identity, negotiation turns, conversations, and onboarding use their
-dedicated commands above and the corresponding REST endpoints.
+Topics are `identity-context`, `signals`, `communities-networks`,
+`opportunities`, `negotiations`, and `workflows`. An unknown topic exits nonzero.
 
 ### `index logout`
 
@@ -172,13 +138,18 @@ Manage your signals (intents). Create signals from natural language, list active
 index intent list                           # List active signals
 index intent list --archived                # Include archived signals
 index intent list --limit 5                 # Limit to 5 results
+index intent list --query "CTO"             # Match description and summary text
 index intent show <id>                      # Show full signal details
 index intent create "Looking for a CTO"     # Create from natural language
 index intent update <id> "revised text"     # Update a signal (runs full pipeline)
 index intent archive <id>                   # Archive a signal
+index intent networks <id>                  # List the networks a signal is shared in
 index intent add-to-network <id> <network-id>      # Add a signal to a network
 index intent remove-from-network <id> <network-id> # Remove a signal from a network
 ```
+
+A new signal is shared in every network you belong to. Narrow it afterwards with
+`remove-from-network`, or widen an existing one with `add-to-network`.
 
 ### `index negotiation`
 
@@ -287,7 +258,7 @@ index sync --json                      # Output to stdout as JSON
 ```
 
 `--json` emits one parseable result or error on stdout. Progress goes to stderr;
-HTTP and tool failures exit nonzero. Sync fails if any required context read
+HTTP failures exit nonzero. Sync fails if any required context read
 fails, without saving partial context.
 
 ## Examples: Reviewing Opportunities
@@ -324,7 +295,7 @@ index opportunity reject <id>
 | `--prompt <text>`    | `-p`  | Network description (for `network create`)                      |
 | `--title <text>`     |       | Network title (for `network update`)                            |
 | `--objective <text>` |       | Focus objective (for `scrape`)                                  |
-| `--query <json>`     |       | Required JSON object for `tool call`                            |
+| `--query <text>`     |       | Match signal description and summary text (intent list)         |
 | `--intent-id <id>`   |       | Filter negotiations, scope agent conversations, or select onboarding's first signal |
 | `--state <state>`    |       | Filter negotiations by `open` or `settled`                       |
 | `--action <action>`  |       | Required negotiation turn action: `propose`, `counter`, `accept`, or `decline` |
@@ -340,7 +311,7 @@ index opportunity reject <id>
 
 ```bash
 # Run directly with Bun (no build step)
-bun src/main.ts tool list --json
+bun src/main.ts intent list --json
 
 # Build for all platforms
 bun run build

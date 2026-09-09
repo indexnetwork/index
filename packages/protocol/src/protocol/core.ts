@@ -1,5 +1,5 @@
 /** Portable vocabulary for a request's focused protocol scope. */
-export type ToolScopeType = "network" | "intent";
+export type ScopeType = "network" | "intent";
 
 export interface ScopeMembership {
   networkId: string;

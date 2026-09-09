@@ -10,15 +10,15 @@ import type { Database } from '../database.js';
 
 
 /**
- * Composite database interface for a tool composition that reaches every
+ * Composite database interface for a host composition that reaches every
  * subgraph (OpportunityGraph, IntentGraph, NetworkGraph).
  *
  * Access layer: Both UserDatabase + SystemDatabase (orchestrates all operations)
  */
-export type CompositeToolDatabase = Pick<
+export type CompositeDatabase = Pick<
   Database,
   | 'getProfile'
-  // The HTTP tool discovery path builds an OpportunityGraph too, and its terminal
+  // The discovery path builds an OpportunityGraph too, and its terminal
   // stage opens the pairs it scored.
   | 'openCounterparties'
   | 'getActiveIntents'

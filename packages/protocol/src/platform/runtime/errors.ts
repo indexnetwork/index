@@ -1,4 +1,4 @@
-/** A stable access error a host can map without importing tool implementation. */
+/** A stable access error a host can map without importing protocol internals. */
 export class ChatContextAccessError extends Error {
   constructor(
     message: string,

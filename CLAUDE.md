@@ -38,7 +38,7 @@ workflow live further down this file. There is no `docs/` directory — it was d
 
 | Path | What it is |
 |---|---|
-| `packages/protocol` | `@indexnetwork/protocol` — the domain: LangGraph graphs, agents, tools, MCP server, and the **interfaces** a host must implement. Published to npm; also used by external integrators. |
+| `packages/protocol` | `@indexnetwork/protocol` — the domain: LangGraph graphs, agents, and the **interfaces** a host must implement. Published to npm; also used by external integrators. |
 | `services/api` | The host. Bun HTTP server + workers that wire real infrastructure (Drizzle/Postgres, Redis, OpenRouter) into the protocol. |
 | `apps/web` | Vite + React Router SPA. `src/app` routes, `components`, `contexts`, `hooks`, `lib`; `src/services/*.ts` are typed API clients, not business logic. |
 | `apps/mac` | Swift WKWebView shell (`Sources/`) around a self-contained React bundle (`src/`). |

@@ -1,8 +1,8 @@
 import { NEGOTIATION_MAX_TURNS } from './negotiation.constants.js';
 
-/** Shared protocol guidance for negotiation observation and HTTP/CLI read_docs. */
+/** Shared protocol guidance for negotiation observation and GET /api/docs. */
 
-/** Participation guidance consumed by observeNegotiation and read_docs. */
+/** Participation guidance consumed by observeNegotiation and GET /api/docs. */
 export const NEGOTIATION_GUIDANCE = `You participate in the Index protocol as an autonomous agent for one principal and intent.
 Only active intents shared into a network by current members may negotiate. Act only for your own seat, in its turn, using the current log and available actions.
 propose opens a negotiation; counter responds with revised terms; accept agrees to the other seat's standing offer; decline ends it without agreement. Never accept conditionally or with decision-critical questions unanswered.
@@ -11,7 +11,7 @@ A2A agreement only recommends a connection and moves the opportunity to pending 
 Negotiations allow at most ${NEGOTIATION_MAX_TURNS} total turns. At the limit, stop with the outcome undecided. Silence, errors, and timeouts are never consent or a decline. Stop after settlement or when the protocol blocks further actions.
 Read again after a rejected or uncertain write. Submit against the observed turn count; never replay an old decision blindly.`;
 
-/** Canonical entity, workflow, and negotiation guidance served by read_docs. */
+/** Canonical entity, workflow, and negotiation guidance served by GET /api/docs. */
 
 export const CANONICAL_GUIDANCE_TOPICS = [
   "identity-context",
@@ -24,7 +24,7 @@ export const CANONICAL_GUIDANCE_TOPICS = [
 
 export type CanonicalGuidanceTopic = (typeof CANONICAL_GUIDANCE_TOPICS)[number];
 
-/** Summary served when read_docs has no topic. */
+/** Summary served when GET /api/docs has no topic. */
 export const CANONICAL_GUIDANCE_SUMMARY = `# Index Network Protocol
 
 Index Network is a private, intent-driven discovery protocol. Users express signals (intents), agents find matches within shared networks, and decisions proceed through clear gates.
@@ -41,14 +41,14 @@ Index Network is a private, intent-driven discovery protocol. Users express sign
 
 **Negotiations** — Agents coordinate, users approve. **A2A acceptance is not owner approval.** These are separate gates.
 
-**Workflows** — H2A (users express signals → agents discover) and A2A (agents coordinate) over HTTP. External agents use the Index CLI; the personal-agent runtime stays on the server. Human conversations are available through the conversation HTTP/CLI commands.
+**Workflows** — H2A (users express signals → agents discover) and A2A (agents coordinate) over the REST API. External agents use the Index CLI; the personal-agent runtime stays on the server. Human conversations are available through the conversation routes and commands.
 
 ## Command interface
 
 Use the Index CLI with an explicit API origin: index --api-url <origin> ... --json.
 Authenticate with browser login or one environment credential: INDEX_SESSION_TOKEN (Bearer) or INDEX_API_KEY (x-api-key). Keys do not bypass owner-session requirements.
-List current tool schemas with index tool list. Invoke with index tool call <name> --query '<JSON object>'. HTTP equivalents are GET /api/tools and POST /api/tools/:toolName with {query}.
-Use the workflows topic for negotiation, personal-agent, and onboarding commands.
+Every capability is a named resource: /api/intents, /api/networks, /api/opportunities, /api/negotiations, /api/conversations, /api/scrape, /api/docs. The user's event stream is GET /api/events.
+Use the workflows topic for the resource routes and their CLI commands.
 
 ## Canonical Topics
 
@@ -59,10 +59,10 @@ Refer to these for detailed entity facts and lifecycle:
 - **communities-networks** — Membership and explicit signal sharing
 - **opportunities** — Discovery, roles, reasoning
 - **negotiations** — Owner approval vs A2A, acceptance gates
-- **workflows** — H2A and A2A tool sequences`;
+- **workflows** — H2A and A2A request sequences`;
 
 /**
- * Detailed canonical topic content for read_docs.
+ * Detailed canonical topic content for GET /api/docs.
  * Indexed by topic name; each contains current entity, capability, and lifecycle facts.
  */
 export const CANONICAL_GUIDANCE_TOPICS_CONTENT: Record<CanonicalGuidanceTopic, string> = {
@@ -122,7 +122,7 @@ Identity is account/presentation metadata. Context is dynamic, scoped runtime st
 ### Network Scope for Discovery
 - Opportunities are discovered only between members of shared networks
 - If two users share network A but not B, discovery in A will find them
-- Scoping discovery to a specific network (networkId parameter) narrows results to that community
+- GET /api/networks/:id/intents narrows a read to the signals shared in one community
 
 ### Community Membership
 - Members see all signals in the network
@@ -150,7 +150,7 @@ Discovery is networked — it only finds matches within shared networks. This pr
 5. **Rejected** or **Expired**: The opportunity no longer advances automatically.
 
 ### Background Matching
-Approved signals are evaluated in the background. Use list_opportunities only to review persisted cards; it does not start matching.
+Approved signals are evaluated in the background. GET /api/opportunities only reviews persisted opportunities; it does not start matching.
 
 ### Opportunity Evaluation
 - Candidate retrieval: Uses HyDE embeddings to find semantically related signals
@@ -162,14 +162,14 @@ Accepting an opportunity expresses interest in the connection. Owner acceptance 
 
   negotiations: NEGOTIATION_GUIDANCE,
 
-  workflows: `## Common Tool Workflows
+  workflows: `## Common Workflows
 
 ### H2A: Human→Agent Discovery
 User expresses signals (intents). Agent discovers matches and presents reasoning.
 
 1. User creates intents (signals)
 2. Background matching evaluates approved signals
-3. Agent uses list_opportunities to surface persisted matches
+3. Agent reads GET /api/opportunities to surface persisted matches
 4. User reviews and approves (owner approval)
 5. Escalation via native surfaces
 
@@ -183,13 +183,18 @@ Two agents coordinate on behalf of users to identify, vet, and propose matches.
 5. Both users approve (owner approval required)
 6. Escalation via native surfaces
 
-### HTTP and CLI commands
+### Resources and their CLI commands
+- Signals: POST /api/intents creates one (shared in every membership unless networkIds narrows it); POST /api/intents/list reads your own with optional q, limit, page, archived; PATCH /api/intents/:id rewrites the description; PATCH /api/intents/:id/archive retires it; GET/POST /api/intents/:id/networks and DELETE /api/intents/:id/networks/:networkId manage sharing. CLI: index intent create|list|show|update|archive|networks|add-to-network|remove-from-network.
+- Communities: GET /api/networks lists your memberships; GET /api/networks/:id/members reads the roster; GET /api/networks/:id/intents reads the signals shared there; POST /api/networks creates one when eligible, otherwise POST /api/network-requests submits an early-access request; PUT/DELETE /api/networks/:id and POST /api/networks/:id/join|leave complete the lifecycle. CLI: index network list|show|create|update|delete|join|leave|invite.
+- Opportunities: GET /api/opportunities and GET /api/opportunities/:id read; PATCH /api/opportunities/:id/status accepts or rejects. CLI: index opportunity list|show|accept|reject.
+- Web pages: POST /api/scrape reads one public page with an optional objective. CLI: index scrape <url> [--objective <text>].
+- This guidance: GET /api/docs[?topic=]. CLI: index docs [topic].
 - index agent me reads the selected negotiator.
 - index negotiation list accepts optional --intent-id and --state open|settled.
 - index negotiation show <opportunity-id> reads real turns and protocol guidance, including availableActions and blockedReason.
 - index negotiation turn <opportunity-id> requires --action, --message, and the observed --expected-turn-count. Actions are propose, counter, accept, and decline. The server owns legality and concurrency checks. Never automatically replay a rejected or uncertain write; re-read the record and assess its current guidance.
 - index conversation show agent --intent-id <id> reads the scoped messages, runtime availability, and displayed pending question.
-- index conversation send agent <text> --intent-id <id> [--question-id <id>] sends text or the answer to that exact question. HTTP messages use parts: [{kind:"text",text}], metadata.intentId, and questionId. Stale questions are refused. API-key callers selected as external negotiators speak as the agent; owner answers require the owner's session.
+- index conversation send agent <text> --intent-id <id> [--question-id <id>] sends text or the answer to that exact question. REST messages use parts: [{kind:"text",text}], metadata.intentId, and questionId. Stale questions are refused. API-key callers selected as external negotiators speak as the agent; owner answers require the owner's session.
 - index onboarding confirm-profile explicitly confirms the reviewed profile. index onboarding complete [--intent-id <id>] enforces the confirmed-profile and first-signal prerequisites. Do not treat a refusal as completion.
 - Human conversations remain available through conversation list, with, show, send, and stream.
 

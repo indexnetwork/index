@@ -1,11 +1,10 @@
-"""CLI tools and direct HTTP operations using this device's Index session token."""
+"""Direct HTTP operations using this device's Index session token."""
 
 from __future__ import annotations
 
 import base64
 import json
 import os
-import subprocess
 import urllib.error
 import urllib.request
 from typing import Any, Iterator
@@ -29,7 +28,7 @@ class TransportError(RuntimeError):
 
 
 class EnvironmentCredentialTransport:
-    """The production transport for CLI tools, dashboard HTTP, uploads, and streams."""
+    """The production transport for tool handlers, dashboard HTTP, uploads, and streams."""
 
     def __init__(self) -> None:
         self._api_key = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
@@ -122,31 +121,6 @@ class EnvironmentCredentialTransport:
                 "error": f"Index API request failed: {exc.reason}",
                 "code": "network_error",
             }
-
-    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Invoke the installed matching CLI once; credentials never enter argv."""
-        env = dict(os.environ)
-        env["INDEX_SESSION_TOKEN"] = self._api_key
-        env.pop("INDEX_API_KEY", None)
-        try:
-            result = subprocess.run(
-                ["index", "--api-url", self._origin, "tool", "call", tool_name,
-                 "--query", json.dumps(arguments), "--json"],
-                env=env, capture_output=True, text=True, check=False, timeout=self._timeout(),
-            )
-        except FileNotFoundError as exc:
-            raise TransportError("cli_missing", "Install @indexnetwork/cli@0.24.0 on the Hermes process PATH.") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise TransportError("cli_timeout", "Index CLI timed out. Re-read state before deciding whether to write again.") from exc
-        try:
-            payload = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise TransportError("cli_invalid_response", "Index CLI did not return JSON.") from exc
-        if not isinstance(payload, dict):
-            raise TransportError("cli_invalid_response", "Index CLI did not return an object.")
-        if result.returncode != 0:
-            payload["success"] = False
-        return payload
 
     def disconnect(self) -> dict[str, Any]:
         self._api_key = ""

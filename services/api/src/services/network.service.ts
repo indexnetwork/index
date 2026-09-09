@@ -141,20 +141,32 @@ export class NetworkService {
   }
 
   /**
-   * Get members of a network. Only owners can call this.
+   * Get the roster of a network. Any current member can call this; emails are
+   * only ever the caller's own.
    */
-  async getMembersForOwner(networkId: string, userId: string) {
-    logger.verbose('Getting members for owner', { networkId, userId });
-    const raw = await this.adapter.getNetworkMembersForOwner(networkId, userId);
+  async getMembers(networkId: string, userId: string) {
+    logger.verbose('Getting members for member', { networkId, userId });
+    const raw = await this.adapter.getNetworkMembersForMember(networkId, userId);
     return raw.map(m => ({
       id: m.userId,
       name: m.name,
-      intro: m.intro,
       email: m.email,
       avatar: m.avatar,
       permissions: m.permissions,
       createdAt: m.joinedAt,
     }));
+  }
+
+  /**
+   * List the active signals shared in a network, across all members. Any
+   * current member can call this; the adapter refuses non-members.
+   */
+  async getNetworkIntents(networkId: string, userId: string, options: { page: number; limit: number }) {
+    logger.verbose('Getting network intents', { networkId, userId, ...options });
+    return this.adapter.getNetworkIntentsForMember(networkId, userId, {
+      limit: options.limit,
+      offset: (options.page - 1) * options.limit,
+    });
   }
 
   /**

@@ -23,7 +23,7 @@ import { Timed } from "../shared/observability/performance.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { createStructuredModel } from "../shared/agent/model.config.js";
 import type { Opportunity } from "../../platform/database.js";
-import type { CompositeToolDatabase } from "../../platform/database.js";
+import type { CompositeDatabase } from "../../platform/database.js";
 import type { NegotiationContext } from "./negotiation-context.loader.js";
 
 
@@ -318,9 +318,7 @@ const FALLBACK_REMARK = "A potential connection worth exploring.";
  * reasoning and frames them in a short template like "Shared interest in AI and design."
  *
  * This is a regex-based heuristic — an alternative is OpportunityPresenter.presentCard()
- * which generates narratorRemark via LLM with much higher quality (already used by
- * home.graph.ts and opportunity.discover.ts). See buildMinimalOpportunityCard() in
- * opportunity.tools.ts for the trade-off discussion.
+ * which generates narratorRemark via LLM with much higher quality.
  *
  * @param reasoning - Raw interpretation.reasoning text.
  * @param counterpartName - Display name of the counterpart (stripped from output).
@@ -737,7 +735,7 @@ export function getSafePresentationOrSkip(
  * Generates personalized, second-person explanations of why an opportunity
  * matters to the viewing user. Uses full opportunity data (interpretation,
  * actors, profiles, intents, network) to produce headline, personalizedSummary,
- * and suggestedAction for chat tools and user-facing surfaces.
+ * and suggestedAction for user-facing surfaces.
  */
 
 
@@ -748,7 +746,7 @@ export function getSafePresentationOrSkip(
  * Any database adapter that implements these three methods can be passed.
  */
 export type PresenterDatabase = Pick<
-  CompositeToolDatabase,
+  CompositeDatabase,
   "getProfile" | "getActiveIntents" | "getNetwork"
 >;
 
@@ -1288,7 +1286,7 @@ function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
 }
 
 // ──────────────────────────────────────────────────────────────
-// CONTEXT GATHERER (used by tools)
+// CONTEXT GATHERER
 // ──────────────────────────────────────────────────────────────
 
 /**
@@ -1411,76 +1409,4 @@ export async function gatherPresenterContext(
   };
 
   return result;
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// ── 5. Tool cards ──
-// ──────────────────────────────────────────────────────────────────────
-
-const CODE_FENCE = String.fromCharCode(96, 96, 96);
-
-function sanitizeJsonForCodeFence(json: string): string {
-  return json.replace(/`/g, '\\u0060');
-}
-
-/**
- * Minimal shape consumed by buildOpportunityPresentation for prose rendering.
- * Card data objects in the codebase carry additional frontend-only fields;
- * these fields form the shared presentation.
- */
-export type OpportunityCardLike = Record<string, unknown> & {
-  opportunityId: string;
-  userId?: string | undefined;
-  name?: string | undefined;
-  mainText?: string | undefined;
-  status?: string | undefined;
-  feedCategory?: string | undefined;
-  profileUrl?: string | undefined;
-  /** Universal link that opens this opportunity's card (`/o/<id>`). */
-  appUrl?: string | undefined;
-  score?: number | undefined;
-};
-
-function sanitizeOpportunityCardProse(card: OpportunityCardLike): OpportunityCardLike {
-  const sanitized: OpportunityCardLike = { ...card };
-  for (const key of ['mainText', 'headline', 'cta', 'mutualIntentsLabel'] as const) {
-    const value = card[key];
-    if (typeof value === 'string') {
-      sanitized[key] = stripUnsupportedOpportunityClaims(stripUuids(value)) || 'A suggested connection.';
-    }
-  }
-  const narratorChip = card.narratorChip;
-  if (narratorChip && typeof narratorChip === 'object' && !Array.isArray(narratorChip)) {
-    const narrator = narratorChip as Record<string, unknown>;
-    if (typeof narrator.text === 'string') {
-      sanitized.narratorChip = {
-        ...narrator,
-        text: stripUnsupportedOpportunityClaims(stripUuids(narrator.text)) || 'A potential connection worth exploring.',
-      };
-    }
-  }
-  return sanitized;
-}
-
-/** Format opportunity cards for the shared tool response. */
-export function buildOpportunityPresentation(
-  inputCards: OpportunityCardLike[],
-  opts: {
-    leadIn: string;
-    label?: 'opportunity' | 'opportunities';
-  },
-): string {
-  const cards = inputCards.map(sanitizeOpportunityCardProse);
-  if (cards.length === 0) return opts.leadIn;
-
-  const label = opts.label ?? (cards.length === 1 ? "opportunity" : "opportunities");
-  const blocks = cards
-    .map(
-      (card) =>
-        CODE_FENCE + "opportunity\n" + sanitizeJsonForCodeFence(JSON.stringify(card)) + "\n" + CODE_FENCE,
-    )
-    .join("\n\n");
-  return (
-    `${opts.leadIn} IMPORTANT: Include the following ${CODE_FENCE}${label} code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocks}`
-  );
 }

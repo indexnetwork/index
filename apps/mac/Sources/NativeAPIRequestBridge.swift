@@ -27,15 +27,13 @@ indirect enum NativeJSONValue: Codable, Equatable {
     }
 }
 
-enum NativeAPIOperationKind: String, Codable { case http, upload, tool, sse, cancel }
+enum NativeAPIOperationKind: String, Codable { case http, upload, sse, cancel }
 
 struct NativeAPIOperation: Codable {
     let kind: NativeAPIOperationKind
     let method: String?
     let path: String?
     let body: NativeJSONValue?
-    let tool: String?
-    let arguments: NativeJSONValue?
     let fieldName: String?
     let basename: String?
     let dataUrl: String?
@@ -239,7 +237,6 @@ final class NativeAPIRequestBridge {
     private static let exactOperationKeys: [NativeAPIOperationKind: [Set<String>]] = [
         .http: [["kind", "method", "path"], ["kind", "method", "path", "body"]],
         .upload: [["kind", "path", "fieldName", "basename", "dataUrl"]],
-        .tool: [["kind", "tool", "arguments"]],
         .sse: [["kind", "method", "path"], ["kind", "method", "path", "body"]],
         .cancel: [["kind", "targetRequestId"]],
     ]
@@ -289,9 +286,8 @@ final class NativeAPIRequestBridge {
         "data:image/webp;base64": ("image/webp", "webp"),
     ]
     static let allowedSSERoutes: Set<String> = [
-        "GET /conversations/stream",
+        "GET /events",
     ]
-    static let allowedTools: Set<String> = ["create_intent"]
 
     private let apiBaseURL: URL
     private let credentialProvider: () throws -> OwnerCredentialRecord?
@@ -388,14 +384,8 @@ final class NativeAPIRequestBridge {
                   Self.isAllowedSSEBody(method: method, path: path, body: operation.body) else {
                 throw NativeAPIRequestFailure.deniedOperation
             }
-        case .tool:
-            guard let tool = operation.tool, Self.allowedTools.contains(tool),
-                  Self.isGloballyBoundedJSON(operation.arguments),
-                  Self.isAllowedToolArguments(tool: tool, arguments: operation.arguments) else {
-                throw NativeAPIRequestFailure.deniedOperation
-            }
         case .upload:
-            guard operation.body == nil, operation.arguments == nil,
+            guard operation.body == nil,
                   Self.isAllowedUploadOperation(operation) else { throw NativeAPIRequestFailure.deniedOperation }
         case .cancel:
             return
@@ -430,11 +420,6 @@ final class NativeAPIRequestBridge {
     static func validateSSEBodyForFixture(method: String, path: String, body: NativeJSONValue?) -> Bool {
         isGloballyBoundedJSON(body) && isAllowedSSEBody(method: method, path: path, body: body)
     }
-    static func validateToolForFixture(tool: String = "create_intent", arguments: NativeJSONValue?) -> Bool {
-        allowedTools.contains(tool) && isGloballyBoundedJSON(arguments)
-            && isAllowedToolArguments(tool: tool, arguments: arguments)
-    }
-
     private func execute(_ request: NativeAPIRequest) throws {
         guard let credential = try credentialProvider(), credential.expiresAt > Date() else {
             throw NativeAPIRequestFailure.signedOut
@@ -456,13 +441,6 @@ final class NativeAPIRequestBridge {
             }
             try perform(request, credential: credential, method: method, path: path,
                         body: request.operation.body, sse: true)
-        case .tool:
-            guard let tool = request.operation.tool, Self.allowedTools.contains(tool),
-                  Self.isAllowedToolArguments(tool: tool, arguments: request.operation.arguments) else {
-                throw NativeAPIRequestFailure.deniedOperation
-            }
-            let body: NativeJSONValue = .object(["query": request.operation.arguments ?? .object([:])])
-            try perform(request, credential: credential, method: "POST", path: "/tools/\(tool)", body: body, sse: false)
         case .upload:
             try performUpload(request, credential: credential)
         case .cancel:
@@ -665,20 +643,10 @@ final class NativeAPIRequestBridge {
     }
 
     private static func isAllowedSSEBody(method: String, path: String, body: NativeJSONValue?) -> Bool {
-        if method == "GET" && path == "/conversations/stream" {
+        if method == "GET" && path == "/events" {
             return body == nil
         }
         return false
-    }
-
-    private static func isAllowedToolArguments(tool: String, arguments: NativeJSONValue?) -> Bool {
-        guard tool == "create_intent" else { return false }
-        return exactTypedObject(arguments, required: ["description"], optional: ["networkIds"]) { item in
-            guard boundedString(item["description"], maximum: 65_536) else { return false }
-            guard let networkIds = item["networkIds"] else { return true }
-            guard case .array(let values) = networkIds, values.count <= 100 else { return false }
-            return values.allSatisfy { uuidIdentifier($0) }
-        }
     }
 
     private static func validNetworkMemberPermissions(_ value: NativeJSONValue?) -> Bool {

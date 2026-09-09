@@ -4,7 +4,7 @@ import { InferredIntent } from "../intent.inferrer.js";
 import { SemanticVerifierOutput } from "../intent.verifier.js";
 import { NormalizedIntentAction } from "../intent.reconciler.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
-import type { ToolScopeType } from '../../shared/agent/tool.scope.js';
+import type { ScopeType } from '../../shared/agent/scope.js';
 import type { IntentLifecycleStatus } from "../../../platform/database.js";
 
 /**
@@ -159,7 +159,7 @@ export const IntentGraphState = Annotation.Root({
   }),
 
   /** Focused request scope type for write-side assignment and follow-up queues. */
-  scopeType: Annotation<ToolScopeType | undefined>({
+  scopeType: Annotation<ScopeType | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
@@ -272,7 +272,7 @@ export const IntentGraphState = Annotation.Root({
    * For read mode: the set of network IDs the caller's agent can reach.
    * When set and neither networkId nor queryUserId is provided, the graph
    * returns the caller's own intents across all networks in this set (scope-aware
-   * default path). Derived by the tool layer from the scope envelope plus memberships.
+   * default path). Derived by the host from the scope envelope plus memberships.
    */
   networkScope: Annotation<string[] | undefined>({
     reducer: (_curr, next) => next,
@@ -290,7 +290,7 @@ export const IntentGraphState = Annotation.Root({
 
   /**
    * For read mode: when true, return all of the current user's intents
-   * ignoring network scope. Used before create_intent to detect duplicates.
+   * ignoring network scope. Used before creating a signal to detect duplicates.
    */
   allUserIntents: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,

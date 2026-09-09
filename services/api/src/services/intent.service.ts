@@ -1,5 +1,5 @@
 import { log } from '../lib/log';
-import { Intents } from '@indexnetwork/protocol';
+import { Intents, Networks } from '@indexnetwork/protocol';
 import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
@@ -32,6 +32,18 @@ export interface IntentGraphRunner {
   invoke(input: Record<string, unknown>, options?: { recursionLimit?: number }): Promise<Record<string, unknown>>;
 }
 
+/** The outcome of rewriting an owned signal's description. */
+export type IntentUpdateOutcome =
+  | { kind: 'updated' }
+  | { kind: 'not_found' }
+  | { kind: 'archived' }
+  | { kind: 'rejected'; detail: string };
+
+/** The outcome of linking or unlinking one signal and one community. */
+export type IntentNetworkLinkOutcome =
+  | { kind: 'ok'; message: string }
+  | { kind: 'refused'; detail: string };
+
 /** The `transition` action's outcome, as reported on `intentGraph`'s `transitionResult` field. */
 export type IntentTransitionOutcome =
   | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
@@ -50,6 +62,7 @@ export type IntentTransitionOutcome =
  */
 export class IntentService {
   private intentGraph: IntentGraphRunner;
+  private intentNetworkGraph: IntentGraphRunner;
   private adapter: IntentDatabaseAdapter;
   private embedder: EmbedderAdapter;
   private emitCreated: (intentId: string, userId: string) => void;
@@ -62,12 +75,15 @@ export class IntentService {
     embedder?: EmbedderAdapter;
     emitCreated?: (intentId: string, userId: string) => void;
     intentGraph?: IntentGraphRunner;
+    intentNetworkGraph?: IntentGraphRunner;
   }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.embedder = deps?.embedder ?? new EmbedderAdapter();
     this.emitCreated = deps?.emitCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
     this.intentGraph = deps?.intentGraph
       ?? new Intents({ database: this.adapter, embedder: this.embedder, followUp: intentIndexing }).createGraph();
+    this.intentNetworkGraph = deps?.intentNetworkGraph
+      ?? new Networks({ database: chatDatabaseAdapter }).createAssignmentGraph();
   }
 
   /**
@@ -125,6 +141,93 @@ export class IntentService {
   }
 
   /**
+   * Rewrite an owned signal's description.
+   *
+   * The graph re-infers and re-verifies the text, persists it, and re-evaluates
+   * the signal's community assignments. Ownership is checked here because the
+   * graph's update path, like create, does not filter by owner.
+   *
+   * @param intentId - Full intent UUID.
+   * @param userId - Authenticated owner.
+   * @param description - The rewritten signal text.
+   * @returns Whether the rewrite landed, or why it did not.
+   */
+  async update(intentId: string, userId: string, description: string): Promise<IntentUpdateOutcome> {
+    logger.verbose('Updating intent', { intentId, userId });
+
+    const intent = await this.adapter.getIntentById(intentId, userId);
+    if (!intent) return { kind: 'not_found' };
+    if (intent.archivedAt) return { kind: 'archived' };
+
+    const result = await this.intentGraph.invoke(
+      { userId, userProfile: '', inputContent: description, targetIntentIds: [intentId] },
+      { recursionLimit: 100 },
+    ) as {
+      executionResults?: Array<{ success: boolean; error?: string }>;
+      validationFailures?: Array<{ message: string }>;
+    };
+
+    if (!result.executionResults?.some((execution) => execution.success)) {
+      return {
+        kind: 'rejected',
+        detail: result.validationFailures?.[0]?.message
+          ?? 'The signal could not be updated from this description.',
+      };
+    }
+
+    return { kind: 'updated' };
+  }
+
+  /**
+   * List the communities an owned signal is shared in.
+   *
+   * @param intentId - Full intent UUID.
+   * @param userId - Authenticated owner.
+   * @returns The linked network ids, or null when the signal is missing or foreign.
+   */
+  async listNetworks(intentId: string, userId: string): Promise<string[] | null> {
+    const result = await this.intentNetworkGraph.invoke({
+      userId,
+      intentId,
+      operationMode: 'read',
+    }) as {
+      readResult?: { links?: Array<{ networkId: string }> };
+      error?: string;
+    };
+
+    if (result.error || !result.readResult?.links) return null;
+    return result.readResult.links.map((link) => link.networkId);
+  }
+
+  /**
+   * Share an owned signal in one community. The assignment graph enforces
+   * ownership and current membership, and is idempotent.
+   *
+   * @param intentId - Full intent UUID.
+   * @param networkId - The community to share it in.
+   * @param userId - Authenticated owner.
+   * @returns Whether the link exists now, or why it was refused.
+   */
+  async addToNetwork(intentId: string, networkId: string, userId: string): Promise<IntentNetworkLinkOutcome> {
+    logger.verbose('Linking intent to network', { intentId, networkId, userId });
+    return this.runLink(intentId, networkId, userId, 'create');
+  }
+
+  /**
+   * Withdraw an owned signal from one community, leaving the signal itself
+   * intact. Idempotent when the link is already gone.
+   *
+   * @param intentId - Full intent UUID.
+   * @param networkId - The community to withdraw it from.
+   * @param userId - Authenticated owner.
+   * @returns Whether the link is gone now, or why it was refused.
+   */
+  async removeFromNetwork(intentId: string, networkId: string, userId: string): Promise<IntentNetworkLinkOutcome> {
+    logger.verbose('Unlinking intent from network', { intentId, networkId, userId });
+    return this.runLink(intentId, networkId, userId, 'delete');
+  }
+
+  /**
    * List intents for a user with pagination and filters.
    *
    * @param userId - The user ID
@@ -136,6 +239,7 @@ export class IntentService {
     limit?: number;
     archived?: boolean;
     sourceType?: string;
+    q?: string;
   } = {}) {
     const page = Math.max(1, options.page || 1);
     const limit = Math.min(100, Math.max(1, options.limit || 20));
@@ -148,6 +252,7 @@ export class IntentService {
       limit,
       archived,
       sourceType: options.sourceType,
+      q: options.q,
     });
 
     return {
@@ -277,6 +382,27 @@ export class IntentService {
     IntentEvents.onArchived(intentId, userId);
 
     return { success: true };
+  }
+
+  /** Run one signal↔community mutation through the assignment graph. */
+  private async runLink(
+    intentId: string,
+    networkId: string,
+    userId: string,
+    operationMode: 'create' | 'delete',
+  ): Promise<IntentNetworkLinkOutcome> {
+    const result = await this.intentNetworkGraph.invoke({
+      userId,
+      intentId,
+      networkId,
+      operationMode,
+    }) as { mutationResult?: { success: boolean; message?: string; error?: string } };
+
+    const mutation = result.mutationResult;
+    if (!mutation?.success) {
+      return { kind: 'refused', detail: mutation?.error ?? 'The signal could not be linked to this network.' };
+    }
+    return { kind: 'ok', message: mutation.message ?? 'Done.' };
   }
 }
 

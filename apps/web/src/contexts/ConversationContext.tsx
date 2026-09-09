@@ -10,7 +10,7 @@ import { log } from '@/lib/logger';
 const logger = log.context.from('ConversationContext');
 
 const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';
-const SSE_URL = `${PROTOCOL_BASE}/api/conversations/stream`;
+const SSE_URL = `${PROTOCOL_BASE}/api/events`;
 
 interface ConversationSessionHistoryState {
   hasPreviousSession: boolean;

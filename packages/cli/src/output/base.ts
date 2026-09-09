@@ -94,40 +94,6 @@ export function clearStatus(): void {
   process.stderr.write("\r\x1b[K");
 }
 
-/** Print a persistent tool activity line (clears any status first). */
-export function toolActivity(description: string): void {
-  process.stderr.write(`\r\x1b[K${ORANGE}> ${description}${RESET}\n`);
-}
-
-// ── Tool descriptions ───────────────────────────────────────────────
-
-/** Human-friendly descriptions for protocol tools (mirrors frontend). */
-const TOOL_DESCRIPTIONS: Record<string, string> = {
-  research_profile: "Researching your public profile...",
-  read_intents: "Fetching your active signals...",
-  create_intent: "Creating a new signal...",
-  update_intent: "Updating signal...",
-  delete_intent: "Removing signal...",
-  add_intent_to_network: "Adding signal to network...",
-  list_intent_networks: "Fetching signals in network...",
-  remove_intent_from_network: "Removing signal from network...",
-  read_networks: "Checking your networks...",
-  create_network: "Creating a new network...",
-  update_network: "Updating network...",
-  delete_network: "Deleting network...",
-  create_network_membership: "Adding member to network...",
-  read_network_memberships: "Fetching network memberships...",
-  list_opportunities: "Listing your opportunities...",
-  update_opportunity: "Updating opportunity status...",
-  scrape_url: "Reading content from URL...",
-  read_docs: "Looking up documentation...",
-};
-
-/** Get a human-friendly description for a raw tool name. */
-export function humanizeToolName(name: string): string {
-  return TOOL_DESCRIPTIONS[name] ?? name.replace(/_/g, " ") + "...";
-}
-
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** Word-wrap text to a maximum width. */
