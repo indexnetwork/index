@@ -26,3 +26,4 @@ function BottomBar({ stats }) {
 
 window.MainView = MainView;
 window.DeepLinkWindow = DeepLinkWindow;
+window.DeepLinkChatWindow = DeepLinkChatWindow;

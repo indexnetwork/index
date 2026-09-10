@@ -27,7 +27,9 @@ function SignalAction({ label, active = false, onClick, danger = false }) {
   );
 }
 
-function ConversationPane({ profile, conversation, negotiatingPeople = [], onRespondPerson, paused = false, onTogglePause, onArchive }) {
+function ConversationPane({ profile, conversation, negotiatingPeople = [], onRespondPerson,
+                            agentQuestion = null, onAnswerAgent, focusQuestion = 0,
+                            paused = false, onTogglePause, onArchive }) {
   const scrollRef = useRef(null);
   // Archiving takes the signal off the hub and there's no way back to it from
   // here, so the first click arms the button and the second one commits. It
@@ -50,6 +52,15 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
       .catch(() => {})
       .then(() => setArchiving(false));
   };
+  // A notification tap lands on the signal, not on the question inside it, so
+  // the card brings itself into view. Keyed on the tap rather than the question
+  // so tapping again re-focuses one that is already open.
+  const agentQuestionRef = useRef(null);
+  useEffect(() => {
+    if (!focusQuestion || !agentQuestionRef.current) return;
+    agentQuestionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusQuestion, agentQuestion && agentQuestion.id]);
+
   const [stuck, setStuck] = useState(true);
   const [unread, setUnread] = useState(0);
   const lastLen = useRef(conversation.length);
@@ -181,6 +192,13 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
           marginTop:"auto",
           display:"flex", flexDirection:"column", gap:14,
         }}>
+          {/* the one question your own agent is held on for this signal */}
+          {agentQuestion && (
+            <div ref={agentQuestionRef}>
+              <AgentQuestionCard question={agentQuestion} onAnswer={onAnswerAgent}/>
+            </div>
+          )}
+
           {/* standing questions from people in your radar */}
           {groupQuestions(negotiatingPeople).map(g =>
             g.people.length >= 2 ? (
@@ -331,6 +349,30 @@ function CollectiveQuestionCard({ question, people, onRespond }) {
       onChip={(c) => people.forEach(p => onRespond && onRespond(p.id, c))}
       onWrite={(t) => people.forEach(p => onRespond && onRespond(p.id, t))}
       writePlaceholder={`answer all ${people.length} in your own words`}
+    />
+  );
+}
+
+/* Your own agent, held on this signal until you answer.
+
+   Unlike the cards around it this one is live: the question, its suggested
+   answers, and the matches it is asked about all come from the agent's
+   conversation, and the answer goes back to the same place. */
+function AgentQuestionCard({ question, onAnswer }) {
+  const matches = Array.isArray(question.matches) ? question.matches : [];
+  const about = matches
+    .map((m) => (m && m.counterparty && m.counterparty.name) || "")
+    .filter(Boolean)
+    .join(", ");
+  return (
+    <QuestionCard
+      icon={<AgentAvatar size={18} title="your agent"/>}
+      source="from your agent"
+      tag={about || (question.scope === "match" ? "about a match" : "about this signal")}
+      question={question.question}
+      chips={Array.isArray(question.options) ? question.options : []}
+      onChip={(c) => onAnswer && onAnswer(c)}
+      onWrite={(t) => onAnswer && onAnswer(t)}
     />
   );
 }

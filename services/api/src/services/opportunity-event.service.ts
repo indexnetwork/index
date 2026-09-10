@@ -8,8 +8,9 @@ import type { UserEvent, UserEventPublisher } from '../lib/user-events';
 
 const logger = log.service.from('OpportunityEventService');
 
-const OPPORTUNITY_HEADLINE = 'A promising connection';
-const OPPORTUNITY_EMPTY_SUMMARY = 'A new match that might be relevant to you.';
+const OPPORTUNITY_UNKNOWN_COUNTERPART = 'Someone';
+const OPPORTUNITY_EMPTY_SUMMARY = 'A new possibility that might be relevant to you.';
+const OPPORTUNITY_HEADLINE_SUFFIX = 'new possibility';
 const LABEL_MAX_CHARS = 80;
 
 interface OpportunityEventCopy {
@@ -55,9 +56,11 @@ function buildOpportunityEventCopy(
   opportunity: OpportunityRow,
   identities: OpportunityEventIdentities,
 ): OpportunityEventCopy {
-  const counterpartyName = displayName(identities.counterpart, 'Someone');
+  const counterpartyName = displayName(identities.counterpart, OPPORTUNITY_UNKNOWN_COUNTERPART);
   return {
-    headline: OPPORTUNITY_HEADLINE,
+    // The person leads the headline so the toast says who showed up, and the
+    // suffix keeps it distinct from a message toast, which is the name alone.
+    headline: `${counterpartyName} · ${OPPORTUNITY_HEADLINE_SUFFIX}`,
     summary: safeFallbackSummary(opportunity.interpretation.reasoning, {
       counterpartName: counterpartyName,
       viewerName: displayName(identities.viewer, 'you'),

@@ -2,9 +2,9 @@
  * Pure desktop-notification helpers for the macOS shell.
  *
  * Adapted from packages/hermes-plugin/desktop/notifications.mjs so both
- * desktop surfaces share one event vocabulary (opportunity.* persisted events
- * plus realtime conversation `message` events) and the same dedupe/snapshot
- * semantics. The Mac compose additionally returns an activate
+ * desktop surfaces share one event vocabulary (the three human frames:
+ * `opportunity.*`, `question.pending`, and conversation `message`) and the same
+ * dedupe semantics. The Mac compose additionally returns an activate
  * `url` (an index:// deep link the Swift tap handler feeds back through the
  * normal deep-link pipeline) and, for messages, an `imageUrl` used as the
  * notification's sender-avatar attachment.
@@ -15,6 +15,9 @@
 
 export const NOTIFIED_ENTITIES_KEY = 'notifiedEntitiesV2';
 export const MAX_NOTIFIED_ENTITIES = 200;
+
+/** Sender id the API writes agent-DM messages under (services/api database.shared). */
+const AGENT_SENDER_ID = 'system-agent';
 
 /**
  * @param {Object} event
@@ -37,6 +40,10 @@ export function notificationEntityKey(event) {
   if (event.type.indexOf('opportunity.') === 0) {
     const id = notificationId(event, 'opportunityId');
     return id ? `opportunity:${id}` : null;
+  }
+  if (event.type === 'question.pending') {
+    const id = notificationId(event, 'questionId');
+    return id ? `question:${id}` : null;
   }
   if (event.type === 'message' || event.type.indexOf('message.') === 0) {
     const id = event.message && typeof event.message.id === 'string'
@@ -101,9 +108,23 @@ export function composeNotification(event, options) {
       ...(id ? { url: `index://o/${encodeURIComponent(id)}` } : {}),
     };
   }
+  if (event.type === 'question.pending') {
+    if (typeof event.title !== 'string' || !event.title.trim()) return null;
+    const intentId = event.data && typeof event.data.intentId === 'string'
+      ? event.data.intentId.trim()
+      : '';
+    return {
+      title: event.title,
+      body: typeof event.body === 'string' ? event.body : '',
+      ...(intentId ? { url: `index://i/${encodeURIComponent(intentId)}` } : {}),
+    };
+  }
   if (event.type === 'message' || event.type.indexOf('message.') === 0) {
     const message = event.message;
     if (!message || typeof message !== 'object') return null;
+    // The owner's own agent speaks in the agent DM, and `question.pending`
+    // already announces the only thing it says that needs answering.
+    if (message.senderId === AGENT_SENDER_ID) return null;
     const sender = String(message.senderName || message.senderId || 'Someone');
     let text = '';
     if (Array.isArray(message.parts)) {
@@ -125,7 +146,7 @@ export function composeNotification(event, options) {
         : (/^https?:/i.test(avatar) ? avatar : null))
       : null;
     return {
-      title: `New message from ${sender}`,
+      title: sender,
       body: text || 'Open Index to read the message.',
       ...(conversationId ? { url: `index://chat/${encodeURIComponent(conversationId)}` } : {}),
       ...(imageUrl ? { imageUrl } : {}),
