@@ -52,7 +52,7 @@ def _env_path() -> Path:
     override = os.environ.get("HERMES_ENV_PATH", "").strip()
     if override:
         return Path(override)
-    return Path(os.path.expanduser("~/.hermes/.env"))
+    return Path.home() / ".hermes" / ".env"
 
 
 def _matches_key(line: str, name: str) -> bool:
@@ -86,7 +86,7 @@ def remove_env_var(name: str, path: Path | None = None) -> None:
 
 
 def persist_session_token(token: str) -> None:
-    """Persist the device session token to `~/.hermes/.env` and the live process.
+    """Persist the device session token to the Hermes env file and the live process.
 
     Any API key left by an older install is removed in the same pass so the
     transport cannot keep authenticating with a credential nothing renews.
@@ -105,7 +105,7 @@ def clear_legacy_api_key() -> None:
 
 
 def clear_session_token() -> None:
-    """Remove the persisted session token from `~/.hermes/.env` and the process."""
+    """Remove the persisted session token from the Hermes env file and the process."""
     remove_env_var(_SESSION_ENV)
     os.environ.pop(_SESSION_ENV, None)
     clear_legacy_api_key()

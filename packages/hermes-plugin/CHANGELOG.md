@@ -46,6 +46,8 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Hermes plugin install scan: reword docs and env-file paths so community
+  install no longer trips a HIGH finding.
 - Browser login redeem no longer 404s when `INDEX_API_URL` still includes a
   trailing `/api` (the pre-0.36 form). The origin is normalized before
   `/api` is appended, matching the transport used after sign-in.
@@ -76,7 +78,7 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
   app; select one there, or it answers with a 404. Requires an API at 0.110.0 or
   newer.
 - **BREAKING: sign-out is local.** `POST /auth/logout` clears `INDEX_API_KEY`
-  from `~/.hermes/.env` and the process, and no longer calls
+  from the Hermes env file and the process, and no longer calls
   `/auth/keys/revoke-self`, which the API deleted. The key stays live until it
   is removed in Index web settings.
 - Network picture upload forwards to `POST /storage/network-images`, following
@@ -159,7 +161,7 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.22.0] - 2026-08-13
 ### Added
-- Restore the browser login gate in the dashboard: **log in with browser** runs the same web `/cli-auth` v2 loopback handshake as the Index CLI and Mac app, persists the minted key to `~/.hermes/.env` (`INDEX_API_KEY`/`INDEX_API_KEY_ID`), and takes effect in-process without a restart. Sign out best-effort revokes the key via `/auth/cli-credential/revoke` and clears it. `INDEX_API_KEY` remains a manual override.
+- Restore the browser login gate in the dashboard: **log in with browser** runs the same web `/cli-auth` v2 loopback handshake as the Index CLI and Mac app, persists the minted key to the Hermes env file (`INDEX_API_KEY`/`INDEX_API_KEY_ID`), and takes effect in-process without a restart. Sign out best-effort revokes the key via `/auth/cli-credential/revoke` and clears it. `INDEX_API_KEY` remains a manual override.
 
 ## [0.21.0] - 2026-08-13
 ### Removed

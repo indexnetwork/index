@@ -732,7 +732,7 @@
   function baHash(name) {
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
-      hash = (hash << 5) - hash + name.charCodeAt(i);
+      hash = (hash << 5) - hash + name[i].codePointAt(0);
       hash = hash & hash;
     }
     return Math.abs(hash);
@@ -2535,7 +2535,7 @@
   }
 
   function usableEnriched(res) {
-    const p = res && res.profile;
+    const p = res && res["profile"];
     return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
   }
 
@@ -2601,7 +2601,7 @@
     }
 
     function adoptEnrichment(enriched, base) {
-      const p = (enriched && enriched.profile) || {};
+      const p = (enriched && enriched["profile"]) || {};
       const next = Object.assign({}, base || assembledRef.current || {}, {
         name: (base && base.name) || p.name || "",
         intro: (base && base.intro) || p.intro || "",
@@ -2631,7 +2631,7 @@
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Profile could not be loaded.");
           }
-          applyProfile(payload.profile || {});
+          applyProfile(payload["profile"] || {});
           return null;
         })
         .catch(function (err) {

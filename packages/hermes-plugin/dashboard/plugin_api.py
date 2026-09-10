@@ -933,7 +933,7 @@ def auth_login_status() -> dict[str, Any]:
 
 @full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Revoke this device's session, then clear `~/.hermes/.env` + process.
+    """Revoke this device's session, then clear the Hermes env file + process.
 
     A session token may revoke itself, so sign-out reaches the server; the local
     credential is cleared either way so a network failure cannot wedge the
