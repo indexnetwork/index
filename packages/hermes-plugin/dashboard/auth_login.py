@@ -20,11 +20,14 @@ import os
 import secrets
 import threading
 import time
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
+
+from .env_transport import api_origin
 
 _SESSION_ENV = "INDEX_SESSION_TOKEN"
 _LEGACY_API_KEY_ENV = "INDEX_API_KEY"
@@ -32,16 +35,15 @@ _LEGACY_KEY_ID_ENV = "INDEX_API_KEY_ID"
 _CALLBACK_HOST = "127.0.0.1"
 _LOGIN_TIMEOUT_SECONDS = 180.0
 _DEVICE_CLIENT_ID = "index-device"
-# INDEX_API_URL is the same bare API origin used by the CLI.
-_DEFAULT_API = "https://protocol.index.network"
 
 
 def api_root() -> str:
-    """Resolve the API root (including its `/api` prefix) for auth calls."""
-    origin = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
-    # Pre-0.36 overrides stored the `/api` suffix; appending it again 404s
-    # `/auth/device/token` and login fails after the browser handshake succeeds.
-    return origin.removesuffix("/api") + "/api"
+    """Resolve the API root (including its `/api` prefix) for auth calls.
+
+    Shares the transport's resolver so the code approved in the browser is
+    redeemed against the same environment every later request uses.
+    """
+    return api_origin() + "/api"
 
 _lock = threading.Lock()
 _session: "_LoginSession | None" = None
@@ -111,14 +113,36 @@ def clear_session_token() -> None:
     clear_legacy_api_key()
 
 
-def redeem_device_code(device_code: str) -> str | None:
+def _http_error_detail(exc: urllib.error.HTTPError) -> str:
+    """Summarize an error body, preferring the grant's `error_description`."""
+    try:
+        raw = exc.read().decode("utf-8", errors="replace")[:200].strip()
+    except Exception:  # noqa: BLE001 - the status alone is still worth reporting.
+        return ""
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return f": {raw}"
+    if isinstance(parsed, dict):
+        described = parsed.get("error_description") or parsed.get("error")
+        if described:
+            return f": {described}"
+    return f": {raw}"
+
+
+def redeem_device_code(device_code: str) -> tuple[str | None, str | None]:
     """Exchange an approved device code for this device's own session token.
 
     :param device_code: Code the browser claimed and approved for the owner.
-    :returns: The session token, or None on any transport or status failure.
+    :returns: `(token, None)` on success, else `(None, reason)`. The reason names
+        the endpoint and status, because the common cause is an environment
+        answering for a code it never issued.
     """
+    endpoint = f"{api_root()}/auth/device/token"
     request = urllib.request.Request(
-        f"{api_root()}/auth/device/token",
+        endpoint,
         data=json.dumps(
             {
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
@@ -134,10 +158,14 @@ def redeem_device_code(device_code: str) -> str | None:
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except Exception:  # noqa: BLE001 - any failure means "not signed in".
-        return None
-    token = payload.get("access_token")
-    return token if isinstance(token, str) and token else None
+    except urllib.error.HTTPError as exc:
+        return None, f"{endpoint} rejected the device code ({exc.code}{_http_error_detail(exc)})."
+    except Exception as exc:  # noqa: BLE001 - transport, DNS, or malformed body.
+        return None, f"Could not reach {endpoint}: {exc}"
+    token = payload.get("access_token") if isinstance(payload, dict) else None
+    if isinstance(token, str) and token:
+        return token, None
+    return None, f"{endpoint} returned no access token."
 
 
 def revoke_session(token: str) -> bool:
@@ -314,8 +342,8 @@ def poll_status() -> dict[str, Any]:
         return {"status": "failed", "error": "Login completed without a device code."}
     # Redeem outside the lock: this is a network call, and the loopback
     # listener is already torn down.
-    token = redeem_device_code(device_code)
+    token, failure = redeem_device_code(device_code)
     if not token:
-        return {"status": "failed", "error": "Could not complete device sign-in. Please try again."}
+        return {"status": "failed", "error": failure or "Could not complete device sign-in."}
     persist_session_token(token)
     return {"status": "success"}

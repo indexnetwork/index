@@ -2198,6 +2198,45 @@
   font-weight: 700;
 }
 
+.index-dashboard__advanced {
+  position: relative;
+  display: flex;
+}
+
+.index-dashboard__advanced-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 11rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  background: var(--color-card, #0b1220);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.index-dashboard__advanced-item {
+  padding: 0.5rem 0.6rem;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.index-dashboard__advanced-item:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: var(--color-card-foreground, inherit);
+}
+
+.index-dashboard__advanced-item--active {
+  color: var(--color-card-foreground, inherit);
+  font-weight: 700;
+}
+
 .index-dashboard__profile-body {
   display: flex;
   flex-direction: column;
@@ -2361,6 +2400,61 @@
 .index-dashboard__profile-check-desc {
   margin: 0.15rem 0 0 !important;
   font-size: 0.76rem;
+}
+
+.index-dashboard__agent-rows,
+.index-dashboard__negos {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.index-dashboard__agent-row,
+.index-dashboard__nego {
+  display: flex;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: calc(var(--radius, 0.75rem) * 0.6);
+}
+
+.index-dashboard__agent-row {
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.index-dashboard__nego {
+  align-items: center;
+}
+
+.index-dashboard__agent-radio {
+  margin: 0.2rem 0 0;
+  accent-color: var(--color-primary, #4fd1c5);
+  cursor: pointer;
+}
+
+.index-dashboard__agent-radio:disabled {
+  cursor: progress;
+}
+
+.index-dashboard__agent-meta,
+.index-dashboard__nego-meta {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.index-dashboard__agent-name,
+.index-dashboard__nego-name {
+  font-size: 0.85rem;
+  color: var(--color-card-foreground, inherit);
+}
+
+.index-dashboard__agent-sub,
+.index-dashboard__nego-text {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
 .index-dashboard__profile-bar {

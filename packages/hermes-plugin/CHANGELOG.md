@@ -1,6 +1,32 @@
 # Changelog
 
 
+## 0.39.0
+
+### Added
+- An **Advanced** menu in the dashboard's Settings panel, holding two owner
+  controls that were previously only reachable from the web app: **Settings**,
+  which chooses the agent that negotiates for you, and **Negotiations**, which
+  lists the exchanges still open. Both are optional and sit outside sign-in.
+- Dashboard REST bridge for them: `GET`/`POST /agents`,
+  `PATCH /agents/:id { handleNegotiations }`, and `GET /negotiations`. Picking
+  Hermes registers it first when it has no agent record yet; picking the hosted
+  Index negotiator releases the binding, which is how the API reads that choice.
+
+### Fixed
+- One environment for sign-in and for requests. The API origin is now resolved in
+  a single place, and derived from `INDEX_APP_BASE_URL` when `INDEX_API_URL` is
+  absent (`dev.index.network` -> `protocol.dev.index.network`). An env carrying
+  only the web origin previously approved a device code on dev and redeemed it on
+  production, which answers 404, so browser sign-in failed after the handshake
+  succeeded. Hosts outside `index.network` are left alone.
+- Device sign-in reports why it failed — endpoint, status, and the server's own
+  description — instead of collapsing every cause into "please try again".
+
+### Note
+- Choosing Hermes here binds the negotiation slot. Running the native personal
+  agent still requires enabling it from a private Hermes gateway conversation.
+
 ## 0.38.0
 
 ### Added

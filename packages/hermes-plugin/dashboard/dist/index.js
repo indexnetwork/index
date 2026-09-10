@@ -2539,6 +2539,216 @@
     return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
   }
 
+  // The runtime this Hermes registers as when it is chosen to negotiate.
+  const HERMES_AGENT_NAME = "Hermes";
+
+  /* Which agent negotiates for you — the same single choice as the web Agents
+     page, offered here as an optional step rather than part of signing in.
+
+     Hosted is not a row to bind: Index reads a cleared binding as "the hosted
+     negotiator runs", so choosing it releases whichever agent holds the slot.
+     Hermes is listed before it exists, because registering it is exactly what
+     choosing it means; every row's checked state comes from the server, so a
+     refused write leaves the previous selection standing. */
+  function NegotiatorSettings() {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const agentsState = useState(null);
+    const agents = agentsState[0];
+    const setAgents = agentsState[1];
+    const loadingState = useState(true);
+    const loading = loadingState[0];
+    const setLoading = loadingState[1];
+    const errorState = useState(null);
+    const error = errorState[0];
+    const setError = errorState[1];
+    const busyState = useState(false);
+    const busy = busyState[0];
+    const setBusy = busyState[1];
+
+    function load() {
+      setLoading(true);
+      fetchPluginJSON(API + "/agents")
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Agents could not be loaded.");
+          }
+          setAgents(Array.isArray(payload.agents) ? payload.agents : []);
+          setError(null);
+        })
+        .catch(function (err) { setError(err && err.message ? err.message : String(err)); })
+        .finally(function () { setLoading(false); });
+    }
+
+    useEffect(function () { load(); }, []);
+
+    function setBinding(agentId, handleNegotiations) {
+      return fetchPluginJSON(API + "/agents/" + encodeURIComponent(agentId), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handleNegotiations: handleNegotiations }),
+      });
+    }
+
+    const rows = agents || [];
+    const selected = rows.filter(function (a) { return a.handleNegotiations; })[0] || null;
+
+    // `row` is null for the hosted negotiator, and carries an empty id for a
+    // runtime that still has to be registered before it can hold the slot.
+    function select(row) {
+      if (busy) return;
+      setBusy(true);
+      setError(null);
+      let step;
+      if (!row) {
+        step = selected
+          ? setBinding(selected.id, false)
+          : Promise.resolve({ success: true });
+      } else if (row.id) {
+        step = setBinding(row.id, true);
+      } else {
+        step = fetchPluginJSON(API + "/agents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: row.name }),
+        }).then(function (payload) {
+          const created = (payload && payload.agent) || {};
+          if (!payload || payload.success === false || !created.id) {
+            throw new Error((payload && payload.error) || (row.name + " could not be registered."));
+          }
+          return setBinding(created.id, true);
+        });
+      }
+      step
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "The negotiator could not be changed.");
+          }
+          load();
+        })
+        .catch(function (err) { setError(err && err.message ? err.message : String(err)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function optionRow(key, name, sub, checked, onSelect) {
+      return React.createElement("label", { key: key, className: "index-dashboard__agent-row" },
+        React.createElement("input", {
+          type: "radio",
+          name: "index-negotiator",
+          className: "index-dashboard__agent-radio",
+          checked: checked,
+          disabled: busy,
+          onChange: onSelect,
+        }),
+        React.createElement("span", { className: "index-dashboard__agent-meta" },
+          React.createElement("strong", { className: "index-dashboard__agent-name" }, name),
+          React.createElement("span", { className: "index-dashboard__agent-sub" }, sub),
+        ),
+      );
+    }
+
+    if (loading && !agents) {
+      return React.createElement("div", { className: "index-dashboard__loading" }, "Loading agents…");
+    }
+
+    const named = rows.some(function (a) {
+      return String(a.name || "").toLowerCase() === HERMES_AGENT_NAME.toLowerCase();
+    });
+    const options = named ? rows : rows.concat([{ id: "", name: HERMES_AGENT_NAME, handleNegotiations: false }]);
+
+    return React.createElement("div", { className: "index-dashboard__profile-section" },
+      error ? React.createElement("div", { className: "index-dashboard__error" }, error) : null,
+      React.createElement(ProfileField, {
+        label: "Negotiator",
+        hint: "Index negotiates for you until you choose one of your own agents.",
+      },
+        React.createElement("div", { className: "index-dashboard__agent-rows" },
+          [optionRow(
+            "hosted",
+            "Index Negotiator",
+            "Hosted by Index. Runs for your active signals.",
+            !selected,
+            function () { select(null); },
+          )].concat(options.map(function (agent) {
+            return optionRow(
+              agent.id || ("new-" + agent.name),
+              agent.name,
+              agent.id
+                ? (agent.description || "Your registered agent.")
+                : "Not registered yet. Choosing it registers it.",
+              !!agent.handleNegotiations,
+              function () { select(agent); },
+            );
+          })),
+        ),
+      ),
+    );
+  }
+
+  /* The open negotiation records behind the radar: one row per match still
+     mid-exchange. Read-only — a turn is the agent's to take, and a match's
+     human decision belongs on its own card. */
+  function NegotiationsList() {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const itemsState = useState(null);
+    const items = itemsState[0];
+    const setItems = itemsState[1];
+    const loadingState = useState(true);
+    const loading = loadingState[0];
+    const setLoading = loadingState[1];
+    const errorState = useState(null);
+    const error = errorState[0];
+    const setError = errorState[1];
+
+    useEffect(function () {
+      fetchPluginJSON(API + "/negotiations")
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Negotiations could not be loaded.");
+          }
+          setItems(Array.isArray(payload.negotiations) ? payload.negotiations : []);
+        })
+        .catch(function (err) { setError(err && err.message ? err.message : String(err)); })
+        .finally(function () { setLoading(false); });
+    }, []);
+
+    if (loading) {
+      return React.createElement("div", { className: "index-dashboard__loading" }, "Loading negotiations…");
+    }
+    if (error) {
+      return React.createElement("div", { className: "index-dashboard__error" }, error);
+    }
+    if (!items || items.length === 0) {
+      return React.createElement(EmptyState, null, "No negotiation is open right now.");
+    }
+
+    return React.createElement("div", { className: "index-dashboard__negos" },
+      items.map(function (item, index) {
+        const yours = item.awaiting === "you";
+        return React.createElement("article", {
+          key: item.id || item.opportunityId || String(index),
+          className: "index-dashboard__nego",
+        },
+          React.createElement(UserAvatar, {
+            id: item.counterpartUserId,
+            name: item.name,
+            avatar: item.avatar,
+          }),
+          React.createElement("div", { className: "index-dashboard__nego-meta" },
+            React.createElement("strong", { className: "index-dashboard__nego-name" }, item.name),
+            item.statement
+              ? React.createElement("span", { className: "index-dashboard__nego-text" }, item.statement)
+              : null,
+          ),
+          item.awaiting
+            ? React.createElement(BadgeText, yours ? { tone: "warning" } : {}, yours ? "your turn" : "their turn")
+            : null,
+        );
+      }),
+    );
+  }
+
   function ProfilePanel(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
@@ -2572,9 +2782,16 @@
     const step = stepState[0];
     const setStep = stepState[1];
     const assembledRef = useRef(null);
+    const advancedOpenState = useState(false);
+    const advancedOpen = advancedOpenState[0];
+    const setAdvancedOpen = advancedOpenState[1];
 
     const readOnly = !!props.readOnly;
     const gettingStarted = !!props.gettingStarted;
+    // The two panes behind Advanced own the whole body: neither edits the
+    // profile, so the form's save bar has nothing to do while one is open.
+    const advancedActive = !readOnly && !gettingStarted
+      && (tab === "agents" || tab === "negotiations");
 
     function applyProfile(p) {
       const next = {
@@ -2823,8 +3040,39 @@
       return React.createElement("button", {
         type: "button",
         className: "index-dashboard__profile-tab" + (active ? " index-dashboard__profile-tab--active" : ""),
-        onClick: function () { setTab(id); },
+        onClick: function () { setTab(id); setAdvancedOpen(false); },
       }, label);
+    }
+
+    // Advanced sits in the tab row but opens a menu instead of a pane, so the
+    // owner controls behind it stay out of the way of everyday settings.
+    function advancedItem(id, label) {
+      return React.createElement("button", {
+        type: "button",
+        role: "menuitem",
+        className: "index-dashboard__advanced-item"
+          + (tab === id ? " index-dashboard__advanced-item--active" : ""),
+        onClick: function () { setTab(id); setAdvancedOpen(false); },
+      }, label);
+    }
+
+    function advancedMenu() {
+      return React.createElement("div", { className: "index-dashboard__advanced" },
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__profile-tab"
+            + (advancedActive ? " index-dashboard__profile-tab--active" : ""),
+          "aria-expanded": advancedOpen ? "true" : "false",
+          "aria-haspopup": "menu",
+          onClick: function () { setAdvancedOpen(!advancedOpen); },
+        }, "Advanced ▾"),
+        advancedOpen
+          ? React.createElement("div", { className: "index-dashboard__advanced-menu", role: "menu" },
+            advancedItem("agents", "Settings"),
+            advancedItem("negotiations", "Negotiations"),
+          )
+          : null,
+      );
     }
 
     function socialRows() {
@@ -2992,14 +3240,23 @@
       (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
         tabButton("profile", "Profile Settings"),
         tabButton("notifications", "Notifications"),
+        advancedMenu(),
       ),
       panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
-      loading || !form
-        ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
-        : React.createElement("div", { className: "index-dashboard__profile-body" },
-          readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
-        ),
-      (!readOnly && form)
+      advancedActive
+        // Each Advanced pane loads its own data, so it opens without waiting on
+        // the profile fetch behind it.
+        ? React.createElement("div", { className: "index-dashboard__profile-body" },
+          tab === "agents"
+            ? React.createElement(NegotiatorSettings)
+            : React.createElement(NegotiationsList),
+        )
+        : (loading || !form
+          ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
+          : React.createElement("div", { className: "index-dashboard__profile-body" },
+            readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
+          )),
+      (!readOnly && form && !advancedActive)
         ? React.createElement("div", { className: "index-dashboard__profile-bar" },
           React.createElement("span", { className: "index-dashboard__profile-note" },
             note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "You have unsaved changes" : ""))),

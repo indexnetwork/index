@@ -143,19 +143,23 @@ def _load_module(name: str, path: Path):
     return module
 
 
-def _load_tools_module():
-    package_name = "index_network_hermes_dashboard_runtime"
-    package = sys.modules.get(package_name)
-    if package is None:
-        package = types.ModuleType(package_name)
+_RUNTIME_PACKAGE = "index_network_hermes_dashboard_runtime"
+
+
+def _runtime_package() -> str:
+    """Name a synthetic package rooted at the plugin, so `from .x import y` works."""
+    if _RUNTIME_PACKAGE not in sys.modules:
+        package = types.ModuleType(_RUNTIME_PACKAGE)
         package.__path__ = [str(_PLUGIN_ROOT)]
-        package.__package__ = package_name
-        sys.modules[package_name] = package
-    return _load_module(f"{package_name}.tools", _TOOLS_PATH)
+        package.__package__ = _RUNTIME_PACKAGE
+        sys.modules[_RUNTIME_PACKAGE] = package
+    return _RUNTIME_PACKAGE
 
 
-tools = _load_tools_module()
-auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
+tools = _load_module(f"{_runtime_package()}.tools", _TOOLS_PATH)
+# Loaded under the same package so it can share the transport's API resolver;
+# sign-in and every later request must name one Index environment.
+auth_login = _load_module(f"{_runtime_package()}.dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
 
 
 def _call_read_intents() -> dict[str, Any]:
@@ -1972,6 +1976,110 @@ def agent_answer(body: dict[str, Any] | None = Body(default=None)) -> dict[str, 
             "questionId": question_id or None,
         },
     )
+
+
+def _agent_row(agent: Any) -> dict[str, Any]:
+    """Map one `/agents` entity onto the negotiator selector's row shape."""
+    row = agent if isinstance(agent, dict) else {}
+    return {
+        "id": _text(row.get("id")),
+        "name": _text(row.get("name"), "agent"),
+        "description": _text(row.get("description")),
+        "status": _text(row.get("status"), "active"),
+        "handleNegotiations": row.get("handleNegotiations") is True,
+    }
+
+
+@full_router.get("/agents")
+def list_agents() -> dict[str, Any]:
+    """The owner's registered agents, and which one currently handles negotiations.
+
+    System agents are dropped: the hosted Index negotiator is the selector's
+    "no external agent selected" state, not a row the owner can bind.
+    """
+    payload = tools._api_request("GET", "/agents")
+    if payload.get("success") is False:
+        return payload
+    rows = [
+        _agent_row(agent)
+        for agent in _list(payload.get("agents"))
+        if isinstance(agent, dict) and _text(agent.get("type")) == "external"
+    ]
+    rows = [row for row in rows if row["id"]]
+    selected = next((row["id"] for row in rows if row["handleNegotiations"]), "")
+    return {"success": True, "agents": rows, "selectedAgentId": selected or None}
+
+
+@full_router.post("/agents")
+def create_agent(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Register an external agent via REST `POST /agents` (session-only upstream)."""
+    name = _text(body.get("name")) if isinstance(body, dict) else ""
+    if not name:
+        return {"success": False, "error": "An agent name is required."}
+    request_body: dict[str, Any] = {"name": name}
+    description = _text(body.get("description")) if isinstance(body, dict) else ""
+    if description:
+        request_body["description"] = description
+    payload = tools._api_request("POST", "/agents", request_body)
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "agent": _agent_row(payload.get("agent"))}
+
+
+@full_router.patch("/agents/{agent_id}")
+def update_agent(
+    agent_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    """Bind or release this agent's negotiation executor slot.
+
+    `handleNegotiations: false` is how the hosted Index negotiator is chosen:
+    the API clears the owner's binding rather than naming a hosted agent.
+    """
+    agent_id = _text(agent_id)
+    if not agent_id:
+        return {"success": False, "error": "An agent id is required."}
+    handle = body.get("handleNegotiations") if isinstance(body, dict) else None
+    if not isinstance(handle, bool):
+        return {"success": False, "error": "handleNegotiations must be true or false."}
+    payload = tools._api_request(
+        "PATCH",
+        f"/agents/{quote(agent_id, safe='')}",
+        {"handleNegotiations": handle},
+    )
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "agent": _agent_row(payload.get("agent"))}
+
+
+@full_router.get("/negotiations")
+def list_negotiations() -> dict[str, Any]:
+    """The owner's open negotiations via REST `GET /negotiations?state=open`."""
+    payload = tools._api_request("GET", "/negotiations?state=open")
+    if payload.get("success") is False:
+        return payload
+    current_user_id = _text(_fetch_me().get("id"))
+    items: list[dict[str, Any]] = []
+    for negotiation in _list(payload.get("negotiations")):
+        if not isinstance(negotiation, dict):
+            continue
+        counterparty = negotiation.get("counterparty")
+        counterparty = counterparty if isinstance(counterparty, dict) else {}
+        awaiting = _text(negotiation.get("awaitingUserId"))
+        items.append({
+            "id": _text(negotiation.get("id")),
+            "opportunityId": _text(negotiation.get("opportunityId")),
+            "intentId": _text(negotiation.get("intentId")),
+            "name": _text(counterparty.get("name"), "Match"),
+            "avatar": _avatar_url(counterparty.get("avatar")),
+            "statement": _truncate(counterparty.get("statement")),
+            "counterpartUserId": _text(counterparty.get("userId")),
+            # Unassigned turns exist (a settled record clears it), so "theirs"
+            # is never inferred from "not mine".
+            "awaiting": "you" if awaiting and awaiting == current_user_id else ("them" if awaiting else ""),
+            "turnCount": _count(negotiation.get("turnCount")),
+        })
+    return {"success": True, "negotiations": items}
 
 
 def _conversation_stream():
