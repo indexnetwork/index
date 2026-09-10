@@ -29,14 +29,6 @@ def selected_agent():
     return identity["agent"]
 
 
-def rotate(items, cursor, limit):
-    if not items:
-        return [], 0
-    start = cursor % len(items)
-    ordered = items[start:] + items[:start]
-    return ordered[:limit], (start + min(limit, len(items))) % len(items)
-
-
 class NegotiationTools:
     """Bind native work to an account, intent, context revision, and session."""
 
@@ -56,7 +48,7 @@ class NegotiationTools:
         session = self.store.session(db, session_id)
         binding = self.store.binding(db)
         if not session or not binding or session.get("account") != binding["account"] or session.get("agentId") != binding["agentId"] or (background and session.get("mode") != "sweep"):
-            raise ValueError("Match work is available only in the configured native background sweep.")
+            raise ValueError("Match work is available only in the configured native background run.")
         return session
 
     def context(self, account, intent_id):
@@ -119,35 +111,25 @@ class NegotiationTools:
                 page += 1
             if session["mode"] == "owner":
                 return {"account": binding["account"], "intents": intents, "negotiations": negotiations}
-            if "batch" not in session:
-                intents.sort(key=lambda item: item["id"])
-                priority = next((item for item in intents if item["id"] == binding.get("wakeIntent")), None)
-                total = len(intents)
-                intents, binding["cursor"] = rotate(intents, binding.get("cursor", 0), 4)
-                if priority and priority not in intents:
-                    intents[-1] = priority
-                    binding["cursor"] = (binding["cursor"] - 1) % total
-                binding.pop("wakeIntent", None)
-                matches = []
-                for intent in intents:
-                    state = self.store.load(db, binding["account"], intent["id"])
-                    pending = {item["match"]["opportunityId"] for item in state["requests"]}
-                    candidates = sorted((item for item in negotiations if item["intentId"] == intent["id"] and not item["settledAt"] and item["awaitingUserId"] == binding["account"] and item["opportunityId"] not in pending), key=lambda item: item["opportunityId"])
-                    selected, state["cursor"] = rotate(candidates, state.get("cursor", 0), 4)
-                    matches.extend(selected)
-                    self.store.save(db, binding["account"], intent["id"], state)
-                session["batch"] = {"intents": intents, "negotiations": matches}
-                self.store.bind(db, binding)
+            if "scope" not in session:
+                intent = next((item for item in intents if item["id"] == session["intentId"]), None)
+                if not intent:
+                    raise ValueError("This intent is no longer active. Stop this work.")
+                state = self.store.load(db, binding["account"], intent["id"])
+                pending = {item["match"]["opportunityId"] for item in state["requests"]}
+                session["scope"] = {"intent": intent, "negotiations": sorted(
+                    (item for item in negotiations if item["intentId"] == intent["id"] and not item["settledAt"] and item["awaitingUserId"] == binding["account"] and item["opportunityId"] not in pending),
+                    key=lambda item: item["opportunityId"])}
                 self.store.save_session(db, session_id, session)
-            return {"account": binding["account"], **session["batch"],
-                    "instruction": "This rotating batch is the work limit for this native run. Process each returned match once, then review each intent inbox. Other intents and matches run in subsequent sweeps."}
+            return {"account": binding["account"], **session["scope"],
+                    "instruction": "This is the pending work for the signal that woke this run. Process each returned match once, then review this intent's inbox. Other signals are woken by their own events."}
 
     def read_negotiation(self, args, session_id):
         with self.store.transaction() as db:
             binding = self.selected(db)
             session = self.session(db, session_id, background=True)
-            if args.get("opportunityId") not in {item["opportunityId"] for item in session.get("batch", {}).get("negotiations", [])}:
-                raise ValueError("Choose a match from index_list_negotiations for this bounded sweep.")
+            if args.get("opportunityId") not in {item["opportunityId"] for item in session.get("scope", {}).get("negotiations", [])}:
+                raise ValueError("Choose a match from index_list_negotiations for this signal.")
             record = api("GET", f'/negotiations/{path_id(args.get("opportunityId"))}')["negotiation"]
             intent_id = record["intentId"]
             context = self.context(binding["account"], intent_id)
@@ -218,7 +200,7 @@ class NegotiationTools:
             if not current or current["id"] != work["id"] or current["status"] != "attempted":
                 raise ValueError("Another native session replaced this work. Do not submit this decision.")
             if state["revision"] != work["revision"] or self.context(binding["account"], intent_id) != work["context"]:
-                raise ValueError("Principal context changed before submission. Reconsider on the next sweep.")
+                raise ValueError("Principal context changed before submission. Reconsider when this signal next moves.")
             try:
                 result = api("POST", f'/negotiations/{path_id(args["opportunityId"])}/turns?executorId={path_id(binding["agentId"])}',
                              work["turn"])
@@ -232,7 +214,7 @@ class NegotiationTools:
                     self.observe(state, result["negotiation"])
                 except Exception as read_error:
                     result["reconciliationError"] = str(read_error)
-                result["instruction"] = "Do not retry. This attempt is consumed; reconsider from authoritative state on a later sweep."
+                result["instruction"] = "Do not retry. This attempt is consumed; reconsider from authoritative state in a later run."
                 state["outcomes"][args["opportunityId"]] = {"match": {"opportunityId": args["opportunityId"], "counterparty": record["counterparty"]}, "result": {"error": str(exc), "submissionStatus": "rejected_or_uncertain"}}
             self.store.save(db, binding["account"], intent_id, state)
             return result
@@ -260,10 +242,9 @@ class NegotiationTools:
             binding = self.selected(db)
             session = self.session(db, session_id)
             intent_id = args.get("intentId")
-            if session["mode"] == "sweep" and intent_id not in {item["id"] for item in session.get("batch", {}).get("intents", [])}:
-                raise ValueError("Review an intent in this bounded sweep.")
-            if session["mode"] == "owner" and intent_id != session.get("intentId"):
-                raise ValueError("Focus this intent before reviewing its private inbox.")
+            if intent_id != session.get("intentId"):
+                raise ValueError("Review the signal that woke this run." if session["mode"] == "sweep"
+                                 else "Focus this intent before reviewing its private inbox.")
             context = self.context(binding["account"], intent_id)
             state = self.store.load(db, binding["account"], intent_id)
             self.sync_context(state, context)

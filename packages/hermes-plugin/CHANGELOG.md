@@ -4,16 +4,21 @@
 ## 0.38.0
 
 ### Added
-- Native personal-agent negotiation using Hermes's configured model, tools, skills,
-  and gateway scheduling. Rotating sweeps cover the selected owner's active intents.
+- Native personal-agent negotiation using Hermes's configured model, tools, and
+  skills. Work is woken by the owner's Index event stream: the plugin registers an
+  `index` gateway platform that follows `GET /events` and opens one bounded run,
+  in a chat of its own, for the signal a frame names. Frames arriving together for
+  one signal collapse into a single run, and every reconnection reconciles against
+  `GET /negotiations`, so a frame missed while the gateway was down costs nothing.
 - A durable private inbox with stable questions, scoped native owner replies,
   context revisions, and one submission attempt per match in each native run.
 - Shared instruction assets generated from `packages/agent`, and an atomic executor
-  check on turn submissions (requires Index API 0.116.0).
+  check on turn submissions (requires Index API 0.117.0).
 
 ### Operating requirements
 - Enable the personal agent from a private Hermes gateway conversation and keep
   the gateway running. CLI/Desktop-only sessions retain the general Index tools.
+- Requires a Hermes with `register_platform` (checked at `63279301bc`).
 - Human connection approval remains separate from A2A agreement.
 
 ## 0.37.0

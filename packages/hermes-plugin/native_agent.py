@@ -1,11 +1,9 @@
-"""Hermes scheduling, authoritative gateway input, and private inbox delivery."""
+"""Authoritative gateway input, session scoping, and private inbox delivery."""
 
 from __future__ import annotations
 
-import contextvars
 import json
 import re
-import threading
 from pathlib import Path
 
 from .negotiation import NegotiationTools, selected_agent
@@ -13,7 +11,9 @@ from .principal_state import PrincipalStore, owner_input
 
 
 SKILL_PATH = Path(__file__).parent / "skills" / "personal-agent" / "SKILL.md"
-SWEEP_PROMPT = "Run one bounded Index personal-agent sweep. Load index-network:personal-agent, call index_list_negotiations, process each returned match once, then review each returned intent's inbox. Never wait inside this run for a human. Only index_review_principal_inbox selects human delivery. Finish with [SILENT]; the plugin renders selected inbox entries."
+# The gateway platform that carries Index events. Declared here rather than in
+# `events`, which reaches into the gateway packages this module must not.
+PLATFORM = "index"
 _REPLY = re.compile(r"^Index ([0-9a-f-]{36})(?:/([0-9a-f-]{36}))?:\s*(.+)$", re.I | re.S)
 
 
@@ -31,6 +31,9 @@ class NativeAgent:
         self.operations = NegotiationTools(self.store)
         self.inbound = {}
         self.turns = {}
+        # Set by the Index platform once its reader is running; owner input is
+        # the one wake Index itself never publishes an event for.
+        self.wake = None
 
     def pre_gateway_dispatch(self, *, event, **kwargs):
         source = event.source
@@ -66,7 +69,7 @@ class NativeAgent:
                 native["error"] = str(exc)
                 return None
             native["intentId"] = intent_id
-            binding.update(intentId=intent_id, questionId=None, wake=True, wakeIntent=intent_id)
+            binding.update(intentId=intent_id, questionId=None)
             self.store.save(db, binding["account"], intent_id, state)
             self.store.bind(db, binding)
         return None
@@ -75,17 +78,18 @@ class NativeAgent:
         self.turns.pop(session_id, None)
         if not session_id or parent_session_id:
             return None
-        with self.store.transaction() as db:
-            binding = self.store.binding(db)
-            if binding and platform == "cron" and session_id.startswith(f'cron_{binding["jobId"]}_'):
-                current = self.store.session(db, session_id)
-                if not current:
-                    self.store.save_session(db, session_id, {"mode": "sweep", "account": binding["account"],
-                                            "agentId": binding["agentId"], "turnId": turn_id})
-                return {"context": SKILL_PATH.read_text()}
         # The context variables come from the native gateway dispatch, not tool args.
         from gateway.session_context import get_session_env
-        key = source_key(platform, get_session_env("HERMES_SESSION_CHAT_ID", ""),
+        chat_id = get_session_env("HERMES_SESSION_CHAT_ID", "")
+        with self.store.transaction() as db:
+            binding = self.store.binding(db)
+            # An Index event opens one chat per signal, so the chat is the intent.
+            if binding and platform == PLATFORM:
+                if not self.store.session(db, session_id):
+                    self.store.save_session(db, session_id, {"mode": "sweep", "account": binding["account"],
+                                            "agentId": binding["agentId"], "intentId": chat_id, "turnId": turn_id})
+                return {"context": SKILL_PATH.read_text()}
+        key = source_key(platform, chat_id,
                          get_session_env("HERMES_SESSION_USER_ID", ""),
                          get_session_env("HERMES_SESSION_THREAD_ID", ""))
         native = self.inbound.pop(key, None)
@@ -111,42 +115,18 @@ class NativeAgent:
         agent = selected_agent()
         if agent["id"] != args.get("agentId") or agent["type"] != "external" or agent["status"] != "active" or not agent["handleNegotiations"]:
             raise ValueError("Select the Hermes external agent in Index first, then provide its exact agent ID.")
-        # The native registry is also consulted after a restart during setup, so
-        # repeating setup cannot create a second job after a lost local response.
-        name = f'Index personal agent {agent["ownerId"]}/{agent["id"]}'
-        jobs = json.loads(self.ctx.dispatch_tool("cronjob_manage", {"action": "list"}, session_id=session_id))
-        if not jobs.get("success"):
-            raise ValueError(jobs.get("error") or "Could not inspect Hermes schedules.")
-        existing = next((job for job in jobs["jobs"] if job["name"] == name), None)
+        # The binding is a single row, so repeating setup after a lost local
+        # response rebinds the same executor instead of adding a second one.
         with self.store.transaction() as db:
             binding = self.store.binding(db)
             if binding and (binding["account"] != agent["ownerId"] or binding["source"] != native["source"]):
                 raise ValueError("This profile already has an Index owner conversation. Use that conversation or a separate Hermes profile.")
-        if binding and binding["agentId"] != agent["id"]:
-            paused = json.loads(self.ctx.dispatch_tool("cronjob_manage", {"action": "pause", "job_id": binding["jobId"]}, session_id=session_id))
-            if not paused.get("success"):
-                raise ValueError("Could not pause the previous Index executor's schedule.")
-        if not existing:
-            result = json.loads(self.ctx.dispatch_tool("cronjob_manage", {
-                "action": "create", "name": name, "schedule": "every 2m", "prompt": SWEEP_PROMPT,
-                "skills": ["index-network:personal-agent"], "enabled_toolsets": ["index-network"],
-                "deliver": "origin",
-            }, session_id=session_id))
-            if not result.get("success"):
-                raise ValueError(result.get("error") or "Hermes could not create the native schedule.")
-            existing = result["job"]
-        elif not existing["enabled"]:
-            result = json.loads(self.ctx.dispatch_tool("cronjob_manage", {"action": "resume", "job_id": existing["job_id"]}, session_id=session_id))
-            if not result.get("success"):
-                raise ValueError(result.get("error") or "Hermes could not resume the native schedule.")
-            existing = result["job"]
-        with self.store.transaction() as db:
             self.store.bind(db, {**(binding or {}), "account": agent["ownerId"], "agentId": agent["id"],
-                                 "jobId": existing["job_id"], "source": native["source"]})
+                                 "source": native["source"]})
             self.store.save_session(db, session_id, {"mode": "owner", "account": agent["ownerId"],
                                     "agentId": agent["id"], "delivery": []})
-        return {"configured": True, "jobId": existing["job_id"], "delivery": existing.get("deliver"),
-                "instruction": "Use index_focus_intent to choose the private conversation. Keep the Hermes gateway running. Send Index off to leave intent focus. All active intents are covered by rotating sweeps."}
+        return {"configured": True,
+                "instruction": "Use index_focus_intent to choose the private conversation. Keep the Hermes gateway running. Send Index off to leave intent focus. Index events wake each active intent as its matches move."}
 
     def focus_intent(self, args, session_id):
         native = self.turns.get(session_id)
@@ -165,7 +145,7 @@ class NativeAgent:
                 owner_input(state, native["text"], f'{native["source"]}:{native["messageId"]}')
                 native["intentId"] = intent_id
             self.store.save(db, binding["account"], intent_id, state)
-            binding.update(intentId=intent_id, questionId=None, wake=True, wakeIntent=intent_id)
+            binding.update(intentId=intent_id, questionId=None)
             self.store.bind(db, binding)
             self.store.save_session(db, session_id, {"mode": "owner", "account": binding["account"],
                                     "agentId": binding["agentId"], "intentId": intent_id, "delivery": []})
@@ -183,43 +163,30 @@ class NativeAgent:
         return None
 
     def transform_llm_output(self, *, session_id="", platform="", **kwargs):
-        if platform != "cron":
+        if platform != PLATFORM:
             return None
         with self.store.transaction() as db:
             session = self.store.session(db, session_id)
             if not session or session["mode"] != "sweep":
                 return None
             if "delivery" not in session:
-                entries = []
-                for intent in session.get("batch", {}).get("intents", []):
-                    state = self.store.load(db, session["account"], intent["id"])
-                    # Skip questions canceled or answered before delivery. Selection
-                    # survives a crash before rendering; rendered output belongs to
-                    # Hermes's durable cron delivery and is never blindly resent.
-                    entries.extend(entry for entry in state["outbox"] if entry["kind"] != "question" or entry["questionId"] == (state["question"] or {}).get("id"))
-                    state["outbox"] = []
-                    self.store.save(db, session["account"], intent["id"], state)
-                session["delivery"] = entries
+                state = self.store.load(db, session["account"], session["intentId"])
+                # Skip questions canceled or answered before delivery. Selection
+                # survives a crash before rendering; the rendered text is handed
+                # to the owner's platform once and never blindly resent.
+                session["delivery"] = [entry for entry in state["outbox"]
+                                       if entry["kind"] != "question" or entry["questionId"] == (state["question"] or {}).get("id")]
+                state["outbox"] = []
+                self.store.save(db, session["account"], session["intentId"], state)
                 self.store.save_session(db, session_id, session)
             return render_delivery(session["delivery"]) or "[SILENT]"
 
-    def post_llm_call(self, *, session_id="", platform="", **kwargs):
+    def post_llm_call(self, *, session_id="", **kwargs):
+        # Recorded owner input is the only state change Index publishes no event
+        # for, so this is where its intent is handed to the platform to work.
         native = self.turns.pop(session_id, None)
-        if not native or platform == "cron":
-            return
-        with self.store.transaction() as db:
-            binding = self.store.binding(db)
-            if not binding or binding["source"] != native["source"] or not binding.get("wake"):
-                return
-            binding["wake"] = False
-            self.store.bind(db, binding)
-        # Scheduling only: the native cron tool owns the execution and model loop.
-        # Dispatch off the hook thread because Hermes may run inline when no async
-        # parent is available. A failed wake leaves the recurring sweep in place.
-        context = contextvars.copy_context()
-        def wake():
-            self.ctx.dispatch_tool("cronjob_manage", {"action": "run", "job_id": binding["jobId"]}, session_id=session_id)
-        threading.Thread(target=context.run, args=(wake,), daemon=True).start()
+        if native and native.get("intentId") and self.wake:
+            self.wake(native["intentId"])
 
     def handler(self, name):
         def handle(args, **kwargs):

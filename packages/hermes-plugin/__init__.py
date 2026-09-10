@@ -40,6 +40,11 @@ def register(ctx):
     """Register the Index Network capabilities with Hermes."""
     _install_desktop_plugin()
     native = NativeAgent(ctx)
+    # Imported here because it reaches into the gateway packages, which the
+    # dashboard and desktop surfaces import this package without.
+    from . import events
+
+    events.register_platform(ctx, native)
     ctx.register_skill(name="personal-agent", path=SKILL_PATH,
                        description="Native Index personal-agent negotiation and private inbox review.")
     for hook in ("pre_gateway_dispatch", "pre_llm_call", "pre_tool_call", "transform_llm_output", "post_llm_call"):
