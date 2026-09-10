@@ -52,9 +52,10 @@ function AgentState({ state }) {
   );
 }
 
-function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, last }) {
+function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, last, work }) {
   const connected = agent.state === "connected";
   const [hover, setHover] = useState(false);
+  const busy = work && !work.done && !work.error;
 
   // The whole row opens the row. A div rather than a button, because the switch
   // inside is itself a button and buttons can't nest; the switch stops the
@@ -81,7 +82,7 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, last }) {
         style={{
           display:"flex", alignItems:"center", gap:11,
           padding:"9px 12px",
-          background: (connected && (hover || expanded)) ? "#F2EFE6" : "#fff",
+          background: (work || (connected && (hover || expanded))) ? "#F2EFE6" : "#fff",
         }}>
         {/* no picture here. a runtime is a process on this mac, not somebody.
             the only thing in the app with a face is your negotiator, above */}
@@ -91,14 +92,14 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, last }) {
           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
         }}>{agent.name}</span>
         <span style={{ flex:1, minWidth:0 }}>
-          <AgentState state={agent.state}/>
+          <AgentState state={busy ? "working" : agent.state}/>
         </span>
         {/* the one thing in the row that isn't "open the row" */}
         <span
           onClick={e => e.stopPropagation()}
           style={{ flex:"0 0 auto", display:"flex" }}>
           <MiniSwitch on={agent.on} onClick={() => onToggleOn(agent.id)}
-            fixed={agent.builtin || !agent.wireable} label={`${agent.name} on`}/>
+            fixed={agent.builtin || !agent.wireable || busy} label={`${agent.name} on`}/>
         </span>
         {/* indicator now, not a control, the row carries the click.
             the builtin row never opens, so it carries no chevron */}
@@ -109,7 +110,41 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, last }) {
         }}>{agent.builtin ? "" : expanded ? "▾" : "›"}</span>
       </div>
 
-      {expanded && connected && (
+      {work && (
+        <div style={{
+          background:"#F2F0EC", borderTop:"1px solid #000",
+          padding:"10px 12px 12px",
+        }}>
+          {busy && (
+            <div style={{
+              border:"1px solid #000", height:8, overflow:"hidden",
+              marginBottom:10, background:"#fff",
+            }}>
+              <div style={{
+                height:"100%",
+                backgroundImage:
+                  "repeating-linear-gradient(-45deg, #000 0, #000 6px, #fff 6px, #fff 12px)",
+                animation:"mac-stripes 0.8s linear infinite",
+                backgroundSize:"24px 24px",
+              }}/>
+            </div>
+          )}
+          {work.lines.map((line, i) => (
+            <div key={i} style={{
+              fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.55,
+              color: i === work.lines.length - 1 && !work.error ? "#000" : "var(--ink-2)",
+            }}>› {line}</div>
+          ))}
+          {work.error && (
+            <div style={{
+              fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.55,
+              color:"var(--ink-warn)", marginTop: work.lines.length ? 4 : 0,
+            }}>› {work.error}</div>
+          )}
+        </div>
+      )}
+
+      {expanded && connected && !work && (
         <div style={{
           background:"#F2F0EC", borderTop:"1px solid #000",
           padding:"11px 12px 12px",
@@ -232,6 +267,7 @@ function Agents({ onClose }) {
   // account's registered agents) and the local harness scan below.
   const [agents, setAgents] = useState([]);
   const [expanded, setExpanded] = useState(null);
+  const [hermesWork, setHermesWork] = useState(null);
   // Read off the live agent list; "index" is the builtin negotiator fallback.
   const [negotiator, setNegotiator] = useState("index");
 
@@ -271,10 +307,18 @@ function Agents({ onClose }) {
     ? window.IndexApp.detectHarnesses().then((list) => {
         if (list) setDetected(list.map(h => ({
           id: `local-${h.id}`, name: h.label, path: h.path,
+          wired: h.wired === "true",
         })));
       })
     : Promise.resolve();
   useEffect(() => { scan(); }, []);
+  useEffect(() => {
+    if (!window.IndexApp || !window.IndexApp.onHermesProgress) return;
+    return window.IndexApp.onHermesProgress((step) => {
+      if (!step) return;
+      setHermesWork(w => w ? { ...w, lines: [...w.lines, step] } : w);
+    });
+  }, []);
 
   // "check again" re-scans local binaries AND re-fetches registration status
   // from the API; the spin holds long enough to read.
@@ -312,14 +356,30 @@ function Agents({ onClose }) {
     if (busy.current.has(id)) return;
     busy.current.add(id);
     const done = () => busy.current.delete(id);
-    const wire = row.live
+    const turningOn = !row.on;
+    setHermesWork({
+      turningOn,
+      lines: [turningOn ? "wiring Hermes to this account" : "unwiring Hermes"],
+      error: null,
+      done: false,
+    });
+    const wire = row.on
       ? window.IndexApp.teardownHermes()
       : window.IndexApp.setupHermes();
     wire
       .then((r) => {
-        if (!(r && r.ok)) alert(`hermes wiring failed: ${(r && r.error) || "unknown error"}`);
+        if (!(r && r.ok)) {
+          setHermesWork(w => w ? { ...w, error: (r && r.error) || "unknown error" } : w);
+          return;
+        }
+        setDetected(list => (list || []).map(h =>
+          h.name.toLowerCase() === "hermes" ? { ...h, wired: turningOn } : h
+        ));
+        setHermesWork(null);
       })
-      .catch((err) => alert(`could not wire hermes: ${err && err.message || err}`))
+      .catch((err) => {
+        setHermesWork(w => w ? { ...w, error: String(err && err.message || err) } : w);
+      })
       .then(done, done);
   };
 
@@ -341,9 +401,10 @@ function Agents({ onClose }) {
     // hermes is the only runtime with local wiring, so it is the only switch
     // that does anything here.
     const wireable = d.name.toLowerCase() === "hermes";
+    const wired = wireable && d.wired;
     return live
-      ? { ...live, path: d.path, wireable }
-      : { id: d.id, name: d.name, state: "detected", on: false,
+      ? { ...live, path: d.path, wireable, on: wireable ? wired : live.on }
+      : { id: d.id, name: d.name, state: "detected", on: !!wired,
           connectedAs: "", heartbeat: "", path: d.path, wireable };
   }))];
 
@@ -433,6 +494,7 @@ function Agents({ onClose }) {
                   expanded={expanded === a.id}
                   onToggleExpand={(id) => setExpanded(e => e === id ? null : id)}
                   onToggleOn={toggleOn}
+                  work={a.name.toLowerCase() === "hermes" ? hermesWork : null}
                 />
               ))}
               {/* index is always here, so "empty" means no local runtimes */}

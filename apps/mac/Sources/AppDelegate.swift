@@ -525,20 +525,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private func setupHermes(admittedGeneration: UInt64) {
         let credential = currentOwnerCredential()?.credential
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result: [String: Any] = credential
-                .map { HermesSetup.run(sessionToken: $0) }
-                ?? ["ok": false, "error": "sign in first"]
-            let json = (try? JSONSerialization.data(withJSONObject: result))
-                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
-            DispatchQueue.main.async {
-                guard let self,
-                      self.webViewReady,
-                      admittedGeneration == self.trustedDocumentGeneration,
-                      self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
-                self.webView.evaluateJavaScript(
-                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
-                    completionHandler: nil)
+            let result: [String: Any]
+            if let credential {
+                result = HermesSetup.run(sessionToken: credential) { step in
+                    self?.postHermesProgress(step, admittedGeneration: admittedGeneration)
+                }
+            } else {
+                result = ["ok": false, "error": "sign in first"]
             }
+            self?.postHermesResult(result, admittedGeneration: admittedGeneration)
         }
     }
 
@@ -546,18 +541,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     /// then hand the result to the page via window.__indexHermesSetup.
     private func teardownHermes(admittedGeneration: UInt64) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = HermesSetup.teardown()
-            let json = (try? JSONSerialization.data(withJSONObject: result))
-                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
-            DispatchQueue.main.async {
-                guard let self,
-                      self.webViewReady,
-                      admittedGeneration == self.trustedDocumentGeneration,
-                      self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
-                self.webView.evaluateJavaScript(
-                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
-                    completionHandler: nil)
+            let result = HermesSetup.teardown { step in
+                self?.postHermesProgress(step, admittedGeneration: admittedGeneration)
             }
+            self?.postHermesResult(result, admittedGeneration: admittedGeneration)
+        }
+    }
+
+    private func postHermesProgress(_ step: String, admittedGeneration: UInt64) {
+        guard let data = try? JSONSerialization.data(withJSONObject: ["step": step]),
+              let json = String(data: data, encoding: .utf8) else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.webViewReady,
+                  admittedGeneration == self.trustedDocumentGeneration,
+                  self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
+            self.webView.evaluateJavaScript(
+                "if (typeof window.__indexHermesProgress === 'function') { window.__indexHermesProgress(\(json)); }",
+                completionHandler: nil)
+        }
+    }
+
+    private func postHermesResult(_ result: [String: Any], admittedGeneration: UInt64) {
+        let json = (try? JSONSerialization.data(withJSONObject: result))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.webViewReady,
+                  admittedGeneration == self.trustedDocumentGeneration,
+                  self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
+            self.webView.evaluateJavaScript(
+                "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
+                completionHandler: nil)
         }
     }
 

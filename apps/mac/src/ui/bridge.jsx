@@ -105,6 +105,16 @@ window.IndexApp = (function () {
   window.__indexHermesSetup = function (result) {
     while (hermesWaiters.length) hermesWaiters.shift()(result || {});
   };
+  const hermesProgress = new Set();
+  window.__indexHermesProgress = function (payload) {
+    const step = typeof payload === "string" ? payload : (payload && payload.step);
+    if (!step) return;
+    hermesProgress.forEach((cb) => { try { cb(step); } catch (e) { /* ignore */ } });
+  };
+  function onHermesProgress(cb) {
+    hermesProgress.add(cb);
+    return () => hermesProgress.delete(cb);
+  }
   function setupHermes() {
     if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
     return new Promise((resolve) => {
@@ -492,6 +502,7 @@ window.IndexApp = (function () {
     detectHarnesses,
     setupHermes,
     teardownHermes,
+    onHermesProgress,
     onAuthChanged,
     onDeepLink,
     streamInbox,

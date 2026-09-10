@@ -69,8 +69,14 @@ enum HarnessDetector {
             for dir in dirs {
                 let path = "\(dir)/\(harness.command)"
                 if fm.isExecutableFile(atPath: path) {
-                    return ["id": harness.id, "label": harness.label,
-                            "command": harness.command, "path": path]
+                    var hit: [String: String] = [
+                        "id": harness.id, "label": harness.label,
+                        "command": harness.command, "path": path,
+                    ]
+                    if harness.id == "hermes" {
+                        hit["wired"] = HermesSetup.isWired() ? "true" : "false"
+                    }
+                    return hit
                 }
             }
             return nil
