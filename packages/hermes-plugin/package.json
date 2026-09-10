@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/hermes-plugin",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "description": "Hermes-native Index Network plugin with CLI tools and REST APIs",
   "license": "MIT",
   "type": "module",
@@ -16,6 +16,10 @@
     "tools.py",
     "transport.py",
     "env_transport.py",
+    "principal_state.py",
+    "negotiation.py",
+    "native_agent.py",
+    "skills/",
     "dashboard/",
     "desktop/dist/",
     "tests/",

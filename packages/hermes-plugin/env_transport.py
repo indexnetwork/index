@@ -34,7 +34,8 @@ class EnvironmentCredentialTransport:
         self._api_key = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
         if not self._api_key:
             raise TransportError("api_key_missing", _API_KEY_HELP)
-        self._origin = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
+        origin = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
+        self._origin = origin.removesuffix("/api")
         self._api = self._origin + "/api"
 
     def _headers(self, *, content_type: str = "application/json", accept: str = "application/json") -> dict[str, str]:

@@ -22,6 +22,7 @@ const ROUTE_BY_SEGMENT = {
   u: 'profile',
   c: 'legacy-connect',
   chat: 'conversation',
+  i: 'signal',
 };
 
 /** Routes whose second segment is an opaque code rather than an entity id. */
@@ -31,7 +32,8 @@ const CODE_ROUTES = new Set(['legacy-connect']);
  * @typedef {{ route: 'card', id: string }
  *   | { route: 'profile', id: string }
  *   | { route: 'legacy-connect', code: string }
- *   | { route: 'conversation', id: string }} DeepLinkRoute
+ *   | { route: 'conversation', id: string }
+ *   | { route: 'signal', id: string }} DeepLinkRoute
  */
 
 /**

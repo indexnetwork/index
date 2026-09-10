@@ -658,6 +658,30 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     };
   }
 
+  /**
+   * What an OS notification asked us to focus, as `?o=`, `?chat=` or `?intent=`
+   * on the activate URL. The web host carries it in the query; the desktop host
+   * routes on the hash, so it arrives inside that instead. Reading both keeps
+   * one activate URL working on both.
+   */
+  function parseFocusTarget() {
+    const hash = window.location.hash || "";
+    const mark = hash.indexOf("?");
+    const params = new URLSearchParams(window.location.search || "");
+    if (mark >= 0) {
+      new URLSearchParams(hash.slice(mark)).forEach(function (value, key) {
+        if (!params.has(key)) params.set(key, value);
+      });
+    }
+    const opportunityId = params.get("o");
+    if (opportunityId) return { kind: "opportunity", id: opportunityId };
+    const conversationId = params.get("chat");
+    if (conversationId) return { kind: "conversation", id: conversationId };
+    const intentId = params.get("intent");
+    if (intentId) return { kind: "intent", id: intentId };
+    return null;
+  }
+
   function writeHash(intentId) {
     if (DESKTOP_ENV) return;
     const target = intentId ? "#intent=" + encodeURIComponent(intentId) : "";
@@ -2221,6 +2245,91 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     );
   }
 
+  /**
+   * The one question this intent's personal agent is suspended on.
+   *
+   * The agent conversation is not in the messages list — it is per-signal and
+   * lives here, next to the radar it is asking about. Renders nothing until
+   * there is a question, which is most of the time.
+   */
+  function AgentQuestion(props) {
+    const questionState = React.useState(null);
+    const question = questionState[0];
+    const setQuestion = questionState[1];
+    const draftState = React.useState("");
+    const draft = draftState[0];
+    const setDraft = draftState[1];
+    const rootRef = React.useRef(null);
+    const intentId = props.intentId;
+
+    React.useEffect(function () {
+      let alive = true;
+      function read() {
+        fetchPluginJSON(API + "/agent/question?intentId=" + encodeURIComponent(intentId))
+          .then(function (payload) {
+            if (!alive || !payload || payload.success === false) return;
+            setQuestion(payload.question || null);
+          })
+          .catch(function () { /* a failed read leaves the last question up */ });
+      }
+      read();
+      const timer = setInterval(read, 5000);
+      return function () { alive = false; clearInterval(timer); };
+    }, [intentId]);
+
+    React.useEffect(function () {
+      if (!props.focusQuestion || !rootRef.current) return;
+      rootRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, [props.focusQuestion, question && question.id]);
+
+    if (!question) return null;
+
+    function answer(text) {
+      const asked = question;
+      setQuestion(null);
+      setDraft("");
+      fetchPluginJSON(API + "/agent/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intentId: intentId, text: text, questionId: asked.id }),
+      }).catch(function () { setQuestion(asked); });
+    }
+
+    const options = Array.isArray(question.options) ? question.options : [];
+    return React.createElement("div", { ref: rootRef },
+      React.createElement(Panel, { title: "Your agent", description: "It is holding this signal until you answer." },
+        React.createElement("p", { className: "index-dashboard__card-description" }, question.question),
+        React.createElement("div", { className: "index-dashboard__action-group" },
+          options.map(function (option) {
+            return React.createElement(Button, {
+              key: option,
+              type: "button",
+              outlined: true,
+              onClick: function () { answer(option); },
+            }, option);
+          }),
+        ),
+        React.createElement("div", { className: "index-dashboard__msg-composer" },
+          React.createElement("textarea", {
+            className: "index-dashboard__textarea index-dashboard__msg-input",
+            rows: 1,
+            value: draft,
+            placeholder: "Write your answer…",
+            onChange: function (e) { setDraft(e.target.value); },
+            onKeyDown: function (e) {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (draft.trim()) answer(draft.trim()); }
+            },
+          }),
+          React.createElement(Button, {
+            type: "button",
+            disabled: !draft.trim(),
+            onClick: function () { if (draft.trim()) answer(draft.trim()); },
+          }, "Answer"),
+        ),
+      ),
+    );
+  }
+
   function IntentDetail(props) {
     const intent = props.intent;
     const bucketState = React.useState("pending");
@@ -2282,6 +2391,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         })(),
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
+        React.createElement(AgentQuestion, { intentId: intent.id, focusQuestion: props.focusQuestion }),
         React.createElement(Panel, { title: "Radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           props.actionError ? React.createElement("div", { className: "index-dashboard__error" }, props.actionError) : null,
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
@@ -3525,6 +3635,11 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const messagesTargetState = useState(null);
     const messagesTarget = messagesTargetState[0];
     const setMessagesTarget = messagesTargetState[1];
+    // Bumped by a question notification, so the card scrolls into view even
+    // when its signal was already the selected one.
+    const focusQuestionState = useState(0);
+    const focusQuestion = focusQuestionState[0];
+    const setFocusQuestion = focusQuestionState[1];
     const archivingState = useState(null);
     const archivingId = archivingState[0];
     const setArchivingId = archivingState[1];
@@ -3546,6 +3661,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
     const openMessagesRef = useRef(null);
+    const focusAppliedRef = useRef(null);
 
     function loadNetworks() {
       fetchPluginJSON(API + "/networks/home")
@@ -4036,6 +4152,44 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       };
     }, []);
 
+    // A notification tap re-enters this page with its target on the URL. An
+    // opportunity or a conversation opens as a panel over whatever was already
+    // selected; only a question changes the selection, because it is answered
+    // in its own signal and nowhere else.
+    useEffect(function () {
+      if (auth !== "authed") return undefined;
+      function applyFocus() {
+        const target = parseFocusTarget();
+        if (!target) return;
+        // The target stays on the URL after it is applied, so every later
+        // navigation would otherwise re-open a panel the user has closed.
+        const key = target.kind + ":" + target.id;
+        if (focusAppliedRef.current === key) return;
+        focusAppliedRef.current = key;
+        if (target.kind === "opportunity") {
+          fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(target.id) + "/counterpart")
+            .then(function (payload) {
+              if (payload && payload.success !== false && payload.userId) setViewUserId(payload.userId);
+            })
+            .catch(function () { /* the page is open, which is most of the ask */ });
+        } else if (target.kind === "conversation") {
+          setMessagesTarget(target.id);
+          setMessagesOpen(true);
+        } else {
+          setSelectedId(target.id);
+          writeHash(target.id);
+          setFocusQuestion(function (n) { return n + 1; });
+        }
+      }
+      applyFocus();
+      window.addEventListener("hashchange", applyFocus);
+      window.addEventListener("popstate", applyFocus);
+      return function () {
+        window.removeEventListener("hashchange", applyFocus);
+        window.removeEventListener("popstate", applyFocus);
+      };
+    }, [auth]);
+
     const intents = (summary && summary.intents) || [];
 
     function selectIntent(id) {
@@ -4066,7 +4220,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       : null;
 
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
@@ -4185,6 +4339,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
 export const NOTIFIED_ENTITIES_KEY = 'notifiedEntitiesV2'
 export const MAX_NOTIFIED_ENTITIES = 200
 
+/** Sender id the API writes agent-DM messages under (services/api database.shared). */
+const AGENT_SENDER_ID = 'system-agent'
+
 function notificationId(event, preferredField) {
   if (!event || typeof event !== 'object') return ''
   const value = event[preferredField] || event.id || ''
@@ -4196,6 +4353,10 @@ export function notificationEntityKey(event) {
   if (event.type.indexOf('opportunity.') === 0) {
     const id = notificationId(event, 'opportunityId')
     return id ? `opportunity:${id}` : null
+  }
+  if (event.type === 'question.pending') {
+    const id = notificationId(event, 'questionId')
+    return id ? `question:${id}` : null
   }
   if (event.type === 'message' || event.type.indexOf('message.') === 0) {
     const id = event.message && typeof event.message.id === 'string'
@@ -4225,8 +4386,15 @@ export async function refreshNotificationIdentity(loadAuthStatus) {
 
 // Every Index event lands on the plugin's dashboard page; the host turns this
 // into the notification's activate target so a click opens Index instead of
-// just focusing the Hermes window.
+// just focusing the Hermes window. The query names what to focus once there —
+// the dashboard reads it and opens that overlay over whatever was on screen.
 const PLUGIN_ACTIVATE_URL = '/index-network'
+
+function activateUrl(param, id) {
+  return id
+    ? `${PLUGIN_ACTIVATE_URL}?${param}=${encodeURIComponent(id)}`
+    : PLUGIN_ACTIVATE_URL
+}
 
 export function composeNotification(event) {
   if (!event || typeof event.type !== 'string') return null
@@ -4235,12 +4403,26 @@ export function composeNotification(event) {
     return {
       title: event.title,
       body: typeof event.body === 'string' ? event.body : '',
-      url: PLUGIN_ACTIVATE_URL,
+      url: activateUrl('o', notificationId(event, 'opportunityId')),
+    }
+  }
+  if (event.type === 'question.pending') {
+    if (typeof event.title !== 'string' || !event.title.trim()) return null
+    const intentId = event.data && typeof event.data.intentId === 'string'
+      ? event.data.intentId.trim()
+      : ''
+    return {
+      title: event.title,
+      body: typeof event.body === 'string' ? event.body : '',
+      url: activateUrl('intent', intentId),
     }
   }
   if (event.type === 'message' || event.type.indexOf('message.') === 0) {
     const message = event.message
     if (!message || typeof message !== 'object') return null
+    // The owner's own agent speaks in the agent DM, and `question.pending`
+    // already announces the only thing it says that needs answering.
+    if (message.senderId === AGENT_SENDER_ID) return null
     const sender = String(message.senderName || message.senderId || 'Someone')
     let text = ''
     if (Array.isArray(message.parts)) {
@@ -4258,10 +4440,11 @@ export function composeNotification(event) {
     // it is already a fetchable URL. (Electron's `icon` wants a filesystem
     // path, so the Hermes host does not consume this today.)
     const avatar = typeof message.senderAvatar === 'string' ? message.senderAvatar.trim() : ''
+    const conversationId = typeof event.conversationId === 'string' ? event.conversationId.trim() : ''
     return {
-      title: `New message from ${sender}`,
+      title: sender,
       body: text || 'Open Index to read the message.',
-      url: PLUGIN_ACTIVATE_URL,
+      url: activateUrl('chat', conversationId),
       ...(/^https?:/i.test(avatar) ? { imageUrl: avatar } : {}),
     }
   }

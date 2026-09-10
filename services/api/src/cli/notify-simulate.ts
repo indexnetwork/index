@@ -8,6 +8,7 @@
  * Usage:
  *   bun run notify:simulate opportunity --user <email> [--counterpart <email>]
  *   bun run notify:simulate message --user <email> [--counterpart <email>] [--text "..."]
+ *   bun run notify:simulate question --user <email> [--text "..."]
  *
  * Prerequisites: local API + Redis sharing this DB; seeded users (bun run db:seed).
  */
@@ -19,7 +20,7 @@ dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', '.env.develop
 
 const COMMONS_NETWORK_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c';
 
-type Command = 'opportunity' | 'message';
+type Command = 'opportunity' | 'message' | 'question';
 
 interface ParsedArgs {
   command: Command | null;
@@ -40,11 +41,13 @@ Commands:
                 OpportunityEventService (SSE).
   message       Insert a real conversation message from a counterpart so the
                 production conversation SSE publishes type:message.
+  question      Park a pending question on the user's newest signal and publish
+                question.pending, as a suspended personal agent would.
 
 Options:
   --user <email>          Recipient (required)
   --counterpart <email>   Other party / message sender (default: any other user)
-  --text <string>         Message body (message command)
+  --text <string>         Message body (message command) or question (question command)
   --help                  Show this help
 `);
 }
@@ -78,7 +81,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
     if (!arg.startsWith('-') && !out.command) {
-      if (arg === 'opportunity' || arg === 'message') {
+      if (arg === 'opportunity' || arg === 'message' || arg === 'question') {
         out.command = arg;
         continue;
       }
@@ -102,11 +105,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const { eq, ne } = await import('drizzle-orm/sql');
+  const { and, desc, eq, isNull, ne } = await import('drizzle-orm/sql');
   const { default: db, closeDb } = await import('../lib/drizzle/drizzle');
-  const { users } = await import('../schemas/database.schema');
+  const { agentSessions, intents, users } = await import('../schemas/database.schema');
   const { OpportunityDatabaseAdapter } = await import('../adapters/opportunity.database.adapter');
   const { ConversationDatabaseAdapter } = await import('../adapters/conversation.database.adapter');
+  const { publishPendingQuestionEvent } = await import('../adapters/agent-session.database.adapter');
   const { buildProfileFromUser } = await import('../adapters/database.shared');
   const { closeRedisConnection } = await import('../adapters/cache.adapter');
   const {
@@ -152,6 +156,50 @@ async function main(): Promise<void> {
 
   try {
     const recipient = await resolveUserByEmail(args.userEmail);
+
+    if (args.command === 'question') {
+      const [intent] = await db
+        .select({ id: intents.id, payload: intents.payload })
+        .from(intents)
+        .where(and(eq(intents.userId, recipient.id), isNull(intents.archivedAt)))
+        .orderBy(desc(intents.createdAt))
+        .limit(1);
+      if (!intent) {
+        throw new Error(`${recipient.email} has no active signal to ask about. Create one first.`);
+      }
+
+      const conversations = new ConversationDatabaseAdapter();
+      const conversation = await conversations.getOrCreateAgentDm(recipient.id);
+      const question = {
+        id: crypto.randomUUID(),
+        question: args.text
+          ?? 'Are you open to a first call this week, or would you rather see their work first?',
+        options: ['A call this week', 'Send their work first'],
+        scope: 'intent' as const,
+        matches: [],
+      };
+      await db
+        .insert(agentSessions)
+        .values({
+          userId: recipient.id,
+          intentId: intent.id,
+          conversationId: conversation.id,
+          state: { inbox: { incomingMessageIds: [], requests: [], outcomes: [], question }, matches: [] },
+        })
+        .onConflictDoUpdate({
+          target: [agentSessions.userId, agentSessions.intentId],
+          set: { state: { inbox: { incomingMessageIds: [], requests: [], outcomes: [], question }, matches: [] } },
+        });
+      await publishPendingQuestionEvent(recipient.id, intent.id, question);
+
+      console.log('Parked pending question', question.id);
+      console.log('Published question.pending via publishPendingQuestionEvent');
+      console.log('  channel:', userEventChannel(recipient.id));
+      console.log('  recipient:', recipient.email, `(${recipient.id})`);
+      console.log('  signal:', intent.id, `(${intent.payload.slice(0, 60)})`);
+      console.log('  question:', question.question);
+      return;
+    }
 
     const counterpart = await resolveCounterpart(recipient.id, args.counterpartEmail);
 

@@ -396,6 +396,36 @@ const NOTIFY_OPTIONS = [
     blurb:"one quiet summary each morning instead of live pings." },
 ];
 
+// Registering the app as a login item is a system operation, not a preference
+// this screen stores, so it applies on click rather than waiting for confirm and
+// renders whatever status macOS reports back. Absent in browser preview, where
+// there is no login item to offer.
+function OpenAtLoginToggle() {
+  const app = window.IndexApp;
+  const [status, setStatus] = useState(() => (app && app.openAtLogin ? app.openAtLogin() : null));
+  useEffect(() => {
+    if (!app || !app.onOpenAtLoginChanged) return;
+    return app.onOpenAtLoginChanged(setStatus);
+  }, []);
+  if (!status) return null;
+  const on = status === "enabled";
+  return (
+    <React.Fragment>
+      <SectionRule>startup</SectionRule>
+      <div style={{ marginTop:12 }}>
+        <Toggle
+          on={on}
+          onClick={() => app.setOpenAtLogin(!on)}
+          title="start index when i log in"
+          blurb={status === "requiresApproval"
+            ? "macos wants you to allow this under login items in system settings."
+            : "index keeps working in the background from login, without you opening it first."}
+        />
+      </div>
+    </React.Fragment>
+  );
+}
+
 function NotificationsPane({ notify, toggle }) {
   return (
     <div>
@@ -416,6 +446,8 @@ function NotificationsPane({ notify, toggle }) {
           />
         ))}
       </div>
+
+      <OpenAtLoginToggle/>
     </div>
   );
 }

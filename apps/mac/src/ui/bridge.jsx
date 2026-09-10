@@ -376,6 +376,27 @@ window.IndexApp = (function () {
     return true;
   }
 
+  // ---- open at login --------------------------------------------------------
+
+  // Registering the app as a login item is a system operation, so unlike the
+  // notification toggles this applies immediately rather than on save. Swift
+  // answers with the resulting SMAppService status, which is the only truth
+  // worth rendering: a register can land in "requiresApproval".
+  const openAtLoginSubscribers = new Set();
+  window.__indexOpenAtLoginChanged = function (status) {
+    openAtLoginSubscribers.forEach((cb) => { try { cb(status); } catch (e) { /* ignore */ } });
+  };
+  function onOpenAtLoginChanged(cb) {
+    openAtLoginSubscribers.add(cb);
+    return () => openAtLoginSubscribers.delete(cb);
+  }
+  // "enabled" | "notRegistered" | "requiresApproval" | "notFound", or null in
+  // browser preview where there is no login item to speak of.
+  function openAtLogin() { return native().openAtLogin || null; }
+  function setOpenAtLogin(enabled) {
+    return post("setOpenAtLogin", { value: !!enabled });
+  }
+
   // Current notification preferences: the in-session edit (mirrored onto ME by
   // the settings save) wins over the durable native store; null means default
   // (everything on) and is how notificationEventAllowed fails open.
@@ -477,6 +498,9 @@ window.IndexApp = (function () {
     notify,
     setNotifyPrefs,
     notifyPrefs,
+    openAtLogin,
+    setOpenAtLogin,
+    onOpenAtLoginChanged,
     startDesktopNotifications,
     confirmOnboardingProfile,
     completeOnboarding,

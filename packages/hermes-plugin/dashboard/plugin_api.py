@@ -1916,6 +1916,64 @@ def send_message(conversation_id: str, body: dict[str, Any] | None = Body(defaul
     return {"success": True, "message": message}
 
 
+@full_router.get("/opportunities/{opportunity_id}/counterpart")
+def opportunity_counterpart(opportunity_id: str) -> dict[str, Any]:
+    """Resolve an opportunity to the person on the other side of it.
+
+    A notification names the opportunity; the panel it opens is that person's
+    profile, so the tap needs this one hop.
+    """
+    opportunity_id = _text(opportunity_id)
+    if not opportunity_id:
+        return {"success": False, "error": "An opportunity id is required."}
+    current_user_id = _resolve_user_id()
+    if not current_user_id:
+        return {"success": False, "error": "Could not resolve the current user from the configured API key."}
+    payload = tools._api_request("GET", f"/opportunities/{quote(opportunity_id, safe='')}")
+    if payload.get("success") is False:
+        return payload
+    opp = payload.get("opportunity") if isinstance(payload.get("opportunity"), dict) else payload
+    counterpart_id = _counterpart_user_id(opp, current_user_id)
+    if not counterpart_id:
+        return {"success": False, "error": "That opportunity has no counterpart to open."}
+    return {"success": True, "userId": counterpart_id}
+
+
+@full_router.get("/agent/question")
+def agent_question(intentId: str = "") -> dict[str, Any]:
+    """Return the one question this signal's personal agent is suspended on."""
+    intent_id = _text(intentId)
+    if not intent_id:
+        return {"success": False, "error": "An intent id is required."}
+    payload = tools._api_request(
+        "GET",
+        f"/conversations/agent/messages?intentId={quote(intent_id, safe='')}",
+    )
+    if payload.get("success") is False:
+        return payload
+    agent = payload.get("agent") if isinstance(payload.get("agent"), dict) else {}
+    return {"success": True, "question": agent.get("pending")}
+
+
+@full_router.post("/agent/answer")
+def agent_answer(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Answer that question, naming it so a stale answer is refused rather than mis-filed."""
+    intent_id = _text(body.get("intentId")) if isinstance(body, dict) else ""
+    text = _text(body.get("text")) if isinstance(body, dict) else ""
+    question_id = _text(body.get("questionId")) if isinstance(body, dict) else ""
+    if not intent_id or not text:
+        return {"success": False, "error": "An intent id and answer text are required."}
+    return tools._api_request(
+        "POST",
+        "/conversations/agent/messages",
+        {
+            "parts": [{"kind": "text", "text": text}],
+            "metadata": {"intentId": intent_id},
+            "questionId": question_id or None,
+        },
+    )
+
+
 def _conversation_stream():
     """Relay transport-owned, bounded SSE polling to the dashboard tab."""
     try:

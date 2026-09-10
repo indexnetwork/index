@@ -62,6 +62,11 @@ section before promoting to `main`).
   `/notifications` prefix no longer exists.
 
 ### Added
+- **An external executor can fence its own turns.** `POST /negotiations/:id/turns`
+  accepts an optional `executorId` query parameter, and the write transaction
+  refuses the turn unless that agent is still the caller's selected negotiator.
+  `GET /agents/me` reports `negotiationExecutorFence: true` so a runtime can tell
+  whether the API it is talking to enforces this before it starts submitting.
 - **Native clients sign in as devices, not as API keys.** Better Auth's
   `deviceAuthorization` plugin is registered and `/api/auth/device*` is proxied,
   so the Mac app, CLI and Hermes each hold their own session. `/cli-auth` runs

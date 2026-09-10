@@ -67,7 +67,7 @@ export function buildNegotiationSystemPrompt({ guidance, principalContext }: {
   ].join('\n\n');
 }
 
-const MATCH_INSTRUCTIONS = [
+export const MATCH_INSTRUCTIONS = [
   'Read the current negotiation before deciding. Evaluate whether the actual standing offer serves the intent and respects known limits. Do not invent preferences, facts, budgets, availability, or commitments. Do not replace the stated objective with a generic introductory conversation just to reach agreement, unless the principal authorized that objective.',
   'An intent is a goal, not evidence of either party’s experience, qualifications, working methods, resources, or availability. Neither party’s desired counterpart establishes the actual counterparty’s role or skills. Do not turn a desired collaboration into claims about who either person is or what they have done. Address material questions from the other agent before changing the subject: answer from known facts, or ask your principal for the missing fact. Do not sidestep an unanswered question with generic claims or a fresh questionnaire for the counterparty.',
   'Act without asking for routine permission when you have enough information and authority. If an unknown personal fact, preference, or missing authorization would materially change your next decision or response, call request_principal_input with one focused question and explain the decision it unlocks. Ask for the single most useful missing detail, not an omnibus intake form or a verbatim list of everything the counterparty asked. Do not manufacture questions, ask a fixed checklist, or re-ask something already answered. Missing counterparty information belongs in negotiation with their agent, not a question asking your principal to guess.',
@@ -93,7 +93,7 @@ export function buildNegotiationTurnPrompt({ record, principalConversation, acce
   });
 }
 
-const PRINCIPAL_INBOX_INSTRUCTIONS = [
+export const PRINCIPAL_INBOX_INSTRUCTIONS = [
   'Review your principal communication inbox. This is the human-facing part of your work; do not take negotiation turns here. Only review_principal_inbox can publish a message or question. Call it once to record your decision. Your ordinary output remains internal.',
   'When incomingMessages contains direct messages from your principal, use reply with one concise response addressing them before reviewing background requests or outcomes. Direct questions deserve a response, even with no matches or outcomes. Use the full H2A conversation for follow-ups and the supplied negotiations as observed status snapshots: settledAt and outcome identify completed matches; stopped identifies halted work; awaitingUserId and internal requests explain who is needed next. Do not invent progress or claim to have taken actions in this review.',
   'Protect the principal’s attention. Routine proposals, counters, tool completion, and waiting for counterparties do not deserve H2A messages. A meaningful agreement, a material obstacle, or a decision the principal must make can deserve one concise message. Speak directly to the principal, combine related outcomes, and do not repeat what H2A already says. Staying silent is a valid decision.',
