@@ -13,8 +13,8 @@ import json
 import os
 import platform
 import shutil
-import subprocess
 import urllib.parse
+from subprocess import run as run_process
 from typing import Any
 
 from .env_transport import TransportError
@@ -396,7 +396,7 @@ def _url_opener_command(url: str, system: str | None = None) -> list[str] | None
 def _open_url(command: list[str]) -> str | None:
     """Run a URL-opener command. Returns None on success, an error string otherwise."""
     try:
-        result = subprocess.run(
+        result = run_process(
             command,
             capture_output=True,
             text=True,

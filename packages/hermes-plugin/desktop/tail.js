@@ -2,7 +2,7 @@
  * Desktop plugin TAIL fragment — concatenated by build.mjs after the shared
  * dashboard bundle. Registers the page route, sidebar nav, and palette
  * command, injects the shared stylesheet, and lazily fetches the decorative
- * image assets through the plugin backend (base64 → blob URLs), since the
+ * image assets through the plugin backend as data URLs, since the
  * desktop app cannot address the gateway's static files by URL.
  */
 delete window.__INDEX_NETWORK_DESKTOP_ENV__
@@ -23,10 +23,7 @@ const ASSET_FILES = {
 let assetsPromise = null
 
 function blobUrlFromBase64(b64, mime) {
-  const bin = atob(b64)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }))
+  return "data:" + (mime || "application/octet-stream") + ";base64," + b64
 }
 
 function ensureAssets() {
