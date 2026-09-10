@@ -386,6 +386,16 @@ window.IndexApp = (function () {
     return true;
   }
 
+  // ---- protocol server ------------------------------------------------------
+
+  // Point this mac at another protocol deployment. Swift owns the consequences:
+  // it signs the device out against the server it is leaving, stores the new
+  // origin, and reloads the page so INDEX_NATIVE is rebuilt against it. Takes a
+  // bare origin without the /api prefix.
+  function setProtocolServer(apiUrl) {
+    return post("setProtocolServer", { value: String(apiUrl || "") });
+  }
+
   // ---- open at login --------------------------------------------------------
 
   // Registering the app as a login item is a system operation, so unlike the
@@ -509,6 +519,7 @@ window.IndexApp = (function () {
     notify,
     setNotifyPrefs,
     notifyPrefs,
+    setProtocolServer,
     openAtLogin,
     setOpenAtLogin,
     onOpenAtLoginChanged,

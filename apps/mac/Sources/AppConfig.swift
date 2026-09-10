@@ -35,6 +35,40 @@ enum AppConfig {
         return "https://" + (deepLinkHosts.first ?? "index.network")
     }
 
+    /// Point the app at another protocol deployment. UserDefaults is the layer
+    /// the reads above consult first, so this outranks the built-in default and
+    /// whatever Info.plist carries. The web origin is derived rather than asked
+    /// for: every deployment pairs `protocol.<host>` with `<host>`, and a local
+    /// API on 3001 pairs with the dev web server on 3000.
+    ///
+    /// - Parameter apiURL: A bare http(s) origin, without the `/api` prefix.
+    static func setProtocolServer(apiURL: String) {
+        let api = trimTrailingSlash(apiURL)
+        UserDefaults.standard.set(api, forKey: "API_URL")
+        UserDefaults.standard.set(webOrigin(forAPI: api), forKey: "APP_URL")
+    }
+
+    /// Whether a page-supplied value is addressable as a protocol server: an
+    /// http(s) origin and nothing more, never a path or a query.
+    static func isProtocolOrigin(_ value: String) -> Bool {
+        guard let url = URL(string: trimTrailingSlash(value)),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host, !host.isEmpty,
+              url.path.isEmpty, url.query == nil, url.fragment == nil,
+              url.user == nil else { return false }
+        return true
+    }
+
+    private static func webOrigin(forAPI api: String) -> String {
+        guard let url = URL(string: api), let host = url.host else { return api }
+        if host == "localhost" || host == "127.0.0.1" {
+            return "\(url.scheme ?? "http")://\(host):3000"
+        }
+        let webHost = host.hasPrefix("protocol.") ? String(host.dropFirst("protocol.".count)) : host
+        return "https://\(webHost)"
+    }
+
     static var ownerKeychainAccessGroup: String? {
         let value = Bundle.main.object(forInfoDictionaryKey: "IndexOwnerKeychainAccessGroup") as? String
         return value?.isEmpty == false ? value : nil

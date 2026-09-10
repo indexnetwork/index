@@ -478,6 +478,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             else if action == "setOpenAtLogin" {
                 setOpenAtLogin(body?["value"] as? Bool == true, admittedGeneration: admittedGeneration)
             }
+            else if action == "setProtocolServer" {
+                setProtocolServer(body?["value"] as? String ?? "", admittedGeneration: admittedGeneration)
+            }
             return
         }
         if message.name == "indexNotify" {
@@ -1024,6 +1027,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         default:
             return true
         }
+    }
+
+    // MARK: - Protocol server
+
+    /// The advanced pane's server picker. A session is minted by one deployment
+    /// and means nothing to another, so this signs the device out against the
+    /// server it is leaving before the origin moves, then rebuilds everything
+    /// that captured the old one: the runtime bridge, the document-start
+    /// metadata, and the page itself.
+    ///
+    /// - Parameters:
+    ///   - apiURL: A bare http(s) origin, without the `/api` prefix.
+    ///   - admittedGeneration: Document epoch the request was admitted under.
+    private func setProtocolServer(_ apiURL: String, admittedGeneration: UInt64) {
+        let next = AppConfig.trimTrailingSlash(apiURL)
+        guard AppConfig.isProtocolOrigin(next),
+              next != AppConfig.trimTrailingSlash(AppConfig.apiURL) else { return }
+        logout(admittedGeneration: admittedGeneration)
+        AppConfig.setProtocolServer(apiURL: next)
+        configureNativeAPIBridge()
+        installNativeUserScripts(on: userContentController)
+        loadBundledHTML()
     }
 
     // MARK: - Open at login
