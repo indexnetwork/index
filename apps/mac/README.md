@@ -16,7 +16,7 @@ Logout quarantines bridge work, pauses/scrubs Hermes local activity, deletes the
 
 ## Hermes runtime
 
-The native app may show the same owner controls as the web, but it is not required for direct Hermes use. Hermes setup installs `@indexnetwork/cli@0.24.0` before configuring the plugin. The Hermes plugin authenticates with a device session token supplied via the `INDEX_SESSION_TOKEN` environment variable. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule and preserves unrelated Hermes state.
+The native app may show the same owner controls as the web, but it is not required for direct Hermes use. Hermes setup writes the session into `~/.hermes/.env` and installs the plugin. The plugin authenticates with `INDEX_SESSION_TOKEN`. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule and preserves unrelated Hermes state.
 
 ## Build and source checks
 
