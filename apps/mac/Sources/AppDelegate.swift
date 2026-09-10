@@ -534,6 +534,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 result = ["ok": false, "error": "sign in first"]
             }
             self?.postHermesResult(result, admittedGeneration: admittedGeneration)
+            // hermes://open/<path> focuses Desktop and navigates; bare
+            // hermes://index-network is ignored (plugin host with no rest).
+            if result["ok"] as? Bool == true {
+                DispatchQueue.main.async {
+                    guard let url = URL(string: "hermes://open/index-network") else { return }
+                    NSWorkspace.shared.open(url)
+                }
+            }
         }
     }
 
