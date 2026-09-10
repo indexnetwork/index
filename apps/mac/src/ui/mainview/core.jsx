@@ -12,7 +12,8 @@ const DISCOVERY_GIVE_UP_MS = 120000;
 
 function MainView({ profile, people, setPeople, conversation, setConversation,
                     field, setField, stats, simRate, setSimRate, tweaks = {},
-                    onOpenRoom, onBack, registerChats, pendingChat, onPendingHandled }) {
+                    onOpenRoom, onBack, registerChats, pendingChat, onPendingHandled,
+                    focusQuestion }) {
   // Live-only: these demo sim feeds no longer exist, so they default to empty.
   // The simulation loops below stay wired but idle on empty arrays.
   const { FIELD_EVENTS = [], AMBIENT_NOTES = [] } = window.INDEX_DATA;
@@ -246,6 +247,41 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     return () => clearInterval(t);
   }, [live, refreshRadar]);
 
+  /* ----- the signal's own agent: the question it is held on ----- */
+  // GET /conversations/agent?intentId= is the whole H2A contract: the agent's
+  // side of this signal plus the one question it is suspended on. The same poll
+  // the web app runs, because a question can appear without anything else on
+  // this screen changing.
+  const [agentQuestion, setAgentQuestion] = useState(null);
+  useEffect(() => {
+    setAgentQuestion(null);
+    if (!live || !client) return;
+    let alive = true;
+    const forIntent = intentId;
+    const read = () => client.conversations.messages("agent", { intentId: forIntent })
+      .then((res) => {
+        if (!alive || intentIdRef.current !== forIntent) return;
+        setAgentQuestion((res && res.agent && res.agent.pending) || null);
+      })
+      .catch(() => { /* a failed read leaves the last known question up */ });
+    read();
+    const t = setInterval(read, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [live, client, intentId]);
+
+  // The answer goes back naming the question it answers, so a question that
+  // changed while it was being written is rejected rather than mis-filed.
+  const answerAgentQuestion = (text) => {
+    const question = agentQuestion;
+    if (!question || !client || !intentId) return;
+    setAgentQuestion(null);
+    client.conversations.sendMessage("agent", {
+      parts: [{ kind: "text", text }],
+      metadata: { intentId },
+      questionId: question.id,
+    }).catch(() => setAgentQuestion(question));
+  };
+
   // The four states an opportunity can be in for you, in the order they happen:
   // it needs you, agents are still talking, you took it, it ran out.
   // "awaiting you" leads because it is the only one you can act on.
@@ -273,16 +309,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const [summaryId, setSummaryId] = useState(null);    // expired person whose summary is open
   const [profileId, setProfileId] = useState(null);    // person whose profile is open
 
-  const toChatMsg = (m) => {
-    const parts = Array.isArray(m.parts) ? m.parts : [];
-    const text = parts.map((p) => (p && typeof p === "object" && p.text) ? p.text : "")
-      .filter(Boolean).join("\n");
-    const who = m.senderId && myId && m.senderId === myId ? "you"
-      : m.role === "agent" ? "index" : "them";
-    // `at` is what the bubble reveals on hover; absent on older rows, and the
-    // bubble simply shows nothing then.
-    return { id: m.id || rid(), who, text, at: m.createdAt || m.created_at || null };
-  };
+  const toChatMsg = (m) => apiChatMessage(m, myId);
 
   const openChat = (personId) => {
     setChatId(personId);
@@ -553,6 +580,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             conversation={conversation}
             negotiatingPeople={live ? [] : negotiatingPeople}
             onRespondPerson={respondPerson}
+            agentQuestion={agentQuestion}
+            onAnswerAgent={answerAgentQuestion}
+            focusQuestion={focusQuestion}
             paused={paused}
             onTogglePause={togglePause}
             onArchive={archiveSignal}

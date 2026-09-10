@@ -35,11 +35,11 @@ function nativeAuthed() {
 // gets one fetch by id through the existing client methods, and null when even
 // that comes up empty, so the caller can say so instead of opening a blank
 // window.
-// A conversation link (minted by the app's own OS toasts) names an
-// intent-scoped destination rather than a person card: resolve which signal
-// owns it so the caller can open that signal, and the specific chat within it,
-// through the same machinery the menubar uses.
-async function resolveDeepLinkTarget(route, intents) {
+// A conversation link (minted by the app's own OS toasts) names a thread
+// rather than a person card, and the card it belongs to is what the floating
+// chat needs a name and face from: read the conversation's provenance, then
+// resolve that opportunity the same way a card link does.
+async function resolveDeepLinkConversation(route, people) {
   if (!nativeAuthed() || !window.IndexApp) return null;
   const client = window.IndexApp.getClient();
   if (!client) return null;
@@ -48,8 +48,8 @@ async function resolveDeepLinkTarget(route, intents) {
     const conv = window.IndexApp.normalizeList(res, "conversations").find((row) => row && row.id === route.id);
     const via = conv && Array.isArray(conv.via) ? conv.via[0] : null;
     if (!via) return null;
-    const intent = (intents || []).find((i) => i.id === via.intentId);
-    return intent ? { intent, personId: via.opportunityId } : null;
+    const person = await resolveDeepLinkPerson({ route: "card", id: via.opportunityId }, people);
+    return person ? { person, conversationId: route.id } : null;
   } catch (e) {
     return null;
   }
@@ -178,6 +178,10 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [pendingLink, setPendingLink] = useState(null);   // parsed route, not applied yet
   const [linkedCard, setLinkedCard] = useState(null);     // { person, route } on screen
+  const [linkedChat, setLinkedChat] = useState(null);     // { person, conversationId } on screen
+  // Bumped when a question link lands, so the signal's feed scrolls to it even
+  // if that signal was already open and nothing else changed.
+  const [focusQuestion, setFocusQuestion] = useState(0);
 
   useEffect(() => {
     if (!window.IndexApp || !window.IndexApp.onDeepLink) return;
@@ -227,17 +231,27 @@ function App() {
     const link = pendingLink;
     resolvingRef.current = link;
     (async () => {
-      // Notification activate links land on a signal (and maybe a chat within
-      // it) rather than a floating person card.
+      // A conversation floats over whatever is on screen, like a card does:
+      // the thread is the interruption, not a reason to change signals.
       if (link.route === "conversation") {
-        const target = await resolveDeepLinkTarget(link, INTENTS);
+        const target = await resolveDeepLinkConversation(link, peopleRef.current);
         if (resolvingRef.current !== link) return;
         resolvingRef.current = null;
-        if (target) {
-          pickExistingIntent(target.intent);
-          if (target.personId) setPendingChat(target.personId);
+        if (target) setLinkedChat(target);
+        else setNotice("couldn't open that conversation.");
+        setPendingLink(null);
+        return;
+      }
+      // A question is the one link that does change signals: it is answered in
+      // that signal's own conversation with its agent, and nowhere else.
+      if (link.route === "signal") {
+        const intent = (INTENTS || []).find((i) => i.id === link.id);
+        resolvingRef.current = null;
+        if (intent) {
+          pickExistingIntent(intent);
+          setFocusQuestion(Date.now());
         } else {
-          setNotice("couldn't open that conversation.");
+          setNotice("that signal isn't on your hub.");
         }
         setPendingLink(null);
         return;
@@ -282,6 +296,7 @@ function App() {
         // over the login screen. Clearing resolvingRef makes the in-flight
         // resolve fail its own ownership check and bail when it completes.
         setLinkedCard(null);
+        setLinkedChat(null);
         setPendingLink(null);
         resolvingRef.current = null;
         setScreen("login");
@@ -531,6 +546,13 @@ function App() {
             onClose={() => setLinkedCard(null)}
           />
         )}
+        {linkedChat && (
+          <DeepLinkChatWindow
+            person={linkedChat.person}
+            conversationId={linkedChat.conversationId}
+            onClose={() => setLinkedChat(null)}
+          />
+        )}
         {notice && <MacNotice text={notice} onDismiss={() => setNotice(null)}/>}
         {screen === "main"        && (
           <MainView
@@ -544,6 +566,7 @@ function App() {
             registerChats={registerChats}
             pendingChat={pendingChat}
             onPendingHandled={() => setPendingChat(null)}
+            focusQuestion={focusQuestion}
           />
         )}
       </div>

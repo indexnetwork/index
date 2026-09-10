@@ -1,7 +1,8 @@
-import type { PrincipalMessage, PrincipalState, PrincipalStore } from '@indexnetwork/agent';
+import type { PrincipalMessage, PrincipalQuestion, PrincipalState, PrincipalStore } from '@indexnetwork/agent';
 import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
+import { publishUserEvent } from '../lib/user-events';
 import { agentSessions, agents, intents, messages, type Message } from '../schemas/database.schema';
 
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
@@ -10,6 +11,41 @@ import { SYSTEM_AGENT_ID } from './database.shared';
 export interface AgentExecution { userId: string; intentId: string; token: string }
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 const LEASE_SECONDS = 60;
+const QUESTION_HEADLINE = 'Question from your agent';
+const QUESTION_BODY_MAX_CHARS = 140;
+
+/**
+ * Announce a question the owner has to answer before their agent can continue.
+ *
+ * The frame names the intent rather than the H2A conversation: the question
+ * lives in that signal's agent conversation, and every surface reaches it by
+ * intent id.
+ *
+ * @param userId - The principal who owes the answer.
+ * @param intentId - Signal whose personal agent is suspended.
+ * @param question - The question as the agent recorded it.
+ */
+export async function publishPendingQuestionEvent(
+  userId: string,
+  intentId: string,
+  question: PrincipalQuestion,
+): Promise<void> {
+  const text = question.question.trim();
+  await publishUserEvent(userId, {
+    type: 'question.pending',
+    id: question.id,
+    title: QUESTION_HEADLINE,
+    body: text.length > QUESTION_BODY_MAX_CHARS
+      ? `${text.slice(0, QUESTION_BODY_MAX_CHARS - 1).trimEnd()}…`
+      : text,
+    data: {
+      intentId,
+      questionId: question.id,
+      scope: question.scope,
+      opportunityId: question.matches[0]?.opportunityId ?? null,
+    },
+  });
+}
 
 /** Fence checkpoints and A2A writes against the same exclusively owned runtime session. */
 export class AgentSessionDatabaseAdapter implements PrincipalStore {
@@ -19,6 +55,7 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
   private heartbeat?: ReturnType<typeof setInterval>;
   private renewal: Promise<void> = Promise.resolve();
   private failure?: Error;
+  private askedQuestionId: string | null = null;
   private readonly conversations = new ConversationDatabaseAdapter();
 
   constructor(userId: string, intentId: string) {
@@ -69,6 +106,7 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
     });
     this.revision = row.revision;
     this.conversationId = row.conversationId;
+    this.askedQuestionId = (row.state as PrincipalState | null)?.inbox.question?.id ?? null;
     this.heartbeat = setInterval(() => {
       this.renewal = this.renewal.then(async () => {
         const renewed = await db.update(agentSessions).set({ leaseExpiresAt: sql`now() + ${LEASE_SECONDS} * interval '1 second'` })
@@ -110,6 +148,13 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
     });
     this.revision++;
     await Promise.all(persisted.map((message) => this.conversations.publishMessage(message)));
+    // A checkpoint saves the same pending question until it is answered, so the
+    // owner is told once per question rather than once per turn.
+    const question = state.inbox.question;
+    if (question && question.id !== this.askedQuestionId) {
+      await publishPendingQuestionEvent(this.execution.userId, this.execution.intentId, question);
+    }
+    this.askedQuestionId = question?.id ?? null;
   }
 
   /** Release this process's lease without erasing the saved conversation or pending question. */

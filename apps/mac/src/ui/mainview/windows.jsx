@@ -19,6 +19,74 @@ function DeepLinkWindow({ person, route, onClose }) {
   );
 }
 
+/* A conversation opened from an OS notification.
+
+   The chat normally lives as a third column inside the signal that surfaced
+   the match, so opening it that way means switching signals — throwing away
+   whatever the person was already looking at. A notification is an
+   interruption, not a navigation, so it floats over the current screen
+   instead and talks to the same conversation endpoints the column uses. */
+function DeepLinkChatWindow({ person, conversationId, onClose }) {
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState("");
+  const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
+
+  useEffect(() => {
+    if (!window.IndexApp || !window.IndexApp.isAuthed()) return;
+    const client = window.IndexApp.getClient();
+    if (!client) return;
+    let cancelled = false;
+    client.conversations.messages(conversationId)
+      .then((res) => {
+        if (cancelled) return;
+        setMessages(window.IndexApp.normalizeList(res, "messages").map((m) => apiChatMessage(m, myId)));
+      })
+      .catch(() => {});
+    // The thread stays live while it floats: the notification that opened it
+    // may well be followed by another line before it is closed.
+    const sub = window.IndexApp.streamInbox((event) => {
+      if (!event || event.type !== "message" || !event.message) return;
+      if (event.conversationId !== conversationId) return;
+      const m = apiChatMessage(event.message, myId);
+      if (m.who === "you") return;   // our own sends are already on screen
+      setMessages((prev) => prev.some((x) => x.id === m.id) ? prev : [...prev, m]);
+    });
+    return () => { cancelled = true; if (sub && sub.close) sub.close(); };
+  }, [conversationId, myId]);
+
+  const send = () => {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    setMessages((prev) => [...prev, { id: rid(), who:"you", text, at: nowISO() }]);
+    const client = window.IndexApp && window.IndexApp.getClient();
+    if (client) client.conversations.sendMessage(conversationId, { parts: [{ text }] }).catch(() => {});
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:900,
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"56px 18px",
+      }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ display:"flex", width:"min(460px, 100%)", maxHeight:"100%", minHeight:0 }}>
+        <ChatWindow
+          person={person}
+          messages={messages}
+          draft={draft}
+          setDraft={setDraft}
+          onSend={send}
+          onClose={onClose}
+        />
+      </div>
+    </div>
+  );
+}
+
 /* Full profile for a person, opens in the 3rd window when you click their
    name or avatar on the radar. `actions` off drops the stage CTA, for a
    profile opened outside a signal (see DeepLinkWindow) where accepting or
@@ -153,6 +221,17 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
       </div>
     </MacWindow>
   );
+}
+
+/* One API message in the shape the bubbles read. `at` is what a bubble reveals
+   on hover; older rows have none and simply show nothing. */
+function apiChatMessage(m, myId) {
+  const parts = Array.isArray(m.parts) ? m.parts : [];
+  const text = parts.map((p) => (p && typeof p === "object" && p.text) ? p.text : "")
+    .filter(Boolean).join("\n");
+  const who = m.senderId && myId && m.senderId === myId ? "you"
+    : m.role === "agent" ? "index" : "them";
+  return { id: m.id || rid(), who, text, at: m.createdAt || m.created_at || null };
 }
 
 function ChatWindow({ person, messages, draft, setDraft, onSend, onClose }) {

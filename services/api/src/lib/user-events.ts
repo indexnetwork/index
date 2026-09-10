@@ -4,8 +4,8 @@ import { getRedisClient } from '../adapters/cache.adapter';
  * One channel per user carries every realtime frame, and nothing on the wire
  * separates the audiences: an agent-bound key resolves to its owner, so the
  * agent subscribes to the same channel the owner's app is already reading and
- * each side ignores the types it does not recognise. `opportunity.new` and
- * `message` are the human's; the rest are the agent's.
+ * each side ignores the types it does not recognise. `opportunity.new`,
+ * `question.pending` and `message` are the human's; the rest are the agent's.
  *
  * The agent types come in two scopes. `negotiation.turn` and
  * `negotiation.settled` point at one negotiation and carry a pointer rather
@@ -14,11 +14,16 @@ import { getRedisClient } from '../adapters/cache.adapter';
  * whether the agent should be working it at all, and that discovery gave it
  * something to work.
  *
+ * `question.pending` is scoped to a signal too, but the other way round: the
+ * personal agent stopped and cannot continue until its owner answers, so the
+ * frame names the intent whose H2A conversation holds the question.
+ *
  * `message` is the exception to the pointer shape: it is human-addressed and
  * carries its text inline, so a desktop toast needs no follow-up read.
  */
 export type UserEventType =
   | 'opportunity.new'
+  | 'question.pending'
   | 'negotiation.turn'
   | 'negotiation.settled'
   | 'negotiation.opened'
