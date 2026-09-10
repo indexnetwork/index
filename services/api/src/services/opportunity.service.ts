@@ -473,6 +473,9 @@ export class OpportunityService {
       id: opp.id,
       presentation,
       myRole: myActor.role,
+      // The viewer's own signal, so a client holding only an opportunity id can
+      // open the signal that owns it rather than a detached card.
+      intentId: myActor.intent ?? null,
       otherParties,
       category: opp.interpretation.category,
       confidence: confidenceNum,

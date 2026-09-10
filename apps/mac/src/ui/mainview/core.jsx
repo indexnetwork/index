@@ -12,7 +12,7 @@ const DISCOVERY_GIVE_UP_MS = 120000;
 
 function MainView({ profile, people, setPeople, conversation, setConversation,
                     field, setField, stats, simRate, setSimRate, tweaks = {},
-                    onOpenRoom, onBack, registerChats, pendingChat, onPendingHandled,
+                    onOpenRoom, onBack, registerChats, pendingFocus, onPendingHandled,
                     focusQuestion }) {
   // Live-only: these demo sim feeds no longer exist, so they default to empty.
   // The simulation loops below stay wired but idle on empty arrays.
@@ -170,7 +170,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       if (!radarR) return;
       const items = window.IndexApp.normalizeList(radarR, "items");
       const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
-        ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
+        // The radar is intent-scoped, so stamping the signal onto each person
+        // lets a deep link know which signal already owns the one it names.
+        ...p, intentId: forIntent, hidden: false,
+        score: typeof p.score === "number" ? p.score : 0.7,
       }));
       const apply = window.IndexApi.applyRadarPeople || ((prev, next) => next);
       setPeople((prev) => apply(prev, mapped));
@@ -543,13 +546,28 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (registerChats) registerChats(signalTitle, roster, (id) => openChatRef.current(id));
   }, [rosterKey, signalTitle]);
 
-  // When asked to open a specific chat after resuming a signal from the menubar.
+  // What the menubar or a deep link asked to open once this signal mounted.
+  // A chat opens from the id alone, but a profile renders from the radar row,
+  // which arrives a moment after the signal does — so hold the request until
+  // that person lands rather than opening an empty panel.
+  const focusedTabRef = useRef(null);
   useEffect(() => {
-    if (pendingChat) {
-      openChat(pendingChat);
-      onPendingHandled && onPendingHandled();
+    if (!pendingFocus) return;
+    if (pendingFocus.kind === "profile") {
+      // The stage moves first and only once, so a person still loading is at
+      // least filtered into view, and a tab picked in the meantime stands.
+      if (focusedTabRef.current !== pendingFocus) {
+        focusedTabRef.current = pendingFocus;
+        const bucket = opportunityBucket(pendingFocus);
+        if (bucket) setTab(bucket);
+      }
+      if (!people.some((p) => p.id === pendingFocus.personId)) return;
+      openProfile(pendingFocus.personId);
+    } else {
+      openChat(pendingFocus.personId);
     }
-  }, [pendingChat]);
+    onPendingHandled && onPendingHandled();
+  }, [pendingFocus, people]);
 
   return (
     <div style={{
