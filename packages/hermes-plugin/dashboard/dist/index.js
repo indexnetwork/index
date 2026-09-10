@@ -2549,7 +2549,8 @@
      negotiator runs", so choosing it releases whichever agent holds the slot.
      Hermes is listed before it exists, because registering it is exactly what
      choosing it means; every row's checked state comes from the server, so a
-     refused write leaves the previous selection standing. */
+     refused write leaves the previous selection standing. Choosing Hermes also
+     starts this machine's runner; choosing any other row stops it. */
   function NegotiatorSettings() {
     const useState = React.useState;
     const useEffect = React.useEffect;
@@ -2670,12 +2671,15 @@
             !selected,
             function () { select(null); },
           )].concat(options.map(function (agent) {
+            const here = String(agent.name || "").toLowerCase() === HERMES_AGENT_NAME.toLowerCase();
             return optionRow(
               agent.id || ("new-" + agent.name),
               agent.name,
-              agent.id
-                ? (agent.description || "Your registered agent.")
-                : "Not registered yet. Choosing it registers it.",
+              here
+                ? "Runs in this Hermes. Keep the gateway running."
+                : agent.id
+                  ? (agent.description || "Your registered agent.")
+                  : "Not registered yet. Choosing it registers it.",
               !!agent.handleNegotiations,
               function () { select(agent); },
             );

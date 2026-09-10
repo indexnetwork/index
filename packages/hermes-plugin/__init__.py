@@ -11,7 +11,10 @@ import shutil
 from pathlib import Path
 
 from . import schemas, tools, transport
-from .native_agent import NativeAgent, SKILL_PATH
+from .bridge import HermesBridge
+from .native_agent import NativeAgent
+from .principal_state import PrincipalStore
+from .sidecar import Sidecar
 
 
 def _install_desktop_plugin():
@@ -39,19 +42,23 @@ def _install_desktop_plugin():
 def register(ctx):
     """Register the Index Network capabilities with Hermes."""
     _install_desktop_plugin()
-    native = NativeAgent(ctx)
+    from hermes_constants import get_hermes_home
+
+    home = get_hermes_home()
+    store = PrincipalStore(home)
+    # The negotiator itself is `@indexnetwork/agent` in a Bun process; the bridge
+    # is how it reaches this Hermes runtime for model calls and owner delivery.
+    sidecar = Sidecar(HermesBridge(ctx, store), store, home)
+    native = NativeAgent(ctx, sidecar)
     # Imported here because it reaches into the gateway packages, which the
     # dashboard and desktop surfaces import this package without.
     from . import events
 
-    events.register_platform(ctx, native)
-    ctx.register_skill(name="personal-agent", path=SKILL_PATH,
-                       description="Native Index personal-agent negotiation and private inbox review.")
-    for hook in ("pre_gateway_dispatch", "pre_llm_call", "pre_tool_call", "transform_llm_output", "post_llm_call"):
+    events.register_platform(ctx, sidecar)
+    for hook in ("pre_gateway_dispatch", "pre_llm_call"):
         ctx.register_hook(hook, getattr(native, hook))
     for name, schema in schemas.NATIVE_AGENT_SCHEMAS.items():
-        target = native if name in ("configure_personal_agent", "focus_intent") else native.operations
-        ctx.register_tool(name=f"index_{name}", toolset="index-network", schema=schema, handler=target.handler(name))
+        ctx.register_tool(name=f"index_{name}", toolset="index-network", schema=schema, handler=native.handler(name))
     for name, schema, handler in (
         ("index_read_intents", schemas.INDEX_READ_INTENTS, tools.index_read_intents),
         ("index_create_intent", schemas.INDEX_CREATE_INTENT, tools.index_create_intent),

@@ -160,6 +160,9 @@ tools = _load_module(f"{_runtime_package()}.tools", _TOOLS_PATH)
 # Loaded under the same package so it can share the transport's API resolver;
 # sign-in and every later request must name one Index environment.
 auth_login = _load_module(f"{_runtime_package()}.dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
+# The gateway's own store module, so a negotiator choice made here reaches the
+# same SQLite file the event reader consults.
+principal_state = _load_module(f"{_runtime_package()}.principal_state", _PLUGIN_ROOT / "principal_state.py")
 
 
 def _call_read_intents() -> dict[str, Any]:
@@ -1978,6 +1981,35 @@ def agent_answer(body: dict[str, Any] | None = Body(default=None)) -> dict[str, 
     )
 
 
+# The name this Hermes registers under when it is chosen to negotiate.
+_HERMES_AGENT_NAME = "Hermes"
+
+
+def _sync_local_executor(agent: Any) -> None:
+    """Start or stop this machine's native runner to match the negotiator choice.
+
+    The gateway's event reader follows `/events` only while a binding row
+    exists, so writing that row here is what actually makes Hermes take turns;
+    the Index slot alone only stops the hosted negotiator. A choice naming any
+    other runtime, or the hosted negotiator, releases this machine.
+
+    @param agent - The agent entity returned by the Index write.
+    """
+    from hermes_constants import get_hermes_home
+
+    row = agent if isinstance(agent, dict) else {}
+    mine = row.get("handleNegotiations") is True and _text(row.get("name")).lower() == _HERMES_AGENT_NAME.lower()
+    store = principal_state.PrincipalStore(get_hermes_home())
+    with store.transaction() as db:
+        if not mine:
+            store.unbind(db)
+            return
+        # An owner conversation, when one is configured later, overlays this
+        # binding; background turns never need one.
+        store.bind(db, {**(store.binding(db) or {}),
+                        "account": _text(row.get("ownerId")), "agentId": _text(row.get("id"))})
+
+
 def _agent_row(agent: Any) -> dict[str, Any]:
     """Map one `/agents` entity onto the negotiator selector's row shape."""
     row = agent if isinstance(agent, dict) else {}
@@ -2035,6 +2067,8 @@ def update_agent(
 
     `handleNegotiations: false` is how the hosted Index negotiator is chosen:
     the API clears the owner's binding rather than naming a hosted agent.
+    Choosing this Hermes also starts its native runner; choosing anything else
+    stops it.
     """
     agent_id = _text(agent_id)
     if not agent_id:
@@ -2049,6 +2083,7 @@ def update_agent(
     )
     if payload.get("success") is False:
         return payload
+    _sync_local_executor(payload.get("agent"))
     return {"success": True, "agent": _agent_row(payload.get("agent"))}
 
 

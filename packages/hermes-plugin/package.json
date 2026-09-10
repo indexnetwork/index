@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/hermes-plugin",
-  "version": "0.39.0",
+  "version": "0.41.0",
   "description": "Hermes-native Index Network plugin with CLI tools and REST APIs",
   "license": "MIT",
   "type": "module",
@@ -17,9 +17,11 @@
     "transport.py",
     "env_transport.py",
     "principal_state.py",
-    "negotiation.py",
     "native_agent.py",
-    "skills/",
+    "bridge.py",
+    "sidecar.py",
+    "events.py",
+    "runtime/dist/",
     "dashboard/",
     "desktop/dist/",
     "tests/",
@@ -30,6 +32,8 @@
     "!**/*.py[cod]"
   ],
   "scripts": {
-    "build:desktop": "node desktop/build.mjs"
+    "build:desktop": "node desktop/build.mjs",
+    "build:runtime": "bun build ./runtime/src/main.ts --outfile runtime/dist/negotiator.js --target bun --format esm",
+    "typecheck:runtime": "tsc -p runtime/tsconfig.json"
   }
 }

@@ -1,15 +1,9 @@
 name: index-network
-version: 0.39.0
+version: 0.41.0
 description: Index Network Hermes plugin with native tools backed by the Index REST API.
 provides_tools:
   - index_configure_personal_agent
   - index_focus_intent
-  - index_list_negotiations
-  - index_read_negotiation
-  - index_submit_turn
-  - index_request_principal_input
-  - index_read_principal_inbox
-  - index_review_principal_inbox
   - index_read_intents
   - index_research_profile
   - index_create_intent
@@ -29,8 +23,5 @@ provides_tools:
 provides_hooks:
   - pre_gateway_dispatch
   - pre_llm_call
-  - pre_tool_call
-  - transform_llm_output
-  - post_llm_call
 # The plugin authenticates with the INDEX_SESSION_TOKEN environment variable
 # (this device's own session, obtained via "log in with browser").

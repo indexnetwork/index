@@ -146,6 +146,22 @@ def _api_request(
         return _error_payload(f"Index transport response could not be processed: {exc}")
 
 
+def selected_agent() -> dict[str, Any]:
+    """Read the agent this key's owner selected to handle negotiations.
+
+    @returns The selected agent entity.
+    @throws ValueError when the read fails, or when the API cannot fence a turn
+            to one external executor — without that fence a stale negotiator on
+            another machine could still submit turns for this owner.
+    """
+    payload = _api_request("GET", "/agents/me")
+    if payload.get("success") is False or payload.get("error"):
+        raise ValueError(payload.get("error") or "Index request failed")
+    if payload.get("negotiationExecutorFence") is not True:
+        raise ValueError("This Index API does not support fenced external turns. Upgrade the API before enabling the Hermes personal agent.")
+    return payload["agent"]
+
+
 def _api_result(
     method: str,
     path: str,

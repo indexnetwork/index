@@ -1,9 +1,14 @@
 """The owner's Index event stream, as a gateway platform.
 
-Index publishes a frame whenever one of the owner's signals owes a turn, so
-native work is woken by those frames instead of by a schedule. Each signal
-becomes its own chat on this platform, which keeps background match work in a
-session of its own, separate from the owner's private conversation.
+Index publishes a frame whenever one of the owner's signals owes a turn, so the
+negotiator is woken by those frames instead of by a schedule. Every frame is a
+pointer: the negotiator re-reads authoritative state over REST before deciding
+anything, which is what makes a missed or duplicated frame cost nothing.
+
+The work itself happens in the negotiator sidecar, not in a Hermes session, so
+this platform opens no chats and delivers no messages. It exists for its
+connection lifecycle: while this machine is the selected negotiator, it keeps the
+stream and the sidecar running together.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ import time
 from typing import Any
 
 from gateway.config import Platform, PlatformConfig
-from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageType, SendResult
+from gateway.platforms.base import BasePlatformAdapter, SendResult
 
 from .native_agent import PLATFORM
 from .transport import get_transport
@@ -26,21 +31,13 @@ from .transport import get_transport
 logger = logging.getLogger(__name__)
 
 # `negotiation.*` names a signal that owes a turn; `intent.lifecycle` changes
-# whether the signal should be worked at all. Every frame is a pointer: the run
-# reads authoritative state over REST before deciding anything.
+# whether the signal should be worked at all.
 WAKE_TYPES = frozenset({
     "negotiation.opened", "negotiation.turn", "negotiation.settled", "intent.lifecycle",
 })
-# Matches on one signal move together, so let sibling frames land in one run.
+# Matches on one signal move together, so let sibling frames land in one wake.
 SETTLE_SECONDS = 2.0
 RECONNECT_SECONDS = 5.0
-WAKE_PROMPT = (
-    "Do one bounded Index personal-agent run for intent {intent}. Load "
-    "index-network:personal-agent, call index_list_negotiations, process each "
-    "returned match once, then review that intent's inbox. Never wait inside this "
-    "run for a human. Only index_review_principal_inbox selects human delivery. "
-    "Finish with [SILENT]; the plugin renders selected inbox entries."
-)
 
 
 def check_requirements() -> bool:
@@ -55,11 +52,11 @@ def is_connected(config: PlatformConfig | None = None) -> bool:
 
 
 class IndexAdapter(BasePlatformAdapter):
-    """Follow the owner's event stream and wake one native run per signal."""
+    """Follow the owner's event stream and wake the negotiator per signal."""
 
-    def __init__(self, config: PlatformConfig, native):
+    def __init__(self, config: PlatformConfig, sidecar):
         super().__init__(config, Platform(PLATFORM))
-        self._native = native
+        self._sidecar = sidecar
         self._owner = ""
         self._pending: set[str] = set()
         self._closing = False
@@ -74,16 +71,15 @@ class IndexAdapter(BasePlatformAdapter):
         self._loop = asyncio.get_running_loop()
         self._signal = asyncio.Event()
         self._dispatcher = self._loop.create_task(self._dispatch())
-        self._native.wake = self._queue
         threading.Thread(target=self._read, name="index-events", daemon=True).start()
         return True
 
     async def disconnect(self) -> None:
         self._closing = True
-        self._native.wake = None
         if self._dispatcher is not None:
             self._dispatcher.cancel()
             self._dispatcher = None
+        await asyncio.to_thread(self._sidecar.stop)
 
     async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         return {"name": f"Index signal {chat_id}", "type": "dm", "id": chat_id}
@@ -92,36 +88,22 @@ class IndexAdapter(BasePlatformAdapter):
         self, chat_id: str, content: str,
         reply_to: str | None = None, metadata: dict[str, Any] | None = None,
     ) -> SendResult:
-        """Deliver what the run selected to the owner's bound conversation.
+        """Refuse: the negotiator delivers through the owner's own platform.
 
-        The signal's own chat exists to isolate the work, not to be read: the
-        owner sees Index only in the private conversation they enabled.
-
-        @param chat_id - The signal that was worked; not a delivery target.
-        @param content - Rendered inbox entries.
-        @returns Whether Hermes accepted the message for the owner's platform.
+        @returns Always a failure; nothing should route owner messages here.
         """
-        del chat_id, reply_to, metadata
-        with self._native.store.transaction() as db:
-            binding = self._native.store.binding(db)
-        if not binding:
-            return SendResult(success=False, error="No Index owner conversation is configured.")
-        platform, chat, _user, thread = json.loads(binding["source"])
-        target = ":".join([platform, chat, thread] if thread else [platform, chat])
-        result = json.loads(await asyncio.to_thread(
-            self._native.ctx.dispatch_tool, "send_message",
-            {"target": target, "message": content},
-        ))
-        return SendResult(success=not result.get("error"), error=result.get("error"))
+        del chat_id, content, reply_to, metadata
+        return SendResult(success=False, error="Index delivery goes to the owner's bound conversation, not this platform.")
 
     def _read(self) -> None:
-        """Own the blocking stream: reconcile, then follow frames until it ends."""
+        """Own the blocking stream: run the negotiator, reconcile, follow frames."""
         while not self._closing:
-            with self._native.store.transaction() as db:
-                binding = self._native.store.binding(db)
+            with self._sidecar.store.transaction() as db:
+                binding = self._sidecar.store.binding(db)
             if binding:
                 self._owner = binding["account"]
                 try:
+                    self._sidecar.start(binding["account"], binding["agentId"])
                     self._reconcile()
                     for line in get_transport().stream_sse("/events"):
                         if self._closing:
@@ -129,14 +111,13 @@ class IndexAdapter(BasePlatformAdapter):
                         self._observe(line)
                 except Exception as error:  # noqa: BLE001
                     logger.warning("Index event stream ended: %s", error)
+            else:
+                # The selection moved to another runtime or the hosted negotiator.
+                self._sidecar.stop()
             time.sleep(RECONNECT_SECONDS)
 
     def _reconcile(self) -> None:
-        """Recover the signals that moved while this reader was disconnected.
-
-        A frame is a wake-up hint, not a record. Reading the rows on every
-        connection is what makes a missed frame cost nothing.
-        """
+        """Recover the signals that moved while this reader was disconnected."""
         result = get_transport().request_rest("GET", "/negotiations")
         for item in result.get("negotiations") or []:
             if not item.get("settledAt") and item.get("awaitingUserId") == self._owner:
@@ -162,36 +143,22 @@ class IndexAdapter(BasePlatformAdapter):
         self._signal.set()
 
     async def _dispatch(self) -> None:
-        """One run per queued signal, once sibling frames have had time to land."""
+        """One wake per queued signal, once sibling frames have had time to land."""
         while True:
             await self._signal.wait()
             self._signal.clear()
             await asyncio.sleep(SETTLE_SECONDS)
             while self._pending:
                 intent = self._pending.pop()
-                await self.handle_message(MessageEvent(
-                    text=WAKE_PROMPT.format(intent=intent),
-                    message_type=MessageType.TEXT,
-                    user_id=self._owner,
-                    user_name="Index",
-                    source=self.build_source(
-                        chat_id=intent, chat_name=f"Index signal {intent}",
-                        chat_type="dm", user_id=self._owner, user_name="Index",
-                    ),
-                    # The frames come from the owner's own authenticated stream,
-                    # so the work needs no allow-list and must never be read as
-                    # owner input or as a gateway command.
-                    internal=True,
-                    allow_gateway_control=False,
-                ))
+                await asyncio.to_thread(self._sidecar.wake, intent)
 
 
-def register_platform(ctx, native) -> None:
+def register_platform(ctx, sidecar) -> None:
     """Expose the event stream as the `index` gateway platform."""
     ctx.register_platform(
         name=PLATFORM,
         label="Index",
-        adapter_factory=lambda config: IndexAdapter(config, native),
+        adapter_factory=lambda config: IndexAdapter(config, sidecar),
         check_fn=check_requirements,
         validate_config=is_connected,
         is_connected=is_connected,
@@ -199,7 +166,7 @@ def register_platform(ctx, native) -> None:
         emoji="\U0001f9ed",
         pii_safe=True,
         platform_hint=(
-            "This session is Index personal-agent background work for one signal. "
+            "This platform only carries Index events to the negotiator process. "
             "It is not a conversation with the owner."
         ),
     )

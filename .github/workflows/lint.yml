@@ -103,8 +103,8 @@ jobs:
       - name: Check agent
         run: bun run --cwd packages/agent check
 
-      - name: Check generated Hermes instructions
-        run: bun run check:hermes-instructions
+      - name: Check Hermes negotiator runtime
+        run: bun run --cwd packages/hermes-plugin typecheck:runtime && bun run --cwd packages/hermes-plugin build:runtime
 
       - name: Check agent TUI
         run: bun run --cwd packages/agent-tui check && bun run --cwd packages/agent-tui build
