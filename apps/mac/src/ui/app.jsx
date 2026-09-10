@@ -392,6 +392,21 @@ function App() {
     chatOpenRef.current = { signal, open: openFn };
   };
 
+  // The screens the native menus can open: settings, networks and negotiations
+  // (null = none, `tab` applies to settings only). They live up here rather than
+  // in the hub because Index ▸ Settings… and the View menu have to work from a
+  // signal too, and they open over whatever is on screen so neither the hub nor
+  // a live signal session is torn down to show them.
+  const [overlay, setOverlay] = useState(null);
+  const closeOverlay = () => setOverlay(null);
+  // Index ▸ Settings… and the View menu call this. Before the hub there is no
+  // account behind the screen, which is also why those items are dimmed there.
+  useEffect(() => {
+    const reachable = screen === "intents" || screen === "main";
+    window.__indexOpenView = (view) => { if (reachable) setOverlay({ view, tab: "profile" }); };
+    return () => { delete window.__indexOpenView; };
+  }, [screen]);
+
   const [accStats, setAccStats] = useState({ inspected: 47, online: 62 });
   useInterval(() => {
     setAccStats(s => ({
@@ -511,6 +526,7 @@ function App() {
                                        fresh={freshUser}
                                        onPickExisting={pickExistingIntent}
                                        onNew={goNewIntent}
+                                       onOpenView={(view, tab) => setOverlay({ view, tab })}
                                        onSignOut={signOut}/>}
         {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
         {/* First run, in three screens: confirm the name, look the person up
@@ -552,6 +568,24 @@ function App() {
             conversationId={linkedChat.conversationId}
             onClose={() => setLinkedChat(null)}
           />
+        )}
+        {/* These lay over the desktop instead of replacing the screen, so
+            leaving one drops you back into the same hub or signal. */}
+        {overlay && (
+          <div className="mac-desktop" style={{ position:"fixed", inset:0, zIndex:850 }}>
+            {overlay.view === "settings" && <Settings initialTab={overlay.tab} onClose={closeOverlay}/>}
+            {overlay.view === "networks" && (
+              <Networks
+                onClose={closeOverlay}
+                onOpenSignal={(sig) => {
+                  const intent = (window.INDEX_DATA.INTENTS || []).find(s => s.id === sig.id);
+                  closeOverlay();
+                  if (intent) pickExistingIntent(intent);
+                }}
+              />
+            )}
+            {overlay.view === "negotiations" && <NegotiationHistory onClose={closeOverlay}/>}
+          </div>
         )}
         {notice && <MacNotice text={notice} onDismiss={() => setNotice(null)}/>}
         {screen === "main"        && (

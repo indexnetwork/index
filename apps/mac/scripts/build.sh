@@ -48,6 +48,7 @@ fi
 swiftc -Onone ${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"} \
     -target "$(uname -m)-apple-macosx13.0" \
     -framework Cocoa -framework WebKit -framework Network -framework Security \
+    -framework ServiceManagement \
     -o "${CONTENTS}/MacOS/${APP_NAME}" \
     Security/Sources/IndexKeychainStore.swift \
     Sources/*.swift
@@ -59,6 +60,11 @@ if [ -n "$APP_KEYCHAIN_GROUP" ]; then
 fi
 /usr/libexec/PlistBuddy -c "Delete :IndexDeepLinkHost" "${CONTENTS}/Info.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :IndexDeepLinkHost string ${LINK_HOST}" "${CONTENTS}/Info.plist"
+# Check for Updates compares this against the commit named in the rolling
+# release's notes. Empty outside a git checkout, which the check reports.
+BUILD_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
+/usr/libexec/PlistBuddy -c "Delete :IndexBuildSHA" "${CONTENTS}/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :IndexBuildSHA string ${BUILD_SHA}" "${CONTENTS}/Info.plist"
 cp Resources/index.html "${CONTENTS}/Resources/index.html"
 cp Resources/AppIcon.icns "${CONTENTS}/Resources/AppIcon.icns"
 cp Resources/Assets.car "${CONTENTS}/Resources/Assets.car"

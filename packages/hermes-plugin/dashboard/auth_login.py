@@ -39,7 +39,9 @@ _DEFAULT_API = "https://protocol.index.network"
 def api_root() -> str:
     """Resolve the API root (including its `/api` prefix) for auth calls."""
     origin = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
-    return origin + "/api"
+    # Pre-0.36 overrides stored the `/api` suffix; appending it again 404s
+    # `/auth/device/token` and login fails after the browser handshake succeeds.
+    return origin.removesuffix("/api") + "/api"
 
 _lock = threading.Lock()
 _session: "_LoginSession | None" = None

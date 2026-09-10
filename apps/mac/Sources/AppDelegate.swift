@@ -2,6 +2,7 @@ import Cocoa
 import WebKit
 import Network
 import Security
+import ServiceManagement
 import UserNotifications
 
 // Pressing noninteractive window chrome asks the native shell to drag the
@@ -30,7 +31,7 @@ private final class ShellWebView: WKWebView {
 // write network.index.system6 API_URL https://…`) or Info.plist, so production
 // URLs are switchable without recompiling. Defaults target a local dev backend.
 // ---------------------------------------------------------------------------
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate, NSMenuItemValidation {
     var window: NSWindow!
     var webView: WKWebView!
     /// The controller the web view was created with. `webView.configuration`
@@ -178,6 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // is one, which is what should happen after the first run.
         window.setFrameAutosaveName("IndexMainWindow")
         window.contentView = webView
+        window.delegate = self
+        window.isReleasedWhenClosed = false
         // The web layout has a real floor. Below roughly 860x600 the Workbench
         // windows start cutting into their own content, the intents hero and
         // account shelf, the onboarding pane, the radar cards, so resizing
@@ -295,6 +298,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
+    }
+
+    /// Hide rather than destroy: the web view and session keep running until Quit.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        return false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            window.makeKeyAndOrderFront(nil)
+        }
         return true
     }
 
@@ -458,6 +474,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 // Same story as the agent face: prefs must survive a relaunch,
                 // and file:// localStorage does not.
                 NotifyPrefsStore.save(body?["value"] as? [String: Any])
+            }
+            else if action == "setOpenAtLogin" {
+                setOpenAtLogin(body?["value"] as? Bool == true, admittedGeneration: admittedGeneration)
             }
             return
         }
@@ -731,6 +750,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             // Share / invitation links use the configured web origin.
             "appUrl": AppConfig.trimTrailingSlash(AppConfig.appURL),
             "deepLinkHosts": AppConfig.deepLinkHosts,
+            "openAtLogin": openAtLoginStatus(),
         ]
         let json = (try? JSONSerialization.data(withJSONObject: obj))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
@@ -910,6 +930,128 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if (typeof window.__indexAuthChanged === 'function') { window.__indexAuthChanged(\(value)); }
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // MARK: - Menu actions
+    //
+    // Index ▸ Settings…, the View menu, Check for Updates… and Index Help. The
+    // screens belong to the web layer, so those items forward the intent to the
+    // page; updates and help are entirely native.
+
+    @objc func openSettings(_ sender: Any?) { openView("settings") }
+    @objc func openNetworks(_ sender: Any?) { openView("networks") }
+    @objc func openNegotiations(_ sender: Any?) { openView("negotiations") }
+
+    /// Ask the page for one of its full-surface screens.
+    private func openView(_ name: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+        evaluateInTrustedDocument("if (typeof window.__indexOpenView === 'function') { window.__indexOpenView(\(jsonValue(name))); }")
+    }
+
+    /// The product site; there is no bundled help book.
+    @objc func openHelp(_ sender: Any?) {
+        openExternally(URL(string: AppConfig.productURL))
+    }
+
+    /// Compare this build's commit with the rolling release and offer the DMG.
+    /// Deliberately manual: nothing checks on launch.
+    @objc func checkForUpdates(_ sender: Any?) {
+        UpdateChecker.check { [weak self] outcome in
+            switch outcome {
+            case .current:
+                self?.presentUpdateAlert(
+                    message: "Index is up to date.",
+                    detail: "This build matches the latest release.",
+                    download: nil)
+            case .available(let download):
+                self?.presentUpdateAlert(
+                    message: "A newer Index is available.",
+                    detail: "The latest release was built from a different commit than this app.",
+                    download: download)
+            case .indeterminate(let reason, let download):
+                self?.presentUpdateAlert(
+                    message: "Could not check for updates.",
+                    detail: reason,
+                    download: download)
+            }
+        }
+    }
+
+    private func presentUpdateAlert(message: String, detail: String, download: URL?) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail
+        if let download {
+            alert.addButton(withTitle: "Download")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn { openExternally(download) }
+            return
+        }
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    /// Every screen the menus can open belongs to a signed-in account, so those
+    /// items stay dimmed until there is one.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(openSettings(_:)), #selector(openNetworks(_:)), #selector(openNegotiations(_:)):
+            return ownerIsAuthenticated()
+        default:
+            return true
+        }
+    }
+
+    // MARK: - Open at login
+
+    /// The settings pane's toggle. Not sandboxed, so the main app registers
+    /// itself and no helper bundle is involved.
+    private func setOpenAtLogin(_ enabled: Bool, admittedGeneration: UInt64) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            // Fall through: the status read below is what the page renders, so a
+            // refused register reports its real outcome rather than a guess.
+        }
+        // Registering can land in `requiresApproval`, where only the user can
+        // finish the job. Take them to the one place that can.
+        if SMAppService.mainApp.status == .requiresApproval {
+            SMAppService.openSystemSettingsLoginItems()
+        }
+        notifyOpenAtLoginChanged(admittedGeneration: admittedGeneration)
+    }
+
+    private func openAtLoginStatus() -> String {
+        switch SMAppService.mainApp.status {
+        case .enabled: return "enabled"
+        case .requiresApproval: return "requiresApproval"
+        case .notFound: return "notFound"
+        case .notRegistered: return "notRegistered"
+        @unknown default: return "notRegistered"
+        }
+    }
+
+    private func notifyOpenAtLoginChanged(admittedGeneration: UInt64) {
+        guard admittedGeneration == trustedDocumentGeneration else { return }
+        let status = jsonValue(openAtLoginStatus())
+        evaluateInTrustedDocument("""
+        window.INDEX_NATIVE = Object.assign(window.INDEX_NATIVE || {}, { openAtLogin: \(status) });
+        if (typeof window.__indexOpenAtLoginChanged === 'function') { window.__indexOpenAtLoginChanged(\(status)); }
+        """)
+    }
+
+    /// Run script in the bundled document, or drop it if that document is not
+    /// the one on screen.
+    private func evaluateInTrustedDocument(_ script: String) {
+        guard webViewReady,
+              webView != nil,
+              webView.url?.standardizedFileURL == trustedBundledDocumentURL else { return }
+        webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
     /// Matches JavaScript encodeURIComponent exactly: only A-Za-z0-9 and

@@ -182,7 +182,7 @@ function UserMenu({ me, onSelect }) {
   );
 }
 
-function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
+function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh = false }) {
   const env = useIndexEnv();
   // Live-only: empty until the snapshot loads. AGENTS has no live snapshot in
   // this view yet, so the count is the builtin Index (always on) until the
@@ -210,11 +210,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   }, [env.data, fresh]);
 
   const [hovered, setHovered] = useState(null);
-  // Which settings pane the account menu asked for (null = settings closed).
-  const [settingsTab, setSettingsTab] = useState(null);
-  const [showNetworks, setShowNetworks] = useState(false);
   const [showAgents, setShowAgents] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
 
   // Width the shelf's scrollbar takes when it appears, so the pinned
   // new-signal row below can line up with the rows inside. Measured rather
@@ -230,41 +226,24 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [signals.length, settingsTab, showNetworks, showAgents]);
+  }, [signals.length, showAgents]);
 
+  // Settings, networks and negotiations are owned by the app shell, so that the
+  // Index and View menus open the same screens; the hub only asks for one.
   const onAccountSelect = (id) => {
-    if (id === "profile")  setSettingsTab("profile");
-    if (id === "history")  setShowHistory(true);
-    if (id === "settings") setSettingsTab("notify");
+    if (id === "profile")  onOpenView && onOpenView("settings", "profile");
+    if (id === "history")  onOpenView && onOpenView("negotiations");
+    if (id === "settings") onOpenView && onOpenView("settings", "notify");
     if (id === "signout")  onSignOut && onSignOut();
   };
 
-  // Both take over the whole surface, they're screens, not sheets.
-  if (settingsTab) {
-    return <Settings initialTab={settingsTab} onClose={() => setSettingsTab(null)}/>;
-  }
-  if (showNetworks) {
-    return (
-      <Networks
-        onClose={() => setShowNetworks(false)}
-        onOpenSignal={(sig) => {
-          const intent = signals.find(s => s.id === sig.id)
-            || (window.INDEX_DATA.INTENTS || []).find(s => s.id === sig.id);
-          setShowNetworks(false);
-          if (intent && onPickExisting) onPickExisting(intent);
-        }}
-      />
-    );
-  }
+  // Agents takes over the whole surface, it's a screen, not a sheet.
   if (showAgents) {
     return (
       <Agents
         onClose={() => setShowAgents(false)}
       />
     );
-  }
-  if (showHistory) {
-    return <NegotiationHistory onClose={() => setShowHistory(false)}/>;
   }
 
   const visible  = signals.filter(i => i.status !== "archived");
@@ -342,7 +321,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
 
               {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
-                <NetworksRow count={joinedCount} onClick={() => setShowNetworks(true)}/>
+                <NetworksRow count={joinedCount} onClick={() => onOpenView && onOpenView("networks")}/>
                 <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
                 <UserMenu me={ME} onSelect={onAccountSelect}/>
               </div>

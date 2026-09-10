@@ -45,6 +45,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Browser login redeem no longer 404s when `INDEX_API_URL` still includes a
+  trailing `/api` (the pre-0.36 form). The origin is normalized before
+  `/api` is appended, matching the transport used after sign-in.
+
 ### Changed
 - **BREAKING: one realtime relay instead of two.** The `/notifications/stream`
   SSE proxy and the `/notifications/socket` WebSocket relay are removed; the
