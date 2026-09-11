@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.118.0",
+  "version": "0.119.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -18,7 +18,6 @@
     "db:seed": "bun ./src/cli/db-seed.ts",
     "notify:simulate": "bun ./src/cli/notify-simulate.ts",
     "db:flush": "bun ./src/cli/db-flush.ts",
-    "db:clear-negotiations": "NODE_ENV=development bun ./src/cli/db-clear-negotiations.ts",
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",

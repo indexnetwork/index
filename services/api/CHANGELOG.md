@@ -9,7 +9,16 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- Railway dev intent replay: `db:dev:resume --confirm` shuffles eligible intents
+  and resumes them 10–30 seconds apart, with discovery completion/failure logs.
+  `db:dev:reset --confirm` stops the dev API, clears matching and agent state,
+  pauses intents, then restores the same deployment. Both commands pin the dev
+  database and preserve accounts, credentials, and the intent/network dataset.
+
 ### Changed
+- Replace the local `db:playground:resume` and `db:clear-negotiations` commands
+  with the Railway dev replay commands above.
 - **BREAKING: `/api/tools` is deleted; every capability is a named REST
   resource.** `GET /api/tools` and `POST /api/tools/:toolName` are 404, and
   `ToolController`, `ToolService` and `EnricherAdapter` are gone. What only the
