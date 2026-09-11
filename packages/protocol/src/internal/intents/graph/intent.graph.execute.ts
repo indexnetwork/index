@@ -39,41 +39,24 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
       const actionType = action.type.toLowerCase() as 'create' | 'update' | 'expire' | 'transition';
       try {
         if (actionType === 'create') {
-          const createAction = action as {
-            payload: string;
-            score: number | null;
-            semanticEntropy?: number | null;
-            referentialAnchor?: string | null;
-            intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
-          };
-          const sanitizedPayload = normalizeIntentDescription(createAction.payload);
-          const matchedVerifiedIntent =
-            verifiedIntentByPayload.get(createAction.payload) ||
-            verifiedIntentByPayload.get(sanitizedPayload);
-
-          // Generate embedding for the intent payload
-          const flatEmbedding = await generateIntentEmbedding(deps, sanitizedPayload);
-
+          const createAction = action as Extract<typeof action, { type: 'create' }>;
+          const payload = createAction.payload;
+          const metadata = createAction.metadata;
+          const flatEmbedding = await generateIntentEmbedding(deps, payload);
           const created = await deps.database.createIntent({
             userId: state.userId,
-            payload: sanitizedPayload,
-            confidence: createAction.score ? createAction.score / 100 : 1.0,
+            payload,
+            confidence: 1.0,
             inferenceType: 'explicit',
             sourceType: 'discovery_form',
             embedding: flatEmbedding,
-            semanticEntropy:
-              createAction.semanticEntropy ??
-              matchedVerifiedIntent?.verification?.semantic_entropy ??
-              null,
-            referentialAnchor:
-              createAction.referentialAnchor ??
-              matchedVerifiedIntent?.verification?.referential_anchor ??
-              null,
-            felicityAuthority: matchedVerifiedIntent?.verification?.felicity_scores.authority ?? null,
-            felicitySincerity: matchedVerifiedIntent?.verification?.felicity_scores.sincerity ?? null,
-            felicityClarity: matchedVerifiedIntent?.verification?.felicity_scores.clarity ?? null,
-            intentMode: createAction.intentMode ?? null,
-            speechActType: toSpeechActType(matchedVerifiedIntent?.verification?.classification),
+            semanticEntropy: metadata?.semanticEntropy ?? null,
+            referentialAnchor: metadata?.referentialAnchor ?? null,
+            felicityAuthority: metadata?.felicityAuthority ?? null,
+            felicitySincerity: metadata?.felicitySincerity ?? null,
+            felicityClarity: metadata?.felicityClarity ?? null,
+            intentMode: metadata?.intentMode ?? null,
+            speechActType: metadata?.speechActType ?? null,
           });
 
           const linkedNetworkIds = await linkIntentToNetworks(deps, state, created.id);
@@ -81,10 +64,15 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             actionType: 'create',
             success: true,
             intentId: created.id,
-            payload: sanitizedPayload,
+            payload,
             linkedNetworkIds,
           });
           logger.verbose('Created intent', { intentId: created.id, linkedNetworkIds });
+          if (!metadata && deps.intentFollowUp) {
+            void Promise.resolve().then(() => deps.intentFollowUp!.scoreIntent({
+              intentId: created.id, userId: state.userId, payload,
+            })).catch((error) => logger.error('Intent rescoring failed; saved intent retained', { intentId: created.id, error }));
+          }
 
           deps.intentFollowUp?.generateHyde({
             intentId: created.id,

@@ -9,8 +9,7 @@
 import { IntentGraphState, VerifiedIntent, type IntentGraphAction, type IntentValidationFailure } from "./intent.graph.state.js";
 import { ExplicitIntentInferrer } from "../intent.inferrer.js";
 import { SemanticVerifier } from "../intent.verifier.js";
-import { IntentReconciler } from "../intent.reconciler.js";
-import type { NormalizedIntentAction } from "../intent.reconciler.js";
+import { IntentClarifier } from "../intent.clarifier.js";
 import { IntentGraphDatabase } from "../../../platform/database.js";
 import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import type { EmbeddingGenerator } from "../../../platform/discovery/embedder.js";
@@ -27,7 +26,7 @@ export interface IntentGraphDeps {
   intentFollowUp?: IntentFollowUp;
   inferrer: Pick<ExplicitIntentInferrer, 'invoke'>;
   verifier: Pick<SemanticVerifier, 'invoke'>;
-  reconciler: Pick<IntentReconciler, 'invoke'>;
+  clarifier: Pick<IntentClarifier, 'invoke'>;
 }
 
 export const logger = protocolLogger("IntentGraphFactory");
@@ -58,14 +57,13 @@ export function enforceIntentActionBoundary(
 
 /**
  * Build the only action permitted for an explicit update. This path is
- * intentionally deterministic: semantic reconciliation may shape create
- * operations, but it may not redirect an update away from its supplied target.
+ * deterministic and cannot redirect an update away from its supplied target.
  */
 export function buildExplicitUpdateActions(
   targetIntentIds: string[] | undefined,
   activeIntentIds: string[],
   candidates: VerifiedIntent[],
-): { actions: NormalizedIntentAction[]; failure?: IntentValidationFailure } {
+): { actions: IntentGraphAction[]; failure?: IntentValidationFailure } {
   if (targetIntentIds?.length !== 1 || !activeIntentIds.includes(targetIntentIds[0])) {
     return {
       actions: [],
@@ -98,31 +96,12 @@ export function buildExplicitUpdateActions(
   };
 }
 
-export const MAX_PERMISSIBLE_ENTROPY = 0.75;
-export const MIN_CLEAR_INTENT_SCORE = 40;
-export const GENERIC_JOB_PHRASE = /\b(?:a|any|some)\s+job\b/i;
-
-export const isVague = (description: string, entropy: number, clarity: number): boolean => {
-  if (GENERIC_JOB_PHRASE.test(description)) return true;
-  if (entropy > MAX_PERMISSIBLE_ENTROPY) return true;
-  if (clarity < MIN_CLEAR_INTENT_SCORE) return true;
-  return false;
-};
-
-/** Default user-facing warning for broad attributive intents. */
-export const DEFAULT_SPECIFICITY_WARNING = "This signal is broad and may produce many weak matches. Add a more concrete role, outcome, location, timeframe, domain, or specific need to get better recommendations.";
-
-export const getSpecificityWarning = (verdict: { specificity_warning?: string | null }): string => {
-  const warning = verdict.specificity_warning?.trim();
-  return warning && warning.length > 0 ? warning : DEFAULT_SPECIFICITY_WARNING;
-};
-
 export const toSpeechActType = (classification?: string): "COMMISSIVE" | "DIRECTIVE" | null => {
   if (classification === "COMMISSIVE" || classification === "DIRECTIVE") return classification;
   return null;
 };
 
-/** Normalize intent text to the form the graph persists. */
+/** Normalize explicit update text; creation preserves the submitted text. */
 export function normalizeIntentDescription(description: string): string {
   if (!description || typeof description !== "string") return description;
   const normalized = description

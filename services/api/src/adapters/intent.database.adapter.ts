@@ -145,6 +145,25 @@ export class IntentDatabaseAdapter {
     }
   }
 
+  /**
+   * Apply measurements only to the exact saved text that was scored.
+   * @param intentId - Saved intent.
+   * @param userId - Expected owner.
+   * @param payload - Exact description sent to the scorer.
+   * @param metadata - Semantic measurements; never content or lifecycle fields.
+   * @returns Once the conditional metadata write finishes.
+   */
+  async updateSemanticMetadata(
+    intentId: string,
+    userId: string,
+    payload: string,
+    metadata: Pick<CreateIntentInput, 'semanticEntropy' | 'referentialAnchor' | 'felicityAuthority' | 'felicitySincerity' | 'felicityClarity' | 'intentMode' | 'speechActType'>,
+  ): Promise<void> {
+    await db.update(schema.intents).set(metadata).where(and(
+      eq(schema.intents.id, intentId), eq(schema.intents.userId, userId), eq(schema.intents.payload, payload),
+    ));
+  }
+
   async updateIntent(intentId: string, data: UpdateIntentInput): Promise<CreatedIntentRow | null> {
     try {
       const updateData: Record<string, unknown> = { updatedAt: new Date() };

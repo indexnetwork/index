@@ -91,6 +91,8 @@ class FakeIntentHost {
   };
 
   readonly followUp: IntentFollowUp = {
+    scoreIntent: async () => {},
+    resumeDiscovery: async () => {},
     generateHyde: async (data) => { this.hydeJobs.push({ kind: "generate", data }); },
     deleteHyde: async (data) => { this.hydeJobs.push({ kind: "delete", data }); },
   };
@@ -134,23 +136,23 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     const graph = host.graph();
     const scoped = { ...base, scopeType: "network" as const, scopeId: NETWORK_ID };
 
-    // Create: infer → verify → reconcile → execute.
+    // Create: prepare → execute.
     const created = await graph.invoke({ ...scoped, inputContent: CO_FOUNDER_SIGNAL, networkIds: [NETWORK_ID] });
     show("create", CO_FOUNDER_SIGNAL, {
-      classification: created.verifiedIntents[0]?.verification?.classification,
+      classification: created.preparation?.metadata?.speechActType,
       persisted: host.intents[0]?.payload,
       linked: host.links.map((link) => link.networkId),
       trace: created.trace.map((entry) => entry.detail),
       failures: created.validationFailures,
     });
     expect(created.error).toBeUndefined();
-    expect(created.verifiedIntents.length).toBeGreaterThan(0);
-    expect(created.verifiedIntents[0].verification?.classification).toMatch(/COMMISSIVE|DIRECTIVE/);
+    expect(created.preparationResult?.status).toBe("ready");
+    expect(created.preparation?.metadata?.speechActType).toMatch(/COMMISSIVE|DIRECTIVE/);
     expect(created.executionResults).toEqual([
       expect.objectContaining({ actionType: "create", success: true, intentId: "intent-1", linkedNetworkIds: [NETWORK_ID] }),
     ]);
     expect(host.links).toEqual([{ intentId: "intent-1", networkId: NETWORK_ID }]);
-    expect(host.intents[0]).toMatchObject({ userId: USER_ID, embedding: expect.any(Array) });
+    expect(host.intents[0]).toMatchObject({ userId: USER_ID, payload: CO_FOUNDER_SIGNAL, embedding: expect.any(Array) });
     expect(host.embedded).toEqual([host.intents[0].payload]);
     expect(host.hydeJobs).toEqual([
       { kind: "generate", data: { intentId: "intent-1", userId: USER_ID, scopeType: "network", scopeId: NETWORK_ID } },
@@ -191,15 +193,14 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     const host = new FakeIntentHost();
     const result = await host.graph().invoke({ ...base, inputContent: VAGUE_SIGNAL });
     show("create (vague)", VAGUE_SIGNAL, {
-      inferred: result.inferredIntents.map((intent) => intent.description),
+      preparation: result.preparationResult?.status,
       failures: result.validationFailures,
       persisted: host.intents.length,
     });
 
     expect(result.executionResults).toEqual([]);
     expect(host.intents).toEqual([]);
-    if (result.inferredIntents.length > 0) {
-      expect(result.validationFailures.map((failure) => failure.category)).toContainEqual(expect.stringMatching(/vague_or_invalid|non_actionable/));
-    }
+    expect(result.preparationResult?.status).toBe("needs_clarification");
+    expect(result.validationFailures.map((failure) => failure.category)).toContainEqual(expect.stringMatching(/vague_or_invalid|non_actionable/));
   }, 120_000);
 });

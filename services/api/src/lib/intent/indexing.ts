@@ -1,11 +1,12 @@
+import { Intents, HydeGraphFactory, HydeGenerator, LensInferrer, deriveDiscoveryNetworkIds } from '@indexnetwork/protocol';
+import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentFollowUp, ScopeType } from '@indexnetwork/protocol';
+
 import { log } from '../log';
 import { background } from '../background';
-import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
+import { ChatDatabaseAdapter, intentDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 import { buildProfileFromUser } from '../../adapters/database.shared';
-import { HydeGraphFactory, HydeGenerator, LensInferrer, deriveDiscoveryNetworkIds } from '@indexnetwork/protocol';
-import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentFollowUp, ScopeType } from '@indexnetwork/protocol';
 import { intentDiscovery } from '../opportunity/discovery';
 
 /** Payload for jobs that generate HyDE documents for an intent. */
@@ -78,6 +79,19 @@ export interface IntentIndexingDeps {
  * and no dedup.
  */
 export class IntentIndexing implements IntentFollowUp {
+  /**
+   * Rescore final revisions after saving without applying admission or lifecycle changes.
+   * @param data - Saved intent, owner, and the exact final text.
+   * @returns Immediately after scheduling best-effort metadata work.
+   */
+  scoreIntent(data: { intentId: string; userId: string; payload: string }): Promise<unknown> {
+    background('intent-score', async () => {
+      const metadata = await new Intents().scoreIntent(data.payload);
+      await intentDatabaseAdapter.updateSemanticMetadata(data.intentId, data.userId, data.payload, metadata);
+    });
+    return Promise.resolve();
+  }
+
   /**
    * Run HyDE generation for an intent (implements {@link IntentFollowUp}). Fire-and-forget.
    * @param data - intentId, userId, and optional scope envelope. When scopeType/scopeId

@@ -217,6 +217,7 @@ async function resume(): Promise<void> {
       import('../lib/intent/indexing'), import('../lib/opportunity/discovery'),
     ]);
     const graph = new Intents({ database: intentDatabaseAdapter, followUp: {
+      scoreIntent: data => intentIndexing.scoreIntent(data),
       generateHyde: data => intentIndexing.generateHyde(data),
       deleteHyde: data => intentIndexing.deleteHyde(data),
       resumeDiscovery: async data => {

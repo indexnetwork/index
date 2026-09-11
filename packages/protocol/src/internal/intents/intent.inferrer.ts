@@ -17,12 +17,6 @@ const logger = protocolLogger("ExplicitIntentInferrer");
  */
 export interface InferrerOptions {
   /**
-   * The operation mode for context.
-   * Helps inferrer understand the user's intent.
-   */
-  operationMode?: 'create' | 'update';
-
-  /**
    * Conversation history for anaphoric resolution.
    * Used to resolve references like "that intent", "this goal", etc.
    * Optional - if not provided, inference uses only current content.
@@ -58,7 +52,6 @@ const systemPrompt = `
   - Be precise and self-contained in descriptions (e.g., "Learn Rust programming" instead of "Learn it").
   - Do NOT try to manage existing IDs or check for duplicates.
   - IGNORE purely phatic communication (e.g., "Hello", "Hi", "Good morning") - return empty intents.
-  - For CREATE operations: Extract what the user wants to ADD.
   - For UPDATE operations: Extract what the user wants to CHANGE.
   - For queries/questions: You should not see these - return empty intents.
 
@@ -92,11 +85,6 @@ const systemPrompt = `
   - Example: If history mentions "text-based RPG game" and user says "make that intent have LLM narration",
     the output should be "Create a text-based RPG game with LLM-enhanced narration" (preserving "text-based").
 
-  WHEN TO FALLBACK TO PROFILE:
-  - Only when explicitly instructed: "(No content provided. Please infer intents from Profile Narrative and Aspirations)"
-  - This should ONLY happen for CREATE operations with no explicit user input
-  - Never infer from profile for query operations
-  - When content IS present: profile may inform HOW to describe the intent (e.g., adding domain context), but must NOT change WHAT the intent is about
 `;
 
 // ──────────────────────────────────────────────────────────────
@@ -137,7 +125,7 @@ export class ExplicitIntentInferrer {
    * Main entry point. Invokes the agent with input and returns structured output.
    * @param content - The raw string content to analyze.
    * @param profileContext - The formatted profile context string.
-   * @param options - Options controlling inference behavior (fallback, operation mode, conversation context).
+   * @param options - Conversation context for the explicit update.
    */
   @Timed()
   public async invoke(
@@ -146,13 +134,11 @@ export class ExplicitIntentInferrer {
     options: InferrerOptions = {}
   ) {
     const {
-      operationMode = 'create',
       conversationContext = undefined
     } = options;
 
     logger.verbose("invoke: received input", {
       contentPreview: content?.substring(0, 50),
-      operationMode,
       hasConversationContext: !!conversationContext,
       conversationMessageCount: conversationContext?.length || 0,
     });
@@ -185,9 +171,8 @@ export class ExplicitIntentInferrer {
       ${conversationSection}${contentSection}
 
       # Operation Context
-      This analysis is for a ${operationMode} operation.
-      ${operationMode === 'create' ? 'Extract NEW intents the user wants to add.' : ''}
-      ${operationMode === 'update' ? 'Extract MODIFICATIONS to existing intents. Use conversation history to resolve references like "that intent".' : ''}
+      This analysis is for an update operation.
+      Extract MODIFICATIONS to existing intents. Use conversation history to resolve references like "that intent".
     `;
 
     logger.debug("invoke: prompt details", {
@@ -210,7 +195,6 @@ export class ExplicitIntentInferrer {
 
       logger.verbose('invoke: found intents', {
         count: output.intents.length,
-        operationMode,
       });
       return output;
     } catch (error: unknown) {

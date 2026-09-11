@@ -2,7 +2,8 @@ import { Annotation } from "@langchain/langgraph";
 import { BaseMessage } from "@langchain/core/messages";
 import { InferredIntent } from "../intent.inferrer.js";
 import { SemanticVerifierOutput } from "../intent.verifier.js";
-import { NormalizedIntentAction } from "../intent.reconciler.js";
+import type { IntentSemanticMetadata } from "../intent.admission.js";
+import type { PreparedIntent, ClarifyResult } from "../intent.clarifier.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
 import type { ScopeType } from '../../shared/agent/scope.js';
 import type { IntentLifecycleStatus } from "../../../platform/database.js";
@@ -57,7 +58,11 @@ export interface TransitionIntentAction {
 }
 
 /** Every action kind the executor can carry out. */
-export type IntentGraphAction = NormalizedIntentAction | TransitionIntentAction;
+export type IntentGraphAction =
+  | { type: 'create'; payload: string; metadata: IntentSemanticMetadata | null }
+  | { type: 'update'; id: string; payload: string; score: number | null; reasoning: string; intentMode: 'REFERENTIAL' | 'ATTRIBUTIVE' }
+  | { type: 'expire'; id: string; reasoning: string }
+  | TransitionIntentAction;
 
 /** Outcome of a `transition` action, mirroring the adapter's discriminated result plus the enqueue-failure compensation case. */
 export type TransitionOutcome =
@@ -88,9 +93,15 @@ export const IntentGraphState = Annotation.Root({
 
   /**
    * Explicit input content (e.g., user message).
-   * Optional - graph might run on implicit only.
+   * Omitted for read, archive, and status operations.
    */
   inputContent: Annotation<string | undefined>,
+
+  /** Host-authorized preparation, reused without admission. Null metadata means the final text was edited. Never pass client-supplied objects here. */
+  preparation: Annotation<PreparedIntent | undefined>,
+
+  /** The full preparation outcome for an unprepared create, including repairable feedback. */
+  preparationResult: Annotation<ClarifyResult | undefined>,
 
   /**
    * Conversation history for context-aware intent inference.
@@ -105,7 +116,7 @@ export const IntentGraphState = Annotation.Root({
 
   /**
    * The graph routes on the shape of its input, not a mode flag:
-   * - `inputContent` alone → create path (infer → verify → reconcile → execute)
+   * - `inputContent` alone → create path (prepare → execute)
    * - `inputContent` + `targetIntentIds` → explicit update, bound to that one id
    * - `targetIntentIds` + `archive: true` → expire those ids, no LLM
    * - `targetIntentIds` + `status` → pause/resume, no LLM
@@ -141,7 +152,7 @@ export const IntentGraphState = Annotation.Root({
   /**
    * Optional network scope (network ID) for read operations. Prep always
    * fetches ALL user intents via getActiveIntents(userId) regardless of network
-   * scope (for global dedup/reconciliation).
+   * scope (for explicit update ownership).
    */
   networkId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
@@ -171,15 +182,6 @@ export const IntentGraphState = Annotation.Root({
   }),
 
   // --- Populated by Graph (Prep Node) ---
-
-  /**
-   * The formatted string of currently active intents.
-   * Always populated by prep via getActiveIntents(userId).
-   */
-  activeIntents: Annotation<string>({
-    reducer: (curr, next) => next,
-    default: () => "",
-  }),
 
   /** IDs of active intents owned by the graph user, used to fail closed on explicit updates. */
   activeIntentIds: Annotation<string[]>({
@@ -290,7 +292,7 @@ export const IntentGraphState = Annotation.Root({
 
   /**
    * For read mode: when true, return all of the current user's intents
-   * ignoring network scope. Used before creating a signal to detect duplicates.
+   * ignoring network scope. Used when the caller requests a global list.
    */
   allUserIntents: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
