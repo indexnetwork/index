@@ -1,6 +1,15 @@
 # Changelog
 
 
+## 0.41.1
+
+### Fixed
+- Opening Discover while another Hermes view is already showing. The host
+  renders the page inside the workspace pane, so a focused session tile (or
+  `hermes://open/index-network` while that tile is up) left the dashboard
+  behind it until restart. Discover now fronts a workspace tab when the pane
+  is covered.
+
 ## 0.41.0
 
 ### Changed
