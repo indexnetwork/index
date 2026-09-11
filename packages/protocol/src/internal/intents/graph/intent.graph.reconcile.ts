@@ -2,11 +2,12 @@
  * Intent graph, stages 2-3: verify inferred signals, then reconcile against what exists.
  */
 
+import { admissionFailure } from "../intent.admission.js";
 import { VerifiedIntent, type IntentValidationFailure } from "./intent.graph.state.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
-import { buildExplicitUpdateActions, getSpecificityWarning, isExplicitUpdateRequest, isVague, logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { buildExplicitUpdateActions, isExplicitUpdateRequest, logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 
 
     /**
@@ -47,55 +48,8 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
           agentTimingsAccum.push({ name: 'intent.verifier', durationMs: Date.now() - verifierStart });
           _traceEmitterVerifier?.({ type: "agent_end", name: "intent-verifier", durationMs: Date.now() - verifierStart, summary: `Verified: ${verdict.classification}` });
 
-          // Filter Logic: Must be a Commissive, Directive, or Declaration
-          const VALID_TYPES = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'];
-          if (!VALID_TYPES.includes(verdict.classification)) {
-            logger.warn('Dropping intent', { description, classification: verdict.classification });
-            return {
-              failure: {
-                category: 'non_actionable',
-                classification: verdict.classification,
-                referentialBreadth: verdict.referential_breadth,
-                message: `Description was classified as ${verdict.classification}, not an actionable goal.`,
-              },
-            };
-          }
-
-          // A vague description is rejected, never rewritten from the user's
-          // profile: when the system lacks information it asks. Callers turn
-          // this failure into a clarifying question.
-          if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
-            logger.warn('Dropping vague intent after verification', {
-              description,
-              entropy: verdict.semantic_entropy,
-              clarity: verdict.felicity_scores.clarity,
-            });
-            return {
-              failure: {
-                category: 'vague_or_invalid',
-                classification: verdict.classification,
-                referentialBreadth: verdict.referential_breadth,
-                message: 'Description failed clarity or semantic-entropy requirements.',
-              },
-            };
-          }
-
-          if (!isExplicitUpdate && verdict.referential_breadth === 'broad') {
-            logger.warn('Dropping broad attributive intent before persistence', {
-              description,
-              referentialBreadth: verdict.referential_breadth,
-              missingSelectionalConstraints: verdict.missing_selectional_constraints,
-              warning: getSpecificityWarning(verdict),
-            });
-            return {
-              failure: {
-                category: 'vague_or_invalid',
-                classification: verdict.classification,
-                referentialBreadth: verdict.referential_breadth,
-                message: getSpecificityWarning(verdict),
-              },
-            };
-          }
+          const failure = admissionFailure(description, verdict, isExplicitUpdate);
+          if (failure) return { failure };
 
           // Calculate Score
           const score = Math.min(
@@ -181,9 +135,9 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
      * Node 3: Reconciliation
      * Decides on final actions. Archive and transition build their one
      * deterministic action directly (no LLM). Explicit update binds to its
-     * one target. A bare content path (no target) reconciles via the LLM.
+     * one target. Creation has its own deterministic preparation route.
      */
-export async function reconciliationNode(state: IntentState, deps: IntentGraphDeps) {
+export async function reconciliationNode(state: IntentState) {
   return timed("IntentGraph.reconciliation", async () => {
     logger.verbose("Starting reconciliation", {
       verifiedIntentCount: state.verifiedIntents.length,
@@ -248,44 +202,6 @@ export async function reconciliationNode(state: IntentState, deps: IntentGraphDe
       };
     }
 
-    // Format candidates for the Reconciler Prompt
-    const formattedCandidates = candidates.map(c =>
-      `- [${c.type.toUpperCase()}] "${c.description}" (Confidence: ${c.confidence}, Score: ${c.score})\n` +
-      `  Reasoning: ${c.reasoning}\n` +
-      `  Verification: ${c.verification?.classification} (Flags: ${c.verification?.flags.join(', ') || 'None'})`
-    ).join('\n');
-
-    logger.verbose("Invoking reconciler agent", {
-      candidateCount: candidates.length,
-    });
-
-    const _traceEmitterReconciler = requestContext.getStore()?.traceEmitter;
-    const reconcilerStart = Date.now();
-    _traceEmitterReconciler?.({ type: "agent_start", name: "intent-reconciler" });
-    const result = await deps.reconciler.invoke(formattedCandidates, state.activeIntents);
-    agentTimingsAccum.push({ name: 'intent.reconciler', durationMs: Date.now() - reconcilerStart });
-    _traceEmitterReconciler?.({ type: "agent_end", name: "intent-reconciler", durationMs: Date.now() - reconcilerStart, summary: `Reconciled ${result.actions.length} action(s)` });
-
-    // Bare create path: no target boundary to enforce (that only applies to
-    // an explicit update, handled above).
-    const actions = result.actions;
-    logger.verbose("Reconciliation complete", {
-      actionCount: actions.length,
-    });
-
-    // Count actions by type.
-    const counts = { create: 0, update: 0, expire: 0 };
-    for (const a of actions) {
-      if (a.type in counts) counts[a.type as keyof typeof counts]++;
-    }
-
-    return {
-      actions,
-      agentTimings: agentTimingsAccum,
-      trace: [{
-        node: "reconciler",
-        detail: `Actions: create=${counts.create}, update=${counts.update}, expire=${counts.expire}`,
-      }],
-    };
+    return { actions: [] };
   });
 }

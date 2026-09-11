@@ -40,7 +40,6 @@ function getBaseModelConfig(config?: ModelConfig) {
   const settings = {
     intentInferrer:       { model: "google/gemini-3.7-flash" },
     intentVerifier:       { model: "google/gemini-3.7-flash" },
-    intentReconciler:     { model: "google/gemini-3.7-flash" },
     intentClarifier:      { model: "google/gemini-3.7-flash" },
     profileGenerator:     { model: "google/gemini-3.7-flash" },
     hydeGenerator:        { model: "google/gemini-3.7-flash" },

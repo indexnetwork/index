@@ -1,8 +1,10 @@
+import { Intents, Networks, type ClarifyInput } from '@indexnetwork/protocol';
+
 import { log } from '../lib/log';
-import { Intents, Networks } from '@indexnetwork/protocol';
 import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
+import { issuePreparationReceipt, readPreparationReceipt } from '../lib/intent/intent.preparation';
 import { IntentEvents } from '../events/intent.event';
 
 const logger = log.service.from("IntentService");
@@ -15,6 +17,11 @@ export class IntentCreateRejectedError extends Error {
     super(detail);
     this.name = 'IntentCreateRejectedError';
   }
+}
+
+/** Model failures during preparation are retryable, never a completed round. */
+export class IntentPreparationFailedError extends Error {
+  constructor() { super('Could not prepare this signal. Your answers are kept; try again.'); }
 }
 
 /** Stable typed failure for a create naming a network the caller is not a member of. */
@@ -61,6 +68,7 @@ export type IntentTransitionOutcome =
  * (list/get/resolve) go straight to the adapter.
  */
 export class IntentService {
+  private intents: Intents;
   private intentGraph: IntentGraphRunner;
   private intentNetworkGraph: IntentGraphRunner;
   private adapter: IntentDatabaseAdapter;
@@ -80,16 +88,39 @@ export class IntentService {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.embedder = deps?.embedder ?? new EmbedderAdapter();
     this.emitCreated = deps?.emitCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
-    this.intentGraph = deps?.intentGraph
-      ?? new Intents({ database: this.adapter, embedder: this.embedder, followUp: intentIndexing }).createGraph();
+    this.intents = new Intents({ database: this.adapter, embedder: this.embedder, followUp: intentIndexing });
+    this.intentGraph = deps?.intentGraph ?? this.intents.createGraph();
     this.intentNetworkGraph = deps?.intentNetworkGraph
       ?? new Networks({ database: chatDatabaseAdapter }).createAssignmentGraph();
   }
 
   /**
+   * Prepare a draft and authorize final revisions only after protocol admission.
+   * @param userId - Authenticated owner.
+   * @param input - Draft and pending answers.
+   * @returns Repairable feedback or a signed receipt for final review.
+   * @throws {IntentPreparationFailedError} When a model fails; retain answers for retry.
+   */
+  async clarify(userId: string, input: ClarifyInput) {
+    const result = await this.prepare(input);
+    if (result.status !== 'ready') return result;
+    const preparationReceipt = await issuePreparationReceipt(userId, result);
+    return { status: result.status, payload: result.payload, questions: result.questions, preparationReceipt };
+  }
+
+  private async prepare(input: ClarifyInput) {
+    try {
+      return await this.intents.clarify(input);
+    } catch (error) {
+      logger.error('Intent preparation failed', { error });
+      throw new IntentPreparationFailedError();
+    }
+  }
+
+  /**
    * Create one intent and share it in the owner's networks.
    *
-   * The graph infers, verifies and persists the signal, then writes an
+   * The protocol prepares the description once and persists it verbatim, then writes an
    * `intent_networks` row per id. Naming networks shares it in exactly those,
    * and a network the caller is not a member of is rejected outright rather
    * than silently dropped. Naming none shares it in every network the owner
@@ -99,6 +130,7 @@ export class IntentService {
    * @param userId - The authenticated owner.
    * @param description - The signal text as the owner wrote it.
    * @param networkIds - Networks to share it in; empty means all memberships.
+   * @param preparationReceipt - Server authorization from guided preparation, valid for final revisions.
    * @returns The created intent id and the networks it was linked to.
    * @throws {IntentNetworkMembershipError} When a named id is not a current membership.
    */
@@ -106,16 +138,29 @@ export class IntentService {
     userId: string,
     description: string,
     networkIds: string[],
+    preparationReceipt?: string,
   ): Promise<{ id: string; networkIds: string[] }> {
     const targetNetworkIds = networkIds.length > 0
       ? networkIds
       : (await chatDatabaseAdapter.getAssignmentNetworkMembershipsForUser(userId))
         .map((membership) => membership.networkId);
 
+    for (const networkId of networkIds) {
+      if (!await this.adapter.isNetworkMember(networkId, userId)) throw new IntentNetworkMembershipError(networkId);
+    }
+    let preparation;
+    if (preparationReceipt) {
+      preparation = await readPreparationReceipt(userId, description, preparationReceipt);
+    } else {
+      const result = await this.prepare({ payload: description });
+      if (result.status !== 'ready') throw new IntentCreateRejectedError(result.feedback);
+      preparation = { metadata: result.metadata };
+    }
+
     logger.verbose('Creating intent', { userId, networkCount: targetNetworkIds.length });
 
     const result = await this.intentGraph.invoke(
-      { userId, userProfile: '', inputContent: description, networkIds: targetNetworkIds },
+      { userId, userProfile: '', inputContent: description, preparation, networkIds: targetNetworkIds },
       { recursionLimit: 100 },
     ) as {
       executionResults?: Array<{ actionType: string; success: boolean; intentId?: string; error?: string; linkedNetworkIds?: string[] }>;

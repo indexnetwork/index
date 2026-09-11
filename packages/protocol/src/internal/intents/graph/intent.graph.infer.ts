@@ -1,11 +1,11 @@
 /**
- * Intent graph, stages 0-1: load the user's signals, then infer new ones.
+ * Intent graph preparation and explicit update inference.
  */
 
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
-import { isExplicitUpdateRequest, logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 
 /**
  * Validate that the input shape selects exactly one route. Returns an error
@@ -38,10 +38,8 @@ export function validateInputShape(state: IntentState): string | undefined {
 
     /**
      * Node 0: Prep
-     * Always fetches ALL of the user's active intents from the DB via getActiveIntents(userId).
-     * This ensures reconciliation can detect duplicates and modifications globally,
-     * regardless of network scope. Also validates that the input shape selects
-     * exactly one route (see {@link validateInputShape}).
+     * Validates the input route and loads active IDs for existing-intent operations.
+     * Creation does not inspect or reconcile existing intents.
      */
 export async function prepNode(state: IntentState, deps: IntentGraphDeps) {
   return timed("IntentGraph.prep", async () => {
@@ -55,17 +53,16 @@ export async function prepNode(state: IntentState, deps: IntentGraphDeps) {
 
     const validationError = validateInputShape(state);
 
-    const activeIntents = await deps.database.getActiveIntents(state.userId);
-    const formattedActiveIntents = activeIntents
-      .map(i => `ID: ${i.id}, Description: ${i.payload}, Summary: ${i.summary || 'N/A'}`)
-      .join('\n') || "No active intents.";
+    // Creation never loads existing intents: explicit creation cannot merge them.
+    const activeIntents = state.inputContent !== undefined && !state.targetIntentIds?.length
+      ? []
+      : await deps.database.getActiveIntents(state.userId);
 
     logger.verbose("Fetched active intents", {
       count: activeIntents.length,
     });
 
     return {
-      activeIntents: formattedActiveIntents,
       activeIntentIds: activeIntents.map((intent) => intent.id),
       ...(validationError ? { error: validationError } : {}),
       trace: [{
@@ -84,9 +81,7 @@ export async function prepNode(state: IntentState, deps: IntentGraphDeps) {
      */
 export async function inferenceNode(state: IntentState, deps: IntentGraphDeps) {
   return timed("IntentGraph.inference", async () => {
-    const inferrerMode = isExplicitUpdateRequest(state) ? 'update' : 'create';
     logger.verbose("Starting inference", {
-      inferrerMode,
       contentPreview: state.inputContent?.substring(0, 50),
       hasConversationContext: !!state.conversationContext,
       conversationMessagesCount: state.conversationContext?.length || 0
@@ -101,7 +96,6 @@ export async function inferenceNode(state: IntentState, deps: IntentGraphDeps) {
       state.inputContent ?? null,
       state.userProfile,
       {
-        operationMode: inferrerMode,
         conversationContext: state.conversationContext
       }
     );
@@ -110,7 +104,6 @@ export async function inferenceNode(state: IntentState, deps: IntentGraphDeps) {
 
     logger.verbose("Inference complete", {
       inferredCount: result.intents.length,
-      inferrerMode,
     });
 
     const descriptions = result.intents.map(i => i.description).slice(0, 3);
@@ -127,4 +120,23 @@ export async function inferenceNode(state: IntentState, deps: IntentGraphDeps) {
       }],
     };
   });
+}
+
+/** Prepare an unprepared create, or reuse host authorization for the final edited text. */
+export async function preparationNode(state: IntentState, deps: IntentGraphDeps) {
+  const result = state.preparation ? undefined : await deps.clarifier.invoke({ payload: state.inputContent! }, state.userProfile);
+  if (result?.status === "needs_clarification") {
+    return {
+      preparationResult: result,
+      actions: [],
+      validationFailures: [{ category: "vague_or_invalid" as const, message: result.feedback }],
+    };
+  }
+  const preparation = state.preparation ?? { metadata: result!.metadata };
+  return {
+    preparation,
+    preparationResult: result,
+    actions: [{ type: "create" as const, payload: state.inputContent!, metadata: preparation.metadata }],
+    trace: [{ node: "preparation", detail: state.preparation ? "Reused approved preparation" : "Description passed admission" }],
+  };
 }

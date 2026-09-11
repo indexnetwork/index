@@ -54,7 +54,6 @@ output with `setLoggerFactory()`. The package does not implement
 |-------|------|---------|
 | Intent Clarifier | `internal/intents/verification/intent.clarifier.ts` | Intent capability — checks specificity (entropy threshold) before persisting |
 | Intent Inferrer | `internal/intents/inference/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
-| Intent Reconciler | `internal/intents/inference/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
 | Intent Verifier | `internal/intents/verification/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
 | Network Recommender | `internal/networks/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
 | HyDE Generator | `internal/discovery/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |

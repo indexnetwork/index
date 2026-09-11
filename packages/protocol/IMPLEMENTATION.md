@@ -103,7 +103,7 @@ The package defines interfaces — your application provides the concrete implem
 | `Embedder` | Vector embeddings for semantic search |
 | `Scraper` | Web content extraction |
 | `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
-| `IntentFollowUp` | Post-persist intent follow-up (HyDE, resume discovery) |
+| `IntentFollowUp` | Post-persist intent follow-up (rescoring, HyDE, resume discovery) |
 | `ProfileEnricher` | Enrich profiles from external sources |
 | `NegotiationDatabase` | Current negotiation state and atomic commit with the supplied protocol decision function |
 | `NegotiationContextDatabase` | Read-only negotiation turn log, for opportunity presentation (folded into `CompositeDatabase`) |
@@ -169,10 +169,27 @@ first use, so an unused method costs nothing.
 
 | Method | Purpose |
 |---|---|
-| `createGraph()` | Compile the lifecycle graph — prep, infer, verify, reconcile, execute. Requires `database` |
+| `createGraph()` | Prepare and create exactly one new signal; explicitly read, update, archive, or transition existing signals. Requires `database` |
 | `verifyIntent(content, profileContext)` | Felicity conditions, speech-act classification, semantic entropy, specificity |
-| `clarify({ payload, answers? })` | One stateless round: the payload, rewritten to state any answers, plus the questions still worth asking |
-| `Intents.normalizeDescription(description)` | Normalize a description to its persisted form |
+| `clarify({ payload, answers? })` | Fold answers into the draft, then return `ready` with metadata or `needs_clarification` with feedback and questions; model failures throw for retry |
+| `scoreIntent(content, profileContext?)` | Measure saved text without admission filters; a negative verdict still returns metadata |
+| `Intents.normalizeDescription(description)` | Normalize an explicit update description; creation preserves text verbatim |
+
+Creation with `inputContent` prepares the description once and persists that exact
+text in a new record, even if a similar signal exists. Guided hosts call `clarify`
+until it returns `ready`, then issue their own authenticated preparation receipt
+bound to the owner and admitted draft. After authenticating the receipt, pass
+`preparation: { metadata }` to `createGraph().invoke()` alongside the final
+`inputContent`. If the user edited the text, pass `metadata: null`: permission to
+create survives revisions, but the draft's scores do not describe the edited text.
+Never accept this graph input directly from an untrusted client.
+
+No inference, admission, or reconciliation runs on prepared creation. The graph
+persists first and invokes `IntentFollowUp.scoreIntent` for revised text. Hosts
+must run scoring as best-effort background work, apply only metadata while the
+owner and payload still match, and leave the saved record usable on negative
+verdicts or failures. Authentication, nonempty text, length limits, and network
+membership remain the host's responsibility.
 
 ## Networks
 

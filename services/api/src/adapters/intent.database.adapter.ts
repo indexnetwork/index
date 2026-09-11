@@ -120,13 +120,14 @@ export class IntentDatabaseAdapter {
           isIncognito: data.isIncognito ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
-          semanticEntropy: data.semanticEntropy ?? undefined,
-          referentialAnchor: data.referentialAnchor ?? undefined,
-          felicityAuthority: data.felicityAuthority ?? undefined,
-          felicitySincerity: data.felicitySincerity ?? undefined,
-          felicityClarity: data.felicityClarity ?? undefined,
-          intentMode: data.intentMode ?? undefined,
-          speechActType: data.speechActType ?? undefined,
+          // Null means unmeasured; only omitted fields may use database defaults.
+          semanticEntropy: data.semanticEntropy,
+          referentialAnchor: data.referentialAnchor,
+          felicityAuthority: data.felicityAuthority,
+          felicitySincerity: data.felicitySincerity,
+          felicityClarity: data.felicityClarity,
+          intentMode: data.intentMode,
+          speechActType: data.speechActType,
         })
         .returning({
           id: schema.intents.id,
@@ -143,6 +144,25 @@ export class IntentDatabaseAdapter {
       logger.error('IntentDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
+  }
+
+  /**
+   * Apply measurements only to the exact saved text that was scored.
+   * @param intentId - Saved intent.
+   * @param userId - Expected owner.
+   * @param payload - Exact description sent to the scorer.
+   * @param metadata - Semantic measurements; never content or lifecycle fields.
+   * @returns Once the conditional metadata write finishes.
+   */
+  async updateSemanticMetadata(
+    intentId: string,
+    userId: string,
+    payload: string,
+    metadata: Pick<CreateIntentInput, 'semanticEntropy' | 'referentialAnchor' | 'felicityAuthority' | 'felicitySincerity' | 'felicityClarity' | 'intentMode' | 'speechActType'>,
+  ): Promise<void> {
+    await db.update(schema.intents).set(metadata).where(and(
+      eq(schema.intents.id, intentId), eq(schema.intents.userId, userId), eq(schema.intents.payload, payload),
+    ));
   }
 
   async updateIntent(intentId: string, data: UpdateIntentInput): Promise<CreatedIntentRow | null> {

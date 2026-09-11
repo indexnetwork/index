@@ -406,10 +406,11 @@ export function createIndexApiClient(options = {}) {
 
     intents: {
       list: (body = {}, options = {}) => request('/intents/list', { ...options, method: 'POST', body }),
-      // One stateless clarification round: send { payload, answers } and get
-      // back { payload, questions }. Nothing is stored; answering is optional.
+      // Prepare { payload, answers }: ready includes preparationReceipt;
+      // needs_clarification includes feedback and questions. Retain answers on failure.
       clarify: (body, options = {}) => request('/intents/clarify', { ...options, method: 'POST', body }),
-      // Persist the signal; resolves { intentId, networkIds }.
+      // Persist { description, preparationReceipt? }; resolves { intentId, networkIds }.
+      // The receipt authorizes final revisions without another admission gate.
       create: (body, options = {}) => request('/intents', { ...options, method: 'POST', body }),
       get: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}`, options),
       archive: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}/archive`, { ...options, method: 'PATCH' }),

@@ -92,6 +92,8 @@ export type {
   ClarifyQuestionOption,
   ClarifyResult,
   IntentsDeps,
+  IntentSemanticMetadata,
+  PreparedIntent,
 } from "./capabilities/intents.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────

@@ -21,11 +21,6 @@ const INTENT_STEP = {
   ],
 };
 
-// How many clarifying questions follow the opening prompt. Caps the loop and
-// drives the progress pips (opening + middle beats).
-const MAX_FOLLOW_UPS = 2;
-const STEP_COUNT = 1 + MAX_FOLLOW_UPS;
-
 function NewIntent({ onDone, onBack }) {
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
   const client = live ? window.IndexApp.getClient() : null;
@@ -37,17 +32,20 @@ function NewIntent({ onDone, onBack }) {
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
   const [calibrating, setCalibrating] = useState(false);
+  const [finalDescription, setFinalDescription] = useState("");
   const inputRef = useRef(null);
 
   // The payload as it currently reads. Clarify rewrites it; create persists it.
   const payloadRef = useRef("");
+  const preparationReceiptRef = useRef("");
+  const feedbackRef = useRef("");
   const queue = useRef([]);            // clarifying questions not yet asked
   const pending = useRef([]);          // answers not yet folded into the payload
   const askedRef = useRef(0);          // clarifying questions asked so far
   const cancelledRef = useRef(false);
   useEffect(() => () => { cancelledRef.current = true; }, []);
 
-  const stepIdx = Math.min(turns.length, STEP_COUNT - 1);
+  const stepIdx = step.kind === "summary" ? 2 : turns.length > 0 ? 1 : 0;
   const stepId = step && step.id;
 
   useEffect(() => {
@@ -64,6 +62,7 @@ function NewIntent({ onDone, onBack }) {
       id: `q-${askedRef.current}-${Date.now()}`,
       kind: "ask",
       prompt: question.prompt,
+      note: feedbackRef.current,
       placeholder: "type your answer…",
       examples: (question.options || []).map((option) => option.label).filter(Boolean),
     });
@@ -99,26 +98,25 @@ function NewIntent({ onDone, onBack }) {
       if (cancelledRef.current) return;
       payloadRef.current = result.payload;
       pending.current = [];
-      queue.current = result.questions || [];
-      advance();
+      if (result.status === "ready") {
+        preparationReceiptRef.current = result.preparationReceipt;
+        setFinalDescription(result.payload);
+        showSummary();
+      } else {
+        feedbackRef.current = result.feedback;
+        queue.current = result.questions;
+        advance();
+      }
     } catch (_e) {
       if (cancelledRef.current) return;
       showRetry();
     }
   };
 
-  // Next beat: another question while there is budget and something to ask,
-  // one more clarification round to fold in what was just answered, else the
-  // summary.
+  // Keep asking until preparation admits the complete draft.
   const advance = () => {
-    if (askedRef.current >= MAX_FOLLOW_UPS) {
-      if (pending.current.length > 0) { void clarify(); return; }
-      showSummary();
-      return;
-    }
     if (queue.current.length > 0) { showQuestion(queue.current.shift()); return; }
-    if (pending.current.length > 0) { void clarify(); return; }
-    showSummary();
+    void clarify();
   };
 
   const submit = (value) => {
@@ -140,10 +138,11 @@ function NewIntent({ onDone, onBack }) {
   };
 
   const create = async () => {
+    if (calibrating || !finalDescription.trim() || finalDescription.length > 65_536) return;
+    const description = finalDescription;
     setCalibrating(true);
     try {
-      const description = payloadRef.current.trim();
-      const created = await client.intents.create({ description });
+      const created = await client.intents.create({ description, preparationReceipt: preparationReceiptRef.current });
       if (cancelledRef.current) return;
       onDone({ intent: description }, true, created.intentId);
     } catch (_e) {
@@ -187,7 +186,7 @@ function NewIntent({ onDone, onBack }) {
 
             {/* progress, pinstripe segments */}
             <div style={{ display:"flex", gap:3, marginBottom:24 }}>
-              {Array.from({ length: STEP_COUNT }).map((_, i) => (
+              {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} style={{
                   flex:1, height:8,
                   border:"1px solid #000",
@@ -234,7 +233,8 @@ function NewIntent({ onDone, onBack }) {
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:12 }}>
                 <AgentBubble>Here's your signal.</AgentBubble>
                 <SignalSummaryCard
-                  description={payloadRef.current}
+                  description={finalDescription}
+                  onChange={setFinalDescription}
                   note={step.note}
                   onCreate={create}
                 />
@@ -242,6 +242,7 @@ function NewIntent({ onDone, onBack }) {
               ) : (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:10 }}>
                 <AgentBubble>{step.prompt}</AgentBubble>
+                {step.note && <p style={{ marginLeft:36, fontSize:13, color:"var(--ink-2)" }}>{step.note}</p>}
 
                 <div style={{ marginLeft:36, marginTop:10, display:"grid", gap:16 }}>
                   {/* type your own answer first, the suggestions are the
@@ -255,6 +256,7 @@ function NewIntent({ onDone, onBack }) {
                     <input
                       ref={inputRef}
                       value={draft}
+                      maxLength={65_536}
                       onChange={e => setDraft(e.target.value)}
                       placeholder={step.placeholder}
                       style={{
@@ -361,19 +363,26 @@ function PastTurn({ step, answer }) {
   );
 }
 
-// The confirmation gate, kept quiet: the signal as an indented quote in the
-// conversation, small detail lines, one button. No card chrome.
-function SignalSummaryCard({ description, note, onCreate }) {
+// Final description editor. Revisions keep the approved preparation receipt.
+function SignalSummaryCard({ description, onChange, note, onCreate }) {
   return (
     <div style={{ marginLeft:36, maxWidth:560, display:"grid", gap:14 }}>
       <div style={{
         borderLeft:"2px solid #000", paddingLeft:14,
         display:"grid", gap:8,
       }}>
-        <div style={{
-          fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
-          lineHeight:1.4, color:"#000",
-        }}>{description}</div>
+        <textarea
+          aria-label="Signal description"
+          value={description}
+          onChange={(event) => onChange(event.target.value)}
+          maxLength={65_536}
+          rows={6}
+          style={{
+            width:"100%", boxSizing:"border-box", padding:10, border:"1px solid #000",
+            fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
+            lineHeight:1.4, color:"#000", background:"#fff", resize:"vertical",
+          }}
+        />
         <div style={{
           fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
           lineHeight:1.6,
@@ -381,7 +390,7 @@ function SignalSummaryCard({ description, note, onCreate }) {
       </div>
 
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-        <Btn primary onClick={onCreate}>create this signal</Btn>
+        <Btn primary disabled={!description.trim() || description.length > 65_536} onClick={onCreate}>create this signal</Btn>
         {note && (
           <span style={{
             fontFamily:"var(--mac-mono)", fontSize:11,

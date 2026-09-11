@@ -16,6 +16,8 @@ export interface IntentFollowUpScope {
  * generation/deletion, resume discovery). Implemented by the host.
  */
 export interface IntentFollowUp {
+  /** Measure edited text after persistence. Must never gate, rewrite, archive, or undo the intent, including on failure. Apply metadata only if the owner and payload still match. */
+  scoreIntent(data: { intentId: string; userId: string; payload: string }): Promise<unknown>;
   generateHyde(data: { intentId: string; userId: string } & IntentFollowUpScope): Promise<unknown>;
   deleteHyde(data: { intentId: string }): Promise<unknown>;
   /** Start discovery for an intent resumed from PAUSED back to ACTIVE. */
