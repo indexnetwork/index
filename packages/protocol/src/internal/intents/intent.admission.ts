@@ -3,7 +3,8 @@ import type { IntentValidationFailure } from "./graph/intent.graph.state.js";
 
 const MAX_PERMISSIBLE_ENTROPY = 0.75;
 const MIN_CLEAR_INTENT_SCORE = 40;
-const GENERIC_JOB_PHRASE = /\b(?:a|any|some)\s+job\b/i;
+// Match the whole request so qualified job searches use the verifier's verdict.
+const GENERIC_JOB_PHRASE = /^(?:(?:i(?:['’]m|\s+am)?\s+)?(?:want|need|seek(?:ing)?|looking\s+for)\s+)?(?:a|any|some)\s+job[.!?]*$/i;
 const DEFAULT_SPECIFICITY_WARNING = "This signal is broad and may produce many weak matches. Add a more concrete role, outcome, location, timeframe, domain, or specific need to get better recommendations.";
 
 /** The admission policy shared by preparation and explicit updates. */
@@ -16,7 +17,7 @@ export function admissionFailure(
   if (!["COMMISSIVE", "DIRECTIVE", "DECLARATION"].includes(verdict.classification)) {
     return { ...details, category: "non_actionable", message: "Describe who you want to reach and what you want to do together." };
   }
-  if (GENERIC_JOB_PHRASE.test(description) || verdict.semantic_entropy > MAX_PERMISSIBLE_ENTROPY || verdict.felicity_scores.clarity < MIN_CLEAR_INTENT_SCORE) {
+  if (GENERIC_JOB_PHRASE.test(description.trim()) || verdict.semantic_entropy > MAX_PERMISSIBLE_ENTROPY || verdict.felicity_scores.clarity < MIN_CLEAR_INTENT_SCORE) {
     return { ...details, category: "vague_or_invalid", message: "Make the goal more concrete: specify the role, outcome, or particular help you need." };
   }
   if (!isExplicitUpdate && verdict.referential_breadth === "broad") {

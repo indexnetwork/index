@@ -9,6 +9,9 @@
 - `IntentFollowUp.scoreIntent` is required for best-effort rescoring after edited creation. It must never reject, rewrite, archive, or undo the saved intent and must apply metadata only while the owner and text still match. `Intents.scoreIntent()` returns measurements without admission filters.
 - Export `PreparedIntent` and `IntentSemanticMetadata` for host integration. Existing explicit update, read, archive, and status operations retain their behavior.
 
+### Fixed
+- Restrict the generic-job shortcut to bare requests. Qualified searches containing "a job" use the verifier's existing admission thresholds and specificity verdict.
+
 All notable changes to `@indexnetwork/protocol` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

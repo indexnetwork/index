@@ -120,13 +120,14 @@ export class IntentDatabaseAdapter {
           isIncognito: data.isIncognito ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
-          semanticEntropy: data.semanticEntropy ?? undefined,
-          referentialAnchor: data.referentialAnchor ?? undefined,
-          felicityAuthority: data.felicityAuthority ?? undefined,
-          felicitySincerity: data.felicitySincerity ?? undefined,
-          felicityClarity: data.felicityClarity ?? undefined,
-          intentMode: data.intentMode ?? undefined,
-          speechActType: data.speechActType ?? undefined,
+          // Null means unmeasured; only omitted fields may use database defaults.
+          semanticEntropy: data.semanticEntropy,
+          referentialAnchor: data.referentialAnchor,
+          felicityAuthority: data.felicityAuthority,
+          felicitySincerity: data.felicitySincerity,
+          felicityClarity: data.felicityClarity,
+          intentMode: data.intentMode,
+          speechActType: data.speechActType,
         })
         .returning({
           id: schema.intents.id,
