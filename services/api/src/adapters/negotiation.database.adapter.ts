@@ -89,6 +89,13 @@ export interface NegotiationDetail extends NegotiationView {
   turns: NegotiationTurnRecord[];
 }
 
+/** Change detection without loading counterparties or turn logs. */
+export interface NegotiationScanRecord {
+  opportunityId: string;
+  version: string;
+  eligible: boolean;
+}
+
 /** Structural host contracts; protocol supplies all policy callbacks. */
 export interface NegotiationState {
   initiatorUserId: string;
@@ -396,6 +403,39 @@ export class NegotiationDatabaseAdapter {
     if (options.offset !== undefined) query = query.offset(options.offset);
 
     return this.toViews(await query, userId);
+  }
+
+  /**
+   * Scan one intent's negotiations, including eligibility changes outside the negotiation row.
+   *
+   * @param userId - The seat owner.
+   * @param intentId - The intent bound to the agent session.
+   * @returns IDs, precise database change versions, and current eligibility.
+   */
+  async scanForIntent(userId: string, intentId: string): Promise<NegotiationScanRecord[]> {
+    const networkId = sql<string>`nullif(${opportunities.context}->>'networkId', '')`;
+    // Match state(): both live intents must still belong to their seats and be
+    // assigned to the opportunity's network with a membership for each owner.
+    const eligibleSeats = [
+      { intentId: negotiations.initiatorIntentId, userId: negotiations.initiatorUserId },
+      { intentId: negotiations.responderIntentId, userId: negotiations.responderUserId },
+    ].map((seat) => sql<boolean>`exists (${db.select({ id: intents.id }).from(intents)
+      .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, networkId)))
+      .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, networkId)))
+      .where(and(eq(intents.id, seat.intentId), eq(intents.userId, seat.userId), liveIntentWhere()))})`);
+
+    return db.select({
+      opportunityId: negotiations.opportunityId,
+      // Keep Postgres timestamp precision rather than truncating it to JavaScript milliseconds.
+      version: sql<string>`${negotiations.updatedAt}::text`,
+      eligible: sql<boolean>`${and(eq(opportunities.status, 'negotiating'), ...eligibleSeats)}`,
+    }).from(negotiations)
+      .innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
+      .where(or(
+        and(eq(negotiations.initiatorUserId, userId), eq(negotiations.initiatorIntentId, intentId)),
+        and(eq(negotiations.responderUserId, userId), eq(negotiations.responderIntentId, intentId)),
+      ))
+      .orderBy(desc(negotiations.updatedAt));
   }
 
   /**

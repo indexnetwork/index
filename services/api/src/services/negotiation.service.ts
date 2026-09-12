@@ -1,7 +1,7 @@
 import { Negotiations, observeNegotiation, decideNegotiationOpening, pairKeyOf, type NegotiationTurn } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
-import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationScanRecord, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
 import { publishUserEvent } from '../lib/user-events';
 
 const logger = log.service.from('NegotiationService');
@@ -49,6 +49,17 @@ export class NegotiationService {
     options: { intentId?: string; open?: boolean; counterpartyUserId?: string; limit?: number; offset?: number } = {},
   ): Promise<NegotiationView[]> {
     return this.negotiations.listForUser(userId, options);
+  }
+
+  /**
+   * Discover changes without loading negotiation details.
+   *
+   * @param userId - The seat owner.
+   * @param intentId - The intent bound to the agent session.
+   * @returns Negotiation IDs, change versions, and current eligibility.
+   */
+  async scan(userId: string, intentId: string): Promise<NegotiationScanRecord[]> {
+    return this.negotiations.scanForIntent(userId, intentId);
   }
 
   /**

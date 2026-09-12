@@ -90,12 +90,11 @@ export class ApiNegotiationHost extends EventEmitter {
     this.subscriber.on('message', (_channel, raw: string) => {
       try {
         const { type } = JSON.parse(raw);
-        if (type === 'intent.lifecycle') this.versions.clear();
-        else if (!['negotiation.turn', 'negotiation.settled', 'negotiation.opened'].includes(type)) return;
+        if (!['intent.lifecycle', 'negotiation.turn', 'negotiation.settled', 'negotiation.opened'].includes(type)) return;
       } catch { return; }
       void this.scan();
     });
-    this.subscriber.on('ready', () => { this.versions.clear(); void this.scan(); });
+    this.subscriber.on('ready', () => { void this.scan(); });
     await this.subscriber.subscribe(...[...new Set(this.users.map(({ userId }) => userEventChannel(userId)))]);
     if (this.stopped) return;
     // Ongoing notifications can keep a scan alive indefinitely; discovery does not gate session readiness.
@@ -144,15 +143,14 @@ export class ApiNegotiationHost extends EventEmitter {
         this.rescan = false;
         if (this.stopped) return;
         for (const principal of this.users) {
-          const records = await this.runDatabase(() => negotiationService.list(principal.userId, { intentId: principal.intentId }));
+          const records = await this.runDatabase(() => negotiationService.scan(principal.userId, principal.intentId));
           for (const record of records) {
             const key = `${principal.id}:${record.opportunityId}`;
-            if (record.settledAt && this.versions.get(key) === record.updatedAt.toISOString()) continue;
+            const version = `${record.version}:${record.eligible}`;
+            if (this.versions.get(key) === version) continue;
             const detail = await this.runDatabase(() => negotiationService.read(record.opportunityId, principal.userId));
             if (this.stopped) return;
             if (!detail) continue;
-            const version = detail.updatedAt.toISOString() + (detail.settledAt ? '' : ':' + detail.protocol.blockedReason);
-            if (this.versions.get(key) === version) continue;
             this.observe(principal, detail);
             this.versions.set(key, version);
             void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: record.opportunityId })
