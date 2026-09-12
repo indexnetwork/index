@@ -4,6 +4,7 @@ import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from './negotiation.database.adapter';
 import { IntentEvents } from '../events/intent.event';
+import { publishUserInvalidation } from '../lib/user-events';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { toPublicNetworkPermissions } from '../lib/network-permissions';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
@@ -234,6 +235,7 @@ export class ChatDatabaseAdapter {
           userId: schema.intents.userId,
         });
       if (!created) throw new Error('Insert did not return a row');
+      await publishUserInvalidation(created.userId, 'intent.updated', created.id);
       return created;
     } catch (error: unknown) {
       logger.error('ChatDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
@@ -292,6 +294,7 @@ export class ChatDatabaseAdapter {
       });
       if (!result) return null;
       if (result.oldFingerprint !== result.newFingerprint) {
+        await publishUserInvalidation(result.updated.userId, 'intent.updated', intentId);
         await IntentEvents.onMaterialUpdated({
           intentId,
           userId: result.updated.userId,
@@ -307,17 +310,7 @@ export class ChatDatabaseAdapter {
   }
 
   async archiveIntent(intentId: string): Promise<ArchiveResultShape> {
-    try {
-      const [archived] = await db.update(schema.intents)
-        .set({ archivedAt: new Date(), updatedAt: new Date() })
-        .where(eq(schema.intents.id, intentId))
-        .returning({ id: schema.intents.id });
-      if (!archived) return { success: false, error: 'Intent not found' };
-      return { success: true };
-    } catch (error: unknown) {
-      logger.error('ChatDatabaseAdapter.archiveIntent error', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
+    return this.intentAdapter.archiveIntent(intentId);
   }
 
   async getNetworkMemberships(userId: string): Promise<NetworkMembershipRow[]> {
@@ -777,10 +770,12 @@ export class ChatDatabaseAdapter {
    * stamp instead of waiting out the 24-hour freshness window (IND-482).
    */
   async markIntentFirstDiscoverySucceeded(intentId: string): Promise<void> {
-    await db
+    const [updated] = await db
       .update(intents)
       .set({ firstDiscoverySucceededAt: new Date() })
-      .where(and(eq(intents.id, intentId), isNull(intents.firstDiscoverySucceededAt)));
+      .where(and(eq(intents.id, intentId), isNull(intents.firstDiscoverySucceededAt)))
+      .returning({ userId: intents.userId });
+    if (updated) await publishUserInvalidation(updated.userId, 'intent.updated', intentId);
   }
 
   async getNetworkMemberContext(networkId: string, userId: string) {
@@ -2434,6 +2429,7 @@ export class ChatDatabaseAdapter {
       };
     });
     if (result.kind === 'applied' && result.oldFingerprint !== result.newFingerprint) {
+      await publishUserInvalidation(result.userId, 'intent.updated', result.id);
       await IntentEvents.onMaterialUpdated({
         intentId: result.id,
         userId: result.userId,

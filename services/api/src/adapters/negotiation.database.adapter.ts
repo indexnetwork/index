@@ -9,7 +9,7 @@ import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, int
 
 import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-session.database.adapter';
 
-import { publishUserEvent } from '../lib/user-events';
+import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
 export type NegotiationExecution = AgentExecution | { userId: string; agentId: string };
@@ -87,6 +87,13 @@ export interface NegotiationView {
 
 export interface NegotiationDetail extends NegotiationView {
   turns: NegotiationTurnRecord[];
+}
+
+/** Change detection without loading counterparties or turn logs. */
+export interface NegotiationScanRecord {
+  opportunityId: string;
+  version: string;
+  eligible: boolean;
 }
 
 /** Structural host contracts; protocol supplies all policy callbacks. */
@@ -191,6 +198,22 @@ async function announceOpened(opened: OpenedNegotiation[]): Promise<void> {
  * Persistence for negotiation records and their turn logs.
  */
 export class NegotiationDatabaseAdapter {
+  /** @param intentId - Intent whose committed lifecycle change affects both seats' eligibility. */
+  async notifyIntentNegotiations(intentId: string): Promise<void> {
+    try {
+      const affected = await db.select({
+        initiatorUserId: negotiations.initiatorUserId, initiatorIntentId: negotiations.initiatorIntentId,
+        responderUserId: negotiations.responderUserId, responderIntentId: negotiations.responderIntentId,
+      }).from(negotiations).where(or(eq(negotiations.initiatorIntentId, intentId), eq(negotiations.responderIntentId, intentId)));
+      await publishNegotiationChange(affected.flatMap((row) => [
+        { userId: row.initiatorUserId, intentId: row.initiatorIntentId },
+        { userId: row.responderUserId, intentId: row.responderIntentId },
+      ]));
+    } catch (error: unknown) {
+      logger.error('Failed to notify negotiations after intent lifecycle change', { intentId, error: String(error) });
+    }
+  }
+
   /**
    * Turn every pair discovery scored into an opportunity with a negotiation
    * beside it, and report the ones newly opened.
@@ -399,6 +422,39 @@ export class NegotiationDatabaseAdapter {
   }
 
   /**
+   * Scan one intent's negotiations, including eligibility changes outside the negotiation row.
+   *
+   * @param userId - The seat owner.
+   * @param intentId - The intent bound to the agent session.
+   * @returns IDs, precise database change versions, and current eligibility.
+   */
+  async scanForIntent(userId: string, intentId: string): Promise<NegotiationScanRecord[]> {
+    const networkId = sql<string>`nullif(${opportunities.context}->>'networkId', '')`;
+    // Match state(): both live intents must still belong to their seats and be
+    // assigned to the opportunity's network with a membership for each owner.
+    const eligibleSeats = [
+      { intentId: negotiations.initiatorIntentId, userId: negotiations.initiatorUserId },
+      { intentId: negotiations.responderIntentId, userId: negotiations.responderUserId },
+    ].map((seat) => sql<boolean>`exists (${db.select({ id: intents.id }).from(intents)
+      .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, networkId)))
+      .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, networkId)))
+      .where(and(eq(intents.id, seat.intentId), eq(intents.userId, seat.userId), liveIntentWhere()))})`);
+
+    return db.select({
+      opportunityId: negotiations.opportunityId,
+      // Keep Postgres timestamp precision rather than truncating it to JavaScript milliseconds.
+      version: sql<string>`${negotiations.updatedAt}::text`,
+      eligible: sql<boolean>`${and(eq(opportunities.status, 'negotiating'), ...eligibleSeats)}`,
+    }).from(negotiations)
+      .innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
+      .where(or(
+        and(eq(negotiations.initiatorUserId, userId), eq(negotiations.initiatorIntentId, intentId)),
+        and(eq(negotiations.responderUserId, userId), eq(negotiations.responderIntentId, intentId)),
+      ))
+      .orderBy(desc(negotiations.updatedAt));
+  }
+
+  /**
    * One negotiation with its full turn log.
    *
    * @param opportunityId - The opportunity this negotiation belongs to.
@@ -546,13 +602,13 @@ export class NegotiationDatabaseAdapter {
   }
 
   /**
-   * Close the negotiations attached to these opportunities.
+   * Close open negotiations and refresh both seats after their opportunities change.
    *
    * Index closes a negotiation itself when consent, an archive, or expiry ends
-   * the opportunity underneath it. No seat declines anything; the next read
-   * shows it closed.
+   * the opportunity underneath it. Existing settlements stay unchanged, but
+   * both seats still need to refresh the opportunity's human decision state.
    *
-   * @param opportunityIds - Opportunities whose negotiations should close.
+   * @param opportunityIds - Opportunities whose status changes have committed.
    */
   async closeForOpportunities(opportunityIds: string[]): Promise<void> {
     if (opportunityIds.length === 0) return;
@@ -562,6 +618,15 @@ export class NegotiationDatabaseAdapter {
         inArray(negotiations.opportunityId, opportunityIds),
         isNull(negotiations.settledAt),
       ));
+    const affected = await db.select({
+      opportunityId: negotiations.opportunityId,
+      initiatorUserId: negotiations.initiatorUserId, initiatorIntentId: negotiations.initiatorIntentId,
+      responderUserId: negotiations.responderUserId, responderIntentId: negotiations.responderIntentId,
+    }).from(negotiations).where(inArray(negotiations.opportunityId, opportunityIds));
+    await Promise.all(affected.map((row) => publishNegotiationChange([
+      { userId: row.initiatorUserId, intentId: row.initiatorIntentId },
+      { userId: row.responderUserId, intentId: row.responderIntentId },
+    ], row.opportunityId)));
   }
 
   /** Resolve each row into the shape its reader's seat is allowed to see. */

@@ -1,4 +1,5 @@
 import { getRedisClient } from '../adapters/cache.adapter';
+import { log } from './log';
 
 /**
  * One channel per user carries every realtime frame, and nothing on the wire
@@ -13,6 +14,9 @@ import { getRedisClient } from '../adapters/cache.adapter';
  * `intent.lifecycle` and `negotiation.opened` are scoped to a signal instead:
  * whether the agent should be working it at all, and that discovery gave it
  * something to work.
+ * `negotiation.changed` refreshes both seats after a turn or a related intent's
+ * lifecycle change. It does not imply that either seat owes the next turn;
+ * `negotiation.turn` remains addressed to the seat that does.
  *
  * `question.pending` is scoped to a signal too, but the other way round: the
  * personal agent stopped and cannot continue until its owner answers, so the
@@ -27,7 +31,11 @@ export type UserEventType =
   | 'negotiation.turn'
   | 'negotiation.settled'
   | 'negotiation.opened'
+  | 'negotiation.changed'
   | 'intent.lifecycle'
+  | 'intent.updated'
+  | 'agent.configuration'
+  | 'agent.status'
   | 'message';
 
 /**
@@ -103,6 +111,45 @@ export async function publishUserEvent(
   if (!userId) return;
   const publisher = getRedisClient();
   await publisher.publish(userEventChannel(userId), JSON.stringify(event));
+}
+
+/**
+ * Invalidate affected views after a committed change, without retrying delivery.
+ * @param userId - Owner whose agents and views should refresh.
+ * @param type - Intent content, agent configuration, or runtime availability change.
+ * @param intentId - Affected intent, when the change is scoped to one.
+ */
+export async function publishUserInvalidation(
+  userId: string,
+  type: 'intent.updated' | 'agent.configuration' | 'agent.status',
+  intentId?: string,
+): Promise<void> {
+  try {
+    await publishUserEvent(userId, { type, id: crypto.randomUUID(), title: '', body: '', data: { intentId } });
+  } catch (error: unknown) {
+    log.lib.from('user-events').error('Failed to publish user invalidation', { userId, intentId, type, error: String(error) });
+  }
+}
+
+/**
+ * Refresh each affected seat without announcing that its owner owes a turn.
+ * @param seats - Negotiation seats affected by a committed change.
+ * @param opportunityId - Changed negotiation, or all negotiations for these seats after a lifecycle change.
+ */
+export async function publishNegotiationChange(
+  seats: readonly { userId: string; intentId: string }[],
+  opportunityId?: string,
+): Promise<void> {
+  const affected = new Map(seats.map((seat) => [JSON.stringify([seat.userId, seat.intentId]), seat]));
+  await Promise.all([...affected.values()].map(async ({ userId, intentId }) => {
+    try {
+      await publishUserEvent(userId, {
+        type: 'negotiation.changed', id: crypto.randomUUID(), title: '', body: '', data: { intentId, opportunityId },
+      });
+    } catch (error: unknown) {
+      log.lib.from('user-events').error('Failed to publish negotiation change', { userId, intentId, opportunityId, error: String(error) });
+    }
+  }));
 }
 
 /**

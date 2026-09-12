@@ -3,7 +3,7 @@ import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, Crea
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
-import { publishUserEvent, type IntentLifecycleWireStatus } from '../lib/user-events';
+import { publishUserEvent, publishUserInvalidation, type IntentLifecycleWireStatus } from '../lib/user-events';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 
 
@@ -26,7 +26,7 @@ const LIFECYCLE_WIRE_COPY: Record<IntentLifecycleWireStatus, { title: string; bo
  * @param status - Its effective state as agents see it.
  * @param lifecycleVersionMs - Monotonic version, letting agents order frames.
  */
-export async function publishIntentLifecycle(
+async function publishIntentLifecycle(
   userId: string,
   intentId: string,
   status: IntentLifecycleWireStatus,
@@ -46,15 +46,16 @@ export async function publishIntentLifecycle(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+  await negotiationDatabaseAdapter.notifyIntentNegotiations(intentId);
 }
 
 export class IntentDatabaseAdapter {
-  /** @returns Existing active principal/intent choices and only explicitly confirmed profile facts for the local agent host. */
-  async listAgentPrincipals() {
+  /** @param userId - Restrict event-triggered discovery to this owner. @returns Active intents and confirmed profile facts. */
+  async listAgentPrincipals(userId?: string) {
     const rows = await db.select({ userId: schema.users.id, name: schema.users.name, intro: schema.users.intro,
       location: schema.users.location, onboarding: schema.users.onboarding, intentId: schema.intents.id, intent: schema.intents.payload })
       .from(schema.intents).innerJoin(schema.users, eq(schema.users.id, schema.intents.userId))
-      .where(and(isNull(schema.intents.archivedAt), activeIntentLifecycleWhere()))
+      .where(and(isNull(schema.intents.archivedAt), activeIntentLifecycleWhere(), userId ? eq(schema.intents.userId, userId) : undefined))
       .orderBy(schema.users.name, schema.intents.createdAt);
     return rows.map((row) => ({ userId: row.userId, name: row.name, intentId: row.intentId, intent: row.intent,
       confirmedProfile: row.onboarding?.profileConfirmedAt ? { name: row.name, intro: row.intro, location: row.location } : null }));
@@ -139,7 +140,7 @@ export class IntentDatabaseAdapter {
           userId: schema.intents.userId,
         });
       if (!created) throw new Error('Insert did not return a row');
-      await publishIntentLifecycle(created.userId, created.id, 'ACTIVE', created.updatedAt.getTime());
+      await publishUserInvalidation(created.userId, 'intent.updated', created.id);
       return created;
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
@@ -213,21 +214,17 @@ export class IntentDatabaseAdapter {
           updated,
           oldFingerprint,
           newFingerprint: computeIntentFingerprint(updated.payload, updated.summary),
-          status: before.status,
-          archivedAt: before.archivedAt,
         };
       });
       if (!result) return null;
       if (result.oldFingerprint !== result.newFingerprint) {
+        await publishUserInvalidation(result.updated.userId, 'intent.updated', intentId);
         await IntentEvents.onMaterialUpdated({
           intentId,
           userId: result.updated.userId,
           oldFingerprint: result.oldFingerprint,
           newFingerprint: result.newFingerprint,
         });
-        if (!result.archivedAt && (result.status === 'ACTIVE' || result.status == null)) {
-          await publishIntentLifecycle(result.updated.userId, intentId, 'ACTIVE', result.updated.updatedAt.getTime());
-        }
       }
       return result.updated;
     } catch (error: unknown) {

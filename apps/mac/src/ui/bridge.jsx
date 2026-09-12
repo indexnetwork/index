@@ -355,14 +355,11 @@ window.IndexApp = (function () {
 
   // ---- bounded native SSE -------------------------------------------------
 
-  // GET /events, live inbox events. Returns an abort handle.
+  // Views share the app's existing authenticated /events connection.
+  const inboxHandlers = new Set();
   function streamInbox(onEvent) {
-    const controller = new AbortController();
-    nativeAPIBridge.request(
-      { kind:"sse", method:"GET", path:"/events" },
-      { signal:controller.signal, onEvent, timeoutMs:300000 },
-    ).catch((e) => { /* aborted or network drop; caller may retry */ });
-    return { close: () => controller.abort() };
+    inboxHandlers.add(onEvent);
+    return { close: () => inboxHandlers.delete(onEvent) };
   }
 
   // ---- desktop notifications ------------------------------------------------
@@ -452,7 +449,9 @@ window.IndexApp = (function () {
       if (copy) notify(copy);
     }
     function onRealtime(event) {
-      if (stopped || !event || event.type === "connected") return;
+      if (stopped || !event) return;
+      inboxHandlers.forEach((handler) => handler(event));
+      if (event.type === "connected") return;
       // Own-send suppression is a message question: notification frames have no
       // sender, and isOwnMessage fails closed on anything without `message`.
       if (event.message && N.isOwnMessage(event, getUserId ? getUserId() : null)) return;

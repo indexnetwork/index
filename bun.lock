@@ -20,7 +20,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.75.0",
+      "version": "0.75.1",
       "dependencies": {
         "@better-auth/api-key": "1.6.11",
         "@indexnetwork/protocol": "workspace:*",
@@ -119,7 +119,7 @@
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.41.1",
+      "version": "0.41.2",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
@@ -139,7 +139,7 @@
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.121.1",
+      "version": "0.121.2",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",

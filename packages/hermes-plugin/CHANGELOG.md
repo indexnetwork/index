@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.41.2
+
+### Fixed
+- Wake the affected negotiation seat on `negotiation.changed`, including when a counterparty resumes its intent.
+
 
 ## 0.41.1
 
