@@ -1,20 +1,18 @@
 """Hermes sessions that speak and think for the Index negotiator.
 
 One think session per intent (`{intentId}:think`) and one speaker session per
-match (`{opportunityId}`). The agent package still owns tools, fences, and the
-inbox; these sessions are the mouth.
+match (`{opportunityId}`). Think is the inbox-review working transcript; H2A
+lives on the Index agent DM. The agent package still owns tools, fences, and
+the inbox.
 """
 
 from __future__ import annotations
 
 import contextvars
 import json
-import logging
 
 from gateway.session import SessionSource
 from tools.registry import no_cache_check_fn
-
-logger = logging.getLogger(__name__)
 
 PLATFORM = "index"
 _call: contextvars.ContextVar[dict | None] = contextvars.ContextVar("index_call", default=None)
@@ -78,6 +76,7 @@ def _handler(name: str):
 
 def register_tools(ctx, sidecar) -> None:
     """Expose package tools only while a speaker or think turn is running."""
+    del sidecar
     for name, toolset, description, parameters, required in SPEAK_TOOLS:
         ctx.register_tool(
             name=name, toolset=toolset,
@@ -85,11 +84,11 @@ def register_tools(ctx, sidecar) -> None:
             handler=_handler(name),
             check_fn=_active("inbox" if toolset == "index_think" else "turn"),
         )
-    ctx.register_hook("pre_gateway_dispatch", lambda **kwargs: on_session_input(sidecar, **kwargs))
+    ctx.register_hook("pre_gateway_dispatch", lambda **kwargs: on_session_input(**kwargs))
 
 
-def on_session_input(sidecar, *, event, **kwargs):
-    """Owner text in a think session is package input. Speaker sessions ignore it."""
+def on_session_input(*, event, **kwargs):
+    """Owner text on Index sessions is not H2A; answers happen on Index web."""
     del kwargs
     source = event.source
     platform = getattr(source.platform, "value", source.platform)
@@ -97,22 +96,7 @@ def on_session_input(sidecar, *, event, **kwargs):
         return None
     if not isinstance(event.text, str) or not event.text.strip():
         return None
-    chat = source.chat_id or ""
-    if not chat.endswith(":think"):
-        return _CONSUMED if chat else None
-    intent_id = chat[:-len(":think")]
-    try:
-        pending = sidecar.call("/pending", {"intentId": intent_id}).get("pending")
-        question_id = (pending or {}).get("id")
-        route = "/answer" if question_id else "/message"
-        payload = {"intentId": intent_id, "text": event.text}
-        if question_id:
-            payload["questionId"] = question_id
-        accepted = sidecar.call(route, payload).get("accepted")
-    except Exception as error:  # noqa: BLE001
-        logger.warning("Index think session did not record owner input: %s", error)
-        return None
-    return _CONSUMED if accepted else None
+    return _CONSUMED if source.chat_id else None
 
 
 def run_session(adapter, sidecar, payload: dict) -> dict:
@@ -155,21 +139,3 @@ def run_session(adapter, sidecar, payload: dict) -> dict:
         return {"end": "done", "output": (result or {}).get("final_response") or ""}
     finally:
         _call.reset(token)
-
-
-def write_think(adapter, intent_id: str, title: str, entries: list) -> None:
-    """Show inbox questions and replies on the think session."""
-    store = getattr(adapter, "_session_store", None)
-    if store is None or not entries:
-        return
-    source = SessionSource(
-        platform=adapter.platform, chat_id=f"{intent_id}:think", chat_type="dm",
-        chat_name=f"{title} · think", user_id=getattr(adapter, "_owner", None) or "index",
-        user_name="Index",
-    )
-    session = store.get_or_create_session(source)
-    for entry in entries:
-        store.append_to_transcript(session.session_id, {
-            "role": "user" if entry.get("kind") in ("user", "answer") else "assistant",
-            "content": entry.get("text") or "",
-        })

@@ -127,7 +127,7 @@ class Negotiator {
       status: (opportunityId, message) => log('info', 'status', { intentId, opportunityId, message }),
       retry: (_owner, attempt, reason) => log('warn', 'retry', { intentId, attempt, reason }),
       step: () => {},
-      conversation: () => { runtime.flushing = runtime.flushing.then(() => this.publishThink(runtime, intentId), () => {}); },
+      conversation: () => { runtime.flushing = runtime.flushing.then(() => this.publishH2A(runtime, intentId), () => {}); },
       end: (record) => log('info', 'end', {
         intentId, opportunityId: record.opportunityId,
         outcome: record.outcome ?? record.protocol.blockedReason,
@@ -153,6 +153,7 @@ class Negotiator {
 
   async wake(intentId: string): Promise<void> {
     const runtime = await this.runtime(intentId);
+    await this.catchUp(runtime, intentId);
     const summaries = await this.client.listNegotiations();
     for (const { opportunityId, intentId: owning } of summaries) {
       if (owning !== intentId) continue;
@@ -179,7 +180,27 @@ class Negotiator {
     await Promise.allSettled(runtimes.map((result) => result.status === 'fulfilled' ? result.value.agent.stop() : undefined));
   }
 
-  private async publishThink(runtime: IntentRuntime, intentId: string): Promise<void> {
+  private async catchUp(runtime: IntentRuntime, intentId: string): Promise<void> {
+    const remote = await this.client.agentMessages(intentId);
+    const pending = runtime.agent.pending;
+    if (pending) {
+      for (let i = remote.length - 1; i >= 0; i--) {
+        const message = remote[i]!;
+        if (message.kind === 'answer' && message.questionId === pending.id) {
+          await runtime.agent.answer(pending.id, message.text);
+          return;
+        }
+        if (message.kind === 'question' && (message.questionId === pending.id || message.id === pending.id)) return;
+      }
+      return;
+    }
+    const seen = new Set(runtime.agent.conversation.map((message) => message.text));
+    for (const message of remote) {
+      if (message.kind === 'user' && !seen.has(message.text)) await runtime.agent.message(message.text);
+    }
+  }
+
+  private async publishH2A(runtime: IntentRuntime, intentId: string): Promise<void> {
     const displayed = runtime.agent.pending?.id;
     const entries: PrincipalMessage[] = [];
     const retired: string[] = [];
@@ -193,16 +214,10 @@ class Negotiator {
     }
     if (retired.length) await runtime.store.markDelivered(retired);
     if (!entries.length) return;
-    const response = await fetch(`${this.bridge.url}/think`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${this.bridge.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        intentId, title: runtime.title,
-        entries: entries.map(({ kind, text }) => ({ kind, text })),
-      }),
-    });
-    if (!response.ok) {
-      log('warn', 'think.failed', { intentId, reason: (await response.text()).slice(0, 300) });
+    try {
+      await this.client.publishH2A(intentId, entries);
+    } catch (error: unknown) {
+      log('warn', 'h2a.failed', { intentId, reason: error instanceof Error ? error.message : String(error) });
       return;
     }
     await runtime.store.markDelivered(entries.map(({ id }) => id));

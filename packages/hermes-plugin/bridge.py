@@ -8,7 +8,7 @@ import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .speaker import run_session, write_think
+from .speaker import run_session
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +46,6 @@ class HermesBridge:
             raise RuntimeError("The Index platform is not connected.")
         return run_session(self.adapter, self.sidecar, payload)
 
-    def think(self, payload: dict) -> dict:
-        if self.adapter is None:
-            raise RuntimeError("The Index platform is not connected.")
-        write_think(self.adapter, payload["intentId"], payload.get("title") or "Index", payload.get("entries") or [])
-        return {"ok": True}
-
 
 def _handler(bridge: HermesBridge):
     class Handler(BaseHTTPRequestHandler):
@@ -71,8 +65,6 @@ def _handler(bridge: HermesBridge):
             try:
                 if self.path == "/speak":
                     return self._send(200, bridge.speak(payload))
-                if self.path == "/think":
-                    return self._send(200, bridge.think(payload))
             except Exception as error:  # noqa: BLE001
                 logger.warning("Index bridge %s failed: %s", self.path, error)
                 return self._send(502, {"error": str(error)})

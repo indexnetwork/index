@@ -1,6 +1,15 @@
 # Changelog
 
 
+## 0.43.0
+
+### Changed
+- **Questions and answers live on Index web.** Think sessions remain the
+  inbox-review working transcript. The sidecar no longer copies questions
+  onto that chat or treats keystrokes as `/answer`. New H2A is posted to
+  the owner's agent DM (`POST /conversations/agent/h2a?executorId=`), and
+  owner replies arrive as `principal.input` events.
+
 ## 0.42.0
 
 ### Changed

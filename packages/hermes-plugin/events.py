@@ -20,6 +20,7 @@ from .transport import get_transport
 logger = logging.getLogger(__name__)
 
 WAKE_TYPES = frozenset({"negotiation.opened", "negotiation.changed", "intent.lifecycle"})
+INPUT_TYPE = "principal.input"
 SETTLE_SECONDS = 2.0
 RECONNECT_SECONDS = 5.0
 
@@ -41,6 +42,7 @@ class IndexAdapter(BasePlatformAdapter):
         self._sidecar = sidecar
         self._owner = ""
         self._pending: set[str] = set()
+        self._inputs: list[dict] = []
         self._closing = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._signal: asyncio.Event | None = None
@@ -103,7 +105,11 @@ class IndexAdapter(BasePlatformAdapter):
             frame = json.loads(line[len(b"data:"):])
         except ValueError:
             return
-        intent = (frame.get("data") or {}).get("intentId")
+        data = frame.get("data") or {}
+        intent = data.get("intentId")
+        if frame.get("type") == INPUT_TYPE and intent and isinstance(data.get("text"), str):
+            self._loop.call_soon_threadsafe(self._collect_input, data)
+            return
         if intent and frame.get("type") in WAKE_TYPES:
             self._queue(intent)
 
@@ -114,11 +120,29 @@ class IndexAdapter(BasePlatformAdapter):
         self._pending.add(intent)
         self._signal.set()
 
+    def _collect_input(self, data: dict) -> None:
+        self._inputs.append(data)
+        self._signal.set()
+
+    def _deliver(self, data: dict) -> None:
+        intent = data["intentId"]
+        text = data["text"]
+        question_id = data.get("questionId")
+        try:
+            if question_id:
+                self._sidecar.call("/answer", {"intentId": intent, "questionId": question_id, "text": text})
+            else:
+                self._sidecar.call("/message", {"intentId": intent, "text": text})
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Index negotiator did not accept owner input for %s: %s", intent, error)
+
     async def _dispatch(self) -> None:
         while True:
             await self._signal.wait()
             self._signal.clear()
             await asyncio.sleep(SETTLE_SECONDS)
+            while self._inputs:
+                await asyncio.to_thread(self._deliver, self._inputs.pop(0))
             while self._pending:
                 intent = self._pending.pop()
                 await asyncio.to_thread(self._sidecar.wake, intent)

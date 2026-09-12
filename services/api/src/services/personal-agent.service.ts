@@ -1,12 +1,12 @@
-import type { Model, PrincipalQuestion } from '@indexnetwork/agent';
+import type { Model, PrincipalMessage, PrincipalQuestion } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
-import { AgentSessionDatabaseAdapter, AgentSessionIneligibleError, AgentSessionLeaseConflict } from '../adapters/agent-session.database.adapter';
+import { AgentSessionDatabaseAdapter, AgentSessionIneligibleError, AgentSessionLeaseConflict, publishPendingQuestionEvent } from '../adapters/agent-session.database.adapter';
 import { createRedisClient } from '../adapters/cache.adapter';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
 import { ApiNegotiationHost, type ApiPrincipal } from '../lib/agent/negotiation.host';
 import { log } from '../lib/log';
-import { publishUserInvalidation, userEventChannel } from '../lib/user-events';
+import { publishUserEvent, publishUserInvalidation, userEventChannel } from '../lib/user-events';
 
 const logger = log.service.from('PersonalAgentService');
 const MAX_STARTUP_RETRIES = 3;
@@ -14,6 +14,21 @@ const MAX_STARTUP_RETRIES = 3;
 /** An owner-facing input failure; no agent work is acknowledged by this error. */
 export class PersonalAgentError extends Error {
   constructor(message: string, readonly status: 400 | 404 | 409 | 503) { super(message); }
+}
+
+function pendingFrom(messages: readonly PrincipalMessage[]): PrincipalQuestion | null {
+  let pending: PrincipalQuestion | null = null;
+  for (const message of messages) {
+    if (message.kind === 'question') {
+      pending = {
+        id: message.questionId ?? message.id, question: message.text, options: message.options,
+        scope: message.scope ?? 'intent', matches: message.matches,
+      };
+    } else if (message.kind === 'answer' || message.kind === 'user') {
+      pending = null;
+    }
+  }
+  return pending;
 }
 
 export interface PersonalAgentState {
@@ -194,7 +209,10 @@ export class PersonalAgentService {
       AgentSessionDatabaseAdapter.readSession(userId, intentId),
     ]);
     if (!owned) throw new PersonalAgentError('Intent not found.', 404);
-    if (external) return { status: 'external', pending: null, queuedQuestions: 0 };
+    if (external) {
+      const { messages } = await AgentSessionDatabaseAdapter.readTranscript(userId, intentId);
+      return { status: 'external', pending: pendingFrom(messages), queuedQuestions: 0 };
+    }
     const session = this.sessions.get(intentId);
     const agent = session?.host.agents.get(intentId);
     const status = session?.stopping || agent?.stopped ? 'unavailable' : session?.active ? 'running' : session ? 'starting'
@@ -206,12 +224,12 @@ export class PersonalAgentService {
   /**
    * Route principal input through the same agent inbox used by the TUI.
    * @param input - Authenticated owner, intent, canonical DM, and the exact displayed question (or null for a direct message).
-   * @returns The atomically persisted message, or null when an external executor owns this conversation.
+   * @returns The atomically persisted message.
    * @throws When ownership, availability, or the displayed question changed.
    */
   async send(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new PersonalAgentError('Intent not found.', 404);
-    if (await this.registry.getSelectedNegotiator(input.userId)) return null;
+    if (await this.registry.getSelectedNegotiator(input.userId)) return this.acceptExternal(input);
     if (!this.running) throw new PersonalAgentError('Your personal agent is unavailable.', 503);
     if (!this.sessions.has(input.intentId) || this.sessions.get(input.intentId)?.host.agents.get(input.intentId)?.stopped) {
       this.cancelRetry(input.intentId);
@@ -230,6 +248,49 @@ export class PersonalAgentService {
     const receipt = input.questionId ? await agent.answer(input.questionId, input.text) : await agent.message(input.text);
     if (!receipt) throw new PersonalAgentError('The question changed. Refresh the conversation and try again; your message was not sent.', 409);
     return AgentSessionDatabaseAdapter.readMessage(receipt.id);
+  }
+
+  /**
+   * Persist an external speaker's question or message on the owner's agent DM.
+   * @param input - Owner, selected executor, signal, and agent-authored H2A entries.
+   * @throws When the intent is not owned or this executor is no longer selected.
+   */
+  async publish(input: { userId: string; intentId: string; executorId: string; entries: PrincipalMessage[] }) {
+    if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new PersonalAgentError('Intent not found.', 404);
+    const { messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
+    const known = new Set(messages.map((message) => message.id));
+    const entries = input.entries.filter((entry) => (entry.kind === 'question' || entry.kind === 'message') && !known.has(entry.id));
+    if (!entries.length) return;
+    const asked = pendingFrom(messages);
+    await AgentSessionDatabaseAdapter.publishAsExecutor({ ...input, entries });
+    const displayed = [...entries].reverse().find((entry) => entry.kind === 'question');
+    if (displayed && displayed.questionId && displayed.questionId !== asked?.id) {
+      await publishPendingQuestionEvent(input.userId, input.intentId, {
+        id: displayed.questionId, question: displayed.text, options: displayed.options,
+        scope: displayed.scope ?? 'intent', matches: displayed.matches,
+      });
+    }
+  }
+
+  /**
+   * Persist owner input for an external executor and notify that runtime.
+   * @param input - Authenticated owner, intent, canonical DM, and the exact displayed question (or null for a direct message).
+   * @returns The persisted message.
+   * @throws When the conversation or displayed question does not match.
+   */
+  private async acceptExternal(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }) {
+    const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
+    if (conversationId !== input.conversationId) throw new PersonalAgentError('Agent conversation not found.', 404);
+    const pending = pendingFrom(messages);
+    if (input.questionId ? pending?.id !== input.questionId : pending) {
+      throw new PersonalAgentError('The question changed. Refresh the conversation and try again; your message was not sent.', 409);
+    }
+    const message = await AgentSessionDatabaseAdapter.writeOwnerInput({ ...input, pending });
+    await publishUserEvent(input.userId, {
+      type: 'principal.input', id: message.id, title: '', body: '',
+      data: { intentId: input.intentId, questionId: input.questionId, text: input.text },
+    });
+    return message;
   }
 
   /** Flush every session and release its lease during API shutdown. */

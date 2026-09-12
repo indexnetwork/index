@@ -1,9 +1,13 @@
+import type { PrincipalMessage } from '@indexnetwork/agent';
+import { z } from 'zod';
+
 import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
+import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
+import { log } from '../lib/log';
 import { agentService } from '../services/agent.service';
 import { ConversationService } from '../services/conversation.service';
 import { PersonalAgentError, type PersonalAgentService } from '../services/personal-agent.service';
-import { log } from '../lib/log';
 
 type RouteParams = Record<string, string>;
 
@@ -233,7 +237,7 @@ export class ConversationController {
         if (!text) throw new PersonalAgentError('Message text is required.', 400);
         const message = await this.personalAgents.send({ userId: user.id, intentId: body.metadata.intentId,
           conversationId, text, questionId: body.questionId ?? null });
-        if (message) return Response.json({ message }, { status: 201 });
+        return Response.json({ message }, { status: 201 });
       }
       const msg = asAgent
         ? await this.conversationService.sendAgentMessage(
@@ -285,6 +289,45 @@ export class ConversationController {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('getOrCreateDm failed', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
+   * POST /conversations/agent/h2a — an external executor publishes questions and messages.
+   *
+   * @param req - `executorId` query fence plus `{ intentId, entries }`.
+   * @param user - Authenticated owner (session token).
+   * @returns Success when the entries are on the agent DM.
+   */
+  @Post('/agent/h2a')
+  @UseGuards(AuthGuard)
+  async publishH2A(req: Request, user: AuthenticatedUser) {
+    const executorId = new URL(req.url).searchParams.get('executorId');
+    if (!executorId || !z.string().uuid().safeParse(executorId).success) {
+      return Response.json({ error: 'executorId must be a UUID' }, { status: 400 });
+    }
+    let body: { intentId?: string; entries?: PrincipalMessage[] };
+    try {
+      body = await req.json() as typeof body;
+    } catch {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    if (typeof body.intentId !== 'string' || !Array.isArray(body.entries)) {
+      return Response.json({ error: 'intentId and entries are required' }, { status: 400 });
+    }
+    try {
+      await this.personalAgents.publish({
+        userId: user.id, intentId: body.intentId, executorId, entries: body.entries,
+      });
+      return Response.json({ ok: true });
+    } catch (err: unknown) {
+      if (err instanceof PersonalAgentError) return Response.json({ error: err.message }, { status: err.status });
+      if (err instanceof RuntimeConflictError) {
+        return Response.json({ error: 'The selected negotiation executor changed; stop this work' }, { status: 409 });
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('publishH2A failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
