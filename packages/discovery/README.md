@@ -26,5 +26,20 @@ then gives returned pairs protocol identity and calls atomic `openCounterparties
 with `decideNegotiationOpening`. Negotiation behavior belongs to agent; intent,
 negotiation, and opportunity lifecycle rules stay in protocol.
 
+Source layout:
+
+- `src/core/`: model client, per-invocation runtime context, and shared host ports.
+- `src/prompts/discovery.prompt.ts`: prompt text and composition for lens
+  inference, source frames, HyDE generation, validation, and match explanations.
+- `src/artifacts/`: the fixed `Artifacts.prepare()` pipeline, source-frame
+  schemas and sanitization, artifact state, lens inferrer, generator, and validator.
+- `src/matching/`: the fixed `Discovery.discover()` pipeline, preparation and
+  scope resolution, candidate retrieval, evaluation, ranking, evidence, and explanations.
+- `src/index.ts`: explicit public exports. Hosts continue to import from
+  `@indexnetwork/discovery`.
+
+Domain state and shared types stay outside the orchestrators. Prompt builders
+import only types; runtime modules have no circular imports.
+
 Run `bun run typecheck` and `bun run build`. Existing integration coverage stays
 in protocol's `src/internal/opportunities/tests/opportunity.graph.spec.ts`.

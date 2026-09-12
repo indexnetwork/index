@@ -108,7 +108,7 @@
     },
     "packages/discovery": {
       "name": "@indexnetwork/discovery",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "zod": "3.25.76",
       },

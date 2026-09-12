@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/discovery",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Standalone intent discovery and source-grounded retrieval artifacts.",
   "license": "MIT",
   "type": "module",
