@@ -602,27 +602,28 @@ export class NegotiationDatabaseAdapter {
   }
 
   /**
-   * Close the negotiations attached to these opportunities.
+   * Close open negotiations and refresh both seats after their opportunities change.
    *
    * Index closes a negotiation itself when consent, an archive, or expiry ends
-   * the opportunity underneath it. No seat declines anything; both seats are
-   * notified after the closure commits.
+   * the opportunity underneath it. Existing settlements stay unchanged, but
+   * both seats still need to refresh the opportunity's human decision state.
    *
-   * @param opportunityIds - Opportunities whose negotiations should close.
+   * @param opportunityIds - Opportunities whose status changes have committed.
    */
   async closeForOpportunities(opportunityIds: string[]): Promise<void> {
     if (opportunityIds.length === 0) return;
-    const closed = await db.update(negotiations)
+    await db.update(negotiations)
       .set({ outcome: 'closed', settledAt: new Date(), awaitingUserId: null, updatedAt: new Date() })
       .where(and(
         inArray(negotiations.opportunityId, opportunityIds),
         isNull(negotiations.settledAt),
-      )).returning({
-        opportunityId: negotiations.opportunityId,
-        initiatorUserId: negotiations.initiatorUserId, initiatorIntentId: negotiations.initiatorIntentId,
-        responderUserId: negotiations.responderUserId, responderIntentId: negotiations.responderIntentId,
-      });
-    await Promise.all(closed.map((row) => publishNegotiationChange([
+      ));
+    const affected = await db.select({
+      opportunityId: negotiations.opportunityId,
+      initiatorUserId: negotiations.initiatorUserId, initiatorIntentId: negotiations.initiatorIntentId,
+      responderUserId: negotiations.responderUserId, responderIntentId: negotiations.responderIntentId,
+    }).from(negotiations).where(inArray(negotiations.opportunityId, opportunityIds));
+    await Promise.all(affected.map((row) => publishNegotiationChange([
       { userId: row.initiatorUserId, intentId: row.initiatorIntentId },
       { userId: row.responderUserId, intentId: row.responderIntentId },
     ], row.opportunityId)));
