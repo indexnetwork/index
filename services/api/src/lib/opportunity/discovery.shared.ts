@@ -1,11 +1,10 @@
-import { Artifacts, Discovery, MatchExplainer, ModelClient } from '@indexnetwork/discovery';
-import type { ArtifactStore, DiscoveryData, DiscoveryInput, DiscoveryState, PotentialIntentPair } from '@indexnetwork/discovery';
+import { Discovery, MatchExplainer, ModelClient } from '@indexnetwork/discovery';
+import type { DiscoveryData, DiscoveryInput, DiscoveryState, PotentialIntentPair } from '@indexnetwork/discovery';
 import { decideNegotiationOpening, pairKeyOf, requestContext, resolveDiscoveryNetworkScope, renderDiscoveryNetworkContext } from '@indexnetwork/protocol';
 import type { OpenedNegotiation } from '@indexnetwork/protocol';
 
 import type { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
-import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 
 import { log } from '../log';
 
@@ -14,16 +13,8 @@ export type DiscoveryDatabase = Pick<ChatDatabaseAdapter,
   | 'getNetworkMemberships' | 'getActiveIntents' | 'getProfile' | 'getIntent'
   | 'getNetworkIdsForIntent' | 'getNetwork' | 'getNetworkMemberCount' | 'getIntentNetworkScores'
   | 'getActiveNetworkMembershipPairs' | 'getRecentlyRejectedOpportunityCounterparties' | 'isNetworkOwner'
-  | 'getHydeDocument' | 'saveHydeDocument' | 'openCounterparties'
+  | 'openCounterparties'
 >;
-
-/** The API supplies infrastructure; the library owns generation, cache identity and retrieval. */
-export function createArtifacts(database: ArtifactStore) {
-  return new Artifacts({
-    database, embedder: new EmbedderAdapter(), cache: new RedisCacheAdapter(),
-    model: new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY ?? '' }),
-  });
-}
 
 /** Resolve protocol rules using live host reads, without coupling discovery to protocol. */
 export function createDiscoveryData(database: DiscoveryDatabase): DiscoveryData {
@@ -129,10 +120,10 @@ export async function runOpportunityDiscovery<T extends DiscoveryInput>(params: 
     return null;
   }
   const model = new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY ?? '' });
-  const artifacts = new Artifacts({ database, model, embedder: new EmbedderAdapter(), cache: new RedisCacheAdapter() });
+  const embedder = new EmbedderAdapter();
   const discovery = new Discovery({
-    database: createDiscoveryData(database), search: new EmbedderAdapter(),
-    prepareArtifacts: input => artifacts.prepare(input), matchExplainer: new MatchExplainer(model),
+    database: createDiscoveryData(database), search: embedder, embedder,
+    matchExplainer: new MatchExplainer(model),
   });
   const context = requestContext.getStore();
   const result = await discovery.discover(invokeOpts, { signal: context?.abortSignal, traceEmitter: context?.traceEmitter, logger });

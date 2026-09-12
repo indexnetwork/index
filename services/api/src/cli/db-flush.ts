@@ -45,7 +45,6 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
       'conversations',
       'protocol_opportunities',
       'user_notification_settings',
-      'protocol_hyde_documents',
       'protocol_intents',
       'protocol_agents',
       'apikey',

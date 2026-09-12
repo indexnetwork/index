@@ -1,5 +1,9 @@
 # Changelog
 
+## 58.0.1
+
+- Discovery no longer infers lenses or generates HyDE documents. `onIntentArchived` is a host no-op; matching starts from `onIntentSaved` / `onIntentResumed` with a single query embedding.
+
 ## 58.0.0
 
 ### Breaking changes

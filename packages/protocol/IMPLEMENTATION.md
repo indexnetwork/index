@@ -145,10 +145,9 @@ The intent and community graphs are the exceptions: they are reached through the
 
 ## Post-intent discovery
 
-`@indexnetwork/discovery` owns lens inference, source-frame extraction, HyDE
-preparation/validation, candidate retrieval, ranking, and explanations. It has
-no protocol, agent, or LangChain dependency. The API supplies its model,
-embedding/search, artifact storage/cache, cancellation, and tracing ports.
+`@indexnetwork/discovery` owns query embedding, candidate retrieval, ranking,
+and explanations. It has no protocol, agent, or LangChain dependency. The API
+supplies its model, embedding/search, cancellation, and tracing ports.
 
 `Discovery.discover()` returns potential intent pairs with network, intent,
 user, score, reasoning, and evidence. The host assigns `pairKeyOf(...)` and calls
@@ -157,10 +156,10 @@ inside the existing host transaction. Network/broadcast scope remains a protocol
 rule exposed through `resolveDiscoveryNetworkScope`, with context permissions
 handled by `renderDiscoveryNetworkContext`.
 
-`IntentFollowUp.onIntentSaved` schedules artifact preparation and matching;
-`onIntentArchived` schedules artifact cleanup; `onIntentResumed` starts matching
-again. Keep saved/archived follow-ups best-effort and preserve resume failure
-compensation. `scoreIntent` remains independent metadata work.
+`IntentFollowUp.onIntentSaved` starts matching; `onIntentArchived` is a host
+no-op; `onIntentResumed` starts matching again. Keep saved/archived follow-ups
+best-effort and preserve resume failure compensation. `scoreIntent` remains
+independent metadata work.
 
 ## Intents
 

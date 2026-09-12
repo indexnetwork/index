@@ -209,28 +209,6 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export type HydeSourceType = 'intent' | 'query' | 'context';
-
-export const hydeDocuments = pgTable('protocol_hyde_documents', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  sourceType: text('source_type').$type<HydeSourceType>().notNull(),
-  sourceId: text('source_id'),
-  sourceText: text('source_text'),
-  strategy: text('strategy').notNull(),
-  targetCorpus: text('target_corpus').notNull(),
-  context: jsonb('context'),
-  hydeText: text('hyde_text').notNull(),
-  hydeEmbedding: vector('hyde_embedding', { dimensions: 2000 }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-}, (table) => ({
-  sourceIdx: index('protocol_hyde_source_idx').on(table.sourceType, table.sourceId),
-  strategyIdx: index('protocol_hyde_strategy_idx').on(table.strategy),
-  embeddingIdx: index('protocol_hyde_embedding_idx').using('hnsw', table.hydeEmbedding.op('vector_cosine_ops')),
-  expiresIdx: index('protocol_hyde_expires_idx').on(table.expiresAt),
-  sourceStrategyUnique: uniqueIndex('protocol_hyde_source_strategy_unique').on(table.sourceType, table.sourceId, table.strategy, table.targetCorpus),
-}));
-
 export interface OpportunityDetection {
   source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added';
   createdBy?: Id<'users'> | string;
@@ -620,8 +598,6 @@ export type NetworkMember = typeof networkMembers.$inferSelect;
 export type NewNetworkMember = typeof networkMembers.$inferInsert;
 export type UserNotificationSettings = typeof userNotificationSettings.$inferSelect;
 export type NewUserNotificationSettings = typeof userNotificationSettings.$inferInsert;
-export type HydeDocument = typeof hydeDocuments.$inferSelect;
-export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
 export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
 export type Agent = typeof agents.$inferSelect;

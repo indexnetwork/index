@@ -52,7 +52,7 @@ export interface IntentsDeps {
   database?: IntentGraphDatabase;
   /** Embedding generator used to vectorize executed signals. */
   embedder?: EmbeddingGenerator;
-  /** Host follow-up work started after a persist (HyDE, discovery). */
+  /** Host follow-up work started after a persist (discovery). */
   followUp?: IntentFollowUp;
   /**
    * Model-backed stages, injectable so tests can run the graph without a model.

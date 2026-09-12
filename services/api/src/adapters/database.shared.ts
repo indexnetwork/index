@@ -137,7 +137,7 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, negotiations, negotiationTurns, userNotificationSettings, sessions, userSocials } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, opportunities, negotiations, negotiationTurns, userNotificationSettings, sessions, userSocials } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
@@ -201,38 +201,6 @@ export async function persistProfileIdentityToUser(userId: string, profile: User
   await db.update(users)
     .set({ ...update, updatedAt: new Date() })
     .where(eq(users.id, userId));
-}
-
-// HyDE row to document shape (embedding may come as number[] or pg vector)
-export type HydeSourceTypeLocal = 'intent' | 'query' | 'context';
-export interface HydeDocumentRow {
-  id: string;
-  sourceType: HydeSourceTypeLocal;
-  sourceId: string | null;
-  sourceText: string | null;
-  strategy: string;
-  targetCorpus: string;
-  hydeText: string;
-  hydeEmbedding: number[];
-  context: Record<string, unknown> | null;
-  createdAt: Date;
-  expiresAt: Date | null;
-}
-export function toHydeDocument(row: typeof hydeDocuments.$inferSelect): HydeDocumentRow {
-  const vec = normalizeEmbedding(row.hydeEmbedding);
-  return {
-    id: row.id,
-    sourceType: row.sourceType as HydeSourceTypeLocal,
-    sourceId: row.sourceId,
-    sourceText: row.sourceText,
-    strategy: row.strategy,
-    targetCorpus: row.targetCorpus,
-    hydeText: row.hydeText,
-    hydeEmbedding: vec,
-    context: row.context as Record<string, unknown> | null,
-    createdAt: row.createdAt,
-    expiresAt: row.expiresAt,
-  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -342,24 +310,6 @@ export function toOpportunityRow(row: typeof opportunities.$inferSelect): Opport
   };
 }
 
-/**
- * Database adapter for Opportunity Graph and opportunity controller.
- */
-export interface SaveHydeDocumentInput {
-  sourceType: HydeSourceTypeLocal;
-  sourceId?: string | null;
-  sourceText?: string | null;
-  strategy: string;
-  targetCorpus: string;
-  hydeText: string;
-  hydeEmbedding: number[];
-  context?: Record<string, unknown> | null;
-  expiresAt?: Date | null;
-}
-
-/**
- * Database adapter for HyDE document persistence (HyDE Graph, maintenance jobs).
- */
 export interface UserWithGraph {
   id: string;
   email: string | null;

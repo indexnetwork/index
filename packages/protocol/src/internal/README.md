@@ -8,7 +8,6 @@ capability façades decide what is supported.
 | `agents/` | Agent registry ports | Agent records and permissions |
 | `intents/` | `Intents` | Signal lifecycle, clarification, and verification |
 | `networks/` | `Networks` | Community lifecycle, membership, and assignments |
-| `discovery/` | Opportunity workflows | HyDE search preparation and retrieval |
 | `opportunities/` | Opportunity/Radar factories | Matching, presentation, radar, and the read-only negotiation context loader |
 | `shared/` | Internal implementation only | Cross-cutting model, scope, schemas, observability, and utilities |
 

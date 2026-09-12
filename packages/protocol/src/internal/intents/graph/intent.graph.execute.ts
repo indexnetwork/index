@@ -79,7 +79,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             userId: state.userId,
             ...scopeEnvelope,
           }).catch((err) =>
-            logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
+            logger.error('Failed to enqueue intent follow-up', { intentId: created.id, error: err })
           );
 
         } else if (actionType === 'update') {
@@ -129,7 +129,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
               userId: state.userId,
               ...scopeEnvelope,
             }).catch((err) =>
-              logger.error('Failed to enqueue intent HyDE job', { intentId: updateAction.id, error: err })
+              logger.error('Failed to enqueue intent follow-up', { intentId: updateAction.id, error: err })
             );
           }
 
@@ -158,7 +158,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
               logger.error('Failed to expire opportunities', { intentId: expireAction.id, error: err });
             }
             deps.intentFollowUp?.onIntentArchived({ intentId: expireAction.id }).catch((err) =>
-              logger.error('Failed to enqueue intent HyDE delete job', { intentId: expireAction.id, error: err })
+              logger.error('Failed to enqueue intent archive follow-up', { intentId: expireAction.id, error: err })
             );
           }
 

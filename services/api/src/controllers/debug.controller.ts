@@ -1,10 +1,10 @@
-import { eq, and, sql, desc, asc, min, max, count, inArray, gte, lte } from 'drizzle-orm/sql';
+import { eq, and, sql, desc, asc, count, inArray, gte, lte } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 import { canUserSeeOpportunity, isActionableForViewer } from '@indexnetwork/protocol';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
-import { intents, hydeDocuments, intentNetworks, networks, networkMembers, opportunities, negotiations as negotiationsTable, negotiationTurns } from '../schemas/database.schema';
+import { intents, intentNetworks, networks, networkMembers, opportunities, negotiations as negotiationsTable, negotiationTurns } from '../schemas/database.schema';
 import { conversations, conversationParticipants, conversationMetadata, messages } from '../schemas/conversation.schema';
 
 import { buildIntentAssignmentDiagnostic, buildIntentDebugRecord, buildIntentPipelineHealthDiagnostic, buildVerificationAnalysisDiagnostic } from '../services/debug-intent-diagnostics.service';
@@ -30,7 +30,7 @@ export class DebugController {
 
   /**
    * Returns a full diagnostic snapshot for a single intent.
-   * Gathers the intent record, HyDE document stats, network assignments,
+   * Gathers the intent record, network assignments,
    * related opportunities, and a pipeline-health diagnosis object.
    * @param _req - Incoming request (unused beyond guard processing)
    * @param user - Authenticated user from AuthGuard
@@ -74,22 +74,7 @@ export class DebugController {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
     }
 
-    // ── 2. Fetch HyDE document stats ──────────────────────────────────
-    const [hydeStats] = await db
-      .select({
-        count: count().as('count'),
-        oldestGeneratedAt: min(hydeDocuments.createdAt).as('oldest'),
-        newestGeneratedAt: max(hydeDocuments.createdAt).as('newest'),
-      })
-      .from(hydeDocuments)
-      .where(
-        and(
-          eq(hydeDocuments.sourceType, 'intent'),
-          eq(hydeDocuments.sourceId, intentId),
-        ),
-      );
-
-    // ── 3. Fetch network assignments with title and prompt ──────────────
+    // ── 2. Fetch network assignments with title and prompt ──────────────
     const networkRows = await db
       .select({
         networkId: intentNetworks.networkId,
@@ -122,12 +107,6 @@ export class DebugController {
 
     const intentResponse = buildIntentDebugRecord(intent);
 
-    const hydeDocumentsResponse = {
-      count: hydeStats?.count ?? 0,
-      oldestGeneratedAt: hydeStats?.oldestGeneratedAt?.toISOString() ?? null,
-      newestGeneratedAt: hydeStats?.newestGeneratedAt?.toISOString() ?? null,
-    };
-
     const networkAssignments = networkRows.map(buildIntentAssignmentDiagnostic);
 
     // Aggregate opportunities by status
@@ -154,7 +133,6 @@ export class DebugController {
     };
 
     // ── 6. Build diagnosis ────────────────────────────────────────────
-    const hasHydeDocuments = (hydeStats?.count ?? 0) > 0;
     const isInAtLeastOneNetwork = networkRows.length > 0;
     const hasOpportunities = opportunityRows.length > 0;
     const verificationAnalysis = buildVerificationAnalysisDiagnostic(intent);
@@ -181,7 +159,6 @@ export class DebugController {
       ...buildIntentPipelineHealthDiagnostic({
         hasEmbedding: intent.hasEmbedding,
         verificationAnalysis,
-        hasHydeDocuments,
         isInAtLeastOneNetwork,
       }),
       hasOpportunities,
@@ -192,7 +169,6 @@ export class DebugController {
     return Response.json({
       exportedAt: new Date().toISOString(),
       intent: intentResponse,
-      hydeDocuments: hydeDocumentsResponse,
       networkAssignments,
       opportunities: opportunitiesResponse,
       diagnosis,
@@ -226,23 +202,6 @@ export class DebugController {
     const activeIntents = userIntents.filter((i) => !i.isArchived);
     const archivedIntents = userIntents.filter((i) => i.isArchived);
     const withEmbeddings = activeIntents.filter((i) => i.hasEmbedding).length;
-
-    // Count active intents that have at least one HyDE document
-    const hydeIntentRows = activeIntents.length > 0
-      ? await db
-          .selectDistinct({ sourceId: hydeDocuments.sourceId })
-          .from(hydeDocuments)
-          .where(
-            and(
-              eq(hydeDocuments.sourceType, 'intent'),
-              sql`${hydeDocuments.sourceId} IN (${sql.join(
-                activeIntents.map((i) => sql`${i.id}`),
-                sql`, `,
-              )})`,
-            ),
-          )
-      : [];
-    const withHydeDocuments = hydeIntentRows.length;
 
     // Count active intents assigned to at least one network
     const indexedIntentRows = activeIntents.length > 0
@@ -363,7 +322,6 @@ export class DebugController {
     // ── 5. Build diagnosis ───────────────────────────────────────────────
     const hasActiveIntents = activeIntents.length > 0;
     const intentsHaveEmbeddings = hasActiveIntents && withEmbeddings > 0;
-    const intentsHaveHydeDocuments = hasActiveIntents && withHydeDocuments > 0;
     const intentsAreIndexed = hasActiveIntents && inAtLeastOneNetwork > 0;
     const hasOpportunities = opportunityRows.length > 0;
     const opportunitiesReachRadar = cardsReturned > 0;
@@ -374,11 +332,6 @@ export class DebugController {
     } else if (!intentsHaveEmbeddings) {
       const missing = activeIntents.filter((i) => !i.hasEmbedding).length;
       bottleneck = `${missing} intents missing embeddings`;
-    } else if (!intentsHaveHydeDocuments) {
-      const missingHyde = activeIntents.filter(
-        (i) => !hydeIntentRows.some((h) => h.sourceId === i.id),
-      ).length;
-      bottleneck = `${missingHyde} intents missing HyDE documents`;
     } else if (!intentsAreIndexed) {
       bottleneck = `${orphaned} active intents not assigned to any network`;
     } else if (!hasOpportunities) {
@@ -397,7 +350,6 @@ export class DebugController {
           archived: archivedIntents.length,
         },
         withEmbeddings,
-        withHydeDocuments,
         inAtLeastOneNetwork,
         orphaned,
       },
@@ -418,7 +370,6 @@ export class DebugController {
       diagnosis: {
         hasActiveIntents,
         intentsHaveEmbeddings,
-        intentsHaveHydeDocuments,
         intentsAreIndexed,
         hasOpportunities,
         opportunitiesReachRadar,

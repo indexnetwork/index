@@ -82,21 +82,18 @@ export function buildIntentDebugRecord(intent: IntentDebugRecordInput) {
   };
 }
 
-/** Builds the independently actionable verification, assignment, and HyDE health signals. */
+/** Builds the independently actionable verification and assignment health signals. */
 export function buildIntentPipelineHealthDiagnostic(input: {
   hasEmbedding: boolean;
   verificationAnalysis: ReturnType<typeof buildVerificationAnalysisDiagnostic>;
-  hasHydeDocuments: boolean;
   isInAtLeastOneNetwork: boolean;
 }) {
   return {
     hasEmbedding: input.hasEmbedding,
-    hasHydeDocuments: input.hasHydeDocuments,
     isInAtLeastOneNetwork: input.isInAtLeastOneNetwork,
     verificationAnalysis: input.verificationAnalysis,
     missingVerificationAnalysis: input.verificationAnalysis.status !== 'complete',
     missingAssignment: !input.isInAtLeastOneNetwork,
-    missingHyde: !input.hasHydeDocuments,
   };
 }
 

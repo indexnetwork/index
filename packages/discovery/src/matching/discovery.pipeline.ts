@@ -28,7 +28,7 @@ export class Discovery {
       const state: DiscoveryState = {
         ...input, options: input.options ?? {}, indexedIntents: [], userNetworks: [], targetNetworks: [],
         networkRelevancyScores: {}, discoverySource: 'intent', sourceProfile: null, resolvedIntentInNetwork: false,
-        hydeEmbeddings: {}, candidates: [], evaluatedOpportunities: [], trace: [], agentTimings: [],
+        candidates: [], evaluatedOpportunities: [], trace: [], agentTimings: [],
       };
       const apply = async (
         name: string,

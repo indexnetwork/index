@@ -1,8 +1,6 @@
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 
 import { schema, OnboardingState, UserIdentity, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, normalizeTelegramSocialValue, persistProfileIdentityToUser } from './database.shared';
-import { HydeDatabaseAdapter } from './hyde.database.adapter';
-
 export class EnrichmentDatabaseAdapter {
   constructor(private readonly database: DrizzleDB = db) {}
 
@@ -131,30 +129,6 @@ export class EnrichmentDatabaseAdapter {
 
   async getProfileByUserId(userId: string): Promise<(UserIdentity & { id: string }) | null> {
     return buildProfileWithIdFromUser(userId);
-  }
-
-  private hydeAdapter = new HydeDatabaseAdapter();
-
-  async getHydeDocument(
-    sourceType: 'intent' | 'query',
-    sourceId: string,
-    strategy: string
-  ) {
-    return this.hydeAdapter.getHydeDocument(sourceType, sourceId, strategy);
-  }
-
-  async saveHydeDocument(data: {
-    sourceType: 'intent' | 'query';
-    sourceId?: string | null;
-    sourceText?: string | null;
-    strategy: string;
-    targetCorpus: string;
-    hydeText: string;
-    hydeEmbedding: number[];
-    context?: Record<string, unknown> | null;
-    expiresAt?: Date | null;
-  }) {
-    return this.hydeAdapter.saveHydeDocument(data);
   }
 
 }

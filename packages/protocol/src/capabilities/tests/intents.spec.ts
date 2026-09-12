@@ -24,7 +24,7 @@ const VAGUE_SIGNAL = "I want a job.";
 /** In-memory host implementing the ports the intent graph uses. No profile text reaches the model. */
 class FakeIntentHost {
   readonly intents: Array<CreatedIntent & { archivedAt: Date | null; embedding?: number[] }> = [];
-  readonly hydeJobs: Array<
+  readonly followUpJobs: Array<
     | { kind: "generate"; data: Parameters<IntentFollowUp["onIntentSaved"]>[0] }
     | { kind: "delete"; data: Parameters<IntentFollowUp["onIntentArchived"]>[0] }
   > = [];
@@ -93,8 +93,8 @@ class FakeIntentHost {
   readonly followUp: IntentFollowUp = {
     scoreIntent: async () => {},
     onIntentResumed: async () => {},
-    onIntentSaved: async (data) => { this.hydeJobs.push({ kind: "generate", data }); },
-    onIntentArchived: async (data) => { this.hydeJobs.push({ kind: "delete", data }); },
+    onIntentSaved: async (data) => { this.followUpJobs.push({ kind: "generate", data }); },
+    onIntentArchived: async (data) => { this.followUpJobs.push({ kind: "delete", data }); },
   };
 
   graph() {
@@ -154,7 +154,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     expect(host.links).toEqual([{ intentId: "intent-1", networkId: NETWORK_ID }]);
     expect(host.intents[0]).toMatchObject({ userId: USER_ID, payload: CO_FOUNDER_SIGNAL, embedding: expect.any(Array) });
     expect(host.embedded).toEqual([host.intents[0].payload]);
-    expect(host.hydeJobs).toEqual([
+    expect(host.followUpJobs).toEqual([
       { kind: "generate", data: { intentId: "intent-1", userId: USER_ID, scopeType: "network", scopeId: NETWORK_ID } },
     ]);
 
@@ -175,14 +175,14 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     ]);
     expect(host.intents[0].payload).toBe(updated.executionResults[0].payload!);
     expect(host.intents[0].payload).toMatch(/LLM|October/i);
-    expect(host.hydeJobs).toHaveLength(2);
+    expect(host.followUpJobs).toHaveLength(2);
 
     // Delete: expire without inference or verification.
     const deleted = await graph.invoke({ ...scoped, archive: true, targetIntentIds: ["intent-1"] });
-    show("delete intent-1", "(no content; explicit target)", { executionResults: deleted.executionResults, hydeJob: host.hydeJobs.at(-1) });
+    show("delete intent-1", "(no content; explicit target)", { executionResults: deleted.executionResults, followUpJob: host.followUpJobs.at(-1) });
     expect(deleted.executionResults).toEqual([{ actionType: "expire", success: true, intentId: "intent-1", error: undefined }]);
     expect(host.intents[0].archivedAt).toBeInstanceOf(Date);
-    expect(host.hydeJobs.at(-1)).toEqual({ kind: "delete", data: { intentId: "intent-1" } });
+    expect(host.followUpJobs.at(-1)).toEqual({ kind: "delete", data: { intentId: "intent-1" } });
 
     const readAfterDelete = await graph.invoke({ ...scoped });
     show("read after delete", `network ${NETWORK_ID}`, { intents: readAfterDelete.readResult?.intents });

@@ -1,4 +1,4 @@
-import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
+import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -7,7 +7,6 @@ import { IntentEvents } from '../events/intent.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { toPublicNetworkPermissions } from '../lib/network-permissions';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
-import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { _convDb } from './conversation.database.adapter';
 
@@ -41,7 +40,6 @@ export function buildNetworkShareResponse(row: NetworkShareResponseRow, memberCo
 }
 
 export class ChatDatabaseAdapter {
-  private readonly hydeAdapter = new HydeDatabaseAdapter();
   private readonly intentAdapter = new IntentDatabaseAdapter();
   private _opportunityAdapter: OpportunityDatabaseAdapter | null = null;
   private get opportunityAdapter(): OpportunityDatabaseAdapter {
@@ -951,41 +949,6 @@ export class ChatDatabaseAdapter {
       .from(intentNetworks)
       .where(eq(intentNetworks.intentId, intentId));
     return rows.map((r) => r.networkId);
-  }
-
-  // HyDE document operations (delegate to HydeDatabaseAdapter)
-  async getHydeDocument(
-    sourceType: 'intent' | 'query',
-    sourceId: string,
-    strategy: string
-  ): Promise<HydeDocumentRow | null> {
-    return this.hydeAdapter.getHydeDocument(sourceType, sourceId, strategy);
-  }
-
-  async getHydeDocumentsForSource(
-    sourceType: 'intent' | 'query',
-    sourceId: string
-  ): Promise<HydeDocumentRow[]> {
-    return this.hydeAdapter.getHydeDocumentsForSource(sourceType, sourceId);
-  }
-
-  async saveHydeDocument(data: SaveHydeDocumentInput): Promise<HydeDocumentRow> {
-    return this.hydeAdapter.saveHydeDocument(data);
-  }
-
-  async deleteHydeDocumentsForSource(
-    sourceType: 'intent' | 'query',
-    sourceId: string
-  ): Promise<number> {
-    return this.hydeAdapter.deleteHydeDocumentsForSource(sourceType, sourceId);
-  }
-
-  async deleteExpiredHydeDocuments(): Promise<number> {
-    return this.hydeAdapter.deleteExpiredHydeDocuments();
-  }
-
-  async getStaleHydeDocuments(threshold: Date): Promise<HydeDocumentRow[]> {
-    return this.hydeAdapter.getStaleHydeDocuments(threshold);
   }
 
   async getOwnedNetworks(userId: string) {

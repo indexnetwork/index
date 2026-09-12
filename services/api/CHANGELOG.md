@@ -9,6 +9,11 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- Drop predefined HyDE/lens generation, `protocol_hyde_documents`, and HyDE
+  maintenance. Discovery embeds the caller's query and searches real intent
+  vectors.
+
 ### Added
 - Railway dev intent replay: `db:dev:resume --confirm` shuffles eligible intents
   and resumes them 10–30 seconds apart, with discovery completion/failure logs.

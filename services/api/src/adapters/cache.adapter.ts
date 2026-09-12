@@ -1,6 +1,6 @@
 /**
  * Redis implementation of the Cache interface.
- * Used for HyDE document caching and opportunity graph.
+ * Used for opportunity graph and general protocol caching.
  */
 
 import Redis from 'ioredis';
@@ -186,8 +186,3 @@ export class RedisCacheAdapter implements Cache {
  * Singleton instance of RedisCacheAdapter for general protocol caching.
  */
 export const cacheAdapter = new RedisCacheAdapter();
-
-/**
- * Singleton instance of RedisCacheAdapter for HyDE document caching.
- */
-export const hydeCacheAdapter = new RedisCacheAdapter();

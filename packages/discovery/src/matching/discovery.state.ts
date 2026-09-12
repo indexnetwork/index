@@ -1,5 +1,4 @@
-import type { ArtifactInput, HydeState } from '../artifacts/artifact.state.js';
-import type { AgentTiming, CandidateSearch, DiscoveryData, MatchEvidence } from '../core/types.js';
+import type { AgentTiming, CandidateSearch, DiscoveryData, EmbeddingGenerator, MatchEvidence } from '../core/types.js';
 
 /** Asker's profile shape (identity + context). Used by sourceProfile annotation. */
 export interface SourceProfileData {
@@ -36,11 +35,11 @@ export interface CandidateMatch {
   candidateContextId?: string;
   networkId: string;
   similarity: number;
-  /** Free-text lens label that produced this match. */
+  /** Retrieval label: `query` or `explicit_mention`. */
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
-  /** How this candidate was found. HyDE query retrieval is the only path. */
+  /** How this candidate was found. */
   discoverySource?: 'query';
   /** Which discovery strategies found this candidate (set by mergeStrategyCandidates). */
   matchedStrategies?: string[];
@@ -90,7 +89,6 @@ export interface DiscoveryState extends Omit<DiscoveryInput, 'options'> {
   resolvedTriggerIntentId?: string;
   sourceProfile: SourceProfileData | null;
   resolvedIntentInNetwork: boolean;
-  hydeEmbeddings: Record<string, number[]>;
   candidates: CandidateMatch[];
   evaluatedOpportunities: EvaluatedOpportunity[];
   error?: string;
@@ -113,7 +111,7 @@ export interface PotentialIntentPair {
 export interface DiscoveryDeps {
   database: DiscoveryData;
   search: CandidateSearch;
-  prepareArtifacts: (input: ArtifactInput) => Promise<Pick<HydeState, 'hydeEmbeddings'> & Partial<Pick<HydeState, 'lenses' | 'hydeDocuments'>>>;
+  embedder: EmbeddingGenerator;
   matchExplainer: MatchExplainerLike;
   retrievalMinSimilarity: number;
 }

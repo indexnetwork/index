@@ -60,7 +60,6 @@ export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSq
       (SELECT count(*)::int FROM protocol_networks) AS networks,
       (SELECT count(*)::int FROM protocol_network_members) AS memberships,
       (SELECT count(*)::int FROM protocol_intent_networks) AS assignments,
-      (SELECT count(*)::int FROM protocol_hyde_documents) AS hyde,
       (SELECT count(*)::int FROM apikey) AS api_keys,
       (SELECT count(*)::int FROM accounts) AS accounts,
       (SELECT count(*)::int FROM sessions) AS sessions,

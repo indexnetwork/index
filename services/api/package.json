@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.121.0",
+  "version": "0.122.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -21,7 +21,6 @@
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
-    "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
     "agent:tui": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && bun src/cli/agent-tui.ts"
   },
   "dependencies": {

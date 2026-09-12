@@ -22,7 +22,7 @@ const REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 let testLogger: Logger | undefined;
 
 /** Fake host composition: discovery cannot write until this host commits its returned pairs. */
-function createTestDiscovery(database: TestDatabase, search: CandidateSearch, artifacts: { prepare: DiscoveryDeps['prepareArtifacts'] }, explainer: MatchExplainerLike, thresholdOverrides?: ThresholdOverrides) {
+function createTestDiscovery(database: TestDatabase, search: CandidateSearch, embedder: DiscoveryDeps['embedder'], explainer: MatchExplainerLike, thresholdOverrides?: ThresholdOverrides) {
   const data: DiscoveryData = {
     ...database,
     getNetwork: id => database.getNetwork(id),
@@ -44,7 +44,7 @@ function createTestDiscovery(database: TestDatabase, search: CandidateSearch, ar
       return contexts;
     },
   };
-  const matcher = new Discovery({ database: data, search, prepareArtifacts: input => artifacts.prepare(input), matchExplainer: explainer, ...thresholdOverrides });
+  const matcher = new Discovery({ database: data, search, embedder, matchExplainer: explainer, ...thresholdOverrides });
   return {
     async discover(input: DiscoveryInput) {
       const context = requestContext.getStore();
@@ -203,12 +203,7 @@ function createMockGraph(deps?: {
   };
 
   const mockHydeGenerator = {
-    prepare: () =>
-      Promise.resolve({
-        hydeEmbeddings: {
-          mirror: dummyEmbedding,
-        },
-      }),
+    generate: () => Promise.resolve(dummyEmbedding),
   };
 
   const explainerCalls: unknown[] = [];
@@ -271,12 +266,7 @@ function createMockGraphWithFnOverrides(deps?: {
   };
 
   const mockHyde = {
-    prepare: () =>
-      Promise.resolve({
-        hydeEmbeddings: {
-          mirror: dummyEmbedding,
-        },
-      }),
+    generate: () => Promise.resolve(dummyEmbedding),
   };
 
   const explainer = createMockExplainer(defaultMockExplainerResult);
@@ -290,7 +280,7 @@ describe('Discovery', () => {
       const { discovery, mockHydeGenerator, mockSearch } = createMockGraph({
         getUserNetworkIds: () => Promise.resolve([]),
       });
-      const hydeSpy = spyOn(mockHydeGenerator, 'prepare');
+      const hydeSpy = spyOn(mockHydeGenerator, 'generate');
       const searchSpy = spyOn(mockSearch, 'searchIntentCandidates');
 
       const result = (await discovery.discover({
@@ -310,7 +300,7 @@ describe('Discovery', () => {
       const { discovery, mockSearch } = createMockGraph({
         getActiveIntents: () => Promise.resolve([]),
       });
-      // With searchQuery, the profile/query path runs (query-based HyDE discovery). Mock empty search so we get no opportunities.
+      // With searchQuery, the query path runs. Mock empty search so we get no opportunities.
       spyOn(mockSearch, 'searchIntentCandidates').mockResolvedValue([]);
 
       const result = (await discovery.discover({
@@ -890,11 +880,11 @@ describe('Discovery', () => {
 
 
   describe('Conditional routing: early exit', () => {
-    test('when no network memberships, full invoke does not call HyDE or search or openCounterparties', async () => {
+    test('when no network memberships, full invoke does not call embedder or search or openCounterparties', async () => {
       const { discovery, mockDb, mockHydeGenerator, mockSearch } = createMockGraph({
         getUserNetworkIds: () => Promise.resolve([]),
       });
-      const hydeSpy = spyOn(mockHydeGenerator, 'prepare');
+      const hydeSpy = spyOn(mockHydeGenerator, 'generate');
       const searchSpy = spyOn(mockSearch, 'searchIntentCandidates');
       const createSpy = spyOn(mockDb, 'openCounterparties');
 
@@ -913,7 +903,7 @@ describe('Discovery', () => {
       const { discovery, mockDb, mockSearch } = createMockGraph({
         getActiveIntents: () => Promise.resolve([]),
       });
-      // With searchQuery, the profile/query path runs (HyDE + search). Mock empty search so no opportunities are created.
+      // With searchQuery, the query path runs. Mock empty search so no opportunities are created.
       spyOn(mockSearch, 'searchIntentCandidates').mockResolvedValue([]);
       const createSpy = spyOn(mockDb, 'openCounterparties');
 
@@ -1052,7 +1042,7 @@ describe('Discovery', () => {
 
 
   describe('Discovery node: discoverer context', () => {
-    test('passes profileContext with profile and intents to HyDE generator', async () => {
+    test('embeds the search query', async () => {
       const { discovery, mockHydeGenerator, mockSearch } = createMockGraph({
         getProfile: {
           userId: 'user-alice' as Id<'users'>,
@@ -1070,7 +1060,7 @@ describe('Discovery', () => {
           ]),
       });
 
-      const hydeSpy = spyOn(mockHydeGenerator, 'prepare');
+      const hydeSpy = spyOn(mockHydeGenerator, 'generate');
       spyOn(mockSearch, 'searchIntentCandidates').mockResolvedValue([]);
 
       await discovery.discover({
@@ -1080,11 +1070,7 @@ describe('Discovery', () => {
       } as DiscoveryInput);
 
       expect(hydeSpy).toHaveBeenCalled();
-      const invokeInput = (hydeSpy.mock.calls[0] as unknown[])[0] as { profileContext?: string };
-      expect(invokeInput.profileContext).toBeDefined();
-      expect(invokeInput.profileContext).toContain('Alice Chen');
-      expect(invokeInput.profileContext).toContain('Full-stack engineer building AI tools');
-      expect(invokeInput.profileContext).toContain('Active intents');
+      expect(hydeSpy.mock.calls[0]?.[0]).toBe('AI research partner');
     });
   });
 
@@ -1205,7 +1191,7 @@ describe('Discovery', () => {
                 searchIntentCandidates: () => Promise.resolve([]),
       };
 
-      const mockHyde = { prepare: () => Promise.resolve({ hydeEmbeddings: { mirror: dummyEmbedding } }) };
+      const mockHyde = { generate: () => Promise.resolve(dummyEmbedding) };
       const discovery = createTestDiscovery(mockDb, mockSearch, mockHyde, createMockExplainer());
 
       const result = (await discovery.discover({
@@ -1396,12 +1382,7 @@ function createTraceMockGraph(explainerOverride?: MatchExplainerLike) {
   };
 
   const mockHydeGenerator = {
-    prepare: () =>
-      Promise.resolve({
-        hydeEmbeddings: {
-          mirror: dummyTraceEmbedding,
-        },
-      }),
+    generate: () => Promise.resolve(dummyTraceEmbedding),
   };
 
   const explainer = explainerOverride ?? createMockExplainer();

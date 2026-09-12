@@ -1,5 +1,5 @@
 /**
- * Embedder adapter: OpenRouter API with OpenAI embedding model + pgvector search (HyDE lens-based).
+ * Embedder adapter: OpenRouter API with OpenAI embedding model + pgvector search.
  * Uses the shared OpenRouter + OpenAI embedding config from lib/embedding.
  */
 

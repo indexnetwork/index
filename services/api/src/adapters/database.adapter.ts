@@ -10,7 +10,6 @@ export { ChatDatabaseAdapter } from './chat.database.adapter';
 export { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 export { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from './negotiation.database.adapter';
-export { HydeDatabaseAdapter } from './hyde.database.adapter';
 export { UserDatabaseAdapter } from './user.database.adapter';
 export { ConversationDatabaseAdapter } from './conversation.database.adapter';
 

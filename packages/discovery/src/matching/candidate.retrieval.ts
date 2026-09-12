@@ -1,7 +1,5 @@
-import { DEFAULT_MODEL } from '../core/model.js';
 import { timed } from '../core/runtime.js';
-import { buildDiscovererContext } from '../prompts/discovery.prompt.js';
-import { collectHydeResults, computeLensStats, mergeStrategyCandidates, runQueryHydeDiscovery, searchWithHydeEmbeddings, toLensEmbeddings, type DiscoveryStrategyContext } from './candidate.search.js';
+import { mergeStrategyCandidates, searchQueryAcrossNetworks, type DiscoveryStrategyContext } from './candidate.search.js';
 import { DISCOVERY_MIN_MATCHES } from './discovery.constants.js';
 import type { CandidateMatch, DiscoveryDeps, DiscoveryState, TraceEntry } from './discovery.state.js';
 import { discoveryLog } from './discovery.trace.js';
@@ -14,7 +12,7 @@ const PER_NETWORK_LIMIT = 160;
 
 /**
  * Node 3: Discovery
- * Generates HyDE embeddings and performs semantic search.
+ * Embeds the query text and performs semantic search against real intent vectors.
  */
 export async function discoveryNode(state: DiscoveryState, deps: DiscoveryDeps) {
   return timed("OpportunityGraph.discovery", async () => {
@@ -57,11 +55,20 @@ export async function discoveryNode(state: DiscoveryState, deps: DiscoveryDeps) 
         perNetworkLimit: PER_NETWORK_LIMIT,
       };
 
-      if (state.discoverySource === 'context') {
-        return await discoverFromContext(ctx, filterByTarget, startTime);
+      if (state.discoverySource === 'context' && !state.searchQuery?.trim()) {
+        return { candidates: [] };
       }
 
-      return await discoverFromIntent(ctx, filterByTarget, startTime);
+      const resolvedIntent = state.resolvedTriggerIntentId
+        ? state.indexedIntents.find((i) => i.intentId === state.resolvedTriggerIntentId)
+        : state.indexedIntents[0];
+      const searchText = state.searchQuery?.trim() || resolvedIntent?.payload || '';
+      if (!searchText) {
+        discoveryLog.warn('No search text available');
+        return { candidates: [] };
+      }
+
+      return await discoverFromQuery(ctx, searchText, filterByTarget, startTime);
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       discoveryLog.error('Failed', { error });
@@ -123,12 +130,10 @@ async function discoverDirectConnection(
     };
   }
 
-  // Fetch target user's active intents to build intent-level candidates
   const targetIntents = await deps.database.getActiveIntents(targetUserId);
   const directCandidates: CandidateMatch[] = [];
 
   if (targetIntents.length > 0) {
-    // Build one candidate per intent per shared network it belongs to
     for (const intent of targetIntents) {
       const intentNetworkIds = await deps.database.getNetworkIdsForIntent(intent.id);
       const overlapping = sharedNetworkIds.filter(id => intentNetworkIds.includes(id));
@@ -147,7 +152,6 @@ async function discoverDirectConnection(
     }
   }
 
-  // Always add a profile-level candidate (so evaluation runs even without intents)
   if (directCandidates.length === 0) {
     directCandidates.push(withCandidateEvidence({
       candidateUserId: targetUserId,
@@ -181,201 +185,46 @@ async function discoverDirectConnection(
   };
 }
 
-/**
- * Context source: HyDE (when a search query exists) plus the additive
- * context strategies.
- */
-async function discoverFromContext(
+/** Query-embedding retrieval for both intent and context sources. */
+async function discoverFromQuery(
   ctx: DiscoveryStrategyContext,
+  searchText: string,
   filterByTarget: (candidates: CandidateMatch[]) => CandidateMatch[],
   startTime: number,
 ) {
-  const { state } = ctx;
-
-  if (state.searchQuery?.trim()) {
-    discoveryLog.verbose('Context source with searchQuery → running query HyDE paths', {
-      searchQuery: state.searchQuery.trim().substring(0, 80),
-    });
-    const queryResult = await runQueryHydeDiscovery(ctx);
-    const queryCandidates = queryResult?.candidates ?? [];
-    discoveryLog.verbose('Query HyDE path complete', { candidatesFound: queryCandidates.length });
-
-    const traceEntries: TraceEntry[] = [];
-
-    // Lens input trace (captured from runQueryHydeDiscovery)
-    if (queryResult) {
-      traceEntries.push({
-        node: "lens_input",
-        detail: "Profile context for lens inference",
-        data: queryResult.lensInput,
-      });
-
-      // Lens output and HyDE document traces
-      if (queryResult.hydeOutput.lenses.length > 0) {
-        traceEntries.push({
-          node: "lens_output",
-          detail: `Inferred ${queryResult.hydeOutput.lenses.length} lens(es): ${queryResult.hydeOutput.lenses.map(l => l.label).join(', ')}`,
-          data: { lenses: queryResult.hydeOutput.lenses, model: DEFAULT_MODEL },
-        });
-      }
-      for (const [lens, doc] of Object.entries(queryResult.hydeOutput.hydeDocuments)) {
-        if (doc?.hydeText) {
-          traceEntries.push({
-            node: "hyde_query",
-            detail: `[${lens}] "${doc.hydeText.slice(0, 120)}${doc.hydeText.length > 120 ? '...' : ''}"`,
-            data: { lens, hydeTextPreview: doc.hydeText.slice(0, 300) + (doc.hydeText.length > 300 ? '...' : '') },
-          });
-        }
-      }
-    }
-
-    traceEntries.push({
-      node: "discovery",
-      detail: `HyDE search → ${queryCandidates.length} candidate(s) from query path`,
-      data: {
-        candidateCount: queryCandidates.length,
-        byLens: computeLensStats(queryCandidates),
-        searchQuery: state.searchQuery?.trim().slice(0, 80),
-        durationMs: Date.now() - startTime,
-        model: DEFAULT_MODEL,
-      },
-    });
-
-    return { candidates: filterByTarget(mergeStrategyCandidates(queryCandidates)), trace: traceEntries };
-  }
-
-  // No search query, and no profile corpus to fall back on.
-  return { candidates: [] };
-}
-
-/**
- * Intent source: HyDE over the resolved intent's payload (or the search query),
- * then the additive strategies on top.
- */
-async function discoverFromIntent(
-  ctx: DiscoveryStrategyContext,
-  filterByTarget: (candidates: CandidateMatch[]) => CandidateMatch[],
-  startTime: number,
-) {
-  const { state, deps, discoveryUserId } = ctx;
-
-  const resolvedIntent = state.resolvedTriggerIntentId
-    ? state.indexedIntents.find((i) => i.intentId === state.resolvedTriggerIntentId)
-    : state.indexedIntents[0];
-  const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
-  if (!searchText) {
-    discoveryLog.warn('No search text available for intent path');
-    return { candidates: [] };
-  }
-
-  const discovererContext = buildDiscovererContext(state.sourceProfile, state.indexedIntents);
-  const discoveryLensInput = {
-    profileContext: discovererContext,
-    model: DEFAULT_MODEL,
-  };
-  const hydeResult = await deps.prepareArtifacts({
-    sourceType: 'query',
-    sourceText: searchText,
-    forceRegenerate: false,
-    profileContext: discovererContext,
-  });
-  const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
-  const lenses = hydeResult.lenses ?? [];
-  if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
-    return { hydeEmbeddings: {} as Record<string, number[]>, candidates: [] };
-  }
-
-  const lensEmbeddings = toLensEmbeddings(hydeEmbeddings, lenses);
-
-  const searchAllNetworks = async (minScore: number): Promise<CandidateMatch[]> => {
-    const found: CandidateMatch[] = [];
-    await Promise.all(
-      state.targetNetworks.map(async (targetNetwork) => {
-        const results = await searchWithHydeEmbeddings(deps.search, lensEmbeddings, {
-          networkScope: [targetNetwork.networkId],
-          excludeUserId: discoveryUserId,
-          limitPerStrategy: ctx.limitPerStrategy,
-          limit: ctx.perNetworkLimit,
-          minScore,
-        });
-        found.push(...collectHydeResults(results, targetNetwork.networkId));
-      })
-    );
-    return found;
-  };
-
-  const byUserAndNetwork = new Map<string, CandidateMatch>();
+  const { deps } = ctx;
+  const byKey = new Map<string, CandidateMatch>();
   const mergeIntoPool = (found: CandidateMatch[]) => {
     for (const c of found) {
       const key = `${c.candidateUserId}:${c.networkId}:intent:${c.candidateIntentId}`;
-      if (!byUserAndNetwork.has(key) || c.similarity > (byUserAndNetwork.get(key)?.similarity ?? 0)) {
-        byUserAndNetwork.set(key, c);
+      if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
+        byKey.set(key, c);
       }
     }
   };
 
-  mergeIntoPool(await searchAllNetworks(deps.retrievalMinSimilarity));
+  mergeIntoPool(await searchQueryAcrossNetworks(ctx, searchText, deps.retrievalMinSimilarity));
 
-  // The similarity floor can be what keeps a small network under the match
-  // floor, not a genuine lack of members. Re-run without it once when the
-  // deduped pool doesn't have enough distinct users yet.
-  const distinctUsers = new Set(Array.from(byUserAndNetwork.values()).map((c) => c.candidateUserId)).size;
+  const distinctUsers = new Set(Array.from(byKey.values()).map((c) => c.candidateUserId)).size;
   const toppedUp = distinctUsers < DISCOVERY_MIN_MATCHES;
   if (toppedUp) {
-    mergeIntoPool(await searchAllNetworks(0));
+    mergeIntoPool(await searchQueryAcrossNetworks(ctx, searchText, 0));
   }
 
-  const candidates = Array.from(byUserAndNetwork.values());
-  discoveryLog.verbose('Intent-path discovery complete', { candidatesFound: candidates.length, toppedUp });
-  const usedLenses = Object.keys(hydeEmbeddings);
+  const candidates = Array.from(byKey.values());
+  discoveryLog.verbose('Query discovery complete', { candidatesFound: candidates.length, toppedUp });
 
-  // Build trace with individual candidate similarity scores
   const traceEntries: TraceEntry[] = [{
-    node: "lens_input",
-    detail: "Profile context for lens inference",
-    data: discoveryLensInput,
-  }];
-
-  if (lenses.length > 0) {
-    traceEntries.push({
-      node: "lens_output",
-      detail: `Inferred ${lenses.length} lens(es): ${lenses.map(l => l.label).join(', ')}`,
-      data: { lenses, model: DEFAULT_MODEL },
-    });
-  }
-
-  traceEntries.push({
     node: "discovery",
     detail: `Query: "${searchText.slice(0, 50)}${searchText.length > 50 ? '...' : ''}" → ${candidates.length} candidate(s)`,
     data: {
       query: searchText.slice(0, 100),
-      lenses: usedLenses,
       candidateCount: candidates.length,
-      byLens: computeLensStats(candidates),
       toppedUp,
       durationMs: Date.now() - startTime,
-      model: DEFAULT_MODEL,
     },
-  });
+  }];
 
-  // Show the HyDE-generated hypothetical documents used for search
-  const hydeDocuments = hydeResult.hydeDocuments;
-  if (hydeDocuments) {
-    for (const [lens, doc] of Object.entries(hydeDocuments)) {
-      if (doc?.hydeText) {
-        traceEntries.push({
-          node: "hyde_query",
-          detail: `[${lens}] "${doc.hydeText.slice(0, 120)}${doc.hydeText.length > 120 ? '...' : ''}"`,
-          data: {
-            lens,
-            hydeTextPreview: doc.hydeText.slice(0, 160) + (doc.hydeText.length > 160 ? '...' : ''),
-          },
-        });
-      }
-    }
-  }
-
-  // Add top candidates with similarity scores
   const sortedCandidates = [...candidates].sort((a, b) => b.similarity - a.similarity).slice(0, 10);
   for (const c of sortedCandidates) {
     traceEntries.push({
@@ -390,10 +239,8 @@ async function discoverFromIntent(
     });
   }
 
-  const allStrategies = mergeStrategyCandidates(candidates);
   return {
-    hydeEmbeddings: hydeEmbeddings as Record<string, number[]>,
-    candidates: filterByTarget(allStrategies),
+    candidates: filterByTarget(mergeStrategyCandidates(candidates)),
     trace: traceEntries,
   };
 }

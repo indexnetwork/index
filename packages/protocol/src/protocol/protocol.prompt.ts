@@ -153,7 +153,7 @@ Discovery is networked — it only finds matches within shared networks. This pr
 Approved signals are evaluated in the background. GET /api/opportunities only reviews persisted opportunities; it does not start matching.
 
 ### Opportunity Evaluation
-- Candidate retrieval: Uses HyDE embeddings to find semantically related signals
+- Candidate retrieval: Embeds the query and finds semantically related signals
 - LLM evaluation: Scores relevance, complementarity, and actionability
 - Reasoning: Each opportunity includes match reasoning for the user
 

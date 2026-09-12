@@ -3,7 +3,7 @@ export interface EmbeddingGenerateOptions {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Embedding generation + vector / HyDE search
+// Embedding generation + vector search
 //
 // Port contract (host application implements):
 //   • `generate` is shape-preserving: a `string` input yields one `number[]`; a
