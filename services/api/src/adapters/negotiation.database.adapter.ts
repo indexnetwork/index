@@ -605,19 +605,27 @@ export class NegotiationDatabaseAdapter {
    * Close the negotiations attached to these opportunities.
    *
    * Index closes a negotiation itself when consent, an archive, or expiry ends
-   * the opportunity underneath it. No seat declines anything; the next read
-   * shows it closed.
+   * the opportunity underneath it. No seat declines anything; both seats are
+   * notified after the closure commits.
    *
    * @param opportunityIds - Opportunities whose negotiations should close.
    */
   async closeForOpportunities(opportunityIds: string[]): Promise<void> {
     if (opportunityIds.length === 0) return;
-    await db.update(negotiations)
+    const closed = await db.update(negotiations)
       .set({ outcome: 'closed', settledAt: new Date(), awaitingUserId: null, updatedAt: new Date() })
       .where(and(
         inArray(negotiations.opportunityId, opportunityIds),
         isNull(negotiations.settledAt),
-      ));
+      )).returning({
+        opportunityId: negotiations.opportunityId,
+        initiatorUserId: negotiations.initiatorUserId, initiatorIntentId: negotiations.initiatorIntentId,
+        responderUserId: negotiations.responderUserId, responderIntentId: negotiations.responderIntentId,
+      });
+    await Promise.all(closed.map((row) => publishNegotiationChange([
+      { userId: row.initiatorUserId, intentId: row.initiatorIntentId },
+      { userId: row.responderUserId, intentId: row.responderIntentId },
+    ], row.opportunityId)));
   }
 
   /** Resolve each row into the shape its reader's seat is allowed to see. */
