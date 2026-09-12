@@ -1,5 +1,10 @@
 # Changelog
 
+## 58.0.2
+
+- Document agent-owned query planning, evaluation, repeat searches, and counterparty selection. The API injects `discover_counterparties` and `open_negotiation`; existing protocol opening, authorization, and lifecycle contracts remain unchanged.
+- Retain candidate retrieval and scope coverage in the existing opportunity spec and run it in the credential-free gate. Remove obsolete automatic explanation/opening cases.
+
 ## 58.0.1
 
 - Discovery no longer infers lenses or generates HyDE documents. `onIntentArchived` is a host no-op; matching starts from `onIntentSaved` / `onIntentResumed` with a single query embedding.

@@ -1,33 +1,3 @@
-import type { z } from 'zod/v4';
-
-export interface AgentTiming { name: string; durationMs: number }
-export interface MatchEvidence {
-  kind: 'query_intent' | 'query_context' | 'profile';
-  networkId: string;
-  score?: number;
-  lens?: string;
-  discoverySource?: 'query';
-  matchedStrategies?: string[];
-  candidateIntentId?: string;
-  sourceContextId?: string;
-  candidateContextId?: string;
-  payload?: string;
-  summary?: string;
-}
-
-export interface ModelRequest<T> {
-  name: string;
-  messages: Array<{ role: 'system' | 'user'; content: string }>;
-  schema: z.ZodType<T>;
-  temperature?: number;
-  maxTokens?: number;
-}
-
-/** Host-supplied structured model; callers validate even injected responses. */
-export interface Model {
-  complete<T>(request: ModelRequest<T>, options?: { signal?: AbortSignal }): Promise<T>;
-}
-
 export interface Logger {
   verbose(message: string, meta?: Record<string, unknown>): void;
   debug(message: string, meta?: Record<string, unknown>): void;
@@ -46,7 +16,6 @@ export interface RunOptions {
   traceEmitter?: (event: TraceEvent) => void;
   logger?: Logger;
 }
-
 export interface EmbeddingGenerator {
   generate(text: string | string[], dimensions?: number, options?: { signal?: AbortSignal }): Promise<number[] | number[][]>;
 }
@@ -65,25 +34,20 @@ export interface IntentCandidate {
   score: number;
 }
 
-/** Search only real, active intent embeddings, with live broadcast and membership eligibility. */
+/** Search real, active intent embeddings within authorized networks. */
 export interface CandidateSearch {
   searchIntentCandidates(embedding: number[], options: SearchOptions): Promise<IntentCandidate[]>;
 }
-
 export interface ActiveIntent { id: string; payload: string; summary?: string | null }
 export interface Profile { identity?: { name?: string; bio?: string; location?: string }; context?: string }
 
-/** Narrow read ports. Protocol/host resolves authorization and network-context permissions. */
+/** Read ports; the host supplies protocol scope and context permission rules. */
 export interface DiscoveryData {
   getNetworkMemberships(userId: string): Promise<Array<{ networkId: string }>>;
   getActiveIntents(userId: string): Promise<ActiveIntent[]>;
   getProfile(userId: string): Promise<Profile | null>;
-  getIntent(intentId: string): Promise<ActiveIntent | null>;
   getNetworkIdsForIntent(intentId: string): Promise<string[]>;
-  getDiscoveryScope(input: { userId: string; userNetworks: string[]; networkId?: string; networkScope?: string[]; triggerIntentId?: string }): Promise<{ networkIds: string[]; error?: string }>;
-  getNetwork(networkId: string): Promise<{ title: string } | null>;
-  getNetworkMemberCount(networkId: string): Promise<number>;
-  getIntentNetworkScores(intentId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>>;
+  getDiscoveryScope(input: { userId: string; userNetworks: string[]; networkId?: string; networkScope?: string[]; triggerIntentId: string }): Promise<{ networkIds: string[]; error?: string }>;
   getActiveNetworkMembershipPairs(pairs: Array<{ userId: string; networkId: string }>): Promise<Array<{ userId: string; networkId: string }>>;
   getNetworkContexts(networkIds: string[]): Promise<Record<string, string>>;
   getRecentlyRejectedOpportunityCounterparties(userId: string, candidateUserIds: string[], windowMs: number): Promise<string[]>;

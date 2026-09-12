@@ -1,10 +1,12 @@
 import { EventEmitter } from 'node:events';
 
-import { MemoryPrincipalStore, NegotiationAgent, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
-
-import { NEGOTIATION_GUIDANCE, Negotiations, decideNegotiationOpening, type NegotiationState } from '@indexnetwork/protocol';
+import { MemoryPrincipalStore, NegotiationAgent, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput, type Candidate } from '@indexnetwork/agent';
+import { Discovery, type EmbeddingGenerator } from '@indexnetwork/discovery';
+import { NEGOTIATION_GUIDANCE, Negotiations, decideNegotiationOpening, pairKeyOf, type NegotiationState } from '@indexnetwork/protocol';
 
 import type { TuiPrincipal } from './negotiation.tui';
+
+const SCENARIO_NETWORK = 'local-scenario';
 
 export interface DemoPrincipal {
   id: string;
@@ -187,26 +189,15 @@ export class NegotiationLab extends EventEmitter {
   readonly negotiations = new Map<string, NegotiationDemo>();
   readonly agents = new Map<string, NegotiationAgent>();
   agentStatus = '';
+  private readonly controller = new AbortController();
+  private starting?: Promise<void>;
 
-  constructor(scenario: DemoScenario, options: { model: Model }) {
+  constructor(scenario: DemoScenario, private readonly options: { model: Model; embedder: EmbeddingGenerator }) {
     super();
     this.users = scenario.users.flatMap((user) => user.intents.map((intent) => {
       const id = [user.id, intent.id].map(encodeURIComponent).join(':');
       return { id, userId: user.id, name: user.name, intentId: id, intent: intent.intent, principalContext: user.instructions };
     }));
-    for (let index = 0; index < this.users.length; index++) {
-      for (const other of this.users.slice(index + 1)) {
-        if (this.users[index].userId === other.userId) continue;
-        const principals = [this.users[index], other] as const;
-        const id = `local:${principals.map(({ id }) => id).sort().map(encodeURIComponent).join(':')}`;
-        const demo = new NegotiationDemo(principals, id);
-        demo.on('change', () => this.emit('change'));
-        demo.on('negotiation.updated', () => {
-          for (const principal of principals) void this.agents.get(principal.id)!.receive({ kind: 'negotiation.updated', opportunityId: id });
-        });
-        this.negotiations.set(id, demo);
-      }
-    }
     for (const user of this.users) {
       const clientFor = (id: string) => this.negotiations.get(id)!.client(user.userId);
       const host: NegotiationHost = {
@@ -219,7 +210,11 @@ export class NegotiationLab extends EventEmitter {
           this.agentStatus = '';
           if (step.kind === 'tool') this.negotiations.get(id)!.progress(step.name + ' ' + (step.error ?? 'completed'));
         },
-        conversation: () => this.emit('change'),
+        conversation: () => {
+          const states = [...this.agents.values()].map(agent => agent.pursuitState);
+          this.agentStatus = `Pursuit: ${states.filter(state => state.status === 'running').length} running · ${states.reduce((sum, state) => sum + state.searches.length, 0)} searches · ${this.negotiations.size} negotiations`;
+          this.emit('change');
+        },
         end: (record) => this.negotiations.get(record.opportunityId)!.end(record),
         error: (id, owner, reason) => {
           const affected = id === null
@@ -245,18 +240,73 @@ export class NegotiationLab extends EventEmitter {
     }
   }
 
-  /** Deliver simulated matches to the always-on agents, which own their negotiation lifecycles. */
-  matchAll(): void {
-    for (const demo of this.negotiations.values()) {
-      for (const principal of demo.principals) {
-        void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: demo.opportunityId });
-      }
+  /** Start real agent pursuit over the scenario's synthetic intent corpus. @returns When initial pursuit has completed; negotiations may still be waiting for input. */
+  start(): Promise<void> { return this.starting ??= this.pursue(); }
+
+  private async pursue(): Promise<void> {
+    const signal = this.controller.signal;
+    this.agentStatus = 'Embedding scenario intents…';
+    this.emit('change');
+    const vectors = await this.options.embedder.generate(this.users.map(user => user.intent), undefined, { signal }) as number[][];
+    const discovery = new Discovery({
+      embedder: this.options.embedder,
+      search: { searchIntentCandidates: async (query, options) => {
+        options.signal?.throwIfAborted();
+        if (!options.networkScope.includes(SCENARIO_NETWORK)) return [];
+        const magnitude = (vector: number[]) => Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+        return this.users.map((user, index) => ({ type: 'intent' as const, id: user.intentId, userId: user.userId,
+          networkId: SCENARIO_NETWORK,
+          score: vectors[index].reduce((sum, value, dimension) => sum + value * query[dimension], 0) / (magnitude(vectors[index]) * magnitude(query)),
+        })).filter(hit => hit.userId !== options.excludeUserId && hit.score >= options.minScore)
+          .sort((a, b) => b.score - a.score).slice(0, options.limit);
+      } },
+      database: {
+        getNetworkMemberships: async () => [{ networkId: SCENARIO_NETWORK }],
+        getActiveIntents: async userId => this.users.filter(user => user.userId === userId).map(user => ({ id: user.intentId, payload: user.intent })),
+        getProfile: async userId => ({ identity: { name: this.users.find(user => user.userId === userId)!.name } }),
+        getNetworkIdsForIntent: async id => this.users.some(user => user.intentId === id) ? [SCENARIO_NETWORK] : [],
+        getDiscoveryScope: async input => ({ networkIds: (input.networkScope ?? [SCENARIO_NETWORK]).filter(id => id === SCENARIO_NETWORK) }),
+        getActiveNetworkMembershipPairs: async pairs => pairs.filter(pair => pair.networkId === SCENARIO_NETWORK && this.users.some(user => user.userId === pair.userId)),
+        getNetworkContexts: async () => ({ [SCENARIO_NETWORK]: 'A synthetic scenario network. Membership establishes no personal facts.' }),
+        getRecentlyRejectedOpportunityCounterparties: async () => [],
+      },
+    });
+    await Promise.all(this.users.map(user => this.agents.get(user.id)!.pursue({ version: 'scenario', networkIds: [SCENARIO_NETWORK] }, {
+      discoverCounterparties: async (input, signal) => {
+        const result = await discovery.discover({ userId: user.userId, triggerIntentId: user.intentId, searchQuery: input.query,
+          minSimilarity: input.minSimilarity, networkScope: input.networkIds }, { signal });
+        if (result.error) throw new Error(result.error);
+        return result;
+      },
+      openNegotiation: async (candidate, _reasoning, signal) => {
+        signal.throwIfAborted();
+        return this.openNegotiation(user, candidate);
+      },
+    })));
+  }
+
+  private openNegotiation(user: TuiPrincipal, candidate: Candidate): { opportunityId: string } {
+    const other = this.users.find(other => other.intentId === candidate.candidateIntentId && other.userId === candidate.candidateUserId);
+    if (!other || other.userId === user.userId || candidate.networkId !== SCENARIO_NETWORK) throw new Error('Counterparty is outside this scenario.');
+    const id = pairKeyOf(SCENARIO_NETWORK, user.intentId, other.intentId);
+    if (!this.negotiations.has(id)) {
+      const principals = [user, other] as const;
+      const demo = new NegotiationDemo(principals, id);
+      demo.on('change', () => this.emit('change'));
+      demo.on('negotiation.updated', () => {
+        for (const principal of principals) void this.agents.get(principal.id)!.receive({ kind: 'negotiation.updated', opportunityId: id });
+      });
+      this.negotiations.set(id, demo);
+      for (const principal of principals) void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: id });
+      this.emit('change');
     }
+    return { opportunityId: id };
   }
 
   /** Cancel model work, release human questions, and stop all match records. */
   async stop(): Promise<void> {
-    await Promise.all([...this.agents.values()].map((agent) => agent.stop()));
+    this.controller.abort();
+    await Promise.all([this.starting?.catch(() => {}), ...[...this.agents.values()].map((agent) => agent.stop())]);
     for (const demo of this.negotiations.values()) demo.stop();
   }
 
@@ -268,7 +318,8 @@ export class NegotiationLab extends EventEmitter {
         + (entry.scope === 'intent' ? ' · This intent' : entry.matches.length ? ' · ' + entry.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ') : '') + '\n\n' + entry.text
         + (entry.options ? '\n\n' + entry.options.map((option) => '- ' + option).join('\n') : ''),
       );
-      return '# H2A · ' + user.name + '\n\nIntent: ' + user.intent + '\n\n' + entries.join('\n\n');
+      return '# H2A · ' + user.name + '\n\nIntent: ' + user.intent + '\n\n' + entries.join('\n\n')
+        + '\n\n## Private pursuit history\n\n```json\n' + JSON.stringify(this.agents.get(user.id)!.pursuitState, null, 2) + '\n```';
     });
     return '# Local negotiation lab transcript\n\nIncludes private principal conversations. No live Index records changed.\n\n'
       + [...human, ...[...this.negotiations.values()].map((demo) => demo.markdown())].join('\n\n---\n\n');

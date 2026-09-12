@@ -9,6 +9,11 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed in 0.123.0
+- Active intent creation/resume and completed network assignments wake the existing personal-agent session. Its agent chooses queries, repeat searches, candidate evaluations, and counterparties with `discover_counterparties` and `open_negotiation`.
+- Persist search evidence and opening decisions in the same PrincipalState checkpoint as H2A and negotiations. Fence agent-selected opening with the session lease inside the protocol opening transaction.
+- Remove the automatic discovery runner, overlap lock, trigger builders, and explanation pipeline. Dev replay only resumes intents; long-lived API sessions own subsequent pursuit.
+
 ### Removed
 - Drop predefined HyDE/lens generation, `protocol_hyde_documents`, and HyDE
   maintenance. Discovery embeds the caller's query and searches real intent
@@ -16,7 +21,7 @@ section before promoting to `main`).
 
 ### Added
 - Railway dev intent replay: `db:dev:resume --confirm` shuffles eligible intents
-  and resumes them 10–30 seconds apart, with discovery completion/failure logs.
+  and resumes at most five 10–30 seconds apart, with transition outcomes logged.
   `db:dev:reset --confirm` stops the dev API, clears matching and agent state,
   pauses intents, then restores the same deployment. Both commands pin the dev
   database and preserve accounts, credentials, and the intent/network dataset.

@@ -110,14 +110,13 @@ export class NegotiationService {
   /**
    * Open a negotiation between two seated signals without asking discovery.
    *
-   * Discovery decides both whether a pair is worth opening and which side
-   * moves first. This decides neither: the caller names the pair, and the
+   * The personal agent selects retrieved counterparties. For a direct opening, the caller names the pair, and the
    * initiator is the side they put first, which is the side that owes the
    * opening turn.
    *
-   * Idempotent by pair. A pair discovery reached first comes back as
+   * Idempotent by pair. A pair the personal agent opened first comes back as
    * `already_open` with the record it wrote, so a caller opening the same set
-   * twice — or racing the discovery run its own signal just triggered — is
+   * twice — or racing its personal agent — is
    * safe.
    *
    * @param params - The network and the two signals, initiator first.

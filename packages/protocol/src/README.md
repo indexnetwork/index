@@ -65,7 +65,7 @@ The system models human collaboration through a linguistic and information-theor
 | **User** | Session-authenticated identity with many intents and network memberships. Presentation identity lives on `users`; semantic discovery uses intents and user contexts. |
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
 | **Network** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share a network. |
-| **Opportunity** | A persisted intent pair admitted by protocol negotiation rules. The host receives candidate pairs from discovery, commits them atomically, and uses protocol lifecycle and presentation functions to serve them. |
+| **Opportunity** | A persisted intent pair admitted by protocol negotiation rules. The personal agent selects counterparties from retrieval evidence; the host commits each selected pair atomically, and uses protocol lifecycle and presentation functions to serve them. |
 | **Discovery** | Query-side retrieval owned by `@indexnetwork/discovery`. The query is embedded once and searched against real intent embeddings. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
 | **Semantic Entropy** | Constraint density of an intent (0.0 = maximally constrained, 1.0 = trivially satisfiable). High-entropy intents ("I want a job") trigger an **elaboration loop** — a request for missing constraints before persistence. |
@@ -82,12 +82,13 @@ service, and the service invokes the capability graphs.
 
 ### Post-intent matching
 
-After protocol persists an intent, the host's `onIntentSaved` hook schedules
-`@indexnetwork/discovery`. That independent library embeds the query and
-returns potential intent pairs. The API commits them
-through `openCounterparties` using protocol pair identity and opening rules.
-The personal agent owns subsequent negotiation behavior; protocol still owns
-negotiation rules and opportunity lifecycle/presentation.
+After active intent creation/resume and completed network assignments, the API
+wakes the existing personal-agent session. Its `Agent.run()` loop plans queries,
+evaluates candidates, repeats searches when useful, and selects counterparties.
+`discover_counterparties` runs one explicit query through `@indexnetwork/discovery`;
+`open_negotiation` opens an agent-selected pair with protocol rules and the
+session lease checked inside the host transaction. `PrincipalState` persists
+search history alongside H2A and negotiation state.
 
 ## Business Logic Flows
 
@@ -102,7 +103,8 @@ Handled by the **Intent Graph**:
 
 ### Discovery boundary
 
-Retrieval, ranking, and explanations live in `packages/discovery`. Real active
+Explicit query retrieval and cosine ranking live in `packages/discovery`.
+Planning, evaluation, and selection live in `packages/agent`. Real active
 intent embeddings form the candidate corpus. The host implements
 protocol-authorized network scope and rechecks membership and broadcast
 eligibility when atomically opening each pair.
@@ -114,7 +116,7 @@ eligibility when atomically opening each pair.
 - **Felicity-gated persistence**: Only intents classified as `felicitous` are persisted as active
 - **Dual synthesis**: Each opportunity has descriptions framed for both actors (Grice's Maxim of Relation)
 - **Role-based visibility**: the actors on a pairing may read it
-- **Retrieval grounding**: only validated frame-v1 artifacts are cached or persisted, and all hypothetical documents stay on the query side
+- **Retrieval grounding**: the agent supplies each query explicitly and evaluates evidence from real active intents
 
 ## Shared Infrastructure
 

@@ -192,21 +192,23 @@ async function announceOpened(opened: OpenedNegotiation[]): Promise<void> {
  */
 export class NegotiationDatabaseAdapter {
   /**
-   * Turn every pair discovery scored into an opportunity with a negotiation
+   * Turn every pair the caller selected into an opportunity with a negotiation
    * beside it, and report the ones newly opened.
    *
-   * NEVER THROWS PER PAIR. One pair that cannot be opened — a revoked
-   * membership, a lost race — must not cost the rest of the run its results,
-   * so each is its own transaction and a failure is skipped rather than
-   * raised.
+   * Each pair has its own transaction. Ineligible or existing pairs return no
+   * new opening. Hosted execution failures propagate so an agent cannot report
+   * a failed or uncertain write as a completed selection.
    *
-   * @param pairs - The scored pairs to open.
+   * @param pairs - The selected pairs to open.
+   * @param decide - Protocol opening rules evaluated against locked current seats.
+   * @param execution - Personal-agent session fence, checked inside each opening transaction.
    * @returns One entry per pair that became a new opportunity.
+   * @throws On transaction failure when a personal-agent execution fence is supplied.
    */
-  async openCounterparties(pairs: IntentCounterpartyPair[], decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation[]> {
+  async openCounterparties(pairs: IntentCounterpartyPair[], decide: (pair: NegotiationOpening) => NegotiationOpeningDecision, execution?: AgentExecution): Promise<OpenedNegotiation[]> {
     const opened: OpenedNegotiation[] = [];
     for (const pair of pairs) {
-      const result = await this.open(pair, decide);
+      const result = await this.open(pair, decide, execution);
       if (result) opened.push(result);
     }
     await announceOpened(opened);
@@ -273,9 +275,13 @@ export class NegotiationDatabaseAdapter {
    * @param pair - The scored pair to materialize.
    * @returns The opened negotiation, or null when it was already open or could not be opened.
    */
-  private async open(pair: IntentCounterpartyPair, decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation | null> {
+  private async open(pair: IntentCounterpartyPair, decide: (pair: NegotiationOpening) => NegotiationOpeningDecision, execution?: AgentExecution): Promise<OpenedNegotiation | null> {
     try {
       return await db.transaction(async (tx) => {
+        if (execution) {
+          if (execution.userId !== pair.userA || execution.intentId !== pair.intentA) throw new Error('Opening belongs to another principal/intent.');
+          await AgentSessionDatabaseAdapter.assertOwner(tx, execution);
+        }
         await tx.execute(sql`
           SELECT pg_advisory_xact_lock(
             hashtextextended(${`opportunity-pair:${pair.pairKey}`}, 0)
@@ -311,7 +317,7 @@ export class NegotiationDatabaseAdapter {
             category: 'collaboration',
             reasoning: pair.reasoning,
             confidence: pair.score / 100,
-            signals: [{ type: 'intent_match', weight: pair.score / 100, detail: 'Match explainer' }],
+            signals: [{ type: 'intent_match', weight: pair.score / 100, detail: 'Selected intent match' }],
           },
           context: { networkId: pair.networkId },
           confidence: String(pair.score / 100),
@@ -342,7 +348,8 @@ export class NegotiationDatabaseAdapter {
           initiatorIntentId: pair.intentA,
         };
       });
-    } catch {
+    } catch (error) {
+      if (execution) throw error;
       return null;
     }
   }

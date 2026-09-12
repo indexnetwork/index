@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { NegotiationAgent, type Model, type Negotiation, type NegotiationHost } from '@indexnetwork/agent';
+import { NegotiationAgent, type Model, type Negotiation, type NegotiationHost, type PursuitClient } from '@indexnetwork/agent';
 import { NEGOTIATION_GUIDANCE } from '@indexnetwork/protocol';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
@@ -9,6 +9,8 @@ import { createRedisClient } from '../../adapters/cache.adapter';
 import { IntentDatabaseAdapter } from '../../adapters/intent.database.adapter';
 import { negotiationService, type NegotiationDetail } from '../../services/negotiation.service';
 import { userEventChannel } from '../user-events';
+
+import { createPursuitClient } from './pursuit';
 
 export interface ApiPrincipal {
   id: string; userId: string; name: string; intentId: string; intent: string; principalContext: string;
@@ -27,6 +29,7 @@ export class ApiNegotiationHost extends EventEmitter {
   readonly agents = new Map<string, NegotiationAgent>();
   readonly negotiations = new Map<string, ObservedNegotiation>();
   agentStatus = '';
+  private readonly pursuits = new Map<string, { store: AgentSessionDatabaseAdapter; client: PursuitClient }>();
   private subscriber?: ReturnType<typeof createRedisClient>;
   private scanning?: Promise<void>;
   private rescan = false;
@@ -37,6 +40,7 @@ export class ApiNegotiationHost extends EventEmitter {
     super();
     for (const principal of users) {
       const store = new AgentSessionDatabaseAdapter(principal.userId, principal.intentId);
+      this.pursuits.set(principal.id, { store, client: createPursuitClient(store, principal.intent) });
       const read = async (id: string) => {
         const record = await negotiationService.read(id, principal.userId);
         if (!record || record.intentId !== principal.intentId) throw new Error('Negotiation is outside this principal/intent session.');
@@ -84,7 +88,7 @@ export class ApiNegotiationHost extends EventEmitter {
     this.subscriber.on('message', (_channel, raw: string) => {
       try {
         const { type } = JSON.parse(raw);
-        if (type === 'intent.lifecycle') this.versions.clear();
+        if (type === 'intent.lifecycle' || type === 'intent.pursuit') this.versions.clear();
         else if (!['negotiation.turn', 'negotiation.settled', 'negotiation.opened'].includes(type)) return;
       } catch { return; }
       void this.scan();
@@ -118,6 +122,12 @@ export class ApiNegotiationHost extends EventEmitter {
         this.rescan = false;
         if (this.stopped) return;
         await Promise.all(this.users.map(async (principal) => {
+          const { store, client } = this.pursuits.get(principal.id)!;
+          const agent = this.agents.get(principal.id)!;
+          if (agent.stopped) return;
+          const scope = await store.pursuitScope(principal.intent);
+          if (!scope) { await agent.stop(); return; }
+          void agent.pursue(scope, client).catch((error: unknown) => { this.agentStatus = 'Pursuit failed: ' + String(error); this.emit('change'); });
           const records = await negotiationService.list(principal.userId, { intentId: principal.intentId });
           await Promise.all(records.map(async (record) => {
             const key = `${principal.id}:${record.opportunityId}`;

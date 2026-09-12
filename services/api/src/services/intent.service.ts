@@ -3,7 +3,7 @@ import { Intents, Networks, type ClarifyInput } from '@indexnetwork/protocol';
 import { log } from '../lib/log';
 import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { intentIndexing } from '../lib/intent/indexing';
+import { intentIndexing, requestIntentPursuit } from '../lib/intent/indexing';
 import { issuePreparationReceipt, readPreparationReceipt } from '../lib/intent/intent.preparation';
 import { IntentEvents } from '../events/intent.event';
 
@@ -362,8 +362,8 @@ export class IntentService {
 
   /**
    * Pause or resume an owned intent via the Intent Graph's `transition` action.
-   * The graph enqueues resume discovery and compensates back to PAUSED if that
-   * enqueue fails; ownership and lifecycle rules are enforced by the adapter's
+   * The graph wakes personal-agent pursuit on resume and compensates back to PAUSED if that
+   * event delivery fails; ownership and lifecycle rules are enforced by the adapter's
    * atomic transition under the graph.
    *
    * @param intentId - Full intent UUID.
@@ -398,7 +398,7 @@ export class IntentService {
   /**
    * Archive an intent via the Intent Graph's `expire` action (archives the
    * row, drops its network associations, expires referencing opportunities,
-   * and enqueues the HyDE delete). Ownership is checked here: the graph's
+   * and stops personal-agent work). Ownership is checked here: the graph's
    * expire path, like create/update, does not filter by owner — that's the
    * caller's responsibility.
    *
@@ -447,6 +447,7 @@ export class IntentService {
     if (!mutation?.success) {
       return { kind: 'refused', detail: mutation?.error ?? 'The signal could not be linked to this network.' };
     }
+    await requestIntentPursuit({ intentId, userId }).catch(error => logger.error('Failed to wake personal agent after network assignment', { intentId, error }));
     return { kind: 'ok', message: mutation.message ?? 'Done.' };
   }
 }

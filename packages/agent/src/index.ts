@@ -30,3 +30,5 @@ export type {
 
 export { MemoryPrincipalStore } from './negotiation/principal.state.ts';
 export type { PrincipalStore, PrincipalState } from './negotiation/principal.state.ts';
+
+export type { Candidate, CandidateQuery, PursuitClient, PursuitScope, PursuitState, SearchRecord } from './pursuit/pursuit.types.ts';

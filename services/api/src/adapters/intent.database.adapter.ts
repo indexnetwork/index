@@ -139,7 +139,6 @@ export class IntentDatabaseAdapter {
           userId: schema.intents.userId,
         });
       if (!created) throw new Error('Insert did not return a row');
-      await publishIntentLifecycle(created.userId, created.id, 'ACTIVE', created.updatedAt.getTime());
       return created;
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
@@ -213,8 +212,6 @@ export class IntentDatabaseAdapter {
           updated,
           oldFingerprint,
           newFingerprint: computeIntentFingerprint(updated.payload, updated.summary),
-          status: before.status,
-          archivedAt: before.archivedAt,
         };
       });
       if (!result) return null;
@@ -225,9 +222,6 @@ export class IntentDatabaseAdapter {
           oldFingerprint: result.oldFingerprint,
           newFingerprint: result.newFingerprint,
         });
-        if (!result.archivedAt && (result.status === 'ACTIVE' || result.status == null)) {
-          await publishIntentLifecycle(result.updated.userId, intentId, 'ACTIVE', result.updated.updatedAt.getTime());
-        }
       }
       return result.updated;
     } catch (error: unknown) {

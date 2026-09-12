@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/discovery",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Standalone intent discovery via query embedding and candidate retrieval.",
   "license": "MIT",
   "type": "module",
@@ -24,8 +24,5 @@
   "devDependencies": {
     "@types/bun": "1.3.14",
     "typescript": "5.9.3"
-  },
-  "dependencies": {
-    "zod": "3.25.76"
   }
 }

@@ -21,88 +21,8 @@ export interface DiscoveryPreflight {
   };
 }
 
-/** Result of running the opportunity discovery graph for debugging. */
-export interface DiscoveryResult {
-  discoverySource: string | null;
-  resolvedTriggerIntentId: string | null;
-  resolvedIntentInNetwork: boolean;
-  targetNetworks: unknown[];
-  candidatesFound: number;
-  candidates: Array<{
-    userId: string;
-    intentId: string | null;
-    networkId: string;
-    similarity: number | null;
-    lens: string;
-    discoverySource: string | undefined;
-  }>;
-  evaluatedCount: number;
-  evaluatedOpportunities: Array<{
-    score: number;
-    reasoning: string | null;
-    actors: unknown;
-  }>;
-  opportunitiesCreated: number;
-  opportunities: Array<{
-    id: string;
-    status: string;
-    actors: unknown;
-  }>;
-  error: unknown;
-  trace: unknown[];
-}
-
 /**
- * Aggregate question-funnel diagnostics (IND-439 visibility audit).
- * Counts and dates only — the shape is enforced at the adapter projection.
- */
-
-/** Raised when the debug runner is asked to discover from an inactive intent. */
-export class DebugIntentDiscoveryBlockedError extends Error {
-  readonly status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
-
-  constructor(status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED') {
-    super(`Debug discovery requires an active, non-archived intent (current status: ${status})`);
-    this.name = 'DebugIntentDiscoveryBlockedError';
-    this.status = status;
-  }
-}
-
-/**
- * Apply production lifecycle admission to debug discovery.
- * @param intent - Intent ownership and lifecycle data.
- * @param userId - Authenticated user requesting discovery.
- * @returns True only for owned, non-archived ACTIVE/legacy-null intents.
- */
-export function isDebugDiscoveryIntentActive(
-  intent: {
-    userId: string;
-    status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED' | null;
-    archivedAt: Date | null;
-  } | null,
-  userId: string,
-): boolean {
-  return Boolean(
-    intent
-    && intent.userId === userId
-    && !intent.archivedAt
-    && (intent.status == null || intent.status === 'ACTIVE'),
-  );
-}
-
-/** Full discovery debug response. */
-export interface DiscoveryDebugResponse {
-  exportedAt: string;
-  preflight: DiscoveryPreflight;
-  result: DiscoveryResult | null;
-  diagnosis: string | null;
-}
-
-/**
- * Debug service for pipeline diagnostics and discovery tracing.
- *
- * Encapsulates adapter instantiation and graph execution for the debug
- * controller, keeping the controller thin (HTTP only).
+ * Read-only intent and candidate-pool diagnostics for the debug controller.
  */
 export class DebugService {
 

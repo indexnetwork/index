@@ -19,8 +19,8 @@ bun --env-file=.env.development run agent:tui
 Requires `OPENROUTER_API_KEY` and an interactive terminal. Choose a JSON scenario
 with Up/Down + Enter or a click. The chooser displays filenames in alphabetical
 order, starting with the five-user cofounder scenario. The six bundled scenarios
-have 5–10 users, 5–14 intents, and 10–87 simulated matches. Every user–intent pair
-has its own personal agent; all agents and matches run independently of the visible
+have 5–10 users and 5–14 intents, with no opportunities opened in advance. Every user–intent pair
+has its own personal agent; agents discover counterparties and select negotiations independently of the visible
 board. Changing users, intents, or collapsed panes only changes what you see.
 
 Override the shared model client's ordered model list with one to three IDs:
@@ -31,7 +31,8 @@ bun --env-file=.env.development run agent:tui google/gemini-3.8-flash anthropic/
 
 The model client owns rate-limit waiting and model switching. No HTTP server,
 Redis, or database are required for the scenario host. Ctrl+C stops
-all agents and saves a private Markdown transcript in a temporary directory.
+all agents and saves H2A, private query/candidate/selection history, and A2A in a
+Markdown transcript in a temporary directory.
 Each scenario launch starts fresh.
 
 ## Bundled scenarios
@@ -42,7 +43,7 @@ overlaps, adjacent interests that need clarification, and plausible mismatches i
 goals, availability, experience, location, or commitment. Similar wording can hide
 different goals, while different wording can describe a useful connection.
 
-| Scenario | Purpose | Users | Intents | Simulated matches |
+| Scenario | Purpose | Users | Intents | Possible pairs |
 | --- | --- | --- | --- | --- |
 | [05-users-05-intents-cofounders-and-project-collaborators.json](scenarios/05-users-05-intents-cofounders-and-project-collaborators.json) | Explore complementary engineering, design, and research skills; distinguish a possible cofounder relationship from paid work or a bounded side project. | 5 | 5 | 10 |
 | [06-users-08-intents-research-and-learning-peers.json](scenarios/06-users-08-intents-research-and-learning-peers.json) | Connect related research questions, study partners, and reciprocal methods learning; clarify prediction versus causal understanding and academic versus community goals. | 6 | 8 | 26 |
@@ -53,9 +54,18 @@ different goals, while different wording can describe a useful connection.
 
 The respective intent counts per user are `1,1,1,1,1`, `2,2,1,1,1,1`,
 `2,2,1,1,1,1,1`, `2,2,1,1,1,1,1,1`, `2,2,2,1,1,1,1,1,1`, and
-`2,2,2,2,1,1,1,1,1,1`. Every intent is paired with every intent belonging to a
-different user; the same user's intents are never paired together. These counts
-describe exhaustive simulation pairs, not predicted relevant connections.
+`2,2,2,2,1,1,1,1,1,1`. The pair counts are the possible pairs between different users, not pre-opened
+opportunities. Scenarios contain only users, private instructions, and intents.
+
+On startup the lab embeds the synthetic intent statements with
+`openai/text-embedding-3-large`. Each personal agent then uses the same
+`discover_counterparties` and `open_negotiation` tools as the API host.
+`@indexnetwork/discovery` runs each explicit query against the in-memory vectors.
+The agent evaluates the evidence, chooses whether to search again, and selects
+counterparties. Only those selections create a negotiation, using canonical pair
+identity and protocol opening rules. The first selector initiates; selecting the
+same pair again reuses it. The footer reports searches and negotiations, and the
+export includes each principal's full private pursuit history.
 
 Multi-intent personas have separate aims and decisions within their shared private
 instructions, exercising independent H2A conversations. The instructions describe
@@ -81,8 +91,8 @@ Select intents belonging to at least two users. Select every intent you want to
 switch between: the board's intent selectors offer these startup selections.
 Only selected personal agents run; an unselected counterparty needs its own
 runtime to respond. Each selected agent handles all its existing and newly
-received matches independently of the visible board. Normal API discovery creates new matches; the TUI does not seed
-users or bypass matching.
+received matches independently of the visible board. Selected agents now plan discovery and open their own negotiations through the
+API host; the TUI does not seed users or opportunities.
 
 The command calls API services as the selected principals directly. This is a
 trusted local testing entry point; HTTP authentication, scope checks, and human
@@ -90,7 +100,7 @@ consent gates remain enforced. A principal with a selected external negotiation
 executor must release that binding before its local agent can run.
 
 H2A messages and checkpoints are persisted in the same transaction. Restarting
-restores the conversation, pending question, related requests, and outstanding
+restores the conversation, search history, pending question, related requests, and outstanding
 work, then rereads the A2A records. Session leases prevent two local processes
 from running the same principal/intent. Ctrl+C releases leases and retains state;
 a crashed process's lease expires after 60 seconds.
@@ -179,8 +189,8 @@ stored H2A conversation. Neither host invents profile facts from an intent.
 `mountNegotiationTui(renderer, host)` takes a `NegotiationTuiHost`: selectable
 principal/intent entries, agent conversation/input handles, observed match records,
 and a change event. It neither selects models nor schedules negotiations.
-`NegotiationLab` implements this interface with in-memory storage and the protocol
-capability. `ApiNegotiationHost` in `services/api` implements it with API services
+`NegotiationLab` implements this interface with real query embeddings, in-memory
+candidate retrieval, agent-selected opening, and the protocol capability. `ApiNegotiationHost` in `services/api` implements it with API services
 and durable agent sessions. The libraries do not import one another; each host
 composes them.
 

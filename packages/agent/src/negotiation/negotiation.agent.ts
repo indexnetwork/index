@@ -1,9 +1,11 @@
-import { buildNegotiationSystemPrompt, buildNegotiationTurnPrompt } from '../prompts/agent.prompt.ts';
+import { buildNegotiationSystemPrompt, buildNegotiationTurnPrompt, buildPursuitPrompt } from '../prompts/agent.prompt.ts';
 
 import { Agent, type AgentOptions } from '../core/agent.ts';
 import { MemoryMessageStore } from '../core/sessions.ts';
 import type { Tool } from '../core/tools.ts';
 import type { Step } from '../core/types.ts';
+
+import type { CandidateQuery, PursuitClient, PursuitScope, PursuitState, SearchRecord } from '../pursuit/pursuit.types.ts';
 
 import type { PrincipalStore } from './principal.state.ts';
 import { PrincipalInbox, type PrincipalMessage, type PrincipalQuestion, type QuestionScope } from './principal.inbox.ts';
@@ -88,6 +90,9 @@ export class NegotiationAgent {
   private readonly tasks = new Map<string, MatchTask>();
   private readonly inbox: PrincipalInbox;
   private readonly commitments = new Map<string, Negotiation>();
+  private pursuit: PursuitState = { version: null, status: 'idle', searches: [] };
+  private pursuitWork?: { scope: PursuitScope; client: PursuitClient };
+  private pursuing?: Promise<void>;
   private contextVersion = 0;
   private writes: Promise<void> = Promise.resolve();
   private checkpoints: Promise<void> = Promise.resolve();
@@ -115,7 +120,7 @@ export class NegotiationAgent {
       onRetry: (attempt, reason) => host.retry(owner, attempt, reason),
     });
     this.inbox = new PrincipalInbox(this.agent, () => ({
-      version: this.contextVersion, acceptedCommitments: [...this.commitments.values()],
+      version: this.contextVersion, pursuit: this.pursuit, acceptedCommitments: [...this.commitments.values()],
       negotiations: [...this.tasks.values()].map(({ opportunityId, stopped, record }) => ({ opportunityId, stopped, record })),
     }), {
       changed: () => this.checkpoint(),
@@ -136,6 +141,7 @@ export class NegotiationAgent {
     const { state, messages } = await this.store.load();
     this.inbox.restore(state?.inbox, messages);
     this.savedMessages = messages.length;
+    if (state?.pursuit) this.pursuit = state.pursuit;
     for (const saved of state?.matches ?? []) {
       this.tasks.set(saved.opportunityId, { ...saved, counterparty: { id: '', name: null }, controller: new AbortController(), notified: false, stopped: false });
     }
@@ -154,7 +160,7 @@ export class NegotiationAgent {
 
   private checkpoint(): Promise<void> {
     if (!this.loaded) return Promise.resolve();
-    const state = structuredClone({ inbox: this.inbox.snapshot(),
+    const state = structuredClone({ inbox: this.inbox.snapshot(), pursuit: this.pursuit,
       matches: [...this.tasks.values()].map(({ opportunityId, record, reviewNote, reported }) => ({ opportunityId, record, reviewNote, reported })) });
     const messages = structuredClone(this.inbox.conversation.slice(this.savedMessages));
     this.savedMessages = this.inbox.conversation.length;
@@ -168,6 +174,9 @@ export class NegotiationAgent {
     });
     return write;
   }
+
+  /** @returns A detached snapshot of this principal's query evidence and selection outcomes. */
+  get pursuitState(): Readonly<PursuitState> { return structuredClone(this.pursuit); }
 
   /** @returns This principal's chronological H2A conversation, shared by all their matches. */
   get conversation(): readonly PrincipalMessage[] { return this.inbox.conversation; }
@@ -188,7 +197,13 @@ export class NegotiationAgent {
    */
   async message(text: string): Promise<PrincipalMessage | null> {
     await this.start();
-    return this.inbox.message(text);
+    const receipt = await this.inbox.message(text);
+    if (receipt && this.pursuitWork) {
+      this.pursuit.status = 'idle';
+      void this.pursue(this.pursuitWork.scope, this.pursuitWork.client)
+        .catch(error => this.host.error(null, this.participant.owner, String(error)));
+    }
+    return receipt;
   }
 
   /**
@@ -220,6 +235,135 @@ export class NegotiationAgent {
     if (task.stopped) return Promise.resolve();
     task.notified = true;
     return this.drain(task);
+  }
+
+  /**
+   * Run query planning and match selection in this principal's existing Agent loop.
+   * @param scope - Current active assignment revision; duplicate notifications coalesce.
+   * @param client - Host-injected search and atomic opening operations.
+   * @returns Completion of pursuit, independently of ongoing match negotiations.
+   */
+  async pursue(scope: PursuitScope, client: PursuitClient): Promise<void> {
+    await this.start();
+    if (this.stopped) return;
+    this.pursuitWork = { scope, client };
+    if (this.pursuing) return this.pursuing;
+    if (this.pursuit.version === scope.version && ['done', 'failed'].includes(this.pursuit.status)) return;
+    this.pursuing = this.runPursuit().finally(() => {
+      this.pursuing = undefined;
+      const next = this.pursuitWork!;
+      if (!this.stopped && next.scope.version !== this.pursuit.version) return this.pursue(next.scope, next.client);
+    });
+    return this.pursuing;
+  }
+
+  private async runPursuit(): Promise<void> {
+    const signal = this.controller.signal;
+    while (!signal.aborted) {
+      const { scope, client } = this.pursuitWork!;
+      const contextVersion = this.contextVersion;
+      const assertCurrent = () => {
+        signal.throwIfAborted();
+        if (this.pursuitWork?.scope.version !== scope.version || contextVersion !== this.contextVersion) throw new ContextChanged();
+      };
+      this.pursuit.version = scope.version;
+      this.pursuit.status = 'running';
+      this.pursuit.summary = undefined;
+      try {
+        await this.checkpoint();
+        if (!scope.networkIds.length) {
+          this.pursuit.status = 'done';
+          this.pursuit.summary = 'No active network assignments are available for pursuit.';
+          await this.checkpoint();
+          assertCurrent();
+          return;
+        }
+        const searchTool: Tool<CandidateQuery> = {
+          name: 'discover_counterparties',
+          description: 'Retrieve candidates for one explicit query. Evaluate them yourself, then choose whether to change the query, search again, or open a negotiation. Networks must come from the current authorized scope.',
+          parameters: { type: 'object', additionalProperties: false, required: ['query', 'minSimilarity', 'networkIds'], properties: {
+            query: { type: 'string', minLength: 1 }, minSimilarity: { type: 'number', minimum: 0, maximum: 1 },
+            networkIds: { type: 'array', items: { type: 'string', enum: scope.networkIds }, minItems: 1, uniqueItems: true },
+          } },
+          run: async (input) => {
+            assertCurrent();
+            if (!input || typeof input.query !== 'string' || !input.query.trim() || !Number.isFinite(input.minSimilarity)
+              || input.minSimilarity < 0 || input.minSimilarity > 1 || !Array.isArray(input.networkIds) || !input.networkIds.length
+              || input.networkIds.some(id => !scope.networkIds.includes(id))) throw new Error('Provide a query, a similarity floor from 0 to 1, and authorized networks.');
+            const record: SearchRecord = { id: crypto.randomUUID(), query: input.query.trim(), minSimilarity: input.minSimilarity,
+              networkIds: [...new Set(input.networkIds)], candidates: [], selections: [], status: 'searching' };
+            this.pursuit.searches.push(record);
+            await this.checkpoint();
+            try {
+              const result = await client.discoverCounterparties(record, signal);
+              record.candidates = result.candidates;
+              record.networkIds = result.networkIds;
+              record.status = 'complete';
+            } catch (error) {
+              record.status = 'failed';
+              record.error = error instanceof Error ? error.message : String(error);
+              throw error;
+            } finally { await this.checkpoint(); }
+            return structuredClone(record);
+          },
+        };
+        const openTool: Tool<{ searchId: string; candidateIntentId: string; networkId: string; reasoning: string }> = {
+          name: 'open_negotiation',
+          description: 'Open a negotiation for a counterparty you selected from a completed search. Explain why these actual statements justify pursuit. This starts negotiation without committing the principal.',
+          parameters: { type: 'object', additionalProperties: false, required: ['searchId', 'candidateIntentId', 'networkId', 'reasoning'], properties: {
+            searchId: { type: 'string' }, candidateIntentId: { type: 'string' }, networkId: { type: 'string' }, reasoning: { type: 'string', minLength: 1, maxLength: 2000 },
+          } },
+          run: (input) => {
+            const write = this.writes.then(async () => {
+              await this.checkpoints;
+              assertCurrent();
+              if (!input || typeof input.reasoning !== 'string' || !input.reasoning.trim() || input.reasoning.length > 2000) throw new Error('Provide grounded reasoning within 2000 characters.');
+              const search = this.pursuit.searches.find(search => search.id === input.searchId && search.status === 'complete');
+              const candidate = search?.candidates.find(candidate => candidate.candidateIntentId === input.candidateIntentId && candidate.networkId === input.networkId);
+              if (!search || !candidate || !scope.networkIds.includes(candidate.networkId)) throw new Error('Select a candidate from a completed search in the current scope.');
+              const selection: SearchRecord['selections'][number] = { candidateIntentId: candidate.candidateIntentId,
+                networkId: candidate.networkId, reasoning: input.reasoning.trim(), status: 'opening' };
+              search.selections.push(selection);
+              await this.checkpoint();
+              assertCurrent();
+              try {
+                const opened = await client.openNegotiation(candidate, selection.reasoning, signal);
+                selection.status = opened ? 'opened' : 'unavailable';
+                selection.opportunityId = opened?.opportunityId;
+                await this.checkpoint();
+                if (opened) void this.receive({ kind: 'opportunity.matched', opportunityId: opened.opportunityId })
+                  .catch(error => this.host.error(opened.opportunityId, this.participant.owner, String(error)));
+                return { status: selection.status, opportunityId: selection.opportunityId };
+              } catch (error) {
+                selection.status = 'failed';
+                await this.checkpoint();
+                throw error;
+              }
+            });
+            this.writes = write.then(() => {}, () => {});
+            return write;
+          },
+        };
+        const result = await this.agent.run(buildPursuitPrompt({ scope, pursuit: this.pursuit,
+          principalConversation: this.inbox.conversation, acceptedCommitments: [...this.commitments.values()],
+        }), { history: new MemoryMessageStore(), tools: [searchTool, openTool], signal, onStep: assertCurrent });
+        assertCurrent();
+        this.pursuit.status = result.end === 'done' ? 'done' : 'failed';
+        this.pursuit.summary = result.end === 'done' ? result.output : 'Pursuit stopped with ' + result.end;
+        await this.checkpoint();
+        assertCurrent();
+        return;
+      } catch (error) {
+        if (error instanceof ContextChanged) continue;
+        if (!signal.aborted) {
+          this.pursuit.status = 'failed';
+          this.pursuit.summary = error instanceof Error ? error.message : String(error);
+          await this.checkpoint();
+          this.host.error(null, this.participant.owner, 'Pursuit failed: ' + this.pursuit.summary);
+        }
+        return;
+      }
+    }
   }
 
   private remember(record: Negotiation): void {
@@ -408,7 +552,7 @@ export class NegotiationAgent {
     const tasks = [...this.tasks.values()].filter((task) => opportunityId === undefined || task.opportunityId === opportunityId);
     for (const task of tasks) { task.stopped = true; task.controller.abort(); }
     const communication = opportunityId === undefined ? this.inbox.stop() : this.inbox.cancel(opportunityId);
-    await Promise.all([...tasks.map((task) => task.running), communication]);
+    await Promise.all([...tasks.map((task) => task.running), communication, ...(opportunityId === undefined ? [this.pursuing] : [])]);
     if (opportunityId === undefined) {
       try { await this.checkpoints; } finally { await this.store.close(); }
     }

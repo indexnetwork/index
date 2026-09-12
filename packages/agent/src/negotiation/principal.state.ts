@@ -1,9 +1,12 @@
+import type { PursuitState } from '../pursuit/pursuit.types.ts';
+
 import type { Negotiation } from './negotiation.agent.ts';
 import type { InboxState, PrincipalMessage } from './principal.inbox.ts';
 
 /** Private runtime state; the host persists it without interpreting agent decisions. */
 export interface PrincipalState {
   inbox: InboxState;
+  pursuit: PursuitState;
   matches: { opportunityId: string; record?: Negotiation; reviewNote?: string; reported?: string }[];
 }
 

@@ -34,7 +34,8 @@ directory. It was deleted on 2026-08-28 and is not being restored.
 
 | Path | Responsibility |
 |---|---|
-| `packages/discovery` | Independent async TypeScript library: retrieval artifacts, candidate search/ranking, and pair explanations. No protocol, agent, or LangChain dependencies. |
+| `packages/discovery` | Independent async TypeScript library: one explicit query per call, candidate retrieval and cosine ranking. No protocol, agent, model, or LangChain dependencies. |
+| `packages/agent` | Personal-agent planning, candidate evaluation, repeat searches, match selection, H2A, and negotiation behavior. The host injects discovery/opening operations and persists PrincipalState. |
 | `packages/protocol` | `@indexnetwork/protocol`: domain graphs, agents, and host interfaces. Published to npm and used by external integrators. |
 | `services/api` | Bun HTTP host and workers. Wires infrastructure (Drizzle/Postgres, Redis, OpenRouter) into the protocol. |
 | `apps/web` | Vite + React Router SPA. `src/services/*.ts` are typed API clients, not business logic. |

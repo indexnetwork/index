@@ -37,6 +37,7 @@ export class PersonalAgentService {
   private principals = new Map<string, ApiPrincipal>();
   private running = false;
   private checking?: Promise<void>;
+  private reconcileAgain = false;
   private subscriber?: ReturnType<typeof createRedisClient>;
 
   constructor(private readonly model: Model) {}
@@ -46,7 +47,7 @@ export class PersonalAgentService {
     this.running = true;
     this.subscriber = createRedisClient();
     this.subscriber.on('pmessage', (_pattern, _channel, raw: string) => {
-      try { if (JSON.parse(raw).type !== 'intent.lifecycle') return; } catch { return; }
+      try { if (!['intent.lifecycle', 'intent.pursuit'].includes(JSON.parse(raw).type)) return; } catch { return; }
       void this.reconcile();
     });
     this.subscriber.on('ready', () => { void this.reconcile(); });
@@ -55,37 +56,41 @@ export class PersonalAgentService {
   }
 
   private reconcile(): Promise<void> {
+    this.reconcileAgain = true;
     if (this.checking) return this.checking;
     this.checking = (async () => {
-      const principals = await ApiNegotiationHost.principals();
-      const externalOwners = new Set((await Promise.all([...new Set(principals.map(({ userId }) => userId))]
-        .map(async (userId) => await this.registry.getSelectedNegotiator(userId) ? userId : null))).filter((id) => id !== null));
-      this.principals = new Map(principals.map((principal) => [principal.id, principal]));
-      const desired = new Map(principals.filter(({ userId }) => !externalOwners.has(userId)).map((principal) => [principal.id, principal]));
-      await Promise.all([...this.sessions].map(async ([id, session]) => {
-        if (JSON.stringify(desired.get(id)) === JSON.stringify(session.principal) && !session.host.agents.get(id)?.stopped) return;
-        this.sessions.delete(id);
-        await session.host.stop();
-      }));
-      if (!this.running) return;
-      await Promise.all([...desired.values()].map(async (principal) => {
-        if (this.sessions.has(principal.id) || !this.running) return;
-        const host = new ApiNegotiationHost([principal], this.model);
-        const session: Session = { principal, host, active: false, ready: Promise.resolve() };
-        this.sessions.set(principal.id, session);
-        session.ready = host.start().then(() => {
-          session.active = true;
-          this.errors.delete(principal.id);
-        });
-        try { await session.ready; }
-        catch (error) {
-          this.sessions.delete(principal.id);
-          await host.stop();
-          const reason = error instanceof Error ? error.message : String(error);
-          if (this.errors.get(principal.id) !== reason) logger.warn('Personal agent could not start', { intentId: principal.intentId, error: reason });
-          this.errors.set(principal.id, reason);
-        }
-      }));
+      do {
+        this.reconcileAgain = false;
+        const principals = await ApiNegotiationHost.principals();
+        const externalOwners = new Set((await Promise.all([...new Set(principals.map(({ userId }) => userId))]
+          .map(async (userId) => await this.registry.getSelectedNegotiator(userId) ? userId : null))).filter((id) => id !== null));
+        this.principals = new Map(principals.map((principal) => [principal.id, principal]));
+        const desired = new Map(principals.filter(({ userId }) => !externalOwners.has(userId)).map((principal) => [principal.id, principal]));
+        await Promise.all([...this.sessions].map(async ([id, session]) => {
+          if (JSON.stringify(desired.get(id)) === JSON.stringify(session.principal) && !session.host.agents.get(id)?.stopped) return;
+          this.sessions.delete(id);
+          await session.host.stop();
+        }));
+        if (!this.running) return;
+        await Promise.all([...desired.values()].map(async (principal) => {
+          if (this.sessions.has(principal.id) || !this.running) return;
+          const host = new ApiNegotiationHost([principal], this.model);
+          const session: Session = { principal, host, active: false, ready: Promise.resolve() };
+          this.sessions.set(principal.id, session);
+          session.ready = host.start().then(() => {
+            session.active = true;
+            this.errors.delete(principal.id);
+          });
+          try { await session.ready; }
+          catch (error) {
+            this.sessions.delete(principal.id);
+            await host.stop();
+            const reason = error instanceof Error ? error.message : String(error);
+            if (this.errors.get(principal.id) !== reason) logger.warn('Personal agent could not start', { intentId: principal.intentId, error: reason });
+            this.errors.set(principal.id, reason);
+          }
+        }));
+      } while (this.reconcileAgain && this.running);
     })().catch((error: unknown) => {
       logger.error('Personal-agent reconciliation failed', { error: error instanceof Error ? error.message : String(error) });
     }).finally(() => { this.checking = undefined; });

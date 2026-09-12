@@ -150,7 +150,7 @@ export function replayDelayMs(): number {
   return 10_000 + Math.floor(Math.random() * 20_001);
 }
 
-/** Select at most five intents before staggering transitions; the caller drains discovery. */
+/** Select at most five intents before staggering transitions; the API sessions own pursuit. */
 export async function runReplay(
   candidates: readonly ReplayIntent[],
   activate: (intent: ReplayIntent) => Promise<IntentTransitionOutcome>,
@@ -196,12 +196,10 @@ async function resume(): Promise<void> {
   const pool = openDevControl(process.env.DATABASE_URL, () => {
     if (!closing) { connectionLost = true; stop.abort(); }
   });
-  const interrupt = () => { stop.abort(); console.log('[dev-intents] Stopping activations; draining discovery.'); };
+  const interrupt = () => { stop.abort(); console.log('[dev-intents] Stopping activations.'); };
   process.on('SIGINT', interrupt);
   process.on('SIGTERM', interrupt);
   process.on('SIGHUP', interrupt);
-  const pending = new Set<Promise<void>>();
-  const discoveryFailures: string[] = [];
   let closeRuntime: (() => Promise<void>) | undefined;
   let control: postgres.ReservedSql | undefined;
   try {
@@ -212,37 +210,14 @@ async function resume(): Promise<void> {
     const candidates = await replayCandidates(control);
     const [{ closeDb }, { getRedisClient }] = await Promise.all([import('../lib/drizzle/drizzle'), import('../adapters/cache.adapter')]);
     closeRuntime = async () => { try { await getRedisClient().quit(); } finally { await closeDb(); } };
-    const [{ Intents }, { IntentService }, { intentDatabaseAdapter }, { intentIndexing }, { intentDiscovery }] = await Promise.all([
-      import('@indexnetwork/protocol'), import('../services/intent.service'), import('../adapters/database.adapter'),
-      import('../lib/intent/indexing'), import('../lib/opportunity/discovery'),
-    ]);
-    const graph = new Intents({ database: intentDatabaseAdapter, followUp: {
-      scoreIntent: data => intentIndexing.scoreIntent(data),
-      onIntentSaved: data => intentIndexing.onIntentSaved(data),
-      onIntentArchived: data => intentIndexing.onIntentArchived(data),
-      onIntentResumed: async data => {
-        const job = intentDiscovery.runDiscover({ ...data, trigger: 'intent_resume' }).then(
-          () => { console.log(`[dev-intents] ${data.intentId} discovery finished`); },
-          (error: unknown) => {
-            discoveryFailures.push(data.intentId);
-            console.error(`[dev-intents] ${data.intentId} discovery failed:`, error instanceof Error ? error.message : String(error));
-          },
-        );
-        pending.add(job);
-        void job.finally(() => pending.delete(job));
-      },
-    } }).createGraph();
-    const service = new IntentService({ intentGraph: graph });
+    const { intentService: service } = await import('../services/intent.service');
     const result = await runReplay(candidates, ({ id, userId }) => service.transitionStatus(id, userId, 'ACTIVE'), stop.signal);
-    console.log(`[dev-intents] Draining ${pending.size} discovery job(s).`);
-    await Promise.all(pending);
     const remaining = connectionLost ? null : (await replayCandidates(control)).length;
-    console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, remaining, discoveryFailures, interrupted: stop.signal.aborted }));
+    console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, remaining, interrupted: stop.signal.aborted }));
     if (connectionLost) throw new Error('Replay lost its control connection; remaining intents were not activated.');
-    if (result.failed.length || discoveryFailures.length) throw new Error('Replay completed with failures; see intent IDs above.');
+    if (result.failed.length) throw new Error('Replay completed with failures; see intent IDs above.');
     if (stop.signal.aborted) process.exitCode = 130;
   } finally {
-    await Promise.all(pending);
     try { await closeRuntime?.(); }
     finally {
       closing = true;

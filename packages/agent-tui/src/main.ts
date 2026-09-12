@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { ModelClient } from '@indexnetwork/agent';
 import { createCliRenderer } from '@opentui/core';
 
+import { ScenarioEmbedder } from './embedding.adapter';
 import { NegotiationLab, parseScenario } from './negotiation.lab';
 import { COLORS, mountNegotiationTui } from './negotiation.tui';
 import { chooseScenario } from './scenario.chooser';
@@ -23,8 +24,8 @@ The six bundled scenarios have 5–10 users and 5–14 intents, covering collabo
 research and learning peers, creative partners, local friendships, career mentors,
 and community projects. Filenames sort alphabetically, with the five-user
 cofounder scenario first. Each user-intent pair has a personal agent. All intent
-pairs between different users are simulated matches (10–87 per bundled scenario),
-running independently in the background.
+statements form the discovery corpus. Agents plan queries, discover counterparties,
+and select negotiations in the background; pairs are not opened in advance.
 Each user starts on the board with their first intent. Users/Ctrl+U opens the
 roster: Space/click toggles users, Enter applies, Esc cancels. Keep at least two.
 Click an intent header or press Ctrl+T to switch that user's intent with Up/Down
@@ -47,7 +48,7 @@ When no question is active, Enter sends the text to your personal agent instead.
 Ask about your negotiations or give new instructions in the same H2A conversation.
 Tab/Shift+Tab cycles users, expanding collapsed chats, and includes visible A2A.
 Ctrl+J adds a newline; mouse wheel or PgUp/PgDn scrolls history.
-Ctrl+C stops all agents and exports each H2A conversation once, followed by A2A turns.
+Ctrl+C stops all agents and exports H2A, private discovery/selection history, and A2A turns.
 Rerun the command for a fresh lab with an edited user roster.
 `;
 
@@ -75,10 +76,11 @@ async function main(): Promise<void> {
     if (!filename || renderer.isDestroyed) return;
     const scenario = parseScenario(JSON.parse(readFileSync(join(scenarioDirectory, filename), 'utf8')));
     lab = new NegotiationLab(scenario, {
+      embedder: new ScenarioEmbedder(process.env.OPENROUTER_API_KEY),
       model: new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY, models: models.length ? models : undefined }),
     });
     mountNegotiationTui(renderer, lab);
-    lab.matchAll();
+    void lab.start().catch((error: unknown) => { console.error(String(error)); process.exitCode = 1; renderer.destroy(); });
     await closed;
   } finally {
     renderer.destroy();

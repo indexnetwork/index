@@ -1,5 +1,7 @@
 import { buildPrincipalInboxPrompt } from '../prompts/agent.prompt.ts';
 
+import type { PursuitState } from '../pursuit/pursuit.types.ts';
+
 import type { Agent } from '../core/agent.ts';
 import { MemoryMessageStore } from '../core/sessions.ts';
 import type { Tool } from '../core/tools.ts';
@@ -79,6 +81,7 @@ export class PrincipalInbox {
     private readonly agent: Agent,
     private readonly context: () => {
       version: number;
+      pursuit: PursuitState;
       acceptedCommitments: Negotiation[];
       negotiations: { opportunityId: string; stopped: boolean; record?: Negotiation }[];
     },
@@ -271,7 +274,7 @@ export class PrincipalInbox {
         principalConversation: this.messages, incomingMessages, pendingQuestion: question,
         requests: requests.map(({ resolve: _resolve, ...request }) => request),
         outcomes, acceptedCommitments: context.acceptedCommitments,
-        negotiations: context.negotiations,
+        negotiations: context.negotiations, pursuit: context.pursuit,
       }), { history: new MemoryMessageStore(), tools: [tool], maxSteps: 1, signal: controller.signal });
       if (controller.signal.aborted || this.stopped || context.version !== this.context().version) return;
       if (!decision) {

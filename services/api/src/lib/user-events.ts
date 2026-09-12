@@ -10,9 +10,9 @@ import { getRedisClient } from '../adapters/cache.adapter';
  * The agent types come in two scopes. `negotiation.turn` and
  * `negotiation.settled` point at one negotiation and carry a pointer rather
  * than the turn — the agent reads `GET /negotiations/:opportunityId` to act.
- * `intent.lifecycle` and `negotiation.opened` are scoped to a signal instead:
- * whether the agent should be working it at all, and that discovery gave it
- * something to work.
+ * `intent.lifecycle` governs whether an agent should be working a signal.
+ * `intent.pursuit` wakes it after assignments finish; `negotiation.opened`
+ * announces a pair selected for negotiation.
  *
  * `question.pending` is scoped to a signal too, but the other way round: the
  * personal agent stopped and cannot continue until its owner answers, so the
@@ -28,6 +28,7 @@ export type UserEventType =
   | 'negotiation.settled'
   | 'negotiation.opened'
   | 'intent.lifecycle'
+  | 'intent.pursuit'
   | 'message';
 
 /**

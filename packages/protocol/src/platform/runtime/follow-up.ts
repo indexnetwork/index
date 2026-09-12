@@ -17,10 +17,10 @@ export interface IntentFollowUpScope {
 export interface IntentFollowUp {
   /** Measure edited text after persistence. Must never gate, rewrite, archive, or undo the intent, including on failure. Apply metadata only if the owner and payload still match. */
   scoreIntent(data: { intentId: string; userId: string; payload: string }): Promise<unknown>;
-  /** Schedule post-save matching work. Failures must not undo the saved intent. */
+  /** Wake personal-agent pursuit after persistence and network assignments. Failures must not undo the saved intent. */
   onIntentSaved(data: { intentId: string; userId: string } & IntentFollowUpScope): Promise<unknown>;
   /** Schedule post-archive follow-up. Failures must not undo archival. */
   onIntentArchived(data: { intentId: string }): Promise<unknown>;
-  /** Start discovery for an intent resumed from PAUSED back to ACTIVE. */
+  /** Wake personal-agent pursuit for an intent resumed from PAUSED back to ACTIVE. */
   onIntentResumed(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown>;
 }

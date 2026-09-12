@@ -143,23 +143,32 @@ The intent and community graphs are the exceptions: they are reached through the
 |---|---|
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 
-## Post-intent discovery
+## Post-intent pursuit
 
-`@indexnetwork/discovery` owns query embedding, candidate retrieval, ranking,
-and explanations. It has no protocol, agent, or LangChain dependency. The API
-supplies its model, embedding/search, cancellation, and tracing ports.
+The personal agent in `@indexnetwork/agent` owns query planning, candidate
+evaluation, repeat searches, and match selection within its existing principal
+session and `Agent.run()` loop. Search history and selection outcomes are private
+`PrincipalState` checkpoints alongside H2A and negotiation state.
 
-`Discovery.discover()` returns potential intent pairs with network, intent,
-user, score, reasoning, and evidence. The host assigns `pairKeyOf(...)` and calls
-`openCounterparties(pairs, decideNegotiationOpening)`; protocol opening rules run
-inside the existing host transaction. Network/broadcast scope remains a protocol
-rule exposed through `resolveDiscoveryNetworkScope`, with context permissions
-handled by `renderDiscoveryNetworkContext`.
+The API injects `discover_counterparties` and `open_negotiation`.
+`@indexnetwork/discovery` embeds one explicit query and makes one candidate search
+per call, returning hydrated evidence without broadening, LLM explanations, or
+pair opening. Network scope and context permissions remain protocol rules through
+`resolveDiscoveryNetworkScope` and `renderDiscoveryNetworkContext`.
 
-`IntentFollowUp.onIntentSaved` starts matching; `onIntentArchived` is a host
-no-op; `onIntentResumed` starts matching again. Keep saved/archived follow-ups
-best-effort and preserve resume failure compensation. `scoreIntent` remains
-independent metadata work.
+For an agent-selected counterparty, the API assigns `pairKeyOf(...)` and calls
+`openCounterparties(pairs, decideNegotiationOpening)` with its session execution
+fence. The host checks the lease, current seats, lifecycle, assignments, and
+memberships inside the opening transaction. Canonical pair identity keeps opening
+idempotent, including recovery after a lost response. The existing negotiation
+loop takes over the selected match; agreement still requires owner review.
+
+`IntentFollowUp.onIntentSaved` wakes pursuit after assignments finish;
+`onIntentResumed` wakes it again; completed explicit network assignments also
+wake the session. `onIntentArchived` is a host no-op because lifecycle events
+stop inactive sessions. Keep saved/archived follow-ups best-effort and preserve
+resume failure compensation. `scoreIntent` remains independent metadata work.
+External negotiation executors retain exclusive ownership of their principals.
 
 ## Intents
 

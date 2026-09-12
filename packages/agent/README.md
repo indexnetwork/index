@@ -3,8 +3,9 @@
 A personal agent that a host runs on someone's behalf.
 
 `Agent` provides the model/tool loop. `NegotiationAgent` is the long-lived
-runtime for a principal and intent: it owns one human/agent conversation and
-schedules concurrent agent/agent negotiations for that intent's matches.
+runtime for a principal and intent: it owns query planning, candidate evaluation,
+repeat searches, match selection, one human/agent conversation, and concurrent
+agent/agent negotiations for selected counterparties.
 
 It works the way Claude Code, Hermes or OpenClaw do — a system prompt, a set
 of tools, and a loop that runs until the work is done. Two things make it
@@ -18,6 +19,32 @@ different:
   represents can tell it, `run()` hands the question back rather than
   guessing or blocking.
 
+## Pursuit
+
+The API calls `NegotiationAgent.pursue(scope, client)` after active intent
+creation/resume and completed network assignments. The scope identifies the
+current assignment revision. Duplicate events coalesce; a restored session
+continues interrupted pursuit from its persisted search history.
+
+The existing `Agent.run()` loop chooses explicit queries through
+`discover_counterparties`, assesses the returned statements and evidence, and
+calls `open_negotiation` only for a selected result from a completed search.
+It can change the query or explicitly lower the similarity floor and search
+again. There is no fixed discovery pipeline deciding which pairs to open.
+
+`PrincipalState.pursuit` records queries, scopes, candidates, selection reasoning,
+opening outcomes, and the final private summary. Checkpoints share the existing
+session store with H2A and negotiation tasks. Direct principal messages can
+restart pursuit; H2A status replies receive the recorded search history.
+
+The host injects `PursuitClient` operations. It enforces live ownership,
+assignments, and lifecycle on searches; `open_negotiation` uses canonical pair
+identity, the session lease, and protocol opening rules in the same transaction.
+Opening starts the existing negotiation loop and does not commit the principal.
+An external executor binding fences hosted pursuit and negotiation writes.
+The scenario TUI uses the same two tools against synthetic intents and in-memory
+negotiations; it opens no opportunities in advance.
+
 ## Prompts
 
 Start at [prompts/agent.prompt.ts](src/prompts/agent.prompt.ts). It contains the
@@ -27,6 +54,7 @@ agent's prompt text and the functions that compose it for both the API and TUI.
 | --- | --- | --- |
 | System, shared by A2A and H2A | `buildNegotiationSystemPrompt` → `buildAgentSystemPrompt` | Agent instructions, injected protocol guidance and principal context, then identity, current date, tool-use instructions, and intent. |
 | User, for an A2A turn | `buildNegotiationTurnPrompt` | `MATCH_INSTRUCTIONS`, current negotiation, private H2A history, accepted commitments, and any internal review note. |
+| User, for pursuit | `buildPursuitPrompt` | Authorized assignments, persisted query/candidate/selection history, principal input, and commitments. |
 | User, for H2A communication | `buildPrincipalInboxPrompt` | `PRINCIPAL_INBOX_INSTRUCTIONS`, H2A history, incoming messages, the pending question, queued requests, outcomes, and commitments. Direct messages also receive match status snapshots. |
 
 [Protocol guidance](../protocol/src/protocol/protocol.prompt.ts) stays owned by
