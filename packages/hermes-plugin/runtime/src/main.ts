@@ -14,8 +14,23 @@ interface Bridge {
 interface IntentRuntime {
   agent: NegotiationAgent;
   store: FilePrincipalStore;
+  /** Short signal label for the Hermes session tile. */
+  title: string;
   /** Serializes delivery so one H2A entry cannot be sent twice concurrently. */
   flushing: Promise<void>;
+}
+
+const ACTIONS: Record<string, string> = {
+  propose: 'Proposed',
+  counter: 'Countered',
+  accept: 'Accepted',
+  decline: 'Declined',
+};
+
+/** @param payload - The signal statement. @returns A session-tile label. */
+function signalTitle(payload: string): string {
+  const line = payload.trim().replace(/\s+/g, ' ');
+  return line.length > 80 ? `${line.slice(0, 79)}…` : line || 'Index signal';
 }
 
 /** Structured lines on stderr; the Hermes plugin relays them into its own log. */
@@ -70,15 +85,19 @@ class Negotiator {
 
   private async create(intentId: string): Promise<IntentRuntime> {
     const { principal: { owner, principalContext }, guidance } = await this.context();
-    const intent = await this.client.intent(intentId, owner.id);
+    const intent = await this.client.intent(intentId);
     const store = new FilePrincipalStore(join(this.stateDirectory, `${owner.id}.${intentId}.json`));
-    const runtime = { store, flushing: Promise.resolve() } as IntentRuntime;
+    const runtime = { store, title: signalTitle(intent.payload), flushing: Promise.resolve() } as IntentRuntime;
 
     const host: NegotiationHost = {
       status: (opportunityId, message) => log('info', 'status', { intentId, opportunityId, message }),
       retry: (_owner, attempt, reason) => log('warn', 'retry', { intentId, attempt, reason }),
       step: () => {},
       conversation: () => this.flush(runtime, intentId),
+      turn: (_owner, input, record) => {
+        log('info', 'turn', { intentId, opportunityId: record.opportunityId, action: input.action });
+        void this.announce(intentId, runtime.title, `${ACTIONS[input.action] ?? input.action} · ${record.counterparty.name || 'Match'}\n${input.message}`);
+      },
       end: (record) => log('info', 'end', {
         intentId, opportunityId: record.opportunityId,
         outcome: record.outcome ?? record.protocol.blockedReason,
@@ -148,6 +167,25 @@ class Negotiator {
   async stop(): Promise<void> {
     const runtimes = await Promise.allSettled([...this.runtimes.values()]);
     await Promise.allSettled(runtimes.map((result) => result.status === 'fulfilled' ? result.value.agent.stop() : undefined));
+  }
+
+  /**
+   * @param intentId - The signal. @param title - Session tile label. @param text - The submitted turn.
+   * @returns When the bridge has accepted or refused the write.
+   */
+  private async announce(intentId: string, title: string, text: string): Promise<void> {
+    try {
+      const response = await fetch(`${this.bridge.url}/announce`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.bridge.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intentId, title, text }),
+      });
+      if (!response.ok) {
+        log('warn', 'announce.failed', { intentId, reason: (await response.text()).slice(0, 300) });
+      }
+    } catch (error: unknown) {
+      log('warn', 'announce.failed', { intentId, reason: String(error) });
+    }
   }
 
   private flush(runtime: IntentRuntime, intentId: string): void {

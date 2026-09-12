@@ -5,10 +5,9 @@ negotiator is woken by those frames instead of by a schedule. Every frame is a
 pointer: the negotiator re-reads authoritative state over REST before deciding
 anything, which is what makes a missed or duplicated frame cost nothing.
 
-The work itself happens in the negotiator sidecar, not in a Hermes session, so
-this platform opens no chats and delivers no messages. It exists for its
-connection lifecycle: while this machine is the selected negotiator, it keeps the
-stream and the sidecar running together.
+The work itself happens in the negotiator sidecar. This platform keeps the stream
+and the sidecar running together, and writes each submitted turn into one Hermes
+session per signal so the session list shows the copy.
 """
 
 from __future__ import annotations
@@ -19,10 +18,12 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime
 from typing import Any
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, SendResult
+from gateway.session import SessionSource
 
 from .native_agent import PLATFORM
 from .transport import get_transport
@@ -70,16 +71,43 @@ class IndexAdapter(BasePlatformAdapter):
         self._closing = False
         self._loop = asyncio.get_running_loop()
         self._signal = asyncio.Event()
+        self._sidecar.bridge.set_announce(self.announce)
         self._dispatcher = self._loop.create_task(self._dispatch())
         threading.Thread(target=self._read, name="index-events", daemon=True).start()
         return True
 
     async def disconnect(self) -> None:
         self._closing = True
+        self._sidecar.bridge.set_announce(None)
         if self._dispatcher is not None:
             self._dispatcher.cancel()
             self._dispatcher = None
         await asyncio.to_thread(self._sidecar.stop)
+
+    def announce(self, intent_id: str, title: str, text: str) -> None:
+        """Write one submitted turn into this signal's Hermes session.
+
+        @param intent_id - The signal this turn belongs to; also the chat id.
+        @param title - Short signal label for the session tile.
+        @param text - Action, counterpart, and the copy posted to Index.
+        """
+        store = getattr(self, "_session_store", None)
+        if store is None:
+            raise RuntimeError("The Index platform has no session store.")
+        source = SessionSource(
+            platform=self.platform,
+            chat_id=intent_id,
+            chat_type="dm",
+            chat_name=title or f"Index signal {intent_id}",
+            user_id=self._owner or "index",
+            user_name="Index",
+        )
+        entry = store.get_or_create_session(source)
+        store.append_to_transcript(entry.session_id, {
+            "role": "assistant",
+            "content": text,
+            "timestamp": datetime.now().isoformat(),
+        })
 
     async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         return {"name": f"Index signal {chat_id}", "type": "dm", "id": chat_id}
@@ -166,7 +194,7 @@ def register_platform(ctx, sidecar) -> None:
         emoji="\U0001f9ed",
         pii_safe=True,
         platform_hint=(
-            "This platform only carries Index events to the negotiator process. "
-            "It is not a conversation with the owner."
+            "This platform wakes the negotiator and holds a turn log, one Hermes "
+            "session per signal. It is not a conversation with the owner."
         ),
     )

@@ -22,7 +22,6 @@ interface ApiUser {
 interface ApiIntent {
   id: string;
   payload: string;
-  userId: string;
   status?: string | null;
   archivedAt?: string | null;
 }
@@ -109,13 +108,13 @@ export class IndexClient {
   }
 
   /**
-   * @param id - The signal. @param ownerId - The authenticated owner.
+   * @param id - The signal.
    * @returns The signal's statement.
-   * @throws When the signal is inactive or belongs to someone else.
+   * @throws When the signal is paused, archived, or not this owner's (the API 404s).
    */
-  async intent(id: string, ownerId: string): Promise<{ id: string; payload: string }> {
+  async intent(id: string): Promise<{ id: string; payload: string }> {
     const { intent } = await this.request<{ intent: ApiIntent }>('GET', `/intents/${encodeURIComponent(id)}`);
-    if (intent.userId !== ownerId || intent.archivedAt || (intent.status ?? 'ACTIVE') !== 'ACTIVE') {
+    if (intent.archivedAt || (intent.status ?? 'ACTIVE') !== 'ACTIVE') {
       throw new Error('This signal is inactive or belongs to another owner.');
     }
     return { id: intent.id, payload: intent.payload };

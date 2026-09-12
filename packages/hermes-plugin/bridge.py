@@ -1,11 +1,13 @@
 """Loopback bridge between the Index negotiator and Hermes.
 
 The negotiator is `@indexnetwork/agent` running in a Bun sidecar, so it needs
-two things from Hermes that it cannot reach itself: a tool-capable model call,
-and the owner's conversation. `/complete` runs one completion on the model the
-owner is already using; `/deliver` hands the entries the negotiator selected to
-the bound conversation. Neither route decides anything about a negotiation —
-scheduling, questions, and turns stay inside the agent package.
+three things from Hermes that it cannot reach itself: a tool-capable model call,
+the owner's conversation, and a session to show submitted turns. `/complete`
+runs one completion on the model the owner is already using; `/deliver` hands
+the entries the negotiator selected to the bound conversation; `/announce`
+writes one turn into an Index platform session. None of those routes decide
+anything about a negotiation — scheduling, questions, and turns stay inside
+the agent package.
 
 Hermes's public `ctx.llm.complete` cannot return tool calls, so completions go
 through the host's `auxiliary_client.call_llm`, which accepts `tools` and keeps
@@ -75,6 +77,11 @@ class HermesBridge:
         self.store = store
         self.token = secrets.token_urlsafe(32)
         self._server: ThreadingHTTPServer | None = None
+        self._announce = None
+
+    def set_announce(self, announce) -> None:
+        """@param announce - The connected Index adapter's session writer, or None."""
+        self._announce = announce
 
     @property
     def url(self) -> str:
@@ -158,10 +165,27 @@ class HermesBridge:
             return {"delivered": False, "reason": str(result["error"])}
         return {"delivered": True}
 
+    def announce(self, payload):
+        """Write one submitted turn into the signal's Index session.
+
+        @param payload - `intentId`, `text`, and optional `title`.
+        @returns Whether the adapter accepted the turn.
+        """
+        intent_id = payload.get("intentId")
+        text = payload.get("text")
+        title = payload.get("title")
+        if not isinstance(intent_id, str) or not intent_id.strip() or not isinstance(text, str) or not text.strip():
+            raise ValueError("intentId and text are required.")
+        if self._announce is None:
+            logger.warning("Index announce dropped: the platform is not connected.")
+            return {"delivered": False, "reason": "The Index platform is not connected."}
+        self._announce(intent_id.strip(), title.strip() if isinstance(title, str) else "", text.strip())
+        return {"delivered": True}
+
 
 def _handler(bridge: HermesBridge):
     """Build the request handler bound to one bridge instance."""
-    routes = {"/complete": bridge.complete, "/deliver": bridge.deliver}
+    routes = {"/complete": bridge.complete, "/deliver": bridge.deliver, "/announce": bridge.announce}
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"

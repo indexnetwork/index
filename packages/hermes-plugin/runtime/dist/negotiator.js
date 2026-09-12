@@ -998,9 +998,9 @@ class IndexClient {
       principalContext: confirmedProfile ? JSON.stringify({ confirmedProfile }) : "No confirmed profile is available. Ask for missing personal facts."
     };
   }
-  async intent(id, ownerId) {
+  async intent(id) {
     const { intent } = await this.request("GET", `/intents/${encodeURIComponent(id)}`);
-    if (intent.userId !== ownerId || intent.archivedAt || (intent.status ?? "ACTIVE") !== "ACTIVE") {
+    if (intent.archivedAt || (intent.status ?? "ACTIVE") !== "ACTIVE") {
       throw new Error("This signal is inactive or belongs to another owner.");
     }
     return { id: intent.id, payload: intent.payload };
@@ -1082,6 +1082,16 @@ class FilePrincipalStore {
 }
 
 // runtime/src/main.ts
+var ACTIONS = {
+  propose: "Proposed",
+  counter: "Countered",
+  accept: "Accepted",
+  decline: "Declined"
+};
+function signalTitle(payload) {
+  const line = payload.trim().replace(/\s+/g, " ");
+  return line.length > 80 ? `${line.slice(0, 79)}\u2026` : line || "Index signal";
+}
 function log(level, event, detail = {}) {
   process.stderr.write(`${JSON.stringify({ level, event, ...detail })}
 `);
@@ -1126,14 +1136,19 @@ class Negotiator {
   }
   async create(intentId) {
     const { principal: { owner, principalContext }, guidance } = await this.context();
-    const intent = await this.client.intent(intentId, owner.id);
+    const intent = await this.client.intent(intentId);
     const store = new FilePrincipalStore(join(this.stateDirectory, `${owner.id}.${intentId}.json`));
-    const runtime = { store, flushing: Promise.resolve() };
+    const runtime = { store, title: signalTitle(intent.payload), flushing: Promise.resolve() };
     const host = {
       status: (opportunityId, message) => log("info", "status", { intentId, opportunityId, message }),
       retry: (_owner, attempt, reason) => log("warn", "retry", { intentId, attempt, reason }),
       step: () => {},
       conversation: () => this.flush(runtime, intentId),
+      turn: (_owner, input, record) => {
+        log("info", "turn", { intentId, opportunityId: record.opportunityId, action: input.action });
+        this.announce(intentId, runtime.title, `${ACTIONS[input.action] ?? input.action} \xB7 ${record.counterparty.name || "Match"}
+${input.message}`);
+      },
       end: (record) => log("info", "end", {
         intentId,
         opportunityId: record.opportunityId,
@@ -1185,6 +1200,20 @@ class Negotiator {
   async stop() {
     const runtimes = await Promise.allSettled([...this.runtimes.values()]);
     await Promise.allSettled(runtimes.map((result) => result.status === "fulfilled" ? result.value.agent.stop() : undefined));
+  }
+  async announce(intentId, title, text) {
+    try {
+      const response = await fetch(`${this.bridge.url}/announce`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.bridge.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ intentId, title, text })
+      });
+      if (!response.ok) {
+        log("warn", "announce.failed", { intentId, reason: (await response.text()).slice(0, 300) });
+      }
+    } catch (error) {
+      log("warn", "announce.failed", { intentId, reason: String(error) });
+    }
   }
   flush(runtime, intentId) {
     runtime.flushing = runtime.flushing.then(() => this.deliver(runtime, intentId)).catch((error) => log("warn", "error", { intentId, reason: `Delivery failed: ${String(error)}` }));

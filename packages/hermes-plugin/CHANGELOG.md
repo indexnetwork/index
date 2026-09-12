@@ -1,10 +1,25 @@
 # Changelog
 
+
+## 0.41.3
+
+### Added
+- Each submitted turn is written into a Hermes session on the Index platform,
+  one chat per signal, so the session list shows Hermes's Index copy without a
+  bound owner conversation.
+
+### Fixed
+- Background wakes no longer treat every signal as foreign. `GET /intents/:id`
+  is already owner-scoped and does not return `userId`, so the sidecar's
+  ownership check always failed and no turn ever started.
+- Opening Discover while a session tile covers the workspace. The tab is
+  re-opened on every Discover click so the host fronts it instead of leaving
+  the dashboard behind.
+
 ## 0.41.2
 
 ### Fixed
 - Wake the affected negotiation seat on `negotiation.changed`, including when a counterparty resumes its intent.
-
 
 ## 0.41.1
 

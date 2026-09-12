@@ -4887,23 +4887,13 @@ function discoverHash() {
   return path === DISCOVER_PATH || path.startsWith(DISCOVER_PATH + '/')
 }
 
-function workspaceIsShowing() {
-  if (typeof host.paneVisibility !== 'function') return false
-  try {
-    const vis = host.paneVisibility('workspace')
-    return Boolean(vis && vis.get && vis.get())
-  } catch (e) {
-    return false
-  }
-}
-
-// Discover is a workspace-pane route. A focused session tile keeps that pane
-// behind the tile, so hash navigation looks dead until restart. Front a
-// dedicated tab only while workspace is covered; skip when it is already up.
+// Discover is a workspace-pane route. Hash navigation is a no-op when the
+// workspace already holds the zone (a chat or another page), and a focused
+// session tile keeps the page behind it. Re-open the tab every time — the
+// host fronts an existing id instead of stacking a duplicate.
 function showDiscover(to) {
   if (to) host.navigate(to)
   else if (!discoverHash()) host.navigate(DISCOVER_PATH)
-  if (workspaceIsShowing()) return
   if (typeof host.openWorkspace !== 'function') return
   try {
     host.openWorkspace('index-network', {
@@ -4918,8 +4908,12 @@ function onDiscoverHash() {
 }
 
 function onDiscoverNavClick(event) {
-  const node = event.target && event.target.closest && event.target.closest('[data-tour="' + DISCOVER_NAV_TOUR + '"]')
-  if (node) showDiscover(DISCOVER_PATH)
+  const t = event.target
+  if (!t || !t.closest) return
+  const labeled = t.closest('[data-tour="' + DISCOVER_NAV_TOUR + '"]')
+  const button = t.closest('button')
+  if (!labeled && !(button && button.querySelector('[data-tour="' + DISCOVER_NAV_TOUR + '"]'))) return
+  showDiscover(DISCOVER_PATH)
 }
 
 export default {
