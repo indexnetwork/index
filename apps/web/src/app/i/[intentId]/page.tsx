@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import NegotiationConversation from "@/components/NegotiationConversation";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
-import { useConversation } from "@/contexts/ConversationContext";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
@@ -170,7 +169,6 @@ export default function IntentDetailPage() {
   const navigate = useNavigate();
   const { intentId } = useParams<{ intentId: string }>();
   const intentsService = useIntents();
-  const { subscribeUserEvent } = useConversation();
   const opportunitiesService = useOpportunities();
   useIntentVisitPing(intentId);
   const { error: showError } = useNotifications();
@@ -191,6 +189,7 @@ export default function IntentDetailPage() {
   const activeIntentIdRef = useRef(intentId);
   const [opportunities, setOpportunities] = useState<RadarCardItem[]>([]);
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
+  const opportunitiesLoadingRef = useRef(true);
   const [opportunitiesError, setOpportunitiesError] = useState(false);
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
@@ -233,25 +232,23 @@ export default function IntentDetailPage() {
 
   /** Monotonic load ids guard every intent-scoped feed against stale responses. */
   const loadSeqRef = useRef(0);
-  const radarRequestIntentRef = useRef<string | null>(null);
-  const radarRefreshPendingRef = useRef(false);
 
-  const loadOpportunities = useCallback(async function load(preserveExisting = false): Promise<void> {
+  const loadOpportunities = useCallback(async (preserveExisting = false) => {
     if (!intentId) return;
-    // An event arriving during a read must refresh after that read finishes.
-    if (preserveExisting && radarRequestIntentRef.current === intentId) {
-      radarRefreshPendingRef.current = true;
-      return;
-    }
-    radarRequestIntentRef.current = intentId;
-    radarRefreshPendingRef.current = false;
+    // The live 5s refresh must not supersede the initial two-phase load. If it
+    // does, the initial request's sequence becomes stale and its finally block
+    // cannot clear the loading state; the passive request then populates badge
+    // counts behind a permanent pair of skeleton cards.
+    if (preserveExisting && opportunitiesLoadingRef.current) return;
     const seq = ++loadSeqRef.current;
     if (!preserveExisting) {
+      opportunitiesLoadingRef.current = true;
       setOpportunitiesLoading(true);
       setOpportunitiesError(false);
     }
     const settleLoading = () => {
       if (activeIntentIdRef.current !== intentId) return;
+      opportunitiesLoadingRef.current = false;
       setOpportunitiesLoading(false);
     };
     const applyItems = (items: RadarCardItem[]) => {
@@ -297,14 +294,7 @@ export default function IntentDetailPage() {
         setOpportunitiesError(true);
       }
     } finally {
-      if (seq === loadSeqRef.current) {
-        radarRequestIntentRef.current = null;
-        if (!preserveExisting) settleLoading();
-        if (radarRefreshPendingRef.current && activeIntentIdRef.current === intentId) {
-          radarRefreshPendingRef.current = false;
-          void load(true);
-        }
-      }
+      if (seq === loadSeqRef.current && !preserveExisting) settleLoading();
     }
   }, [intentId, opportunitiesService]);
 
@@ -338,15 +328,9 @@ export default function IntentDetailPage() {
   }, [loadOpportunities, selectedBucket]);
 
   useEffect(() => {
-    let refreshTimer: ReturnType<typeof setTimeout>;
-    const unsubscribe = subscribeUserEvent((event) => {
-      if (event.data?.intentId !== intentId
-        || !['intent.updated', 'intent.lifecycle', 'opportunity.new', 'negotiation.opened', 'negotiation.changed'].includes(event.type)) return;
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => { void loadOpportunities(true); }, 100);
-    });
-    return () => { unsubscribe(); clearTimeout(refreshTimer); };
-  }, [intentId, loadOpportunities, subscribeUserEvent]);
+    const timer = setInterval(() => { void loadOpportunities(true); }, 5_000);
+    return () => clearInterval(timer);
+  }, [loadOpportunities]);
 
   useEffect(() => {
     if (matchFocus) document.getElementById(`radar-match-${matchFocus.id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });

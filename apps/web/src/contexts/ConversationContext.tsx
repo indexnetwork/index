@@ -18,16 +18,13 @@ interface ConversationSessionHistoryState {
   loadingPrevious: boolean;
 }
 
-/** A change notification on the existing authenticated SSE connection. */
-export interface UserEvent {
-  type: string;
-  data?: { intentId?: string; opportunityId?: string; status?: string };
-  conversationId?: string;
-  message?: ConversationMessage;
+/** A persisted message received on the authenticated conversation SSE channel. */
+export interface ConversationMessageEvent {
+  conversationId: string;
+  message: ConversationMessage;
 }
 
 interface ConversationContextType {
-  subscribeUserEvent: (handler: (event: UserEvent) => void) => () => void;
   conversations: ConversationSummary[];
   negotiations: NegotiationSummary[];
   messages: Map<string, ConversationMessage[]>;
@@ -43,6 +40,8 @@ interface ConversationContextType {
   markConversationRead: (conversationId: string) => Promise<void>;
   hideConversation: (conversationId: string) => Promise<void>;
   getOrCreateDm: (peerUserId: string) => Promise<ConversationSummary>;
+  /** Subscribe to persisted conversation messages from the SSE stream. */
+  subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
@@ -66,11 +65,14 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const refreshConversationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const refreshNegotiationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const userEventHandlersRef = useRef(new Set<(event: UserEvent) => void>());
-  const subscribeUserEvent = useCallback((handler: (event: UserEvent) => void) => {
-    userEventHandlersRef.current.add(handler);
-    return () => { userEventHandlersRef.current.delete(handler); };
-  }, []);
+  const conversationMessageHandlersRef = useRef(new Set<(event: ConversationMessageEvent) => void>());
+  const subscribeConversationMessage = useCallback(
+    (handler: (event: ConversationMessageEvent) => void) => {
+      conversationMessageHandlersRef.current.add(handler);
+      return () => { conversationMessageHandlersRef.current.delete(handler); };
+    },
+    [],
+  );
   const pendingOptimisticIdsRef = useRef(new Set<string>());
 
   // --- REST helpers (conversation calls go through the typed client) ---
@@ -317,7 +319,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          userEventHandlersRef.current.forEach((handler) => handler(data));
           switch (data.type) {
             case 'connected':
               setIsConnected(true);
@@ -369,6 +370,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                     : c
                 );
               });
+              conversationMessageHandlersRef.current.forEach((handler) => handler({
+                conversationId: convId,
+                message: msg,
+              }));
               break;
             }
           }
@@ -465,7 +470,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         markConversationRead,
         hideConversation,
         getOrCreateDm,
-        subscribeUserEvent,
+        subscribeConversationMessage,
       }}
     >
       {children}

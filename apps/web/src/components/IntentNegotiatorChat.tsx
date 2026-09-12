@@ -20,7 +20,7 @@ function messageText(message: ConversationMessage): string {
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
   const { user } = useAuthContext();
   const conversations = useConversations();
-  const { subscribeUserEvent, isConnected } = useConversation();
+  const { subscribeConversationMessage, isConnected } = useConversation();
   const storageKey = `principal-draft:${user?.id}:${intentId}`;
   const [draft, setDraft] = useState<{ text: string; questionId: string | null }>(() => {
     try { return JSON.parse(sessionStorage.getItem(storageKey) ?? "null") ?? { text: "", questionId: null }; }
@@ -66,22 +66,15 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     const state = requests.current;
     state.mounted = true;
     void Promise.resolve().then(refresh);
-    return () => { state.mounted = false; state.generation++; };
+    const timer = setInterval(() => { void refresh(); }, 5_000);
+    return () => { state.mounted = false; state.generation++; clearInterval(timer); };
   }, [refresh, isConnected, requests]);
 
-  useEffect(() => {
-    let refreshTimer: ReturnType<typeof setTimeout>;
-    const unsubscribe = subscribeUserEvent((event) => {
-      if (event.type === 'message') {
-        if (event.message?.metadata?.intentId !== intentId) return;
-        mergeMessages([event.message]);
-      } else if (!['question.pending', 'intent.lifecycle', 'agent.configuration', 'agent.status'].includes(event.type)
-        || event.data?.intentId && event.data.intentId !== intentId) return;
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => { void refresh(); }, 100);
-    });
-    return () => { unsubscribe(); clearTimeout(refreshTimer); };
-  }, [intentId, mergeMessages, refresh, subscribeUserEvent]);
+  useEffect(() => subscribeConversationMessage(({ conversationId: id, message }) => {
+    if (id !== conversationId || message.metadata?.intentId !== intentId) return;
+    mergeMessages([message]);
+    void refresh();
+  }), [conversationId, intentId, mergeMessages, refresh, subscribeConversationMessage]);
 
   useEffect(() => { sessionStorage.setItem(storageKey, JSON.stringify(draft)); }, [draft, storageKey]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages.length, pending?.id]);

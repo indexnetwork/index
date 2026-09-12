@@ -13,7 +13,7 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
 }) {
   const { user } = useAuthContext();
   const service = useNegotiations();
-  const { negotiations, isConnected, subscribeUserEvent } = useConversation();
+  const { negotiations, isConnected } = useConversation();
   const match = negotiations.find((entry) => entry.opportunityId === opportunityId && entry.intentId === intentId);
   const [detail, setDetail] = useState<NegotiationDetail>();
   const [error, setError] = useState("");
@@ -24,11 +24,9 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
     if (!expanded) return;
     let active = true;
     let loading = false;
-    let refreshPending = false;
     const refresh = async () => {
-      if (loading) { refreshPending = true; return; }
+      if (loading) return;
       loading = true;
-      refreshPending = false;
       try {
         const record = await service.getNegotiation(opportunityId);
         if (!active) return;
@@ -37,21 +35,12 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
         setError("");
       } catch (failure) {
         if (active) setError(failure instanceof Error ? failure.message : "Could not load this conversation.");
-      } finally {
-        loading = false;
-        if (active && refreshPending) void refresh();
-      }
+      } finally { loading = false; }
     };
     void refresh();
-    let refreshTimer: ReturnType<typeof setTimeout>;
-    const unsubscribe = subscribeUserEvent((event) => {
-      if (event.type !== 'negotiation.changed' || event.data?.intentId !== intentId
-        || event.data.opportunityId && event.data.opportunityId !== opportunityId) return;
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => { void refresh(); }, 100);
-    });
-    return () => { active = false; unsubscribe(); clearTimeout(refreshTimer); };
-  }, [expanded, intentId, opportunityId, service, isConnected, subscribeUserEvent]);
+    const timer = setInterval(() => { void refresh(); }, 5_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [expanded, intentId, opportunityId, service, match?.updatedAt, isConnected]);
 
   useEffect(() => {
     if (history.current && follow.current) history.current.scrollTop = history.current.scrollHeight;

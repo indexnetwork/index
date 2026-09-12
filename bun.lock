@@ -20,7 +20,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.75.1",
+      "version": "0.75.2",
       "dependencies": {
         "@better-auth/api-key": "1.6.11",
         "@indexnetwork/protocol": "workspace:*",
@@ -139,7 +139,7 @@
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.121.2",
+      "version": "0.121.3",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",

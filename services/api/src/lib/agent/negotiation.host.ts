@@ -10,10 +10,6 @@ import { IntentDatabaseAdapter } from '../../adapters/intent.database.adapter';
 import { negotiationService, type NegotiationDetail } from '../../services/negotiation.service';
 import { userEventChannel } from '../user-events';
 
-const DATABASE_CONCURRENCY = 4;
-let activeDatabaseOperations = 0;
-const databaseQueue: (() => void)[] = [];
-
 export interface ApiPrincipal {
   id: string; userId: string; name: string; intentId: string; intent: string; principalContext: string;
 }
@@ -42,7 +38,7 @@ export class ApiNegotiationHost extends EventEmitter {
     for (const principal of users) {
       const store = new AgentSessionDatabaseAdapter(principal.userId, principal.intentId);
       const read = async (id: string) => {
-        const record = await this.runDatabase(() => negotiationService.read(id, principal.userId));
+        const record = await negotiationService.read(id, principal.userId);
         if (!record || record.intentId !== principal.intentId) throw new Error('Negotiation is outside this principal/intent session.');
         this.observe(principal, record);
         return this.record(record);
@@ -59,7 +55,7 @@ export class ApiNegotiationHost extends EventEmitter {
         owner: { id: principal.userId, name: principal.name }, intent: { id: principal.intentId, payload: principal.intent },
         principalContext: principal.principalContext, guidance: NEGOTIATION_GUIDANCE,
         client: { readNegotiation: read, submitTurn: async (id, turn) => {
-          const result = await this.runDatabase(() => negotiationService.submitTurn(id, principal.userId, turn, store.execution));
+          const result = await negotiationService.submitTurn(id, principal.userId, turn, store.execution);
           if ('rejection' in result) throw new Error(result.rejection);
           this.observe(principal, result);
           void this.scan();
@@ -118,24 +114,6 @@ export class ApiNegotiationHost extends EventEmitter {
     this.emit('change');
   }
 
-  /** Share capacity across hosts for one database operation, never a scan or agent task that may enqueue more work. */
-  private async runDatabase<T>(operation: () => Promise<T>): Promise<T> {
-    if (activeDatabaseOperations === DATABASE_CONCURRENCY) {
-      await new Promise<void>((resolve) => databaseQueue.push(resolve));
-    } else {
-      activeDatabaseOperations++;
-    }
-    try {
-      if (this.stopped) throw new Error('Negotiation host is stopped.');
-      return await operation();
-    } finally {
-      // Transfer the slot directly to the oldest waiter so new work cannot jump the queue.
-      const next = databaseQueue.shift();
-      if (next) next();
-      else activeDatabaseOperations--;
-    }
-  }
-
   private scan(): Promise<void> {
     this.rescan = true;
     if (this.scanning) return this.scanning;
@@ -144,12 +122,12 @@ export class ApiNegotiationHost extends EventEmitter {
         this.rescan = false;
         if (this.stopped) return;
         for (const principal of this.users) {
-          const records = await this.runDatabase(() => negotiationService.scan(principal.userId, principal.intentId));
+          const records = await negotiationService.scan(principal.userId, principal.intentId);
           for (const record of records) {
             const key = `${principal.id}:${record.opportunityId}`;
             const version = `${record.version}:${record.eligible}`;
             if (this.versions.get(key) === version) continue;
-            const detail = await this.runDatabase(() => negotiationService.read(record.opportunityId, principal.userId));
+            const detail = await negotiationService.read(record.opportunityId, principal.userId);
             if (this.stopped) return;
             if (!detail) continue;
             this.observe(principal, detail);
