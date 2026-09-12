@@ -341,7 +341,7 @@ export default function IntentDetailPage() {
     let refreshTimer: ReturnType<typeof setTimeout>;
     const unsubscribe = subscribeUserEvent((event) => {
       if (event.data?.intentId !== intentId
-        || !['intent.updated', 'intent.lifecycle', 'opportunity.new', 'negotiation.opened', 'negotiation.turn', 'negotiation.settled'].includes(event.type)) return;
+        || !['intent.updated', 'intent.lifecycle', 'opportunity.new', 'negotiation.opened', 'negotiation.changed'].includes(event.type)) return;
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => { void loadOpportunities(true); }, 100);
     });

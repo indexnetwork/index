@@ -46,6 +46,7 @@ async function publishIntentLifecycle(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+  await negotiationDatabaseAdapter.notifyIntentNegotiations(intentId);
 }
 
 export class IntentDatabaseAdapter {

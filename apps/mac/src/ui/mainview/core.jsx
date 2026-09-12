@@ -249,7 +249,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     let refreshTimer;
     const sub = window.IndexApp.streamInbox((event) => {
       if (event.data?.intentId !== intentId
-        || !["intent.updated", "intent.lifecycle", "opportunity.new", "negotiation.opened", "negotiation.turn", "negotiation.settled"].includes(event.type)) return;
+        || !["intent.updated", "intent.lifecycle", "opportunity.new", "negotiation.opened", "negotiation.changed"].includes(event.type)) return;
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(refreshRadar, 100);
     });
@@ -266,12 +266,25 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (!live || !client) return;
     let alive = true;
     const forIntent = intentId;
-    const read = () => client.conversations.messages("agent", { intentId: forIntent })
-      .then((res) => {
-        if (!alive || intentIdRef.current !== forIntent) return;
+    let reading = false;
+    let refreshPending = false;
+    let revision = 0;
+    const read = async () => {
+      if (!alive || intentIdRef.current !== forIntent) return;
+      if (reading) { refreshPending = true; return; }
+      reading = true;
+      refreshPending = false;
+      const requestRevision = revision;
+      try {
+        const res = await client.conversations.messages("agent", { intentId: forIntent });
+        if (!alive || intentIdRef.current !== forIntent || requestRevision !== revision) return;
         setAgentQuestion((res && res.agent && res.agent.pending) || null);
-      })
-      .catch(() => { /* a failed read leaves the last known question up */ });
+      } catch { /* a failed read leaves the last known question up */ }
+      finally {
+        reading = false;
+        if (alive && refreshPending) void read();
+      }
+    };
     read();
     let refreshTimer;
     const sub = window.IndexApp.streamInbox((event) => {
@@ -279,8 +292,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         if (event.message?.metadata?.intentId !== forIntent) return;
       } else if (!["question.pending", "intent.lifecycle", "agent.configuration", "agent.status"].includes(event.type)
         || event.data?.intentId && event.data.intentId !== forIntent) return;
+      revision++;
       clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(read, 100);
+      if (reading) refreshPending = true;
+      else refreshTimer = setTimeout(read, 100);
     });
     return () => { alive = false; sub.close(); clearTimeout(refreshTimer); };
   }, [live, client, intentId]);

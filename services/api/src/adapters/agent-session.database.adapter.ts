@@ -14,6 +14,19 @@ const LEASE_SECONDS = 60;
 const QUESTION_HEADLINE = 'Question from your agent';
 const QUESTION_BODY_MAX_CHARS = 140;
 
+/** Startup cannot continue until the intent or executor configuration changes. */
+export class AgentSessionIneligibleError extends Error {}
+
+/** A competing runtime owns the lease until the database's recorded expiry. */
+export class AgentSessionLeaseConflict extends Error {
+  readonly retryAt: number;
+
+  constructor(readonly leaseExpiresAt: Date, retryAfterMs: number) {
+    super('This principal/intent already has an active personal-agent session.');
+    this.retryAt = Date.now() + retryAfterMs;
+  }
+}
+
 /**
  * Announce a question the owner has to answer before their agent can continue.
  *
@@ -87,21 +100,30 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
   /** Acquire the session and read its canonical intent conversation. @returns The checkpoint and H2A history. @throws If another process owns it or the intent is not the principal's. */
   async load(): Promise<{ state: PrincipalState | null; messages: PrincipalMessage[] }> {
     const { userId, intentId, token } = this.execution;
-    const [intent] = await db.select({ id: intents.id }).from(intents).where(and(eq(intents.id, intentId), eq(intents.userId, userId)));
-    if (!intent) throw new Error('The selected intent does not belong to this principal.');
+    const [intent] = await db.select({ id: intents.id, status: intents.status, archivedAt: intents.archivedAt })
+      .from(intents).where(and(eq(intents.id, intentId), eq(intents.userId, userId)));
+    if (!intent || intent.archivedAt || intent.status !== null && intent.status !== 'ACTIVE') {
+      throw new AgentSessionIneligibleError('The selected intent must be active and belong to this principal.');
+    }
     const conversation = await this.conversations.getOrCreateAgentDm(userId);
     const row = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${userId}`}, 0))`);
       const [external] = await tx.select({ id: agents.id }).from(agents).where(and(
         eq(agents.ownerId, userId), eq(agents.type, 'external'), eq(agents.handleNegotiations, true), isNull(agents.deletedAt),
       )).limit(1);
-      if (external) throw new Error('This principal has selected an external negotiation executor.');
+      if (external) throw new AgentSessionIneligibleError('This principal has selected an external negotiation executor.');
       await tx.insert(agentSessions).values({ userId, intentId, conversationId: conversation.id }).onConflictDoNothing();
       const [acquired] = await tx.update(agentSessions).set({
         leaseToken: token, leaseExpiresAt: sql`now() + ${LEASE_SECONDS} * interval '1 second'`, updatedAt: new Date(),
       }).where(and(eq(agentSessions.userId, userId), eq(agentSessions.intentId, intentId),
         or(isNull(agentSessions.leaseToken), sql`${agentSessions.leaseExpiresAt} <= now()`))).returning();
-      if (!acquired) throw new Error('This principal/intent already has an active personal-agent session.');
+      if (!acquired) {
+        const [lease] = await tx.select({
+          expiresAt: agentSessions.leaseExpiresAt,
+          retryAfterMs: sql<number>`greatest(0, extract(epoch from (${agentSessions.leaseExpiresAt} - clock_timestamp())) * 1000)::integer`,
+        }).from(agentSessions).where(and(eq(agentSessions.userId, userId), eq(agentSessions.intentId, intentId)));
+        throw new AgentSessionLeaseConflict(lease!.expiresAt!, lease!.retryAfterMs);
+      }
       return acquired;
     });
     this.revision = row.revision;

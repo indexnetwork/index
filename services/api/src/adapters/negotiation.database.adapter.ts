@@ -9,7 +9,7 @@ import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, int
 
 import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-session.database.adapter';
 
-import { publishUserEvent } from '../lib/user-events';
+import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
 export type NegotiationExecution = AgentExecution | { userId: string; agentId: string };
@@ -198,6 +198,22 @@ async function announceOpened(opened: OpenedNegotiation[]): Promise<void> {
  * Persistence for negotiation records and their turn logs.
  */
 export class NegotiationDatabaseAdapter {
+  /** @param intentId - Intent whose committed lifecycle change affects both seats' eligibility. */
+  async notifyIntentNegotiations(intentId: string): Promise<void> {
+    try {
+      const affected = await db.select({
+        initiatorUserId: negotiations.initiatorUserId, initiatorIntentId: negotiations.initiatorIntentId,
+        responderUserId: negotiations.responderUserId, responderIntentId: negotiations.responderIntentId,
+      }).from(negotiations).where(or(eq(negotiations.initiatorIntentId, intentId), eq(negotiations.responderIntentId, intentId)));
+      await publishNegotiationChange(affected.flatMap((row) => [
+        { userId: row.initiatorUserId, intentId: row.initiatorIntentId },
+        { userId: row.responderUserId, intentId: row.responderIntentId },
+      ]));
+    } catch (error: unknown) {
+      logger.error('Failed to notify negotiations after intent lifecycle change', { intentId, error: String(error) });
+    }
+  }
+
   /**
    * Turn every pair discovery scored into an opportunity with a negotiation
    * beside it, and report the ones newly opened.

@@ -4,7 +4,7 @@ import { NegotiationAgent, type Model, type Negotiation, type NegotiationHost } 
 import { NEGOTIATION_GUIDANCE } from '@indexnetwork/protocol';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
-import { AgentSessionDatabaseAdapter } from '../../adapters/agent-session.database.adapter';
+import { AgentSessionDatabaseAdapter, AgentSessionIneligibleError } from '../../adapters/agent-session.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
 import { IntentDatabaseAdapter } from '../../adapters/intent.database.adapter';
 import { negotiationService, type NegotiationDetail } from '../../services/negotiation.service';
@@ -81,7 +81,7 @@ export class ApiNegotiationHost extends EventEmitter {
   async start(): Promise<void> {
     const registry = new AgentDatabaseAdapter();
     for (const userId of new Set(this.users.map((user) => user.userId))) {
-      if ((await registry.listAgentsForUser(userId)).some((agent) => agent.ownerId === userId && agent.type === 'external' && agent.handleNegotiations)) throw new Error('A selected principal already has an external negotiation executor. Disable that binding before running its local agent.');
+      if ((await registry.listAgentsForUser(userId)).some((agent) => agent.ownerId === userId && agent.type === 'external' && agent.handleNegotiations)) throw new AgentSessionIneligibleError('A selected principal already has an external negotiation executor. Disable that binding before running its local agent.');
     }
     if (this.stopped) return;
     await Promise.all([...this.agents.values()].map((agent) => agent.start()));
@@ -90,7 +90,7 @@ export class ApiNegotiationHost extends EventEmitter {
     this.subscriber.on('message', (_channel, raw: string) => {
       try {
         const { type, data } = JSON.parse(raw);
-        if (!['intent.lifecycle', 'negotiation.turn', 'negotiation.settled', 'negotiation.opened'].includes(type)) return;
+        if (!['negotiation.changed', 'negotiation.opened'].includes(type)) return;
         if (!this.users.some(({ intentId }) => intentId === data?.intentId)) return;
       } catch { return; }
       void this.scan();

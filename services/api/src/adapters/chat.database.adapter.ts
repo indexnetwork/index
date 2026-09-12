@@ -310,18 +310,7 @@ export class ChatDatabaseAdapter {
   }
 
   async archiveIntent(intentId: string): Promise<ArchiveResultShape> {
-    try {
-      const [archived] = await db.update(schema.intents)
-        .set({ archivedAt: new Date(), updatedAt: new Date() })
-        .where(eq(schema.intents.id, intentId))
-        .returning({ id: schema.intents.id, userId: schema.intents.userId });
-      if (!archived) return { success: false, error: 'Intent not found' };
-      await publishUserInvalidation(archived.userId, 'intent.updated', intentId);
-      return { success: true };
-    } catch (error: unknown) {
-      logger.error('ChatDatabaseAdapter.archiveIntent error', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
+    return this.intentAdapter.archiveIntent(intentId);
   }
 
   async getNetworkMemberships(userId: string): Promise<NetworkMembershipRow[]> {

@@ -1,7 +1,7 @@
 import type { Model, PrincipalQuestion } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
-import { AgentSessionDatabaseAdapter } from '../adapters/agent-session.database.adapter';
+import { AgentSessionDatabaseAdapter, AgentSessionIneligibleError, AgentSessionLeaseConflict } from '../adapters/agent-session.database.adapter';
 import { createRedisClient } from '../adapters/cache.adapter';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
 import { ApiNegotiationHost, type ApiPrincipal } from '../lib/agent/negotiation.host';
@@ -9,6 +9,7 @@ import { log } from '../lib/log';
 import { publishUserInvalidation, userEventChannel } from '../lib/user-events';
 
 const logger = log.service.from('PersonalAgentService');
+const MAX_STARTUP_RETRIES = 3;
 
 /** An owner-facing input failure; no agent work is acknowledged by this error. */
 export class PersonalAgentError extends Error {
@@ -29,6 +30,12 @@ interface Session {
   stopping?: Promise<void>;
 }
 
+interface StartupRetry {
+  principal: ApiPrincipal;
+  attempts: number;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
 /** Owns the API process's personal agents independently of HTTP requests and browser connections. */
 export class PersonalAgentService {
   private readonly sessions = new Map<string, Session>();
@@ -37,6 +44,7 @@ export class PersonalAgentService {
   private readonly errors = new Map<string, string>();
   private readonly principals = new Map<string, ApiPrincipal>();
   private readonly desired = new Map<string, ApiPrincipal>();
+  private readonly retries = new Map<string, StartupRetry>();
   private readonly pendingOwners = new Set<string | undefined>();
   private running = false;
   private checking?: Promise<void>;
@@ -49,11 +57,14 @@ export class PersonalAgentService {
     this.running = true;
     this.subscriber = createRedisClient();
     this.subscriber.on('pmessage', (_pattern, channel: string, raw: string) => {
+      const ownerId = channel.slice(userEventChannel('').length);
       try {
-        const { type } = JSON.parse(raw);
+        const { type, data } = JSON.parse(raw);
         if (!['intent.lifecycle', 'intent.updated', 'agent.configuration'].includes(type)) return;
+        if (type === 'intent.lifecycle' && ['PAUSED', 'ARCHIVED'].includes(data?.status)
+          && this.retries.get(data.intentId)?.principal.userId === ownerId) this.cancelRetry(data.intentId);
       } catch { return; }
-      void this.reconcile(channel.slice(userEventChannel('').length));
+      void this.reconcile(ownerId);
     });
     await this.subscriber.psubscribe(userEventChannel('*'));
     this.subscriber.on('ready', () => { void this.reconcile(); });
@@ -81,6 +92,10 @@ export class PersonalAgentService {
           this.principals.set(principal.id, principal);
           if (!externalOwners.has(principal.userId)) this.desired.set(principal.id, principal);
         }
+        for (const [id, retry] of this.retries) {
+          if (ownerId !== undefined && retry.principal.userId !== ownerId) continue;
+          if (JSON.stringify(this.desired.get(id)) !== JSON.stringify(retry.principal)) this.cancelRetry(id);
+        }
         for (const [id, session] of this.sessions) {
           if (ownerId !== undefined && session.principal.userId !== ownerId) continue;
           if (!session.stopping && JSON.stringify(this.desired.get(id)) === JSON.stringify(session.principal)
@@ -104,8 +119,9 @@ export class PersonalAgentService {
     return this.checking;
   }
 
-  private startSession(principal: ApiPrincipal): void {
+  private startSession(principal: ApiPrincipal, retry?: StartupRetry): void {
     if (!this.running || this.sessions.has(principal.id)) return;
+    if (this.retries.has(principal.id) && this.retries.get(principal.id) !== retry) return;
     const host = new ApiNegotiationHost([principal], this.model);
     const session: Session = { principal, host, active: false, ready: Promise.resolve() };
     this.sessions.set(principal.id, session);
@@ -113,6 +129,7 @@ export class PersonalAgentService {
       if (!this.running || session.stopping || this.sessions.get(principal.id) !== session) return;
       session.active = true;
       this.errors.delete(principal.id);
+      this.cancelRetry(principal.id);
       void publishUserInvalidation(principal.userId, 'agent.status', principal.intentId);
     });
     void session.ready.catch((error: unknown) => {
@@ -120,8 +137,40 @@ export class PersonalAgentService {
       const reason = error instanceof Error ? error.message : String(error);
       if (this.errors.get(principal.id) !== reason) logger.warn('Personal agent could not start', { intentId: principal.intentId, error: reason });
       this.errors.set(principal.id, reason);
-      void this.stopSession(session);
+      const retry = this.retries.get(principal.id) ?? { principal, attempts: 0 };
+      this.retries.set(principal.id, retry);
+      void this.stopSession(session).then(() => this.retrySession(session, retry, error), () => {});
     });
+  }
+
+  /** Retry only a failed intent, after its previous host has released ownership. */
+  private retrySession(session: Session, retry: StartupRetry, error: unknown): void {
+    const { id } = session.principal;
+    if (!this.running || this.retries.get(id) !== retry) return;
+    if (!this.desired.has(id) || error instanceof AgentSessionIneligibleError) {
+      this.cancelRetry(id);
+      if (this.desired.get(id) === session.principal) {
+        this.desired.delete(id);
+        this.principals.delete(id);
+      }
+      return;
+    }
+    if (retry.attempts === MAX_STARTUP_RETRIES) return;
+    const delay = error instanceof AgentSessionLeaseConflict
+      ? Math.max(0, error.retryAt - Date.now()) + 250
+      : 1_000 * 2 ** retry.attempts;
+    retry.attempts++;
+    retry.timer = setTimeout(() => {
+      retry.timer = undefined;
+      const principal = this.desired.get(id);
+      if (this.running && this.retries.get(id) === retry && principal) this.startSession(principal, retry);
+    }, delay);
+    retry.timer.unref();
+  }
+
+  private cancelRetry(intentId: string): void {
+    clearTimeout(this.retries.get(intentId)?.timer);
+    this.retries.delete(intentId);
   }
 
   /** Keep an intent reserved until its previous host has finished releasing its lease. */
@@ -164,7 +213,10 @@ export class PersonalAgentService {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new PersonalAgentError('Intent not found.', 404);
     if (await this.registry.getSelectedNegotiator(input.userId)) return null;
     if (!this.running) throw new PersonalAgentError('Your personal agent is unavailable.', 503);
-    if (!this.sessions.has(input.intentId) || this.sessions.get(input.intentId)?.host.agents.get(input.intentId)?.stopped) await this.reconcile(input.userId);
+    if (!this.sessions.has(input.intentId) || this.sessions.get(input.intentId)?.host.agents.get(input.intentId)?.stopped) {
+      this.cancelRetry(input.intentId);
+      await this.reconcile(input.userId);
+    }
     const session = this.sessions.get(input.intentId);
     if (!session || session.principal.userId !== input.userId) throw new PersonalAgentError('Your personal agent is unavailable. The intent must be active and its session must be free.', 409);
     if (session.stopping) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
@@ -185,6 +237,7 @@ export class PersonalAgentService {
     this.running = false;
     this.subscriber?.disconnect();
     this.pendingOwners.clear();
+    for (const id of this.retries.keys()) this.cancelRetry(id);
     await this.checking;
     await Promise.all([...this.sessions.values()].map((session) => this.stopSession(session)));
     this.sessions.clear();

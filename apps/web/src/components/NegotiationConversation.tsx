@@ -45,8 +45,8 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
     void refresh();
     let refreshTimer: ReturnType<typeof setTimeout>;
     const unsubscribe = subscribeUserEvent((event) => {
-      if (!(event.type.startsWith('negotiation.') && event.data?.opportunityId === opportunityId)
-        && !(event.type === 'intent.lifecycle' && event.data?.intentId === intentId)) return;
+      if (event.type !== 'negotiation.changed' || event.data?.intentId !== intentId
+        || event.data.opportunityId && event.data.opportunityId !== opportunityId) return;
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => { void refresh(); }, 100);
     });

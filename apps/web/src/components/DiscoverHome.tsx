@@ -81,7 +81,7 @@ export default function DiscoverHome() {
   useEffect(() => {
     let refreshTimer: ReturnType<typeof setTimeout>;
     const unsubscribe = subscribeUserEvent((event) => {
-      if (!['intent.updated', 'intent.lifecycle', 'opportunity.new', 'negotiation.opened', 'negotiation.settled'].includes(event.type)) return;
+      if (!['intent.updated', 'intent.lifecycle', 'opportunity.new', 'negotiation.opened', 'negotiation.changed'].includes(event.type)) return;
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => { void fetchIntents(); }, 100);
     });

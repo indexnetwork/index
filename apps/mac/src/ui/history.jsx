@@ -155,7 +155,7 @@ function NegotiationHistory({ onClose }) {
     load();
     let refreshTimer;
     const sub = live ? window.IndexApp.streamInbox((event) => {
-      if (!event.type?.startsWith("negotiation.") && event.type !== "intent.lifecycle") return;
+      if (!["negotiation.changed", "negotiation.opened"].includes(event.type)) return;
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(load, 100);
     }) : null;

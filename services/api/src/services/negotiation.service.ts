@@ -2,7 +2,7 @@ import { Negotiations, observeNegotiation, decideNegotiationOpening, pairKeyOf, 
 
 import { log } from '../lib/log';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationScanRecord, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
-import { publishUserEvent } from '../lib/user-events';
+import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
 
 const logger = log.service.from('NegotiationService');
 
@@ -103,8 +103,8 @@ export class NegotiationService {
     const result = await capability.execute(opportunityId, callerUserId, turn);
     if (!result.ok) return { rejection: result.rejection };
     const record = (await this.read(opportunityId, callerUserId))!;
-    const other = (await this.read(opportunityId, record.counterparty.userId))!;
-    const seats = [{ userId: callerUserId, intentId: record.intentId }, { userId: record.counterparty.userId, intentId: other.intentId }];
+    const seats = [{ userId: callerUserId, intentId: record.intentId }, { userId: record.counterparty.userId, intentId: record.counterparty.intentId }];
+    await publishNegotiationChange(seats, opportunityId);
     const ended = result.outcome !== null || result.blockedReason !== null;
     await Promise.all(seats.filter((seat) => ended || seat.userId !== callerUserId).map((seat) => this.notify(seat.userId, {
       type: result.outcome ? 'negotiation.settled' : 'negotiation.turn',
