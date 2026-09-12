@@ -35,7 +35,7 @@ export default function DiscoverHome() {
   const navigate = useNavigate();
   const { error: showError } = useNotifications();
   const { user } = useAuthContext();
-  const { negotiations, subscribeUserEvent } = useConversation();
+  const { negotiations } = useConversation();
   const [intents, setIntents] = useState<HomeIntent[]>([]);
   const [totalWaitingOpportunities, setTotalWaitingOpportunities] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -79,14 +79,10 @@ export default function DiscoverHome() {
   }, [fetchIntents]);
 
   useEffect(() => {
-    let refreshTimer: ReturnType<typeof setTimeout>;
-    const unsubscribe = subscribeUserEvent((event) => {
-      if (!['intent.updated', 'intent.lifecycle', 'opportunity.new', 'negotiation.opened', 'negotiation.changed'].includes(event.type)) return;
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => { void fetchIntents(); }, 100);
-    });
-    return () => { unsubscribe(); clearTimeout(refreshTimer); };
-  }, [fetchIntents, subscribeUserEvent]);
+    if (!intents.some((intent) => intent.warming)) return;
+    const interval = setInterval(fetchIntents, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchIntents, intents]);
 
   const handleArchive = useCallback(
     async (intent: HomeIntent) => {
