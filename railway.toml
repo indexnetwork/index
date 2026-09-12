@@ -1,6 +1,6 @@
 # Railway API service configuration.
 [build]
-watchPatterns = ["/services/api/**", "/packages/protocol/**", "/bun.lock", "/package.json", "/railway.toml"]
+watchPatterns = ["/services/api/**", "/packages/protocol/**", "/packages/discovery/**", "/bun.lock", "/package.json", "/railway.toml"]
 buildCommand = "bun run build:package:protocol && bun run build:api"
 
 [deploy]

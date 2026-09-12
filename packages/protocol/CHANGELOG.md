@@ -1,5 +1,18 @@
 # Changelog
 
+## 58.0.0
+
+### Breaking changes
+
+- Extract post-intent discovery into the independent `@indexnetwork/discovery` workspace. Remove `OpportunityGraphFactory`, `OpportunityGraphThresholdOverrides`, `HydeGraphFactory`, `HydeGenerator`, `LensInferrer`, `HydeGraphDatabase`, `HydeCache`, the lens/search DTOs, `buildCandidateEvidence`, and discovery threshold exports from protocol. The extracted path uses plain async TypeScript and validated fetch-based model responses.
+- Replace `IntentFollowUp.generateHyde`, `deleteHyde`, and `resumeDiscovery` with `onIntentSaved`, `onIntentArchived`, and `onIntentResumed`. Scheduling and failure/compensation behavior are unchanged; `scoreIntent` remains a separate best-effort metadata hook.
+- Remove artifact storage methods from protocol database ports and multi-lens retrieval from `Embedder`. Replace `OpportunityGraphDatabase` with the lifecycle/read-only `OpportunityDatabase` port; expose `readOpportunities`, `updateOpportunityStatus`, and `deleteOpportunity` directly. Remove discovery agents from protocol model assignments.
+- Hosts run discovery and commit returned potential pairs with `pairKeyOf` and `decideNegotiationOpening` through atomic `openCounterparties`. Protocol retains intent lifecycle, network/broadcast scope rules, negotiations, and opportunity lifecycle/presentation. Expose `resolveDiscoveryNetworkScope` and `renderDiscoveryNetworkContext` for host composition.
+
+### Preserved behavior
+
+- Keep source-grounded frame-v1 cache identity and generation cohorts, validation failure semantics, real-intent candidate retrieval, membership checks, per-lens/per-network budgets, rejection cooldown, ranking limits, explanations, and atomic pair uniqueness. Hypothetical documents remain query-side retrieval artifacts.
+
 ## 57.0.0
 
 ### Breaking changes

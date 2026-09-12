@@ -94,6 +94,9 @@ jobs:
           cd ../..
           cd services/api && bun install
 
+      - name: Check discovery
+        run: bunx eslint packages/discovery/src && bun run --cwd packages/discovery typecheck && bun run --cwd packages/discovery build
+
       - name: Type check packages/protocol
         run: cd packages/protocol && bun run build
 

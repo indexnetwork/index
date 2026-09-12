@@ -218,9 +218,9 @@ async function resume(): Promise<void> {
     ]);
     const graph = new Intents({ database: intentDatabaseAdapter, followUp: {
       scoreIntent: data => intentIndexing.scoreIntent(data),
-      generateHyde: data => intentIndexing.generateHyde(data),
-      deleteHyde: data => intentIndexing.deleteHyde(data),
-      resumeDiscovery: async data => {
+      onIntentSaved: data => intentIndexing.onIntentSaved(data),
+      onIntentArchived: data => intentIndexing.onIntentArchived(data),
+      onIntentResumed: async data => {
         const job = intentDiscovery.runDiscover({ ...data, trigger: 'intent_resume' }).then(
           () => { console.log(`[dev-intents] ${data.intentId} discovery finished`); },
           (error: unknown) => {

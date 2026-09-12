@@ -41,8 +41,6 @@ output with `setLoggerFactory()`. The package does not implement
 | Graph | File | Purpose |
 |-------|------|---------|
 | Intent | `internal/intents/graph/intent.graph.ts` | Clarify, infer, verify felicity conditions, reconcile, and persist intents |
-| Opportunity | `internal/opportunities/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
-| HyDE | `internal/discovery/hyde.graph.ts` | Infer search lenses, generate hypothetical documents per lens/corpus, and embed them (cache-aware) |
 | Network | `internal/networks/network.graph.ts` | Manage network CRUD |
 | Network Membership | `internal/networks/membership.graph.ts` | Manage network member join/leave |
 | Intent Indexer | `internal/networks/indexer.graph.ts` | Assign and unassign intents to networks at the owner's request |
@@ -56,10 +54,6 @@ output with `setLoggerFactory()`. The package does not implement
 | Intent Inferrer | `internal/intents/inference/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
 | Intent Verifier | `internal/intents/verification/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
 | Network Recommender | `internal/networks/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
-| HyDE Generator | `internal/discovery/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
-| HyDE Strategies | `internal/discovery/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
-| Lens Inferrer | `internal/discovery/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses targeting the intent corpus |
-| Opportunity Evaluator | `internal/opportunities/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
 | Opportunity Presenter | `internal/opportunities/opportunity.presenter.ts` | Radar graph, opportunity presentation — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 
 ## Core Concepts
@@ -71,12 +65,11 @@ The system models human collaboration through a linguistic and information-theor
 | **User** | Session-authenticated identity with many intents and network memberships. Presentation identity lives on `users`; semantic discovery uses intents and user contexts. |
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
 | **Network** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share a network. |
-| **Opportunity** | A **semantic intersection**: the point where a candidate's user context or intent satisfies the propositional content of a source intent. Scored by the Opportunity Evaluator using **valency** (argument-role fit) and **constraint satisfaction**. Presented with dual descriptions per **Grice's Maxim of Relation** — one framed for the source, one for the candidate. |
-| **HyDE** | Hypothetical Document Embeddings. Lens-based: the `LensInferrer` derives 1–N free-text **lenses** (search perspectives, e.g. "SF-based early-stage investor"). The live search corpus is intents. The encoder acts as a dense bottleneck filtering hallucinated specifics and retaining the semantic signal. |
+| **Opportunity** | A persisted intent pair admitted by protocol negotiation rules. The host receives candidate pairs from discovery, commits them atomically, and uses protocol lifecycle and presentation functions to serve them. |
+| **HyDE** | Query-side retrieval artifacts owned by `@indexnetwork/discovery`. Source frames constrain generation; validation controls which documents can be persisted. Candidate retrieval searches real intent embeddings. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
 | **Semantic Entropy** | Constraint density of an intent (0.0 = maximally constrained, 1.0 = trivially satisfiable). High-entropy intents ("I want a job") trigger an **elaboration loop** — a request for missing constraints before persistence. |
 | **Semantic Governance** | The full pipeline that ensures only actionable, felicitous, sufficiently clear intents enter the graph. Referential breadth is retained as warning metadata on the persisted signal rather than acting as a universal write prohibition. Implemented by the Intent Verifier and Intent Clarifier agents. |
-| **Valency Roles** | Derived from the argument structure of the source intent's goal verb (Hanks). The Opportunity Evaluator assigns: **Agent** (the one who can offer/do), **Patient** (the one who needs/seeks), or **Peer** (symmetric collaboration). These roles govern opportunity visibility and the notification cascade. |
 
 ## Opportunity Lifecycle and Role-Based Visibility
 
@@ -87,78 +80,14 @@ The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` i
 The host resolves the authenticated principal in a REST controller, calls its
 service, and the service invokes the capability graphs.
 
-### Example: "I'm looking for a React co-founder"
+### Post-intent matching
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Host as POST /api/intents
-    participant CI as IntentService
-    participant IC as IntentClarifier
-    participant IG as Intent Graph
-    participant CO as background_matcher
-    participant OG as Opportunity Graph
-    participant HG as HyDE Graph
-
-    User->>Host: "I'm looking for a React co-founder"
-    Host->>CI: create({description: "Looking for React co-founder", networkIds})
-
-    CI->>IC: Check semantic entropy
-    Note over IC: Entropy acceptable — commissive act, specific enough
-    IC-->>CI: proceed
-
-    CI->>IG: invoke(userId, inputContent, mode: create)
-    Note over IG: IntentInferrer extracts propositional content
-    Note over IG: IntentVerifier scores felicity conditions (authority + sincerity)
-    Note over IG: IntentReconciler: attributive mode → create (not update)
-    Note over IG: Executor persists with semantic entropy + referential anchor
-
-    IG-->>CI: intent created (felicitous)
-    CI->>CO: Auto-triggers discovery
-    CO->>OG: invoke(userId, sourceText, networkId)
-
-    OG->>HG: Generate HyDE docs
-    Note over HG: Lens → intents: complementary goal ("join as co-founder on React project")
-    HG-->>OG: HyDE embeddings (dense bottleneck applied)
-
-    Note over OG: Vector search within network scope
-    Note over OG: OpportunityEvaluator: scores via valency + constraint satisfaction
-    Note over OG: Assigns Patient (user) / Agent (candidate) roles
-    Note over OG: OpportunityPresenter: dual descriptions (Grice's Maxim of Relation)
-    Note over OG: Persist as latent — patient (user) sees draft
-
-    OG-->>CO: opportunities found
-    CO-->>Host: intent created + 3 draft opportunities
-    Host-->>User: intent created, 3 candidate matches persisted
-```
-
-### Resource-to-Subgraph Mapping
-
-```mermaid
-flowchart LR
-    subgraph resources [REST resources]
-        IR["/api/intents"]
-        NR["/api/networks"]
-        OR["/api/opportunities"]
-    end
-
-    subgraph graphs [SubGraphs]
-        IG[Intent Graph]
-        IxG[Network Graph]
-        IMG[Membership Graph]
-        IIG[Indexer Graph]
-        OG[Opportunity Graph]
-        HG[HyDE Graph]
-    end
-
-    IR --> IG
-    IR --> IIG
-    IR --> OG
-    NR --> IxG
-    NR --> IMG
-    OR --> OG
-    OG --> HG
-```
+After protocol persists an intent, the host's `onIntentSaved` hook schedules
+`@indexnetwork/discovery`. That independent library prepares source-grounded
+retrieval artifacts and returns potential intent pairs. The API commits them
+through `openCounterparties` using protocol pair identity and opening rules.
+The personal agent owns subsequent negotiation behavior; protocol still owns
+negotiation rules and opportunity lifecycle/presentation.
 
 ## Business Logic Flows
 
@@ -171,22 +100,13 @@ Handled by the **Intent Graph**:
 4. **Reconciliation**: For creation, `IntentReconciler` applies Donnellan's distinction — referential intents (user has a specific target in mind) update an existing record; attributive intents (any member of a class) create a new one if sufficiently different. Explicit updates bypass that create-versus-update choice and bind the single verified candidate to the supplied active owned intent ID.
 5. **Persistence**: Executor writes the intent with `semanticEntropy`, `referentialAnchor`, `speechActType`, and `felicityScores` fields.
 
-### HyDE Pipeline
+### Discovery boundary
 
-Handled by the **HyDE Graph**. The pipeline is **lens-based**: instead of hardcoded strategy names, the `LensInferrer` derives 1–N free-text lenses from the source text (and optional user context), each tagged with a target corpus that selects the generation template:
-- **intents corpus**: Generates a complementary goal statement via meaning postulates — "If user A wants to invest, infer B wants funding" (the former *Reciprocal* strategy).
-- The former *Neighborhood* (discourse-frame) strategy was retired with the move to lenses; lens labels carry the contextual specificity instead (including location awareness).
-- The encoder acts as a **dense bottleneck** — hallucinated specifics (fake names, invented details) are filtered out; only the semantic relevance signal is preserved in the embedding.
-
-### Opportunity Discovery
-
-Handled by the **Opportunity Graph**:
-1. **Prep**: Load user's active intents and HyDE documents.
-2. **Scope**: Determine target networks (single or all).
-3. **Discovery**: HyDE-driven vector search within network scope, against candidate intents.
-4. **Evaluation**: `OpportunityEvaluator` scores each candidate pair via **valency** (does the candidate fill the argument slot of the source's goal verb?) and **constraint satisfaction** (does the candidate's constitutive context match all extracted constraints?). Assigns role: Agent, Patient, or Peer.
-5. **Presentation**: `OpportunityPresenter` generates two descriptions per Grice's Maxim of Relation — one from the source's frame, one from the candidate's frame.
-6. **Persist**: Opportunities created as `latent` with actor roles. Role determines tier-0 visibility (see Opportunity Lifecycle above).
+Lens inference, frame extraction, HyDE validation/cache identity, retrieval,
+ranking, and explanations live in `packages/discovery`. Real active intent
+embeddings form the candidate corpus; hypothetical documents stay on the query
+side. The host implements protocol-authorized network scope and rechecks
+membership and broadcast eligibility when atomically opening each pair.
 
 ## Key Invariants
 
@@ -195,7 +115,7 @@ Handled by the **Opportunity Graph**:
 - **Felicity-gated persistence**: Only intents classified as `felicitous` are persisted as active
 - **Dual synthesis**: Each opportunity has descriptions framed for both actors (Grice's Maxim of Relation)
 - **Role-based visibility**: the actors on a pairing may read it
-- **Encoding bottleneck**: HyDE hallucinations are never stored or shown — only their embeddings are used
+- **Retrieval grounding**: only validated frame-v1 artifacts are cached or persisted, and all hypothetical documents stay on the query side
 
 ## Shared Infrastructure
 
@@ -209,8 +129,7 @@ Handled by the **Opportunity Graph**:
 | `internal/shared/network/metadata.renderer.ts` | Renders network metadata into prompt context |
 | `internal/opportunities/opportunity.presentation.ts` | Pure card text generation for opportunity display |
 | `internal/opportunities/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
-| `internal/opportunities/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, radar composition helpers |
-| `internal/opportunities/opportunity.evidence.ts` | Builds and merges per-candidate opportunity evidence |
+| `internal/opportunities/opportunity.utils.ts` | Opportunity visibility and radar composition helpers |
 | `internal/opportunities/radar/radar.health.ts` | Radar health metrics computation |
 | `internal/opportunities/opportunity.labels.ts` | Opportunity status and role label constants |
 
@@ -224,5 +143,5 @@ Core tables the protocol interfaces read/write:
 
 - **Identity**: `users` (name/bio/location), `user_socials`
 - **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`
-- **Opportunities & discovery**: `opportunities`, `hyde_documents`, `opportunity_discovery_runs`, `enrichment_tool_runs`
+- **Opportunities**: `opportunities`, `enrichment_tool_runs`
 - **Agents**: `agents`, `apikey`

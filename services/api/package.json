@@ -1,12 +1,12 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.120.0",
+  "version": "0.121.0",
   "license": "MIT",
   "private": true,
   "scripts": {
-    "predev": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build",
+    "predev": "bun run --cwd ../../packages/discovery build && bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build",
     "dev": "NODE_ENV=development bun --watch --preload ./src/instrument.ts src/main.ts",
-    "build": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && tsc",
+    "build": "bun run --cwd ../../packages/discovery build && bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && tsc",
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
@@ -47,7 +47,8 @@
     "resend": "^4.0.1",
     "uuid": "^11.1.0",
     "zod": "^3.22.4",
-    "@indexnetwork/agent": "workspace:*"
+    "@indexnetwork/agent": "workspace:*",
+    "@indexnetwork/discovery": "workspace:*"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "1.4.5",

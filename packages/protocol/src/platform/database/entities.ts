@@ -444,38 +444,6 @@ export interface UpdateNetworkSettingsData {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// HYDE DOCUMENT TYPES (Opportunity Redesign)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export type HydeSourceType = 'intent' | 'query' | 'context';
-
-export interface HydeDocument {
-  id: string;
-  sourceType: HydeSourceType;
-  sourceId: string | null;
-  sourceText: string | null;
-  strategy: string;
-  targetCorpus: string;
-  hydeText: string;
-  hydeEmbedding: number[];
-  context: Record<string, unknown> | null;
-  createdAt: Date;
-  expiresAt: Date | null;
-}
-
-export interface CreateHydeDocumentData {
-  sourceType: HydeSourceType;
-  sourceId?: string;
-  sourceText?: string;
-  strategy: string;
-  targetCorpus: string;
-  hydeText: string;
-  hydeEmbedding: number[];
-  context?: Record<string, unknown>;
-  expiresAt?: Date;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // OPPORTUNITY TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
 

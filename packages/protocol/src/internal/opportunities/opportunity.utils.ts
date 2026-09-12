@@ -1,48 +1,7 @@
-/**
- * Opportunity graph utilities: role derivation from corpus type.
- * Used by the opportunity graph to map lens corpus to opportunity actor roles.
- *
- * With lens-based HyDE, strategy selection is handled automatically by the
- * LensInferrer agent. This file provides corpus-to-role mapping for opportunity actors.
- */
-
-import type { HydeTargetCorpus } from '../../protocol/core.js';
 import { log } from '../shared/observability/log.js';
 
 const logger = log.graph.from('SelectByComposition');
 const dedupeByPersonLog = log.graph.from('DeduplicateByPerson');
-
-/** Actor roles in the opportunity model (agent / patient / peer). */
-export type OpportunityActorRole = 'agent' | 'patient' | 'peer';
-
-/** Result of mapping a corpus to source and candidate roles. */
-export interface DerivedRoles {
-  sourceRole: OpportunityActorRole;
-  candidateRole: OpportunityActorRole;
-}
-
-/**
- * Derive actor roles from the corpus type of a lens match.
- *
- * When a candidate is found via:
- * - "profiles" corpus → found by who they are → candidate can help → agent
- * - "intents" corpus → found by what they need → candidate needs something → patient
- *
- * @param corpus - The target corpus that produced the match ('profiles' | 'intents')
- * @returns Roles for the source (intent owner) and the candidate (matched user/intent)
- */
-export function deriveRolesFromCorpus(corpus: HydeTargetCorpus): DerivedRoles {
-  switch (corpus) {
-    case 'profiles':
-      // Source seeks someone who can help → source is patient, candidate can help → agent
-      return { sourceRole: 'patient', candidateRole: 'agent' };
-    case 'intents':
-      // Source offers or needs; candidate has complementary goal → source is agent, candidate is patient
-      return { sourceRole: 'agent', candidateRole: 'patient' };
-    default:
-      return { sourceRole: 'peer', candidateRole: 'peer' };
-  }
-}
 
 /**
  * Validates opportunity actors.
