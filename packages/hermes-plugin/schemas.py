@@ -14,21 +14,6 @@ GUIDANCE_TOPICS = (
 )
 
 
-def _native_schema(name, description, properties, required):
-    return {"name": f"index_{name}", "description": description,
-            "parameters": {"type": "object", "additionalProperties": False,
-                           "properties": properties, "required": required}}
-
-
-_STRING = {"type": "string"}
-# Setup only. The negotiator itself runs `@indexnetwork/agent` in its own
-# process, so Hermes exposes no tools for reading matches, taking turns, or
-# asking the owner questions — that logic is not reimplemented here.
-NATIVE_AGENT_SCHEMAS = {
-    "configure_personal_agent": _native_schema("configure_personal_agent", "Enable the Index personal agent on this machine for the already selected external Index agent. Binds this conversation as the owner's private channel and starts the negotiator; Index events then wake each signal as its matches move. Call when the owner asks Hermes to handle negotiations.", {"agentId": _STRING}, ["agentId"]),
-    "focus_intent": _native_schema("focus_intent", "Point this conversation's later owner messages at one Index signal. The personal agent asks and answers here itself: never supply, invent, or paraphrase an answer in tool arguments.", {"intentId": _STRING}, ["intentId"]),
-}
-
 INDEX_READ_INTENTS = {
     "name": "index_read_intents",
     "description": (

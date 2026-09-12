@@ -1,6 +1,23 @@
 # Changelog
 
 
+## 0.42.0
+
+### Changed
+- **Hermes is the speaker, not the bound-conversation negotiator.** The
+  previous path — `index_configure_personal_agent`, `index_focus_intent`, a
+  sqlite bind row, reply-address routing, `auxiliary_client.call_llm` /
+  `/complete`, and one announced Hermes session per signal — is gone. The
+  sidecar still runs `@indexnetwork/agent`. Hermes now speaks through
+  Index-platform sessions: one think session per signal (`{intentId}:think`)
+  and one speaker session per match (`{opportunityId}`). Owner text is
+  accepted only on the think session. Hosted Index still uses `Agent.run`.
+
+### Removed
+- Tools `index_configure_personal_agent` and `index_focus_intent`.
+- Hook `pre_llm_call`, `HermesModel`, `native_agent.py`, and
+  `principal.sqlite3` bind/focus state.
+
 ## 0.41.3
 
 ### Added

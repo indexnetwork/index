@@ -308,6 +308,7 @@ class PrincipalInbox {
   agent;
   context;
   host;
+  complete;
   messages = [];
   incomingMessages = [];
   requests = [];
@@ -318,10 +319,11 @@ class PrincipalInbox {
   reviewController;
   immediate = false;
   stopped = false;
-  constructor(agent, context, host) {
+  constructor(agent, context, host, complete) {
     this.agent = agent;
     this.context = context;
     this.host = host;
+    this.complete = complete;
   }
   snapshot() {
     return structuredClone({
@@ -491,7 +493,7 @@ class PrincipalInbox {
       }
     };
     try {
-      const result = await this.agent.run(buildPrincipalInboxPrompt({
+      const prompt = buildPrincipalInboxPrompt({
         principalConversation: this.messages,
         incomingMessages,
         pendingQuestion: question,
@@ -499,7 +501,9 @@ class PrincipalInbox {
         outcomes,
         acceptedCommitments: context.acceptedCommitments,
         negotiations: context.negotiations
-      }), { history: new MemoryMessageStore, tools: [tool], maxSteps: 1, signal: controller.signal });
+      });
+      const options = { history: new MemoryMessageStore, tools: [tool], maxSteps: 1, signal: controller.signal };
+      const result = await (this.complete ?? this.agent.run.bind(this.agent))(prompt, options);
       if (controller.signal.aborted || this.stopped || context.version !== this.context().version)
         return;
       if (!decision) {
@@ -599,6 +603,7 @@ class NegotiationAgent {
   participant;
   host;
   agent;
+  speaker;
   tasks = new Map;
   inbox;
   commitments = new Map;
@@ -615,6 +620,7 @@ class NegotiationAgent {
     this.host = host;
     const { owner, intent, principalContext, guidance } = participant;
     this.store = options.store;
+    this.speaker = options.speaker;
     this.agent = new Agent({
       model: options.model,
       now: options.now,
@@ -637,7 +643,11 @@ class NegotiationAgent {
         host.error(null, owner, "Principal communication failed: " + reason);
         this.stop();
       }
-    });
+    }, options.speaker && ((input, run) => options.speaker.inbox({
+      prompt: input,
+      tools: run.tools ?? [],
+      signal: run.signal ?? this.controller.signal
+    })));
   }
   start() {
     return this.starting ??= this.restore();
@@ -778,6 +788,8 @@ class NegotiationAgent {
           await this.checkpoints;
           this.controller.signal.throwIfAborted();
           task.controller.signal.throwIfAborted();
+          if (turn.stale)
+            throw new ContextChanged;
           if (turn.attempted)
             throw new Error("This turn already used its POST attempt. Stop; do not retry.");
           if (turn.contextVersion !== this.contextVersion) {
@@ -821,6 +833,8 @@ class NegotiationAgent {
       run: async (input) => {
         this.controller.signal.throwIfAborted();
         task.controller.signal.throwIfAborted();
+        if (turn.stale)
+          throw new ContextChanged;
         if (turn.attempted)
           throw new Error("Stop after a submission attempt; do not request principal input.");
         if (turn.contextVersion !== this.contextVersion) {
@@ -891,7 +905,15 @@ class NegotiationAgent {
           communicationReview: task.reviewNote
         });
         task.reviewNote = undefined;
-        const result = await this.agent.run(input, { history, tools, onStep, signal });
+        const result = this.speaker ? await this.speaker.turn({
+          opportunityId: task.opportunityId,
+          counterparty: task.counterparty.name ?? undefined,
+          prompt: input,
+          tools,
+          signal
+        }) : await this.agent.run(input, { history, tools, onStep, signal });
+        if (turn.stale)
+          throw new ContextChanged;
         signal.throwIfAborted();
         record = await client.readNegotiation(task.opportunityId);
         signal.throwIfAborted();
@@ -1007,35 +1029,6 @@ class IndexClient {
   }
 }
 
-// runtime/src/model.ts
-class HermesModel {
-  bridge;
-  constructor(bridge) {
-    this.bridge = bridge;
-  }
-  async complete(messages, tools = [], options = {}) {
-    const response = await fetch(`${this.bridge.url}/complete`, {
-      method: "POST",
-      signal: options.signal,
-      headers: { Authorization: `Bearer ${this.bridge.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, ...tools.length > 0 ? { tools } : {} })
-    });
-    const body = await response.text();
-    let reply = {};
-    try {
-      reply = JSON.parse(body);
-    } catch {}
-    if (!response.ok) {
-      throw new Error(`Hermes model call failed (${response.status}): ${reply.error ?? body.slice(0, 500)}`);
-    }
-    return {
-      role: "assistant",
-      content: reply.content ?? null,
-      ...reply.tool_calls?.length ? { tool_calls: reply.tool_calls } : {}
-    };
-  }
-}
-
 // runtime/src/store.ts
 import { mkdir, readFile, rename, writeFile } from "fs/promises";
 import { dirname } from "path";
@@ -1056,7 +1049,7 @@ class FilePrincipalStore {
   }
   async save(state, messages) {
     this.envelope.state = state;
-    this.envelope.messages = [...messages];
+    this.envelope.messages.push(...messages);
     await this.flush();
   }
   delivered(id) {
@@ -1082,16 +1075,11 @@ class FilePrincipalStore {
 }
 
 // runtime/src/main.ts
-var ACTIONS = {
-  propose: "Proposed",
-  counter: "Countered",
-  accept: "Accepted",
-  decline: "Declined"
+var unusedModel = {
+  complete: async () => {
+    throw new Error("This host uses a Hermes speaker.");
+  }
 };
-function signalTitle(payload) {
-  const line = payload.trim().replace(/\s+/g, " ");
-  return line.length > 80 ? `${line.slice(0, 79)}\u2026` : line || "Index signal";
-}
 function log(level, event, detail = {}) {
   process.stderr.write(`${JSON.stringify({ level, event, ...detail })}
 `);
@@ -1102,24 +1090,27 @@ function required(name) {
     throw new Error(`${name} is required.`);
   return value;
 }
+function signalTitle(payload) {
+  const line = payload.trim().replace(/\s+/g, " ");
+  return line.length > 80 ? `${line.slice(0, 79)}\u2026` : line || "Index signal";
+}
 
 class Negotiator {
   client;
-  model;
   bridge;
   stateDirectory;
   runtimes = new Map;
+  calls = new Map;
   principal;
-  constructor(client, model, bridge, stateDirectory) {
+  constructor(client, bridge, stateDirectory) {
     this.client = client;
-    this.model = model;
     this.bridge = bridge;
     this.stateDirectory = stateDirectory;
   }
   context() {
     return this.principal ??= (async () => {
       const [principal, guidance] = await Promise.all([this.client.principal(), this.client.guidance()]);
-      return { principal, guidance };
+      return { ...principal, guidance };
     })().catch((error) => {
       this.principal = undefined;
       throw error;
@@ -1134,20 +1125,72 @@ class Negotiator {
     }
     return pending;
   }
+  speaker(intentId, title) {
+    return {
+      turn: (input) => this.speak(intentId, title, {
+        kind: "turn",
+        opportunityId: input.opportunityId,
+        counterparty: input.counterparty,
+        prompt: input.prompt,
+        tools: input.tools,
+        signal: input.signal
+      }),
+      inbox: (input) => this.speak(intentId, title, {
+        kind: "inbox",
+        prompt: input.prompt,
+        tools: input.tools,
+        signal: input.signal
+      })
+    };
+  }
+  async speak(intentId, title, input) {
+    const callId = crypto.randomUUID();
+    this.calls.set(callId, new Map(input.tools.map((tool) => [tool.name, tool])));
+    try {
+      const response = await fetch(`${this.bridge.url}/speak`, {
+        method: "POST",
+        signal: input.signal,
+        headers: { Authorization: `Bearer ${this.bridge.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callId,
+          kind: input.kind,
+          intentId,
+          title,
+          prompt: input.prompt,
+          opportunityId: input.opportunityId,
+          counterparty: input.counterparty
+        })
+      });
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(body.error ?? `Hermes speaker failed (${response.status}).`);
+      return { end: body.end ?? "done", output: body.output ?? "", steps: [], messages: [] };
+    } finally {
+      this.calls.delete(callId);
+    }
+  }
+  async tool(callId, name, args) {
+    const tool = this.calls.get(callId)?.get(name);
+    if (!tool?.run)
+      throw new Error(`No tool named "${name}".`);
+    try {
+      return await tool.run(args, { agent: undefined });
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
   async create(intentId) {
-    const { principal: { owner, principalContext }, guidance } = await this.context();
+    const { owner, principalContext, guidance } = await this.context();
     const intent = await this.client.intent(intentId);
     const store = new FilePrincipalStore(join(this.stateDirectory, `${owner.id}.${intentId}.json`));
-    const runtime = { store, title: signalTitle(intent.payload), flushing: Promise.resolve() };
+    const title = signalTitle(intent.payload);
+    const runtime = { store, title, flushing: Promise.resolve() };
     const host = {
       status: (opportunityId, message) => log("info", "status", { intentId, opportunityId, message }),
       retry: (_owner, attempt, reason) => log("warn", "retry", { intentId, attempt, reason }),
       step: () => {},
-      conversation: () => this.flush(runtime, intentId),
-      turn: (_owner, input, record) => {
-        log("info", "turn", { intentId, opportunityId: record.opportunityId, action: input.action });
-        this.announce(intentId, runtime.title, `${ACTIONS[input.action] ?? input.action} \xB7 ${record.counterparty.name || "Match"}
-${input.message}`);
+      conversation: () => {
+        runtime.flushing = runtime.flushing.then(() => this.publishThink(runtime, intentId), () => {});
       },
       end: (record) => log("info", "end", {
         intentId,
@@ -1170,10 +1213,10 @@ ${input.message}`);
         },
         submitTurn: (id, turn) => this.client.submitTurn(id, turn)
       }
-    }, host, { model: this.model, store });
+    }, host, { model: unusedModel, store, speaker: this.speaker(intentId, title) });
     await runtime.agent.start();
     log("info", "signal.started", { intentId });
-    this.flush(runtime, intentId);
+    host.conversation();
     return runtime;
   }
   async wake(intentId) {
@@ -1186,12 +1229,10 @@ ${input.message}`);
     }
   }
   async message(intentId, text) {
-    const runtime = await this.runtime(intentId);
-    return Boolean(await runtime.agent.message(text));
+    return Boolean(await (await this.runtime(intentId)).agent.message(text));
   }
   async answer(intentId, questionId, text) {
-    const runtime = await this.runtime(intentId);
-    return Boolean(await runtime.agent.answer(questionId, text));
+    return Boolean(await (await this.runtime(intentId)).agent.answer(questionId, text));
   }
   async pending(intentId) {
     const runtime = await this.runtime(intentId);
@@ -1201,57 +1242,41 @@ ${input.message}`);
     const runtimes = await Promise.allSettled([...this.runtimes.values()]);
     await Promise.allSettled(runtimes.map((result) => result.status === "fulfilled" ? result.value.agent.stop() : undefined));
   }
-  async announce(intentId, title, text) {
-    try {
-      const response = await fetch(`${this.bridge.url}/announce`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.bridge.token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ intentId, title, text })
-      });
-      if (!response.ok) {
-        log("warn", "announce.failed", { intentId, reason: (await response.text()).slice(0, 300) });
-      }
-    } catch (error) {
-      log("warn", "announce.failed", { intentId, reason: String(error) });
-    }
-  }
-  flush(runtime, intentId) {
-    runtime.flushing = runtime.flushing.then(() => this.deliver(runtime, intentId)).catch((error) => log("warn", "error", { intentId, reason: `Delivery failed: ${String(error)}` }));
-  }
-  async deliver(runtime, intentId) {
+  async publishThink(runtime, intentId) {
     const displayed = runtime.agent.pending?.id;
     const entries = [];
     const retired = [];
     for (const message of runtime.agent.conversation) {
       if (runtime.store.delivered(message.id))
         continue;
-      if (message.kind === "question" ? message.questionId !== displayed : message.kind !== "message") {
+      if (message.kind === "question" ? message.questionId === displayed : message.kind === "message") {
+        entries.push(message);
+      } else {
         retired.push(message.id);
-        continue;
       }
-      entries.push(message);
     }
-    if (retired.length > 0)
+    if (retired.length)
       await runtime.store.markDelivered(retired);
-    if (entries.length === 0)
+    if (!entries.length)
       return;
-    const response = await fetch(`${this.bridge.url}/deliver`, {
+    const response = await fetch(`${this.bridge.url}/think`, {
       method: "POST",
       headers: { Authorization: `Bearer ${this.bridge.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ entries: entries.map((message) => ({ intentId, ...message })) })
+      body: JSON.stringify({
+        intentId,
+        title: runtime.title,
+        entries: entries.map(({ kind, text }) => ({ kind, text }))
+      })
     });
-    const result = await response.json();
-    if (!response.ok)
-      throw new Error(result.error ?? `Hermes refused delivery (${response.status}).`);
-    if (!result.delivered) {
-      log("warn", "delivery.deferred", { intentId, reason: result.reason });
+    if (!response.ok) {
+      log("warn", "think.failed", { intentId, reason: (await response.text()).slice(0, 300) });
       return;
     }
     await runtime.store.markDelivered(entries.map(({ id }) => id));
   }
 }
 var bridge = { url: required("INDEX_BRIDGE_URL"), token: required("INDEX_BRIDGE_TOKEN") };
-var negotiator = new Negotiator(new IndexClient(required("INDEX_API_ORIGIN"), required("INDEX_SESSION_TOKEN"), required("INDEX_EXECUTOR_ID")), new HermesModel(bridge), bridge, required("INDEX_STATE_DIR"));
+var negotiator = new Negotiator(new IndexClient(required("INDEX_API_ORIGIN"), required("INDEX_SESSION_TOKEN"), required("INDEX_EXECUTOR_ID")), bridge, required("INDEX_STATE_DIR"));
 var json = (body, status = 200) => Response.json(body, { status });
 var server = Bun.serve({
   hostname: "127.0.0.1",
@@ -1271,14 +1296,18 @@ var server = Bun.serve({
     try {
       switch (pathname) {
         case "/wake":
-          await negotiator.wake(body.intentId);
+          await negotiator.wake(String(body.intentId));
           return json({ ok: true });
         case "/message":
-          return json({ accepted: await negotiator.message(body.intentId, body.text) });
+          return json({ accepted: await negotiator.message(String(body.intentId), String(body.text)) });
         case "/answer":
-          return json({ accepted: await negotiator.answer(body.intentId, body.questionId, body.text) });
+          return json({ accepted: await negotiator.answer(String(body.intentId), String(body.questionId), String(body.text)) });
         case "/pending":
-          return json(await negotiator.pending(body.intentId));
+          return json(await negotiator.pending(String(body.intentId)));
+        case "/tool":
+          return json({
+            result: await negotiator.tool(String(body.callId), String(body.name), body.args)
+          });
         case "/shutdown":
           queueMicrotask(() => void shutdown());
           return json({ ok: true });

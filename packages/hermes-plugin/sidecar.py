@@ -38,9 +38,8 @@ def _bun() -> str:
 class Sidecar:
     """Own one negotiator process and the loopback calls into it."""
 
-    def __init__(self, bridge, store, home: Path):
+    def __init__(self, bridge, home: Path):
         self.bridge = bridge
-        self.store = store
         self._state = home / "index-network" / "negotiator"
         self._lock = threading.Lock()
         self._process: subprocess.Popen | None = None
@@ -130,7 +129,7 @@ class Sidecar:
             headers={"Authorization": f"Bearer {self.bridge.token}", "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(request, timeout=CALL_SECONDS) as response:
+            with urllib.request.urlopen(request, timeout=None if path == "/tool" else CALL_SECONDS) as response:
                 return json.loads(response.read() or b"{}")
         except urllib.error.HTTPError as exc:
             detail = json.loads(exc.read() or b"{}").get("error") or f"status {exc.code}"

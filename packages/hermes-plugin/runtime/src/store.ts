@@ -34,10 +34,10 @@ export class FilePrincipalStore implements PrincipalStore {
     return { state: this.envelope.state, messages: this.envelope.messages };
   }
 
-  /** @param state - The resumable inbox. @param messages - The canonical H2A transcript. */
+  /** @param state - The resumable inbox. @param messages - Newly committed H2A messages. */
   async save(state: PrincipalState, messages: readonly PrincipalMessage[]): Promise<void> {
     this.envelope.state = state;
-    this.envelope.messages = [...messages];
+    this.envelope.messages.push(...messages);
     await this.flush();
   }
 
