@@ -26,6 +26,7 @@ interface Session {
   host: ApiNegotiationHost;
   ready: Promise<void>;
   active: boolean;
+  stopping?: Promise<void>;
 }
 
 /** Owns the API process's personal agents independently of HTTP requests and browser connections. */
@@ -41,7 +42,7 @@ export class PersonalAgentService {
 
   constructor(private readonly model: Model) {}
 
-  /** Restore eligible sessions at boot and reconcile when a signal's lifecycle or Redis connection changes. */
+  /** Schedule eligible sessions at boot and reconcile new/changed intents and executor bindings in the background. */
   async start(): Promise<void> {
     this.running = true;
     this.subscriber = createRedisClient();
@@ -62,34 +63,47 @@ export class PersonalAgentService {
         .map(async (userId) => await this.registry.getSelectedNegotiator(userId) ? userId : null))).filter((id) => id !== null));
       this.principals = new Map(principals.map((principal) => [principal.id, principal]));
       const desired = new Map(principals.filter(({ userId }) => !externalOwners.has(userId)).map((principal) => [principal.id, principal]));
-      await Promise.all([...this.sessions].map(async ([id, session]) => {
-        if (JSON.stringify(desired.get(id)) === JSON.stringify(session.principal) && !session.host.agents.get(id)?.stopped) return;
-        this.sessions.delete(id);
-        await session.host.stop();
-      }));
+      for (const [id, session] of this.sessions) {
+        if (session.stopping) continue;
+        if (JSON.stringify(desired.get(id)) === JSON.stringify(session.principal) && !session.host.agents.get(id)?.stopped) continue;
+        void this.stopSession(session);
+      }
       if (!this.running) return;
-      await Promise.all([...desired.values()].map(async (principal) => {
-        if (this.sessions.has(principal.id) || !this.running) return;
+      for (const principal of desired.values()) {
+        if (this.sessions.has(principal.id)) continue;
         const host = new ApiNegotiationHost([principal], this.model);
         const session: Session = { principal, host, active: false, ready: Promise.resolve() };
         this.sessions.set(principal.id, session);
         session.ready = host.start().then(() => {
+          if (!this.running || session.stopping || this.sessions.get(principal.id) !== session) return;
           session.active = true;
           this.errors.delete(principal.id);
         });
-        try { await session.ready; }
-        catch (error) {
-          this.sessions.delete(principal.id);
-          await host.stop();
+        void session.ready.catch((error: unknown) => {
+          if (session.stopping || this.sessions.get(principal.id) !== session) return;
           const reason = error instanceof Error ? error.message : String(error);
           if (this.errors.get(principal.id) !== reason) logger.warn('Personal agent could not start', { intentId: principal.intentId, error: reason });
           this.errors.set(principal.id, reason);
-        }
-      }));
+          void this.stopSession(session);
+        });
+      }
     })().catch((error: unknown) => {
       logger.error('Personal-agent reconciliation failed', { error: error instanceof Error ? error.message : String(error) });
     }).finally(() => { this.checking = undefined; });
     return this.checking;
+  }
+
+  /** Keep an intent reserved until its previous host has finished releasing its lease. */
+  private stopSession(session: Session): Promise<void> {
+    if (session.stopping) return session.stopping;
+    session.active = false;
+    session.stopping = session.host.stop().then(() => {
+      if (this.sessions.get(session.principal.id) === session) this.sessions.delete(session.principal.id);
+    });
+    void session.stopping.catch((error: unknown) => {
+      logger.error('Personal agent could not stop', { intentId: session.principal.intentId, error: error instanceof Error ? error.message : String(error) });
+    });
+    return session.stopping;
   }
 
   /** @param userId - Authenticated owner. @param intentId - Intent conversation being read. @returns Persisted question and current runtime availability. @throws When the caller does not own the intent. */
@@ -102,7 +116,7 @@ export class PersonalAgentService {
     if (external) return { status: 'external', pending: null, queuedQuestions: 0 };
     const session = this.sessions.get(intentId);
     const agent = session?.host.agents.get(intentId);
-    const status = agent?.stopped ? 'unavailable' : session?.active ? 'running' : session ? 'starting'
+    const status = session?.stopping || agent?.stopped ? 'unavailable' : session?.active ? 'running' : session ? 'starting'
       : this.principals.has(intentId) ? 'unavailable' : 'paused';
     return { status, pending: status === 'running' ? saved?.state?.inbox.question ?? null : null,
       queuedQuestions: agent?.queuedQuestions ?? 0 };
@@ -121,8 +135,10 @@ export class PersonalAgentService {
     if (!this.sessions.has(input.intentId) || this.sessions.get(input.intentId)?.host.agents.get(input.intentId)?.stopped) await this.reconcile();
     const session = this.sessions.get(input.intentId);
     if (!session || session.principal.userId !== input.userId) throw new PersonalAgentError('Your personal agent is unavailable. The intent must be active and its session must be free.', 409);
+    if (session.stopping) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
     try { await session.ready; }
     catch { throw new PersonalAgentError('Your personal agent could not start. Please try again.', 503); }
+    if (!this.running || session.stopping || this.sessions.get(input.intentId) !== session) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
     const saved = await AgentSessionDatabaseAdapter.readSession(input.userId, input.intentId);
     if (saved?.conversationId !== input.conversationId) throw new PersonalAgentError('Agent conversation not found.', 404);
     const agent = session.host.agents.get(input.intentId)!;
@@ -137,7 +153,7 @@ export class PersonalAgentService {
     this.running = false;
     this.subscriber?.disconnect();
     await this.checking;
-    await Promise.all([...this.sessions.values()].map(({ host }) => host.stop()));
+    await Promise.all([...this.sessions.values()].map((session) => this.stopSession(session)));
     this.sessions.clear();
   }
 }

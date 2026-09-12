@@ -77,7 +77,7 @@ export class ApiNegotiationHost extends EventEmitter {
     }));
   }
 
-  /** Restore sessions and relay existing/new match observations independently of TUI selection. @throws When a selected principal has an external negotiation executor. */
+  /** Restore sessions and subscribe to background match observations independently of TUI selection. @throws When a selected principal has an external negotiation executor. */
   async start(): Promise<void> {
     const registry = new AgentDatabaseAdapter();
     for (const userId of new Set(this.users.map((user) => user.userId))) {
@@ -97,8 +97,9 @@ export class ApiNegotiationHost extends EventEmitter {
     });
     this.subscriber.on('ready', () => { this.versions.clear(); void this.scan(); });
     await this.subscriber.subscribe(...[...new Set(this.users.map(({ userId }) => userEventChannel(userId)))]);
-    await this.scan();
     if (this.stopped) return;
+    // Ongoing notifications can keep a scan alive indefinitely; discovery does not gate session readiness.
+    void this.scan();
   }
 
   private record(record: NegotiationDetail): Negotiation {
