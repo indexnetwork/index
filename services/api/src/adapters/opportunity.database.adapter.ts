@@ -1136,6 +1136,7 @@ export class OpportunityDatabaseAdapter {
       return siblingIds;
     });
     for (const id of ids) emitOpportunityTransitionBestEffort({ id, status: 'accepted' });
+    await negotiationDatabaseAdapter.closeForOpportunities(ids);
     return ids;
   }
 
