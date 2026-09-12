@@ -10,6 +10,10 @@ import { IntentDatabaseAdapter } from '../../adapters/intent.database.adapter';
 import { negotiationService, type NegotiationDetail } from '../../services/negotiation.service';
 import { userEventChannel } from '../user-events';
 
+const DATABASE_CONCURRENCY = 4;
+let activeDatabaseOperations = 0;
+const databaseQueue: (() => void)[] = [];
+
 export interface ApiPrincipal {
   id: string; userId: string; name: string; intentId: string; intent: string; principalContext: string;
 }
@@ -38,7 +42,7 @@ export class ApiNegotiationHost extends EventEmitter {
     for (const principal of users) {
       const store = new AgentSessionDatabaseAdapter(principal.userId, principal.intentId);
       const read = async (id: string) => {
-        const record = await negotiationService.read(id, principal.userId);
+        const record = await this.runDatabase(() => negotiationService.read(id, principal.userId));
         if (!record || record.intentId !== principal.intentId) throw new Error('Negotiation is outside this principal/intent session.');
         this.observe(principal, record);
         return this.record(record);
@@ -55,7 +59,7 @@ export class ApiNegotiationHost extends EventEmitter {
         owner: { id: principal.userId, name: principal.name }, intent: { id: principal.intentId, payload: principal.intent },
         principalContext: principal.principalContext, guidance: NEGOTIATION_GUIDANCE,
         client: { readNegotiation: read, submitTurn: async (id, turn) => {
-          const result = await negotiationService.submitTurn(id, principal.userId, turn, store.execution);
+          const result = await this.runDatabase(() => negotiationService.submitTurn(id, principal.userId, turn, store.execution));
           if ('rejection' in result) throw new Error(result.rejection);
           this.observe(principal, result);
           void this.scan();
@@ -79,7 +83,9 @@ export class ApiNegotiationHost extends EventEmitter {
     for (const userId of new Set(this.users.map((user) => user.userId))) {
       if ((await registry.listAgentsForUser(userId)).some((agent) => agent.ownerId === userId && agent.type === 'external' && agent.handleNegotiations)) throw new Error('A selected principal already has an external negotiation executor. Disable that binding before running its local agent.');
     }
+    if (this.stopped) return;
     await Promise.all([...this.agents.values()].map((agent) => agent.start()));
+    if (this.stopped) return;
     this.subscriber = createRedisClient();
     this.subscriber.on('message', (_channel, raw: string) => {
       try {
@@ -92,6 +98,7 @@ export class ApiNegotiationHost extends EventEmitter {
     this.subscriber.on('ready', () => { this.versions.clear(); void this.scan(); });
     await this.subscriber.subscribe(...[...new Set(this.users.map(({ userId }) => userEventChannel(userId)))]);
     await this.scan();
+    if (this.stopped) return;
   }
 
   private record(record: NegotiationDetail): Negotiation {
@@ -110,6 +117,24 @@ export class ApiNegotiationHost extends EventEmitter {
     this.emit('change');
   }
 
+  /** Share capacity across hosts for one database operation, never a scan or agent task that may enqueue more work. */
+  private async runDatabase<T>(operation: () => Promise<T>): Promise<T> {
+    if (activeDatabaseOperations === DATABASE_CONCURRENCY) {
+      await new Promise<void>((resolve) => databaseQueue.push(resolve));
+    } else {
+      activeDatabaseOperations++;
+    }
+    try {
+      if (this.stopped) throw new Error('Negotiation host is stopped.');
+      return await operation();
+    } finally {
+      // Transfer the slot directly to the oldest waiter so new work cannot jump the queue.
+      const next = databaseQueue.shift();
+      if (next) next();
+      else activeDatabaseOperations--;
+    }
+  }
+
   private scan(): Promise<void> {
     this.rescan = true;
     if (this.scanning) return this.scanning;
@@ -117,23 +142,24 @@ export class ApiNegotiationHost extends EventEmitter {
       do {
         this.rescan = false;
         if (this.stopped) return;
-        await Promise.all(this.users.map(async (principal) => {
-          const records = await negotiationService.list(principal.userId, { intentId: principal.intentId });
-          await Promise.all(records.map(async (record) => {
+        for (const principal of this.users) {
+          const records = await this.runDatabase(() => negotiationService.list(principal.userId, { intentId: principal.intentId }));
+          for (const record of records) {
             const key = `${principal.id}:${record.opportunityId}`;
-            if (record.settledAt && this.versions.get(key) === record.updatedAt.toISOString()) return;
-            const detail = await negotiationService.read(record.opportunityId, principal.userId);
-            if (!detail || this.stopped) return;
+            if (record.settledAt && this.versions.get(key) === record.updatedAt.toISOString()) continue;
+            const detail = await this.runDatabase(() => negotiationService.read(record.opportunityId, principal.userId));
+            if (this.stopped) return;
+            if (!detail) continue;
             const version = detail.updatedAt.toISOString() + (detail.settledAt ? '' : ':' + detail.protocol.blockedReason);
-            if (this.versions.get(key) === version) return;
+            if (this.versions.get(key) === version) continue;
             this.observe(principal, detail);
             this.versions.set(key, version);
             void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: record.opportunityId })
               .catch((error: unknown) => { this.agentStatus = String(error); this.emit('change'); });
-          }));
-        }));
+          }
+        }
       } while (this.rescan && !this.stopped);
-    })().catch((error: unknown) => { this.agentStatus = 'Could not refresh matches: ' + String(error); this.emit('change'); })
+    })().catch((error: unknown) => { if (!this.stopped) { this.agentStatus = 'Could not refresh matches: ' + String(error); this.emit('change'); } })
       .finally(() => { this.scanning = undefined; });
     return this.scanning;
   }
@@ -141,8 +167,7 @@ export class ApiNegotiationHost extends EventEmitter {
   /** Stop the local runtime and release its leases; conversations and matches remain in the database. */
   async stop(): Promise<void> {
     this.stopped = true;
-    await this.scanning;
-    await Promise.allSettled([...this.agents.values()].map((agent) => agent.stop()));
+    await Promise.allSettled([this.scanning, ...[...this.agents.values()].map((agent) => agent.stop())]);
     this.subscriber?.disconnect();
   }
 }
