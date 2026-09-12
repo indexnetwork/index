@@ -68,12 +68,15 @@ registered SSH key (`railway ssh keys add`). It runs inside the dev API containe
 using that service's Redis and model credentials. Keep the terminal connected;
 Ctrl+C stops new activations and waits for current discovery scans to finish.
 
-Resume shuffles eligible paused intents and activates one every 10–30 seconds
-through the normal lifecycle graph. Discovery scans can overlap. Progress logs
-include activation times, intent IDs, and scan failures. Archived intents and
-intents without a current network assignment/member are reported and skipped.
-Re-running resume processes the remaining paused intents. Use reset to start
-the experiment from the beginning.
+Each resume shuffles eligible paused intents and selects at most five before
+activating any, then activates them through the normal lifecycle graph with
+10–30-second gaps. Discovery scans can overlap; the command waits for them to
+finish and exits. Progress logs include activation times, intent IDs, and scan
+failures, with selected, resumed, and remaining eligible paused counts in the
+final result (`remaining` is unavailable if the control connection is lost).
+Archived intents and intents without a current network assignment/member are
+reported and skipped. Re-running resume selects another batch from the remaining
+eligible paused intents. Use reset to start the experiment from the beginning.
 
 Reset briefly stops the dev API and any replay in its container, then pauses
 non-archived, non-terminal intents and clears discovery progress, opportunities,

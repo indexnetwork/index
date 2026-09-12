@@ -150,14 +150,15 @@ export function replayDelayMs(): number {
   return 10_000 + Math.floor(Math.random() * 20_001);
 }
 
-/** Stagger transitions; discovery completion belongs to the caller, not this scheduler. */
+/** Select at most five intents before staggering transitions; the caller drains discovery. */
 export async function runReplay(
   candidates: readonly ReplayIntent[],
   activate: (intent: ReplayIntent) => Promise<IntentTransitionOutcome>,
   signal: AbortSignal,
-): Promise<{ resumed: number; skipped: number; failed: string[] }> {
-  const ordered = shuffled(candidates);
-  const result = { resumed: 0, skipped: 0, failed: [] as string[] };
+): Promise<{ selected: number; resumed: number; skipped: number; failed: string[] }> {
+  const ordered = shuffled(candidates).slice(0, 5);
+  const result = { selected: ordered.length, resumed: 0, skipped: 0, failed: [] as string[] };
+  console.log(`[dev-intents] Selected ${result.selected} of ${candidates.length} eligible paused intents.`);
   for (const [index, intent] of ordered.entries()) {
     if (signal.aborted) break;
     if (index > 0) {
@@ -235,7 +236,8 @@ async function resume(): Promise<void> {
     const result = await runReplay(candidates, ({ id, userId }) => service.transitionStatus(id, userId, 'ACTIVE'), stop.signal);
     console.log(`[dev-intents] Draining ${pending.size} discovery job(s).`);
     await Promise.all(pending);
-    console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, discoveryFailures, interrupted: stop.signal.aborted }));
+    const remaining = connectionLost ? null : (await replayCandidates(control)).length;
+    console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, remaining, discoveryFailures, interrupted: stop.signal.aborted }));
     if (connectionLost) throw new Error('Replay lost its control connection; remaining intents were not activated.');
     if (result.failed.length || discoveryFailures.length) throw new Error('Replay completed with failures; see intent IDs above.');
     if (stop.signal.aborted) process.exitCode = 130;
