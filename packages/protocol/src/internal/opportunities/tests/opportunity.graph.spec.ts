@@ -11,7 +11,7 @@ config({ path: '.env.test', override: true });
 import { describe, test, it, expect, mock, spyOn } from 'bun:test';
 import { z } from 'zod/v4';
 import { Discovery, ModelClient, buildDiscovererContext, DISCOVERY_MIN_SIMILARITY, MatchExplainer } from '@indexnetwork/discovery';
-import type { DiscoveryData, DiscoveryDeps, DiscoveryInput, DiscoveryState, PotentialIntentPair, CandidateSearch, Model, SourceProfileData, MatchExplainerLike, MatchExplainerResult, MatchExplainerInput, EvaluatorEntity, Logger } from '@indexnetwork/discovery';
+import type { DiscoveryData, DiscoveryDeps, DiscoveryInput, DiscoveryState, PotentialIntentPair, CandidateSearch, SourceProfileData, MatchExplainerLike, MatchExplainerResult, MatchExplainerInput, EvaluatorEntity, Logger } from '@indexnetwork/discovery';
 import { resolveDiscoveryNetworkScope, renderDiscoveryNetworkContext, pairKeyOf, decideNegotiationOpening } from '../../../index.js';
 import type { Database, OpenedNegotiation } from '../../../platform/database.js';
 
@@ -702,38 +702,40 @@ describe('Discovery', () => {
   });
 
   describe('Evaluation and Persist', () => {
-    test('forwards an aborted request signal to the explainer model without retrying', async () => {
+    test('cancels model retry backoff without sending another request', async () => {
       const controller = new AbortController();
       const abortReason = new Error('caller cancelled discovery');
-      let explainerModelCalls = 0;
       let receivedSignal: AbortSignal | undefined;
-      const explainerModel = {
-        complete: async (_messages: unknown, config?: { signal?: AbortSignal }) => {
-          explainerModelCalls += 1;
-          receivedSignal = config?.signal;
-          controller.abort(abortReason);
-          throw config?.signal?.reason ?? new Error('missing explainer cancellation signal');
-        },
-      } as unknown as Model;
-      const explainer = new MatchExplainer(explainerModel);
+      let abortTimer: ReturnType<typeof setTimeout> | undefined;
+      const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+        receivedSignal = init?.signal ?? undefined;
+        abortTimer ??= setTimeout(() => controller.abort(abortReason), 25);
+        return new Response('', { status: 429, headers: { 'Retry-After': '60' } });
+      });
+      const explainer = new MatchExplainer(new ModelClient({ apiKey: 'discovery-test-key' }));
       const explainerSpy = spyOn(explainer, 'explain');
       const { discovery } = createMockGraph({ explainer });
 
-      await expect(requestContext.run({ abortSignal: controller.signal }, async () => {
-        await discovery.discover({
-          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-          searchQuery: 'co-founder',
-          options: {},
-        } as DiscoveryInput);
-      })).rejects.toThrow(abortReason);
+      try {
+        await expect(requestContext.run({ abortSignal: controller.signal }, async () => {
+          await discovery.discover({
+            userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+            searchQuery: 'co-founder',
+            options: {},
+          } as DiscoveryInput);
+        })).rejects.toThrow(abortReason);
 
-      expect(explainerSpy).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ signal: controller.signal }),
-      );
-      expect(receivedSignal?.aborted).toBe(true);
-      expect(receivedSignal?.reason).toBe(abortReason);
-      expect(explainerModelCalls).toBe(1);
+        expect(explainerSpy).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ signal: controller.signal }),
+        );
+        expect(receivedSignal?.aborted).toBe(true);
+        expect(receivedSignal?.reason).toBe(abortReason);
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        clearTimeout(abortTimer);
+        fetchSpy.mockRestore();
+      }
     });
 
     test('rejects unsafe custom-explainer reasoning before a candidate is recorded', async () => {

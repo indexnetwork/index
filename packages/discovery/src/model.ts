@@ -1,8 +1,19 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod/v4';
 
 import type { Model, ModelRequest } from './types.js';
 
 export const DEFAULT_MODEL = 'google/gemini-3.7-flash';
+
+/** Back off across HTTP retries and model fallbacks; Retry-After is a minimum wait. */
+function retryDelay(response: Response | undefined, failureCount: number): number {
+  const backoffMs = 1_000 * 2 ** failureCount;
+  const retryAfter = response?.headers.get('retry-after');
+  if (!retryAfter) return backoffMs;
+  const seconds = Number(retryAfter);
+  const retryAfterMs = Number.isFinite(seconds) ? seconds * 1_000 : Date.parse(retryAfter) - Date.now();
+  return Number.isFinite(retryAfterMs) ? Math.max(backoffMs, retryAfterMs) : backoffMs;
+}
 
 /** Fetch-based structured OpenRouter client with bounded retries and response validation. */
 export class ModelClient implements Model {
@@ -21,12 +32,16 @@ export class ModelClient implements Model {
     const fallback = primary.includes('pro') ? 'google/gemini-2.5-pro' : 'google/gemini-2.5-flash';
     const models = primary === fallback ? [primary, primary] : [primary, primary, fallback];
     let failure: unknown;
+    let failureCount = 0;
+    let delayMs = 0;
     for (const model of models) {
       options.signal?.throwIfAborted();
       try {
         // Existing calls allow one HTTP retry within each structured attempt.
-        let response: Response | undefined;
         for (let attempt = 0; attempt < 2; attempt++) {
+          if (delayMs > 0) await sleep(delayMs, undefined, { signal: options.signal });
+          options.signal?.throwIfAborted();
+          let response: Response | undefined;
           const deadline = AbortSignal.timeout(60_000);
           const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
           try {
@@ -51,6 +66,7 @@ export class ModelClient implements Model {
             return request.schema.parse(JSON.parse(content));
           } catch (error) {
             options.signal?.throwIfAborted();
+            delayMs = retryDelay(response, failureCount++);
             if (attempt > 0 || (response && ![408, 409, 429].includes(response.status) && response.status < 500)) throw error;
           }
         }

@@ -18,6 +18,8 @@ The host supplies `Model`, `EmbeddingGenerator`, `CandidateSearch`,
 `ArtifactStore`, `ArtifactCache`, and `DiscoveryData`. Each invocation accepts
 an abort signal, trace emitter, and logger. `ModelClient` is the provided
 fetch-based OpenRouter implementation with structured-response validation.
+Retries use cancellation-aware exponential backoff and honor `Retry-After`
+seconds or HTTP dates across model fallbacks.
 
 The API resolves protocol network/broadcast rules through the data/search ports,
 then gives returned pairs protocol identity and calls atomic `openCounterparties`
