@@ -125,9 +125,7 @@ export interface ChatContextOpportunity {
   acceptedAt: string | null;
 }
 
-const RADAR_VIEW_RECENT_CACHE_TTL_MS = 1500;
 const radarViewInFlight = new Map<string, Promise<RadarViewResponse>>();
-const radarViewRecent = new Map<string, { data: RadarViewResponse; timestamp: number }>();
 
 export const createOpportunitiesService = (
   api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>
@@ -166,12 +164,6 @@ export const createOpportunitiesService = (
     }
 
     const cacheKey = url;
-    const now = Date.now();
-    const recent = radarViewRecent.get(cacheKey);
-    if (recent && now - recent.timestamp < RADAR_VIEW_RECENT_CACHE_TTL_MS) {
-      return recent.data;
-    }
-
     const inFlight = radarViewInFlight.get(cacheKey);
     if (inFlight) {
       return inFlight;
@@ -179,10 +171,6 @@ export const createOpportunitiesService = (
 
     const request = api
       .get<RadarViewResponse>(url)
-      .then((res) => {
-        radarViewRecent.set(cacheKey, { data: res, timestamp: Date.now() });
-        return res;
-      })
       .finally(() => {
         radarViewInFlight.delete(cacheKey);
       });

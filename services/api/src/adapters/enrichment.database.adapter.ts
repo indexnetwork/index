@@ -1,4 +1,5 @@
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
+import { publishUserInvalidation } from '../lib/user-events';
 
 import { schema, OnboardingState, UserIdentity, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, normalizeTelegramSocialValue, persistProfileIdentityToUser } from './database.shared';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
@@ -54,6 +55,7 @@ export class EnrichmentDatabaseAdapter {
 
     const updated = result[0];
     if (!updated) return null;
+    await publishUserInvalidation(userId, 'agent.configuration');
     const socials = await this.getUserSocials(userId);
     return {
       id: updated.id,

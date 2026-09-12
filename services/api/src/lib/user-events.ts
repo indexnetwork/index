@@ -1,4 +1,5 @@
 import { getRedisClient } from '../adapters/cache.adapter';
+import { log } from './log';
 
 /**
  * One channel per user carries every realtime frame, and nothing on the wire
@@ -28,6 +29,9 @@ export type UserEventType =
   | 'negotiation.settled'
   | 'negotiation.opened'
   | 'intent.lifecycle'
+  | 'intent.updated'
+  | 'agent.configuration'
+  | 'agent.status'
   | 'message';
 
 /**
@@ -103,6 +107,24 @@ export async function publishUserEvent(
   if (!userId) return;
   const publisher = getRedisClient();
   await publisher.publish(userEventChannel(userId), JSON.stringify(event));
+}
+
+/**
+ * Invalidate affected views after a committed change, without retrying delivery.
+ * @param userId - Owner whose agents and views should refresh.
+ * @param type - Intent content, agent configuration, or runtime availability change.
+ * @param intentId - Affected intent, when the change is scoped to one.
+ */
+export async function publishUserInvalidation(
+  userId: string,
+  type: 'intent.updated' | 'agent.configuration' | 'agent.status',
+  intentId?: string,
+): Promise<void> {
+  try {
+    await publishUserEvent(userId, { type, id: crypto.randomUUID(), title: '', body: '', data: { intentId } });
+  } catch (error: unknown) {
+    log.lib.from('user-events').error('Failed to publish user invalidation', { userId, intentId, type, error: String(error) });
+  }
 }
 
 /**

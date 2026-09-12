@@ -153,8 +153,13 @@ function NegotiationHistory({ onClose }) {
       if (!dead) setThreads((prev) => prev || []);
     };
     load();
-    const t = setInterval(load, 3000);   // same cadence as the radar
-    return () => { dead = true; clearInterval(t); };
+    let refreshTimer;
+    const sub = live ? window.IndexApp.streamInbox((event) => {
+      if (!event.type?.startsWith("negotiation.") && event.type !== "intent.lifecycle") return;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(load, 100);
+    }) : null;
+    return () => { dead = true; if (sub) sub.close(); clearTimeout(refreshTimer); };
   }, [live, myId]);
 
   const all = threads || [];

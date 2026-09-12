@@ -69,9 +69,9 @@ export class ApiNegotiationHost extends EventEmitter {
     }
   }
 
-  /** @returns Existing active intents and confirmed profile context; no profile synthesis or scenario seeding. */
-  static async principals(): Promise<ApiPrincipal[]> {
-    return (await new IntentDatabaseAdapter().listAgentPrincipals()).map((row) => ({
+  /** @param userId - Owner whose context changed, or all owners at boot. @returns Active intents and confirmed profile context. */
+  static async principals(userId?: string): Promise<ApiPrincipal[]> {
+    return (await new IntentDatabaseAdapter().listAgentPrincipals(userId)).map((row) => ({
       id: row.intentId, userId: row.userId, intentId: row.intentId, name: row.name, intent: row.intent,
       principalContext: row.confirmedProfile ? JSON.stringify({ confirmedProfile: row.confirmedProfile }) : 'No confirmed profile is available. Ask for missing personal facts.',
     }));
@@ -89,8 +89,9 @@ export class ApiNegotiationHost extends EventEmitter {
     this.subscriber = createRedisClient();
     this.subscriber.on('message', (_channel, raw: string) => {
       try {
-        const { type } = JSON.parse(raw);
+        const { type, data } = JSON.parse(raw);
         if (!['intent.lifecycle', 'negotiation.turn', 'negotiation.settled', 'negotiation.opened'].includes(type)) return;
+        if (!this.users.some(({ intentId }) => intentId === data?.intentId)) return;
       } catch { return; }
       void this.scan();
     });

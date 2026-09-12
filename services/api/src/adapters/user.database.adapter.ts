@@ -1,3 +1,5 @@
+import { publishUserInvalidation } from '../lib/user-events';
+
 import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, and, db, desc, eq, gt, inArray, sessions, userNotificationSettings, userSocials, users } from './database.shared';
 
 /** A live session presented as a device: metadata only, never the token. */
@@ -192,6 +194,9 @@ export class UserDatabaseAdapter {
       .where(eq(users.id, userId))
       .returning();
 
+    if (result[0] && ['name', 'intro', 'location', 'onboarding'].some((key) => key in rest)) {
+      await publishUserInvalidation(userId, 'agent.configuration');
+    }
     return result[0] || null;
   }
 

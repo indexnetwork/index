@@ -6,7 +6,7 @@ import { createRedisClient } from '../adapters/cache.adapter';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
 import { ApiNegotiationHost, type ApiPrincipal } from '../lib/agent/negotiation.host';
 import { log } from '../lib/log';
-import { userEventChannel } from '../lib/user-events';
+import { publishUserInvalidation, userEventChannel } from '../lib/user-events';
 
 const logger = log.service.from('PersonalAgentService');
 
@@ -35,62 +35,93 @@ export class PersonalAgentService {
   private readonly intents = new IntentDatabaseAdapter();
   private readonly registry = new AgentDatabaseAdapter();
   private readonly errors = new Map<string, string>();
-  private principals = new Map<string, ApiPrincipal>();
+  private readonly principals = new Map<string, ApiPrincipal>();
+  private readonly desired = new Map<string, ApiPrincipal>();
+  private readonly pendingOwners = new Set<string | undefined>();
   private running = false;
   private checking?: Promise<void>;
   private subscriber?: ReturnType<typeof createRedisClient>;
 
   constructor(private readonly model: Model) {}
 
-  /** Schedule eligible sessions at boot and reconcile new/changed intents and executor bindings in the background. */
+  /** Subscribe before boot discovery, then reconcile only owners whose intent or executor configuration changes. */
   async start(): Promise<void> {
     this.running = true;
     this.subscriber = createRedisClient();
-    this.subscriber.on('pmessage', (_pattern, _channel, raw: string) => {
-      try { if (JSON.parse(raw).type !== 'intent.lifecycle') return; } catch { return; }
-      void this.reconcile();
+    this.subscriber.on('pmessage', (_pattern, channel: string, raw: string) => {
+      try {
+        const { type } = JSON.parse(raw);
+        if (!['intent.lifecycle', 'intent.updated', 'agent.configuration'].includes(type)) return;
+      } catch { return; }
+      void this.reconcile(channel.slice(userEventChannel('').length));
     });
-    this.subscriber.on('ready', () => { void this.reconcile(); });
     await this.subscriber.psubscribe(userEventChannel('*'));
-    await this.reconcile();
+    this.subscriber.on('ready', () => { void this.reconcile(); });
+    if (this.running) await this.reconcile();
   }
 
-  private reconcile(): Promise<void> {
+  private reconcile(userId?: string): Promise<void> {
+    if (!this.running) return Promise.resolve();
+    this.pendingOwners.add(userId);
     if (this.checking) return this.checking;
     this.checking = (async () => {
-      const principals = await ApiNegotiationHost.principals();
-      const externalOwners = new Set((await Promise.all([...new Set(principals.map(({ userId }) => userId))]
-        .map(async (userId) => await this.registry.getSelectedNegotiator(userId) ? userId : null))).filter((id) => id !== null));
-      this.principals = new Map(principals.map((principal) => [principal.id, principal]));
-      const desired = new Map(principals.filter(({ userId }) => !externalOwners.has(userId)).map((principal) => [principal.id, principal]));
-      for (const [id, session] of this.sessions) {
-        if (session.stopping) continue;
-        if (JSON.stringify(desired.get(id)) === JSON.stringify(session.principal) && !session.host.agents.get(id)?.stopped) continue;
-        void this.stopSession(session);
-      }
-      if (!this.running) return;
-      for (const principal of desired.values()) {
-        if (this.sessions.has(principal.id)) continue;
-        const host = new ApiNegotiationHost([principal], this.model);
-        const session: Session = { principal, host, active: false, ready: Promise.resolve() };
-        this.sessions.set(principal.id, session);
-        session.ready = host.start().then(() => {
-          if (!this.running || session.stopping || this.sessions.get(principal.id) !== session) return;
-          session.active = true;
-          this.errors.delete(principal.id);
-        });
-        void session.ready.catch((error: unknown) => {
-          if (session.stopping || this.sessions.get(principal.id) !== session) return;
-          const reason = error instanceof Error ? error.message : String(error);
-          if (this.errors.get(principal.id) !== reason) logger.warn('Personal agent could not start', { intentId: principal.intentId, error: reason });
-          this.errors.set(principal.id, reason);
-          void this.stopSession(session);
-        });
+      while (this.running && this.pendingOwners.size) {
+        const ownerId = this.pendingOwners.has(undefined) ? undefined : this.pendingOwners.values().next().value;
+        if (ownerId === undefined) this.pendingOwners.clear();
+        else this.pendingOwners.delete(ownerId);
+        const principals = await ApiNegotiationHost.principals(ownerId);
+        const externalOwners = new Set(await this.registry.listSelectedNegotiatorOwners(ownerId));
+        if (!this.running) return;
+        for (const [id, principal] of this.principals) {
+          if (ownerId !== undefined && principal.userId !== ownerId) continue;
+          this.principals.delete(id);
+          this.desired.delete(id);
+        }
+        for (const principal of principals) {
+          this.principals.set(principal.id, principal);
+          if (!externalOwners.has(principal.userId)) this.desired.set(principal.id, principal);
+        }
+        for (const [id, session] of this.sessions) {
+          if (ownerId !== undefined && session.principal.userId !== ownerId) continue;
+          if (!session.stopping && JSON.stringify(this.desired.get(id)) === JSON.stringify(session.principal)
+            && !session.host.agents.get(id)?.stopped) continue;
+          // Replacement waits only on this intent's lease release, never on the reconciliation loop.
+          void this.stopSession(session).then(() => {
+            const principal = this.desired.get(id);
+            if (principal) this.startSession(principal);
+          }, () => {});
+        }
+        for (const principal of principals) {
+          if (this.desired.has(principal.id)) this.startSession(principal);
+        }
       }
     })().catch((error: unknown) => {
       logger.error('Personal-agent reconciliation failed', { error: error instanceof Error ? error.message : String(error) });
-    }).finally(() => { this.checking = undefined; });
+    }).finally(() => {
+      this.checking = undefined;
+      if (this.pendingOwners.size && this.running) void this.reconcile(this.pendingOwners.values().next().value);
+    });
     return this.checking;
+  }
+
+  private startSession(principal: ApiPrincipal): void {
+    if (!this.running || this.sessions.has(principal.id)) return;
+    const host = new ApiNegotiationHost([principal], this.model);
+    const session: Session = { principal, host, active: false, ready: Promise.resolve() };
+    this.sessions.set(principal.id, session);
+    session.ready = host.start().then(() => {
+      if (!this.running || session.stopping || this.sessions.get(principal.id) !== session) return;
+      session.active = true;
+      this.errors.delete(principal.id);
+      void publishUserInvalidation(principal.userId, 'agent.status', principal.intentId);
+    });
+    void session.ready.catch((error: unknown) => {
+      if (session.stopping || this.sessions.get(principal.id) !== session) return;
+      const reason = error instanceof Error ? error.message : String(error);
+      if (this.errors.get(principal.id) !== reason) logger.warn('Personal agent could not start', { intentId: principal.intentId, error: reason });
+      this.errors.set(principal.id, reason);
+      void this.stopSession(session);
+    });
   }
 
   /** Keep an intent reserved until its previous host has finished releasing its lease. */
@@ -99,6 +130,7 @@ export class PersonalAgentService {
     session.active = false;
     session.stopping = session.host.stop().then(() => {
       if (this.sessions.get(session.principal.id) === session) this.sessions.delete(session.principal.id);
+      if (this.running) void publishUserInvalidation(session.principal.userId, 'agent.status', session.principal.intentId);
     });
     void session.stopping.catch((error: unknown) => {
       logger.error('Personal agent could not stop', { intentId: session.principal.intentId, error: error instanceof Error ? error.message : String(error) });
@@ -132,7 +164,7 @@ export class PersonalAgentService {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new PersonalAgentError('Intent not found.', 404);
     if (await this.registry.getSelectedNegotiator(input.userId)) return null;
     if (!this.running) throw new PersonalAgentError('Your personal agent is unavailable.', 503);
-    if (!this.sessions.has(input.intentId) || this.sessions.get(input.intentId)?.host.agents.get(input.intentId)?.stopped) await this.reconcile();
+    if (!this.sessions.has(input.intentId) || this.sessions.get(input.intentId)?.host.agents.get(input.intentId)?.stopped) await this.reconcile(input.userId);
     const session = this.sessions.get(input.intentId);
     if (!session || session.principal.userId !== input.userId) throw new PersonalAgentError('Your personal agent is unavailable. The intent must be active and its session must be free.', 409);
     if (session.stopping) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
@@ -152,6 +184,7 @@ export class PersonalAgentService {
   async stop(): Promise<void> {
     this.running = false;
     this.subscriber?.disconnect();
+    this.pendingOwners.clear();
     await this.checking;
     await Promise.all([...this.sessions.values()].map((session) => this.stopSession(session)));
     this.sessions.clear();

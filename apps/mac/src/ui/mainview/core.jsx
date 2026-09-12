@@ -147,9 +147,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }
   }, (paused || live) ? null : 14000 / simRate);
 
-  /* ----- live radar polling ----- */
+  /* ----- live radar events ----- */
   // Intent switches keep MainView mounted; wipe the previous signal's radar
-  // before the next poll lands.
+  // before the next read lands.
   useEffect(() => {
     if (!live) return;
     radarSeqRef.current += 1;
@@ -246,15 +246,20 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   useEffect(() => {
     if (!live) return;
     refreshRadar();
-    const t = setInterval(refreshRadar, 5000);
-    return () => clearInterval(t);
-  }, [live, refreshRadar]);
+    let refreshTimer;
+    const sub = window.IndexApp.streamInbox((event) => {
+      if (event.data?.intentId !== intentId
+        || !["intent.updated", "intent.lifecycle", "opportunity.new", "negotiation.opened", "negotiation.turn", "negotiation.settled"].includes(event.type)) return;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(refreshRadar, 100);
+    });
+    return () => { sub.close(); clearTimeout(refreshTimer); };
+  }, [live, intentId, refreshRadar]);
 
   /* ----- the signal's own agent: the question it is held on ----- */
   // GET /conversations/agent?intentId= is the whole H2A contract: the agent's
-  // side of this signal plus the one question it is suspended on. The same poll
-  // the web app runs, because a question can appear without anything else on
-  // this screen changing.
+  // side of this signal plus the one question it is suspended on. Refresh when
+  // the question, intent lifecycle, or agent availability changes.
   const [agentQuestion, setAgentQuestion] = useState(null);
   useEffect(() => {
     setAgentQuestion(null);
@@ -268,8 +273,16 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       })
       .catch(() => { /* a failed read leaves the last known question up */ });
     read();
-    const t = setInterval(read, 5000);
-    return () => { alive = false; clearInterval(t); };
+    let refreshTimer;
+    const sub = window.IndexApp.streamInbox((event) => {
+      if (event.type === "message") {
+        if (event.message?.metadata?.intentId !== forIntent) return;
+      } else if (!["question.pending", "intent.lifecycle", "agent.configuration", "agent.status"].includes(event.type)
+        || event.data?.intentId && event.data.intentId !== forIntent) return;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(read, 100);
+    });
+    return () => { alive = false; sub.close(); clearTimeout(refreshTimer); };
   }, [live, client, intentId]);
 
   // The answer goes back naming the question it answers, so a question that
