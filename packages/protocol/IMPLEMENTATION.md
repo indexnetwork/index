@@ -143,14 +143,14 @@ The intent and community graphs are the exceptions: they are reached through the
 |---|---|
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 
-## Post-intent matchmaking
+## Post-intent discovery
 
-`@indexnetwork/matchmaking` owns lens inference, source-frame extraction, HyDE
+`@indexnetwork/discovery` owns lens inference, source-frame extraction, HyDE
 preparation/validation, candidate retrieval, ranking, and explanations. It has
 no protocol, agent, or LangChain dependency. The API supplies its model,
 embedding/search, artifact storage/cache, cancellation, and tracing ports.
 
-`Matchmaking.discover()` returns potential intent pairs with network, intent,
+`Discovery.discover()` returns potential intent pairs with network, intent,
 user, score, reasoning, and evidence. The host assigns `pairKeyOf(...)` and calls
 `openCounterparties(pairs, decideNegotiationOpening)`; protocol opening rules run
 inside the existing host transaction. Network/broadcast scope remains a protocol

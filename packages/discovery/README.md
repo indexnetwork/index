@@ -1,6 +1,6 @@
-# @indexnetwork/matchmaking
+# @indexnetwork/discovery
 
-Independent, host-run matchmaking using plain async TypeScript. No protocol,
+Independent, host-run discovery using plain async TypeScript. No protocol,
 agent, LangChain, or infrastructure dependencies; `zod` validates model output.
 
 `Artifacts.prepare()` infers lenses and a source-only frame, generates and
@@ -9,13 +9,13 @@ frame-v1 cohorts. Cache hashes and database strategy identities are unchanged.
 Validation failures remain usable for that retrieval run but are never stored;
 explicitly invalid documents are dropped.
 
-`Matchmaking.discover()` retrieves real intent candidates, rechecks memberships,
+`Discovery.discover()` retrieves real intent candidates, rechecks memberships,
 applies the existing cooldown and ranking limits, and explains potential pairs.
 It returns network/intent/user identities, scores, reasoning, and evidence.
 Hypothetical documents are query-side artifacts, never candidate facts.
 
 The host supplies `Model`, `EmbeddingGenerator`, `CandidateSearch`,
-`ArtifactStore`, `ArtifactCache`, and `MatchmakingData`. Each invocation accepts
+`ArtifactStore`, `ArtifactCache`, and `DiscoveryData`. Each invocation accepts
 an abort signal, trace emitter, and logger. `ModelClient` is the provided
 fetch-based OpenRouter implementation with structured-response validation.
 

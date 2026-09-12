@@ -46,14 +46,14 @@ export default tseslint.config(
     },
   },
 
-  // Matchmaking is a standalone library; the API composes it with protocol and agent.
+  // Discovery is a standalone library; the API composes it with protocol and agent.
   {
-    files: ["packages/matchmaking/src/**/*.ts"],
+    files: ["packages/discovery/src/**/*.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
           group: ["@langchain/*", "langchain", "langchain/*", "@indexnetwork/protocol", "@indexnetwork/protocol/*", "@indexnetwork/agent", "@indexnetwork/agent/*", "**/protocol/**", "**/agent/**", "**/services/**"],
-          message: "Matchmaking must use local host ports, without LangChain, protocol, agent, or host implementation imports.",
+          message: "Discovery must use local host ports, without LangChain, protocol, agent, or host implementation imports.",
         }],
       }],
     },

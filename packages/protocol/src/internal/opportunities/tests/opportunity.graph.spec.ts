@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 /**
- * Matchmaking integration coverage with a fake protocol host.
+ * Discovery integration coverage with a fake protocol host.
  * Flow: Prep → Scope → Discovery → Evaluation → Ranking → host commit.
  * Invoke API: { userId, searchQuery?, networkId?, options }.
  */
@@ -10,20 +10,20 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, it, expect, mock, spyOn } from 'bun:test';
 import { z } from 'zod/v4';
-import { Matchmaking, ModelClient, buildDiscovererContext, DISCOVERY_MIN_SIMILARITY, MatchExplainer } from '@indexnetwork/matchmaking';
-import type { MatchmakingData, MatchmakingDeps, MatchmakingInput, MatchmakingState, PotentialIntentPair, CandidateSearch, Model, SourceProfileData, MatchExplainerLike, MatchExplainerResult, MatchExplainerInput, EvaluatorEntity, Logger } from '@indexnetwork/matchmaking';
+import { Discovery, ModelClient, buildDiscovererContext, DISCOVERY_MIN_SIMILARITY, MatchExplainer } from '@indexnetwork/discovery';
+import type { DiscoveryData, DiscoveryDeps, DiscoveryInput, DiscoveryState, PotentialIntentPair, CandidateSearch, Model, SourceProfileData, MatchExplainerLike, MatchExplainerResult, MatchExplainerInput, EvaluatorEntity, Logger } from '@indexnetwork/discovery';
 import { resolveDiscoveryNetworkScope, renderDiscoveryNetworkContext, pairKeyOf, decideNegotiationOpening } from '../../../index.js';
 import type { Database, OpenedNegotiation } from '../../../platform/database.js';
 
-type TestDatabase = Omit<MatchmakingData, 'getDiscoveryScope' | 'getNetworkContexts'>
+type TestDatabase = Omit<DiscoveryData, 'getDiscoveryScope' | 'getNetworkContexts'>
   & Pick<Database, 'isNetworkOwner' | 'openCounterparties'>;
 type ThresholdOverrides = { retrievalMinSimilarity?: number };
 const REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 let testLogger: Logger | undefined;
 
 /** Fake host composition: discovery cannot write until this host commits its returned pairs. */
-function createTestDiscovery(database: TestDatabase, search: CandidateSearch, artifacts: { prepare: MatchmakingDeps['prepareArtifacts'] }, explainer: MatchExplainerLike, thresholdOverrides?: ThresholdOverrides) {
-  const data: MatchmakingData = {
+function createTestDiscovery(database: TestDatabase, search: CandidateSearch, artifacts: { prepare: DiscoveryDeps['prepareArtifacts'] }, explainer: MatchExplainerLike, thresholdOverrides?: ThresholdOverrides) {
+  const data: DiscoveryData = {
     ...database,
     getNetwork: id => database.getNetwork(id),
     getNetworkMemberships: id => database.getNetworkMemberships(id),
@@ -44,9 +44,9 @@ function createTestDiscovery(database: TestDatabase, search: CandidateSearch, ar
       return contexts;
     },
   };
-  const matcher = new Matchmaking({ database: data, search, prepareArtifacts: input => artifacts.prepare(input), matchExplainer: explainer, ...thresholdOverrides });
+  const matcher = new Discovery({ database: data, search, prepareArtifacts: input => artifacts.prepare(input), matchExplainer: explainer, ...thresholdOverrides });
   return {
-    async discover(input: MatchmakingInput) {
+    async discover(input: DiscoveryInput) {
       const context = requestContext.getStore();
       const result = await matcher.discover(input, { signal: context?.abortSignal, traceEmitter: context?.traceEmitter, logger: testLogger });
       let opened: OpenedNegotiation[] = [];
@@ -66,8 +66,7 @@ import { type LoggerWithSource } from '../../shared/observability/log.js';
 
 setRequestContextStore(new AsyncLocalStorage());
 
-type DiscoveryInput = MatchmakingInput;
-type DiscoveryResult = MatchmakingState & { pairs: PotentialIntentPair[]; opened: OpenedNegotiation[] };
+type DiscoveryResult = DiscoveryState & { pairs: PotentialIntentPair[]; opened: OpenedNegotiation[] };
 
 const JUDGE_SYSTEM_PROMPT = `You are a test oracle for an AI system. Given the output of a system under test and evaluation criteria, determine whether the output passes or fails.
 
@@ -285,7 +284,7 @@ function createMockGraphWithFnOverrides(deps?: {
   return { discovery, mockDb };
 }
 
-describe('Matchmaking', () => {
+describe('Discovery', () => {
   describe('Prep node', () => {
     test('when user has no network memberships, returns error and no opportunities', async () => {
       const { discovery, mockHydeGenerator, mockSearch } = createMockGraph({
@@ -1418,7 +1417,7 @@ const EXPECTED_NODE_TRACE_NAMES = [
   'opportunity-emit-counterparties',
 ];
 
-describe('Matchmaking — Trace Events', () => {
+describe('Discovery — Trace Events', () => {
   test('emits agent_start/agent_end trace events for each significant node', async () => {
     const { discovery } = createTraceMockGraph();
     const traceEvents: Array<{ type: string; name: string; durationMs?: number; summary?: string }> = [];

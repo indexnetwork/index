@@ -39,7 +39,7 @@ export interface HydeMaintenanceDeps {
  * from the protocol server to schedule daily cleanup (03:00) and weekly refresh (Sunday 04:00).
  *
  * @remarks
- * Handlers orchestrate adapters and matchmaking artifact preparation.
+ * Handlers orchestrate adapters and discovery artifact preparation.
  */
 export class HydeMaintenanceCron {
   private readonly logger = log.job.from('HydeJob');

@@ -34,7 +34,7 @@ directory. It was deleted on 2026-08-28 and is not being restored.
 
 | Path | Responsibility |
 |---|---|
-| `packages/matchmaking` | Independent async TypeScript library: retrieval artifacts, candidate search/ranking, and pair explanations. No protocol, agent, or LangChain dependencies. |
+| `packages/discovery` | Independent async TypeScript library: retrieval artifacts, candidate search/ranking, and pair explanations. No protocol, agent, or LangChain dependencies. |
 | `packages/protocol` | `@indexnetwork/protocol`: domain graphs, agents, and host interfaces. Published to npm and used by external integrators. |
 | `services/api` | Bun HTTP host and workers. Wires infrastructure (Drizzle/Postgres, Redis, OpenRouter) into the protocol. |
 | `apps/web` | Vite + React Router SPA. `src/services/*.ts` are typed API clients, not business logic. |

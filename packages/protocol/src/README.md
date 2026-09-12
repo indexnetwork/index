@@ -65,8 +65,8 @@ The system models human collaboration through a linguistic and information-theor
 | **User** | Session-authenticated identity with many intents and network memberships. Presentation identity lives on `users`; semantic discovery uses intents and user contexts. |
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
 | **Network** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share a network. |
-| **Opportunity** | A persisted intent pair admitted by protocol negotiation rules. The host receives candidate pairs from matchmaking, commits them atomically, and uses protocol lifecycle and presentation functions to serve them. |
-| **HyDE** | Query-side retrieval artifacts owned by `@indexnetwork/matchmaking`. Source frames constrain generation; validation controls which documents can be persisted. Candidate retrieval searches real intent embeddings. |
+| **Opportunity** | A persisted intent pair admitted by protocol negotiation rules. The host receives candidate pairs from discovery, commits them atomically, and uses protocol lifecycle and presentation functions to serve them. |
+| **HyDE** | Query-side retrieval artifacts owned by `@indexnetwork/discovery`. Source frames constrain generation; validation controls which documents can be persisted. Candidate retrieval searches real intent embeddings. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
 | **Semantic Entropy** | Constraint density of an intent (0.0 = maximally constrained, 1.0 = trivially satisfiable). High-entropy intents ("I want a job") trigger an **elaboration loop** — a request for missing constraints before persistence. |
 | **Semantic Governance** | The full pipeline that ensures only actionable, felicitous, sufficiently clear intents enter the graph. Referential breadth is retained as warning metadata on the persisted signal rather than acting as a universal write prohibition. Implemented by the Intent Verifier and Intent Clarifier agents. |
@@ -83,7 +83,7 @@ service, and the service invokes the capability graphs.
 ### Post-intent matching
 
 After protocol persists an intent, the host's `onIntentSaved` hook schedules
-`@indexnetwork/matchmaking`. That independent library prepares source-grounded
+`@indexnetwork/discovery`. That independent library prepares source-grounded
 retrieval artifacts and returns potential intent pairs. The API commits them
 through `openCounterparties` using protocol pair identity and opening rules.
 The personal agent owns subsequent negotiation behavior; protocol still owns
@@ -100,10 +100,10 @@ Handled by the **Intent Graph**:
 4. **Reconciliation**: For creation, `IntentReconciler` applies Donnellan's distinction — referential intents (user has a specific target in mind) update an existing record; attributive intents (any member of a class) create a new one if sufficiently different. Explicit updates bypass that create-versus-update choice and bind the single verified candidate to the supplied active owned intent ID.
 5. **Persistence**: Executor writes the intent with `semanticEntropy`, `referentialAnchor`, `speechActType`, and `felicityScores` fields.
 
-### Matchmaking boundary
+### Discovery boundary
 
 Lens inference, frame extraction, HyDE validation/cache identity, retrieval,
-ranking, and explanations live in `packages/matchmaking`. Real active intent
+ranking, and explanations live in `packages/discovery`. Real active intent
 embeddings form the candidate corpus; hypothetical documents stay on the query
 side. The host implements protocol-authorized network scope and rechecks
 membership and broadcast eligibility when atomically opening each pair.

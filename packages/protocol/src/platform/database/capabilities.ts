@@ -18,7 +18,7 @@ import type { Database } from '../database.js';
 export type CompositeDatabase = Pick<
   Database,
   | 'getProfile'
-  // The host opens returned matchmaking pairs through protocol rules.
+  // The host opens returned discovery pairs through protocol rules.
   | 'openCounterparties'
   | 'getActiveIntents'
   | 'getActiveIntentsAcrossNetworks'

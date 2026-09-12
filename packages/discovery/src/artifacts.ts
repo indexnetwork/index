@@ -544,7 +544,7 @@ export function computeHydeSourceTextHash(sourceText: string): string {
 }
 
 const HYDE_DEFAULT_CACHE_TTL = 3600;
-const artifactLogger = loggerFor("Matchmaking:Artifacts");
+const artifactLogger = loggerFor("Discovery:Artifacts");
 let lastGenerationTimestamp = 0;
 
 function nextGenerationMarker(): string {

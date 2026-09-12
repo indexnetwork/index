@@ -3,7 +3,7 @@ import { hasUnsupportedOpportunityClaim, mergeMatchEvidence, type EvaluatorEntit
 import { DEFAULT_MODEL } from './model.js';
 import { discoveryNode, discoveryTraceSummary } from './retrieval.js';
 import { getAbortSignalConfig, loggerFor, requestContext, timed } from './runtime.js';
-import type { ActiveIntent, AgentTiming, CandidateSearch, MatchEvidence, MatchmakingData, RunOptions } from './types.js';
+import type { ActiveIntent, AgentTiming, CandidateSearch, MatchEvidence, DiscoveryData, RunOptions } from './types.js';
 
 /**
  * Discovery retrieval thresholds.
@@ -101,7 +101,7 @@ export interface EvaluatedOpportunity {
 }
 
 
-export interface MatchmakingInput {
+export interface DiscoveryInput {
   userId: string;
   searchQuery?: string;
   networkId?: string;
@@ -111,8 +111,8 @@ export interface MatchmakingInput {
   options?: { limit?: number; existingOpportunities?: string };
 }
 
-export interface MatchmakingState extends Omit<MatchmakingInput, 'options'> {
-  options: NonNullable<MatchmakingInput['options']>;
+export interface DiscoveryState extends Omit<DiscoveryInput, 'options'> {
+  options: NonNullable<DiscoveryInput['options']>;
   indexedIntents: IndexedIntent[];
   userNetworks: string[];
   targetNetworks: TargetNetwork[];
@@ -141,26 +141,26 @@ export interface PotentialIntentPair {
   evidence: MatchEvidence[];
 }
 
-export interface MatchmakingDeps {
-  database: MatchmakingData;
+export interface DiscoveryDeps {
+  database: DiscoveryData;
   search: CandidateSearch;
   prepareArtifacts: (input: ArtifactInput) => Promise<Pick<HydeState, 'hydeEmbeddings'> & Partial<Pick<HydeState, 'lenses' | 'hydeDocuments'>>>;
   matchExplainer: MatchExplainerLike;
   retrievalMinSimilarity: number;
 }
-export const prepLog = loggerFor('Matchmaking:Prep');
-export const scopeLog = loggerFor('Matchmaking:Scope');
-export const resolveLog = loggerFor('Matchmaking:Resolve');
-export const discoveryLog = loggerFor('Matchmaking:Discovery');
-export const evaluationLog = loggerFor('Matchmaking:Evaluation');
-export const rankingLog = loggerFor('Matchmaking:Ranking');
+export const prepLog = loggerFor('Discovery:Prep');
+export const scopeLog = loggerFor('Discovery:Scope');
+export const resolveLog = loggerFor('Discovery:Resolve');
+export const discoveryLog = loggerFor('Discovery:Discovery');
+export const evaluationLog = loggerFor('Discovery:Evaluation');
+export const rankingLog = loggerFor('Discovery:Ranking');
 
 /**
  * Error text can include provider response bodies, URLs, and credentials. Keep
  * observability useful by retaining only a conservative error class at this
  * boundary; detailed errors are intentionally not emitted from graph traces.
  */
-export function safeMatchmakingError(_error: unknown): string {
+export function safeDiscoveryError(_error: unknown): string {
   return 'OpportunityEvaluationError: [redacted]';
 }
 
@@ -188,7 +188,7 @@ export function withNodeTrace<S, R>(
       return result;
     } catch (err) {
       const durationMs = Date.now() - nodeStart;
-      const errMsg = safeMatchmakingError(err);
+      const errMsg = safeDiscoveryError(err);
       traceEmitter?.({ type: "agent_end", name: traceName, durationMs, summary: `error: ${errMsg}` });
       throw err;
     }
@@ -284,7 +284,7 @@ export function buildDiscovererContext(
  * Fetches user's network memberships and validates requirements.
  * Returns empty if user has no network memberships (requirement).
  */
-export async function prepNode(state: MatchmakingState, deps: MatchmakingDeps) {
+export async function prepNode(state: DiscoveryState, deps: DiscoveryDeps) {
   return timed("OpportunityGraph.prep", async () =>
     (async () => {
         // Use getNetworkMemberships (all memberships) for search scope — NOT getUserNetworkIds
@@ -355,7 +355,7 @@ export function prepTraceSummary(result: unknown): string | undefined {
  * If networkId provided: searches only that network.
  * Otherwise: searches all the user's networks.
  */
-export async function scopeNode(state: MatchmakingState, deps: MatchmakingDeps) {
+export async function scopeNode(state: DiscoveryState, deps: DiscoveryDeps) {
   return timed("OpportunityGraph.scope", async () => {
     scopeLog.verbose('Determining search scope', {
       requestedNetworkId: state.networkId,
@@ -445,7 +445,7 @@ export function scopeTraceSummary(result: unknown): string | undefined {
  * Resolves trigger intent from triggerIntentId or searchQuery vs indexedIntents;
  * sets discoverySource, resolvedTriggerIntentId, resolvedIntentInNetwork for routing (path A/B/C).
  */
-export async function resolveNode(state: MatchmakingState, deps: MatchmakingDeps) {
+export async function resolveNode(state: DiscoveryState, deps: DiscoveryDeps) {
   return timed("OpportunityGraph.resolve", async () => {
     resolveLog.verbose('Resolving intent and network membership', {
       triggerIntentId: state.triggerIntentId,
@@ -571,7 +571,7 @@ const MAX_EVALUATION_POOL = 80;
  * Builds entity bundle from source + candidates, asks the match explainer for
  * reasoning, and maps every survivor to an `EvaluatedOpportunity`.
  */
-export async function evaluationNode(state: MatchmakingState, deps: MatchmakingDeps) {
+export async function evaluationNode(state: DiscoveryState, deps: DiscoveryDeps) {
   return timed("OpportunityGraph.evaluation", async () => {
     const startTime = Date.now();
     evaluationLog.verbose('Starting evaluation', {
@@ -675,7 +675,7 @@ export async function evaluationNode(state: MatchmakingState, deps: MatchmakingD
         agentTimings: agentTimingsAccum,
       };
     } catch (error) {
-      const errMsg = safeMatchmakingError(error);
+      const errMsg = safeDiscoveryError(error);
       evaluationLog.error('Failed', { error: errMsg });
       return {
         evaluatedOpportunities: [],
@@ -699,8 +699,8 @@ export async function evaluationNode(state: MatchmakingState, deps: MatchmakingD
 interface CandidatePoolArgs {
   pool: CandidateMatch[];
   sourceEntity: EvaluatorEntity;
-  state: MatchmakingState;
-  deps: MatchmakingDeps;
+  state: DiscoveryState;
+  deps: DiscoveryDeps;
   discoveryUserId: string;
   explainerSignalConfig: ReturnType<typeof getAbortSignalConfig>;
   agentTimingsAccum: AgentTiming[];
@@ -881,7 +881,7 @@ async function evaluateCandidatePool(
   return { evaluatedOpportunities, trace: traceEntries };
 }
 /** Dedup by userId — when same similarity, prefer network with highest relevancyScore. */
-function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: MatchmakingState): CandidateMatch[] {
+function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: DiscoveryState): CandidateMatch[] {
   const bestByUser = new Map<string, CandidateMatch>();
   for (const c of sortedCandidates) {
     const existing = bestByUser.get(c.candidateUserId);
@@ -908,7 +908,7 @@ function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: Match
 async function filterToActiveMemberships(
   dedupedCandidates: CandidateMatch[],
   discoveryUserId: string,
-  deps: MatchmakingDeps,
+  deps: DiscoveryDeps,
 ): Promise<CandidateMatch[]> {
   const requestedPairs = dedupedCandidates.flatMap((candidate) => [
     { userId: discoveryUserId, networkId: candidate.networkId },
@@ -937,7 +937,7 @@ async function filterToActiveMemberships(
 async function applyRejectionCooldown(
   eligibleCandidates: CandidateMatch[],
   discoveryUserId: string,
-  deps: MatchmakingDeps,
+  deps: DiscoveryDeps,
 ): Promise<CandidateMatch[]> {
   const rejectionCooldownIds = new Set<string>();
   if (eligibleCandidates.length > 0) {
@@ -957,7 +957,7 @@ async function applyRejectionCooldown(
       }
     } catch (err) {
       evaluationLog.warn('IND-567 rejection cool-down: lookup failed, skipping penalty', {
-        error: safeMatchmakingError(err),
+        error: safeDiscoveryError(err),
       });
     }
   }
@@ -977,7 +977,7 @@ async function applyRejectionCooldown(
 /** Hydrate each candidate into the profile/intent shape the explainer reads. */
 async function buildCandidateEntities(
   batchToEvaluate: CandidateMatch[],
-  deps: MatchmakingDeps,
+  deps: DiscoveryDeps,
 ): Promise<EvaluatorEntity[]> {
   return Promise.all(
     batchToEvaluate.map(async (c) => {
@@ -1016,11 +1016,11 @@ async function buildCandidateEntities(
 
 /** Shared arguments for the explainer invocation. */
 interface ExplainArgs {
-  matchExplainer: MatchmakingDeps['matchExplainer'];
+  matchExplainer: DiscoveryDeps['matchExplainer'];
   sourceEntity: EvaluatorEntity;
   candidateEntities: EvaluatorEntity[];
   candidateMatches: CandidateMatch[];
-  state: MatchmakingState;
+  state: DiscoveryState;
   discoveryUserId: string;
   networkContexts: Record<string, string>;
   explainerSignalConfig: ReturnType<typeof getAbortSignalConfig>;
@@ -1065,7 +1065,7 @@ async function explainInParallel(
         })
         .catch((err): CandidateExplanation => {
           const _evalDuration = Date.now() - _evalStart;
-          const _errMsg = safeMatchmakingError(err);
+          const _errMsg = safeDiscoveryError(err);
           agentTimingsAccum.push({ name: 'opportunity.match-explainer', durationMs: _evalDuration });
           _traceEmitter?.({ type: "agent_end", name: "opportunity-match-explainer", durationMs: _evalDuration, summary: `${_candidateName}: error — ${_errMsg}` });
           evaluationLog.warn('Parallel explanation failed for candidate', {
@@ -1108,7 +1108,7 @@ async function explainInParallel(
  * Node 4: Ranking
  * Sorts evaluated opportunities by score, applies limit, dedupes by actor-set hash.
  */
-export async function rankingNode(state: MatchmakingState) {
+export async function rankingNode(state: DiscoveryState) {
   return timed("OpportunityGraph.ranking", async () => {
     rankingLog.verbose('Starting ranking', {
       evaluatedCount: state.evaluatedOpportunities.length,
@@ -1161,11 +1161,11 @@ export function rankingTraceSummary(result: unknown): string | undefined {
   return opps ? `Ranked ${opps.length} opportunity(ies)` : undefined;
 }
 
-/** Plain async matchmaking. The host owns every protocol mutation after discovery. */
-export class Matchmaking {
-  private readonly deps: MatchmakingDeps;
+/** Plain async discovery. The host owns every protocol mutation after discovery. */
+export class Discovery {
+  private readonly deps: DiscoveryDeps;
 
-  constructor(deps: Omit<MatchmakingDeps, 'retrievalMinSimilarity'> & { retrievalMinSimilarity?: number }) {
+  constructor(deps: Omit<DiscoveryDeps, 'retrievalMinSimilarity'> & { retrievalMinSimilarity?: number }) {
     this.deps = { ...deps, retrievalMinSimilarity: validateDiscoveryMinSimilarity(deps.retrievalMinSimilarity ?? DISCOVERY_MIN_SIMILARITY) };
   }
 
@@ -1175,20 +1175,20 @@ export class Matchmaking {
    * @returns Potential intent pairs and discovery diagnostics, with no opportunities committed.
    * @throws On cancellation; ordinary stage failures are reported in `error`.
    */
-  discover(input: MatchmakingInput, options: RunOptions = {}): Promise<MatchmakingState & { pairs: PotentialIntentPair[] }> {
+  discover(input: DiscoveryInput, options: RunOptions = {}): Promise<DiscoveryState & { pairs: PotentialIntentPair[] }> {
     return requestContext.run(options, async () => {
-      const state: MatchmakingState = {
+      const state: DiscoveryState = {
         ...input, options: input.options ?? {}, indexedIntents: [], userNetworks: [], targetNetworks: [],
         networkRelevancyScores: {}, discoverySource: 'intent', sourceProfile: null, resolvedIntentInNetwork: false,
         hydeEmbeddings: {}, candidates: [], evaluatedOpportunities: [], trace: [], agentTimings: [],
       };
       const apply = async (
         name: string,
-        step: (state: MatchmakingState, deps: MatchmakingDeps) => Promise<Partial<MatchmakingState>>,
+        step: (state: DiscoveryState, deps: DiscoveryDeps) => Promise<Partial<DiscoveryState>>,
         summary?: (result: unknown) => string | undefined,
       ) => {
         options.signal?.throwIfAborted();
-        const result = await withNodeTrace(name, (s: MatchmakingState) => step(s, this.deps), summary)(state);
+        const result = await withNodeTrace(name, (s: DiscoveryState) => step(s, this.deps), summary)(state);
         const trace = [...state.trace, ...(result.trace ?? [])];
         const agentTimings = [...state.agentTimings, ...(result.agentTimings ?? [])];
         Object.assign(state, result, { trace, agentTimings });

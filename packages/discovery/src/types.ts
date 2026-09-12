@@ -96,7 +96,7 @@ export interface ActiveIntent { id: string; payload: string; summary?: string | 
 export interface Profile { identity?: { name?: string; bio?: string; location?: string }; context?: string }
 
 /** Narrow read ports. Protocol/host resolves authorization and network-context permissions. */
-export interface MatchmakingData {
+export interface DiscoveryData {
   getNetworkMemberships(userId: string): Promise<Array<{ networkId: string }>>;
   getActiveIntents(userId: string): Promise<ActiveIntent[]>;
   getProfile(userId: string): Promise<Profile | null>;

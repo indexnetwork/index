@@ -1,5 +1,5 @@
-import { Artifacts, Matchmaking, MatchExplainer, ModelClient } from '@indexnetwork/matchmaking';
-import type { ArtifactStore, MatchmakingData, MatchmakingInput, MatchmakingState, PotentialIntentPair } from '@indexnetwork/matchmaking';
+import { Artifacts, Discovery, MatchExplainer, ModelClient } from '@indexnetwork/discovery';
+import type { ArtifactStore, DiscoveryData, DiscoveryInput, DiscoveryState, PotentialIntentPair } from '@indexnetwork/discovery';
 import { decideNegotiationOpening, pairKeyOf, requestContext, resolveDiscoveryNetworkScope, renderDiscoveryNetworkContext } from '@indexnetwork/protocol';
 import type { OpenedNegotiation } from '@indexnetwork/protocol';
 
@@ -25,8 +25,8 @@ export function createArtifacts(database: ArtifactStore) {
   });
 }
 
-/** Resolve protocol rules using live host reads, without coupling matchmaking to protocol. */
-export function createMatchmakingData(database: DiscoveryDatabase): MatchmakingData {
+/** Resolve protocol rules using live host reads, without coupling discovery to protocol. */
+export function createDiscoveryData(database: DiscoveryDatabase): DiscoveryData {
   return {
     getNetworkMemberships: userId => database.getNetworkMemberships(userId),
     getActiveIntents: userId => database.getActiveIntents(userId),
@@ -58,7 +58,7 @@ export function createMatchmakingData(database: DiscoveryDatabase): MatchmakingD
 }
 
 /** Commit potential pairs using protocol identity and opening rules inside the existing transaction. */
-export async function openMatchmakingPairs(database: Pick<DiscoveryDatabase, 'openCounterparties'>, pairs: PotentialIntentPair[], logger: DiscoveryLogger) {
+export async function openDiscoveryPairs(database: Pick<DiscoveryDatabase, 'openCounterparties'>, pairs: PotentialIntentPair[], logger: DiscoveryLogger) {
   const context = requestContext.getStore();
   context?.abortSignal?.throwIfAborted();
   if (!pairs.length) return [];
@@ -94,7 +94,7 @@ export interface OpportunityDiscoverySummary {
 
 /** Derive a stable zero-output reason without exposing candidate details. */
 export function summarizeOpportunityDiscoveryResult(
-  result: Pick<MatchmakingState, 'candidates' | 'evaluatedOpportunities'> & { opened: OpenedNegotiation[] },
+  result: Pick<DiscoveryState, 'candidates' | 'evaluatedOpportunities'> & { opened: OpenedNegotiation[] },
 ): OpportunityDiscoverySummary {
   const { candidates, evaluatedOpportunities, opened } = result;
   const evaluatedCount = evaluatedOpportunities.length;
@@ -115,34 +115,34 @@ export function summarizeOpportunityDiscoveryResult(
   };
 }
 
-/** Run matchmaking, then commit pairs before discovery is marked successful. */
-export async function runOpportunityDiscovery<T extends MatchmakingInput>(params: {
+/** Run discovery, then commit pairs before discovery is marked successful. */
+export async function runOpportunityDiscovery<T extends DiscoveryInput>(params: {
   database: DiscoveryDatabase;
-  deps?: { invokeMatchmaking?: (opts: T) => Promise<void> };
+  deps?: { invokeDiscovery?: (opts: T) => Promise<void> };
   invokeOpts: T;
   logger: DiscoveryLogger;
   logContext: Record<string, unknown>;
 }): Promise<OpportunityDiscoverySummary | null> {
   const { database, deps, invokeOpts, logger, logContext } = params;
-  if (deps?.invokeMatchmaking) {
-    await deps.invokeMatchmaking(invokeOpts);
+  if (deps?.invokeDiscovery) {
+    await deps.invokeDiscovery(invokeOpts);
     return null;
   }
   const model = new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY ?? '' });
   const artifacts = new Artifacts({ database, model, embedder: new EmbedderAdapter(), cache: new RedisCacheAdapter() });
-  const matchmaking = new Matchmaking({
-    database: createMatchmakingData(database), search: new EmbedderAdapter(),
+  const discovery = new Discovery({
+    database: createDiscoveryData(database), search: new EmbedderAdapter(),
     prepareArtifacts: input => artifacts.prepare(input), matchExplainer: new MatchExplainer(model),
   });
   const context = requestContext.getStore();
-  const result = await matchmaking.discover(invokeOpts, { signal: context?.abortSignal, traceEmitter: context?.traceEmitter, logger });
+  const result = await discovery.discover(invokeOpts, { signal: context?.abortSignal, traceEmitter: context?.traceEmitter, logger });
   if (result.error) {
-    logger.error('Matchmaking failed', { ...logContext, error: result.error });
+    logger.error('Discovery failed', { ...logContext, error: result.error });
     throw new Error(result.error);
   }
-  const opened = await openMatchmakingPairs(database, result.pairs, logger);
+  const opened = await openDiscoveryPairs(database, result.pairs, logger);
   const summary = summarizeOpportunityDiscoveryResult({ ...result, opened });
-  logger.info('Matchmaking complete', { ...logContext, ...summary, opened: undefined, openedCount: opened.length });
-  logger.verbose('Matchmaking trace', { ...logContext, trace: result.trace });
+  logger.info('Discovery complete', { ...logContext, ...summary, opened: undefined, openedCount: opened.length });
+  logger.verbose('Discovery trace', { ...logContext, trace: result.trace });
   return summary;
 }

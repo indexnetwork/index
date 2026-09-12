@@ -1,7 +1,7 @@
 {
-  "name": "@indexnetwork/matchmaking",
+  "name": "@indexnetwork/discovery",
   "version": "0.1.0",
-  "description": "Standalone intent matchmaking and source-grounded retrieval artifacts.",
+  "description": "Standalone intent discovery and source-grounded retrieval artifacts.",
   "license": "MIT",
   "type": "module",
   "private": true,

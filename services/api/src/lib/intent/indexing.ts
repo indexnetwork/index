@@ -68,7 +68,7 @@ export interface IntentIndexingDeps {
  * The host side of {@link IntentFollowUp}: the work the intent graph starts
  * once an intent is written.
  *
- * Generation prepares matchmaking artifacts and starts discovery; deletion
+ * Generation prepares discovery artifacts and starts discovery; deletion
  * removes the intent's HyDE documents. Network membership is written by the
  * intent graph from the ids the owner chose, so nothing is assigned here.
  *

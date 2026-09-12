@@ -155,7 +155,7 @@ export class OpportunityServiceEvents extends EventEmitter {
  *
  * Manages opportunity operations including discovery, listing, and creation.
  * Uses OpportunityControllerDatabase adapter for database operations.
- * Reads and updates opportunities produced by host-run matchmaking.
+ * Reads and updates opportunities produced by host-run discovery.
  * Emits opportunity events (created, expired) after transactional writes so subscribers see consistent state.
  *
  * RESPONSIBILITIES:

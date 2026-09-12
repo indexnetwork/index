@@ -1,5 +1,5 @@
 import { mergeMatchEvidence, withCandidateEvidence, withMatchedStrategies } from './explanation.js';
-import { DISCOVERY_MIN_MATCHES, buildDiscovererContext, discoveryLog, type CandidateMatch, type MatchmakingDeps, type MatchmakingState } from './matchmaking.js';
+import { DISCOVERY_MIN_MATCHES, buildDiscovererContext, discoveryLog, type CandidateMatch, type DiscoveryDeps, type DiscoveryState } from './discovery.js';
 import { DEFAULT_MODEL } from './model.js';
 import { getAbortSignalConfig, timed } from './runtime.js';
 import type { CandidateSearch, HydeCandidate, LensEmbedding } from './types.js';
@@ -111,8 +111,8 @@ export function mergeAndRankHydeCandidates(
 
 /** Everything the strategies below need, resolved once by the discovery node. */
 export interface DiscoveryStrategyContext {
-  state: MatchmakingState;
-  deps: MatchmakingDeps;
+  state: DiscoveryState;
+  deps: DiscoveryDeps;
   discoveryUserId: string;
   limitPerStrategy: number;
   perNetworkLimit: number;
@@ -309,7 +309,7 @@ const PER_NETWORK_LIMIT = 160;
  * Node 3: Discovery
  * Generates HyDE embeddings and performs semantic search.
  */
-export async function discoveryNode(state: MatchmakingState, deps: MatchmakingDeps) {
+export async function discoveryNode(state: DiscoveryState, deps: DiscoveryDeps) {
   return timed("OpportunityGraph.discovery", async () => {
     const startTime = Date.now();
     const discoveryUserId = state.userId;
@@ -377,8 +377,8 @@ export async function discoveryNode(state: MatchmakingState, deps: MatchmakingDe
  * and construct candidates directly from shared networks.
  */
 async function discoverDirectConnection(
-  state: MatchmakingState,
-  deps: MatchmakingDeps,
+  state: DiscoveryState,
+  deps: DiscoveryDeps,
   discoveryUserId: string,
   startTime: number,
 ) {

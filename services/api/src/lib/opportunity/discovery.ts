@@ -2,7 +2,7 @@
 import { log } from '../log';
 import { background } from '../background';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import { runOpportunityDiscovery, type DiscoveryDatabase as MatchmakingDatabase } from './discovery.shared';
+import { runOpportunityDiscovery, type DiscoveryDatabase as DiscoveryHostDatabase } from './discovery.shared';
 import { buildIntentDiscoveryTrigger, type DiscoveryInvokeOptions } from './discovery-trigger.builders';
 export type { DiscoveryInvokeOptions } from './discovery-trigger.builders';
 import { createIntentDiscoveryLock, type IntentDiscoveryLock } from './discovery.intent-lock';
@@ -35,11 +35,11 @@ export interface DiscoveryJobData {
 export type DiscoveryDatabase = Pick<
   ChatDatabaseAdapter,
   'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded'
-> & MatchmakingDatabase;
+> & DiscoveryHostDatabase;
 
 export interface DiscoveryDeps {
   database?: DiscoveryDatabase;
-  invokeMatchmaking?: (opts: DiscoveryInvokeOptions) => Promise<void>;
+  invokeDiscovery?: (opts: DiscoveryInvokeOptions) => Promise<void>;
   /** Same-intent overlap guard; defaults to an in-process map. */
   intentLock?: IntentDiscoveryLock;
   /** Test hook: shortens the re-check delay of a deferred same-intent run. */

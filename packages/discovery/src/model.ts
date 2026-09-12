@@ -7,7 +7,7 @@ export const DEFAULT_MODEL = 'google/gemini-3.7-flash';
 /** Fetch-based structured OpenRouter client with bounded retries and response validation. */
 export class ModelClient implements Model {
   constructor(private readonly options: { apiKey: string; model?: string }) {
-    if (!options.apiKey.trim()) throw new Error('Matchmaking requires an OpenRouter API key.');
+    if (!options.apiKey.trim()) throw new Error('Discovery requires an OpenRouter API key.');
   }
 
   /**
@@ -43,11 +43,11 @@ export class ModelClient implements Model {
               }),
             });
             const body = await response.text();
-            if (!response.ok) throw new Error(`Matchmaking model HTTP ${response.status}`);
+            if (!response.ok) throw new Error(`Discovery model HTTP ${response.status}`);
             const data = JSON.parse(body) as { error?: unknown; choices?: Array<{ message?: { content?: string }; error?: unknown }> };
-            if (data.error || data.choices?.[0]?.error) throw new Error('Matchmaking model returned a provider error.');
+            if (data.error || data.choices?.[0]?.error) throw new Error('Discovery model returned a provider error.');
             const content = data.choices?.[0]?.message?.content;
-            if (typeof content !== 'string') throw new Error('Matchmaking model returned no content.');
+            if (typeof content !== 'string') throw new Error('Discovery model returned no content.');
             return request.schema.parse(JSON.parse(content));
           } catch (error) {
             options.signal?.throwIfAborted();
@@ -59,6 +59,6 @@ export class ModelClient implements Model {
         failure = error;
       }
     }
-    throw new Error('Matchmaking model failed after bounded attempts.', { cause: failure });
+    throw new Error('Discovery model failed after bounded attempts.', { cause: failure });
   }
 }

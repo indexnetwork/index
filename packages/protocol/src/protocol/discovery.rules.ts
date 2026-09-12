@@ -1,4 +1,4 @@
-/** Network scope remains a protocol rule; matchmaking receives the host-authorized result. */
+/** Network scope remains a protocol rule; discovery receives the host-authorized result. */
 export function resolveDiscoveryNetworkScope(input: {
   userNetworkIds: string[];
   networkId?: string;
