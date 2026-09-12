@@ -5,6 +5,8 @@ import { RuntimeNotFoundError } from '../lib/agent/runtime-errors';
 import * as schema from '../schemas/database.schema';
 import { log } from '../lib/log';
 
+import { publishIntentLifecycle } from './intent.database.adapter';
+
 const logger = log.lib.from('agent.database.adapter');
 
 /**
@@ -259,6 +261,16 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         .where(eq(schema.agentSessions.userId, input.ownerId));
       return target.id;
     });
+
+    const rows = await db.select({
+      id: schema.intents.id, status: schema.intents.status, updatedAt: schema.intents.updatedAt,
+    }).from(schema.intents).where(and(eq(schema.intents.userId, input.ownerId), isNull(schema.intents.archivedAt)));
+    await Promise.all(rows.map((row) => {
+      const status = row.status === 'PAUSED' ? 'PAUSED' as const
+        : row.status === 'ACTIVE' || row.status == null ? 'ACTIVE' as const
+        : null;
+      return status ? publishIntentLifecycle(input.ownerId, row.id, status, row.updatedAt.getTime()) : undefined;
+    }));
 
     return selectedId ? this.getAgent(selectedId) : null;
   }

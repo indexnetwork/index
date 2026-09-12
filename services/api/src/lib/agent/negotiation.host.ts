@@ -28,7 +28,6 @@ export class ApiNegotiationHost extends EventEmitter {
   readonly negotiations = new Map<string, ObservedNegotiation>();
   agentStatus = '';
   private subscriber?: ReturnType<typeof createRedisClient>;
-  private refresh?: ReturnType<typeof setInterval>;
   private scanning?: Promise<void>;
   private rescan = false;
   private stopped = false;
@@ -93,8 +92,6 @@ export class ApiNegotiationHost extends EventEmitter {
     this.subscriber.on('ready', () => { this.versions.clear(); void this.scan(); });
     await this.subscriber.subscribe(...[...new Set(this.users.map(({ userId }) => userEventChannel(userId)))]);
     await this.scan();
-    // Pub/sub is a wake-up hint; rescan persisted rows to recover missed notifications.
-    this.refresh = setInterval(() => { void this.scan(); }, 5_000);
   }
 
   private record(record: NegotiationDetail): Negotiation {
@@ -144,7 +141,6 @@ export class ApiNegotiationHost extends EventEmitter {
   /** Stop the local runtime and release its leases; conversations and matches remain in the database. */
   async stop(): Promise<void> {
     this.stopped = true;
-    clearInterval(this.refresh);
     await this.scanning;
     await Promise.allSettled([...this.agents.values()].map((agent) => agent.stop()));
     this.subscriber?.disconnect();

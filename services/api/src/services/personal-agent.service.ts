@@ -2,9 +2,11 @@ import type { Model, PrincipalQuestion } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { AgentSessionDatabaseAdapter } from '../adapters/agent-session.database.adapter';
+import { createRedisClient } from '../adapters/cache.adapter';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
 import { ApiNegotiationHost, type ApiPrincipal } from '../lib/agent/negotiation.host';
 import { log } from '../lib/log';
+import { userEventChannel } from '../lib/user-events';
 
 const logger = log.service.from('PersonalAgentService');
 
@@ -35,14 +37,20 @@ export class PersonalAgentService {
   private principals = new Map<string, ApiPrincipal>();
   private running = false;
   private checking?: Promise<void>;
-  private timer?: ReturnType<typeof setInterval>;
+  private subscriber?: ReturnType<typeof createRedisClient>;
 
   constructor(private readonly model: Model) {}
 
-  /** Restore eligible sessions at boot and reconcile new/changed intents and executor bindings in the background. */
+  /** Restore eligible sessions at boot and reconcile when a signal's lifecycle or Redis connection changes. */
   async start(): Promise<void> {
     this.running = true;
-    this.timer = setInterval(() => { void this.reconcile(); }, 5_000);
+    this.subscriber = createRedisClient();
+    this.subscriber.on('pmessage', (_pattern, _channel, raw: string) => {
+      try { if (JSON.parse(raw).type !== 'intent.lifecycle') return; } catch { return; }
+      void this.reconcile();
+    });
+    this.subscriber.on('ready', () => { void this.reconcile(); });
+    await this.subscriber.psubscribe(userEventChannel('*'));
     await this.reconcile();
   }
 
@@ -110,7 +118,7 @@ export class PersonalAgentService {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new PersonalAgentError('Intent not found.', 404);
     if (await this.registry.getSelectedNegotiator(input.userId)) return null;
     if (!this.running) throw new PersonalAgentError('Your personal agent is unavailable.', 503);
-    if (!this.sessions.has(input.intentId)) await this.reconcile();
+    if (!this.sessions.has(input.intentId) || this.sessions.get(input.intentId)?.host.agents.get(input.intentId)?.stopped) await this.reconcile();
     const session = this.sessions.get(input.intentId);
     if (!session || session.principal.userId !== input.userId) throw new PersonalAgentError('Your personal agent is unavailable. The intent must be active and its session must be free.', 409);
     try { await session.ready; }
@@ -127,7 +135,7 @@ export class PersonalAgentService {
   /** Flush every session and release its lease during API shutdown. */
   async stop(): Promise<void> {
     this.running = false;
-    clearInterval(this.timer);
+    this.subscriber?.disconnect();
     await this.checking;
     await Promise.all([...this.sessions.values()].map(({ host }) => host.stop()));
     this.sessions.clear();
