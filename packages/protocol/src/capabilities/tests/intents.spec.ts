@@ -25,8 +25,8 @@ const VAGUE_SIGNAL = "I want a job.";
 class FakeIntentHost {
   readonly intents: Array<CreatedIntent & { archivedAt: Date | null; embedding?: number[] }> = [];
   readonly hydeJobs: Array<
-    | { kind: "generate"; data: Parameters<IntentFollowUp["generateHyde"]>[0] }
-    | { kind: "delete"; data: Parameters<IntentFollowUp["deleteHyde"]>[0] }
+    | { kind: "generate"; data: Parameters<IntentFollowUp["onIntentSaved"]>[0] }
+    | { kind: "delete"; data: Parameters<IntentFollowUp["onIntentArchived"]>[0] }
   > = [];
   readonly embedded: string[] = [];
   readonly links: Array<{ intentId: string; networkId: string }> = [];
@@ -92,9 +92,9 @@ class FakeIntentHost {
 
   readonly followUp: IntentFollowUp = {
     scoreIntent: async () => {},
-    resumeDiscovery: async () => {},
-    generateHyde: async (data) => { this.hydeJobs.push({ kind: "generate", data }); },
-    deleteHyde: async (data) => { this.hydeJobs.push({ kind: "delete", data }); },
+    onIntentResumed: async () => {},
+    onIntentSaved: async (data) => { this.hydeJobs.push({ kind: "generate", data }); },
+    onIntentArchived: async (data) => { this.hydeJobs.push({ kind: "delete", data }); },
   };
 
   graph() {

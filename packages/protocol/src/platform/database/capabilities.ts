@@ -18,8 +18,7 @@ import type { Database } from '../database.js';
 export type CompositeDatabase = Pick<
   Database,
   | 'getProfile'
-  // The discovery path builds an OpportunityGraph too, and its terminal
-  // stage opens the pairs it scored.
+  // The host opens returned matchmaking pairs through protocol rules.
   | 'openCounterparties'
   | 'getActiveIntents'
   | 'getActiveIntentsAcrossNetworks'
@@ -37,7 +36,7 @@ export type CompositeDatabase = Pick<
   | 'expireOpportunitiesByIntentActor'
   | 'transitionIntentLifecycle'
   | 'compensateFailedResume'
-  // OpportunityGraph subgraph requirements (getProfile already included)
+  // Opportunity lifecycle requirements (getProfile already included)
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'
@@ -51,10 +50,6 @@ export type CompositeDatabase = Pick<
   | 'updateOpportunityStatus'
   | 'stampOpportunityActorAction'
   | 'getOrCreateDM'
-  // HyDE graph (used by OpportunityGraph)
-  | 'getHydeDocument'
-  | 'getHydeDocumentsForSource'
-  | 'saveHydeDocument'
   | 'getIntent'
   // NetworkGraph subgraph requirements (assign created intents to user's networks)
   | 'getPublicNetworksNotJoined'
@@ -98,51 +93,14 @@ export type CompositeDatabase = Pick<
 > & NegotiationContextDatabase;
 
 /**
- * Database interface for Opportunity Graph operations.
- * Includes prep/scope (network membership, intents, network details), persist (create, dedupe),
- * and CRUD operations (read, update status, send).
+ * Database interface for opportunity reads and lifecycle operations.
  *
  * Access layer: SystemDatabase (cross-user opportunity operations)
  */
-export type OpportunityGraphDatabase = Pick<
-  Database,
-  | 'getProfile'
-  | 'openCounterparties'
-  | 'createOpportunity'
-  | 'createOpportunityIfNetworkEligible'
-  | 'createOpportunityAndExpireIdsIfNetworkEligible'
-  | 'persistIntentScopedOpportunityIfNetworkEligible'
-  | 'updateOpportunityStatusIfNetworkEligible'
-  | 'opportunityExistsBetweenActors'
-  | 'findOpportunitiesByActors'
-  | 'getUserNetworkIds'
-  | 'getNetworkMemberships'
-  | 'getActiveNetworkMembershipPairs'
-  | 'getActiveIntents'
-  | 'getNetworkIdsForIntent'
-  | 'getNetwork'
-  | 'getNetworkMemberCount'
-  | 'getIntentNetworkScores'
-  | 'getNetworkMemberContext'
-  | 'getNetworkAssignmentContext'
-  // Read/update/send modes
-  | 'getOpportunity'
-  | 'getOpportunitiesForUser'
-  | 'updateOpportunityStatus'
-  | 'stampOpportunityActorAction'
-  | 'isNetworkMember'
-  | 'isNetworkOwner'
-  | 'getUser'
-  | 'getOrCreateDM'
-  // Load candidate intent payload/summary for evaluator
-  | 'getIntent'
-  // User context text for discovery
-  | 'getUserContext'
-  | 'searchIntentsByContextEmbedding'
-  // HyDE documents for HyDE search
-  | 'getHydeDocumentsForSource'
-  // IND-567: Rejection cool-down (optional — adapters may omit)
-  | 'getRecentlyRejectedOpportunityCounterparties'
+export type OpportunityDatabase = Pick<Database,
+  | 'getProfile' | 'getOpportunity' | 'getOpportunitiesForUser'
+  | 'getNetwork' | 'getUser' | 'isNetworkMember' | 'isNetworkOwner'
+  | 'getOrCreateDM' | 'stampOpportunityActorAction' | 'updateOpportunityStatus'
 >;
 export interface OutcomeOutbox {
   event: unknown;
@@ -269,17 +227,6 @@ export type NetworkMembershipGraphDatabase = Pick<
   | 'addMemberToNetwork'
   | 'removeMemberFromNetwork'
   | 'getNetworkMembersForMember'
->;
-
-/**
- * Database interface narrowed for HyDE Graph operations.
- * Provides HyDE document CRUD and intent lookup for refresh.
- *
- * Access layer: UserDatabase (own HyDE) + SystemDatabase (cross-user matching)
- */
-export type HydeGraphDatabase = Pick<
-  Database,
-  'getHydeDocument' | 'getHydeDocumentsForSource' | 'saveHydeDocument' | 'getIntent'
 >;
 
 /**

@@ -74,7 +74,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             })).catch((error) => logger.error('Intent rescoring failed; saved intent retained', { intentId: created.id, error }));
           }
 
-          deps.intentFollowUp?.generateHyde({
+          deps.intentFollowUp?.onIntentSaved({
             intentId: created.id,
             userId: state.userId,
             ...scopeEnvelope,
@@ -124,7 +124,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
           });
           logger.verbose('Updated intent', { intentId: updateAction.id });
           if (updated) {
-            deps.intentFollowUp?.generateHyde({
+            deps.intentFollowUp?.onIntentSaved({
               intentId: updateAction.id,
               userId: state.userId,
               ...scopeEnvelope,
@@ -157,7 +157,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             } catch (err) {
               logger.error('Failed to expire opportunities', { intentId: expireAction.id, error: err });
             }
-            deps.intentFollowUp?.deleteHyde({ intentId: expireAction.id }).catch((err) =>
+            deps.intentFollowUp?.onIntentArchived({ intentId: expireAction.id }).catch((err) =>
               logger.error('Failed to enqueue intent HyDE delete job', { intentId: expireAction.id, error: err })
             );
           }
@@ -176,7 +176,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             outcome = dbResult;
           } else {
             try {
-              await deps.intentFollowUp?.resumeDiscovery({
+              await deps.intentFollowUp?.onIntentResumed({
                 intentId: dbResult.id,
                 userId: state.userId,
                 lifecycleVersionMs: dbResult.lifecycleVersionMs,

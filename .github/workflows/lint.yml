@@ -94,6 +94,9 @@ jobs:
           cd ../..
           cd services/api && bun install
 
+      - name: Check matchmaking
+        run: bunx eslint packages/matchmaking/src && bun run --cwd packages/matchmaking typecheck && bun run --cwd packages/matchmaking build
+
       - name: Type check packages/protocol
         run: cd packages/protocol && bun run build
 

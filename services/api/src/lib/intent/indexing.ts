@@ -1,13 +1,13 @@
-import { Intents, HydeGraphFactory, HydeGenerator, LensInferrer, deriveDiscoveryNetworkIds } from '@indexnetwork/protocol';
-import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentFollowUp, ScopeType } from '@indexnetwork/protocol';
+import { requestContext } from '@indexnetwork/protocol';
+import { Intents, deriveDiscoveryNetworkIds } from '@indexnetwork/protocol';
+import type { AssignmentNetworkMembership, IntentFollowUp, ScopeType } from '@indexnetwork/protocol';
 
 import { log } from '../log';
 import { background } from '../background';
 import { ChatDatabaseAdapter, intentDatabaseAdapter } from '../../adapters/database.adapter';
-import { EmbedderAdapter } from '../../adapters/embedder.adapter';
-import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 import { buildProfileFromUser } from '../../adapters/database.shared';
 import { intentDiscovery } from '../opportunity/discovery';
+import { createArtifacts } from '../opportunity/discovery.shared';
 
 /** Payload for jobs that generate HyDE documents for an intent. */
 export interface IntentJobData {
@@ -44,7 +44,7 @@ function deriveIntentDiscoveryNetworkIds(memberships: AssignmentNetworkMembershi
 /** Minimal database interface for intent follow-up (used when deps provided in tests). */
 export type IntentIndexingDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'deleteHydeDocumentsForSource' | 'getHydeDocumentsForSource' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'deleteHydeDocumentsForSource' | 'getHydeDocumentsForSource' | 'getHydeDocument' | 'saveHydeDocument' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -68,12 +68,12 @@ export interface IntentIndexingDeps {
  * The host side of {@link IntentFollowUp}: the work the intent graph starts
  * once an intent is written.
  *
- * Generation runs the HyDE graph and starts opportunity discovery; deletion
+ * Generation prepares matchmaking artifacts and starts discovery; deletion
  * removes the intent's HyDE documents. Network membership is written by the
  * intent graph from the ids the owner chose, so nothing is assigned here.
  *
  * @remarks
- * `generateHyde`/`deleteHyde`/`resumeDiscovery` are all fire-and-forget: each
+ * `onIntentSaved`/`onIntentArchived`/`onIntentResumed` are all fire-and-forget: each
  * triggers its handler via {@link background} (directly, or through
  * {@link intentDiscovery}'s own background trigger), unbounded, with no retry
  * and no dedup.
@@ -97,7 +97,7 @@ export class IntentIndexing implements IntentFollowUp {
    * @param data - intentId, userId, and optional scope envelope. When scopeType/scopeId
    *   is set, indexing is restricted to the focused network plus the user's personal networks.
    */
-  generateHyde(data: IntentJobData): Promise<unknown> {
+  onIntentSaved(data: IntentJobData): Promise<unknown> {
     background('intent', () => this.runHydeGeneration(data));
     return Promise.resolve();
   }
@@ -106,7 +106,7 @@ export class IntentIndexing implements IntentFollowUp {
    * Delete HyDE documents for an intent (implements {@link IntentFollowUp}). Fire-and-forget.
    * @param data - intentId
    */
-  deleteHyde(data: { intentId: string }): Promise<unknown> {
+  onIntentArchived(data: { intentId: string }): Promise<unknown> {
     background('intent', () => this.runHydeDeletion(data));
     return Promise.resolve();
   }
@@ -117,15 +117,14 @@ export class IntentIndexing implements IntentFollowUp {
    * progress write before triggering the scan in the background — a failure
    * there (not the scan itself) is the only thing this can still reject with.
    */
-  resumeDiscovery(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown> {
+  onIntentResumed(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown> {
     return intentDiscovery.start({ intentId: data.intentId, userId: data.userId, trigger: 'intent_resume' });
   }
 
   private readonly logger = log.job.from('IntentJob');
   private readonly hydeLogger = log.job.from('IntentJob:Hyde');
   private readonly reconcileLogger = log.job.from('IntentJob:Reconcile');
-  private readonly database: IntentIndexingDatabase | ChatDatabaseAdapter;
-  private readonly graphDb: HydeGraphDatabase;
+  private readonly database: IntentIndexingDatabase;
   private readonly deps: IntentIndexingDeps | undefined;
 
   /**
@@ -134,7 +133,6 @@ export class IntentIndexing implements IntentFollowUp {
   constructor(deps?: IntentIndexingDeps) {
     this.deps = deps;
     this.database = deps?.database ?? new ChatDatabaseAdapter();
-    this.graphDb = (this.database as ChatDatabaseAdapter) as unknown as HydeGraphDatabase;
     // When deps is omitted, default adapter implements the same interface.
   }
 
@@ -230,18 +228,14 @@ export class IntentIndexing implements IntentFollowUp {
           profileContext,
         });
       } else {
-        const embedder = new EmbedderAdapter();
-        const cache = new RedisCacheAdapter();
-        const inferrer = new LensInferrer();
-        const generator = new HydeGenerator();
-        const hydeGraph = new HydeGraphFactory(this.graphDb, embedder, cache, inferrer, generator).createGraph();
-        await hydeGraph.invoke({
+        const context = requestContext.getStore();
+        await createArtifacts(this.database).prepare({
           sourceText: intent.payload,
           sourceType: 'intent',
           sourceId: intentId,
           forceRegenerate: true,
           profileContext,
-        });
+        }, { signal: context?.abortSignal, traceEmitter: context?.traceEmitter, logger: this.hydeLogger });
       }
     } catch (error) {
       this.hydeLogger.error('HyDE generation failed', {

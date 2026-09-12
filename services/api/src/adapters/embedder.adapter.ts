@@ -5,7 +5,6 @@
 
 import OpenAI from 'openai';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
-import { withMultiSignalBonus } from '../lib/embedding/similarity.calibration';
 import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
 import { embeddingConfigurationFingerprint } from '../lib/embedding/embedding.identity';
 import { traceAppOperation } from '../lib/sentry-performance';
@@ -14,34 +13,11 @@ import * as schema from '../schemas/database.schema';
 // Local types (structurally aligned with lib/protocol/interfaces/embedder.interface)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A single lens embedding ready for search. */
-export interface LensEmbedding {
-  /** Free-text lens label (e.g. "crypto infrastructure VC"). */
-  lens: string;
-  /** Which corpus to search. */
-  corpus: 'profiles' | 'intents';
-  /** 2000-dim embedding vector. */
-  embedding: number[];
+export interface IntentCandidate {
+  type: 'intent'; id: string; userId: string; score: number; networkId: string;
 }
-
-export interface HydeSearchOptions {
-  networkScope: string[];
-  excludeUserId?: string;
-  limitPerStrategy?: number;
-  limit?: number;
-  minScore?: number;
-}
-
-export interface HydeCandidate {
-  type: 'intent';
-  id: string;
-  userId: string;
-  score: number;
-  matchedVia: string;
-  networkId: string;
-  /** Candidate document text (populated for user_context matches; used as candidatePayload). */
-  text?: string;
-  matchedLenses?: string[];
+export interface IntentSearchOptions {
+  networkScope: string[]; excludeUserId?: string; limit: number; minScore: number; signal?: AbortSignal;
 }
 
 export interface VectorSearchResult<T> {
@@ -55,43 +31,6 @@ export type VectorStoreOption<T> = {
   candidates?: (T & { embedding?: number[] | null })[];
   minScore?: number;
 };
-
-/**
- * Collapse HyDE matches to one candidate per user, scored honestly.
- *
- * The retained score is the user's best raw cosine similarity plus a bounded
- * bonus for each ADDITIONAL DISTINCT lens that surfaced them. Counting matched
- * rows instead of lenses (one lens hitting three of a user's intents counted as
- * three signals) saturated the old additive bonus, so unrelated candidates all
- * landed on exactly 1.0 and monopolised the by-rank evaluation batch.
- */
-export function mergeAndRankHydeCandidates(
-  candidates: HydeCandidate[],
-  limit: number,
-): HydeCandidate[] {
-  const byUser = new Map<string, HydeCandidate[]>();
-  for (const c of candidates) {
-    const existing = byUser.get(c.userId) ?? [];
-    existing.push(c);
-    byUser.set(c.userId, existing);
-  }
-
-  const scored = Array.from(byUser.entries()).map(([, matches]) => {
-    const bestMatch = matches.reduce((a, b) => (a.score > b.score ? a : b));
-    const lenses = [...new Set(matches.map((m) => m.matchedVia))];
-    return {
-      ...bestMatch,
-      score: withMultiSignalBonus(bestMatch.score, lenses.length),
-      matchedLenses: lenses.length > 1 ? lenses : undefined,
-    };
-  });
-
-  return scored.sort((a, b) => b.score - a.score).slice(0, limit);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Adapter implementation
-// ─────────────────────────────────────────────────────────────────────────────
 
 async function getDb() {
   return (await import('../lib/drizzle/drizzle')).default;
@@ -225,73 +164,17 @@ export class EmbedderAdapter {
     throw new Error(`Unknown collection: ${collection}`);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // HyDE lens-based search
-  // ─────────────────────────────────────────────────────────────────────────
-
-  async searchWithHydeEmbeddings(
-    lensEmbeddings: LensEmbedding[],
-    options: HydeSearchOptions
-  ): Promise<HydeCandidate[]> {
-    return traceAppOperation(
-      {
-        name: 'vector search HyDE embeddings',
-        op: 'db.vector_search',
-        attributes: {
-          subsystem: 'database',
-          'db.system': 'postgresql',
-          'db.operation': 'vector_search',
-          'search.strategy': 'hyde',
-          'search.lens_count': lensEmbeddings.length,
-          'search.network_scope_count': options.networkScope.length,
-          'search.limit': options.limit ?? 80,
-        },
-      },
-      () => this.searchWithHydeEmbeddingsInner(lensEmbeddings, options),
-    );
+  /** Search only real intent embeddings, with current lifecycle, broadcast and membership eligibility. */
+  async searchIntentCandidates(embedding: number[], options: IntentSearchOptions): Promise<IntentCandidate[]> {
+    options.signal?.throwIfAborted();
+    return traceAppOperation({
+      name: 'vector search intent candidates', op: 'db.vector_search',
+      attributes: { subsystem: 'database', 'db.system': 'postgresql', 'search.strategy': 'hyde', 'search.limit': options.limit },
+    }, () => this.searchIntentCandidatesInner(embedding, options));
   }
 
-  private async searchWithHydeEmbeddingsInner(
-    lensEmbeddings: LensEmbedding[],
-    options: HydeSearchOptions
-  ): Promise<HydeCandidate[]> {
-    const {
-      networkScope,
-      excludeUserId,
-      limitPerStrategy = 40,
-      limit = 80,
-      minScore = 0.40,
-    } = options;
-
-    const filter = { networkScope, excludeUserId };
-
-    const halfLimit = Math.ceil(limitPerStrategy / 2);
-    const searchPromises = lensEmbeddings.flatMap((le) => {
-      if (!le.embedding?.length) return [];
-      // Discovery is intent-to-intent: a lens that asked for a profile corpus
-      // still searches intents, on a half budget so it cannot crowd out the
-      // lens that asked for them directly.
-      return [
-        this.searchIntentsForHyde(le.embedding, filter, le.corpus === 'intents' ? limitPerStrategy : halfLimit, minScore, le.lens),
-      ];
-    });
-
-    const allResults = await Promise.all(searchPromises);
-    const flatResults = allResults.flat();
-    return this.mergeAndRankCandidates(flatResults, limit);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Private: intent search for HyDE
-  // ─────────────────────────────────────────────────────────────────────────
-
-  private async searchIntentsForHyde(
-    embedding: number[],
-    filter: { networkScope: string[]; excludeUserId?: string },
-    limit: number,
-    minScore: number,
-    lens: string
-  ): Promise<HydeCandidate[]> {
+  private async searchIntentCandidatesInner(embedding: number[], options: IntentSearchOptions): Promise<IntentCandidate[]> {
+    const { limit, minScore, ...filter } = options;
     if (filter.networkScope?.length === 0) return [];
     const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
@@ -333,18 +216,10 @@ export class EmbedderAdapter {
       id: r.id,
       userId: r.userId,
       score: r.similarity,
-      matchedVia: lens,
       networkId: r.networkId,
     }));
   }
 
-
-  private mergeAndRankCandidates(
-    candidates: HydeCandidate[],
-    limit: number
-  ): HydeCandidate[] {
-    return mergeAndRankHydeCandidates(candidates, limit);
-  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Private: generic search (single-vector)

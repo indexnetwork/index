@@ -1,54 +1,86 @@
-import { log } from '../log';
-import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
+import { Artifacts, Matchmaking, MatchExplainer, ModelClient } from '@indexnetwork/matchmaking';
+import type { ArtifactStore, MatchmakingData, MatchmakingInput, MatchmakingState, PotentialIntentPair } from '@indexnetwork/matchmaking';
+import { decideNegotiationOpening, pairKeyOf, requestContext, resolveDiscoveryNetworkScope, renderDiscoveryNetworkContext } from '@indexnetwork/protocol';
+import type { OpenedNegotiation } from '@indexnetwork/protocol';
+
+import type { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../../adapters/cache.adapter';
-import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, OpenedNegotiation } from '@indexnetwork/protocol';
 
-
-/** Graph DB shape the opportunity/HyDE graphs require; discovery casts its ChatDatabaseAdapter to this. */
-export type OpportunityGraphDb = OpportunityGraphDatabase & HydeGraphDatabase;
+import { log } from '../log';
 
 type DiscoveryLogger = ReturnType<typeof log.job.from>;
+export type DiscoveryDatabase = Pick<ChatDatabaseAdapter,
+  | 'getNetworkMemberships' | 'getActiveIntents' | 'getProfile' | 'getIntent'
+  | 'getNetworkIdsForIntent' | 'getNetwork' | 'getNetworkMemberCount' | 'getIntentNetworkScores'
+  | 'getActiveNetworkMembershipPairs' | 'getRecentlyRejectedOpportunityCounterparties' | 'isNetworkOwner'
+  | 'getHydeDocument' | 'saveHydeDocument' | 'openCounterparties'
+>;
 
-/** Build the graph DB façade discovery uses (ChatDatabaseAdapter cast to the graph interfaces). */
-export function createOpportunityGraphDb(database: object = new ChatDatabaseAdapter()): OpportunityGraphDb {
-  return database as unknown as OpportunityGraphDb;
+/** The API supplies infrastructure; the library owns generation, cache identity and retrieval. */
+export function createArtifacts(database: ArtifactStore) {
+  return new Artifacts({
+    database, embedder: new EmbedderAdapter(), cache: new RedisCacheAdapter(),
+    model: new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY ?? '' }),
+  });
 }
 
-/**
- * Assemble the configured opportunity graph (HyDE sub-graph included).
- * Shared by every discovery entry point, so it lives here once.
- */
-export function buildOpportunityGraph(graphDb: OpportunityGraphDb) {
-  const embedder: Embedder = new EmbedderAdapter();
-  const cache: HydeCache = new RedisCacheAdapter();
-  const inferrer = new LensInferrer();
-  const generator = new HydeGenerator();
-  const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
-  return new OpportunityGraphFactory(
-    graphDb,
-    embedder,
-    hydeGraph,
-  ).createGraph();
+/** Resolve protocol rules using live host reads, without coupling matchmaking to protocol. */
+export function createMatchmakingData(database: DiscoveryDatabase): MatchmakingData {
+  return {
+    getNetworkMemberships: userId => database.getNetworkMemberships(userId),
+    getActiveIntents: userId => database.getActiveIntents(userId),
+    getProfile: userId => database.getProfile(userId),
+    getIntent: intentId => database.getIntent(intentId),
+    getNetworkIdsForIntent: intentId => database.getNetworkIdsForIntent(intentId),
+    getNetwork: networkId => database.getNetwork(networkId),
+    getNetworkMemberCount: networkId => database.getNetworkMemberCount(networkId),
+    getIntentNetworkScores: intentId => database.getIntentNetworkScores(intentId),
+    getActiveNetworkMembershipPairs: pairs => database.getActiveNetworkMembershipPairs(pairs),
+    getRecentlyRejectedOpportunityCounterparties: (userId, candidates, windowMs) => database.getRecentlyRejectedOpportunityCounterparties(userId, candidates, windowMs),
+    getDiscoveryScope: async input => resolveDiscoveryNetworkScope({
+      userNetworkIds: input.userNetworks, networkId: input.networkId, networkScope: input.networkScope,
+      ownsRequestedNetwork: !!input.networkId && !input.userNetworks.includes(input.networkId)
+        && await database.isNetworkOwner(input.networkId, input.userId),
+      triggerIntentNetworkIds: input.triggerIntentId ? await database.getNetworkIdsForIntent(input.triggerIntentId) : undefined,
+    }),
+    getNetworkContexts: async networkIds => {
+      const contexts: Record<string, string> = {};
+      await Promise.all(networkIds.map(async id => {
+        const network = await database.getNetwork(id);
+        if (!network) return;
+        const context = renderDiscoveryNetworkContext(network);
+        if (context !== undefined) contexts[id] = context;
+      }));
+      return contexts;
+    },
+  };
 }
 
-type OpportunityInvokeOptions = Parameters<ReturnType<typeof buildOpportunityGraph>['invoke']>[0];
+/** Commit potential pairs using protocol identity and opening rules inside the existing transaction. */
+export async function openMatchmakingPairs(database: Pick<DiscoveryDatabase, 'openCounterparties'>, pairs: PotentialIntentPair[], logger: DiscoveryLogger) {
+  const context = requestContext.getStore();
+  context?.abortSignal?.throwIfAborted();
+  if (!pairs.length) return [];
+  const started = Date.now();
+  context?.traceEmitter?.({ type: 'agent_start', name: 'opportunity-emit-counterparties' });
+  try {
+    const opened = await database.openCounterparties(pairs.map(pair => ({
+      ...pair, pairKey: pairKeyOf(pair.networkId, pair.intentA, pair.intentB),
+    })), decideNegotiationOpening);
+    logger.info('Opened discovery counterparties', { count: pairs.length, opened: opened.length });
+    context?.traceEmitter?.({ type: 'agent_end', name: 'opportunity-emit-counterparties', durationMs: Date.now() - started, summary: `Opened ${opened.length} pair(s)` });
+    return opened;
+  } catch (error) {
+    context?.traceEmitter?.({ type: 'agent_end', name: 'opportunity-emit-counterparties', durationMs: Date.now() - started, summary: 'Opening counterparties failed' });
+    throw error;
+  }
+}
 
-/**
- * Run an opportunity-discovery graph and log/throw on the result.
- *
- * Encapsulates the block that was copy-pasted across the three former `from-*` entry points:
- * the `invokeOpportunityGraph` test short-circuit, graph assembly + invocation,
- * `result.error` handling, and the candidates/opportunities (and optional trace)
- * completion logging. Per-caller variation is passed in via `errorLabel`/`logContext`/`logTrace`.
- */
 export type OpportunityDiscoveryCompletionReason =
   | 'created_or_reactivated'
   | 'no_search_candidates'
   | 'evaluator_rejected_all'
-  | 'same_intent_pair_duplicate_suppressed'
-  | 'final_atomic_conflict'
   | 'persistence_zero_other';
 
 export interface OpportunityDiscoverySummary {
@@ -56,115 +88,61 @@ export interface OpportunityDiscoverySummary {
   evaluatedCount: number;
   opportunitiesCreated: number;
   completionReason: OpportunityDiscoveryCompletionReason;
-  sameIntentPairDuplicateSuppressions: number;
-  crossIntentPairAllowedCount: number;
-  finalAtomicConflictCount: number;
   /** Negotiations this run opened; each owes its initiator a first turn. */
   opened: OpenedNegotiation[];
 }
 
-interface OpportunityDiscoveryResultShape {
-  candidates?: unknown[];
-  evaluatedOpportunities?: unknown[];
-  opened?: OpenedNegotiation[];
-  persistenceOutcome?: {
-    evaluatedCount: number;
-    sameIntentPairDuplicateSuppressions: number;
-    crossIntentPairAllowedCount: number;
-    finalAtomicConflictCount: number;
-  };
-}
-
 /** Derive a stable zero-output reason without exposing candidate details. */
 export function summarizeOpportunityDiscoveryResult(
-  result: OpportunityDiscoveryResultShape,
+  result: Pick<MatchmakingState, 'candidates' | 'evaluatedOpportunities'> & { opened: OpenedNegotiation[] },
 ): OpportunityDiscoverySummary {
-  const candidates = Array.isArray(result.candidates) ? result.candidates : [];
-  // Discovery's output is what it opened: every evaluated pair becomes an
-  // opportunity with a negotiation beside it, so there is no separate count.
-  const opened = Array.isArray(result.opened) ? result.opened : [];
-  const persistence = result.persistenceOutcome;
-  const evaluatedCount = persistence?.evaluatedCount
-    ?? (Array.isArray(result.evaluatedOpportunities) ? result.evaluatedOpportunities.length : 0);
-  const sameIntentPairDuplicateSuppressions = persistence?.sameIntentPairDuplicateSuppressions ?? 0;
-  const crossIntentPairAllowedCount = persistence?.crossIntentPairAllowedCount ?? 0;
-  const finalAtomicConflictCount = persistence?.finalAtomicConflictCount ?? 0;
+  const { candidates, evaluatedOpportunities, opened } = result;
+  const evaluatedCount = evaluatedOpportunities.length;
   const completionReason: OpportunityDiscoveryCompletionReason = opened.length > 0
     ? 'created_or_reactivated'
     : candidates.length === 0
       ? 'no_search_candidates'
       : evaluatedCount === 0
         ? 'evaluator_rejected_all'
-        : finalAtomicConflictCount > 0
-          ? 'final_atomic_conflict'
-          : sameIntentPairDuplicateSuppressions > 0
-            ? 'same_intent_pair_duplicate_suppressed'
-            : 'persistence_zero_other';
+        : 'persistence_zero_other';
 
   return {
     candidatesFound: candidates.length,
     evaluatedCount,
     opportunitiesCreated: opened.length,
     completionReason,
-    sameIntentPairDuplicateSuppressions,
-    crossIntentPairAllowedCount,
-    finalAtomicConflictCount,
     opened,
   };
 }
 
-export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOptions>(params: {
-  graphDb: OpportunityGraphDb;
-  deps?: { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
-  invokeOpts: TOpts;
+/** Run matchmaking, then commit pairs before discovery is marked successful. */
+export async function runOpportunityDiscovery<T extends MatchmakingInput>(params: {
+  database: DiscoveryDatabase;
+  deps?: { invokeMatchmaking?: (opts: T) => Promise<void> };
+  invokeOpts: T;
   logger: DiscoveryLogger;
-  /** Human label for the run, e.g. `'Discovery'`. */
-  label: string;
-  /**
-   * Label for the thrown fallback error message, e.g. `'discovery'`. Kept
-   * distinct from `label` so the thrown message stays lowercase-dashed (matching
-   * the pre-split entry points). Defaults to `label`.
-   */
-  errorLabel?: string;
-  /** Identifier fields merged into every log line (e.g. `{ intentId, userId }`). */
   logContext: Record<string, unknown>;
-  /** Whether to emit the verbose graph-trace line. Defaults to true. */
-  logTrace?: boolean;
 }): Promise<OpportunityDiscoverySummary | null> {
-  const { graphDb, deps, invokeOpts, logger, label, errorLabel = label, logContext, logTrace = true } = params;
-
-  if (deps?.invokeOpportunityGraph) {
-    await deps.invokeOpportunityGraph(invokeOpts);
+  const { database, deps, invokeOpts, logger, logContext } = params;
+  if (deps?.invokeMatchmaking) {
+    await deps.invokeMatchmaking(invokeOpts);
     return null;
   }
-
-  const opportunityGraph = buildOpportunityGraph(graphDb);
-  const result = await opportunityGraph.invoke(invokeOpts);
-  if (result.error) {
-    logger.error('Graph failed', { ...logContext, error: result.error });
-    throw new Error(typeof result.error === 'string' ? result.error : `${errorLabel} graph failed`);
-  }
-
-  const summary = summarizeOpportunityDiscoveryResult(result);
-
-  const { opened, ...counts } = summary;
-  logger.info('Graph complete', {
-    ...logContext,
-    ...counts,
-    openedCount: opened.length,
+  const model = new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY ?? '' });
+  const artifacts = new Artifacts({ database, model, embedder: new EmbedderAdapter(), cache: new RedisCacheAdapter() });
+  const matchmaking = new Matchmaking({
+    database: createMatchmakingData(database), search: new EmbedderAdapter(),
+    prepareArtifacts: input => artifacts.prepare(input), matchExplainer: new MatchExplainer(model),
   });
-
-  if (logTrace) {
-    const trace = Array.isArray(result.trace) ? result.trace : [];
-    logger.verbose('Graph trace', {
-      ...logContext,
-      trace: trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
-        node: t.node,
-        detail: t.detail,
-        ...(t.data ? { data: t.data } : {}),
-      })),
-    });
+  const context = requestContext.getStore();
+  const result = await matchmaking.discover(invokeOpts, { signal: context?.abortSignal, traceEmitter: context?.traceEmitter, logger });
+  if (result.error) {
+    logger.error('Matchmaking failed', { ...logContext, error: result.error });
+    throw new Error(result.error);
   }
-
+  const opened = await openMatchmakingPairs(database, result.pairs, logger);
+  const summary = summarizeOpportunityDiscoveryResult({ ...result, opened });
+  logger.info('Matchmaking complete', { ...logContext, ...summary, opened: undefined, openedCount: opened.length });
+  logger.verbose('Matchmaking trace', { ...logContext, trace: result.trace });
   return summary;
 }

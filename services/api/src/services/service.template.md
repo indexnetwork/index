@@ -298,7 +298,7 @@ export class IntentIndexingService {
 
 ### 7. Postgres Vector Search
 - **Context**: If your service needs to perform vector search on its own entities using `pgvector`.
-- **Pattern**: Add a typed `<=>` cosine-distance query to `EmbedderAdapter` (`adapters/embedder.adapter.ts`), which already owns pgvector search (`search`, `searchWithHydeEmbeddings`). Do not reintroduce a per-service searcher: keep the SQL in the adapter and call it from the service.
+- **Pattern**: Add a typed `<=>` cosine-distance query to `EmbedderAdapter` (`adapters/embedder.adapter.ts`), which already owns pgvector search (`search`, `searchIntentCandidates`). Do not reintroduce a per-service searcher: keep the SQL in the adapter and call it from the service.
 - **Example**:
   \`\`\`typescript
   // In adapters/embedder.adapter.ts — a new corpus search method on EmbedderAdapter

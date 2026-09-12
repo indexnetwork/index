@@ -48,26 +48,11 @@ delete process.env.OPENROUTER_API_KEY;
 delete process.env.OPENAI_API_KEY;
 
 if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
-  const promptText = (input: unknown): string => {
-    if (!Array.isArray(input)) return "";
-    return String((input.at(-1) as { content?: unknown } | undefined)?.content ?? "");
-  };
-
-  const structuredResponse = (agent: string, input: unknown): Record<string, unknown> => {
-    const prompt = promptText(input).toLowerCase();
-    if (agent === "lensInferrer") {
-      const corpus = prompt.includes("marketplace") ? "intents" : "profiles";
-      const label = prompt.includes("depin") || prompt.includes("sensor")
-        ? "DePIN infrastructure investors"
-        : prompt.includes("machine learning") ? "Experienced machine learning engineer" : "Relevant collaborators";
-      return { lenses: [{ label, corpus, reasoning: "Deterministic source-test lens." }] };
-    }
-    if (agent === "hydeGenerator") return { hypotheticalDocument: "A relevant professional collaborator with complementary goals." };
+  const structuredResponse = (agent: string): Record<string, unknown> => {
     if (agent === "intentReconciler") return { actions: [] };
     if (agent === "intentVerifier") {
       return { reasoning: "Deterministic source-test verification.", classification: "ASSERTIVE", felicity_scores: { clarity: 80, authority: 80, sincerity: 80 }, semantic_entropy: 0.2, referential_anchor: null, referential_breadth: "narrow", missing_selectional_constraints: [], specificity_warning: null, flags: [] };
     }
-    if (agent === "opportunityEvaluator") return { opportunities: [] };
     if (agent === "opportunityPresenter") {
       return { presentation: { headline: "A relevant connection", personalizedSummary: "This is a relevant opportunity.", suggestedAction: "Review the opportunity.", greeting: "I would like to compare notes." } };
     }
@@ -84,7 +69,7 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
 
   const modelFor = (agent: string) => {
     const model = {
-      invoke: async (input: unknown) => structuredResponse(agent, input),
+      invoke: async () => structuredResponse(agent),
       bind: () => model,
       bindTools: () => model,
       withStructuredOutput: () => model,

@@ -10,7 +10,8 @@
     "packages/claude-plugin",
     "packages/hermes-plugin",
     "packages/agent",
-    "packages/agent-tui"
+    "packages/agent-tui",
+    "packages/matchmaking"
   ],
   "scripts": {
     "dev": "bash scripts/dev.sh",
@@ -49,6 +50,7 @@
     "worktree:build": "bash scripts/worktree-build.sh"
   },
   "devDependencies": {
+    "@indexnetwork/matchmaking": "workspace:*",
     "@eslint/js": "^10.0.1",
     "eslint": "^9.39.1",
     "eslint-import-resolver-typescript": "^4.4.4",

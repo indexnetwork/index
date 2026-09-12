@@ -15,7 +15,12 @@ import { timed } from '../shared/observability/performance.js';
 import { safeFallbackSummary } from "./opportunity.presentation.js";
 import type { OpportunityMutationResult } from "./opportunity.lifecycle.js";
 import { deleteOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
-import { deleteLog, readLog, updateLog, type OpportunityGraphDeps } from "./opportunity.graph.shared.js";
+import type { OpportunityDatabase } from '../../platform/database.js';
+import { protocolLogger } from '../shared/observability/protocol.logger.js';
+
+const deleteLog = protocolLogger('Opportunity:Delete');
+const readLog = protocolLogger('Opportunity:Read');
+const updateLog = protocolLogger('Opportunity:Update');
 
 /** Identifies the caller and the opportunity every mutation mode acts on. */
 export interface OpportunityMutationRequest {
@@ -33,7 +38,7 @@ export interface OpportunityMutationOutcome {
  * Fast path — no LLM calls.
  */
 export async function readOpportunities(
-  deps: Pick<OpportunityGraphDeps, 'database'>,
+  deps: { database: OpportunityDatabase },
   request: { userId: Id<'users'>; networkId?: Id<'networks'> },
 ) {
   return timed("OpportunityGraph.read", async () => {
@@ -172,7 +177,7 @@ const OPPORTUNITY_SOURCE_LABEL: Record<string, string> = {
  * atomically with the status change via `stampOpportunityActorAction`.
  */
 export async function updateOpportunityStatus(
-  deps: Pick<OpportunityGraphDeps, 'database'>,
+  deps: { database: OpportunityDatabase },
   request: OpportunityMutationRequest & { newStatus: string | undefined },
 ): Promise<OpportunityMutationOutcome> {
   return timed("OpportunityGraph.update", async () => {
@@ -199,7 +204,7 @@ export async function updateOpportunityStatus(
 
 /** Delete mode: expire/archive an opportunity. */
 export async function deleteOpportunity(
-  deps: Pick<OpportunityGraphDeps, 'database'>,
+  deps: { database: OpportunityDatabase },
   request: OpportunityMutationRequest,
 ): Promise<OpportunityMutationOutcome> {
   return timed("OpportunityGraph.delete", async () => {

@@ -24,17 +24,16 @@ export { setTimingWrapper } from "./internal/shared/observability/performance.js
 
 // ─── Interfaces (implement these to wire up your infrastructure) ───────────────
 
-export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/discovery/cache.js";
+export type { Cache, CacheOptions, OpportunityCache } from "./platform/discovery/cache.js";
 export type {
   CompositeDatabase,
   UserDatabase,
   SystemDatabase,
-  OpportunityGraphDatabase,
+  OpportunityDatabase,
   OpportunityControllerDatabase,
   OutcomeOutbox,
   RadarGraphDatabase,
   IntentGraphDatabase,
-  HydeGraphDatabase,
   Opportunity,
   OpportunityActor,
   OpportunityStatus,
@@ -48,7 +47,7 @@ export type {
   NegotiationContextOutcome,
   NegotiationContextTurn,
 } from "./platform/database.js";
-export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/discovery/embedder.js";
+export type { Embedder, VectorStoreOption, VectorSearchResult } from "./platform/discovery/embedder.js";
 export type { IntentFollowUp } from "./platform/runtime/follow-up.js";
 export type { Scraper } from "./platform/discovery/scraper.js";
 export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/runtime/observability.js";
@@ -61,7 +60,6 @@ export { UnderspecificationTypeSchema } from "./protocol/schemas/underspecificat
 export type { UnderspecificationType } from "./protocol/schemas/underspecification.schema.js";
 export type { DiscoveryNegotiation } from "./protocol/schemas/discovery-question.schema.js";
 export type { NetworkAssignmentMetadata } from "./protocol/schemas/network-assignment.schema.js";
-export type { HydeTargetCorpus, Lens } from "./protocol/core.js";
 export type { DebugMetaAgent } from "./protocol/core.js";
 export { Negotiations } from './capabilities/negotiations.js';
 export { NEGOTIATION_MAX_TURNS, NEGOTIATION_MESSAGE_LIMIT } from './protocol/negotiation.constants.js';
@@ -72,7 +70,6 @@ export { decideNegotiationOpening, decideNegotiationTurn, observeNegotiation, ne
 export type { NegotiationAction, NegotiationOutcome, NegotiationTurn, NegotiationState, NegotiationDecision, NegotiationRejection, NegotiationOpening, NegotiationOpeningDecision } from './protocol/negotiation.rules.js';
 export type { NegotiationDatabase } from './platform/database/negotiation.js';
 
-export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
 // ─── Networks ─────────────────────────────────────────────────────────────────
 // The whole capability behind one class: the community lifecycle graph, the
 // membership graph, and signal assignment.
@@ -98,8 +95,6 @@ export type {
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
-export { HydeGenerator } from "./internal/discovery/hyde.generator.js";
-export { LensInferrer } from "./internal/discovery/lens.inferrer.js";
 
 export { normalizeTelegramHandle } from './internal/shared/utils/telegram-handle.js';
 
@@ -112,12 +107,6 @@ export { normalizeTelegramHandle } from './internal/shared/utils/telegram-handle
  * Supersedes the capabilities/*.facade.ts + opportunities/public/ pair; the export
  * list is the union of the facades it replaces, so the contract is unchanged.
  */
-export {
-  OpportunityGraphFactory,
-} from "./internal/opportunities/opportunity.graph.js";
-export type {
-  OpportunityGraphThresholdOverrides,
-} from "./internal/opportunities/opportunity.graph.js";
 export {
   pairKeyOf,
 } from "./internal/opportunities/opportunity.counterparties.js";
@@ -134,10 +123,6 @@ export type {
   PresenterDatabase,
 } from "./internal/opportunities/opportunity.presentation.js";
 export {
-  DISCOVERY_MIN_SIMILARITY,
-  validateDiscoveryMinSimilarity,
-} from "./internal/opportunities/discovery.env.js";
-export {
   PoolDiscriminatorMiner,
 } from "./internal/opportunities/discriminator/discriminator.miner.js";
 export type {
@@ -150,9 +135,6 @@ export {
   stripUnsupportedOpportunityClaims,
   stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText,
 } from "./internal/shared/utils/claim-safety.js";
-export {
-  buildCandidateEvidence,
-} from "./internal/opportunities/opportunity.evidence.js";
 export {
   getPrimaryActionLabel,
 } from "./internal/opportunities/opportunity.labels.js";
@@ -197,3 +179,6 @@ export type {
 export {
   RadarGraphFactory,
 } from "./internal/opportunities/radar/radar.graph.js";
+
+export { readOpportunities, updateOpportunityStatus, deleteOpportunity } from './internal/opportunities/opportunity.graph.modes.js';
+export { resolveDiscoveryNetworkScope, renderDiscoveryNetworkContext } from './protocol/discovery.rules.js';
