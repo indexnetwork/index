@@ -786,6 +786,13 @@ export class OpportunityService {
     // Best-effort side effects — their failure must not block the user from
     // reaching the chat. The opportunity is already accepted and the DM already
     // resolved.
+    await this.negotiations.closeForOpportunities([opportunityId]).catch((err) => {
+      startChatLogger.error('closeForOpportunities failed (non-blocking)', {
+        opportunityId,
+        userId,
+        error: err,
+      });
+    });
     if (options?.scopeType !== 'intent') {
       await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
         startChatLogger.error('acceptSiblingOpportunities failed (non-blocking)', {

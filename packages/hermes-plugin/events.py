@@ -30,10 +30,10 @@ from .transport import get_transport
 
 logger = logging.getLogger(__name__)
 
-# `negotiation.*` names a signal that owes a turn; `intent.lifecycle` changes
-# whether the signal should be worked at all.
+# Negotiation changes refresh the affected seat; intent.lifecycle describes
+# whether this owner's own signal should be worked at all.
 WAKE_TYPES = frozenset({
-    "negotiation.opened", "negotiation.turn", "negotiation.settled", "intent.lifecycle",
+    "negotiation.opened", "negotiation.changed", "intent.lifecycle",
 })
 # Matches on one signal move together, so let sibling frames land in one wake.
 SETTLE_SECONDS = 2.0
