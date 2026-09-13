@@ -1,4 +1,3 @@
-import type { PrincipalMessage } from '@indexnetwork/agent';
 import { z } from 'zod';
 
 import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
@@ -6,11 +5,25 @@ import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { log } from '../lib/log';
 import { agentService } from '../services/agent.service';
-import { AGENT_DM_ID, AgentConversationError, ConversationService } from '../services/conversation.service';
+import { AgentConversationError, ConversationService } from '../services/conversation.service';
+import { PersonalAgentError, PersonalAgentService } from '../services/personal-agent.service';
 
 type RouteParams = Record<string, string>;
 
 const logger = log.controller.from('conversation');
+const answerBatchSchema = z.object({
+  intentId: z.string().min(1),
+  answers: z.array(z.object({ questionId: z.string().min(1), text: z.string().trim().min(1) }).strict()).min(1),
+}).strict();
+const h2aSchema = z.object({
+  intentId: z.string().min(1),
+  entries: z.array(z.object({
+    id: z.string().uuid(), createdAt: z.string().datetime(), text: z.string().trim().min(1),
+    kind: z.enum(['question', 'message', 'expire']), questionId: z.string().min(1).optional(), batchId: z.string().min(1).optional(),
+    scope: z.enum(['intent', 'match']).optional(), options: z.array(z.string()).optional(),
+    matches: z.array(z.object({ opportunityId: z.string(), counterparty: z.object({ id: z.string(), name: z.string().nullable() }).strict() }).strict()),
+  }).strict().refine((entry) => entry.kind === 'message' || Boolean(entry.questionId), 'Questions and withdrawals require questionId.')),
+}).strict();
 
 /**
  * HTTP controller for conversation REST API endpoints.
@@ -20,6 +33,7 @@ const logger = log.controller.from('conversation');
 export class ConversationController {
   constructor(
     private readonly conversationService: ConversationService,
+    private readonly personalAgents: PersonalAgentService,
   ) {}
 
   /**
@@ -129,11 +143,12 @@ export class ConversationController {
       const messages = await this.conversationService.getMessages(conversationId, { limit, before, intentId, userId: user.id });
       // The id is echoed because `agent` resolves to a conversation the caller
       // has no other way to name.
-      const agent = intentId && await this.conversationService.isAgentDm(conversationId)
-        ? await this.conversationService.agentState(user.id, intentId) : undefined;
+      let agent = intentId && await this.conversationService.isAgentDm(conversationId)
+        ? await this.personalAgents.state(user.id, intentId) : undefined;
+      if (agent?.status === 'external') agent = await this.conversationService.agentState(user.id, intentId!);
       return Response.json({ conversationId, messages, agent });
     } catch (err: unknown) {
-      if (err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
+      if (err instanceof PersonalAgentError || err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
       const message = err instanceof Error ? err.message : String(err);
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: message }, { status: 403 });
@@ -202,7 +217,7 @@ export class ConversationController {
     }
     const conversationId = resolved.id;
 
-    let body: { parts?: unknown[]; metadata?: Record<string, unknown>; questionId?: string | null };
+    let body: { parts?: unknown[]; metadata?: Record<string, unknown> };
     try {
       body = (await req.json()) as typeof body;
     } catch {
@@ -227,31 +242,63 @@ export class ConversationController {
 
     try {
       if (agentDm && !asAgent) {
-        if (typeof body.metadata?.intentId !== 'string') throw new AgentConversationError('metadata.intentId is required.', 400);
-        if (body.questionId !== undefined && body.questionId !== null && typeof body.questionId !== 'string') throw new AgentConversationError('questionId must name the displayed question.', 400);
+        if (typeof body.metadata?.intentId !== 'string') throw new PersonalAgentError('metadata.intentId is required.', 400);
+        if (Object.keys(body).some((key) => !['parts', 'metadata'].includes(key))) throw new PersonalAgentError('Direct messages accept parts and metadata. Submit answer batches to /answers.', 400);
         const parts = body.parts as { kind?: string; text?: string }[];
         if (!parts.every((part) => part && part.kind === 'text' && typeof part.text === 'string')) throw new AgentConversationError('Personal-agent messages must contain text.', 400);
         const text = parts.map((part) => part.text).join('\n').trim();
-        if (!text) throw new AgentConversationError('Message text is required.', 400);
-        const message = await this.conversationService.sendOwnerInput({ userId: user.id, intentId: body.metadata.intentId,
-          conversationId, text, questionId: body.questionId ?? null });
+        if (!text) throw new PersonalAgentError('Message text is required.', 400);
+        const messages = await this.personalAgents.send({ userId: user.id, intentId: body.metadata.intentId, conversationId, text });
+        if (messages) return Response.json({ message: messages[0] }, { status: 201 });
+        const message = await this.conversationService.sendOwnerInput({ userId: user.id, intentId: body.metadata.intentId, conversationId, text, questionId: null });
         return Response.json({ message }, { status: 201 });
       }
-      const msg = asAgent
-        ? await this.conversationService.sendAgentMessage(
-          conversationId, body.parts, { metadata: body.metadata }
-        )
-        : await this.conversationService.sendMessage(
-          conversationId, user.id, 'user', body.parts, { metadata: body.metadata }
-        );
+      if (asAgent) throw new AgentConversationError('Publish external-agent entries through /conversations/agent/h2a with executorId.', 400);
+      const msg = await this.conversationService.sendMessage(
+        conversationId, user.id, 'user', body.parts, { metadata: body.metadata }
+      );
       return Response.json({ message: msg }, { status: 201 });
     } catch (err: unknown) {
-      if (err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
+      if (err instanceof PersonalAgentError || err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
+      if (err instanceof RuntimeConflictError) return Response.json({ error: 'The selected executor changed. Refresh and try again.' }, { status: 409 });
       const message = err instanceof Error ? err.message : String(err);
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: message }, { status: 403 });
       }
       logger.error('sendMessage failed', { userId: user.id, conversationId, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
+   * Submit the complete current H2A answer batch in one transaction.
+   * @param req - Intent ID and exact question ID/text pairs.
+   * @param user - Authenticated principal, never an external agent speaking for them.
+   * @param params - Canonical agent DM or its alias.
+   * @returns All committed answer messages, or an error with no partial acceptance.
+   */
+  @Post('/:id/answers')
+  @UseGuards(AuthGuard)
+  async answerQuestions(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    if (!params?.id) return Response.json({ error: 'Conversation ID required' }, { status: 400 });
+    const resolved = await this.conversationService.resolveId(params.id, user.id);
+    if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
+    let body: unknown;
+    try { body = await req.json(); }
+    catch { return Response.json({ error: 'Invalid request body' }, { status: 400 }); }
+    const parsed = answerBatchSchema.safeParse(body);
+    if (!parsed.success) return Response.json({ error: 'Provide intentId and nonempty questionId/text answers.' }, { status: 400 });
+    try {
+      if (!await this.conversationService.isAgentDm(resolved.id)) throw new PersonalAgentError('Answers belong in your agent conversation.', 400);
+      if (!isSessionAuthenticated(req) && await agentService.getSelectedNegotiator(user.id)) throw new PersonalAgentError('Only the principal can answer the selected external agent.', 400);
+      const input = { userId: user.id, conversationId: resolved.id, ...parsed.data };
+      const messages = await this.personalAgents.send(input) ?? await this.conversationService.answerQuestions(input);
+      return Response.json({ messages }, { status: 201 });
+    } catch (err: unknown) {
+      if (err instanceof PersonalAgentError || err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
+      if (err instanceof RuntimeConflictError) return Response.json({ error: 'The selected executor changed. Refresh and try again.' }, { status: 409 });
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('answerQuestions failed', { userId: user.id, conversationId: resolved.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -305,19 +352,16 @@ export class ConversationController {
     if (!executorId || !z.string().uuid().safeParse(executorId).success) {
       return Response.json({ error: 'executorId must be a UUID' }, { status: 400 });
     }
-    let body: { intentId?: string; entries?: PrincipalMessage[] };
+    let body: unknown;
     try {
-      body = await req.json() as typeof body;
+      body = await req.json();
     } catch {
       return Response.json({ error: 'Invalid request body' }, { status: 400 });
     }
-    if (typeof body.intentId !== 'string' || !Array.isArray(body.entries)) {
-      return Response.json({ error: 'intentId and entries are required' }, { status: 400 });
-    }
+    const parsed = h2aSchema.safeParse(body);
+    if (!parsed.success) return Response.json({ error: 'Provide intentId and valid public H2A entries.' }, { status: 400 });
     try {
-      await this.conversationService.publishH2A({
-        userId: user.id, intentId: body.intentId, executorId, entries: body.entries,
-      });
+      await this.conversationService.publishH2A({ userId: user.id, executorId, ...parsed.data });
       return Response.json({ ok: true });
     } catch (err: unknown) {
       if (err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
@@ -326,54 +370,6 @@ export class ConversationController {
       }
       const message = err instanceof Error ? err.message : String(err);
       logger.error('publishH2A failed', { userId: user.id, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /**
-   * POST /conversations/agent/answers — the owner answers several of their
-   * agent's questions at once.
-   *
-   * One request so the answers land together: written as one batch, they reach
-   * the agent as a single state to decide from.
-   *
-   * @param req - `{ intentId, answers: [{ questionId, text }] }`.
-   * @param user - Authenticated owner (session token).
-   * @returns The persisted messages.
-   */
-  @Post('/agent/answers')
-  @UseGuards(AuthGuard)
-  async answerQuestions(req: Request, user: AuthenticatedUser) {
-    let body: { intentId?: string; answers?: { questionId?: unknown; text?: unknown }[] };
-    try {
-      body = await req.json() as typeof body;
-    } catch {
-      return Response.json({ error: 'Invalid request body' }, { status: 400 });
-    }
-    if (typeof body.intentId !== 'string' || !Array.isArray(body.answers) || !body.answers.length) {
-      return Response.json({ error: 'intentId and a non-empty answers array are required' }, { status: 400 });
-    }
-    const answers = body.answers.map((answer) => ({
-      questionId: typeof answer?.questionId === 'string' ? answer.questionId : '',
-      text: typeof answer?.text === 'string' ? answer.text.trim() : '',
-    }));
-    if (answers.some((answer) => !answer.questionId || !answer.text)) {
-      return Response.json({ error: 'Every answer needs a questionId and text' }, { status: 400 });
-    }
-
-    const resolved = await this.conversationService.resolveId(AGENT_DM_ID, user.id);
-    if ('error' in resolved) {
-      return Response.json({ error: resolved.error }, { status: resolved.status });
-    }
-    try {
-      const messages = await this.conversationService.answerQuestions({
-        userId: user.id, intentId: body.intentId, conversationId: resolved.id, answers,
-      });
-      return Response.json({ messages }, { status: 201 });
-    } catch (err: unknown) {
-      if (err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error('answerQuestions failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }

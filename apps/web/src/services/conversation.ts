@@ -32,16 +32,14 @@ export interface ConversationMessage {
 
 export interface PrincipalQuestion {
   id: string;
+  batchId: string;
   question: string;
   options?: string[];
-  scope: 'intent' | 'match';
-  matches: { opportunityId: string; counterparty: { id: string; name: string | null } }[];
 }
 
 export interface PersonalAgentState {
-  status: 'external' | 'hosted';
-  /** Every question still waiting on the owner, oldest first. */
-  questions: PrincipalQuestion[];
+  status: 'running' | 'starting' | 'paused' | 'external' | 'unavailable';
+  pending: PrincipalQuestion[];
 }
 
 export interface ConversationHistory {
@@ -92,17 +90,14 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   },
 
   /** Send a message to a conversation. */
-  sendMessage: async (conversationId: string, parts: unknown[], opts?: { metadata?: Record<string, unknown>; questionId?: string | null }): Promise<ConversationMessage> => {
-    const response = await api.post<{ message: ConversationMessage }>(`/conversations/${conversationId}/messages`, { parts, metadata: opts?.metadata, questionId: opts?.questionId });
+  sendMessage: async (conversationId: string, parts: unknown[], opts?: { metadata?: Record<string, unknown> }): Promise<ConversationMessage> => {
+    const response = await api.post<{ message: ConversationMessage }>(`/conversations/${conversationId}/messages`, { parts, metadata: opts?.metadata });
     return response.message;
   },
 
-  /**
-   * Answer several of the agent's questions in one write, so the wake they
-   * trigger sees all of them.
-   */
-  sendAnswers: async (intentId: string, answers: { questionId: string; text: string }[]): Promise<ConversationMessage[]> => {
-    const response = await api.post<{ messages: ConversationMessage[] }>('/conversations/agent/answers', { intentId, answers });
+  /** Submit every displayed question's answer together; drafts have no server effects. */
+  answerQuestions: async (conversationId: string, intentId: string, answers: { questionId: string; text: string }[]): Promise<ConversationMessage[]> => {
+    const response = await api.post<{ messages: ConversationMessage[] }>(`/conversations/${conversationId}/answers`, { intentId, answers });
     return response.messages;
   },
 

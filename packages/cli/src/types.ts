@@ -261,7 +261,12 @@ export interface NegotiationTurn {
 /** One negotiation as the authenticated seat sees it. */
 export interface Negotiation {
   id: string;
+  pairKey: string;
+  sessionNumber: number;
+  networkId: string;
   opportunityId: string;
+  /** Current opportunity decision, separate from the negotiation outcome. */
+  opportunityStatus: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
   /** The viewer's own signal behind this negotiation. */
   intentId: string;
   /** The seat whose turn it is; null once settled. */
@@ -277,11 +282,13 @@ export interface Negotiation {
     name: string | null;
     avatar: string | null;
     statement: string;
+    payload: string;
   };
 }
 
 export interface NegotiationDetail extends Negotiation {
   turns: NegotiationTurn[];
+  previousSessions: (Pick<Negotiation, 'id' | 'opportunityId' | 'sessionNumber' | 'outcome' | 'opportunityStatus'> & { turns: NegotiationTurn[] })[];
   protocol: {
     availableActions: NegotiationTurnAction[];
     blockedReason: string | null;

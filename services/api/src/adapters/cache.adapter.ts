@@ -1,6 +1,6 @@
 /**
  * Redis implementation of the Cache interface.
- * Used for opportunity graph caching.
+ * Used for opportunity graph and general protocol caching.
  */
 
 import Redis from 'ioredis';

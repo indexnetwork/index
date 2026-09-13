@@ -5,14 +5,14 @@
  * Index is the server for every negotiation. Both seats read the same rows and
  * append against them; there is no wire between agents and nothing to mirror.
  */
-import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, negotiations, negotiationTurns, networkMembers, opportunities, or, schema, sql, users } from './database.shared';
+import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, matchReadyIntentWhere, negotiations, negotiationTurns, networkMembers, networks, opportunities, or, schema, sql, users } from './database.shared';
 
-import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-session.database.adapter';
+import { PrincipalRecordsDatabaseAdapter, type PrincipalExecution } from './principal-records.database.adapter';
 
 import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
-export type NegotiationExecution = AgentExecution | { userId: string; agentId: string };
+export type NegotiationExecution = (PrincipalExecution & { contextVersion: string }) | { userId: string; agentId: string };
 
 export type NegotiationTurnAction = 'propose' | 'counter' | 'accept' | 'decline';
 export type NegotiationOutcome = 'agreed' | 'declined' | 'closed';
@@ -67,7 +67,12 @@ export interface NegotiationTurnRecord {
 /** A negotiation as one seat sees it: its own side, and what crosses from the other. */
 export interface NegotiationView {
   id: string;
+  pairKey: string;
+  sessionNumber: number;
+  networkId: string;
   opportunityId: string;
+  /** Current opportunity decision, not the negotiation outcome. */
+  opportunityStatus: typeof opportunities.$inferSelect['status'];
   intentId: string;
   awaitingUserId: string | null;
   outcome: NegotiationOutcome | null;
@@ -82,11 +87,13 @@ export interface NegotiationView {
     avatar: string | null;
     /** The counterparty's intent statement. The only thing of theirs that crosses. */
     statement: string;
+    payload: string;
   };
 }
 
 export interface NegotiationDetail extends NegotiationView {
   turns: NegotiationTurnRecord[];
+  previousSessions: (Pick<NegotiationView, 'id' | 'opportunityId' | 'sessionNumber' | 'outcome' | 'opportunityStatus'> & { turns: NegotiationTurnRecord[] })[];
 }
 
 /** Change detection without loading counterparties or turn logs. */
@@ -109,7 +116,7 @@ export interface NegotiationState {
 }
 export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'signal_inactive'
   | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn' | 'propose_not_first'
-  | 'counter_is_first' | 'accept_without_offer';
+  | 'counter_is_first' | 'accept_not_responder' | 'accept_without_offer';
 export interface NegotiationOpening {
   userA: string;
   userB: string;
@@ -164,7 +171,7 @@ function liveIntentWhere() {
  *
  * @param opened - The negotiations this run newly opened.
  */
-async function announceOpened(opened: OpenedNegotiation[]): Promise<void> {
+export async function announceOpened(opened: OpenedNegotiation[]): Promise<void> {
   const counts = new Map<string, { userId: string; intentId: string; count: number }>();
   for (const item of opened) {
     const key = `${item.initiatorUserId}\u0000${item.initiatorIntentId}`;
@@ -229,8 +236,8 @@ export class NegotiationDatabaseAdapter {
   async openCounterparties(pairs: IntentCounterpartyPair[], decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation[]> {
     const opened: OpenedNegotiation[] = [];
     for (const pair of pairs) {
-      const result = await this.open(pair, decide);
-      if (result) opened.push(result);
+      const result = await db.transaction((tx) => this.open(tx, pair, decide)).catch(() => null);
+      if (result?.created) opened.push(result.record);
     }
     await announceOpened(opened);
     return opened;
@@ -260,13 +267,12 @@ export class NegotiationDatabaseAdapter {
   }
 
   /**
-   * The negotiation already open between a pair, if one is.
+   * The latest session between a pair, whether open or settled.
    *
-   * `open()` reports "already open" and "could not open" the same way, as
-   * null. This is how a caller tells them apart.
+   * Resolves the canonical pair without attempting an opening.
    *
    * @param pairKey - The pair's canonical key.
-   * @returns The open record, or null when the pair has none.
+   * @returns The latest record, or null when the pair has no sessions.
    */
   async findByPairKey(pairKey: string): Promise<OpenedNegotiation | null> {
     const [row] = await db
@@ -278,96 +284,110 @@ export class NegotiationDatabaseAdapter {
       })
       .from(negotiations)
       .where(eq(negotiations.pairKey, pairKey))
-      .limit(1);
+      .orderBy(desc(negotiations.sessionNumber)).limit(1);
     return row ?? null;
   }
 
   /**
-   * Open one pair.
+   * Open the first session, reuse an unsettled session, or create a context-selected successor.
    *
    * The advisory lock is on the PAIR. Both principals' discovery runs can reach
    * this at the same moment; the second one through must find the first one's
    * negotiation rather than write a second opportunity between the same two
-   * intents. The unique index on `pair_key` is the backstop.
+   * intents. A partial unique pair index backs up the one-unsettled-session rule.
    *
    * The initiator is side A — whichever side's run got here first. It owes the
    * first turn, and that turn is the decision to pursue or drop.
    *
+   * @param tx - Caller-owned transaction, also used for private delegation writes.
    * @param pair - The scored pair to materialize.
-   * @returns The opened negotiation, or null when it was already open or could not be opened.
+   * @param decide - Protocol opening policy.
+   * @param selection - Deliberate H2A request and observed latest session; absent for first-session-only callers.
+   * @returns The eligible session and whether it was created, or null if unavailable.
+   * @throws For infrastructure failures; the caller decides how to report them.
    */
-  private async open(pair: IntentCounterpartyPair, decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation | null> {
-    try {
-      return await db.transaction(async (tx) => {
-        await tx.execute(sql`
-          SELECT pg_advisory_xact_lock(
-            hashtextextended(${`opportunity-pair:${pair.pairKey}`}, 0)
-          )
-        `);
+  async open(tx: Transaction, pair: IntentCounterpartyPair, decide: (pair: NegotiationOpening) => NegotiationOpeningDecision, selection?: { id: string; expectedLatestNegotiationId: string | null; expectedLatestOutcome: string | null; expectedLatestOpportunityStatus: NegotiationView['opportunityStatus'] | null }): Promise<{ record: OpenedNegotiation; created: boolean } | null> {
+    await tx.execute(sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${`opportunity-pair:${pair.pairKey}`}, 0)
+      )
+    `);
 
-        const [existing] = await tx.select({ id: negotiations.id }).from(negotiations)
-          .where(eq(negotiations.pairKey, pair.pairKey)).limit(1);
-        if (existing) return null;
+    const seats = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
+      .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, pair.networkId)))
+      .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, pair.networkId)))
+      .innerJoin(networks, eq(networks.id, pair.networkId))
+      .where(and(inArray(intents.id, [pair.intentA, pair.intentB]), liveIntentWhere(), matchReadyIntentWhere(), isNull(networkMembers.deletedAt), isNull(networks.deletedAt)))
+      .orderBy(asc(intents.id)).for('share');
+    const decision = decide({ ...pair, eligible:
+      seats.some((seat) => seat.id === pair.intentA && seat.userId === pair.userA)
+      && seats.some((seat) => seat.id === pair.intentB && seat.userId === pair.userB) });
+    if (!decision) return null;
 
-        const seats = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
-          .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, pair.networkId)))
-          .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, pair.networkId)))
-          .where(and(inArray(intents.id, [pair.intentA, pair.intentB]), liveIntentWhere()))
-          .orderBy(asc(intents.id)).for('share');
-        const decision = decide({ ...pair, eligible:
-          seats.some((seat) => seat.id === pair.intentA && seat.userId === pair.userA)
-          && seats.some((seat) => seat.id === pair.intentB && seat.userId === pair.userB) });
-        if (!decision) return null;
-
-        const [row] = await tx.insert(opportunities).values({
-          detection: {
-            source: pair.detection?.source ?? 'opportunity_graph',
-            createdBy: pair.detection?.createdBy ?? 'agent-opportunity-finder',
-            triggeredBy: pair.intentA,
-            timestamp: new Date().toISOString(),
-          },
-          actors: [
-            { networkId: pair.networkId, userId: pair.userA, role: 'party', intent: pair.intentA },
-            { networkId: pair.networkId, userId: pair.userB, role: 'party', intent: pair.intentB },
-          ],
-          interpretation: {
-            category: 'collaboration',
-            reasoning: pair.reasoning,
-            confidence: pair.score / 100,
-            signals: [{ type: 'intent_match', weight: pair.score / 100, detail: 'Match explainer' }],
-          },
-          context: { networkId: pair.networkId },
-          confidence: String(pair.score / 100),
-          // Born negotiating. There is no pre-kickoff state any more: the row
-          // exists because someone is opening it right now.
-          status: decision.opportunityStatus,
-          updatedAt: new Date(),
-          metadata: { evidence: pair.evidence ?? [] },
-        } as never).returning();
-        if (!row) return null;
-
-        const [negotiation] = await tx.insert(negotiations).values({
-          pairKey: pair.pairKey,
-          opportunityId: row.id,
-          initiatorUserId: pair.userA,
-          initiatorIntentId: pair.intentA,
-          responderUserId: pair.userB,
-          responderIntentId: pair.intentB,
-          awaitingUserId: decision.awaitingUserId,
-          updatedAt: new Date(),
-        }).returning();
-        if (!negotiation) return null;
-
-        return {
-          opportunityId: row.id,
-          negotiationId: negotiation.id,
-          initiatorUserId: pair.userA,
-          initiatorIntentId: pair.intentA,
-        };
-      });
-    } catch {
-      return null;
+    const [existing] = await tx.select({ record: negotiations, status: opportunities.status }).from(negotiations)
+      .innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
+      .where(eq(negotiations.pairKey, pair.pairKey)).orderBy(desc(negotiations.sessionNumber)).limit(1).for('update');
+    if (selection && ((existing?.record.id ?? null) !== selection.expectedLatestNegotiationId
+      || (existing?.record.outcome ?? null) !== selection.expectedLatestOutcome
+      || (existing?.status ?? null) !== selection.expectedLatestOpportunityStatus)) return null;
+    if (existing) {
+      const { record, status } = existing;
+      if (!record.settledAt) {
+        if (record.outcome || status !== 'negotiating') return null;
+        return { created: false, record: { opportunityId: record.opportunityId, negotiationId: record.id,
+          initiatorUserId: record.initiatorUserId, initiatorIntentId: record.initiatorIntentId } };
+      }
+      // Only a context-bound deliberate selection can authorize another session.
+      if (!selection) return null;
     }
+
+    const [row] = await tx.insert(opportunities).values({
+      detection: {
+        source: pair.detection?.source ?? 'opportunity_graph',
+        createdBy: pair.detection?.createdBy ?? 'agent-opportunity-finder',
+        triggeredBy: pair.intentA,
+        timestamp: new Date().toISOString(),
+      },
+      actors: [
+        { networkId: pair.networkId, userId: pair.userA, role: 'party', intent: pair.intentA },
+        { networkId: pair.networkId, userId: pair.userB, role: 'party', intent: pair.intentB },
+      ],
+      interpretation: {
+        category: 'collaboration',
+        reasoning: pair.reasoning,
+        confidence: pair.score / 100,
+        signals: [{ type: 'intent_match', weight: pair.score / 100, detail: 'Match explainer' }],
+      },
+      context: { networkId: pair.networkId },
+      confidence: String(pair.score / 100),
+      // Born negotiating. There is no pre-kickoff state any more: the row
+      // exists because someone is opening it right now.
+      status: decision.opportunityStatus,
+      updatedAt: new Date(),
+      metadata: { evidence: pair.evidence ?? [] },
+    } as never).returning();
+    if (!row) return null;
+
+    const [negotiation] = await tx.insert(negotiations).values({
+      pairKey: pair.pairKey,
+      sessionNumber: (existing?.record.sessionNumber ?? 0) + 1,
+      openingRequestId: selection?.id,
+      opportunityId: row.id,
+      initiatorUserId: pair.userA,
+      initiatorIntentId: pair.intentA,
+      responderUserId: pair.userB,
+      responderIntentId: pair.intentB,
+      awaitingUserId: decision.awaitingUserId,
+      updatedAt: new Date(),
+    }).returning();
+    if (!negotiation) return null;
+
+    return { created: true, record: {
+      opportunityId: row.id,
+      negotiationId: negotiation.id,
+      initiatorUserId: pair.userA,
+      initiatorIntentId: pair.intentA,
+    } };
   }
 
   /**
@@ -379,7 +399,7 @@ export class NegotiationDatabaseAdapter {
    */
   async listForUser(
     userId: string,
-    options: { intentId?: string; open?: boolean; counterpartyUserId?: string; limit?: number; offset?: number } = {},
+    options: { intentId?: string; open?: boolean; counterpartyUserId?: string; latestPerPair?: boolean; limit?: number; offset?: number } = {},
   ): Promise<NegotiationView[]> {
     const conditions = [
       or(eq(negotiations.initiatorUserId, userId), eq(negotiations.responderUserId, userId)),
@@ -395,6 +415,14 @@ export class NegotiationDatabaseAdapter {
         eq(negotiations.initiatorUserId, options.counterpartyUserId),
         eq(negotiations.responderUserId, options.counterpartyUserId),
       ));
+    }
+    if (options.latestPerPair) {
+      // Group before pagination so older sessions never occupy profile-history rows.
+      conditions.push(sql`not exists (
+        select 1 from ${negotiations} newer_session
+        where newer_session.pair_key = ${negotiations.pairKey}
+          and newer_session.session_number > ${negotiations.sessionNumber}
+      )`);
     }
     if (options.open) {
       conditions.push(isNull(negotiations.settledAt));
@@ -470,7 +498,18 @@ export class NegotiationDatabaseAdapter {
       if (!view) return null;
       const turns = await tx.select().from(negotiationTurns).where(eq(negotiationTurns.negotiationId, row.id))
         .orderBy(asc(negotiationTurns.turnIndex));
-      return { ...view, turnCount: turns.length, turns, state: await this.state(tx, row) };
+      const previous = await tx.select().from(negotiations)
+        .where(and(eq(negotiations.pairKey, row.pairKey), sql`${negotiations.sessionNumber} < ${row.sessionNumber}`))
+        .orderBy(asc(negotiations.sessionNumber));
+      const previousViews = await this.toViews(previous, userId, tx);
+      const previousSessions = await Promise.all(previousViews.map(async (session) => ({
+        id: session.id, opportunityId: session.opportunityId, sessionNumber: session.sessionNumber,
+        outcome: session.outcome, opportunityStatus: session.opportunityStatus,
+        turns: await tx.select({ turnIndex: negotiationTurns.turnIndex, seatUserId: negotiationTurns.seatUserId,
+          action: negotiationTurns.action, message: negotiationTurns.message, createdAt: negotiationTurns.createdAt })
+          .from(negotiationTurns).where(eq(negotiationTurns.negotiationId, session.id)).orderBy(asc(negotiationTurns.turnIndex)),
+      })));
+      return { ...view, turnCount: turns.length, turns, previousSessions, state: await this.state(tx, row) };
     });
   }
 
@@ -484,7 +523,7 @@ export class NegotiationDatabaseAdapter {
    * @param opportunityId - The negotiation's opportunity.
    * @param callerUserId - The seat submitting.
    * @param turn - The decision and its message.
-   * @param execution - Hosted lease or external executor binding to fence before applying a decision.
+   * @param execution - Hosted runtime ownership or external executor binding to fence before applying a decision.
    * @returns The applied turn, or the reason it was refused.
    */
   async commitNegotiationTurn(
@@ -509,12 +548,13 @@ export class NegotiationDatabaseAdapter {
             ));
             if (!selected) throw new RuntimeConflictError();
           } else {
-            await AgentSessionDatabaseAdapter.assertOwner(tx, execution);
+            await PrincipalRecordsDatabaseAdapter.assertOwner(tx, execution);
           }
         }
         const [negotiation] = await tx.select().from(negotiations)
           .where(eq(negotiations.opportunityId, opportunityId)).limit(1).for('update');
         if (execution && 'intentId' in execution && negotiation && (negotiation.initiatorUserId === callerUserId ? negotiation.initiatorIntentId : negotiation.responderIntentId) !== execution.intentId) throw new Error('Execution belongs to another intent.');
+        if (execution && 'intentId' in execution) await PrincipalRecordsDatabaseAdapter.assertExecutionContext(tx, execution, opportunityId, execution.contextVersion);
         const state = negotiation ? await this.state(tx, negotiation, true) : null;
         const decision = decide(state);
         if (!decision.ok || !negotiation) return decision;
@@ -638,7 +678,7 @@ export class NegotiationDatabaseAdapter {
       : { userId: row.initiatorUserId, intentId: row.initiatorIntentId, ownIntentId: row.responderIntentId };
 
     const counterparts = rows.map(counterpartOf);
-    const [people, statements, turnCounts] = await Promise.all([
+    const [people, statements, turnCounts, opportunityStatuses] = await Promise.all([
       connection.select({ id: users.id, name: users.name, avatar: users.avatar }).from(users)
         .where(inArray(users.id, [...new Set(counterparts.map((c) => c.userId))])),
       connection.select({ id: intents.id, payload: intents.payload, summary: intents.summary }).from(intents)
@@ -647,9 +687,12 @@ export class NegotiationDatabaseAdapter {
         .from(negotiationTurns)
         .where(inArray(negotiationTurns.negotiationId, rows.map((row) => row.id)))
         .groupBy(negotiationTurns.negotiationId),
+      connection.select({ id: opportunities.id, status: opportunities.status, context: opportunities.context }).from(opportunities)
+        .where(inArray(opportunities.id, rows.map((row) => row.opportunityId))),
     ]);
+    const opportunityById = new Map(opportunityStatuses.map((row) => [row.id, row]));
     const personById = new Map(people.map((row) => [row.id, row]));
-    const statementById = new Map(statements.map((row) => [row.id, row.summary ?? row.payload]));
+    const statementById = new Map(statements.map((row) => [row.id, row]));
     const turnCountById = new Map(turnCounts.map((row) => [row.negotiationId, row.count]));
 
     return rows.map((row) => {
@@ -657,7 +700,11 @@ export class NegotiationDatabaseAdapter {
       const person = personById.get(counterpart.userId);
       return {
         id: row.id,
+        pairKey: row.pairKey,
+        sessionNumber: row.sessionNumber,
+        networkId: opportunityById.get(row.opportunityId)!.context.networkId!,
         opportunityId: row.opportunityId,
+        opportunityStatus: opportunityById.get(row.opportunityId)!.status,
         intentId: counterpart.ownIntentId,
         awaitingUserId: row.awaitingUserId,
         outcome: row.outcome,
@@ -670,7 +717,8 @@ export class NegotiationDatabaseAdapter {
           userId: counterpart.userId,
           name: person?.name ?? null,
           avatar: person?.avatar ?? null,
-          statement: statementById.get(counterpart.intentId) ?? '',
+          statement: statementById.get(counterpart.intentId)?.summary ?? statementById.get(counterpart.intentId)?.payload ?? '',
+          payload: statementById.get(counterpart.intentId)?.payload ?? '',
         },
       };
     });

@@ -16,17 +16,17 @@ const TODAY_DATE = TODAY.toLocaleDateString("en-GB", {
   timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric",
 });
 const TODAY_LINE =
-  `Today is ${TODAY_DATE}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`;
+  `Today is ${TODAY_DATE}. When you agree a date, record the actual date rather than a relative one like "next Tuesday". Resolve historical relative dates from the original message's timestamp and context, never today's clock. If that evidence is missing, preserve the uncertainty rather than inventing a date.`;
 const TOOL_DISCIPLINE_LINE =
   "Only call a tool from the list you were actually given this turn — what's offered can change as your situation does, so a capability you used before, or one that would make sense here, may not be available right now. If what you need isn't in that list, say so or ask, rather than calling a name you expect to exist.";
 
 function agent(
-  tools: Tool<never>[],
+  tools: Tool[],
   systemPrompt = "You act for Alice.",
   options: { history?: MemoryMessageStore } = {},
 ) {
   return new Agent({
-    identity: { name: "Alice's Agent", id: "did:example:alice" },
+    identity: { name: "Alice", id: "did:example:alice" },
     systemPrompt,
     model: new ModelClient({ apiKey: "test-key" }),
     now: () => TODAY,
@@ -66,7 +66,7 @@ describe("run()", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
+        content: `You act for Alice.\n\nYou are Alice's personal agent. Your principal's ID is did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "Sell the bike" },
     ]);
@@ -79,7 +79,7 @@ describe("run()", () => {
 
     const system = String(requests[0]?.messages[0]?.content);
     expect(system).toContain("You act for Alice.");
-    expect(system).toContain("acting on behalf of did:example:alice");
+    expect(system).toContain("You are Alice's personal agent. Your principal's ID is did:example:alice.");
     expect(system).toContain("Current intent: Find a used road bike under $450");
   });
 
@@ -159,7 +159,7 @@ describe("run()", () => {
       { role: "assistant", content: "I'll try something else." },
     ]);
 
-    const result = await agent([boom as Tool<never>]).run("Do it");
+    const result = await agent([boom]).run("Do it");
 
     expect(result.end).toBe("done");
     expect(result.output).toBe("I'll try something else.");
@@ -235,7 +235,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
+        content: `New instructions.\n\nYou are Alice's personal agent. Your principal's ID is did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },
@@ -255,7 +255,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
+        content: `You act for Alice.\n\nYou are Alice's personal agent. Your principal's ID is did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },
@@ -282,7 +282,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
+        content: `New instructions.\n\nYou are Alice's personal agent. Your principal's ID is did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },
@@ -301,7 +301,7 @@ describe("asking the user", () => {
   test("suspends instead of running the tool, and holds nothing open", async () => {
     mockModel([{ role: "assistant", content: null, tool_calls: [ask("What's your budget?")] }]);
 
-    const result = await agent([echo, askUserTool() as Tool<never>]).run("Buy a bike");
+    const result = await agent([echo, askUserTool()]).run("Buy a bike");
 
     expect(result.end).toBe("needs-input");
     expect(result.pending).toEqual({ question: "What's your budget?" });
@@ -326,17 +326,17 @@ describe("asking the user", () => {
       },
     ]);
 
-    const result = await agent([askUserTool() as Tool<never>]).run("Pick one");
+    const result = await agent([askUserTool()]).run("Pick one");
 
     expect(result.pending).toEqual({ question: "Which?", options: ["road", "commuter"] });
   });
 
   test("resumes from the answer, recording it as the tool's result", async () => {
     mockModel([{ role: "assistant", content: null, tool_calls: [ask("What's your budget?")] }]);
-    const suspended = await agent([askUserTool() as Tool<never>]).run("Buy a bike");
+    const suspended = await agent([askUserTool()]).run("Buy a bike");
 
     const requests = mockModel([{ role: "assistant", content: "Understood, $450." }]);
-    const resumed = await agent([askUserTool() as Tool<never>]).run("$450 max", {
+    const resumed = await agent([askUserTool()]).run("$450 max", {
       messages: suspended.messages,
     });
 
@@ -364,7 +364,7 @@ describe("asking the user", () => {
       },
     ]);
 
-    const result = await agent([echo, askUserTool() as Tool<never>]).run("Do both");
+    const result = await agent([echo, askUserTool()]).run("Do both");
 
     expect(result.end).toBe("needs-input");
     expect(result.steps.map((s) => s.kind)).toEqual(["tool", "ask"]);
@@ -383,7 +383,7 @@ describe("asking the user", () => {
       },
     ]);
 
-    const result = await agent([askUserTool() as Tool<never>]).run("Ask two things");
+    const result = await agent([askUserTool()]).run("Ask two things");
 
     expect(result.pending?.question).toBe("First?");
     const second = result.messages.find((m) => m.role === "tool" && m.tool_call_id === "q2");
@@ -401,7 +401,7 @@ describe("injected model", () => {
     ]);
     const retries: [number, string][] = [];
     const agent = new Agent({
-      identity: { name: "Alice's Agent", id: "did:example:alice" },
+      identity: { name: "Alice", id: "did:example:alice" },
       systemPrompt: "You act for Alice.",
       model: new ModelClient({ apiKey: "test-key", timeout: 50, attempts: 2 }),
       tools: [],

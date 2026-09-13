@@ -5,7 +5,7 @@ Command-line interface for [Index Network](https://index.network). Message your 
 ## Installation
 
 ```bash
-npm install -g @indexnetwork/cli@0.26.0
+npm install -g @indexnetwork/cli@0.28.0
 ```
 
 ## Quick Start
@@ -77,8 +77,9 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index network invite <id> <email>` | Invite a member by email. |
 | `index conversation list` | List your conversations. |
 | `index conversation with <user-id>` | Open or resume a human DM. |
-| `index conversation show <id>` | Read messages; use `agent --intent-id <id>` for the personal agent's scoped messages and pending question. |
-| `index conversation send <id> <text>` | Send a message; for `agent`, supply `--intent-id` and the displayed `--question-id` when answering a question. |
+| `index conversation show <id>` | Read messages; use `agent --intent-id <id>` for the personal agent's scoped messages and pending question batch. |
+| `index conversation send <id> <text>` | Send a direct message; for `agent`, supply `--intent-id`. |
+| `index conversation answer agent --intent-id <id> --answers '<json>'` | Submit the complete displayed questionId/text answer array atomically. |
 | `index conversation stream` | Subscribe to conversation, negotiation, opportunity, and intent events over SSE. |
 | `index conversation help` | Show conversation-specific help. |
 | `index onboarding confirm-profile` | Confirm that the owner has reviewed their profile. |
@@ -206,7 +207,7 @@ Read and message the personal agent within a signal, or use human DMs.
 ```bash
 index conversation show agent --intent-id <id> --json
 index conversation send agent "..." --intent-id <id> --json
-index conversation send agent "..." --intent-id <id> --question-id <pending-question-id> --json
+index conversation answer agent --intent-id <id> --answers '[{"questionId":"<first-id>","text":"Monday"},{"questionId":"<second-id>","text":"Discussion only"}]' --json
 index conversation list
 index conversation with <user-id>
 index conversation show <conversation-id> [--limit <n>]
@@ -214,8 +215,10 @@ index conversation send <conversation-id> "..."
 index conversation stream --json
 ```
 
-Agent reads include availability and the pending question. An answer must carry
-the current question ID and its intent scope; stale refusals are surfaced directly.
+Agent reads include availability and `pending`, an array of exact questions. Submit
+one nonempty answer per current question in one `--answers` array. Partial,
+duplicate or stale batches are refused without saving anything. `send` always
+records a direct message, never an inferred answer.
 Human messages retain their existing conversation IDs. SSE emits one JSON event
 record per line. There is no local agent runtime or interactive chat session.
 
@@ -301,7 +304,7 @@ index opportunity reject <id>
 | `--action <action>`  |       | Required negotiation turn action: `propose`, `counter`, `accept`, or `decline` |
 | `--message <text>`   |       | Required message for a negotiation turn                         |
 | `--expected-turn-count <n>` | | Required observed nonnegative integer turn count for a negotiation turn |
-| `--question-id <id>` |       | Identify the displayed question when answering the personal agent |
+| `--answers '<json>'` |       | Complete array of questionId/text pairs for `conversation answer agent` |
 | `--json`             |       | Output raw JSON to stdout                                       |
 | `--help`             | `-h`  | Show help                                                       |
 | `--version`          | `-v`  | Show version                                                    |

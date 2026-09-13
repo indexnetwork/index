@@ -5,7 +5,7 @@ import type { PendingQuestion, RunResult, Step } from "./types.ts";
 export interface LoopOptions {
   model: Model;
   systemPrompt: string;
-  tools: Tool<never>[];
+  tools: Tool[];
   /** The conversation so far, excluding the system message. */
   messages: ModelMessage[];
   /**
@@ -150,7 +150,7 @@ function parseArguments(call: ToolCall): { value: unknown } | { error: string } 
 
 async function runToolCall(
   call: ToolCall,
-  tools: Map<string, Tool<never>>,
+  tools: Map<string, Tool>,
   context: ToolContext,
   alreadySuspending: boolean,
 ): Promise<{ step: Step; content: string }> {
@@ -180,7 +180,7 @@ async function runToolCall(
   }
 
   try {
-    const output = await tool.run(parsed.value as never, context);
+    const output = await tool.run(parsed.value, context);
     return {
       step: { kind: "tool", name, input: parsed.value, output },
       content: typeof output === "string" ? output : JSON.stringify(output ?? null),

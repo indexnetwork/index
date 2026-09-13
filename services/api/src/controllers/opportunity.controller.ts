@@ -25,6 +25,7 @@ const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: 
   propose_not_first: { status: 400, error: 'propose is only valid as the opening turn; use counter' },
   counter_is_first: { status: 400, error: 'counter needs a turn to answer; use propose' },
   accept_without_offer: { status: 400, error: 'accept needs a standing offer from the other seat' },
+  accept_not_responder: { status: 403, error: 'Only the original responder may accept the initiator’s standing offer' },
   signal_inactive: { status: 409, error: 'A signal in this negotiation is paused or removed' },
   turn_limit: { status: 409, error: 'The protocol turn limit was reached; the outcome remains undecided' },
   invalid_turn: { status: 400, error: 'Invalid negotiation action or message' },

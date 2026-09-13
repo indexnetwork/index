@@ -1,14 +1,16 @@
 /**
- * Embedder adapter: OpenRouter API with OpenAI embedding model + pgvector search.
- * Uses the shared OpenRouter + OpenAI embedding config from lib/embedding.
+ * Shared discovery embeddings through a host-owned OpenRouter client, plus pgvector search.
  */
 
+import { generateEmbeddings, OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '@indexnetwork/discovery';
 import OpenAI from 'openai';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
-import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
+
 import { embeddingConfigurationFingerprint } from '../lib/embedding/embedding.identity';
 import { traceAppOperation } from '../lib/sentry-performance';
 import * as schema from '../schemas/database.schema';
+
+import { matchReadyIntentWhere } from './database.shared';
 // ─────────────────────────────────────────────────────────────────────────────
 // Local types (structurally aligned with lib/protocol/interfaces/embedder.interface)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,35 +109,8 @@ export class EmbedderAdapter {
           'embedding.dimensions': dimensions ?? this.dimensions,
         },
       },
-      () => this.generateInner(text, dimensions, options),
+      () => generateEmbeddings(this.getOpenAI(), text, dimensions ?? this.dimensions, options),
     );
-  }
-
-  private async generateInner(
-    text: string | string[],
-    dimensions?: number,
-    options?: { signal?: AbortSignal }
-  ): Promise<number[] | number[][]> {
-    const texts = Array.isArray(text) ? text : [text];
-    const cleanTexts = texts.map((t) => t.replace(/\n/g, ' ').trim()).filter(Boolean);
-    if (cleanTexts.length === 0) {
-      throw new Error('Text cannot be empty');
-    }
-
-    const dim = dimensions ?? this.dimensions;
-    const response = await this.getOpenAI().embeddings.create({
-      model: this.model,
-      input: cleanTexts,
-      dimensions: dim,
-      encoding_format: 'float',
-    }, options?.signal ? { signal: options.signal } : undefined);
-
-    if (!response.data?.length) {
-      throw new Error('No embedding data returned');
-    }
-
-    const embeddings = response.data.map((d) => d.embedding);
-    return Array.isArray(text) ? embeddings : embeddings[0];
   }
 
   private getOpenAI(): OpenAI {
@@ -188,6 +163,7 @@ export class EmbedderAdapter {
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
       isNull(intents.archivedAt),
       or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
+      matchReadyIntentWhere(),
       isNull(schema.users.deletedAt),
       isNull(schema.networkMembers.deletedAt),
       isNull(schema.networks.deletedAt),

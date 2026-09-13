@@ -10,11 +10,11 @@ The tab displays connection status. When no `INDEX_SESSION_TOKEN` is configured,
 
 The dashboard exposes intent work, opportunities, networks, profile context, and bounded conversation SSE.
 
-The dashboard bundle is generated. Build it from the package root with:
+`dashboard/index.js` is the dashboard JavaScript source. Build the dashboard and desktop bundles from the package root with:
 
 ```bash
 bun run build:desktop
-python3 tests/smoke.py
+python3 -m py_compile dashboard/plugin_api.py
 ```
 
-Do not edit `dashboard/dist/` or `desktop/dist/` directly.
+`bun run build:dashboard` rebuilds only the dashboard bundle. Do not edit generated JavaScript in `dashboard/dist/` or `desktop/dist/` directly. The dashboard uses authoritative `agent.pending`, submits the whole displayed batch, and keeps drafts when a write fails.

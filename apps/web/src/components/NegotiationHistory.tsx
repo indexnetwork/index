@@ -1,20 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router";
-import { Loader2, ChevronDown, Bot } from "lucide-react";
+import { Loader2, ChevronDown } from "lucide-react";
 import UserAvatar from "@/components/UserAvatar";
 import { useNegotiations, useUsers } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import type { NegotiationHistoryEntry } from "@/services/users";
-import type { NegotiationOutcome, NegotiationTurn } from "@/services/negotiations";
+import type { NegotiationDetail, NegotiationOutcome } from "@/services/negotiations";
+
+import NegotiationTranscript from "./NegotiationTranscript";
 
 const PAGE_SIZE = 5;
-
-const ACTION_LABELS: Record<string, { label: string; color: string }> = {
-  propose: { label: "Proposed", color: "text-blue-600" },
-  counter: { label: "Countered", color: "text-amber-600" },
-  accept: { label: "Accepted", color: "text-emerald-600" },
-  decline: { label: "Declined", color: "text-red-600" },
-};
 
 const OUTCOME_LABELS: Record<NegotiationOutcome, { label: string; className: string }> = {
   agreed: { label: "Agreed", className: "bg-emerald-50 text-emerald-700" },
@@ -35,29 +30,6 @@ function timeAgo(dateStr: string): string {
   return `${months}mo ago`;
 }
 
-function TurnMessage({ turn, own, isLast }: { turn: NegotiationTurn; own: boolean; isLast: boolean }) {
-  const actionInfo = ACTION_LABELS[turn.action] ?? { label: turn.action, color: "text-gray-600" };
-
-  return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <div className="w-2 h-2 rounded-full bg-gray-300 mt-2" />
-        {!isLast && <div className="w-px flex-1 bg-gray-200 mt-1" />}
-      </div>
-      <div className="flex-1 pb-4">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-900 flex items-center gap-1">
-            {own ? "Your agent" : "Their agent"}
-            <Bot className="w-3 h-3 text-gray-400" />
-          </span>
-          <span className={`text-xs font-medium ${actionInfo.color}`}>{actionInfo.label}</span>
-        </div>
-        <p className="text-sm text-gray-600 leading-relaxed">{turn.message}</p>
-      </div>
-    </div>
-  );
-}
-
 interface NegotiationHistoryProps {
   userId: string;
 }
@@ -71,7 +43,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [turnsByOpportunity, setTurnsByOpportunity] = useState<Record<string, NegotiationTurn[]>>({});
+  const [detailsByOpportunity, setDetailsByOpportunity] = useState<Record<string, NegotiationDetail | null>>({});
 
   const fetchNegotiations = useCallback(
     (offset: number) => usersService.getUserNegotiations(userId, { limit: PAGE_SIZE, offset }),
@@ -116,12 +88,12 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
       return;
     }
     setExpandedId(entry.id);
-    if (turnsByOpportunity[entry.opportunityId]) return;
+    if (detailsByOpportunity[entry.opportunityId] !== undefined) return;
     try {
       const detail = await negotiationService.getNegotiation(entry.opportunityId);
-      setTurnsByOpportunity((prev) => ({ ...prev, [entry.opportunityId]: detail.turns }));
+      setDetailsByOpportunity((prev) => ({ ...prev, [entry.opportunityId]: detail }));
     } catch {
-      setTurnsByOpportunity((prev) => ({ ...prev, [entry.opportunityId]: [] }));
+      setDetailsByOpportunity((prev) => ({ ...prev, [entry.opportunityId]: null }));
     }
   };
 
@@ -141,11 +113,11 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
 
       {negotiations.map((neg) => {
         const isExpanded = expandedId === neg.id;
-        const turns = turnsByOpportunity[neg.opportunityId];
+        const detail = detailsByOpportunity[neg.opportunityId];
         const outcomeInfo = neg.outcome ? OUTCOME_LABELS[neg.outcome] : null;
 
         return (
-          <div key={neg.id} className="bg-[#F8F8F8] rounded-md overflow-hidden">
+          <div key={neg.pairKey} className="bg-[#F8F8F8] rounded-md overflow-hidden">
             <div
               role="button"
               tabIndex={0}
@@ -185,7 +157,8 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <span>Session {neg.sessionNumber} · Opportunity: {neg.opportunityStatus}</span>
                   {neg.turnCount > 0 && (
                     <span>{neg.turnCount} {neg.turnCount === 1 ? "turn" : "turns"}</span>
                   )}
@@ -200,29 +173,14 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
 
             {isExpanded && (
               <div className="px-4 pb-4 pt-1 border-t border-gray-200/60">
-                {turns === undefined ? (
+                {detail === undefined ? (
                   <div className="flex justify-center py-4">
                     <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
                   </div>
-                ) : turns.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-3">No turns yet</p>
+                ) : detail === null ? (
+                  <p role="alert" className="text-xs text-red-700 py-3">Could not load this conversation.</p>
                 ) : (
-                  <>
-                    <p className="text-xs text-gray-400 mt-2 mb-3 flex items-center gap-1">
-                      <Bot className="w-3 h-3" />
-                      Agents negotiated on behalf of both parties
-                    </p>
-                    <div>
-                      {turns.map((turn, i) => (
-                        <TurnMessage
-                          key={`${neg.id}-${turn.turnIndex}`}
-                          turn={turn}
-                          own={turn.seatUserId === viewer?.id}
-                          isLast={i === turns.length - 1}
-                        />
-                      ))}
-                    </div>
-                  </>
+                  <NegotiationTranscript record={detail} viewerUserId={viewer?.id} />
                 )}
               </div>
             )}

@@ -49,7 +49,8 @@ function renderHelp(json?: boolean): void {
       --message <text> --expected-turn-count <n>
   conversation list|with|show|send|stream
   conversation show agent --intent-id <id>
-  conversation send agent <text> --intent-id <id> [--question-id <id>]
+  conversation send agent <text> --intent-id <id>
+  conversation answer agent --intent-id <id> --answers '<questionId/text array>'
   onboarding confirm-profile
   onboarding complete [--intent-id <id>]
   scrape <url> [--objective <text>]
@@ -268,7 +269,7 @@ async function main(): Promise<void> {
         limit: args.limit,
         json: args.json,
         intentId: args.intentId,
-        questionId: args.questionId,
+        answers: args.answers,
       });
       return;
     case "scrape":

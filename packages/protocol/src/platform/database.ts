@@ -1,10 +1,9 @@
 /**
- * The database port: a stable host contract, not a database implementation.
+ * The database port: a host contract, not a database implementation.
  *
- * The declarations moved into sibling modules — entities, the four query
- * groups that compose `Database`, the access-scoped views, negotiation
- * persistence, and the capability-narrowed aliases. Importers keep using this
- * path; nothing about the types changed.
+ * `database/` holds the entities, the four query groups that compose
+ * `Database`, the access-scoped views, negotiation persistence, and the
+ * capability-narrowed aliases. This module re-exports them all.
  */
 
 import type { DatabaseIdentityQueries } from "./database/identity-queries.js";

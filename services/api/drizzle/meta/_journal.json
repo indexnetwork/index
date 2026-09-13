@@ -22,6 +22,13 @@
       "when": 1789597726667,
       "tag": "0002_create_network_join_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789727066677,
+      "tag": "0003_add_principal_records_and_negotiation_sessions",
+      "breakpoints": true
     }
   ]
 }

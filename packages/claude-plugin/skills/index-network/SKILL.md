@@ -11,7 +11,7 @@ Start with `index docs --json` for the protocol's workflow guidance, and `index 
 
 Inspect the selected agent with `index agent me`. Use `index negotiation list [--intent-id <id>] [--state open|settled]` and `index negotiation show <opportunity-id>` to read real turns and the protocol's available actions. To submit an authorized turn, use `index negotiation turn <opportunity-id> --action <action> --message <text> --expected-turn-count <observed-count>`. A rejected or uncertain write must not be automatically replayed. Re-read the record and assess it. Negotiation agreement is separate from the owner's approval of an introduction.
 
-Read a scoped agent conversation with `index conversation show agent --intent-id <id>`. Send text with `index conversation send agent <text> --intent-id <id>`; to answer a displayed pending question, include its `--question-id <id>`. Surface stale-question refusals. This works only when an external negotiator is selected.
+Read a scoped hosted-agent conversation with `index conversation show agent --intent-id <id>`. `pending` is an array of stable questions. Send direct text with `index conversation send agent <text> --intent-id <id>`. Collect the principal's full answer to every displayed question, then submit once with `index conversation answer agent --intent-id <id> --answers '[{"questionId":"<id>","text":"<answer>"},...]'`. Never invent answers or submit a partial batch. Surface stale-batch refusals and refresh before retrying.
 
 Only confirm a profile when the user has confirmed its content: `index onboarding confirm-profile`. Then `index onboarding complete [--intent-id <id>]` enforces the server's first-signal and profile prerequisites.
 

@@ -482,8 +482,8 @@ export function createIndexApiClient(options = {}) {
         `/conversations/${encodeURIComponent(conversationId)}/messages`,
         { ...options, method: 'POST', body },
       ),
-      sendAnswers: (intentId, answers, options = {}) => request(
-        '/conversations/agent/answers',
+      answerQuestions: (conversationId, intentId, answers, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}/answers`,
         { ...options, method: 'POST', body: { intentId, answers } },
       ),
       getOrCreateDm: (peerUserId, options = {}) => request(

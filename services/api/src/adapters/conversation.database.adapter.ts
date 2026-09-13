@@ -8,6 +8,13 @@ const logger = log.lib.from('conversation-database');
 /** Inactivity gap that opens a new durable H2A/H2H conversation session. */
 const CHAT_SESSION_GAP_MS = 24 * 60 * 60 * 1000;
 
+// Briefs, retirements and lifecycle activations are private records, not chat entries or unread messages.
+const visibleMessage = sql`NOT (${schema.messages.role} = 'agent' AND ${schema.messages.senderId} = ${SYSTEM_AGENT_ID}
+  AND (coalesce(${schema.messages.metadata}, '{}'::jsonb) ? 'principalStandingBrief'
+    OR coalesce(${schema.messages.metadata}, '{}'::jsonb) ? 'principalDelegation'
+    OR coalesce(${schema.messages.metadata}, '{}'::jsonb) ? 'retiredQuestionId'
+    OR coalesce(${schema.messages.metadata}->'principalMessage'->>'kind', '') = 'event'))`;
+
 interface MatchProvenanceEntry {
   opportunityId: string;
   intents: Array<{ userId: string; intentId: string }>;
@@ -173,7 +180,7 @@ export class ConversationDatabaseAdapter {
           createdAt: schema.messages.createdAt,
         })
         .from(schema.messages)
-        .where(inArray(schema.messages.conversationId, ids))
+        .where(and(inArray(schema.messages.conversationId, ids), visibleMessage))
         .orderBy(schema.messages.conversationId, desc(schema.messages.createdAt)),
       db
         .select()
@@ -198,6 +205,7 @@ export class ConversationDatabaseAdapter {
         .where(and(
           inArray(schema.messages.conversationId, ids),
           ne(schema.messages.senderId, participantId),
+          visibleMessage,
           or(
             isNull(schema.conversationParticipants.lastReadAt),
             gt(schema.messages.createdAt, schema.conversationParticipants.lastReadAt),
@@ -534,7 +542,7 @@ export class ConversationDatabaseAdapter {
    * Persist a message under the durable session selected for the
    * conversation's activity window.
    *
-   * @param tx - Transaction shared with the caller's checkpoint or message operation.
+   * @param tx - Transaction shared with the caller's atomic message operation.
    * @param data - Fully normalized message fields.
    * @returns The newly persisted message.
    */
@@ -616,7 +624,7 @@ export class ConversationDatabaseAdapter {
     conversationId: string,
     opts?: { limit?: number; before?: string; userId?: string; intentId?: string },
   ): Promise<Message[]> {
-    const conditions = [eq(schema.messages.conversationId, conversationId)];
+    const conditions = [eq(schema.messages.conversationId, conversationId), visibleMessage];
 
     // The agent DM is one conversation carrying every signal's questions, so a
     // message belongs to the signal it is tagged with and to no other.
@@ -732,7 +740,7 @@ export class ConversationDatabaseAdapter {
       .limit(1);
     if (!session) return { session: null, messages: [], hasPreviousSession: false };
 
-    const messageConditions = [eq(schema.messages.sessionId, session.id)];
+    const messageConditions = [eq(schema.messages.sessionId, session.id), visibleMessage];
     if (opts?.userId) {
       const [participant] = await db
         .select({ hiddenAt: schema.conversationParticipants.hiddenAt })

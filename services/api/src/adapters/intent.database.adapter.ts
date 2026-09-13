@@ -122,7 +122,6 @@ export class IntentDatabaseAdapter {
           userId: schema.intents.userId,
         });
       if (!created) throw new Error('Insert did not return a row');
-      await publishUserInvalidation(created.userId, 'intent.created', created.id);
       return created;
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
@@ -174,6 +173,11 @@ export class IntentDatabaseAdapter {
         }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
         if (!before) return null;
         const oldFingerprint = computeIntentFingerprint(before.payload, before.summary);
+        const nextFingerprint = computeIntentFingerprint(
+          data.payload ?? before.payload,
+          data.summary !== undefined ? data.summary : before.summary,
+        );
+        if (oldFingerprint !== nextFingerprint) updateData.standingBriefId = null;
         if (!canApplyExpectedIntentUpdate(
           before,
           data.expectedIntentFingerprint,
@@ -328,6 +332,12 @@ export class IntentDatabaseAdapter {
     });
 
     if (outcome.kind === 'success' && outcome.changed) {
+      IntentEvents.onStatusChanged({
+        intentId: outcome.id,
+        userId: input.userId,
+        status: outcome.status,
+        lifecycleVersionMs: outcome.lifecycleVersionMs,
+      });
       await publishIntentLifecycle(input.userId, outcome.id, outcome.status, outcome.lifecycleVersionMs);
     }
     return outcome;
@@ -373,6 +383,7 @@ export class IntentDatabaseAdapter {
       });
     if (compensated) {
       const lifecycleVersionMs = compensated.updatedAt.getTime();
+      IntentEvents.onStatusChanged({ intentId: input.intentId, userId: input.userId, status: 'PAUSED', lifecycleVersionMs });
       await publishIntentLifecycle(input.userId, input.intentId, 'PAUSED', lifecycleVersionMs);
       return {
         status: compensated.status as IntentLifecycleStatus,
@@ -400,14 +411,16 @@ export class IntentDatabaseAdapter {
     try {
       const [archived] = await db.update(schema.intents)
         .set({ archivedAt: new Date(), updatedAt: new Date() })
-        .where(eq(schema.intents.id, intentId))
+        .where(and(eq(schema.intents.id, intentId), isNull(schema.intents.archivedAt)))
         .returning({
           id: schema.intents.id,
           userId: schema.intents.userId,
           updatedAt: schema.intents.updatedAt,
         });
       if (!archived) return { success: false, error: 'Intent not found' };
-      await publishIntentLifecycle(archived.userId, archived.id, 'ARCHIVED', archived.updatedAt.getTime());
+      const lifecycleVersionMs = archived.updatedAt.getTime();
+      IntentEvents.onArchived({ intentId: archived.id, userId: archived.userId, lifecycleVersionMs });
+      await publishIntentLifecycle(archived.userId, archived.id, 'ARCHIVED', lifecycleVersionMs);
       return { success: true };
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.archiveIntent error', { error: error instanceof Error ? error.message : String(error) });
@@ -797,6 +810,14 @@ export class IntentDatabaseAdapter {
           ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
         },
       });
+  }
+
+  /** @param userId - Owner. @param intentId - Owned intent. @param networkId - Broadcast network. @returns Stable identity for this exact committed assignment, or null. */
+  async broadcastActivation(userId: string, intentId: string, networkId: string): Promise<{ type: 'intent.broadcast'; id: string; networkId: string } | null> {
+    const [link] = await db.select({ version: sql<string>`${schema.intentNetworks.createdAt}::text` }).from(schema.intentNetworks)
+      .innerJoin(schema.intents, eq(schema.intents.id, schema.intentNetworks.intentId))
+      .where(and(eq(schema.intents.userId, userId), eq(schema.intentNetworks.intentId, intentId), eq(schema.intentNetworks.networkId, networkId)));
+    return link ? { type: 'intent.broadcast', id: `intent.broadcast:${intentId}:${networkId}:${link.version}`, networkId } : null;
   }
 
   /**

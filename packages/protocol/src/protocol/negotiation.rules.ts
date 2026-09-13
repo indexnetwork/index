@@ -29,7 +29,7 @@ export interface NegotiationState {
 }
 export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'signal_inactive'
   | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn' | 'propose_not_first'
-  | 'counter_is_first' | 'accept_without_offer';
+  | 'counter_is_first' | 'accept_not_responder' | 'accept_without_offer';
 export interface NegotiationOpening {
   userA: string;
   userB: string;
@@ -73,8 +73,13 @@ export function decideNegotiationTurn(state: NegotiationState | null, userId: st
   if (!negotiationTurnSchema.safeParse(turn).success) return { ok: false, rejection: 'invalid_turn' };
   if (turn.action === 'propose' && turnIndex !== 0) return { ok: false, rejection: 'propose_not_first' };
   if (turn.action === 'counter' && turnIndex === 0) return { ok: false, rejection: 'counter_is_first' };
-  const previous = state.turns[state.turns.length - 1];
-  if (turn.action === 'accept' && (!previous || previous.seatUserId === userId || !['propose', 'counter'].includes(previous.action))) return { ok: false, rejection: 'accept_without_offer' };
+  if (turn.action === 'accept') {
+    if (userId !== state.responderUserId) return { ok: false, rejection: 'accept_not_responder' };
+    const previous = state.turns[state.turns.length - 1];
+    if (!previous || previous.seatUserId === userId || !['propose', 'counter'].includes(previous.action)) {
+      return { ok: false, rejection: 'accept_without_offer' };
+    }
+  }
   const outcome = turn.action === 'accept' ? 'agreed' : turn.action === 'decline' ? 'declined' : null;
   const blockedReason = !outcome && turnIndex + 1 >= NEGOTIATION_MAX_TURNS ? 'turn_limit' : null;
   return {
@@ -87,6 +92,15 @@ export function decideNegotiationTurn(state: NegotiationState | null, userId: st
 /** @param state - Current authoritative state. @param userId - Reading principal. @returns Guidance and actions available to that seat now. */
 export function observeNegotiation(state: NegotiationState, userId: string) {
   const blockedReason = negotiationBlockedReason(state, userId);
-  const availableActions: NegotiationAction[] = blockedReason ? [] : state.turns.length ? ['counter', 'accept', 'decline'] : ['propose', 'decline'];
+  let availableActions: NegotiationAction[] = [];
+  if (!blockedReason) {
+    if (state.turns.length === 0) {
+      availableActions = ['propose', 'decline'];
+    } else if (userId === state.responderUserId) {
+      availableActions = ['counter', 'accept', 'decline'];
+    } else {
+      availableActions = ['counter', 'decline'];
+    }
+  }
   return { guidance: NEGOTIATION_GUIDANCE, availableActions, blockedReason, maxTurns: NEGOTIATION_MAX_TURNS, messageLimit: NEGOTIATION_MESSAGE_LIMIT };
 }

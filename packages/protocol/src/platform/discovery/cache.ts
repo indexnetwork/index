@@ -38,7 +38,7 @@ export interface Cache {
   mget<T>(keys: string[]): Promise<(T | null)[]>;
 
   /**
-   * Delete all keys matching pattern (e.g. "opportunity:intent:*").
+   * Delete all keys matching pattern (e.g. "protocol:radar:*").
    * @returns Number of keys deleted
    */
   deleteByPattern(pattern: string): Promise<number>;

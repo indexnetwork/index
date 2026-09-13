@@ -8,14 +8,7 @@ This guide covers the technical package surface for implementers embedding the c
 This package follows [Semantic Versioning](https://semver.org/). The **only**
 supported entry point is the package root (`import { ... } from "@indexnetwork/protocol"`);
 deep imports are not part of the contract. Every symbol is re-exported explicitly from
-`src/index.ts` and tagged with a stability tier:
-
-- **Stable** — interfaces, graph factories, agents, and shared schemas.
-  Breaking changes require a major bump.
-- **Experimental** (`@experimental`) — advanced graph-state types and internal
-  helpers; may change in a minor release.
-
-See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
+`src/index.ts`; breaking changes to any of them require a major bump. See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
 and [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 Private source under `src/internal/` is domain-first: `agents`, `networks`,
@@ -31,8 +24,10 @@ execute path passes a pure protocol decision function into the host's transactio
 the host locks current membership, intent, and negotiation state, evaluates the
 function, and atomically applies the turn and opportunity transition.
 `openCounterparties` likewise receives the protocol's opening decision callback.
-The protocol enforces 12 total turns, leaving exhausted matches undecided, and
-A2A agreement only advances to pending owner review. `NegotiationContextDatabase`
+The protocol enforces 12 total turns, leaving exhausted matches undecided. Only
+the session's original responder may `accept`, including after counteroffers;
+initiators may withdraw using `decline`. A2A agreement only advances to pending
+owner review. `NegotiationContextDatabase`
 continues to provide scoped turn logs for opportunity presentation.
 
 Personal-agent reasoning and H2A communication live in the independent
@@ -42,13 +37,12 @@ protocol capability with memory storage. Neither library imports the other.
 
 ## Boundary model
 
-The package is migrating incrementally to a protocol kernel. `protocol/`
-contains portable, framework-free contracts and shared protocol instructions; `platform/` contains host-facing
-ports and supported runtime hooks; and `capabilities/` exposes small named
-behavior surfaces. Graphs, internal model prompts, retrieval, and agent helpers remain
-private implementation. These are source boundaries only: import supported
-symbols from `@indexnetwork/protocol`, not source subpaths. See
-[docs/protocol-kernel.md](./docs/protocol-kernel.md) for migration status.
+`protocol/` contains portable, framework-free contracts and shared protocol
+instructions; `platform/` contains host-facing ports and supported runtime hooks;
+`capabilities/` exposes small named behavior surfaces; and `internal/` holds the
+graphs, internal model prompts, and agent helpers that implement them. These are
+source boundaries only: import supported symbols from `@indexnetwork/protocol`,
+not source subpaths. `bun run architecture:check` enforces the dependency rules.
 
 ## Shared protocol instructions
 

@@ -1,4 +1,4 @@
-import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
+import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, matchReadyIntentWhere, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -78,6 +78,20 @@ export class ChatDatabaseAdapter {
       logger.error('ChatDatabaseAdapter.getActiveIntents error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
+  }
+
+  /** @param userId - Intent owner. @returns Active intents eligible to enter a new negotiation. */
+  async getMatchReadyIntents(userId: string): Promise<ActiveIntentRow[]> {
+    const result = await db.select({
+      id: schema.intents.id,
+      payload: schema.intents.payload,
+      summary: schema.intents.summary,
+      createdAt: schema.intents.createdAt,
+    })
+      .from(schema.intents)
+      .where(and(activeOwnIntentsWhere(userId), matchReadyIntentWhere()))
+      .orderBy(desc(schema.intents.createdAt));
+    return result;
   }
 
   async searchOwnIntents(
@@ -234,7 +248,7 @@ export class ChatDatabaseAdapter {
           userId: schema.intents.userId,
         });
       if (!created) throw new Error('Insert did not return a row');
-      await publishUserInvalidation(created.userId, 'intent.created', created.id);
+      await IntentEvents.onCreated(created.id, created.userId);
       return created;
     } catch (error: unknown) {
       logger.error('ChatDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
@@ -267,6 +281,11 @@ export class ChatDatabaseAdapter {
         }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
         if (!before) return null;
         const oldFingerprint = computeIntentFingerprint(before.payload, before.summary);
+        const nextFingerprint = computeIntentFingerprint(
+          data.payload ?? before.payload,
+          data.summary !== undefined ? data.summary : before.summary,
+        );
+        if (oldFingerprint !== nextFingerprint) updateData.standingBriefId = null;
         if (!canApplyExpectedIntentUpdate(
           before,
           data.expectedIntentFingerprint,
@@ -2528,17 +2547,19 @@ export class ChatDatabaseAdapter {
         return { kind: 'stale' as const };
       }
       const updatedAt = new Date(Math.max(Date.now(), before.updatedAt.getTime() + 1));
+      const oldFingerprint = computeIntentFingerprint(before.payload, before.summary);
+      const newFingerprint = computeIntentFingerprint(payload, before.summary);
       const [updated] = await tx.update(schema.intents)
-        .set({ payload, updatedAt })
+        .set({ payload, updatedAt, ...(oldFingerprint === newFingerprint ? {} : { standingBriefId: null }) })
         .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
-        .returning({ id: schema.intents.id, userId: schema.intents.userId, payload: schema.intents.payload, summary: schema.intents.summary });
+        .returning({ id: schema.intents.id, userId: schema.intents.userId });
       if (!updated) return { kind: 'stale' as const };
       return {
         kind: 'applied' as const,
         id: updated.id,
         userId: updated.userId,
-        oldFingerprint: computeIntentFingerprint(before.payload, before.summary),
-        newFingerprint: computeIntentFingerprint(updated.payload, updated.summary),
+        oldFingerprint,
+        newFingerprint,
       };
     });
     if (result.kind === 'applied' && result.oldFingerprint !== result.newFingerprint) {

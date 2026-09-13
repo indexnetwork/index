@@ -2,80 +2,48 @@
 
 `@indexnetwork/protocol` is a published, versioned package consumed by the Index
 Network backend and by external integrators. This document defines what the
-public contract **is**, which parts are stable, and what counts as a breaking
-change. It is the reference behind the tier annotations in `src/index.ts`.
+public contract **is** and what counts as a breaking change.
 
 ## The public contract
 
-- The supported entry points are the package root:
-  `import { ... } from "@indexnetwork/protocol"` — and the **browser-safe
-  subpaths** listed in `package.json` `exports` (as of 21.1.0:
-  package root. There are no supported browser subpaths.
-  exposes one shared-schema module whose only runtime dependency is `zod`, for
-  consumers (the web client) that cannot load the node-only package root. The
-  schema module's symbols are also re-exported from the root (the fixture is
-  subpath-only, to keep test data out of the runtime barrel), and the subpaths
-  carry the Stable tier.
+- The only supported entry point is the package root:
+  `import { ... } from "@indexnetwork/protocol"`. There are no subpath exports.
 - Deep imports (`@indexnetwork/protocol/dist/...` or `/src/...`) are **not** part
   of the contract and may change or disappear in any release — do not rely on them.
 - The contract is exactly the set of symbols re-exported from `src/index.ts`.
   Exports are listed explicitly (no `export *` wildcards), so the surface is
   reviewable and additions are always intentional. Nothing checks this
-  mechanically — a removed or renamed stable export is caught in review of the
+  mechanically — a removed or renamed export is caught in review of the
   `src/index.ts` diff, and that is what triggers the major bump below.
-- Root exports are assembled through named capability facades. Those facades are
-  implementation seams, not package subpath entry points: consumers must still
-  import only from `@indexnetwork/protocol`. A capability may state that facade
-  as a class rather than a re-export list — `intents` does, via `Intents` in
-  `intents/intent.module.ts` — which makes the whole capability one exported
-  symbol and its internal layout free to change without a contract change.
+- `Intents`, `Networks`, and `Negotiations` expose a whole capability as one
+  class from `src/capabilities/`, so each capability's internal layout can change
+  without a contract change. Opportunity behavior is exported as individual
+  functions from the root.
 - `protocol/`, `platform/`, `capabilities/`, and `internal/` are source-level
-  boundaries, not consumer subpaths. The sole supported Node import remains the
-  package root.
+  boundaries, not consumer subpaths.
 
-## Stability tiers
+## What the barrel contains
 
-Each section of the barrel carries one of two tiers.
-
-### Stable
-
-Covered by SemVer below. Breaking changes require a **major** bump.
+Every root export is covered by SemVer below; there is no experimental tier.
 
 | Barrel section | What it is |
 |---|---|
-| **Public API** | Model config helpers, request scope helpers (`deriveAllowedNetworkIds`, `deriveDiscoveryNetworkIds`), `requestContext`. |
-| **Interfaces** | Every port you implement to inject infrastructure (databases, embedder, cache, scraper, integration, …). |
-| **Shared schemas** | Zod schemas + inferred types that cross the boundary (underspecification, identity, network-assignment, chat-context, …). |
-| **Graph factories** | `*GraphFactory` classes (for example, `RadarGraphFactory`). |
-| **Intents** | `Intents` — the whole signal capability as one class (lifecycle graph, verification, clarification) plus `IntentsDeps` and the `Clarify*` types. Replaced the six separate intent exports in 18.0.0. |
-| **Agents** | Structured LLM agents (`OpportunityEvaluator`, …). |
+| **Host runtime hooks** | `setRequestContextStore`, `setLoggerFactory`, `setTimingWrapper` — the host supplies request-context storage, logging, and timing. |
+| **Host ports** | The database, cache, and follow-up contracts a host implements. |
+| **Intents** | `Intents` — the whole signal capability as one class (lifecycle graph, verification, clarification) plus the `Clarify*` and prepared-intent types. |
+| **Networks** | `Networks` and the discovery scope rules. |
+| **Negotiations** | `Negotiations`, the opening and turn decision functions, `observeNegotiation`, `negotiationTurnSchema`, and the shared guidance text. Hosts must evaluate supplied decision callbacks against locked current state and commit their effects atomically. |
+| **Opportunities** | Lifecycle predicates, presentation, radar graph factory, discriminator mining, and outcome shadow evaluation. |
 
-`Negotiations`, `NegotiationDatabase`, the opening and turn decision functions,
-the observation function, and `negotiationTurnSchema` are stable. Hosts must
-evaluate supplied decision callbacks against locked current state and commit
-their effects atomically. `openCounterparties` takes the protocol opening callback.
-
-### Experimental
-
-Marked `@experimental` in `src/index.ts`. May change in a **minor** release without
-a major bump. Use at your own risk and pin a version if you depend on them.
-
-| Area | What it is |
-|---|---|
-| **States** | Advanced graph-state shapes exposed for advanced graph consumers. |
-| **Internal helpers** | Low-level support utilities re-exported for the backend's own use (selection/eval/evidence helpers) that are not part of the recommended integration surface. |
-
-> Most symbols in the barrel are consumed by the Index Network backend itself; a
-> symbol being absent from the backend's imports does **not** make it dead — it may
-> serve external integrators. Removal therefore follows the deprecation path below,
-> never an ad-hoc delete.
+The barrel is pruned to what in-repo hosts consume. Removing an export is a
+breaking change and follows the deprecation path below.
 
 ## SemVer policy
 
 This package follows [Semantic Versioning 2.0.0](https://semver.org/).
 
-**MAJOR** — incompatible changes to the Stable surface:
-- Removing or renaming a stable export.
+**MAJOR** — incompatible changes to the public contract:
+- Removing or renaming an export.
 - Adding a required method/field to an implemented interface, or tightening a
   return type (e.g. `T | null` → `T` is fine; `T` → `T | null` is breaking).
 - Changing the runtime behavior a documented port contract guarantees
@@ -83,7 +51,6 @@ This package follows [Semantic Versioning 2.0.0](https://semver.org/).
 
 **MINOR** — backward-compatible additions:
 - New exports; new **optional** interface members; new graph factories/agents.
-- Any change to an `@experimental` symbol.
 
 **PATCH** — backward-compatible fixes:
 - Bug fixes, performance, prompt/model tuning, doc and type-comment changes that
@@ -94,7 +61,7 @@ This package follows [Semantic Versioning 2.0.0](https://semver.org/).
 Interface ports document invariants in their TSDoc/banner comments — ownership
 scoping (return `null` for missing **or** non-owned rows), null-vs-empty-array
 conventions, and lifecycle idempotency (`mark*` transitions are no-ops once
-terminal). These guarantees are part of the Stable contract: breaking them is a
+terminal). These guarantees are part of the contract: breaking them is a
 **major** change even if the TypeScript signature is unchanged.
 
 ## Deprecation path

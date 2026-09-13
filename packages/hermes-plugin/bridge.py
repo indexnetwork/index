@@ -21,6 +21,7 @@ class HermesBridge:
         self.adapter = None
         self.token = secrets.token_urlsafe(32)
         self._server: ThreadingHTTPServer | None = None
+        self._calls: dict[str, dict] = {}
 
     @property
     def url(self) -> str:
@@ -44,7 +45,20 @@ class HermesBridge:
     def speak(self, payload: dict) -> dict:
         if self.adapter is None or self.sidecar is None:
             raise RuntimeError("The Index platform is not connected.")
-        return run_session(self.adapter, self.sidecar, payload)
+        call = {"cancelled": threading.Event(), "agent": None}
+        self._calls[payload["callId"]] = call
+        try:
+            return run_session(self.adapter, self.sidecar, payload, call)
+        finally:
+            self._calls.pop(payload["callId"], None)
+
+    def cancel(self, call_id: str) -> None:
+        """Interrupt native work when its Index run ends or loses ownership."""
+        call = self._calls.get(call_id)
+        if call is not None:
+            call["cancelled"].set()
+            if call["agent"] is not None:
+                call["agent"].interrupt("Index ended this run; do not continue.", hard_cancel=True)
 
 
 def _handler(bridge: HermesBridge):
@@ -65,6 +79,9 @@ def _handler(bridge: HermesBridge):
             try:
                 if self.path == "/speak":
                     return self._send(200, bridge.speak(payload))
+                if self.path == "/cancel":
+                    bridge.cancel(payload["callId"])
+                    return self._send(200, {"ok": True})
             except Exception as error:  # noqa: BLE001
                 logger.warning("Index bridge %s failed: %s", self.path, error)
                 return self._send(502, {"error": str(error)})
@@ -76,6 +93,9 @@ def _handler(bridge: HermesBridge):
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
-            self.wfile.write(encoded)
+            try:
+                self.wfile.write(encoded)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # Index may have ended the run and closed its response.
 
     return Handler

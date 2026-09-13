@@ -82,7 +82,7 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
     status: negotiation.outcome ?? "negotiating",
     awaiting: negotiation.awaitingUserId === userId ? "you" : "them",
     turns: String(negotiation.turnCount),
-    actions: negotiation.turns.length ? ["counter", "accept", "decline"] : ["propose", "decline"],
+    actions: negotiation.protocol.availableActions,
     intent: { statement: negotiation.counterparty.statement },
     ...(negotiation.turns.length ? { terms: negotiation.turns.at(-1)!.message } : {}),
   };

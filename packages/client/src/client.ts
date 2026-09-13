@@ -41,6 +41,7 @@ export interface Negotiation {
 }
 
 export interface NegotiationDetail extends Negotiation {
+  protocol: { guidance: string; availableActions: NegotiationAction[]; blockedReason: string | null; maxTurns: number; messageLimit: number };
   turns: {
     turnIndex: number;
     seatUserId: string;
@@ -108,6 +109,7 @@ export interface PrincipalMessage {
 
 export interface PrincipalQuestion {
   id: string;
+  batchId: string;
   question: string;
   options?: string[];
   scope: QuestionScope;
@@ -116,8 +118,8 @@ export interface PrincipalQuestion {
 
 export interface PersonalAgentState {
   status: "running" | "starting" | "paused" | "external" | "unavailable";
-  /** Every question still waiting on the owner, oldest first. */
-  questions: PrincipalQuestion[];
+  /** Questions currently offered by the selected runtime. */
+  pending: PrincipalQuestion[];
 }
 
 export interface ConversationMessage {

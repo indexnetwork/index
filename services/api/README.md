@@ -28,27 +28,46 @@ bun run dev:web
 
 The API loads the root `.env.development`. Use the disposable development
 database with the migrations applied. Open the web app, sign in normally, and
-open an intent. Its private H2A chat always accepts owner messages and answers,
-whether or not an external negotiator is selected. Suggested answers and custom
-drafts stay attached to the displayed question. Radar keeps its Needs you, Waiting,
-Connected, and Closed categories, with an expandable A2A conversation inside
-each match. Pending matches retain Start Chat and Skip.
+open an intent. Its private H2A chat keeps direct messages separate from answers.
+Our hosted agent displays stable batches of 1–3 independent questions; suggestions
+and custom drafts remain attached to their IDs until the complete batch is submitted.
+Radar retains its match categories, A2A transcripts, Start Chat and Skip.
 
-The API runs no personal-agent session. Its hosted agent is `HostedAgent`, the
-default seat for owners without a selected external negotiator: it runs
-`@indexnetwork/agentv2` — brief, wake and negotiate — against `HostedIndex`, an
-in-process implementation of the same `Index` protocol an external runner reaches
-over HTTP. Nothing runs on a clock. A counterpart's turn and an opening each move
-one opportunity; the owner's own input, a new signal and a resumed one are what
-cause a wake. So a hosted seat searches, opens opportunities and asks its owner
-questions, where the former `HostedNegotiator` only took A2A turns.
-`GET /api/conversations/:id/messages` with `intentId` returns that intent's H2A
-history and `agent` state (`external` or `hosted`, plus `questions` — now
-populated for both). Send text to `POST /api/conversations/:id/messages`
-with `parts: [{ kind: "text", text }]`, `metadata: { intentId }`, and the
-displayed `questionId`, or `null` for a direct message. A successful response
-contains the persisted message; input naming a question that is no longer
-waiting is still recorded, as a plain message.
+`PersonalAgentService` is the default API host for `@indexnetwork/agent`.
+`@indexnetwork/agentv2` and its independent runner remain separate; the API does
+not start a second hosted scheduler. Startup reconstructs domain records without
+resuming interrupted model work. Redis ownership and PostgreSQL owner locks exclude
+competing hosted execution and fence external-executor handover.
+
+The service reconciles active seats at boot and follows Redis Streams for intent
+and executor changes. Only accepted principal input, explicit creation/broadcast
+and trusted manual wakes activate H2A. Negotiation changes refresh A2A observations;
+stalls and reconnects never create H2A activations. Stable activation IDs make
+retained-event delivery idempotent. Stream acknowledgement means dispatch, not
+successful completion of model work.
+
+`GET /api/conversations/agent/messages?intentId=<id>` returns H2A history and
+`agent: { status, pending }`. Send direct text to
+`POST /api/conversations/agent/messages` with `parts: [{ kind: "text", text }]`
+and `metadata: { intentId }`. Submit answers at
+`POST /api/conversations/:id/answers` (including the `agent` alias) with
+`{ intentId, answers: [{ questionId, text }, ...] }`. Hosted batches reject missing,
+extra, duplicate, empty, stale or retired answers without partial writes or a wake.
+Direct messages never implicitly answer questions. External agents retain their
+own question policy and publish through `/conversations/agent/h2a?executorId=...`;
+owner input reaches that executor only after its messages are durable.
+
+Migration `0003_add_principal_records_and_negotiation_sessions` follows dev's
+squashed `0000`–`0002` baseline. It preserves checkpoint-era question wording,
+scoped answers and advisory notes, assigns historical singleton batch IDs, then
+drops `agent_sessions`. It does not invent standing authority or replay model work.
+Existing unbriefed hosted intents need permitted fresh input or a trusted manual
+wake before they become match-ready. Record fingerprints and protocol turn guards
+reject stale hosted writes; private briefs and retirement records stay out of chat.
+
+The trusted runtime's `wake()` operation, used by the TUI, records a private receipt,
+not a chat message or new permission. No HTTP wake endpoint is added. Shutdown
+cancels model work and releases ownership; agents need no browser or TUI connection.
 
 ## Railway dev intent replay
 
@@ -76,10 +95,10 @@ eligible paused intents. Use reset to start the experiment from the beginning.
 
 Reset briefly stops the dev API and any replay in its container, then pauses
 non-archived, non-terminal intents and clears discovery progress, opportunities,
-negotiations/turns, outcome feedback, agent checkpoints and agent conversations.
+negotiations/turns, outcome feedback and agent conversations.
 Human conversations keep their messages but lose old match provenance. Users,
 API keys/sessions, profiles, intents, networks, memberships, assignments and
-embeddings/HyDE remain. The exact API deployment is restarted and health-checked,
+embeddings remain. The exact API deployment is restarted and health-checked,
 including after a cleanup failure. Advisory locks exclude overlapping runs.
 
 Both commands are pinned to Railway's dev API and its Neon `protocol_prod`
@@ -100,16 +119,18 @@ bun run --cwd services/api agent:tui google/gemini-3.8-flash anthropic/claude-ha
 Uses the root `.env.development`, existing database principals/intents, and the
 API's negotiation services. Space selects principal/intent sessions; Enter starts
 all selected agents. No HTTP server or login is needed for this trusted local
-command. HTTP guards are unchanged. Models, the session store, protocol guidance,
+command. HTTP guards are unchanged. Models, record operations, protocol guidance,
 and protocol-backed reads/writes are injected into `@indexnetwork/agent`.
 
 `packages/protocol` owns participation rules and consent/transition gates;
 `packages/agent` owns reasoning, parallel matches, and the shared H2A inbox.
-The TUI composes both against the API database. It persists domain
-tables, `agent_sessions` checkpoints/leases, and intent-tagged H2A `messages`
-in the owner's existing DM. A2A agreement remains pending human approval. The
-API server does not take these session leases. Do not run two TUIs for the same
-intents.
+The API and TUI compose both against the same unprefixed domain tables and
+intent-tagged H2A messages. Standing briefs, specific delegations and question
+retirements are typed private records excluded from chat history, previews,
+unread counts and notifications. `intents.standing_brief_id` gates hosted match
+readiness; selected external executors keep their own eligibility. A2A agreement
+still requires human approval. Stop the normal API before running this TUI for
+the same intents: Redis permits one hosted owner per principal/intent.
 
 See [agent-tui controls and behavior](../../packages/agent-tui/README.md).
 

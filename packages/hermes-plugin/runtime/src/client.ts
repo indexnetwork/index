@@ -1,5 +1,7 @@
 import type { Negotiation, NegotiationTurn, NegotiationUser, PrincipalMessage } from '@indexnetwork/agent';
 
+export type ExternalPrincipalMessage = Omit<PrincipalMessage, 'kind'> & { kind: 'question' | 'answer' | 'user' | 'message' | 'expire' };
+
 export interface NegotiationSummary {
   opportunityId: string;
   intentId: string;
@@ -87,6 +89,12 @@ export class IndexClient {
     return negotiations;
   }
 
+  /** @param intentId - Owned signal. @returns Its canonical sessions and authoritative legal actions. */
+  async negotiationsForIntent(intentId: string): Promise<Negotiation[]> {
+    const summaries = await this.listNegotiations();
+    return Promise.all(summaries.filter((entry) => entry.intentId === intentId).map(({ opportunityId }) => this.readNegotiation(opportunityId)));
+  }
+
   /** @returns The protocol's canonical negotiation guidance, from the API being negotiated against. */
   async guidance(): Promise<string> {
     const { content } = await this.request<{ content: string }>('GET', '/docs?topic=negotiations');
@@ -124,7 +132,7 @@ export class IndexClient {
    * @param intentId - The signal.
    * @param entries - Agent-authored questions and messages not yet on Index.
    */
-  async publishH2A(intentId: string, entries: PrincipalMessage[]): Promise<void> {
+  async publishH2A(intentId: string, entries: ExternalPrincipalMessage[]): Promise<void> {
     await this.request(
       'POST',
       `/conversations/agent/h2a?executorId=${encodeURIComponent(this.executorId)}`,
@@ -134,13 +142,15 @@ export class IndexClient {
 
   /**
    * @param intentId - The signal.
-   * @returns That signal's H2A transcript on the owner's agent DM.
+   * @returns Canonical H2A entries and retirements derived from the server's authoritative pending view.
    */
-  async agentMessages(intentId: string): Promise<PrincipalMessage[]> {
-    const { messages } = await this.request<{
-      messages: { id: string; createdAt: string; role: string; parts: { kind?: string; text?: string }[]; metadata?: { principalMessage?: Omit<PrincipalMessage, 'id' | 'createdAt' | 'text'> } }[];
+  async agentConversation(intentId: string): Promise<{ messages: ExternalPrincipalMessage[]; retiredQuestionIds: string[] }> {
+    const { messages, agent } = await this.request<{
+      messages: { id: string; createdAt: string; role: string; parts: { kind?: string; text?: string }[]; metadata?: { principalMessage?: Omit<ExternalPrincipalMessage, 'id' | 'createdAt' | 'text'> } }[];
+      agent: { status: string; pending: { id: string }[] };
     }>('GET', `/conversations/agent/messages?intentId=${encodeURIComponent(intentId)}`);
-    return messages.map((message) => {
+    if (agent.status !== 'external') throw new Error('Index no longer assigns this signal to an external executor.');
+    const entries = messages.map((message): ExternalPrincipalMessage => {
       const stored = message.metadata?.principalMessage;
       return {
         ...stored, id: message.id, createdAt: message.createdAt,
@@ -148,5 +158,10 @@ export class IndexClient {
         text: (message.parts ?? []).filter((part) => part?.kind === 'text' && typeof part.text === 'string').map((part) => part.text).join('\n'),
       };
     });
+    const pending = new Set(agent.pending.map(({ id }) => id));
+    const answered = new Set(entries.filter((entry) => entry.kind === 'answer').map((entry) => entry.questionId));
+    const retiredQuestionIds = entries.filter((entry) => entry.kind === 'question' && entry.questionId
+      && !pending.has(entry.questionId) && !answered.has(entry.questionId)).map((entry) => entry.questionId!);
+    return { messages: entries, retiredQuestionIds };
   }
 }

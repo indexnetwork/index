@@ -222,6 +222,32 @@ export function activeIntentLifecycleWhere() {
 }
 
 /**
+ * Match readiness for one intent row: external executors retain their existing
+ * eligibility, while the hosted agent requires a trusted standing-brief pointer.
+ *
+ * @returns A Drizzle predicate over `protocol_intents`.
+ */
+export function matchReadyIntentWhere() {
+  return or(
+    sql`exists (
+      select 1 from ${schema.agents}
+      where ${schema.agents.ownerId} = ${schema.intents.userId}
+        and ${schema.agents.type} = 'external'
+        and ${schema.agents.handleNegotiations} = true
+        and ${schema.agents.deletedAt} is null
+    )`,
+    sql`exists (
+      select 1 from ${schema.messages}
+      where ${schema.messages.id} = ${schema.intents.standingBriefId}
+        and ${schema.messages.role} = 'agent'
+        and ${schema.messages.senderId} = ${SYSTEM_AGENT_ID}
+        and ${schema.messages.metadata}->>'intentId' = ${schema.intents.id}
+        and coalesce(${schema.messages.metadata}, '{}'::jsonb) ? 'principalStandingBrief'
+    )`,
+  );
+}
+
+/**
  * Canonical "active own intents" WHERE predicate: an unarchived, discoverable
  * row owned by the user. REST own-intent list/detail reads intentionally do not
  * use this predicate so paused and terminal records remain visible there.
@@ -311,9 +337,6 @@ export function toOpportunityRow(row: typeof opportunities.$inferSelect): Opport
   };
 }
 
-/**
- * Database adapter for Opportunity Graph and opportunity controller.
- */
 export interface UserWithGraph {
   id: string;
   email: string | null;

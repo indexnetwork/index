@@ -10,12 +10,9 @@ request-context store. This package consumes the matching TypeScript port.
 
 ## Naming
 
-- Group ports by host concern: `discovery/cache.ts`, `chat/ports.ts`,
-  `runtime/follow-up.ts`, and `negotiation/summary.ts`. `database/` remains a
+- Group ports by host concern: `discovery/cache.ts`, `discovery/embedder.ts`,
+  `runtime/follow-up.ts`, and `runtime/observability.ts`. `database/` remains a
   separate group because it owns a larger set of persistence contracts.
-- Use `ports.ts` only when one file contains several closely related, actual
-  port contracts. It is not a re-export barrel. For example, `chat/ports.ts`
-  owns session reads, message writes, and digest reads.
 - Use `*Port` only when an interface needs distinguishing from a protocol
   entity. Do not use `*.interface.ts`.
 - Keep vendor, transport, and persistence words out of port names:

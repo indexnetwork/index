@@ -61,12 +61,6 @@ const UNSUPPORTED_CLAIM_PATTERNS: readonly RegExp[] = [
   /\bcrossed\s+paths\s+(?:at|during)\b/i,
 ];
 
-/** Returns true when text contains an unsupported affiliation/presence claim. */
-export function hasUnsupportedOpportunityClaim(text: string | null | undefined): boolean {
-  if (!text?.trim()) return false;
-  return splitClaimSentences(text).some(isUnsupportedOpportunityClaimSentence);
-}
-
 /** Returns true when one sentence contains an unsupported claim family. */
 export function isUnsupportedOpportunityClaimSentence(sentence: string): boolean {
   return UNSUPPORTED_CLAIM_PATTERNS.some((pattern) => pattern.test(sentence));

@@ -6,7 +6,7 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
 import { issuePreparationReceipt, readPreparationReceipt } from '../lib/intent/intent.preparation';
-import { IntentEvents } from '../events/intent.event';
+import { IntentEvents, publishIntentActivation } from '../events/intent.event';
 
 const logger = log.service.from("IntentService");
 
@@ -127,7 +127,7 @@ export class IntentService {
   private intentNetworkGraph: IntentGraphRunner;
   private adapter: IntentDatabaseAdapter;
   private embedder: EmbedderAdapter;
-  private emitCreated: (intentId: string, userId: string) => void;
+  private emitCreated: (intentId: string, userId: string) => Promise<void>;
 
   /**
    * @param deps - Optional dependency overrides for focused service tests.
@@ -135,7 +135,7 @@ export class IntentService {
   constructor(deps?: {
     adapter?: IntentDatabaseAdapter;
     embedder?: EmbedderAdapter;
-    emitCreated?: (intentId: string, userId: string) => void;
+    emitCreated?: (intentId: string, userId: string) => Promise<void>;
     intentGraph?: IntentGraphRunner;
     intentNetworkGraph?: IntentGraphRunner;
   }) {
@@ -235,7 +235,7 @@ export class IntentService {
       throw new IntentNetworkMembershipError(missing[0]);
     }
 
-    this.emitCreated(created.intentId, userId);
+    await this.emitCreated(created.intentId, userId);
     return { id: created.intentId, networkIds: linked };
   }
 
@@ -309,7 +309,13 @@ export class IntentService {
    */
   async addToNetwork(intentId: string, networkId: string, userId: string): Promise<IntentNetworkLinkOutcome> {
     logger.verbose('Linking intent to network', { intentId, networkId, userId });
-    return this.runLink(intentId, networkId, userId, 'create');
+    const previous = await this.adapter.broadcastActivation(userId, intentId, networkId);
+    const result = await this.runLink(intentId, networkId, userId, 'create');
+    if (result.kind === 'ok') {
+      const activation = await this.adapter.broadcastActivation(userId, intentId, networkId);
+      if (activation && activation.id !== previous?.id) await publishIntentActivation(userId, intentId, activation);
+    }
+    return result;
   }
 
   /**
@@ -603,8 +609,6 @@ export class IntentService {
     if (!execution?.success) {
       return { success: false, error: execution?.error ?? 'Intent not found' };
     }
-
-    IntentEvents.onArchived(intentId, userId);
 
     return { success: true };
   }

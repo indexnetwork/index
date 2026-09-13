@@ -10,6 +10,20 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: preserve the durable personal agent as the default hosted runtime.** `PersonalAgentService` runs `@indexnetwork/agent`; `agentv2` remains an independent external runner. Only one selected executor can write for a principal/intent. Redis Streams replace pub/sub without adding stall-triggered H2A wakes or replaying interrupted model work.
+- **BREAKING: exact hosted question batches.** Agent state is `{ status, pending }`. Direct messages never imply answers; submit every current answer together at `POST /conversations/:id/answers`. Missing, duplicate, stale and retired answers produce no partial write or wake. Native and web drafts remain local until successful submission.
+- Preserve private standing briefs, complete specific delegations, scoped permission evidence, principal-context freshness and explicit question retirement. Hosted match readiness requires a standing brief; external executors retain their independent eligibility and question policy.
+- **BREAKING: responder-only acceptance.** Only a session's original responder may accept the initiator's standing offer. All consumers use authoritative legal actions; agreement remains pending human approval. Terminal pairs may open new, separately identified negotiation sessions with read-only prior history and an atomic first delegation.
+- Keep explicit-query discovery in the independent `@indexnetwork/discovery` package, without restoring HyDE or background post-intent matching.
+- Keep dev's opportunity-based routes, network approvals/invites, inbox transport, migration baseline and independent UI improvements. External inbox writes move off the obsolete checkpoint adapter and remain executor-fenced.
+
+### Migration
+- Add `0003_add_principal_records_and_negotiation_sessions` after dev's `0000`–`0002` baseline. Preserve checkpoint-era questions, scoped answers and advisory notes before dropping `agent_sessions`; do not restore old runtime state or infer standing authority. Later dev-authored questions are not retired by older checkpoint snapshots.
+- Add standing-brief pointers and per-pair negotiation session identity using unprefixed tables. Existing unbriefed hosted intents require permitted fresh input or a trusted manual wake to become match-ready.
+
+## [0.130.1]
+
+### Changed
 - **A burst of stalls reaches the owner as one wake.** `HostedAgent` woke the
   signal on the first negotiator that stalled, so that wake read the transcript
   while its siblings were still running and asked about whichever missing fact

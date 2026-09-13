@@ -2,7 +2,7 @@ import { pgTable, pgEnum, text, timestamp, boolean, json, jsonb, integer, unique
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm/relations';
 import { sql } from 'drizzle-orm/sql';
-import { conversations } from './conversation.schema';
+import { messages } from './conversation.schema';
 
 import type { Id } from '../types/common.types';
 
@@ -270,6 +270,12 @@ export const opportunities = pgTable('opportunities', {
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
+  // Pending agreements belong to immutable sessions and may coexist with a new attempt.
+  activePairIdx: uniqueIndex('opportunities_active_pair_idx').on(
+    sql`(${table.context}->>'networkId')`,
+    sql`LEAST(${table.actors}->0->>'intent', ${table.actors}->1->>'intent')`,
+    sql`GREATEST(${table.actors}->0->>'intent', ${table.actors}->1->>'intent')`,
+  ).where(sql`${table.status} = 'negotiating' AND ${table.actors}->0->>'intent' IS NOT NULL AND ${table.actors}->1->>'intent' IS NOT NULL`),
 }));
 
 /**
@@ -281,10 +287,11 @@ export const negotiations = pgTable('negotiations', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   /**
    * Stable identity of the two-intent pair, from the protocol's `pairKeyOf`.
-   * Unique: both principals' discovery runs converge here instead of opening
-   * two negotiations between the same two intents.
+   * Sessions retain this thread identity; only one may remain unsettled.
    */
   pairKey: text('pair_key').notNull(),
+  sessionNumber: integer('session_number').notNull().default(1),
+  openingRequestId: text('opening_request_id'),
   opportunityId: text('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
   initiatorUserId: text('initiator_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   initiatorIntentId: text('initiator_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
@@ -297,7 +304,9 @@ export const negotiations = pgTable('negotiations', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  pairKeyIdx: uniqueIndex('negotiations_pair_key_idx').on(table.pairKey),
+  pairKeyIdx: uniqueIndex('negotiations_pair_key_idx').on(table.pairKey).where(sql`${table.settledAt} is null`),
+  sessionIdx: uniqueIndex('negotiations_pair_session_idx').on(table.pairKey, table.sessionNumber),
+  openingRequestIdx: uniqueIndex('negotiations_opening_request_idx').on(table.openingRequestId),
   opportunityIdx: uniqueIndex('negotiations_opportunity_id_idx').on(table.opportunityId),
   initiatorIntentIdx: index('negotiations_initiator_intent_idx').on(table.initiatorIntentId),
   responderIntentIdx: index('negotiations_responder_intent_idx').on(table.responderIntentId),
@@ -336,6 +345,7 @@ export const intents = pgTable('intents', {
    * instead of waiting out the 24-hour freshness window (IND-482).
    */
   firstDiscoverySucceededAt: timestamp('first_discovery_succeeded_at', { withTimezone: true }),
+  standingBriefId: text('standing_brief_id').references(() => messages.id, { onDelete: 'set null' }),
   userId: text('user_id').notNull().references(() => users.id),
   sourceId: text('source_id'),
   sourceType: sourceType('source_type'),
@@ -408,20 +418,6 @@ export const intentNetworks = pgTable('intent_networks', {
   pk: primaryKey({ columns: [t.intentId, t.networkId] }),
   networkIdIdx: index('intent_networks_network_id_idx').on(t.networkId),
 }));
-
-
-/** Private personal-agent checkpoint and execution lease, one per principal and intent. */
-export const agentSessions = pgTable('agent_sessions', {
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
-  conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
-  state: jsonb('state'),
-  revision: integer('revision').notNull().default(0),
-  leaseToken: text('lease_token'),
-  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({ pk: primaryKey({ columns: [table.userId, table.intentId] }) }));
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Agents

@@ -41,6 +41,7 @@ export type UserEventType =
   | 'negotiation.changed'
   | 'intent.lifecycle'
   | 'intent.created'
+  | 'intent.broadcast'
   | 'intent.updated'
   | 'agent.configuration'
   | 'agent.status'
@@ -122,6 +123,12 @@ const READ_COUNT = 100;
 
 export function userEventStream(userId: string): string {
   return `${STREAM_PREFIX}${userId}`;
+}
+
+/** @param userId - Owner. @returns A concrete live cursor; unlike `$`, it does not skip events between blocking reads. */
+export async function latestUserEventId(userId: string): Promise<string> {
+  const entries = await getRedisClient().xrevrange(userEventStream(userId), '+', '-', 'COUNT', 1);
+  return entries[0]?.[0] ?? '0-0';
 }
 
 /** One entry read from a user's event stream. */
@@ -279,12 +286,12 @@ export async function scanUserEventStreams(): Promise<string[]> {
 /**
  * Invalidate affected views after a committed change, without retrying delivery.
  * @param userId - Owner whose agents and views should refresh.
- * @param type - Intent creation or content, agent configuration, or runtime availability change.
+ * @param type - Intent content, agent configuration, or runtime availability change. Creation uses its canonical activation ID.
  * @param intentId - Affected intent, when the change is scoped to one.
  */
 export async function publishUserInvalidation(
   userId: string,
-  type: 'intent.created' | 'intent.updated' | 'agent.configuration' | 'agent.status',
+  type: 'intent.updated' | 'agent.configuration' | 'agent.status',
   intentId?: string,
 ): Promise<void> {
   try {

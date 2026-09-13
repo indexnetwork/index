@@ -337,6 +337,18 @@ const LEVEL_CONSOLE: Record<LogLevel, (line: string) => void> = {
   warn: (line) => console.warn(line),
   error: (line) => console.error(line),
 };
+let consoleSuppressions = 0;
+
+/** Suppress this logger's console sink until the returned restore callback runs. Sentry logs continue. */
+export function suppressConsoleLogs(): () => void {
+  consoleSuppressions++;
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    consoleSuppressions--;
+  };
+}
 
 function createLogger(
   context: LogContext | undefined,
@@ -351,7 +363,7 @@ function createLogger(
     emitSentryLog(level, message, context, source, meta);
     const line = fmt(message, meta);
     const { start, end } = wrapWithContext(context, source, line, level === 'error' ? 'error' : undefined);
-    LEVEL_CONSOLE[level](start + line + end);
+    if (consoleSuppressions === 0) LEVEL_CONSOLE[level](start + line + end);
   }
   return {
     verbose: (message, meta) => emit('verbose', message, meta),

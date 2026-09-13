@@ -1,5 +1,18 @@
 # Changelog
 
+## 60.0.0
+
+### Breaking changes
+
+- Only the session's original responder may submit `accept`; initiators observe authoritative `counter` / `decline` actions and receive `accept_not_responder` for attempted acceptance, including after counteroffers. Responder acceptance remains `agreed` / `pending` human review, never owner approval.
+- Permit deliberately reopened terminal pairs as new negotiation sessions and opportunities, preserving previous transcripts as read-only history rather than current offers or authority.
+- Trim the root export surface to the host contract documented in `STABILITY.md`. Remove unused graph, repository, enrichment, request-scope, tracing, opportunity-helper and schema exports rather than retaining deprecated re-exports; update all in-repository consumers.
+- Remove unreferenced enrichment ports, agent repository/system IDs, network recommender, opportunity actor/feed-selection/update-admission helpers, network metadata renderer, social-label/telegram-handle utilities, debug-meta sanitizer, trace/scraper/error helpers and unused chat-context/discovery-question schemas.
+
+### Host integration
+
+- Keep explicit-query retrieval in the independent `@indexnetwork/discovery` package. The hosted agent owns discovery activation, private standing briefs, question batches and freshness; protocol still owns legal negotiation actions and opportunity consent gates.
+
 ## 59.0.1
 
 ### Documentation

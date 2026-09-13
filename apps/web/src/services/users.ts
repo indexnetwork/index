@@ -5,12 +5,15 @@ interface BatchUsersResponse {
   users: User[];
 }
 
-import type { NegotiationOutcome } from './negotiations';
+import type { NegotiationOutcome, NegotiationSummary } from './negotiations';
 
-/** One entry of a profile's negotiation history. The turn log lives on `/opportunities/:id/negotiation`. */
+/** The latest session of a profile's pair thread. Earlier sessions are on `/opportunities/:id/negotiation`. */
 export interface NegotiationHistoryEntry {
   id: string;
+  pairKey: string;
+  sessionNumber: number;
   opportunityId: string;
+  opportunityStatus: NegotiationSummary['opportunityStatus'];
   counterparty: { id: string; name: string; avatar: string | null };
   outcome: NegotiationOutcome | null;
   settledAt: string | null;

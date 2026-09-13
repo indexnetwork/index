@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.47.0
+
+### Changed
+- Port native Hermes think/speaker sessions to the retained agent's current tools, brief provenance, explicit activations, and durable domain records. Old model checkpoints are not resumed or migrated.
+- **Breaking:** set `INDEX_EXECUTOR_ID` to this device's registered agent UUID; Hermes no longer starts for every selected external agent.
+- Reconstruct canonical owner messages and complete answer batches from durable event pointers. Public inbox publication retries stable entry IDs; uncertain turn writes are never retried.
+- End native sessions when Index cancels or completes a run, and serialize their tool calls through the agent's completion fences.
+- Read `agent.pending`, submit complete displayed batches, gate submissions on runtime status, retain failed-write drafts, and surface errors.
+- Build dashboard JavaScript from `dashboard/index.js` before generating dashboard/desktop artifacts.
 
 ## 0.46.1
 

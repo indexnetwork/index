@@ -1,4 +1,4 @@
-import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, logger, lte, ne, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
+import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, logger, lte, ne, notInArray, negotiations, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
@@ -1115,26 +1115,21 @@ export class OpportunityDatabaseAdapter {
     counterpartUserId: string,
     excludeOpportunityId: string
   ): Promise<string[]> {
-    const ids = await db.transaction(async (tx) => {
-      const siblingRows = await tx
-        .select({ id: opportunities.id })
-        .from(opportunities)
-        .where(
-          and(
-            OpportunityDatabaseAdapter.actorPairCondition(userId, counterpartUserId),
-            notInArray(opportunities.status, ['accepted', 'expired', 'rejected']),
-            ne(opportunities.id, excludeOpportunityId)
-          )
-        );
-      const siblingIds = siblingRows.map((r) => r.id);
-      if (siblingIds.length === 0) return [];
-      const now = new Date();
-      await tx
-        .update(opportunities)
-        .set({ status: 'accepted', updatedAt: now })
-        .where(inArray(opportunities.id, siblingIds));
-      return siblingIds;
-    });
+    // Preserve existing sibling behavior except newer terms in the same pair thread.
+    const rows = await db.update(opportunities).set({ status: 'accepted', updatedAt: new Date() })
+      .where(and(
+        OpportunityDatabaseAdapter.actorPairCondition(userId, counterpartUserId),
+        notInArray(opportunities.status, ['accepted', 'expired', 'rejected']),
+        ne(opportunities.id, excludeOpportunityId),
+        sql`not exists (
+          select 1 from ${negotiations} source_session
+          join ${negotiations} target_session on target_session.pair_key = source_session.pair_key
+          where source_session.opportunity_id = ${excludeOpportunityId}
+            and target_session.opportunity_id = ${opportunities.id}
+            and target_session.session_number > source_session.session_number
+        )`,
+      )).returning({ id: opportunities.id });
+    const ids = rows.map((row) => row.id);
     for (const id of ids) emitOpportunityTransitionBestEffort({ id, status: 'accepted' });
     await negotiationDatabaseAdapter.closeForOpportunities(ids);
     return ids;
