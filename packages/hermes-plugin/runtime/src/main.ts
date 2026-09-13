@@ -284,4 +284,16 @@ async function shutdown(): Promise<void> {
 
 process.on('SIGTERM', () => void shutdown());
 process.on('SIGINT', () => void shutdown());
+
+const supervisor = Number(process.env.INDEX_SUPERVISOR_PID ?? '');
+if (Number.isInteger(supervisor) && supervisor > 0) {
+  setInterval(() => {
+    try {
+      process.kill(supervisor, 0);
+    } catch {
+      void shutdown();
+    }
+  }, 2000).unref();
+}
+
 console.log(JSON.stringify({ ready: true, port: server.port }));

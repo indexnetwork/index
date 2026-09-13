@@ -9,6 +9,9 @@
   signal waiting on the owner.
 
 ### Changed
+- The negotiator Bun process is a child of the Hermes gateway: it starts with
+  the `index` platform when this machine is selected, restarts if that child
+  exits, and stops when the gateway exits or the selection moves.
 - **Think and speak turns persist in Hermes.** Each turn writes its prompt
   and tool calls into `state.db` under the session title, so Sessions can
   show the match transcript.

@@ -49,6 +49,7 @@ class IndexAdapter(BasePlatformAdapter):
         self._dispatcher: asyncio.Task | None = None
 
     async def connect(self, *, is_reconnect: bool = False) -> bool:
+        """Start the negotiator with this platform, then follow Index events."""
         del is_reconnect
         self._closing = False
         self._loop = asyncio.get_running_loop()
@@ -73,15 +74,24 @@ class IndexAdapter(BasePlatformAdapter):
         del chat_id, content, reply_to, metadata
         return SendResult(success=False, error="Index sessions are not a delivery target.")
 
+    def _apply(self) -> bool:
+        """Run the negotiator only while this machine is the selected executor.
+
+        @returns Whether Index currently names this Hermes agent for negotiations.
+        """
+        agent = selected_agent()
+        if agent.get("type") != "external" or not agent.get("handleNegotiations"):
+            self._sidecar.stop()
+            return False
+        self._owner = agent["ownerId"]
+        self._sidecar.start(self._owner, agent["id"])
+        return True
+
     def _read(self) -> None:
+        """Follow Index events; start/stop already follow the selected executor."""
         while not self._closing:
             try:
-                agent = selected_agent()
-                if agent.get("type") != "external" or not agent.get("handleNegotiations"):
-                    self._sidecar.stop()
-                else:
-                    self._owner = agent["ownerId"]
-                    self._sidecar.start(self._owner, agent["id"])
+                if self._apply():
                     self._reconcile()
                     for line in get_transport().stream_sse("/events"):
                         if self._closing:
@@ -89,7 +99,6 @@ class IndexAdapter(BasePlatformAdapter):
                         self._observe(line)
             except Exception as error:  # noqa: BLE001
                 logger.warning("Index event stream ended: %s", error)
-                self._sidecar.stop()
             time.sleep(RECONNECT_SECONDS)
 
     def _reconcile(self) -> None:

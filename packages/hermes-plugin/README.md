@@ -28,9 +28,10 @@ on Index-platform sessions.
 
 Choosing Hermes as your negotiator — in the dashboard under **Settings →
 Advanced**, or in the Index web app — starts a Bun sidecar
-(`runtime/dist/negotiator.js`) on this machine. **Bun must be installed.**
-Keep the gateway running. Choosing the hosted Index negotiator, or another
-registered agent, stops the sidecar.
+(`runtime/dist/negotiator.js`) as a child of the Hermes gateway. **Bun must
+be installed.** It restarts if that child exits, and stops when the gateway
+does or the selection moves. Keep the gateway running. Choosing the hosted
+Index negotiator, or another registered agent, stops the sidecar.
 
 For one signal with N matches the speaker creates **1 think session + N
 speaker sessions**, lazily, and reuses them:
