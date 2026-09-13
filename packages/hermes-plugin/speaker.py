@@ -119,6 +119,13 @@ def run_session(adapter, sidecar, payload: dict) -> dict:
         user_id=getattr(adapter, "_owner", None) or "index", user_name="Index",
     )
     entry = store.get_or_create_session(source)
+    session_db = store._db_for_key(entry.session_key) if hasattr(store, "_db_for_key") else None
+    session_db = getattr(session_db, "_db", session_db) or getattr(store, "_db", None)
+    if session_db and not session_db.get_session_title(entry.session_id):
+        try:
+            session_db.set_session_title(entry.session_id, chat_name[:100])
+        except ValueError:
+            pass
     token = _call.set({"id": payload["callId"], "kind": kind, "sidecar": sidecar})
     try:
         from gateway.run import _resolve_gateway_model, _resolve_runtime_agent_kwargs
@@ -128,13 +135,22 @@ def run_session(adapter, sidecar, payload: dict) -> dict:
             session_id=entry.session_id,
             model=_resolve_gateway_model(),
             **_resolve_runtime_agent_kwargs(),
+            ephemeral_system_prompt=payload.get("systemPrompt") or None,
             platform=PLATFORM,
+            user_id=source.user_id,
+            user_name=source.user_name,
+            chat_id=chat_id,
+            chat_name=chat_name,
+            chat_type="dm",
+            gateway_session_key=entry.session_key,
+            session_db=session_db,
             quiet_mode=False,
             skip_context_files=True,
             skip_memory=True,
             enabled_toolsets=[toolset],
             max_iterations=iterations,
         )
+        agent._end_session_on_close = False
         result = agent.run_conversation(payload["prompt"])
         return {"end": "done", "output": (result or {}).get("final_response") or ""}
     finally:

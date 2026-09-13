@@ -269,6 +269,33 @@
   cursor: pointer;
 }
 
+.index-dashboard__hdr-sidecar {
+  display: inline-flex;
+  align-items: center;
+  height: 1.25rem;
+  padding: 0 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 20%, transparent);
+  background: transparent;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.index-dashboard__hdr-sidecar--on {
+  color: var(--color-success, #3d9a5b);
+}
+
+.index-dashboard__hdr-sidecar:hover:not(:disabled) {
+  color: var(--color-foreground, #f8fafc);
+}
+
+.index-dashboard__hdr-sidecar:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 /* Mirrors @nous-research/ui Switch: square, h-5 w-9, cream (midground) knob. */
 .index-dashboard__switch {
   position: relative;

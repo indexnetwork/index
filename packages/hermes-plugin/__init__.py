@@ -25,7 +25,11 @@ def _install_desktop_plugin():
         pass
 
 
+_sidecar: Sidecar | None = None
+
+
 def register(ctx):
+    global _sidecar
     _install_desktop_plugin()
     from hermes_constants import get_hermes_home
     from . import events
@@ -33,6 +37,7 @@ def register(ctx):
     home = get_hermes_home()
     bridge = HermesBridge()
     sidecar = Sidecar(bridge, home)
+    _sidecar = sidecar
     bridge.sidecar = sidecar
     events.register_platform(ctx, sidecar)
     register_tools(ctx, sidecar)

@@ -538,8 +538,62 @@
 
   // React twin of the DOM controls injected into the web dashboard's banner
   // header — rendered inline when no such header exists (desktop host).
+  function SidecarToggle() {
+    const [state, setState] = React.useState({ running: false, busy: false, error: "" });
+    const refresh = React.useCallback(function () {
+      fetchPluginJSON(API + "/sidecar", { method: "GET" }).then(function (payload) {
+        if (!payload) return;
+        setState(function (current) {
+          return Object.assign({}, current, { running: payload.running === true });
+        });
+      }).catch(function () { /* status is shown again on the next poll */ });
+    }, []);
+    React.useEffect(function () {
+      refresh();
+      const timer = window.setInterval(refresh, 5000);
+      return function () { window.clearInterval(timer); };
+    }, [refresh]);
+    function toggle() {
+      const path = state.running ? "/sidecar/stop" : "/sidecar/start";
+      setState(function (current) { return Object.assign({}, current, { busy: true, error: "" }); });
+      fetchPluginJSON(API + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).then(function (payload) {
+        setState({
+          running: payload.running === true,
+          busy: false,
+          error: payload.success === false ? (payload.error || "Could not update the sidecar.") : "",
+        });
+      }).catch(function (error) {
+        setState(function (current) {
+          return Object.assign({}, current, {
+            busy: false,
+            error: (error && error.message) || "Could not update the sidecar.",
+          });
+        });
+      });
+    }
+    const label = state.busy
+      ? (state.running ? "Stopping…" : "Starting…")
+      : (state.running ? "Stop" : "Start");
+    return React.createElement(React.Fragment, null,
+      React.createElement("span", { className: "index-dashboard__hdr-label" }, "SIDECAR"),
+      React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__hdr-sidecar" + (state.running ? " index-dashboard__hdr-sidecar--on" : ""),
+        disabled: state.busy,
+        title: state.error || (state.running ? "Stop sidecar" : "Start sidecar"),
+        "aria-label": state.running ? "Stop sidecar" : "Start sidecar",
+        onClick: toggle,
+      }, label),
+    );
+  }
+
   function InlineHeaderControls(props) {
     return React.createElement("div", { className: "index-dashboard__hdr index-dashboard__hdr--inline" },
+      DESKTOP_ENV ? React.createElement(SidecarToggle) : null,
       React.createElement("span", { className: "index-dashboard__hdr-label" }, "AUTO-REFRESH"),
       React.createElement("button", {
         type: "button",

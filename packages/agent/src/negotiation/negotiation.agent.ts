@@ -61,8 +61,8 @@ export type NegotiationEvent =
 
 /** A host that runs completions outside `Agent.run`, e.g. a Hermes session. */
 export interface Speaker {
-  turn(input: { opportunityId: string; counterparty?: string; prompt: string; tools: Tool<never>[]; signal: AbortSignal }): Promise<RunResult>;
-  inbox(input: { prompt: string; tools: Tool<never>[]; signal: AbortSignal }): Promise<RunResult>;
+  turn(input: { opportunityId: string; counterparty?: string; systemPrompt: string; prompt: string; tools: Tool<never>[]; signal: AbortSignal }): Promise<RunResult>;
+  inbox(input: { systemPrompt: string; prompt: string; tools: Tool<never>[]; signal: AbortSignal }): Promise<RunResult>;
 }
 
 interface MatchTask {
@@ -86,7 +86,9 @@ interface TurnState {
 }
 
 /** Internal control flow: discard a decision made against outdated principal context. */
-class ContextChanged extends Error {}
+class ContextChanged extends Error {
+  override readonly name = 'ContextChanged';
+}
 
 /** One personal agent and H2A conversation per principal/intent, with concurrent match tasks. */
 export class NegotiationAgent {
@@ -133,7 +135,7 @@ export class NegotiationAgent {
         void this.stop();
       },
     }, options.speaker && ((input, run) => options.speaker!.inbox({
-      prompt: input, tools: run.tools ?? [], signal: run.signal ?? this.controller.signal,
+      systemPrompt: this.agent.instructions(), prompt: input, tools: run.tools ?? [], signal: run.signal ?? this.controller.signal,
     })));
   }
 
@@ -338,8 +340,9 @@ export class NegotiationAgent {
           throw new Error('Provide one question, 2–4 suggested answers, and intent or match scope.');
         }
         this.host.status(task.opportunityId, 'Waiting for ' + (owner.name ?? owner.id) + "'s input", 'question');
-        task.reviewNote = await this.inbox.request({ opportunityId: task.opportunityId, counterparty: task.counterparty }, input);
+        const waiting = this.inbox.request({ opportunityId: task.opportunityId, counterparty: task.counterparty }, input);
         turn.stale = true;
+        if (!this.speaker) task.reviewNote = await waiting;
         throw new ContextChanged();
       },
     };
@@ -391,7 +394,7 @@ export class NegotiationAgent {
         const result = this.speaker
           ? await this.speaker.turn({
             opportunityId: task.opportunityId, counterparty: task.counterparty.name ?? undefined,
-            prompt: input, tools, signal,
+            systemPrompt: this.agent.instructions(), prompt: input, tools, signal,
           })
           : await this.agent.run(input, { history, tools, onStep, signal });
         if (turn.stale) throw new ContextChanged();

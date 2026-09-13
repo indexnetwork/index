@@ -597,6 +597,7 @@ class PrincipalInbox {
 }
 
 class ContextChanged extends Error {
+  name = "ContextChanged";
 }
 
 class NegotiationAgent {
@@ -644,6 +645,7 @@ class NegotiationAgent {
         this.stop();
       }
     }, options.speaker && ((input, run) => options.speaker.inbox({
+      systemPrompt: this.agent.instructions(),
       prompt: input,
       tools: run.tools ?? [],
       signal: run.signal ?? this.controller.signal
@@ -845,8 +847,10 @@ class NegotiationAgent {
           throw new Error("Provide one question, 2\u20134 suggested answers, and intent or match scope.");
         }
         this.host.status(task.opportunityId, "Waiting for " + (owner.name ?? owner.id) + "'s input", "question");
-        task.reviewNote = await this.inbox.request({ opportunityId: task.opportunityId, counterparty: task.counterparty }, input);
+        const waiting = this.inbox.request({ opportunityId: task.opportunityId, counterparty: task.counterparty }, input);
         turn.stale = true;
+        if (!this.speaker)
+          task.reviewNote = await waiting;
         throw new ContextChanged;
       }
     };
@@ -908,6 +912,7 @@ class NegotiationAgent {
         const result = this.speaker ? await this.speaker.turn({
           opportunityId: task.opportunityId,
           counterparty: task.counterparty.name ?? undefined,
+          systemPrompt: this.agent.instructions(),
           prompt: input,
           tools,
           signal
@@ -1149,12 +1154,14 @@ class Negotiator {
         kind: "turn",
         opportunityId: input.opportunityId,
         counterparty: input.counterparty,
+        systemPrompt: input.systemPrompt,
         prompt: input.prompt,
         tools: input.tools,
         signal: input.signal
       }),
       inbox: (input) => this.speak(intentId, title, {
         kind: "inbox",
+        systemPrompt: input.systemPrompt,
         prompt: input.prompt,
         tools: input.tools,
         signal: input.signal
@@ -1174,6 +1181,7 @@ class Negotiator {
           kind: input.kind,
           intentId,
           title,
+          systemPrompt: input.systemPrompt,
           prompt: input.prompt,
           opportunityId: input.opportunityId,
           counterparty: input.counterparty
@@ -1194,6 +1202,8 @@ class Negotiator {
     try {
       return await tool.run(args, { agent: undefined });
     } catch (error) {
+      if (error instanceof Error && error.name === "ContextChanged")
+        return { waiting: true };
       return { error: error instanceof Error ? error.message : String(error) };
     }
   }

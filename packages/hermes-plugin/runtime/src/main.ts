@@ -74,10 +74,10 @@ class Negotiator {
     return {
       turn: (input) => this.speak(intentId, title, {
         kind: 'turn', opportunityId: input.opportunityId, counterparty: input.counterparty,
-        prompt: input.prompt, tools: input.tools, signal: input.signal,
+        systemPrompt: input.systemPrompt, prompt: input.prompt, tools: input.tools, signal: input.signal,
       }),
       inbox: (input) => this.speak(intentId, title, {
-        kind: 'inbox', prompt: input.prompt, tools: input.tools, signal: input.signal,
+        kind: 'inbox', systemPrompt: input.systemPrompt, prompt: input.prompt, tools: input.tools, signal: input.signal,
       }),
     };
   }
@@ -85,7 +85,7 @@ class Negotiator {
   private async speak(
     intentId: string,
     title: string,
-    input: { kind: 'turn' | 'inbox'; opportunityId?: string; counterparty?: string; prompt: string; tools: Tool<never>[]; signal: AbortSignal },
+    input: { kind: 'turn' | 'inbox'; opportunityId?: string; counterparty?: string; systemPrompt: string; prompt: string; tools: Tool<never>[]; signal: AbortSignal },
   ): Promise<RunResult> {
     const callId = crypto.randomUUID();
     this.calls.set(callId, new Map(input.tools.map((tool) => [tool.name, tool])));
@@ -95,7 +95,7 @@ class Negotiator {
         signal: input.signal,
         headers: { Authorization: `Bearer ${this.bridge.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          callId, kind: input.kind, intentId, title, prompt: input.prompt,
+          callId, kind: input.kind, intentId, title, systemPrompt: input.systemPrompt, prompt: input.prompt,
           opportunityId: input.opportunityId, counterparty: input.counterparty,
         }),
       });
@@ -113,6 +113,7 @@ class Negotiator {
     try {
       return await tool.run(args as never, { agent: undefined as never });
     } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'ContextChanged') return { waiting: true };
       return { error: error instanceof Error ? error.message : String(error) };
     }
   }

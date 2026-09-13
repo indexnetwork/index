@@ -3,7 +3,21 @@
 
 ## 0.43.0
 
+### Added
+- **Desktop sidecar Start/Stop.** The Discover header (next to auto-refresh)
+  starts or stops this machine's negotiator. Start still wakes every open
+  signal waiting on the owner.
+
 ### Changed
+- **Think and speak turns persist in Hermes.** Each turn writes its prompt
+  and tool calls into `state.db` under the session title, so Sessions can
+  show the match transcript.
+- **Hermes speaks under the hosted system prompt.** Each think/speak turn
+  receives the same standing instructions `Agent.run` uses, so match sessions
+  propose instead of asking permission on every match. A successful
+  `request_principal_input` no longer looks like a tool error.
+- **`INDEX_APP_BASE_URL` may be `http://localhost` (or `127.0.0.1`).** Browser
+  login opens that origin's `/cli-auth` instead of falling back to production.
 - **Questions and answers live on Index web.** Think sessions remain the
   inbox-review working transcript. The sidecar no longer copies questions
   onto that chat or treats keystrokes as `/answer`. New H2A is posted to

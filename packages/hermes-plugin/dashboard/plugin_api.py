@@ -856,6 +856,75 @@ def _build_dashboard(
     }
 
 
+def _plugin_sidecar():
+    """The negotiator started by the plugin's Index platform, if this process has one."""
+    plugin = sys.modules.get("hermes_plugins.index_network")
+    return getattr(plugin, "_sidecar", None) if plugin is not None else None
+
+
+def _wake_open_signals(sidecar: Any, owner_id: str) -> list[str]:
+    """Start work on every open negotiation waiting for this owner."""
+    payload = tools._api_request("GET", "/negotiations")
+    if payload.get("success") is False:
+        raise RuntimeError(payload.get("error") or "Could not list negotiations.")
+    woken: list[str] = []
+    for item in _list(payload.get("negotiations")):
+        if not isinstance(item, dict) or item.get("settledAt") or item.get("awaitingUserId") != owner_id:
+            continue
+        intent_id = _text(item.get("intentId"))
+        if not intent_id or intent_id in woken:
+            continue
+        sidecar.wake(intent_id)
+        woken.append(intent_id)
+    return woken
+
+
+@full_router.get("/sidecar")
+def sidecar_status() -> dict[str, Any]:
+    """Whether this machine's negotiator process is running."""
+    sidecar = _plugin_sidecar()
+    if sidecar is None:
+        return {"success": True, "running": False}
+    return {"success": True, "running": sidecar.running}
+
+
+@full_router.post("/sidecar/start")
+def sidecar_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Start the negotiator and wake every open signal waiting on this owner."""
+    sidecar = _plugin_sidecar()
+    if sidecar is None:
+        return {"success": False, "error": "The Index plugin is not loaded in this process."}
+    try:
+        agent = tools.selected_agent()
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": str(exc)}
+    if agent.get("type") != "external" or not agent.get("handleNegotiations"):
+        return {"success": False, "error": "Select this Hermes agent to handle negotiations first."}
+    owner_id = _text(agent.get("ownerId"))
+    agent_id = _text(agent.get("id"))
+    if not owner_id or not agent_id:
+        return {"success": False, "error": "Index did not name this agent's owner."}
+    try:
+        sidecar.start(owner_id, agent_id)
+        woken = _wake_open_signals(sidecar, owner_id)
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": str(exc)}
+    return {"success": True, "running": sidecar.running, "woken": len(woken)}
+
+
+@full_router.post("/sidecar/stop")
+def sidecar_stop(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Stop this machine's negotiator process."""
+    sidecar = _plugin_sidecar()
+    if sidecar is None:
+        return {"success": True, "running": False}
+    try:
+        sidecar.stop()
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": str(exc)}
+    return {"success": True, "running": sidecar.running}
+
+
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
     """Report transport health from the configured API key."""
@@ -900,6 +969,9 @@ def _login_app_base_url() -> str:
     except ValueError:
         return tools.INDEX_APP_BASE_URL
     if parts.scheme in ("http", "https") and parts.netloc:
+        hostname = (parts.hostname or "").lower()
+        if hostname in {"localhost", "127.0.0.1", "::1"}:
+            return f"{parts.scheme}://{hostname}:3000"
         host = parts.netloc
         if host.startswith("protocol."):
             host = host[len("protocol."):]
