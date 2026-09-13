@@ -52,6 +52,9 @@ export class FilePrincipalStore implements PrincipalStore {
     await this.flush();
   }
 
+  /** File checkpoints have no exclusive lease. */
+  async renew(): Promise<void> {}
+
   /** @returns When every queued write has landed. */
   async close(): Promise<void> {
     await this.writing;
