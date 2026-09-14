@@ -11,9 +11,11 @@ import { log } from './log';
  * The agent types come in two scopes. `negotiation.turn` and
  * `negotiation.settled` point at one negotiation and carry a pointer rather
  * than the turn — the agent reads `GET /negotiations/:opportunityId` to act.
- * `intent.lifecycle` and `negotiation.opened` are scoped to a signal instead:
- * whether the agent should be working it at all, and that discovery gave it
- * something to work.
+ * `intent.created`, `intent.lifecycle` and `negotiation.opened` are scoped to a
+ * signal instead: that a signal now exists, whether the agent should be working
+ * it at all, and that discovery gave it something to work. Creation has its own
+ * frame because an agent that only follows lifecycle changes would never learn
+ * about a signal made after it started.
  * `negotiation.changed` refreshes both seats after a turn or a related intent's
  * lifecycle change. It does not imply that either seat owes the next turn;
  * `negotiation.turn` remains addressed to the seat that does.
@@ -36,6 +38,7 @@ export type UserEventType =
   | 'negotiation.opened'
   | 'negotiation.changed'
   | 'intent.lifecycle'
+  | 'intent.created'
   | 'intent.updated'
   | 'agent.configuration'
   | 'agent.status'
@@ -119,12 +122,12 @@ export async function publishUserEvent(
 /**
  * Invalidate affected views after a committed change, without retrying delivery.
  * @param userId - Owner whose agents and views should refresh.
- * @param type - Intent content, agent configuration, or runtime availability change.
+ * @param type - Intent creation or content, agent configuration, or runtime availability change.
  * @param intentId - Affected intent, when the change is scoped to one.
  */
 export async function publishUserInvalidation(
   userId: string,
-  type: 'intent.updated' | 'agent.configuration' | 'agent.status',
+  type: 'intent.created' | 'intent.updated' | 'agent.configuration' | 'agent.status',
   intentId?: string,
 ): Promise<void> {
   try {

@@ -235,7 +235,7 @@ export class ChatDatabaseAdapter {
           userId: schema.intents.userId,
         });
       if (!created) throw new Error('Insert did not return a row');
-      await publishUserInvalidation(created.userId, 'intent.updated', created.id);
+      await publishUserInvalidation(created.userId, 'intent.created', created.id);
       return created;
     } catch (error: unknown) {
       logger.error('ChatDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
