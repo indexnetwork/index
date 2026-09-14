@@ -37,7 +37,6 @@ interface InputRequest extends PendingQuestion {
   id: string;
   match: MatchReference;
   scope: QuestionScope;
-  reviewed: boolean;
   attachedTo?: string;
   resolve(note?: string): void;
 }
@@ -62,17 +61,15 @@ interface Decision {
   message?: string;
 }
 
-/** The single writer of H2A for a personal agent; negotiation tasks only enqueue requests and outcomes. */
+/** The single H2A writer; accepted principal input starts reviews, and negotiation tasks only enqueue requests and outcomes. */
 export class PrincipalInbox {
   private readonly messages: PrincipalMessage[] = [];
   private readonly incomingMessages: PrincipalMessage[] = [];
   private readonly requests: InputRequest[] = [];
   private readonly outcomes = new Map<string, Outcome>();
   private currentQuestion: PrincipalQuestion | null = null;
-  private timer?: ReturnType<typeof setTimeout>;
   private running?: Promise<void>;
   private reviewController?: AbortController;
-  private immediate = false;
   private stopped = false;
 
   constructor(
@@ -101,9 +98,6 @@ export class PrincipalInbox {
     for (const outcome of state.outcomes) this.outcomes.set(outcome.match.opportunityId, outcome);
     this.currentQuestion = state.question;
   }
-
-  /** Restart background communication after the host's current match records have been read. */
-  resume(): void { this.schedule(0); }
 
   /** @param opportunityId - A restored match with a saved request. @returns Its existing wait, without asking again. */
   waitFor(opportunityId: string): Promise<string | undefined> | undefined {
@@ -140,7 +134,7 @@ export class PrincipalInbox {
     this.host.input();
     this.reviewController?.abort();
     await this.host.changed();
-    this.schedule(0);
+    this.running = (this.running ?? Promise.resolve()).then(() => this.review(message));
     return message;
   }
 
@@ -153,8 +147,8 @@ export class PrincipalInbox {
   request(match: MatchReference, question: PendingQuestion & { scope: QuestionScope }): Promise<string | undefined> {
     if (this.stopped) return Promise.resolve(undefined);
     return new Promise((resolve) => {
-      this.requests.push({ ...question, id: crypto.randomUUID(), match, reviewed: false, resolve });
-      void this.host.changed().then(() => this.schedule(), () => resolve(undefined));
+      this.requests.push({ ...question, id: crypto.randomUUID(), match, resolve });
+      void this.host.changed().catch(() => resolve(undefined));
     });
   }
 
@@ -165,7 +159,7 @@ export class PrincipalInbox {
    */
   outcome(match: MatchReference, result: Outcome['result']): void {
     this.outcomes.set(match.opportunityId, { match, result });
-    void this.host.changed().then(() => this.schedule(), () => {});
+    void this.host.changed().catch(() => {});
   }
 
   /**
@@ -184,7 +178,7 @@ export class PrincipalInbox {
     const released = this.requests.splice(0);
     await this.host.changed();
     for (const request of released) request.resolve();
-    this.schedule(0);
+    this.running = (this.running ?? Promise.resolve()).then(() => this.review(message));
     return message;
   }
 
@@ -195,48 +189,25 @@ export class PrincipalInbox {
     this.reviewController?.abort();
     if (removed.some((request) => request.id === this.currentQuestion?.id)) {
       this.currentQuestion = null;
-      for (const request of this.requests) { request.attachedTo = undefined; request.reviewed = false; }
+      for (const request of this.requests) request.attachedTo = undefined;
     }
     for (const request of removed) {
       this.requests.splice(this.requests.indexOf(request), 1);
     }
     await this.host.changed();
     for (const request of removed) request.resolve();
-    this.schedule(0);
   }
 
   /** @returns Completion of shutdown after reviews are canceled and question waits released. */
   async stop(): Promise<void> {
     this.stopped = true;
-    clearTimeout(this.timer);
-    this.timer = undefined;
     this.reviewController?.abort();
     for (const request of this.requests) request.resolve();
     await this.running;
   }
 
-  private hasWork(): boolean {
-    if (this.incomingMessages.length) return true;
-    return this.currentQuestion
-      ? this.requests.some((request) => !request.reviewed)
-      : Boolean(this.requests.length || this.outcomes.size);
-  }
-
-  private schedule(delay = 2_000): void {
-    if (this.stopped || !this.hasWork()) return;
-    if (delay === 0) { this.immediate = true; clearTimeout(this.timer); this.timer = undefined; }
-    if (this.timer || this.running) return;
-    this.timer = setTimeout(() => {
-      this.timer = undefined;
-      this.running = this.review().finally(() => {
-        this.running = undefined;
-        this.schedule();
-      });
-    }, this.immediate ? 0 : delay);
-    this.immediate = false;
-  }
-
-  private async review(): Promise<void> {
+  private async review(input: PrincipalMessage): Promise<void> {
+    if (this.stopped || input.kind === 'user' && !this.incomingMessages.includes(input)) return;
     const controller = new AbortController();
     this.reviewController = controller;
     const context = this.context();
@@ -325,7 +296,6 @@ export class PrincipalInbox {
         released.push(request);
       }
     } else {
-      for (const request of requests) request.reviewed = true;
       if (decision.action === 'ask') {
         const request = requests.find((entry) => entry.id === decision.requestId)!;
         const related = requests.filter((entry) => decision.relatedRequestIds?.includes(entry.id) && entry !== request);

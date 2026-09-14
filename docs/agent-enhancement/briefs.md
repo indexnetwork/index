@@ -1,7 +1,8 @@
 # Briefs
 
 - Navigation: [Overview](README.md) · [Implementation map](spec.md).
-- Decision: our H2A session exclusively writes our A2A brief.
+- Accepted: intent-scoped H2A exclusively writes and updates our A2A brief when it has useful evidence.
+- A2A receives the brief as its only private principal context; protocol records retain intent IDs for ownership and pair identity.
 
 ## Ownership
 
@@ -20,12 +21,13 @@ flowchart TD
 | Facts and conditions | Use confirmed evidence; retain qualifications | Summaries cannot create facts. |
 | Authority | State applicable permission and its scope | One opportunity's approval cannot authorize another. |
 | Current focus | Identify the selected counterpart's next unresolved issue | Orient initial and resumed A2A work. |
-| Source evidence | Keep full H2A history available | Briefs remain summaries, not independent authority. |
+| Source evidence | H2A keeps full principal history and writes the relevant evidence into the brief | A2A receives no raw principal profile, H2A history, answers or other agreements. |
+| A2A orientation | Use the current brief, negotiation record/transcript and protocol rules | No separate task or raw intent input; the brief supplies objectives, facts and authority. |
 
 ## Handoff
 
 - Initial outgoing work: H2A supplies `brief` to [`open_negotiation`](discovery.md#opening-and-brief-ordering); persist it before our first A2A run.
-- Existing or counterparty-opened work: H2A selects the observed opportunity and uses `reconsider()` below; a received record is insufficient to start an unbriefed task.
+- Existing or counterparty-opened work: H2A selects the observed opportunity and uses `reconsider()` below; a received record is insufficient to start an unbriefed negotiation.
 - Keep selection `reasoning` suitable for disclosure separate from the private brief.
 
 ```mermaid
@@ -37,7 +39,7 @@ sequenceDiagram
     H->>S: Save selected briefs atomically
     S-->>H: Saved
     H->>A: Resume eligible targets
-    A->>A: Re-read record and principal context
+    A->>A: Re-read record and current brief
     A->>A: Act within current brief
 ```
 
@@ -50,6 +52,7 @@ sequenceDiagram
 - No initial brief → wait for H2A delegation; never synthesize one in A2A or wake H2A to obtain it.
 - Current protocol eligibility still applies; a brief cannot reopen completed negotiations.
 - Keep briefs and private deliberation out of counterparty messages.
+- Questions belong only to H2A, with no question-to-negotiation linkage; answers affect A2A through an H2A-authored brief update.
 
 ## Example: Leo
 

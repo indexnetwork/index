@@ -1,6 +1,8 @@
 # Agent enhancement TODO
 
 - Accepted now: H2A wakes only on an accepted user message, including an explicit answer to a displayed question. A2A never wakes H2A.
+- Accepted ownership: intent-scoped H2A owns questions and decides whether to ask; negotiations stall independently, with no question linkage or answer waits.
+- Accepted A2A context: only the H2A-maintained private brief; no separate task, raw intent, principal profile, H2A history or question context. Keep protocol intent IDs for ownership and pair identity.
 - Ownership: user input activates H2A; A2A continues eligible negotiation work and records observations while H2A is idle.
 - One small slice at a time: start with the wake boundary below, then inspect and revise the remaining plan as needed.
 - Each slice ends with working behavior and a focused check. Detailed contracts stay in the linked specs.
@@ -8,14 +10,20 @@
 
 ## First slice: prevent A2A from waking H2A
 
-- [ ] Make accepted `message()` / `answer()` input the only H2A activation source in [PrincipalInbox](../../packages/agent/src/negotiation/principal.inbox.ts).
-- [ ] Remove H2A scheduling from A2A requests, outcomes and cancellation, including checkpoint callbacks and queue-driven rescheduling after a review. A2A activity during a user-triggered review must not cause another activation.
-- [ ] Remove automatic inbox `resume()` scheduling during [agent restoration](../../packages/agent/src/negotiation/negotiation.agent.ts); host startup, scans and negotiation notifications must not indirectly activate H2A.
-- [ ] Preserve accepted user input arriving during an active review; pending user input may schedule its processing, but queued A2A work alone may not.
-- [ ] Verify the cases below before starting the remaining enhancements.
+- [x] Make accepted `message()` / `answer()` input the only H2A activation source in [PrincipalInbox](../../packages/agent/src/negotiation/principal.inbox.ts).
+- [x] Remove H2A scheduling from A2A requests, outcomes and cancellation, including checkpoint callbacks and queue-driven rescheduling after a review. A2A activity during a user-triggered review must not cause another activation.
+- [x] Remove automatic inbox `resume()` scheduling during [agent restoration](../../packages/agent/src/negotiation/negotiation.agent.ts); host startup, scans and negotiation notifications must not indirectly activate H2A.
+- [x] Preserve accepted user input arriving during an active review; pending user input may schedule its processing, but queued A2A work alone may not.
+- [x] Delete `schedule()`, its timer, queue-based `hasWork()` and the unused request `reviewed` flag; serialize reviews directly from accepted input.
+- [x] Delete the unused generic timer-driven `Inbox`, its exports and its README example; no repository callers remain.
+- [x] Update the agent-TUI input hint and documentation for user-triggered reviews; retain the current message/answer API for this slice.
+- [x] Verify the cases below before starting the remaining enhancements.
 
-- Slice boundary: change activation only; retain existing negotiation execution, queues, history and checkpoint shape. Discovery integration, local pause, queue removal and question batches follow separately.
+- Slice boundary: remove automatic activation and unused wake code, including the `reviewed` checkpoint field; retain current negotiation execution, queues and history. Discovery integration, local pause, queue removal and question batches follow separately.
 - No database schema or checkpoint conversion is needed for this slice; the preparation below does not block it.
+- Verification: temporary scripted-model checks cover input acceptance, checkpoint timing, active-review races, A2A lifecycle and restoration. A headless TUI check covers opening, sending, answering and layout changes. All 26 existing agent tests, agent and TUI typechecks/builds, API typecheck and root lint pass; lint reports 35 existing warnings. Live-model behavior remains unchecked.
+- Review status: first slice approved for commit and push.
+- Remaining limit: the current review still allows one decision and only a reply to direct messages; independent questions and brief-only A2A context are subsequent changes.
 
 | Acceptance scenario | Expected behavior |
 |---|---|
@@ -30,17 +38,19 @@
 
 - [ ] Review and reuse `refactor/remove-hyde-lenses`, including its existing migration. [Baseline](discovery.md#current-behavior-and-baseline)
 - [ ] Agree checkpoint JSON conversion while preserving history, questions and search evidence. [Storage](spec.md#database-touches)
+- Deletion first: replace the request/question bridge with independent stall and brief behavior, deleting the child queues and answer promises together with their callers.
+- Database audit: `agent_sessions` still stores history linkage, checkpoints and execution leases. `protocol_hyde_documents` still has live discovery callers; remove it with the reference discovery replacement and its existing migration.
 
 ## Remaining vertical slices
 
-- [ ] Correct personal-agent identity and supply confirmed principal context. [Instructions](agent-instructions.md#system-prompts)
+- [ ] Correct personal-agent identity and supply confirmed principal context to H2A. [Instructions](agent-instructions.md#system-prompts)
 - [ ] Let H2A search and refine queries with `discover_counterparties`; remove the separate pursuit loop. [Discovery](discovery.md#tool-contracts)
 - [ ] Let H2A open a selected candidate, saving its private brief before A2A starts. [Opening](discovery.md#opening-and-brief-ordering)
-- [ ] Keep briefs across eligible A2A turns while H2A is idle; preserve turn and concurrency guards. [Negotiations](negotiations.md#local-execution)
+- [ ] Keep briefs across eligible A2A turns while H2A is idle; remove separate A2A task/intent and direct principal-context inputs, preserving protocol identity, turn and concurrency guards. [Negotiations](negotiations.md#local-execution)
 - [ ] Review the whole intent, including inbound/passive work, and save selected briefs before resuming. [Briefs](briefs.md#handoff)
 - [ ] Preserve scoped authority and conditions; distinguish agreements from permission and execution. [Authority](agent-instructions.md#authority-boundary)
-- [ ] Replace A2A input requests with local pause; let H2A author questions and remove child queues and answer waits. [Pause](negotiations.md#local-execution)
-- [ ] Present stable, independent question batches with correct scopes and suggestions. [Questions](question-batches.md#ask)
+- [ ] Replace A2A input requests with local pause; let H2A author questions and remove question linkage, child queues and answer waits. [Pause](negotiations.md#local-execution)
+- [ ] Present stable, independent H2A question batches with clear wording and suggestions, without negotiation references. [Questions](question-batches.md#ask)
 - [ ] Save complete answer batches atomically, update callers, then reconsider the whole intent. [Answers](question-batches.md#answer)
 - [ ] Accept direct corrections during a batch; retire obsolete questions and invalidate stale decisions. [Corrections](question-batches.md#answer)
 - [ ] During a user-triggered review, send useful replies/outcome updates, combine useful actions, and otherwise stay silent. [H2A review](design.md#h2a-review)

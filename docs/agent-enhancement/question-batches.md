@@ -2,6 +2,7 @@
 
 - Navigation: [Overview](README.md) · [Agent instructions](agent-instructions.md).
 - Decision: H2A authors independent questions; the principal submits one complete answer batch.
+- Ownership: questions belong to the intent-scoped H2A conversation, with no negotiation references or A2A answer waits.
 
 ## Ask
 
@@ -18,11 +19,11 @@ flowchart TD
 |---|---|
 | Batch size | 1–3 useful questions; never fill a quota. |
 | Options | 2–4 concise suggestions per question; custom text remains available. |
-| `scope: intent` | One reusable fact/preference; zero or more relevant opportunity references. |
-| `scope: match` | Exactly one opportunity; its approval stays scoped to it. |
+| Ownership | H2A may ask before or after negotiations exist; no opportunity IDs or match-scoped question metadata. |
+| Permission scope | Preserve the specific terms and limits in the question and answer wording; H2A carries applicable authority into briefs. |
 | Independence | Separate unrelated decisions; defer follow-ups that depend on another answer. |
 | Coherent offer | Several terms may form one approval for one opportunity. |
-| Stability | IDs, wording, options, scope and references stay fixed until answered or retired by H2A. |
+| Stability | IDs, wording and options stay fixed until answered or retired by H2A. |
 | Later A2A arrivals | Do not append to, replace or retire displayed questions. |
 
 ## Answer
@@ -49,7 +50,7 @@ message(text: string): Promise<PrincipalMessage | null>;
 
 | Submission / event | Required behavior |
 |---|---|
-| Exact current IDs; one nonempty answer each | Save together; derive scope/references from saved questions. |
+| Exact current IDs; one nonempty answer each | Save together with the context of the exact displayed questions. |
 | Missing, extra, duplicate, empty, stale or retired ID | Return `null`; save nothing and resume nothing. |
 | Save failure | Reject; publish no dependent effect and resume nothing. |
 | Uncertain client result / retry | Reconcile saved batch/history; never create duplicate answers or resumes. |
@@ -60,8 +61,8 @@ message(text: string): Promise<PrincipalMessage | null>;
 
 - Preserve full answer text, including conditions, uncertainty and additional instructions.
 - After save: reconsider the whole intent, even with no waiting negotiation; H2A may use the answers to revise discovery, select a counterpart or rebrief existing work.
-- Questions before any opening can use `scope: intent` with no opportunity references; do not invent a match ID for a search candidate.
-- Resume selected eligible work only; all resumed tasks see every saved answer.
+- Questions need no negotiation or search candidate; H2A decides whether to ask from its intent context.
+- Resume selected eligible work only after H2A saves its updated briefs; A2A receives no raw answers.
 - New terms/turn ownership can invalidate an intended resume; refresh before acting.
 - Remove request attachments and release-all answer promises; retain canonical H2A history.
 - Keep `PrincipalQuestion`, `PrincipalMessage` and generic `Agent.ask_user`.

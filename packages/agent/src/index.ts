@@ -11,9 +11,6 @@ export type { PrincipalMessage, PrincipalQuestion, MatchReference, QuestionScope
 export { askUserTool, defaultTools } from "./core/tools.ts";
 export type { Tool, ToolContext } from "./core/tools.ts";
 
-export { Inbox, TICK_MS } from "./core/inbox.ts";
-export type { InboxEvent, InboxOptions } from "./core/inbox.ts";
-
 export { MemoryMessageStore } from "./core/sessions.ts";
 export { ModelClient } from "./core/model.ts";
 export type { Model, ModelClientOptions, ModelMessage, ModelRequestOptions, ToolDefinition } from "./core/model.ts";

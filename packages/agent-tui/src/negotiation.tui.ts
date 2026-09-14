@@ -381,7 +381,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
       pane.box.titleColor = question ? COLORS.question : selected === principal.userId ? COLORS.focus : COLORS.muted;
       let hint = question
         ? pane.editingReply ? 'Enter sends · Esc returns to choices.' : '↑/↓ choose · Enter confirms.'
-        : 'Enter sends a message to your agent.';
+        : 'Enter sends a message and starts a review.';
       if (question) hint = (question.scope === 'intent' ? 'For this intent' : 'About ' + question.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ')) + ' · ' + hint;
       if (agent.queuedQuestions) hint += ' · ' + agent.queuedQuestions + ' queued';
       pane.hint.content = pane.sendError ?? (pane.sending ? 'Sending… · ' + hint : hint);

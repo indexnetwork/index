@@ -36,6 +36,8 @@
 | `InboxState.question` | `questions: PrincipalQuestion[]` | H2A |
 | Runtime/saved match `reviewNote` | Maintained `brief: string`, retained after reading | H2A writes; A2A reads |
 | Turn input `communicationReview` | `brief` | Prompt builder |
+| A2A raw intent, principal profile/history and other commitments | Remove separate context inputs; H2A writes relevant objectives, evidence and authority into `brief` | H2A |
+| H2A question `scope` / `matches` | Remove question-to-negotiation linkage; preserve permission limits in question wording and H2A interpretation | H2A |
 | `commitments` / `acceptedCommitments` | Factual `agreements`; authority evaluated separately | Personal agent |
 | H2A messages and incoming-message IDs | Retain | H2A |
 | Task execution guards / context version | Retain; pause ends one run | Runtime |
@@ -46,8 +48,9 @@
 - Reference `buildPursuitPrompt` after moving its decision instructions into H2A; no parallel discovery agent or done/failed gate blocking later H2A searches.
 - A2A request/outcome queues, `InputRequest`, queue-only `Outcome`, request IDs/attachments and `reviewed`.
 - `waitFor`, `request`, `outcome`, `queuedQuestions` and dead queue-only callers.
-- `schedule(delay)`, `immediate`, queue-based `hasWork()` and automatic inbox `resume()` scheduling.
+- Completed in the [first slice](TODO.md#first-slice-prevent-a2a-from-waking-h2a): `schedule(delay)`, its timer, `immediate`, queue-based `hasWork()`, request `reviewed` and automatic inbox `resume()` scheduling; the unused generic timer-driven `Inbox` and its exports are also deleted.
 - Previous proposed accumulator fields: `reviewPending`, `deferredReview`, persisted stall reasons and obstacle queues.
+- Separate A2A task/intent orientation and direct principal-context inputs; retain protocol intent IDs and execution guards.
 
 ## Database touches
 
@@ -55,14 +58,14 @@
 - Data contract: change existing checkpoint JSON; this still requires a saved-session rollout decision.
 - Access: `packages/agent` uses `PrincipalStore`, `NegotiationClient` and reference `PursuitClient`; the host owns SQL and retrieval dependencies.
 - `scopeVersion`, `brief`, search selections and question arrays are JSON fields inside `agent_sessions.state`, not SQL columns.
-- Keep one `agent_sessions` row per principal/intent; an A2A task uses its existing `protocol_negotiations` record and private `matches[]` checkpoint entry, with no separate A2A session table.
+- Keep one `agent_sessions` row per principal/intent; A2A uses its existing `protocol_negotiations` record and private `matches[]` brief, with no separate task or A2A session table.
 - Table names below are SQL names; columns list the relevant reads/writes, with ordinary IDs/timestamps supplied by existing helpers.
 
 | SQL table | Existing columns | Read / write and contract |
 |---|---|---|
 | `agent_sessions` | `state` | Read/update private checkpoint: retain `pursuit.searches` and selections; add scope versions and initial briefs. Replace `inbox.question` with `inbox.questions`, `matches[].reviewNote` with `brief`; remove child queues and separate pursuit-run status. |
 | `agent_sessions` | `user_id`, `intent_id`, `conversation_id`, `revision`, `updated_at`, `lease_token`, `lease_expires_at` | Retain session identity, revision-checked saves and lease lifecycle; no wake/deadline columns. |
-| `messages` | `conversation_id`, `session_id`, `sender_id`, `role`, `parts`, `metadata`, `created_at` | Read/insert canonical H2A entries; keep full text in `parts`, intent and `principalMessage` scope/references in `metadata`. Save all batch answers with the checkpoint. |
+| `messages` | `conversation_id`, `session_id`, `sender_id`, `role`, `parts`, `metadata`, `created_at` | Preserve canonical H2A history and full text in `parts`; retain intent and `principalMessage` identity in `metadata`, removing negotiation linkage from new questions. Save all batch answers with the checkpoint. |
 | `conversation_sessions` / `conversations` | Session: `conversation_id`, `started_at`, `last_message_at`; conversation: `last_message_at`, `updated_at` | Existing message helper assigns the session and updates activity within the checkpoint transaction. |
 | `protocol_intents` | `user_id`, `payload`, `summary`, `embedding`, `status`, `archived_at`, `updated_at`, `first_discovery_succeeded_at` | Read real intent embeddings, statements and lifecycle; retain reference `markSearched()` updating `first_discovery_succeeded_at` after a successful search. No query embedding/artifact is stored here. |
 | `protocol_intent_networks` | `intent_id`, `network_id`, `created_at` | Read assignments and their contribution to the scope version; tools do not change assignments. |

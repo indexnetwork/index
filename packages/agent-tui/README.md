@@ -91,7 +91,8 @@ executor must release that binding before its local agent can run.
 
 H2A messages and checkpoints are persisted in the same transaction. Restarting
 restores the conversation, pending question, related requests, and outstanding
-work, then rereads the A2A records. Session leases prevent two local processes
+work, then rereads the A2A records. H2A stays idle until an accepted message or
+answer. Session leases prevent two local processes
 from running the same principal/intent. Ctrl+C releases leases and retains state;
 a crashed process's lease expires after 60 seconds.
 
@@ -135,9 +136,10 @@ hidden. An unmatched pair shows an empty A2A pane.
 Each user–intent pair retains its agent, draft, history and scroll position,
 suggested-answer selection, pending questions, and in-flight sends through intent,
 roster, and layout changes. Questions keep their ID, wording, scope, and match
-references while you answer. Related requests for an intent-wide fact can join an
-existing question internally; approvals remain specific to a match. The personal
-agent decides which questions and outcomes deserve an H2A message.
+references while you answer. A2A requests and outcomes remain queued until
+accepted user input. Opening the TUI, selecting users/intents, expanding chats,
+and receiving negotiation updates do not activate H2A. Send a message or answer
+the displayed question to start a review; eligible A2A work runs independently.
 
 ## Scenario format
 

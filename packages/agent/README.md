@@ -274,32 +274,34 @@ they can submit.
 Only the principal communication inbox can publish H2A messages. Negotiation
 tasks submit internal `request_principal_input` requests and authoritative
 outcomes. Routine proposals, counters, and model completion summaries stay
-internal. A bounded two-second window batches background requests and outcomes
-without delaying negotiation turns or waiting for every match to finish.
+internal. Only accepted `message()` or `answer()` input activates H2A. A2A
+requests, outcomes, cancellation, session restoration, host scans, and opening
+the app leave H2A idle. Eligible A2A work continues independently.
 
 When no question is displayed, `message(text)` records private input and requests
-a reply immediately, ahead of background communication. The PA sees its latest
+a reply immediately. The PA sees its latest
 observed match records and full H2A history, so it can answer status questions and
 follow-ups even when no negotiation is active. Additional messages cancel stale
-reviews and remain queued until answered. New facts and instructions become
+reviews and schedule processing of the pending user input. Finishing a review
+does not schedule another one for queued A2A work. New facts and instructions become
 shared private context for negotiation decisions; a question is not treated as
 new authority. Empty messages and messages sent while a question is displayed
 are rejected; use that question's ID with `answer()` instead.
 
-The same agent reviews each batch with the H2A history, instructions, and
+The same agent reviews accepted input with the H2A history, instructions, and
 accepted commitments. It can ask one existing focused question, send one
 consolidated outcome update, or stay silent. It can also return a redundant
 request to its negotiation with a pointer to existing principal evidence.
 That internal advice never becomes a human answer or grants new authority.
 
-While a question is displayed, new requests for the same intent-wide fact can
-join it internally. Its ID, wording, options, scope, and displayed match
-references stay unchanged. Other details and approvals remain queued;
-match-scoped requests cannot be attached to another question. Background
-outcome updates wait while the human is answering.
+While a question is displayed, new requests and outcomes remain queued until
+accepted user input. Its ID, wording, options, scope, and displayed match
+references stay unchanged. Match-scoped requests cannot be attached to
+another question.
 
-An answer is recorded once in H2A, cancels any stale communication review, and
-immediately releases waiting negotiations to reconsider the latest context.
+An answer is recorded once in H2A, cancels any stale communication review,
+requests an H2A review, and immediately releases waiting negotiations to
+reconsider the latest context.
 The model identifies related facts and interprets answers; the runtime enforces
 one displayed question and separate match-scoped requests. Other principals
 never receive this private history.
@@ -330,36 +332,6 @@ The [scenario TUI](../agent-tui/README.md) injects `MemoryPrincipalStore`. The
 with leases and revision fencing. The normal API server owns runtime lifecycle
 independently of connected clients. Neither `agent` nor `protocol` imports the other;
 the host composes their contracts.
-
-### Batched inbox work
-
-For a host that batches generic tool work through `Agent.run()`, an intent's
-`Inbox` queues events until a tick; a run reads the whole
-batch in one context, so the same question from three counterparties is
-one question, and a settled match can end the rest.
-
-```ts
-import { Inbox } from "@indexnetwork/agent";
-
-const inbox = new Inbox(agent.for(intent), {
-  onResult: (r) => { if (r.end === "needs-input") postToParty(r.pending!) },  // your channel
-  onError: (e) => log(e),
-});
-const stop = inbox.start();          // ticks every TICK_MS
-
-inbox.push({ kind: "negotiation.turn", opportunityId, turnIndex });   // waits for the tick
-inbox.push({ kind: "message.new", messageId, text: "aggregates are fine" });   // runs now
-```
-
-Two triggers, nothing else. A **tick** runs if the inbox is non-empty;
-events that land during a run wait for the next one. **The party replied**
-runs at once — a human is waiting — and whatever else is queued rides
-along; if a run is in flight, the reply's run follows it. A run that
-throws puts its events back, and they go out on the next tick.
-
-The inbox holds only the queue. The question is on the negotiation record
-and the message is in the DM, so a fresh inbox in a new process picks up
-from the next event.
 
 ### Knowing the time
 

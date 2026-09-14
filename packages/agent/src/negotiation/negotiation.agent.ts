@@ -148,7 +148,6 @@ export class NegotiationAgent {
     }));
     await this.checkpoint();
     if (this.stopped) return;
-    this.inbox.resume();
     for (const task of this.tasks.values()) { task.notified = true; void this.drain(task); }
   }
 

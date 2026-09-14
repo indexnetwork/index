@@ -1,7 +1,7 @@
 # Design
 
 - Navigation: [Overview](README.md) · [Implementation map](spec.md).
-- Status: proposed; wake timing remains open.
+- Accepted ownership and activation below; further wake sources remain deferred.
 
 ## Domain ownership
 
@@ -20,8 +20,8 @@ flowchart TD
 | H2A owns discovery and opening | The principal's intent, answers and current negotiations inform whom to pursue. |
 | Retrieval returns candidates | H2A evaluates actual statements and decides whether to search again or open; no lens/HyDE planning pipeline remains. |
 | Host enforces search scope and protocol opening | Model selection cannot grant membership, ownership or execution authority. |
-| H2A owns questions and briefs | Combines principal evidence across this intent. |
-| A2A acts within its brief | Keeps negotiation focus and authority explicit. |
+| Intent-scoped H2A owns questions and briefs | Decides whether input is needed, independently of A2A stalls; questions have no negotiation linkage. |
+| A2A's only private context is its brief | H2A supplies objectives, facts and authority; no separate task, raw intent or principal history enters A2A. |
 | Counterparty text remains negotiation data | Cannot rewrite our brief or establish principal consent. |
 | H2A pulls current negotiations | Removes accumulated requests, answer promises and child wakeups. |
 
@@ -29,7 +29,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    W["Principal input or<br/>independent H2A wake"] --> R["Read scope, search history,<br/>negotiations and principal context"]
+    W["Accepted principal<br/>message or answer"] --> R["Read scope, search history,<br/>negotiations and principal context"]
     R --> D{"What helps now?"}
     D -->|"Find counterparties"| F["discover_counterparties"]
     F --> E["Evaluate candidates"]
@@ -62,7 +62,7 @@ flowchart TD
 | [Briefs](briefs.md) | Replace raw intent as A2A orientation with H2A-owned private briefs. |
 | [Negotiations](negotiations.md) | Explicit local pause; reuse existing outcomes, turn ownership and history. |
 | [Question batches](question-batches.md) | Save all answers before reconsideration or resumption. |
-| [Wake patterns](wake-patterns.md) | Independent activation with deadlines; timing and delivery mechanism deferred. |
+| [Wake patterns](wake-patterns.md) | Accepted user input activates H2A; further wake sources and deadline delivery remain deferred. |
 | [Agent instructions](agent-instructions.md) | Separate agreement, authority and confirmed execution. |
 
 ## Boundaries
@@ -71,3 +71,4 @@ flowchart TD
 - Implementation baseline: the reference branch removes lenses, HyDE artifacts and automatic pipeline selection/opening; carry that work forward once.
 - Outside scope: application layouts, macOS, infrastructure redesign, protocol transitions.
 - No new accumulator, consent ledger or schema changes for the H2A integration.
+- Retain protocol intent IDs for ownership and pair identity; this does not supply A2A with separate intent context.
