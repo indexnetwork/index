@@ -76,7 +76,7 @@ import { Agent, ModelClient, askUserTool, type Tool } from "@indexnetwork/agent"
 
 const agent = new Agent({
   model: new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY }),
-  identity: { name: "Tomas's Agent", id: "did:example:tomas" },
+  identity: { name: "Tomas", id: "did:example:tomas" },
   systemPrompt:
     "You act for Tomas. Ask him directly about anything you have not been told — " +
     "a price ceiling, dates, collection. Do not invent his preferences.",
@@ -94,7 +94,7 @@ const result = await scoped.run("Take a turn in every negotiation waiting on you
 
 ```ts
 interface AgentIdentity {
-  name: string;         // the party name the agent speaks under
+  name: string;         // the principal's display name
   id: string;           // stable id for the party — a DID, profile URL, account id
   description?: string;
 }

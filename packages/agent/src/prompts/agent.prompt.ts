@@ -35,7 +35,7 @@ export function buildAgentSystemPrompt({ systemPrompt, identity, intent, now }: 
 }): string {
   const parts = [
     systemPrompt,
-    `You are ${identity.name}, acting on behalf of ${identity.id}.`,
+    `You are ${identity.name}'s personal agent. Your principal's ID is ${identity.id}.`,
     // Without this the agent has no clock, and "next Tuesday" can only
     // be repeated, never resolved.
     `Today is ${formatDate(now)}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`,

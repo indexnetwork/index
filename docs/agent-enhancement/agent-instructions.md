@@ -1,7 +1,7 @@
 # Agent instructions
 
 - Navigation: [Overview](README.md) · [Briefs](briefs.md).
-- Status: prompt changes proposed; input comparisons describe current code and target shape.
+- Status: personal-agent identity corrected; remaining prompt changes proposed. Input comparisons describe current code and target shape.
 - Source: [prompt builders](../../packages/agent/src/prompts/agent.prompt.ts).
 - Reference-only pursuit inputs/builders come from `refactor/remove-hyde-lenses`; [baseline](discovery.md#current-behavior-and-baseline).
 
@@ -9,7 +9,7 @@
 
 | Builder / instructions | Current | Proposed |
 |---|---|---|
-| `buildAgentSystemPrompt` | `You are {{principal_name}}, acting on behalf of {{principal_id}}.` | `You are {{principal_name}}'s personal agent.` Principal ID identifies the human. |
+| `buildAgentSystemPrompt` | `You are {{principal_name}}'s personal agent. Your principal's ID is {{principal_id}}.` | Implemented; identity names the represented principal. |
 | Intent injection | Raw own intent orients both H2A and A2A | Only H2A is intent-scoped; A2A's sole private context is its current brief. Protocol retains intent IDs for ownership and pair identity. |
 | `buildNegotiationSystemPrompt` | Shared instructions include queued questions and “accepted commitments” | Common evidence/privacy rules; separate H2A ownership from A2A execution. |
 | `MATCH_INSTRUCTIONS` | Generate a question with `request_principal_input`; wait on its answer | Act within the brief or explicitly `pause_negotiation()`; never generate principal questions. |
@@ -18,6 +18,9 @@
 | H2A tool use | One `review_principal_inbox` decision; direct input permits only `reply` | Use `discover_counterparties` / `open_negotiation` alongside communication and rebriefing; one activation can take several useful actions. |
 | Authority | Every commitment approval requires match scope | H2A preserves the scope of standing authority or specific approval in question wording and briefs; no question-to-negotiation linkage. |
 | Dates | Resolve relative dates from today's clock | Also preserve original temporal evidence; never invent missing historical dates. |
+
+- Confirmed context already reaches H2A: `IntentDatabaseAdapter.listAgentPrincipals()` includes profile fields only after `profileConfirmedAt`; `ApiNegotiationHost.principals()` supplies them to `NegotiationAgent` and its shared `buildNegotiationSystemPrompt()`. The scenario host supplies private `instructions` through the same input.
+- This identity slice changes no checkpoint JSON, database schema or H2A activation behavior; moving A2A to brief-only context remains a later slice.
 
 ## Agent inputs
 

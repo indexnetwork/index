@@ -26,7 +26,7 @@ function agent(
   options: { history?: MemoryMessageStore } = {},
 ) {
   return new Agent({
-    identity: { name: "Alice's Agent", id: "did:example:alice" },
+    identity: { name: "Alice", id: "did:example:alice" },
     systemPrompt,
     model: new ModelClient({ apiKey: "test-key" }),
     now: () => TODAY,
@@ -66,7 +66,7 @@ describe("run()", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
+        content: `You act for Alice.\n\nYou are Alice's personal agent. Your principal's ID is did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "Sell the bike" },
     ]);
@@ -79,7 +79,7 @@ describe("run()", () => {
 
     const system = String(requests[0]?.messages[0]?.content);
     expect(system).toContain("You act for Alice.");
-    expect(system).toContain("acting on behalf of did:example:alice");
+    expect(system).toContain("You are Alice's personal agent. Your principal's ID is did:example:alice.");
     expect(system).toContain("Current intent: Find a used road bike under $450");
   });
 
@@ -235,7 +235,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
+        content: `New instructions.\n\nYou are Alice's personal agent. Your principal's ID is did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },
@@ -255,7 +255,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
+        content: `You act for Alice.\n\nYou are Alice's personal agent. Your principal's ID is did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },
@@ -282,7 +282,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
+        content: `New instructions.\n\nYou are Alice's personal agent. Your principal's ID is did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },
@@ -401,7 +401,7 @@ describe("injected model", () => {
     ]);
     const retries: [number, string][] = [];
     const agent = new Agent({
-      identity: { name: "Alice's Agent", id: "did:example:alice" },
+      identity: { name: "Alice", id: "did:example:alice" },
       systemPrompt: "You act for Alice.",
       model: new ModelClient({ apiKey: "test-key", timeout: 50, attempts: 2 }),
       tools: [],

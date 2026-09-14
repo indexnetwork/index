@@ -14,9 +14,23 @@
 
 - Reference worktree: `/Users/yanek/Projects/index/.worktrees/refactor-remove-hyde-lenses`.
 - Reference implementation: `packages/agent/src/negotiation/negotiation.agent.ts`, `packages/agent/src/pursuit/pursuit.types.ts`, `services/api/src/lib/agent/pursuit.ts`.
-- Integration prerequisite: carry forward the reference branch's discovery replacement and affected callers before implementing this H2A integration; these reference-only paths are absent from this worktree today.
+- Integration boundary: carry forward the reference retrieval/opening code and affected callers with the H2A discovery/opening slices; these reference-only paths are absent from this worktree today. The identity slice needs none of them.
 - Reference-owned removal: lens inference, HyDE generation/cache/maintenance, fixed candidate evaluation and automatic pair opening in the old discovery pipeline.
 - Reference-owned migration: `services/api/drizzle/0182_drop_protocol_hyde_documents.sql`; this plan adds no further schema migration.
+
+### Reference reuse review
+
+- Reviewed `7e09f7998` against this branch at `aa72c1ee8`; no reference product code or migration has been imported.
+- Keep the user-input wake boundary. The reference `scan()` calls `agent.pursue()` automatically, and `message()` starts a separate pursuit run alongside the H2A review; move search decisions directly into H2A when integrating.
+
+| Reference code | Integration boundary |
+|---|---|
+| `packages/discovery`: `Discovery.discover()` and candidate/data interfaces | Reuse explicit query → one embedding/search → hydrated candidates, including live scope and membership checks. Move candidate evaluation and selection instructions into H2A. |
+| `createPursuitClient()`, `pursuitScope()`, `markSearched()` | Reuse host-bound identity, scope checks and successful-search recording. Preserve execution ownership under the [storage contract](spec.md#database-touches); refresh scope for user-triggered H2A work. |
+| `openCounterparties()`, `findByPairKey()` | Reuse transactional pair opening, protocol eligibility and pair identity. Persist the explicit private delegation before our A2A starts; settle record/pair ordering in the storage slice. |
+| `SearchRecord`, selections and `PursuitState` | Reuse candidate/query shapes and scope checks in H2A; the storage slice determines their lifetime. Omit the separate run's status gate, `pursuing`, `pursuitWork` and `runPursuit()`. |
+| HyDE removal and migration `0182` | Carry the SQL, snapshot and journal entry together with deletion of the old discovery/indexing/cache/maintenance callers. Keep the table until those callers are replaced. |
+| API scans, intent events and scenario startup | Wire retrieval/opening into user-triggered H2A; preserve observational scans and eligible A2A execution. Do not import automatic pursuit or immediate unbriefed opening. |
 
 ## Owners and flow
 

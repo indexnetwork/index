@@ -36,14 +36,16 @@
 
 ## Preparation for remaining enhancements
 
-- [ ] Review and reuse `refactor/remove-hyde-lenses`, including its existing migration. [Baseline](discovery.md#current-behavior-and-baseline)
+- [x] Review `refactor/remove-hyde-lenses` at `7e09f7998`, including its existing migration and automatic pursuit callers. [Reuse review](discovery.md#reference-reuse-review)
+- [ ] Reuse its retrieval/opening code and migration with the H2A discovery/opening slices; keep the separate pursuit loop out of this branch. [Baseline](discovery.md#current-behavior-and-baseline)
 - [ ] Agree checkpoint JSON conversion while preserving history, questions and search evidence. [Storage](spec.md#database-touches)
 - Deletion first: replace the request/question bridge with independent stall and brief behavior, deleting the child queues and answer promises together with their callers.
 - Database audit: `agent_sessions` still stores history linkage, checkpoints and execution leases. `protocol_hyde_documents` still has live discovery callers; remove it with the reference discovery replacement and its existing migration.
 
 ## Remaining vertical slices
 
-- [ ] Correct personal-agent identity and supply confirmed principal context to H2A. [Instructions](agent-instructions.md#system-prompts)
+- [x] Correct personal-agent identity and verify the existing confirmed-principal-context input to H2A. [Instructions](agent-instructions.md#system-prompts)
+- Identity verification: agent typecheck, all 26 existing tests and build pass; focused lint passes with one existing warning. Live-model behavior remains unchecked. Identity slice approved for commit and push.
 - [ ] Let H2A search and refine queries with `discover_counterparties`; remove the separate pursuit loop. [Discovery](discovery.md#tool-contracts)
 - [ ] Let H2A open a selected candidate, saving its private brief before A2A starts. [Opening](discovery.md#opening-and-brief-ordering)
 - [ ] Keep briefs across eligible A2A turns while H2A is idle; remove separate A2A task/intent and direct principal-context inputs, preserving protocol identity, turn and concurrency guards. [Negotiations](negotiations.md#local-execution)
