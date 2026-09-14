@@ -10,6 +10,7 @@
     "packages/claude-plugin",
     "packages/hermes-plugin",
     "packages/agent",
+    "packages/client",
     "packages/agent-tui",
     "packages/discovery"
   ],
