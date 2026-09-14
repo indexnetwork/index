@@ -1,7 +1,7 @@
 {
-  "name": "@indexnetwork/agent",
-  "version": "0.4.1",
-  "description": "A host-run personal agent: one identity, scopeable to an intent, that can stop to ask its party a question.",
+  "name": "@indexnetwork/client",
+  "version": "0.1.0",
+  "description": "Index Network HTTP client: seats, principal inbox, and the user event stream.",
   "license": "MIT",
   "type": "module",
   "private": true,

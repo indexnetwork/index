@@ -80,11 +80,12 @@ def _positive_int(value: Any, name: str, *, maximum: int | None = None) -> tuple
 def _app_base_url() -> str:
     """Return the universal-link origin used for Index deep links.
 
-    Only a well-formed `https://<host>` origin is honored. A malformed or
-    schemeless override (for example `index.network`) falls back to the constant:
-    a base that parses to an empty scheme/netloc would make every relative path
-    compare equal to it in `index_open_app` and turn that tool into a generic
-    local-file opener.
+    A well-formed `https://<host>` origin is honored. `http://` is allowed only
+    for loopback, so local Vite (`http://localhost:3000`) can serve `/cli-auth`.
+    A malformed or schemeless override (for example `index.network`) falls back
+    to the constant: a base that parses to an empty scheme/netloc would make
+    every relative path compare equal to it in `index_open_app` and turn that
+    tool into a generic local-file opener.
     """
     raw = os.environ.get("INDEX_APP_BASE_URL", "").strip().rstrip("/")
     if not raw:
@@ -93,7 +94,11 @@ def _app_base_url() -> str:
         parts = urllib.parse.urlsplit(raw)
     except ValueError:
         return INDEX_APP_BASE_URL
-    if parts.scheme != "https" or not parts.netloc:
+    host = (parts.hostname or "").lower()
+    loopback = host in {"localhost", "127.0.0.1", "::1"}
+    if not parts.netloc or parts.scheme not in {"https", "http"}:
+        return INDEX_APP_BASE_URL
+    if parts.scheme == "http" and not loopback:
         return INDEX_APP_BASE_URL
     return raw
 
