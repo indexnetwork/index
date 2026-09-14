@@ -1,238 +1,264 @@
 # Personal agent communication spec
 
-Proposed changes to `packages/agent`. Keep `NegotiationAgent`, `PrincipalInbox`,
-the model loop, and `PrincipalStore`; replace the existing behavior in place.
-See [the design](agent-communication.design.md) for rationale and examples.
+Proposed implementation in `packages/agent`. The [design](agent-communication.design.md)
+contains rationale and examples. Replace existing behavior in place.
 
-## 1. Review flow
+## 1. Public API
 
-The agent decides what is useful. The runtime validates IDs and freshness,
-persists the decision, and delivers its effects. Counts never select an action.
-
-```mermaid
-flowchart TD
-    E["A2A change, principal input<br/>or review deadline"] --> R["Review intent, conversation<br/>and opportunities"]
-    R --> D["Agent chooses one action"]
-    D --> P["Validate and persist"]
-    P --> H["Reply, ask<br/>or update"]
-    P --> T["Reconsider<br/>selected tasks"]
-    P --> W["Wait for context<br/>or stay silent"]
-```
-
-Keep one `review_principal_inbox` tool and one committed decision per review:
-
-| Action | Effect |
-|---|---|
-| `reply` | Answer direct messages, then end this review. A subsequent review assesses their effect on the intent. |
-| `ask` | Author 1–3 independent questions when no batch is displayed, including clarifications without an A2A request. |
-| `reconsider` | Select opportunities for reevaluation, with or without queued questions. |
-| `update` | Publish a concise update about selected outcomes, even while a batch is open. |
-| `wait_for_context` | Retain pending work and schedule an agent-chosen reconsideration deadline. |
-| `stay_silent` | Dismiss selected outcomes without publishing. Preserve requests and displayed questions; schedule no deferral. |
-
-`update` and `stay_silent` select outcomes by `opportunityIds`; unselected
-outcomes survive. An empty selection can leave an open batch undisturbed.
-
-## 2. Questions and answers
-
-Replace the singular public contract; export `PrincipalAnswer`:
+Change `NegotiationAgent` and `PrincipalInbox` together:
 
 ```ts
-interface PrincipalAnswer { questionId: string; text: string }
+export interface PrincipalAnswer {
+  questionId: string;
+  text: string;
+}
 
 get pending(): readonly PrincipalQuestion[];
 answer(answers: readonly PrincipalAnswer[]): Promise<readonly PrincipalMessage[] | null>;
 message(text: string): Promise<PrincipalMessage | null>;
 ```
 
-`pending` is empty when no batch is shown. `queuedQuestions` counts requests
-outside the displayed groups. Invalid input returns `null`; persistence failures
-reject. Nonempty direct messages remain allowed while a batch is open.
+- `pending` returns `[]` when no batch is displayed.
+- `answer` accepts the complete displayed batch. Invalid input returns `null`;
+  failed persistence rejects. Remove `answer(questionId, text)`.
+- `message` accepts nonempty input while a batch is displayed.
+- `queuedQuestions` counts requests not attached to displayed questions.
+- Keep `PrincipalQuestion`, `PrincipalMessage`, and generic `Agent.ask_user`.
 
-`ask` receives `questions: [{ question, options, scope, opportunityIds, requestIds }]`:
+## 2. State
 
-- Ask one fact or coherent decision per question, with 2–4 suggested options.
-  Group duplicate intent-wide facts; defer dependent follow-ups. One question
-  is a valid batch. A multi-term offer can still be one approval decision.
-- Use `intent` or `match` scope. Match permission concerns exactly one
-  opportunity; an intent-wide clarification can have no opportunity references.
-  All IDs belong to this principal and intent. Each request appears in at most
-  one group, with its opportunity included in that question’s references.
-- The model owns wording, equivalence, and independence. A2A requests are input,
-  not text to forward verbatim. `requestIds: []` needs no synthetic A2A wait.
-- Assign fresh question IDs. Save all questions and transcript entries before
-  display; attach covered requests through `attachedTo`. IDs, wording, options,
-  scope, and references stay fixed. Later arrivals remain queued.
+Persist through the existing `PrincipalStore.save(state, messages)` transaction.
+Keep existing fields except those explicitly replaced below.
+
+| Persisted field | Type / change |
+|---|---|
+| `InboxState.questions` | `PrincipalQuestion[]`; replaces singular `question`. |
+| `InboxState.requests` | Existing serialized requests; retain `attachedTo`, add `createdAt`, remove `reviewed`. Never serialize `resolve`. |
+| `InboxState.outcomes` | Existing outcomes plus `observedAt`. Extend `Outcome.result` with `{ obstacle: string }`, distinct from protocol results and errors. |
+| `InboxState.incomingMessageIds` | Existing direct-message reply queue. |
+| `InboxState.pendingPrincipalInputIds` | `string[]`; user/answer entries still requiring review of the whole intent. Replying does not clear these. |
+| `InboxState.reviewPending` | `boolean`; saved wake or required continuation not yet handled. |
+| `InboxState.deferredReview` | `DeferredReview \| null`. |
+| `PrincipalState.startedAt` | Session activity timestamp. |
+| `PrincipalState.matches[]` | Retain `record`, `reviewNote`, and `reported`; add `stopped: boolean`, `lastChangedAt`, and optional `obstacle: string`. Preserve local stops across restart. |
+
+```ts
+interface DeferredReview {
+  startedAt: string;
+  expectedContext: string;
+  reason: string;
+  reconsiderAt: string;
+}
+```
+
+| Runtime field | Responsibility |
+|---|---|
+| `PrincipalInbox.reviewRevision` | Increment when review context changes. Capture at review start; reject stale decisions before mutation. |
+| `PrincipalInbox.running` | One active review loop. |
+| `PrincipalInbox.timer` | Timer for the saved deadline; no fixed collection timer. |
+| `reviewController` / `stopped` | Existing shutdown controls; do not abort for every arrival. |
+| `NegotiationAgent.contextVersion` | Existing protection against A2A actions based on stale principal context. |
+| `MatchTask.notified` / `running` | Existing per-task wake coalescing and execution ownership. |
+| `NegotiationAgent.agreements` | Rename `commitments` and prompt field `acceptedCommitments`. Rebuild from observed records; retain agreements with unknown authority. |
+
+Timers, promises, and executing status are runtime-only. Derive activity counts
+from records, input waits, obstacles, and actual execution.
+Use ISO 8601 timestamp strings from the injected clock; duplicate observations
+must not reset creation times.
+
+## 3. Functions to change
+
+Paths below are relative to `packages/agent/src`.
+`PrincipalInbox` lives in `negotiation/principal.inbox.ts`; `NegotiationAgent`
+in `negotiation/negotiation.agent.ts`; saved state in `negotiation/principal.state.ts`.
+
+| Function | Required behavior |
+|---|---|
+| `PrincipalInbox.request(match, question)` | Enqueue one scoped request with creation time; call `wake()`; retain the answer wait. |
+| `PrincipalInbox.outcome(match, result)` | Record a new outcome/obstacle with observation time; call `wake()` only for changed input. |
+| `PrincipalInbox.message(text)` | Append a user entry, enqueue both reply and intent review, invalidate principal context, then await `wake()`. |
+| `PrincipalInbox.answer(answers)` | Validate all IDs/text, save all answers together, then release covered waits. See [answer submission](#5-atomic-answer-submission). |
+| `PrincipalInbox.cancel(opportunityId)` | Remove that task’s requests; retire affected questions; keep other requests/drafts valid; wake on the actual cancellation. |
+| `PrincipalInbox.wake(): Promise<void>` — new | Mark `reviewPending`, advance the review revision, checkpoint, then request `drainReviews()`. Replaces `schedule(delay)` and `immediate`. |
+| `PrincipalInbox.drainReviews(): Promise<void>` — new | Own one review loop. Consume pending work serially; recheck pending work before becoming idle. |
+| `PrincipalInbox.review()` | Capture durable context/revision; invoke the model once; discard stale results; validate and apply one decision. |
+| `PrincipalInbox.validate(decision, snapshot)` | Validate action arguments, IDs, scopes, current batch, and future deadlines. Semantic relevance remains the model’s job. |
+| `PrincipalInbox.apply(decision, snapshot)` | Apply the [decision contract](#4-review-tool-contract), checkpoint before effects, and acknowledge only input included in the snapshot. |
+| `PrincipalInbox.hasWork()` | Check unhandled principal input, outcomes, or queued requests when no batch is displayed. Use for continuation after `reply/update/reconsider`, not polling. |
+| `PrincipalInbox.snapshot() / restore() / resume() / stop()` | Save/restore state; resume pending work or the deadline; stop timers/calls without erasing resumable state. |
+| `NegotiationAgent.receive(event) / drain(task) / run(task)` | Notify only the affected task; reread its record; obey turn ownership and valid input waits. |
+| `NegotiationAgent.remember(record)` | Detect changed observations, update agreements/activity, and request inbox review. Unchanged reads do not wake it. |
+| `NegotiationAgent.reconsider(opportunityIds, note): Promise<void>` — new internal callback | Attach task notes, checkpoint them with the inbox mutation, then notify selected tasks. Called by `apply(reconsider)`; do not checkpoint the same decision twice. |
+| `NegotiationAgent.checkpoint()` | Keep state and transcript writes atomic and serialized. No effects may depend on unsaved input. |
+| `NegotiationAgent.tools(task, turn)` | Add `report_obstacle({ reason })`. End that local turn without settlement; reject after a submission attempt; resume only on relevant context. |
+
+Update `buildAgentSystemPrompt`, `buildNegotiationSystemPrompt`,
+`buildNegotiationTurnPrompt`, and `buildPrincipalInboxPrompt` in
+`prompts/agent.prompt.ts`, plus their instruction constants. Update exports,
+README, and affected examples.
+
+## 4. Review tool contract
+
+Keep one `review_principal_inbox` tool. Replace the old `Decision` shape:
+
+```ts
+interface QuestionDraft {
+  question: string;
+  options: string[];                 // 2–4
+  scope: "intent" | "match";
+  opportunityIds: string[];
+  requestIds: string[];              // [] for an H2A-authored clarification
+}
+
+type Decision =
+  | { action: "reply"; message: string }
+  | { action: "ask"; questions: QuestionDraft[] } // 1–3
+  | { action: "update"; opportunityIds: string[]; message: string }
+  | { action: "stay_silent"; opportunityIds: string[] }
+  | { action: "wait_for_context"; expectedContext: string;
+      reason: string; reconsiderAt: string }
+  | { action: "reconsider"; opportunityIds: string[]; message: string;
+      releaseRequestIds: string[]; retireQuestionIds: string[] };
+```
+
+| Decision | State change / effect |
+|---|---|
+| `reply` | Save the reply; clear handled `incomingMessageIds`. Leave intent-review IDs pending and run the next review. |
+| `ask` | Require no displayed batch. Assign fresh IDs; save questions and transcript entries; attach covered requests; notify the principal after save. |
+| `update` | Save a concise message and remove only selected outcomes. An open question batch is allowed. |
+| `stay_silent` | Remove only selected outcomes; retain requests/questions. Empty outcome selection is valid. Finish review of current context without a timer. |
+| `wait_for_context` | Retain work; save a future deadline and its reason/expectation. Preserve `startedAt` when extending the same deferral; arm the timer after save. |
+| `reconsider` | Retire/release only explicit IDs; keep other linked requests. Invoke the owner callback to save task notes and notify selected tasks after persistence. |
+
+For `ask`, requests must exist, belong to this intent, appear in one group at
+most, and have their opportunity referenced. Only equivalent intent-wide facts
+share a question across matches; match questions reference exactly one match.
+An intent clarification may reference none. Defer dependent questions.
+
+For `reconsider`, released requests belong to selected opportunities. Retire a
+displayed question before releasing its request; detaching it does not answer
+other linked requests. Empty targets are allowed only when retiring an
+intent-wide question without references. Reject a no-op decision.
+
+A fresh non-reply decision acknowledges its snapshot’s principal-input IDs.
+After `reply/update/reconsider`, set `reviewPending` from `hasWork()`.
+`ask/wait_for_context/stay_silent` finish review of current context. New arrivals
+always remain pending. Non-waiting decisions end the saved deferral.
+
+## 5. Atomic answer submission
 
 ```mermaid
 sequenceDiagram
     actor U as Principal
-    participant I as Personal inbox
-    participant N as Negotiations
-    I->>U: Show independent questions
-    Note over U: Draft answers locally
-    U->>I: Submit every displayed answer together
-    I->>I: Validate the complete question ID set
+    participant I as PrincipalInbox
+    participant N as Negotiation tasks
+    U->>I: answer([{questionId, text}, ...])
+    I->>I: Validate complete displayed ID set
     alt Invalid or stale
-        I-->>U: Reject the entire submission
+        I-->>U: Return null without changes
     else Valid
-        I->>I: Save all answers and state in one checkpoint
-        Note over I,N: Continue only after the save succeeds
+        I->>I: Append all scoped answers and update state
+        I->>I: Checkpoint the complete batch
+        Note over I,N: Continue only after save succeeds
         I-->>N: Release covered requests
-        N->>N: Read the complete answer set
-        I->>I: Review the whole intent
+        N->>N: Read all answers before acting
+        I->>I: Drain pending intent review
     end
 ```
 
-Require exactly one nonempty answer per displayed ID; reject missing, extra,
-duplicate, retired, or stale IDs before mutation. Derive scope and references
-from stored questions. In one `PrincipalStore.save(state, messages)`, save full
-answer text as separate scoped entries, add their IDs to `pendingPrincipalInputIds`,
-clear the batch and covered requests, and increment principal context once.
-Invalidate the old inbox review; preserve unshown requests and outcomes.
+Require a displayed batch and exactly one nonempty answer per ID. Reject missing, extra,
+duplicate, retired, or stale IDs before mutation. Derive scopes/references from
+saved questions. Append full answer text and `pendingPrincipalInputIds`; clear
+the batch and covered requests; increment principal context once. Use the same
+pending/revision/checkpoint ordering as `wake()`, with one checkpoint.
 
-Drafts save nothing. Failed persistence releases nothing and retains existing
-shutdown handling. An uncertain submission is reconciled against pending state
-and history before resubmission. Immutable question IDs identify the batch;
-no separate batch ID or incremental answer API is needed.
+Later requests and unselected outcomes survive. Drafts do nothing; failed saves
+release nothing and retain existing shutdown behavior. Reconcile uncertain
+submissions against saved history before retrying. Question IDs, wording,
+options, scopes, and references are immutable until answered or retired.
+Callers retain drafts for unchanged IDs after retirement.
 
-## 3. Instructions and opportunity reconsideration
-
-Shared identity: **“You are {{principal_name}}’s personal agent.”** The principal
-ID identifies the human. Act when facts and authority suffice; ask only for
-input that could change the next move; communicate worthwhile outcomes.
-
-| Instruction | Required interpretation |
-|---|---|
-| Read the complete input. | Preserve raw text, source IDs, conditions, uncertainty, and additional explicit instructions. A question’s scope does not hide a separate broader instruction in its answer. |
-| Keep permission scoped. | A brief “yes” applies to its question. Authority covers the stated action, opportunity, terms, and conditions; reassess material changes. Existing standing authority can suffice. |
-| Separate terms, authority, and execution. | Rename `acceptedCommitments` to `agreements` throughout context, its backing collection, read tool, and examples. Retain all observed agreements, including authority gaps. A2A agreement alone proves neither consent nor subsequent execution. |
-| Reconcile meaning. | A clear correction or revocation controls within scope. A later general preference does not automatically revoke a specific approval; a stale summary cannot erase it. Clarify only ambiguity affecting the next action. Preserve executed actions. |
-| Stay grounded. | Do not invent personal facts, grant authority from agent notes, or disclose private H2A deliberation. Resolve historical relative dates from their original context, not today. |
-
-`reconsider` takes `opportunityIds`, an internal evidence-grounded `message`,
-`releaseRequestIds`, and `retireQuestionIds`. Persist existing per-opportunity
-`reviewNote`s and selected releases/retirements before notifying tasks:
-
-- A target need not have a request. Preserve passive tasks’ notes through restart
-  until an actual permitted review. Respect turn ownership and valid input waits;
-  do not reopen stopped or settled work. A note is not a completed external action.
-- Released requests must belong to selected opportunities. Releasing a displayed
-  request requires explicitly retiring its question. Detach and retain other
-  linked requests; reconsideration alone does not retire valid questions.
-- An H2A-authored question can be retired without a request. Empty opportunity
-  targets are valid only to retire an intent-wide question with no references;
-  reject a decision with neither a target nor a retirement.
-
-Direct messages are saved as `user` entries, never synthetic batch answers.
-Reply and end that review, then assess all relevant opportunities. Corrections
-can retire obsolete questions; actual cancellation removes the canceled match’s
-requests and retires any question whose references would change. Old submissions
-fail atomically; callers retain drafts for unchanged IDs and refresh the set.
-
-A2A reads full principal context and review notes before acting, keeps one
-focused input request and the submission limit, and uses explicit capabilities.
-Add `report_obstacle({ reason })` for a non-input blocker: persist the obstacle,
-end the local turn without settlement, and await relevant context. Reject it
-after a submission attempt; uncertain writes retain their failure handling.
-Ordinary prose is neither a valid completed turn nor a principal notification.
-
-## 4. Waiting and durable review
+## 6. Wake flow
 
 ```mermaid
 flowchart TD
-    R["Review current context<br/>and elapsed wait"] --> D{"Agent judges waiting<br/>worthwhile?"}
-    D -->|No| A["Choose another action"]
-    D -->|Yes| S["Save expected context,<br/>reason and deadline"]
-    S --> W["Retain work;<br/>negotiations continue"]
-    W -->|New context or deadline| R
+    E["New input, changed observation<br/>or deadline callback"] --> W["wake(): persist pending review"]
+    W --> R["drainReviews():<br/>review() latest context"]
+    R --> A["Check revision and validate()<br/>apply() only if fresh"]
+    A -->|Stale or continuation pending| R
+    A -->|Wait decision| T["Arm saved deadline"]
+    T -->|Deadline due| W
 ```
 
-Current `schedule(2s)` is a fixed window for nearby A2A inputs to accumulate.
-Replace it with event-triggered review and an explicit agent decision to wait.
+| Trigger | Inbox review | Negotiation tasks |
+|---|---|---|
+| Principal message / complete answer batch | Required even with empty queues. | Release covered answer waits only after the complete save. |
+| New request/outcome, changed terms, turn ownership, blocker, or local activity | Review the changed observation. | A counterparty turn notifies its task; actual execution still obeys turn ownership/input waits. |
+| Deadline | Review with prior expectation and elapsed time. | No blanket resumption. |
+| `reconsider` | Continue if inbox work remains. | Persist notes and notify selected targets; passive tasks keep notes until a permitted turn. |
 
-`wait_for_context` requires `expectedContext`, `reason`, and a finite future
-`reconsiderAt`. Persist `deferredReview` with those fields and `startedAt`;
-keep the original start when extending the same deferral. A non-waiting decision
-ends that episode. Deadlines guarantee review, not a forced human interruption.
+`wake()` returns after persistence/scheduling, not after the model finishes.
+If a review is running, accumulate inputs and leave one follow-up pending.
+Compare the revision before applying a result; stale decisions have no effects.
+Do not repeatedly abort calls. Wait for the latest context checkpoint before
+starting its review. Coalesce signals, never messages or requests.
 
-Every review receives current time from the injected clock, principal history
-and pending input IDs, the displayed batch, requests/outcomes and their ages,
-observed agreements, and available confirmed action results. Include individual
-opportunities’ counterpart intents, available fit evidence, terms, open issues,
-allowed actions, blockers, and last-change times; activity start, recent changes,
-and the current or expired waiting decision complete the context.
+On `resume()`, reconcile records first: `reviewPending`, unprocessed principal
+input, changed context, or an expired deadline requires immediate review.
+Otherwise restore the saved deadline. Keep review notes through restart.
+Duplicates, token/progress events, and review bookkeeping do not create wakes.
+Unchanged queues after a wait or silence do not retrigger review.
 
-Derive counts from observed statuses: ready/executing, principal-blocked,
-awaiting counterparty, locally blocked, completed/stopped, or unknown. Suspended
-promises are not independent work; passive agents have no inferred ETA. Initial
-bursts may justify waiting; later urgent requests may justify acting. Neither
-counts nor batch size impose a threshold. Use existing evidence without a new
-summary model, consent ledger, or domain taxonomy.
+Current `schedule(2s)` collects nearby A2A inputs with a fixed delay. Remove that
+delay; the model decides whether waiting is valuable and selects the deadline.
+Counts are observations, not thresholds. A deadline guarantees reconsideration,
+not a forced question. Remove superseded scheduling/`reviewed` flag paths.
 
-| Runtime responsibility | Contract |
+## 7. Prompt input and required behavior
+
+`buildPrincipalInboxPrompt` receives: current time; full principal history and
+pending IDs; questions, requests, outcomes and ages; observed agreements;
+confirmed action results; per-opportunity intent, fit evidence, terms, open
+issues, turn ownership, blockers and last-change times; derived activity counts;
+session start; recent changes; and the current/expired deferral.
+Do not infer counterparty activity/ETA or restore a model call as executing.
+
+| Rule / acceptance case | Required result |
 |---|---|
-| Deliver reviews. | Replace the fixed two-second delay with coalesced events and one in-flight review. Wake on principal input, requests/outcomes, meaningful observations/activity, cancellation, or deadline. Ignore unchanged duplicates and token activity. |
-| Review every principal input. | Save new user/answer IDs in `pendingPrincipalInputIds` with the input. They trigger review even with empty request/outcome queues. Replying does not consume them; a fresh non-reply decision consumes only its snapshot IDs, including when choosing a durable wait. History remains intact. |
-| Protect freshness. | Use an inbox review revision separately from A2A `contextVersion`. Discard stale decisions; invalidate affected negotiation decisions without restarting unrelated tasks. New context never extends a deadline automatically. |
-| Restore faithfully. | Persist questions, review notes, waiting, and observation ages. Restore an unexpired deadline when context is unchanged; otherwise review immediately with the previous expectation. Stop live timers on shutdown; retain state and never restore a model call as executing. |
-| Avoid spinning. | Pending requests alone do not retrigger a committed wait. Wake on new context or deadline; remove superseded timer/flag paths. |
+| Identity | “You are {{principal_name}}’s personal agent.” The principal ID identifies the human. |
+| Independent questions | Group the same intent fact; defer dependent follow-ups. One coherent offer can contain several terms. H2A may author questions without A2A requests. |
+| Full answers | Preserve source IDs, conditions, uncertainty, and explicit additional instructions. “Yes” stays scoped; “I want first author” can add an objective without approving an offer. |
+| Authority | Separate agreed terms, principal authorization, and execution. Standing authority can suffice; A2A acceptance alone is not consent. Reassess changed terms. |
+| Corrections | Explicit revocation controls within scope. A broad later preference does not automatically revoke an earlier specific approval. Clarify only material ambiguity. |
+| Maya / Leo | Preserve the named-product condition and authorship objective; authorship remains open. Reuse answered facts and respect whose turn it is. |
+| Maya / Priya / Sam | Recognize Priya’s prior approval despite a stale summary; reassess the advisory-only priority without a queued ask. Preserve Sam’s rejection and confirmed executed actions. |
+| Dates and privacy | Use original temporal evidence for historical dates. Do not invent facts or expose private H2A deliberation to counterparties. |
+| Persistence and wakes | Reject partial/stale batches; preserve later arrivals; recover saved wakes/deadlines/notes; retain all inputs during coalescing; release no work after a failed save. |
+| Obstacles and failures | An obstacle is not settlement. Keep the submission limit and existing uncertain-write handling; ordinary prose does not complete a turn or notify the user. |
 
-## 5. Implementation scope
+Evaluate Maya variations: missing approval, explicit cancellation, confirmed
+introduction, changed product condition, an agreement without authority, and a
+scoped answer containing a separate broader instruction.
 
-| Location in `packages/agent` | Change |
-|---|---|
-| `src/negotiation/principal.inbox.ts` | Authored batches, atomic answers, direct messages, opportunity reconsideration, review actions and scheduling. |
-| `src/negotiation/negotiation.agent.ts` | Public API, task notes/wakes, agreement observations, stale-turn protection, obstacle capability. |
-| `src/negotiation/principal.state.ts` | Persist `questions[]`, pending input IDs, deferred review, activity/obstacles, and existing match review notes through `PrincipalStore`. |
-| `src/prompts/agent.prompt.ts` | Align shared, H2A, and A2A instructions and review context with this contract. |
-| `src/index.ts`, README, examples | Export changed public types and update all documented callers. |
+## 8. Integration, verification, review notes
 
-Implement state/API and checkpoint ordering, then task reconsideration,
-scheduling, and final prompts. Keep generic `Agent.ask_user`, protocol
-transitions, infrastructure, and application layouts outside this change.
+API/checkpoint changes are breaking. Update these callers together and coordinate
+existing session handling before implementation:
 
-`PrincipalStore` requires exclusive ownership of each principal/intent session.
-The host’s expiring lease prevents competing owners and permits recovery after
-a crash; concurrent negotiations run within that session. Lease mechanics stay
-in the host and do not govern the agent’s context-waiting decision.
+- `packages/agent-tui/src/negotiation.tui.ts`
+- `services/api/src/services/personal-agent.service.ts`
+- `services/api/src/adapters/agent-session.database.adapter.ts`
 
-These are breaking API/checkpoint changes; replace old paths without adapters,
-dual reads, or a retry framework. Coordinate existing session handling and
-updates to `packages/agent-tui/src/negotiation.tui.ts`,
-`services/api/src/services/personal-agent.service.ts`, and
-`services/api/src/adapters/agent-session.database.adapter.ts` before product
-implementation. Do not claim repository readiness with broken callers or
-discard host-owned session data without a plan. Follow repository worktree,
-version, lockfile, and PR requirements for the agreed implementation scope.
+No compatibility path, new consent store, protocol transition change, or retry
+framework. `PrincipalStore` requires one owner per principal/intent; the host
+lease enforces that ownership, independently of wakes.
 
-## 6. Acceptance checks
+Use the repository worktree/version/PR workflow. Run existing `typecheck`,
+`test`, and `build` scripts from `packages/agent` and update affected existing
+expectations. Use existing scenarios or temporary checks; do not add persistent
+test files. Report model evaluation separately from structural checks. Invalid
+single-step inbox decisions retain the existing session-failure limitation.
 
-| Case | Expected result |
-|---|---|
-| Duplicate facts and dependent decisions | Shared facts can be grouped; dependent questions wait; match permissions remain separate. H2A can ask without a queued request. |
-| Batch submission | Drafts do nothing. Invalid ID sets change nothing. Complete answers use one checkpoint before covered waits release; unknown answers establish uncertainty. |
-| Arrivals, corrections, cancellation | Arrivals preserve the batch; obsolete questions retire explicitly. Unrelated questions, drafts, requests, and outcomes survive. |
-| New instruction without queued work | Whole-intent review still runs, selects affected opportunities, and survives restart before processing. Passive targets retain notes for their permitted turn. |
-| Waiting and freshness | New context or the restored deadline wakes review. Extensions retain elapsed time. Counts do not force waiting; stale decisions and failed saves produce no effects. |
-| Outcomes and obstacles | Only selected outcomes are handled; updates can coexist with a batch. An obstacle creates no settlement, success claim, or automatic write replay. |
-| Maya: conditional answer | “Aggregates are enough if I can name the product. I want first author.” Preserve the product condition and authorship objective across relevant opportunities, without inferring offer approval. |
-| Maya: Leo | Aggregates/named product are acceptable; authorship is still open and Leo is awaiting them. Do not re-ask the known fact, forward a premature approval question, or submit out of turn. |
-| Maya: Priya | Recognize her earlier scoped intro approval despite “pending consent.” Reassess the later “don’t spend my week on advisory-only people” instruction without automatic revocation. No queued ask is required; clarify material ambiguity only. |
-| Maya: Sam and dates | Keep the advisory-only opportunity rejected. Preserve the example’s 13 September 2026 context; missing message timestamps do not justify guessing or shifting “next Tuesday” on replay. |
-| Maya variations | Remove approval → no inferred permission. Explicit cancellation → revoked authority, not proof of cancellation. Confirmed intro → preserve execution. Changed product condition → reassess. A2A agreement alone → retain the authority gap. Scoped “yes” plus an explicit broader instruction → interpret each at its own scope. |
-
-For implementation, run existing `typecheck`, `test`, and `build` scripts from
-`packages/agent`; update affected existing expectations. Use existing scenarios
-or temporary checks, not new persistent test files. Evaluate semantic cases
-with a model and report that evidence separately from structural checks. The
-existing single-step inbox failure on an invalid model decision remains a known
-limitation. This document specifies proposed behavior; it does not claim these
-checks already pass.
-
-## Review notes
-
-- **Better accumulator?** Review how nearby inputs are collected before H2A
-  review, especially arrivals during an active review.
-- **Wake patterns:** distinguish inbox review from resuming a negotiation;
-  decide which arrivals invalidate an in-flight review versus queue a follow-up.
+- **Better accumulator?** Review collection of nearby inputs and arrivals during review.
+- **Wake filtering:** review repeated stale results during sustained A2A bursts;
+  the baseline requires the latest revision before committing a decision.

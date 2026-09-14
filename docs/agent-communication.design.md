@@ -221,6 +221,50 @@ Waiting for context and deciding that an outcome deserves no message have
 different effects. The former retains undecided work and schedules a review;
 the latter completes an attention decision for identified outcomes.
 
+## How wakes work
+
+A wake requests another look at current context. The personal agent still
+decides whether to ask, act, wait, or stay silent. Inbox review and resuming
+an individual negotiation are separate operations.
+
+```mermaid
+flowchart TD
+    E["Principal input or<br/>changed A2A context"] --> S["Save the context"]
+    S --> Q["Request one inbox review"]
+    D["Saved deadline becomes due"] --> Q
+    Q --> R["Agent reviews<br/>latest accumulated context"]
+    R -->|Snapshot is current| A["Persist and apply decision"]
+    R -->|Context changed| Q
+```
+
+If a review is already running, arrivals are saved and mark one follow-up as
+pending. They do not start parallel reviews. For example, three new questions
+during one review produce one follow-up containing all three. Coalesce wake
+signals while preserving the underlying inputs. Save the pending-review flag
+with the context so a restart cannot lose that wake.
+
+Before applying a decision, check that its snapshot is still current. Discard
+a stale decision and review the latest context. Principal corrections also
+invalidate stale negotiation decisions. The baseline permits the existing model
+call to finish; it does not restart a call for every arrival.
+
+Replies are followed by review of the principal’s input across the intent.
+Updates and reconsideration can also leave more inbox work to handle. Asking,
+waiting, or choosing silence completes the decision for current context;
+unchanged queued work alone must not restart the review loop.
+
+Every saved principal message or answer batch wakes inbox review, even without
+queued questions. A batch also releases its covered negotiation waits after the
+complete save. A counterparty turn wakes the affected task; explicit
+reconsideration targets selected opportunities. Tasks still obey turn ownership
+and valid input waits, retaining passive review notes until they can act.
+
+New context can wake a deferred inbox early; otherwise its saved deadline does.
+The agent sees the previous expectation and elapsed wait, then decides again.
+Unchanged pending work, duplicate events, and routine progress do not create
+repeated wakes. The specification lists the triggers and the open accumulator
+and wake-filtering review questions.
+
 ## Principal corrections during a batch
 
 Direct principal messages remain available while questions are displayed. A
