@@ -11,6 +11,7 @@
     "packages/hermes-plugin",
     "packages/agent",
     "packages/client",
+    "packages/agentv2",
     "packages/agent-tui",
     "packages/discovery"
   ],
