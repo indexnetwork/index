@@ -59,6 +59,17 @@ export interface IntentSummary {
   status: IntentStatus;
 }
 
+/** The authenticated owner, with the profile facts an agent may state as theirs. */
+export interface Me {
+  id: string;
+  name: string | null;
+  intro: string | null;
+  location: string | null;
+  timezone: string | null;
+  /** Whether the owner confirmed that profile. Unconfirmed is seed data, not fact. */
+  profileConfirmed: boolean;
+}
+
 export type QuestionScope = "intent" | "match";
 
 export interface MatchReference {
@@ -113,6 +124,7 @@ export type UserEvent =
   | { type: "negotiation.turn"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; turnIndex: number } }
   | { type: "negotiation.settled"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; outcome: string } }
   | { type: "negotiation.changed"; id: string; title: string; body: string; data: { intentId: string; opportunityId?: string } }
+  | { type: "intent.created"; id: string; title: string; body: string; data: { intentId: string } }
   | { type: "intent.lifecycle"; id: string; title: string; body: string; link?: string; data: { intentId: string; status: IntentLifecycleWireStatus } }
   | { type: "question.pending"; id: string; title: string; body: string; data: { intentId: string; questionId: string; scope: string; opportunityId: string | null } }
   | { type: "principal.input"; id: string; title: string; body: string; data: { intentId: string; questionId: string | null; text: string } }
@@ -137,6 +149,7 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
     case "negotiation.turn":
     case "negotiation.settled":
     case "negotiation.changed":
+    case "intent.created":
     case "intent.lifecycle":
     case "question.pending":
     case "principal.input":
@@ -154,7 +167,7 @@ export class IndexClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly executorId?: string;
-  private identity?: { id: string; name: string | null };
+  private identity?: Me;
 
   /**
    * @param options - Origin, key, and optional executor fence. Env fills gaps.
@@ -214,10 +227,26 @@ export class IndexClient {
   /**
    * @returns The authenticated owner. Fetched once per instance.
    */
-  async me(): Promise<{ id: string; name: string | null }> {
+  async me(): Promise<Me> {
     if (this.identity) return this.identity;
-    const { user } = await this.request<{ user: { id: string; name: string | null } }>("GET", "/auth/me");
-    this.identity = { id: user.id, name: user.name };
+    const { user } = await this.request<{
+      user: {
+        id: string;
+        name: string | null;
+        intro: string | null;
+        location: string | null;
+        timezone: string | null;
+        onboarding: { profileConfirmedAt: string | null } | null;
+      };
+    }>("GET", "/auth/me");
+    this.identity = {
+      id: user.id,
+      name: user.name,
+      intro: user.intro ?? null,
+      location: user.location ?? null,
+      timezone: user.timezone ?? null,
+      profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt),
+    };
     return this.identity;
   }
 

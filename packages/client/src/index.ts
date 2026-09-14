@@ -10,6 +10,7 @@ export type {
   IntentStatus,
   IntentSummary,
   MatchReference,
+  Me,
   Negotiation,
   NegotiationAction,
   NegotiationDetail,

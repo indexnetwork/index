@@ -59,12 +59,22 @@ test("me is memoized on the same instance", async () => {
     port: 0,
     fetch() {
       hits += 1;
-      return Response.json({ user: { id: "u1", name: null } });
+      return Response.json({
+        user: {
+          id: "u1",
+          name: null,
+          intro: "Builder",
+          location: "Brooklyn",
+          timezone: "Europe/Istanbul",
+          onboarding: { profileConfirmedAt: "2026-08-13T16:25:06.126Z" },
+        },
+      });
     },
   });
   const client = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" });
-  expect(await client.me()).toEqual({ id: "u1", name: null });
-  expect(await client.me()).toEqual({ id: "u1", name: null });
+  const expected = { id: "u1", name: null, intro: "Builder", location: "Brooklyn", timezone: "Europe/Istanbul", profileConfirmed: true };
+  expect(await client.me()).toEqual(expected);
+  expect(await client.me()).toEqual(expected);
   expect(hits).toBe(1);
   server.stop(true);
 });
