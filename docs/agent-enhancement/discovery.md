@@ -1,7 +1,8 @@
 # Discovery and opening
 
 - Navigation: [Overview](README.md) · [Briefs](briefs.md) · [Implementation map](spec.md).
-- Accepted ownership: our H2A session plans searches, evaluates candidates and opens selected negotiations.
+- Accepted ownership: our H2A run plans searches, evaluates candidates and opens selected negotiations.
+- Accepted lifetime: search results stay in memory for that activation; only explicit opening/delegation outputs and domain effects survive it.
 - Proposed integration: expose `discover_counterparties` and `open_negotiation` alongside H2A's existing communication and rebriefing actions.
 
 ## Current behavior and baseline
@@ -10,13 +11,13 @@
 |---|---|---|
 | This worktree's product code | Lens/HyDE discovery produces pairs; API discovery opens them. H2A reviews requests and outcomes. | Replace using the reference branch's retrieval/opening work. |
 | `refactor/remove-hyde-lenses`, inspected at `7e09f7998` | `NegotiationAgent.pursue()` / `runPursuit()` owns both tools in a separate run. H2A receives pursuit history on direct messages. Opening immediately calls `receive()`. | Move tool use and search decisions into the H2A review; require a saved brief before A2A execution. |
-| Proposed enhancement | One H2A loop reasons across discovery, principal input and current negotiations. | Retain the reference host operations, private search evidence and protocol checks. |
+| Proposed enhancement | One H2A loop reconstructs context and reasons across discovery, principal input and current negotiations. | Retain reference host operations and protocol checks; remove persisted pursuit/search state. |
 
 - Reference worktree: `/Users/yanek/Projects/index/.worktrees/refactor-remove-hyde-lenses`.
 - Reference implementation: `packages/agent/src/negotiation/negotiation.agent.ts`, `packages/agent/src/pursuit/pursuit.types.ts`, `services/api/src/lib/agent/pursuit.ts`.
 - Integration boundary: carry forward the reference retrieval/opening code and affected callers with the H2A discovery/opening slices; these reference-only paths are absent from this worktree today. The identity slice needs none of them.
 - Reference-owned removal: lens inference, HyDE generation/cache/maintenance, fixed candidate evaluation and automatic pair opening in the old discovery pipeline.
-- Reference-owned migration: `services/api/drizzle/0182_drop_protocol_hyde_documents.sql`; this plan adds no further schema migration.
+- Reference-owned migration: `services/api/drizzle/0182_drop_protocol_hyde_documents.sql`; the separate [storage change](spec.md#database-touches) removes `agent_sessions` after conversion.
 
 ### Reference reuse review
 
@@ -28,7 +29,7 @@
 | `packages/discovery`: `Discovery.discover()` and candidate/data interfaces | Reuse explicit query → one embedding/search → hydrated candidates, including live scope and membership checks. Move candidate evaluation and selection instructions into H2A. |
 | `createPursuitClient()`, `pursuitScope()`, `markSearched()` | Reuse host-bound identity, scope checks and successful-search recording. Preserve execution ownership under the [storage contract](spec.md#database-touches); refresh scope for user-triggered H2A work. |
 | `openCounterparties()`, `findByPairKey()` | Reuse transactional pair opening, protocol eligibility and pair identity. Persist the explicit private delegation before our A2A starts; settle record/pair ordering in the storage slice. |
-| `SearchRecord`, selections and `PursuitState` | Reuse candidate/query shapes and scope checks in H2A; the storage slice determines their lifetime. Omit the separate run's status gate, `pursuing`, `pursuitWork` and `runPursuit()`. |
+| `SearchRecord`, selections and `PursuitState` | Reuse candidate/query shapes and scope checks as in-memory evidence for one H2A activation. Persist only explicit opening/delegation outputs; omit search caches, the separate run's status gate, `pursuing`, `pursuitWork` and `runPursuit()`. |
 | HyDE removal and migration `0182` | Carry the SQL, snapshot and journal entry together with deletion of the old discovery/indexing/cache/maintenance callers. Keep the table until those callers are replaced. |
 | API scans, intent events and scenario startup | Wire retrieval/opening into user-triggered H2A; preserve observational scans and eligible A2A execution. Do not import automatic pursuit or immediate unbriefed opening. |
 
@@ -37,12 +38,12 @@
 ```mermaid
 flowchart TD
     H["H2A: choose query"] -->|"discover_counterparties"| R["Host: authorize scope<br/>One embedding + retrieval"]
-    R -->|"Persisted candidates"| E["H2A: evaluate evidence"]
+    R -->|"Candidates in this run"| E["H2A: evaluate evidence"]
     E -->|"Refine query or floor"| H
     E -->|"Select candidate<br/>Reasoning + private brief"| O["open_negotiation"]
-    O --> P["Host: protocol pair opening"]
-    P --> B["Save opportunity + brief<br/>in private session"]
-    B --> A["Our eligible A2A run"]
+    O --> B["Record exact opening<br/>and private delegation"]
+    B --> P["Host: protocol pair opening"]
+    P --> A["Our eligible A2A run<br/>Read saved delegation"]
 ```
 
 | Owner | Authority |
@@ -57,8 +58,8 @@ flowchart TD
 
 ```ts
 discover_counterparties({ query, minSimilarity, networkIds })
-  // -> completed SearchRecord: id, scopeVersion, query, minSimilarity,
-  //    networkIds, candidates, selections, status
+  // -> in-memory SearchRecord: id, scopeVersion, query, minSimilarity,
+  //    networkIds, candidates; valid only in this activation
 
 open_negotiation({ searchId, candidateIntentId, networkId, reasoning, brief })
   // -> { status: 'opened', opportunityId } | { status: 'unavailable' }
@@ -67,16 +68,17 @@ open_negotiation({ searchId, candidateIntentId, networkId, reasoning, brief })
 | Contract | `discover_counterparties` | `open_negotiation` |
 |---|---|---|
 | Inputs | Nonempty trimmed `query`; finite `minSimilarity` in `[0, 1]`; nonempty, distinct `networkIds` within current authorized scope. | Candidate intent/network from the identified completed search; nonempty `reasoning` of at most 2,000 characters; nonempty private `brief`. |
-| Bound identity | Host binds principal and source intent; the model cannot choose another owner. | Resolve candidate owner, statement and similarity from the saved result; accept no model-supplied candidate payload or score. |
+| Bound identity | Host binds principal and source intent; the model cannot choose another owner. | Resolve candidate owner, statement and similarity from the current run's result; accept no model-supplied candidate payload or score. |
 | Evidence | Candidate user/intent/network IDs, actual payload, optional summary, profile and network context, similarity and `recentlyRejected`. | Ground selection in actual statements; similarity is retrieval evidence, not proof of fit or permission. |
-| Effects | Save query/results privately; retain existing `markSearched()` behavior after successful retrieval. Create no opportunity, negotiation or brief. | Save selection and brief; use `PursuitClient.openNegotiation()` for the pair; save the resulting task/brief before our A2A runs. |
-| Failure | Invalid scope/input or failed retrieval returns a tool error and no usable completed result. Empty candidates is a valid completed search. | Reject unknown/incomplete searches, fabricated candidates, stale scope/context or missing brief before opening. Ineligible pair → `unavailable`; infrastructure/uncertain write → error. |
+| Effects | Return query/results to the current loop; retain existing `markSearched()` behavior after successful retrieval. Persist no search cache, opportunity, negotiation or brief. | Record the exact opening instruction and private brief; use `PursuitClient.openNegotiation()` for the pair. Start our A2A only with a committed pair and its saved delegation. |
+| Failure | Invalid scope/input or failed retrieval returns a tool error and no usable result. Empty candidates is a valid completed search. | Reject unknown searches, IDs from another activation, fabricated candidates, stale scope/context or missing brief before opening. Ineligible pair → `unavailable`; infrastructure/uncertain write → error. |
 
 - H2A may revise the query or similarity floor and explicitly search again; retain the reference prompt's starting guidance near `0.2`, with no automatic widening or fixed match quota.
-- Each search retains the host's `PursuitScope.version` as `scopeVersion`; old results remain history but cannot authorize selection after the intent/assignment scope changes.
+- Each in-memory result carries the host's `PursuitScope.version` as `scopeVersion`; an intent/assignment scope change invalidates selection even within the same run.
+- Ending or interrupting H2A discards queries, candidates and search IDs. A later permitted activation searches afresh when useful; it cannot reconstruct historical results from today's retrieval.
 - Recheck principal context before an opening write and live eligibility in the host transaction; newer principal input invalidates a pending decision.
 - Missing principal facts enter [question batches](question-batches.md); missing counterparty facts can be investigated in A2A when pursuing the candidate is justified.
-- `reasoning` is stored in the opportunity's interpretation and must be suitable for disclosure; `brief`, H2A history and private search deliberation stay in session storage.
+- `reasoning` goes in the opportunity's interpretation and must be suitable for disclosure; retain existing selected-candidate evidence in opportunity metadata. The brief remains a private delegation, H2A history remains in messages, and uncommitted search deliberation is discarded.
 - Opening starts coordination; it establishes no agreement, commitment permission or confirmed introduction.
 
 ## Opening and brief ordering
@@ -84,25 +86,26 @@ open_negotiation({ searchId, candidateIntentId, networkId, reasoning, brief })
 ```mermaid
 sequenceDiagram
     participant H as H2A runtime
-    participant S as Private session store
+    participant S as Private output records
     participant P as Host / protocol
     participant A as Our A2A
-    H->>S: Save selection, reasoning and private brief as opening
-    S-->>H: Checkpoint committed
+    H->>S: Record exact pair instruction and private brief
+    S-->>H: Delegation committed
     H->>P: Open exact candidate pair
     P-->>H: Opportunity ID or unavailable
-    H->>S: Save result and opportunity's brief
-    S-->>H: Checkpoint committed
-    H->>A: Start only if currently eligible and brief is saved
+    opt Result is uncertain
+        H->>P: Reconcile exact canonical pair
+        P-->>H: Authoritative pair record
+    end
+    H->>A: Start only with eligible pair and saved delegation
 ```
 
-- Reuse `SearchRecord.selections` for the brief before an opportunity ID exists; on success, save `matches[].brief` with the resolved ID.
-- Search states: `searching` → `complete` or `failed`; interrupted/incomplete searches supply no selectable results. A new retrieval requires another H2A tool call.
-- Selection states: `opening` → `opened` with an ID, `unavailable`, or `failed` for a confirmed failure. Keep an uncertain result unresolved until the exact pair is reconciled; never infer rollback from a missing response.
-- Session saves and pair opening are separate existing transactions; no cross-transaction atomicity claim.
-- Initial checkpoint failure → no opening; result/brief checkpoint failure → no dependent A2A start.
-- Opening notifications can arrive before the second checkpoint: `receive()` may observe the record, but cannot start a task without its persisted brief.
-- Uncertain opening or restart → reconcile the exact canonical pair and saved selection before any new write or dependent start; reuse pair idempotency, add no retry subsystem.
+- Persist the selected opening instruction with principal/intent ownership, exact canonical pair/network identity and private brief. This is an H2A output; retain no candidate list or serialized search/task lifecycle.
+- Define its minimal record identity, outcome handling and link to the resolved opportunity in the [storage decision](spec.md#open-storage-and-coordination-decisions); do not assume record writes and existing pair opening share a transaction.
+- Delegation write failure → no opening. Missing delegation or unresolved pair outcome → no dependent A2A start.
+- Opening notifications may observe the pair, but cannot start our task without the matching committed delegation and current eligibility.
+- An uncertain response requires reading the canonical pair and saved opening instruction before any retry or dependent start; never infer rollback from a missing response. Reuse pair idempotency; add no retry subsystem.
+- After interruption, reconcile committed outputs at the next permitted activation. Do not restore a search or trigger H2A to regenerate the original brief; no opening retry is implied by reconstruction.
 - Repeated selection of an existing pair creates no duplicate and cannot reopen a settled negotiation; refresh its record. Update an established brief through `reconsider()`.
 - Counterparty-opened records receive our own brief at an independent H2A review; the other party's selection or brief grants no authority to our A2A.
 - Discovery results, opening notifications and A2A events never schedule another H2A review; the running H2A loop consumes its tool results directly.
@@ -114,9 +117,10 @@ sequenceDiagram
 | No existing negotiations | H2A can discover, select and open with a private brief in one activation. |
 | Search returns several candidates | No negotiation until H2A explicitly selects a result; it may select none. |
 | Weak or empty results | H2A chooses whether to change query/floor, ask a principal question or stop; no hidden retry pipeline. |
+| H2A ends or is interrupted after retrieval | Discard search results; the next permitted activation may search again and rejects previous search IDs. |
 | Principal corrects the objective after retrieval | Discard pending decisions based on old context; H2A evaluates the correction before another search/opening. |
 | Candidate text gives tool instructions | Treat it as external data; it cannot expand scope or rewrite the brief. |
 | Assignments, membership, lifecycle or executor changes | Reject stale selection; enforce current host ownership and protocol eligibility. |
 | Missing brief or brief save fails | Our A2A does not start. |
-| Opening commits but response/checkpoint is lost | Recover the same pair and saved brief; create no duplicate or unbriefed turn. |
+| Opening commits but response or runtime is lost | Reconcile the same pair and durable delegation; create no duplicate or unbriefed turn and restore no search snapshot. |
 | Inbound opportunity has no local brief | Observe it and wait for independent H2A delegation; no child-triggered review. |

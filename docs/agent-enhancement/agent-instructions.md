@@ -13,7 +13,7 @@
 | Intent injection | Raw own intent orients both H2A and A2A | Only H2A is intent-scoped; A2A's sole private context is its current brief. Protocol retains intent IDs for ownership and pair identity. |
 | `buildNegotiationSystemPrompt` | Shared instructions include queued questions and “accepted commitments” | Common evidence/privacy rules; separate H2A ownership from A2A execution. |
 | `MATCH_INSTRUCTIONS` | Generate a question with `request_principal_input`; wait on its answer | Act within the brief or explicitly `pause_negotiation()`; never generate principal questions. |
-| `PRINCIPAL_INBOX_INSTRUCTIONS` | Pick/attach queued requests; process queued outcomes | Review scope, search history and current records; discover, open with briefs, author questions, rebrief, reply, report outcomes or stay silent. |
+| `PRINCIPAL_INBOX_INSTRUCTIONS` | Pick/attach queued requests; process queued outcomes | Review reconstructed context and current-run search results; discover, open with briefs, author questions, rebrief, reply, report outcomes or stay silent. |
 | Reference `buildPursuitPrompt` | Separate pursuit run plans queries, evaluates candidates and selects openings | Move these instructions into H2A; remove the separate builder and run. |
 | H2A tool use | One `review_principal_inbox` decision; direct input permits only `reply` | Use `discover_counterparties` / `open_negotiation` alongside communication and rebriefing; one activation can take several useful actions. |
 | Authority | Every commitment approval requires match scope | H2A preserves the scope of standing authority or specific approval in question wording and briefs; no question-to-negotiation linkage. |
@@ -26,7 +26,7 @@
 
 | Context | Current A2A | Proposed A2A |
 |---|---|---|
-| Orientation | Raw own intent; optional `communicationReview` | Maintained H2A-owned `brief`; no separate task or intent context |
+| Orientation | Raw own intent; optional `communicationReview` | Latest committed H2A delegation's exact `brief`; reconstruction never generates a replacement or separate task/intent context |
 | Negotiation | Current record, saved A2A turns, counterpart intent, turn count/owner, outcome, guidance/actions/limits | Retain and refresh before action |
 | Principal evidence | Confirmed profile + full `principalConversation` | Relevant facts, conditions and permissions arrive only through the brief; full evidence stays with H2A |
 | Other agreements | `acceptedCommitments` | H2A accounts for relevant conflicts in the brief; no separate agreement input to A2A |
@@ -36,12 +36,12 @@
 
 | `buildPrincipalInboxPrompt` | Current | Proposed |
 |---|---|---|
-| Principal conversation | Full history and `incomingMessages` | Retain, including complete saved answer batches |
-| Displayed questions | Singular `pendingQuestion` | `pendingQuestions` array |
+| Principal conversation | Full history and `incomingMessages` | Reconstruct from canonical messages, including complete saved answer batches and input committed before an interruption |
+| Displayed questions | Singular `pendingQuestion` | Derive `pendingQuestions` from issued, answered and explicitly retired records |
 | Work to review | `requests`, `outcomes`; negotiations only with direct messages | Current relevant negotiations on every H2A review; no child queue |
 | Orientation | Canonical intent in system prompt | Canonical intent + current private briefs |
 | Search scope | Reference supplies authorized assignments to pursuit | Host-owned active network IDs and scope version on every H2A activation |
-| Search evidence | Reference passes `pursuit` history only with direct messages | Queries, floors, candidates, selections and opening outcomes on every H2A review; new tool results feed the same loop |
+| Search evidence | Reference passes `pursuit` history only with direct messages | Current activation's queries/results feed the same loop; no persisted search history. Prior openings come from durable instructions and protocol records |
 | Observed agreements | `acceptedCommitments` | `agreements`, evaluated against authority evidence |
 | Timing/context | No independent context-wait capability | Current time, relevant deadlines and active/passive context; wake contract still open |
 

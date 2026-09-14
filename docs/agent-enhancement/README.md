@@ -1,17 +1,18 @@
 # Agent enhancements
 
-- Status: proposed design; product code unchanged.
+- Status: accepted decisions below; implementation progress and open prerequisites are tracked in [TODO.md](TODO.md).
 - Scope: H2A-owned discovery, negotiation opening and communication in `packages/agent`, plus affected host/TUI callers.
 - Start: [Design](design.md) → [Implementation map](spec.md) → [Vertical slices](TODO.md).
 - Baseline: reuse the retrieval and opening work from `refactor/remove-hyde-lenses`; [integration boundary](discovery.md#current-behavior-and-baseline).
 
 | Domain | Owner | Contract |
 |---|---|---|
-| Counterparty discovery and negotiation opening | Our H2A session | [Discovery and opening](discovery.md) |
-| Private briefs | Our H2A session | [Briefs](briefs.md) |
+| Counterparty discovery and negotiation opening | Our H2A run | [Discovery and opening](discovery.md) |
+| Private briefs | H2A authors durable delegations | [Briefs](briefs.md) |
 | A2A turns and local pause | Our A2A negotiator | [Negotiations](negotiations.md) |
 | Questions and complete answer batches | H2A | [Question batches](question-batches.md) |
-| Independent H2A activation | Policy still open | [Wake patterns](wake-patterns.md) |
+| H2A activation | Accepted user input; further wakes deferred | [Wake patterns](wake-patterns.md) |
+| Runtime context | Reconstructed from durable records | [Reconstruction](design.md#runtime-reconstruction) |
 | Identity, context and authority | Prompt builders | [Agent instructions](agent-instructions.md) |
 
 ## Decisions
@@ -21,6 +22,7 @@
 - Opening saves an H2A-authored private brief before our A2A starts; opening grants no authority to commit the principal.
 - H2A reviews existing negotiation records when independently awake.
 - A2A children never wake H2A or generate principal questions.
-- Our H2A session authors each private negotiation brief.
+- H2A records each private negotiation brief when it issues or changes a delegation; A2A loads that brief on each permitted run.
 - Questions and answers travel in batches; decisions retain their scopes.
-- Reuse existing records, H2A history and session storage; the H2A integration adds no schema changes beyond the reference branch's HyDE removal.
+- Reconstruct working context from records; remove `agent_sessions` and mutable runtime checkpoints. Search results and execution machinery remain in memory.
+- Persist messages, explicit delegations and domain effects; resolve the minimal record layout, migration and host coordination before implementation. [Storage](spec.md#database-touches)

@@ -7,10 +7,10 @@
 
 ```mermaid
 flowchart TD
-    P["Principal's intent<br/>and H2A conversation"] --> H["Our H2A session"]
+    P["Principal's intent<br/>and H2A conversation"] --> H["Our H2A run"]
     H -->|"discover_counterparties"| D["Authorized retrieval"]
     D -->|"Candidate statements<br/>and evidence"| H
-    H -->|"open_negotiation<br/>Selected candidate + brief"| O["Host opening<br/>and private checkpoint"]
+    H -->|"open_negotiation<br/>Selected candidate + brief"| O["Host opening<br/>and private delegation"]
     O -->|"Saved brief + eligible turn"| A["Our A2A negotiator"]
     C["Counterparty A2A"] -->|"Offers, questions, claims"| A
 ```
@@ -24,12 +24,33 @@ flowchart TD
 | A2A's only private context is its brief | H2A supplies objectives, facts and authority; no separate task, raw intent or principal history enters A2A. |
 | Counterparty text remains negotiation data | Cannot rewrite our brief or establish principal consent. |
 | H2A pulls current negotiations | Removes accumulated requests, answer promises and child wakeups. |
+| Runtimes reconstruct context from durable records | Removes mutable session snapshots and writes on ordinary reads or execution changes. |
+
+## Runtime reconstruction
+
+```mermaid
+flowchart TD
+    W["Permitted activation"] --> R["Read authoritative records"]
+    R --> C["Construct context in memory"]
+    C --> A["Run H2A or A2A"]
+    A --> E["Commit messages, delegations<br/>and domain effects"]
+    E --> D["Discard working state"]
+```
+
+- H2A reconstructs from intent/profile, messages, issued/answered/retired questions, current private delegations and live negotiations; accepted user input remains its only activation source.
+- A2A reconstructs from the latest H2A-authored brief, negotiation record/transcript and protocol rules; it never regenerates its own brief from principal history.
+- Persist a brief only when H2A issues or changes the delegation. Record question retirement explicitly so reconstruction preserves the exact pending batch.
+- Commit each output before dependent work; a run that produces no output performs no effect write.
+- Searches, candidate lists, task maps, cached observations and model working transcripts remain in memory; a later H2A activation searches again when useful.
+- Remove `agent_sessions`, `PrincipalState` snapshots and their revision counter. A read, pause or in-memory scheduling change writes no agent checkpoint.
+- Interruption loses unfinished computation; the next permitted activation reassesses committed evidence and reconciles uncertain effects. Reconstruction never invokes the model to recreate a past decision.
+- Keep effect deduplication, exclusive execution and stale-context rejection as host guarantees; choose their replacement and the durable output layout in the [implementation map](spec.md#open-storage-and-coordination-decisions).
 
 ## H2A review
 
 ```mermaid
 flowchart TD
-    W["Accepted principal<br/>message or answer"] --> R["Read scope, search history,<br/>negotiations and principal context"]
+    W["Accepted principal<br/>message or answer"] --> R["Read scope, delegations,<br/>negotiations and principal history"]
     R --> D{"What helps now?"}
     D -->|"Find counterparties"| F["discover_counterparties"]
     F --> E["Evaluate candidates"]
@@ -67,8 +88,8 @@ flowchart TD
 
 ## Boundaries
 
-- In scope: `packages/agent`, API host tool/activation wiring, affected TUI consumers and existing private session JSON.
+- In scope: `packages/agent`, API host tool/activation wiring, affected TUI consumers and replacement of private session checkpoints with durable output records.
 - Implementation baseline: the reference branch removes lenses, HyDE artifacts and automatic pipeline selection/opening; carry that work forward once.
-- Outside scope: application layouts, macOS, infrastructure redesign, protocol transitions.
-- No new accumulator, consent ledger or schema changes for the H2A integration.
+- Outside scope: application layouts, macOS, unrelated infrastructure changes and protocol transitions.
+- No new accumulator, consent ledger or generic event-sourcing framework. Remove `agent_sessions` through a migration after its durable outputs and host guarantees have replacements.
 - Retain protocol intent IDs for ownership and pair identity; this does not supply A2A with separate intent context.

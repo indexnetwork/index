@@ -3,13 +3,14 @@
 - Navigation: [Overview](README.md) · [Implementation map](spec.md).
 - Accepted: intent-scoped H2A exclusively writes and updates our A2A brief when it has useful evidence.
 - A2A receives the brief as its only private principal context; protocol records retain intent IDs for ownership and pair identity.
+- Durability: record a delegation when H2A issues or meaningfully changes it; reconstruct the current brief by reading that output, without an agent session checkpoint.
 
 ## Ownership
 
 ```mermaid
 flowchart TD
-    P["Intent + principal evidence"] --> H["Our H2A session"]
-    H -->|"Save private brief"| B["Existing session storage"]
+    P["Intent + principal evidence"] --> H["Our H2A run"]
+    H -->|"Issue or change brief"| B["Private delegation records"]
     B -->|"Read current brief"| A["Our A2A negotiator"]
     C["Counterparty A2A"] -->|"Negotiation data"| A
     A -->|"Permitted terms only"| C
@@ -33,7 +34,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant H as H2A
-    participant S as Session store
+    participant S as Private delegation records
     participant A as Our A2A
     H->>H: Select work and write briefs
     H->>S: Save selected briefs atomically
@@ -45,8 +46,8 @@ sequenceDiagram
 
 - Proposed method for existing opportunities: `reconsider(updates: readonly { opportunityId: string; brief: string }[])`.
 - Save failure → no dependent resume.
-- Reuse saved/runtime `reviewNote` as `brief`; replace turn input `communicationReview` in place.
-- Retain the brief across ordinary turns; no H2A call or brief reset after each read.
+- Replace runtime `reviewNote` with a brief loaded from the latest committed delegation; replace turn input `communicationReview` in place. Handle old saved notes through the [one-time conversion](spec.md#open-storage-and-coordination-decisions).
+- Ordinary turns read the brief without rewriting it. After interruption, load the exact delegated text; generating it again from principal history would be a new H2A decision and is not reconstruction.
 - Keep per-opportunity briefs in turn inputs; never mutate a shared system prompt.
 - New principal input invalidates stale work; older briefs cannot override newer instructions.
 - No initial brief → wait for H2A delegation; never synthesize one in A2A or wake H2A to obtain it.

@@ -1,14 +1,15 @@
 # Implementation map
 
 - Navigation: [Overview](README.md) · [Design](design.md).
-- Status: proposed; resolve [wake-policy decisions](wake-patterns.md#open-decisions) before end-to-end implementation.
+- Accepted: [runtime reconstruction](design.md#runtime-reconstruction) replaces session checkpoints; resolve the storage and coordination decisions below before that implementation slice.
+- Activation: accepted user input only; further [wake-policy decisions](wake-patterns.md#open-decisions) remain deferred.
 - Agent paths below: relative to `packages/agent/src`; change existing behavior in place.
 - Baseline: [reference branch and integration boundary](discovery.md#current-behavior-and-baseline); reference-only symbols below do not exist in this worktree yet.
 
 ## Implementation order
 
 - Follow [TODO.md](TODO.md) one small slice at a time; inspect the code and discuss or revise details during implementation.
-- Resolve saved-state handling before changing checkpoint shape; resolve wake/deadline/recovery policy before the dependent slices.
+- Choose minimal durable output records, conversion and host coordination before removing checkpoint storage; do not invent additional wake sources to recover an interrupted run.
 
 ## Functions
 
@@ -16,31 +17,32 @@
 |---|---|---|
 | `negotiation/negotiation.agent.ts`: reference `pursue`, `runPursuit` | Move search/open tool handlers into H2A's tool set; remove the separate model run and its lifecycle. | [Discovery and opening](discovery.md) |
 | `negotiation/principal.inbox.ts`: `review`, `validate`, `apply` | Replace `maxSteps: 1`, one-decision and reply-only restrictions with H2A tool use; consume search/open results and current negotiations, then apply questions, briefs and messages. | [Discovery and opening](discovery.md), [design](design.md) |
-| `pursuit/pursuit.types.ts`: reference `CandidateQuery`, `PursuitClient`, `SearchRecord` | Reuse query/candidate/host contracts; add each search's scope version and each opening selection's private brief. | [Tool contracts](discovery.md#tool-contracts) |
+| `pursuit/pursuit.types.ts`: reference `CandidateQuery`, `PursuitClient`, `SearchRecord` | Reuse query/candidate/host contracts; keep scope versions and results within one activation. Remove persisted search history and its lifecycle. | [Tool contracts](discovery.md#tool-contracts) |
 | `negotiation/negotiation.agent.ts`: `tools`, `run` | Replace `request_principal_input` with explicit `pause_negotiation()`. | [Negotiations](negotiations.md) |
 | `receive`, `drain`, `remember`, `complete` | Observe records without H2A scheduling or question mutation; start only with a persisted local brief and current eligibility. | [Negotiations](negotiations.md) |
 | Proposed `reconsider(updates)` | Save selected opportunity/brief pairs, invalidate stale context, resume eligible targets. | [Briefs](briefs.md) |
-| `checkpoint`, `restore` | Persist search/opening evidence, briefs and H2A state; reconcile uncertain openings without a second pursuit loop or blanket reruns. | [Opening order](discovery.md#opening-and-brief-ordering), [wake patterns](wake-patterns.md) |
+| `checkpoint`, `restore`; `negotiation/principal.state.ts`: `PrincipalState`, `PrincipalStore` | Remove snapshot/save contracts. Read records to construct fresh context; write explicit outputs through host operations and reconcile uncertain effects. | [Reconstruction](design.md#runtime-reconstruction), [opening order](discovery.md#opening-and-brief-ordering) |
 | `message`, `answer`, `pending` | Allow direct messages during a batch; expose questions and accept answers as arrays. | [Question batches](question-batches.md) |
-| `cancel`, `snapshot`, `restore` | Preserve history and stable questions; only H2A retires obsolete questions. | [Question batches](question-batches.md) |
+| `cancel`, `snapshot`, `restore` | Remove inbox snapshots; derive pending questions from durable question/answer/retirement records. Only H2A retires obsolete questions. | [Question batches](question-batches.md) |
 | `prompts/agent.prompt.ts` | Fold reference `buildPursuitPrompt` instructions into H2A; update identity, H2A/A2A instructions and inputs. Delete the unused builder. | [Agent instructions](agent-instructions.md) |
-| `index.ts`, README, examples | Export `PrincipalAnswer`; update callers and terminology. | [Question batches](question-batches.md) |
+| `index.ts`, README, examples | Export `PrincipalAnswer` and agreed host operations; remove checkpoint-only exports and update all callers. | [Question batches](question-batches.md), [integration](#integration) |
 
 ## State changes
 
-| Existing | Proposed | Owner |
+| Existing / reference | Durable source | Reconstructed or ephemeral context |
 |---|---|---|
-| Reference `PrincipalState.pursuit` | Retain private searches, selections and summary; remove separate pursuit-run status as a scheduling gate | H2A |
-| Reference `SearchRecord` / selections | `scopeVersion` per search; initial `brief` on the opening selection before the opportunity ID exists | H2A |
-| Negotiation records and saved turns | Reuse through existing client/host interfaces | Protocol / host |
-| `InboxState.question` | `questions: PrincipalQuestion[]` | H2A |
-| Runtime/saved match `reviewNote` | Maintained `brief: string`, retained after reading | H2A writes; A2A reads |
-| Turn input `communicationReview` | `brief` | Prompt builder |
-| A2A raw intent, principal profile/history and other commitments | Remove separate context inputs; H2A writes relevant objectives, evidence and authority into `brief` | H2A |
-| H2A question `scope` / `matches` | Remove question-to-negotiation linkage; preserve permission limits in question wording and H2A interpretation | H2A |
-| `commitments` / `acceptedCommitments` | Factual `agreements`; authority evaluated separately | Personal agent |
-| H2A messages and incoming-message IDs | Retain | H2A |
-| Task execution guards / context version | Retain; pause ends one run | Runtime |
+| `PrincipalState` / `agent_sessions.state` | Explicit outputs and existing domain records | Construct H2A/A2A context on demand; no saved runtime snapshot |
+| `PrincipalState.pursuit` / `SearchRecord` | Only the selected opening instruction and existing opportunity evidence survive a run | Query, candidates, `scopeVersion` and search IDs stay in memory; no cross-activation search history |
+| Saved match `record` and `commitments` | Protocol negotiations and turns | Read current negotiations and derive factual `agreements`; assess authority separately |
+| `InboxState.question` | Issued questions, complete answer batches and explicit retirements | Derive `PrincipalQuestion[]`; preserve wording, IDs, options and batch membership |
+| Match `reviewNote` / turn `communicationReview` | H2A-authored private delegation | Load current `brief` for each A2A run; persist only issuance or a meaningful update |
+| A2A raw intent, principal profile/history and other commitments | Principal evidence remains available to H2A | Remove separate A2A inputs; H2A supplies applicable objectives, evidence and authority through the brief |
+| Question `scope` / `matches` | Question and answer wording retain permission limits | Remove question-to-negotiation linkage |
+| H2A messages / `incomingMessageIds` | Canonical messages, including accepted input | Rebuild history at activation; current input scheduling remains in memory |
+| Task maps, cached observations, model transcripts and context version | No runtime snapshot | Rebuild or discard with the run; host effect guards remain required |
+
+- Durable output records need stable identity and ordering; they must not mirror `PrincipalState` under another table or JSON field.
+- No saved “processed input” snapshot: after interruption, committed input remains in history for the next permitted review. Exact continuation of an unfinished model/tool loop is not promised.
 
 ## Delete
 
@@ -51,22 +53,23 @@
 - Completed in the [first slice](TODO.md#first-slice-prevent-a2a-from-waking-h2a): `schedule(delay)`, its timer, `immediate`, queue-based `hasWork()`, request `reviewed` and automatic inbox `resume()` scheduling; the unused generic timer-driven `Inbox` and its exports are also deleted.
 - Previous proposed accumulator fields: `reviewPending`, `deferredReview`, persisted stall reasons and obstacle queues.
 - Separate A2A task/intent orientation and direct principal-context inputs; retain protocol intent IDs and execution guards.
+- `PrincipalState`, `InboxState` snapshot serialization, `PrincipalStore.load/save/close`, `MemoryPrincipalStore` and checkpoint-only callers/exports after replacing their host responsibilities.
+- `agent_sessions`, its revision counter, heartbeat/lease implementation and persisted search/task copies after data conversion and replacement of required execution guards.
 
 ## Database touches
 
-- H2A integration schema/DDL: **no new tables, columns, indexes or enum values**; the reference branch separately drops `protocol_hyde_documents`.
-- Data contract: change existing checkpoint JSON; this still requires a saved-session rollout decision.
-- Access: `packages/agent` uses `PrincipalStore`, `NegotiationClient` and reference `PursuitClient`; the host owns SQL and retrieval dependencies.
-- `scopeVersion`, `brief`, search selections and question arrays are JSON fields inside `agent_sessions.state`, not SQL columns.
-- Keep one `agent_sessions` row per principal/intent; A2A uses its existing `protocol_negotiations` record and private `matches[]` brief, with no separate task or A2A session table.
+- Schema/DDL: remove `agent_sessions` through a migration; any minimal schema support for durable outputs depends on the storage decision below. The earlier no-schema-change constraint is superseded. The reference branch separately drops `protocol_hyde_documents`.
+- Data conversion: extract required question status, usable delegation evidence and unresolved opening identity before dropping checkpoints; discard search caches and runtime snapshots. Preserve canonical messages and protocol records; add no runtime dual-read path.
+- Access: replace `PrincipalStore` with record reads and explicit output writes; retain `NegotiationClient` and reference `PursuitClient` responsibilities. The host owns SQL, retrieval and concurrency control.
+- Store private delegations and explicit question retirements as domain outputs. Do not move the checkpoint blob into `conversation_metadata`, add a generic event journal, or create an A2A session table.
+- Resolve H2A history through the existing agent DM and intent-tagged messages; removing session linkage must preserve that read path.
 - Table names below are SQL names; columns list the relevant reads/writes, with ordinary IDs/timestamps supplied by existing helpers.
 
 | SQL table | Existing columns | Read / write and contract |
 |---|---|---|
-| `agent_sessions` | `state` | Read/update private checkpoint: retain `pursuit.searches` and selections; add scope versions and initial briefs. Replace `inbox.question` with `inbox.questions`, `matches[].reviewNote` with `brief`; remove child queues and separate pursuit-run status. |
-| `agent_sessions` | `user_id`, `intent_id`, `conversation_id`, `revision`, `updated_at`, `lease_token`, `lease_expires_at` | Retain session identity, revision-checked saves and lease lifecycle; no wake/deadline columns. |
-| `messages` | `conversation_id`, `session_id`, `sender_id`, `role`, `parts`, `metadata`, `created_at` | Preserve canonical H2A history and full text in `parts`; retain intent and `principalMessage` identity in `metadata`, removing negotiation linkage from new questions. Save all batch answers with the checkpoint. |
-| `conversation_sessions` / `conversations` | Session: `conversation_id`, `started_at`, `last_message_at`; conversation: `last_message_at`, `updated_at` | Existing message helper assigns the session and updates activity within the checkpoint transaction. |
+| `agent_sessions` | All columns, including `state`, `revision`, `conversation_id`, `lease_token`, `lease_expires_at` | Remove the table and callers after conversion and host guard replacement; no per-activation checkpoint writes. |
+| `messages` | `conversation_id`, `session_id`, `sender_id`, `role`, `parts`, `metadata`, `created_at` | Preserve canonical H2A history and full text; retain intent/message identity, exact questions and batch membership, removing negotiation linkage from new questions. Save each complete answer batch atomically. |
+| `conversation_sessions` / `conversations` | Session: `conversation_id`, `started_at`, `last_message_at`; conversation: `last_message_at`, `updated_at` | Existing message helper assigns the timeline session and updates activity within the message transaction; these are independent of the removed runtime checkpoints. |
 | `protocol_intents` | `user_id`, `payload`, `summary`, `embedding`, `status`, `archived_at`, `updated_at`, `first_discovery_succeeded_at` | Read real intent embeddings, statements and lifecycle; retain reference `markSearched()` updating `first_discovery_succeeded_at` after a successful search. No query embedding/artifact is stored here. |
 | `protocol_intent_networks` | `intent_id`, `network_id`, `created_at` | Read assignments and their contribution to the scope version; tools do not change assignments. |
 | `protocol_network_members` | `user_id`, `network_id`, `deleted_at`, `updated_at` | Read current memberships and their revision for scope/eligibility checks. |
@@ -79,36 +82,47 @@
 
 ```mermaid
 flowchart TD
-    V["Validate complete batch"] --> T["Existing DB transaction"]
-    T --> F["Check lease and revision"]
-    F --> S["Update checkpoint<br/>Insert all answer messages"]
+    V["Receive complete batch"] --> T["Host transaction"]
+    T --> F["Re-read issued questions,<br/>answers and retirements"]
+    F --> S["Validate current batch<br/>Insert all answers once"]
     S --> C["Commit together"]
-    C --> H["H2A interprets all answers"]
-    H --> B["Save selected briefs"]
+    C --> H["Reconstruct H2A context<br/>Interpret all answers"]
+    H --> B["Record selected delegations"]
     B --> R["Resume eligible A2A work"]
 ```
 
-- Rollback → no partial answers, cleared batch, notifications or dependent resumes.
-- Opening has separate checkpoint/pair transactions; use [opening and brief ordering](discovery.md#opening-and-brief-ordering), including reconciliation after an uncertain write.
-- Publish messages/pending-batch notifications only after commit; update the adapter's singular question tracking.
-- Before rollout: decide conversion of existing checkpoint JSON; preserve H2A history and displayed questions; add no runtime dual-read path.
+- Validate and insert answers under host concurrency control; the derived pending batch changes only after commit. Rollback → no partial answers, notifications or dependent resumes.
+- Opening requires a durable delegation tied to the exact pair before our A2A starts; use [opening and brief ordering](discovery.md#opening-and-brief-ordering). Do not assume separate record and pair writes are atomic.
+- Publish messages/pending-batch notifications only after commit; duplicate requests must not publish the same effect again.
 - Sources: [domain schema](../../services/api/src/schemas/database.schema.ts), [conversation schema](../../services/api/src/schemas/conversation.schema.ts), [session adapter](../../services/api/src/adapters/agent-session.database.adapter.ts), [opening adapter](../../services/api/src/adapters/negotiation.database.adapter.ts).
+
+## Open storage and coordination decisions
+
+| Decision before implementation | Required result |
+|---|---|
+| Minimal output record layout | Persist principal/intent ownership, exact delegated target and brief, stable question/batch identity and explicit retirements. Define authoritative ordering and reads; keep private outputs out of counterparty records. |
+| Opening persistence boundary | Preserve only the exact opening instruction, private brief and evidence needed to reconcile an uncertain effect. Define the record/pair transaction boundary; do not persist the search cache or a task lifecycle. |
+| Host execution ownership and duplicate delivery | Replace the session lease without competing executors or duplicate effects. Define how repeated notifications leave unchanged paused work idle across reconstruction; turn-count checks alone do not protect H2A writes. |
+| Stale-context rejection | Before committing an effect, reject decisions superseded by principal input, delegation changes, scope/executor changes or negotiation turns. Do not reintroduce a revisioned agent snapshot. |
+| One-time conversion | Preserve exact current questions, principal history and unresolved effects. Decide which old review notes contain usable delegation evidence; never manufacture authority from a transient note. |
+
+- Keep these decisions open until the storage slice; this design does not select a new coordination service or prescribe a general replay framework.
 
 ## Integration
 
 | Decision | Requirement |
 |---|---|
-| Breaking API/checkpoint change | Replace the separate `pursue()` entry point in all callers; require the opening brief; update batch APIs and saved-state shape together. Decide conversion before implementation; preserve principal history, displayed questions and prior search/opening evidence. |
+| Breaking API/storage change | Replace `pursue()` and checkpoint interfaces in all callers; require the opening brief and update batch APIs with their record operations. Convert required durable evidence before deleting `agent_sessions`; historical search caches are no longer retained. |
 | Generic `Agent.ask_user` | Keep unchanged. |
 | Protocol transitions | Reuse `decideNegotiationOpening`, `pairKeyOf`, `openCounterparties` and current turn/settlement rules; this H2A integration changes no public protocol behavior. |
 | Release | Bump touched packages under repository SemVer rules, sync `bun.lock` and target `dev` when implementing; carry reference breaking-change releases with that baseline. |
 
-- Consumers: `packages/agent-tui/src/negotiation.tui.ts`, reference `negotiation.lab.ts`, and agent README examples; drive the same H2A tools with synthetic retrieval/opening in the scenario host.
-- Host: `services/api/src/services/personal-agent.service.ts`; accepted activations enter H2A after refreshing scope and current records.
-- Storage: `services/api/src/adapters/agent-session.database.adapter.ts`; retain reference `pursuitScope()` / `markSearched()` and update singular question tracking.
+- Consumers: `packages/agent-tui/src/negotiation.tui.ts`, reference `negotiation.lab.ts`, and agent README examples; replace `MemoryPrincipalStore` with in-memory records implementing the same host operations, plus synthetic retrieval/opening.
+- Host: `services/api/src/services/personal-agent.service.ts`; construct context per accepted activation and replace dependence on a permanently restored principal session.
+- Storage: replace `services/api/src/adapters/agent-session.database.adapter.ts` checkpoint operations; retain reference `pursuitScope()` / `markSearched()` responsibilities and canonical message helpers. Update lease callers in `agent.database.adapter.ts` and `negotiation.database.adapter.ts`, plus session-dependent CLI tools.
 - Composition: `services/api/src/lib/agent/negotiation.host.ts`; replace `agent.pursue()` in `scan()`, keeping negotiation notifications observational for H2A.
-- Tool operations: reference `services/api/src/lib/agent/pursuit.ts`: keep `createPursuitClient()` and its host/protocol enforcement; the private brief stays in the agent checkpoint.
-- Intent activation: reference `services/api/src/lib/intent/indexing.ts`: reuse post-commit `requestIntentPursuit()` / `intent.pursuit` events; no lens/HyDE work returns.
+- Tool operations: reference `services/api/src/lib/agent/pursuit.ts`: keep `createPursuitClient()` and host/protocol enforcement; persist private delegation outputs separately from shareable opportunity evidence.
+- Intent activation: reference `services/api/src/lib/intent/indexing.ts`: preserve scope/readiness data, but defer `requestIntentPursuit()` / `intent.pursuit` as H2A activation sources under the accepted user-only policy; no lens/HyDE work returns.
 - No compatibility APIs or new retry framework; preserve explicit malformed-decision and uncertain-write failures.
 
 ## Verification for implementation
@@ -116,8 +130,8 @@ flowchart TD
 | Check | Coverage |
 |---|---|
 | Existing agent `typecheck`, `test`, `build` scripts | Changed interfaces and behavior |
-| API `typecheck`; agent-TUI `check` and `build` after agent build | H2A tools, activation, batch API and checkpoint integration |
-| Existing scenarios or temporary checks | [Discovery/opening acceptance](discovery.md#acceptance), atomic batches, scoped authority, pause, restart, stale decisions, repeated review |
+| API `typecheck`; agent-TUI `check` and `build` after agent build | H2A tools, activation, batch API and durable record operations |
+| Existing scenarios or temporary checks | [Discovery/opening acceptance](discovery.md#acceptance), reconstruction without checkpoint writes, exact questions/retirements, atomic batches, scoped authority, pause, restart, duplicate effects and stale decisions |
 | [Model acceptance cases](agent-instructions.md#acceptance-cases) | Instruction behavior; report separately from structural checks |
 | Root lint; `check:lockfile-versions` after implementation version bumps | Repository boundaries and workspace versions; run protocol `architecture:check` if its boundaries change |
 

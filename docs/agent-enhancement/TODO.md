@@ -3,6 +3,7 @@
 - Accepted now: H2A wakes only on an accepted user message, including an explicit answer to a displayed question. A2A never wakes H2A.
 - Accepted ownership: intent-scoped H2A owns questions and decides whether to ask; negotiations stall independently, with no question linkage or answer waits.
 - Accepted A2A context: only the H2A-maintained private brief; no separate task, raw intent, principal profile, H2A history or question context. Keep protocol intent IDs for ownership and pair identity.
+- Accepted runtime: reconstruct context from durable records at each permitted activation; remove `agent_sessions` and mutable `PrincipalState` checkpoints. Persist messages, explicit delegations and domain effects; keep searches and execution machinery in memory. [Reconstruction](design.md#runtime-reconstruction)
 - Ownership: user input activates H2A; A2A continues eligible negotiation work and records observations while H2A is idle.
 - One small slice at a time: start with the wake boundary below, then inspect and revise the remaining plan as needed.
 - Each slice ends with working behavior and a focused check. Detailed contracts stay in the linked specs.
@@ -38,26 +39,29 @@
 
 - [x] Review `refactor/remove-hyde-lenses` at `7e09f7998`, including its existing migration and automatic pursuit callers. [Reuse review](discovery.md#reference-reuse-review)
 - [ ] Reuse its retrieval/opening code and migration with the H2A discovery/opening slices; keep the separate pursuit loop out of this branch. [Baseline](discovery.md#current-behavior-and-baseline)
-- [ ] Agree checkpoint JSON conversion while preserving history, questions and search evidence. [Storage](spec.md#database-touches)
+- [ ] Choose the minimal record layout for private delegations, question retirements and opening reconciliation; define ownership, duplicate-effect and stale-context checks before removing the session lease. [Storage decisions](spec.md#open-storage-and-coordination-decisions)
+- [ ] Plan one-time conversion of existing questions, usable delegation evidence and unresolved openings before dropping `agent_sessions`; discard runtime snapshots and search caches, preserving canonical history. [Storage](spec.md#database-touches)
 - Deletion first: replace the request/question bridge with independent stall and brief behavior, deleting the child queues and answer promises together with their callers.
-- Database audit: `agent_sessions` still stores history linkage, checkpoints and execution leases. `protocol_hyde_documents` still has live discovery callers; remove it with the reference discovery replacement and its existing migration.
+- Database audit: `agent_sessions` currently stores history linkage, checkpoints and execution leases; replace its callers and required host guarantees, then delete the table. `protocol_hyde_documents` still has live discovery callers; remove it with the reference discovery replacement and its existing migration.
 
 ## Remaining vertical slices
 
 - [x] Correct personal-agent identity and verify the existing confirmed-principal-context input to H2A. [Instructions](agent-instructions.md#system-prompts)
 - Identity verification: agent typecheck, all 26 existing tests and build pass; focused lint passes with one existing warning. Live-model behavior remains unchecked. Identity slice approved for commit and push.
-- [ ] Let H2A search and refine queries with `discover_counterparties`; remove the separate pursuit loop. [Discovery](discovery.md#tool-contracts)
+- [ ] Replace `PrincipalState` / `PrincipalStore` snapshot persistence with record reads and explicit effect writes; reconstruct H2A and A2A context and discard each run's working state. [Reconstruction](design.md#runtime-reconstruction)
+- [ ] Let H2A search and refine queries with `discover_counterparties`; remove the separate pursuit loop and persisted search history. Search IDs and candidates live only within the current activation. [Discovery](discovery.md#tool-contracts)
 - [ ] Let H2A open a selected candidate, saving its private brief before A2A starts. [Opening](discovery.md#opening-and-brief-ordering)
 - [ ] Keep briefs across eligible A2A turns while H2A is idle; remove separate A2A task/intent and direct principal-context inputs, preserving protocol identity, turn and concurrency guards. [Negotiations](negotiations.md#local-execution)
 - [ ] Review the whole intent, including inbound/passive work, and save selected briefs before resuming. [Briefs](briefs.md#handoff)
 - [ ] Preserve scoped authority and conditions; distinguish agreements from permission and execution. [Authority](agent-instructions.md#authority-boundary)
 - [ ] Replace A2A input requests with local pause; let H2A author questions and remove question linkage, child queues and answer waits. [Pause](negotiations.md#local-execution)
-- [ ] Present stable, independent H2A question batches with clear wording and suggestions, without negotiation references. [Questions](question-batches.md#ask)
+- [ ] Present stable, independent H2A question batches with clear wording and suggestions; derive pending questions from issued, answered and explicitly retired records, without negotiation references or a saved pending array. [Questions](question-batches.md#ask)
 - [ ] Save complete answer batches atomically, update callers, then reconsider the whole intent. [Answers](question-batches.md#answer)
 - [ ] Accept direct corrections during a batch; retire obsolete questions and invalidate stale decisions. [Corrections](question-batches.md#answer)
 - [ ] During a user-triggered review, send useful replies/outcome updates, combine useful actions, and otherwise stay silent. [H2A review](design.md#h2a-review)
 - [ ] Let H2A end a review and wait for the next user message without blocking A2A or holding a model call open. [Waiting](wake-patterns.md#agent-judgment-vs-runtime-guarantees)
-- [ ] Restore history, questions, briefs and uncertain openings without duplicates or blanket reruns. [Recovery](discovery.md#opening-and-brief-ordering)
+- [ ] Reconstruct from committed history, questions, delegations and protocol records after interruption; reconcile uncertain openings and reassess only at the next permitted activation, without restoring an execution snapshot or blanket reruns. [Recovery](discovery.md#opening-and-brief-ordering)
+- [ ] Apply the agreed data conversion, remove `agent_sessions`, its revision counter and checkpoint-only APIs/callers; verify effect deduplication, ownership and stale-decision rejection independently of session state. [Storage](spec.md#database-touches)
 
 ## Deferred wake behavior
 

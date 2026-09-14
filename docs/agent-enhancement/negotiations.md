@@ -5,16 +5,18 @@
 - Accepted context: A2A works from its brief, negotiation transcript and protocol rules; intent, principal evidence and questions belong to H2A.
 - Entry: H2A selects/opens the counterpart and saves a private brief; inbound opportunities wait for our H2A's own delegation.
 
-## Session lifetime
+## Runtime lifetime
 
 | Component | Current behavior | Proposed behavior |
 |---|---|---|
-| Personal-agent runtime | `PersonalAgentService` keeps one hosted runtime per eligible principal/intent, independent of HTTP requests and browser connections. Its lease covers H2A and the local A2A tasks. | Retain the host lifecycle and shared lease; H2A can be idle while A2A runs. |
+| Personal-agent runtime | `PersonalAgentService` keeps one hosted runtime per eligible principal/intent, independent of HTTP requests and browser connections. Its lease covers H2A and the local A2A tasks. | Construct disposable context per permitted activation; retain host ownership guarantees through the replacement chosen in the storage slice. H2A can be idle while A2A runs. |
 | A2A execution | One task per opportunity; negotiation events reach `receive()` / `drain()`. On our turn, build fresh model working history from the saved negotiation and principal context. | Retain event-driven turns and execution guards; require a persisted brief as the only private context. Remove separate task/intent orientation. |
 | H2A activation | Accepted principal input schedules reviews. `request_principal_input` still keeps A2A waiting for inbox resolution. | Retain user-only activation; A2A stalls locally with no question, answer wait or H2A wakeup. |
-| Durable context | H2A messages and `agent_sessions.state`; shared negotiation records and turn log. | Reuse storage; private briefs and search history join the checkpoint. Neither an open chat nor an ongoing H2A model call is required. |
+| Durable context | H2A messages and `agent_sessions.state`; shared negotiation records and turn log. | Reconstruct from canonical messages, explicit delegations/question retirements and protocol records; delete session snapshots and persisted search history. |
 
 - H2A attention is required for initial delegation and brief updates; unbriefed/stalled work waits for a user-triggered review. Further [wake timing](wake-patterns.md#open-decisions) remains deferred.
+- A2A loads its current delegated brief and live protocol record on each permitted run. Read/observe operations and local scheduling changes write no agent checkpoint.
+- Losing a process discards execution machinery; reconstruct from committed records at the next permitted activation. Resolve [duplicate delivery and ownership](spec.md#open-storage-and-coordination-decisions) before deleting the existing lease.
 - Sources: [personal-agent service](../../services/api/src/services/personal-agent.service.ts), [agent runtime](../../packages/agent/src/negotiation/negotiation.agent.ts).
 
 ## Local execution
@@ -35,8 +37,8 @@ flowchart TD
 | `submit_turn` | At most one attempt; preserve current actions, context-version and expected-turn-count checks. |
 | `run` | Accept explicit pause or a submission result; arbitrary prose alone is not a valid completion. |
 | `receive` / `drain` | Observe opened/updated records; require a persisted local brief before execution. Avoid concurrent runs and repeats for unchanged observations. |
-| `remember` / `complete` | Record observed state; never enqueue H2A work or mutate displayed questions. |
-| `restore` | Reconcile records; never restart every unfinished negotiation automatically. |
+| `remember` / `complete` | Keep observations in memory; actual turns/outcomes remain in protocol records. Never checkpoint, enqueue H2A work or mutate displayed questions. |
+| Replacement for `restore` | Reconstruct from the current brief and records; reconcile uncertain effects and never restart every unfinished negotiation automatically. |
 
 - Pause writes no protocol turn, outcome, question, pending-answer promise or stall reason.
 - Never pause or retry after a failed/uncertain submission attempt; retain the actual failure.
