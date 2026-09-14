@@ -132,6 +132,7 @@ export class HostedNegotiator {
             ? `Log so far:\n${record.turns.map((turn) => `${turn.seatUserId === userId ? 'you' : 'them'} · ${turn.action}: ${turn.message}`).join('\n')}`
             : 'No turns yet; you open.',
           `Available actions: ${record.protocol.availableActions.join(', ')}.`,
+          'You cannot reach your principal mid-negotiation, so never settle around a gap. When a decision-critical fact is missing, ask for it in the message: counter with the question, or raise it in your opening proposal. Accept or decline only once the log answers it.',
           `Keep the message under ${record.protocol.messageLimit} characters. Call submit_turn once.`,
         ].join('\n\n'),
       },
