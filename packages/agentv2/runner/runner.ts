@@ -21,8 +21,12 @@ export interface Runner {
 
 /**
  * Work every active signal this owner has: wake on the triggers that deserve
- * one, negotiate on a counterpart's turn, and reflect once a wave of
- * negotiators has finished. A negotiator finishing alone never wakes anything.
+ * one, and reflect once a wave of negotiators has finished. A negotiator
+ * finishing alone never wakes anything.
+ *
+ * A counterpart's turn is the passive trigger: it works that one opportunity
+ * and stops. No sibling is decided, the principal is not addressed, and no
+ * wake follows.
  *
  * @param options - Index, the model, and where to report.
  * @returns A handle that stops everything.
@@ -34,6 +38,7 @@ export function startRunner(options: RunnerOptions): Runner {
   const waking = new Set<string>();
   const again = new Set<string>();
   const waves = new Map<string, Set<string>>();
+  const working = new Set<string>();
   let stopped = false;
 
   const runtime = () => ({ model, now, signal: abort.signal, log });
@@ -59,21 +64,49 @@ export function startRunner(options: RunnerOptions): Runner {
     });
   }
 
+  /**
+   * @param intent - The signal this negotiation belongs to.
+   * @param opportunityId - The negotiation to work.
+   */
+  async function negotiate(intent: Intent, opportunityId: string): Promise<void> {
+    const result = await negotiateOpportunity(client, opportunityId, intent, runtime());
+    log("turn" in result ? `turn ${result.turn.action} on ${opportunityId}` : `stall on ${opportunityId}: ${result.stall.reason}`);
+  }
+
   function negotiateNow(intentId: string, opportunityId: string): void {
     const intent = intents.get(intentId);
-    if (stopped || !intent) return;
+    if (stopped || !intent || working.has(opportunityId)) return;
     const wave = waves.get(intentId) ?? new Set<string>();
     waves.set(intentId, wave);
-    if (wave.has(opportunityId)) return;
+    working.add(opportunityId);
     wave.add(opportunityId);
-    void (async () => {
-      const result = await negotiateOpportunity(client, opportunityId, intent, runtime());
-      log("turn" in result ? `turn ${result.turn.action} on ${opportunityId}` : `stall on ${opportunityId}: ${result.stall.reason}`);
-    })().catch(onError).finally(() => {
+    void negotiate(intent, opportunityId).catch(onError).finally(() => {
+      working.delete(opportunityId);
       wave.delete(opportunityId);
       // The reflection loop: one wake when the wave empties, not per negotiator.
       if (!wave.size && !stopped) wakeNow(intentId);
     });
+  }
+
+  /**
+   * A counterpart's turn: decide this one opportunity, take its turn, stop.
+   *
+   * @param intentId - The signal it belongs to.
+   * @param opportunityId - The negotiation they moved on.
+   */
+  function inboundTurn(intentId: string, opportunityId: string): void {
+    const intent = intents.get(intentId);
+    if (stopped || !intent || working.has(opportunityId)) return;
+    working.add(opportunityId);
+    void (async () => {
+      // A wake already running over this signal decides this opportunity too,
+      // so a focused one would only race it for the same brief.
+      if (!waking.has(intentId)) {
+        log(`inbound ${opportunityId}`);
+        await wakeIntent(client, intent, { ...runtime(), focus: opportunityId });
+      }
+      await negotiate(intent, opportunityId);
+    })().catch(onError).finally(() => working.delete(opportunityId));
   }
 
   async function refresh(): Promise<void> {
@@ -102,7 +135,7 @@ export function startRunner(options: RunnerOptions): Runner {
     switch (event.type) {
       case "negotiation.turn":
         log(`event ${event.type} on ${event.data.opportunityId}`);
-        negotiateNow(event.data.intentId, event.data.opportunityId);
+        inboundTurn(event.data.intentId, event.data.opportunityId);
         break;
       case "negotiation.opened":
       case "principal.input":
