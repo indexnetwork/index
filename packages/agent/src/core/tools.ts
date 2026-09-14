@@ -20,15 +20,15 @@ export interface ToolContext {
  * anything else that needs a human or another system to answer can work
  * the same way.
  */
-export interface Tool<I = Record<string, unknown>> {
+export interface Tool<I = unknown> {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
-  run?: (input: I, context: ToolContext) => unknown | Promise<unknown>;
+  run?(input: I, context: ToolContext): unknown | Promise<unknown>;
   suspends?: boolean;
 }
 
-export function toolDefinition(tool: Tool<never>): ToolDefinition {
+export function toolDefinition(tool: Tool): ToolDefinition {
   return {
     type: "function",
     function: {
@@ -74,6 +74,6 @@ export function askUserTool(): Tool<{ question: string; options?: string[] }> {
 /** The tools an agent has when you don't give it any: ask the party it
  * acts for. Index Network operations are injected by the host, which owns
  * that transport and its auth. */
-export function defaultTools(): Tool<never>[] {
-  return [askUserTool() as Tool<never>];
+export function defaultTools(): Tool[] {
+  return [askUserTool()];
 }

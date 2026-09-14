@@ -9,19 +9,19 @@
 
 | Location | Observed behavior | Plan |
 |---|---|---|
-| This worktree's product code | Lens/HyDE discovery produces pairs; API discovery opens them. H2A reviews requests and outcomes. | Replace using the reference branch's retrieval/opening work. |
+| This worktree's product code | User-triggered H2A can search/refine through host-injected `CandidateDiscovery`; results remain activation-local. The existing lens/HyDE pair pipeline and automatic opening still have live callers. | Replace the remaining old discovery/opening callers with the opening slice. |
 | `refactor/remove-hyde-lenses`, inspected at `7e09f7998` | `NegotiationAgent.pursue()` / `runPursuit()` owns both tools in a separate run. H2A receives pursuit history on direct messages. Opening immediately calls `receive()`. | Move tool use and search decisions into the H2A review; require a saved brief before A2A execution. |
 | Proposed enhancement | One H2A loop reconstructs context and reasons across discovery, principal input and current negotiations. | Retain reference host operations and protocol checks; remove persisted pursuit/search state. |
 
 - Reference worktree: `/Users/yanek/Projects/index/.worktrees/refactor-remove-hyde-lenses`.
 - Reference implementation: `packages/agent/src/negotiation/negotiation.agent.ts`, `packages/agent/src/pursuit/pursuit.types.ts`, `services/api/src/lib/agent/pursuit.ts`.
-- Integration boundary: carry forward the reference retrieval/opening code and affected callers with the H2A discovery/opening slices; these reference-only paths are absent from this worktree today. The identity slice needs none of them.
+- Integration boundary: the search slice adapts reference retrieval and scope checks into `CandidateDiscovery` and the API's `createDiscoveryClient`, alongside the still-live pair pipeline. Opening and its affected callers/migration remain the next slice. The optional host port exposes only scope and retrieval; H2A gets no opening tool yet.
 - Reference-owned removal: lens inference, HyDE generation/cache/maintenance, fixed candidate evaluation and automatic pair opening in the old discovery pipeline.
 - Reference-owned migration: `services/api/drizzle/0182_drop_protocol_hyde_documents.sql`; the separate [storage change](spec.md#database-touches) removes `agent_sessions` after conversion.
 
 ### Reference reuse review
 
-- Reviewed `7e09f7998` against this branch at `aa72c1ee8`; no reference product code or migration has been imported.
+- Reviewed `7e09f7998` against this branch at `aa72c1ee8`; the search slice now adapts its retrieval, scope checks and successful-search marker. No opening code, pursuit state or migration was imported.
 - Keep the user-input wake boundary. The reference `scan()` calls `agent.pursue()` automatically, and `message()` starts a separate pursuit run alongside the H2A review; move search decisions directly into H2A when integrating.
 
 | Reference code | Integration boundary |
@@ -74,7 +74,7 @@ open_negotiation({ searchId, candidateIntentId, networkId, reasoning, brief })
 | Failure | Invalid scope/input or failed retrieval returns a tool error and no usable result. Empty candidates is a valid completed search. | Reject unknown searches, IDs from another activation, fabricated candidates, stale scope/context or missing brief before opening. Ineligible pair → `unavailable`; infrastructure/uncertain write → error. |
 
 - H2A may revise the query or similarity floor and explicitly search again; retain the reference prompt's starting guidance near `0.2`, with no automatic widening or fixed match quota.
-- Each in-memory result carries the host's `PursuitScope.version` as `scopeVersion`; an intent/assignment scope change invalidates selection even within the same run.
+- Each in-memory result carries the host's `DiscoveryScope.version` as `scopeVersion`; an intent/assignment scope change invalidates selection even within the same run.
 - Ending or interrupting H2A discards queries, candidates and search IDs. A later permitted activation searches afresh when useful; it cannot reconstruct historical results from today's retrieval.
 - Recheck principal context before an opening write and live eligibility in the host transaction; newer principal input invalidates a pending decision.
 - Missing principal facts enter [question batches](question-batches.md); missing counterparty facts can be investigated in A2A when pursuing the candidate is justified.

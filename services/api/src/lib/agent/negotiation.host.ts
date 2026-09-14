@@ -10,6 +10,8 @@ import { IntentDatabaseAdapter } from '../../adapters/intent.database.adapter';
 import { negotiationService, type NegotiationDetail } from '../../services/negotiation.service';
 import { userEventChannel } from '../user-events';
 
+import { createDiscoveryClient } from './discovery';
+
 export interface ApiPrincipal {
   id: string; userId: string; name: string; intentId: string; intent: string; principalContext: string;
 }
@@ -63,7 +65,7 @@ export class ApiNegotiationHost extends EventEmitter {
           void this.scan();
           return this.record(result);
         } },
-      }, host, { model, records }));
+      }, host, { model, records, discovery: createDiscoveryClient(records) }));
     }
   }
 

@@ -27,3 +27,5 @@ export type {
 
 export { MemoryPrincipalRecords, pendingPrincipalQuestion, validPrincipalEffects, acceptedPrincipalMessage } from './negotiation/principal.records.ts';
 export type { PrincipalRecords, PrincipalRecordsView, PrincipalEffects, PrincipalDelegation } from './negotiation/principal.records.ts';
+
+export type { DiscoveryClient, DiscoveryScope, DiscoveryCandidate, CandidateQuery, SearchRecord } from './negotiation/discovery.types.ts';

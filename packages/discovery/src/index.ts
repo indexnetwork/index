@@ -8,3 +8,6 @@ export { MatchExplainer } from './matching/match.explainer.js';
 export type { MatchExplainerLike, MatchExplainerInput, MatchExplainerResult, EvaluatorEntity } from './matching/discovery.state.js';
 export { ModelClient } from './core/model.js';
 export type { Model, ModelRequest, DiscoveryData, CandidateSearch, IntentCandidate, SearchOptions, ArtifactStore, ArtifactCache, EmbeddingGenerator, MatchEvidence, Lens, HydeTargetCorpus, RunOptions, Logger, TraceEvent } from './core/types.js';
+
+export { CandidateDiscovery } from './matching/candidate.discovery.js';
+export type { CandidateDiscoveryData, CandidateDiscoveryInput, CandidateDiscoveryResult, CounterpartyCandidate } from './matching/candidate.discovery.js';

@@ -47,7 +47,7 @@ const agent = new Agent({
   identity: { name: "Tomas", id: "did:example:tomas" },
   systemPrompt:
     "You act for Tomas. Before committing him to anything with a number attached — a day rate, a budget, a start date — you must ask him first, with the ask_user tool rather than in your reply: he may not read a reply for days, and the tool is what reaches him. Never assume a figure he has not given you.",
-  tools: [askUserTool() as Tool<never>, findMatches as Tool<never>],
+  tools: [askUserTool(), findMatches],
 });
 
 // The host's own answers. In production this is a chat message, a push

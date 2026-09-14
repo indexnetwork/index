@@ -5,6 +5,7 @@ import { MemoryMessageStore } from '../core/sessions.ts';
 import type { Tool } from '../core/tools.ts';
 import type { PendingQuestion } from '../core/types.ts';
 
+import type { CandidateQuery, DiscoveryClient, OpenNegotiationInput, OpenNegotiationResult, SearchRecord } from './discovery.types.ts';
 import type { Negotiation, User } from './negotiation.agent.ts';
 import { latestPrincipalInput, pendingPrincipalQuestion, type PrincipalEffects, type PrincipalRecords, type PrincipalRecordsView } from './principal.records.ts';
 
@@ -36,6 +37,43 @@ interface Decision {
   delegations?: { opportunityId: string; brief: string }[];
 }
 
+function validateCandidateQuery(
+  value: unknown,
+  authorizedNetworkIds: string[],
+): CandidateQuery {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Provide a valid query object with query, minSimilarity, and networkIds.');
+  }
+
+  const { query, minSimilarity, networkIds } = value as Record<string, unknown>;
+
+  if (typeof query !== 'string' || !query.trim()) {
+    throw new Error('Provide a nonempty search query.');
+  }
+
+  if (typeof minSimilarity !== 'number' || !Number.isFinite(minSimilarity) || minSimilarity < 0 || minSimilarity > 1) {
+    throw new Error('Provide a finite similarity floor between 0 and 1.');
+  }
+
+  if (
+    !Array.isArray(networkIds) ||
+    networkIds.length === 0 ||
+    new Set(networkIds).size !== networkIds.length ||
+    networkIds.some((id) => typeof id !== 'string' || !authorizedNetworkIds.includes(id))
+  ) {
+    throw new Error('Provide distinct authorized network IDs from current scope.');
+  }
+
+  return {
+    query: query.trim(),
+    minSimilarity,
+    networkIds,
+  };
+}
+
+/** Internal completion signal: apply the decision without another model call. */
+class ReviewComplete extends Error {}
+
 /** Reconstructs H2A on accepted principal input and persists only explicit outputs. */
 export class PrincipalInbox {
   private messages: PrincipalMessage[] = [];
@@ -50,6 +88,7 @@ export class PrincipalInbox {
     private readonly records: PrincipalRecords,
     private readonly negotiations: () => Promise<Negotiation[]>,
     private readonly host: { changed(): void; input(): void; delegated(ids: string[]): void; error(reason: string): void },
+    private readonly discovery?: DiscoveryClient,
   ) {}
 
   /** Read committed history and question status without activating H2A. */
@@ -111,7 +150,11 @@ export class PrincipalInbox {
       const records = await this.records.read();
       if (latestPrincipalInput(records.messages) !== input.id) return;
       const negotiations = await this.negotiations();
+      const discoveryScope = await this.discovery?.scope(controller.signal);
+      controller.signal.throwIfAborted();
       const pendingQuestion = pendingPrincipalQuestion(records);
+      const completedSearches = new Map<string, SearchRecord>();
+      const openedDelegations: { opportunityId: string; brief: string }[] = [];
       let decision: Decision | undefined;
       const tool: Tool<Decision> = {
         name: 'review_principal_inbox',
@@ -130,28 +173,180 @@ export class PrincipalInbox {
           },
         },
         run: (value) => {
+          controller.signal.throwIfAborted();
           if (decision) throw new Error('Only one decision per review.');
           this.validate(value, pendingQuestion, negotiations);
           decision = value;
           return 'Decision recorded.';
         },
       };
-      const result = await this.createAgent(records).run(buildPrincipalInboxPrompt({ records, input, pendingQuestion, negotiations }), {
-        history: new MemoryMessageStore(), tools: [tool], maxSteps: 1, signal: controller.signal,
-      });
-      if (controller.signal.aborted || this.stopped) return;
-      if (!decision) {
-        const failed = result.steps.find((step) => step.kind === 'tool' && step.error);
-        throw new Error(failed?.kind === 'tool' ? failed.error : 'The personal agent did not record a communication decision.');
+      const searchTool: Tool<CandidateQuery> = {
+        name: 'discover_counterparties',
+        description: 'Search actual counterparty intents in authorized networks. Refine the query or similarity floor and search again when useful. Results exist only in this review; this never opens a negotiation.',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            query: { type: 'string', minLength: 1 },
+            minSimilarity: { type: 'number', minimum: 0, maximum: 1 },
+            networkIds: {
+              type: 'array',
+              minItems: 1,
+              uniqueItems: true,
+              items: { type: 'string', minLength: 1 },
+              description: 'A subset of discoveryScope.networkIds from the current review context.',
+            },
+          },
+          required: ['query', 'minSimilarity', 'networkIds'],
+        },
+        run: async (value): Promise<SearchRecord> => {
+          controller.signal.throwIfAborted();
+          if (decision) throw new Error('This review already ended.');
+
+          const query = validateCandidateQuery(value, discoveryScope?.networkIds ?? []);
+
+          if ((await this.records.read()).version !== records.version) {
+            throw new Error('Principal context changed; discard this search.');
+          }
+
+          const result = await this.discovery!.discoverCounterparties(
+            query,
+            discoveryScope!.version,
+            controller.signal,
+          );
+
+          controller.signal.throwIfAborted();
+
+          if ((await this.records.read()).version !== records.version) {
+            throw new Error('Principal context changed during search.');
+          }
+
+          const record: SearchRecord = {
+            ...query,
+            id: crypto.randomUUID(),
+            scopeVersion: discoveryScope!.version,
+            candidates: result.candidates,
+            status: 'complete',
+          };
+          completedSearches.set(record.id, record);
+          return record;
+        },
+      };
+      const openTool: Tool<OpenNegotiationInput> = {
+        name: 'open_negotiation',
+        description: 'Open a negotiation with a counterparty from a completed search. Provide grounded reasoning suitable for disclosure and a private brief for our negotiator.',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            searchId: { type: 'string' },
+            candidateIntentId: { type: 'string' },
+            networkId: { type: 'string' },
+            reasoning: { type: 'string', minLength: 1, maxLength: 2000, description: 'Public reasoning justifying the match.' },
+            brief: { type: 'string', minLength: 1, description: 'Private brief for our A2A negotiator.' },
+          },
+          required: ['searchId', 'candidateIntentId', 'networkId', 'reasoning', 'brief'],
+        },
+        run: async (value): Promise<OpenNegotiationResult> => {
+          controller.signal.throwIfAborted();
+          if (decision) throw new Error('This review already ended.');
+
+          if (!value || typeof value !== 'object') {
+            throw new Error('Provide valid open_negotiation arguments.');
+          }
+
+          const { searchId, candidateIntentId, networkId, reasoning, brief } = value as OpenNegotiationInput;
+
+          if (!reasoning || typeof reasoning !== 'string' || !reasoning.trim() || reasoning.length > 2000) {
+            throw new Error('Provide grounded reasoning within 2000 characters.');
+          }
+          if (!brief || typeof brief !== 'string' || !brief.trim()) {
+            throw new Error('Provide a non-empty private brief.');
+          }
+
+          const search = completedSearches.get(searchId);
+          if (!search) {
+            throw new Error('Select a candidate from a completed search in the current activation.');
+          }
+
+          const candidate = search.candidates.find(
+            (c) => c.candidateIntentId === candidateIntentId && c.networkId === networkId,
+          );
+          if (!candidate) {
+            throw new Error('Candidate not found in the specified search.');
+          }
+
+          if ((await this.records.read()).version !== records.version) {
+            throw new Error('Principal context changed; discard this opening.');
+          }
+
+          const result = await this.discovery!.openNegotiation!(
+            candidate,
+            reasoning.trim(),
+            brief.trim(),
+            controller.signal,
+          );
+
+          controller.signal.throwIfAborted();
+
+          if (result.status === 'opened' && result.opportunityId) {
+            openedDelegations.push({
+              opportunityId: result.opportunityId,
+              brief: brief.trim(),
+            });
+          }
+
+          return result;
+        },
+      };
+      const availableTools: Tool[] = [tool];
+      if (this.discovery) {
+        availableTools.push(searchTool);
+        if (this.discovery.openNegotiation) {
+          availableTools.push(openTool);
+        }
       }
+      try {
+        const result = await this.createAgent(records).run(buildPrincipalInboxPrompt({ records, input, pendingQuestion, negotiations, discoveryScope }), {
+          history: new MemoryMessageStore(), tools: availableTools, signal: controller.signal,
+          onStep: (step) => {
+            controller.signal.throwIfAborted();
+            if (step.kind === 'tool' && step.name === tool.name && !step.error) throw new ReviewComplete();
+          },
+        });
+        if (!decision) {
+          const failed = result.steps.findLast((step) => step.kind === 'tool' && step.error);
+          throw new Error(failed?.kind === 'tool' ? failed.error : 'The personal agent did not record a communication decision.');
+        }
+      } catch (error) {
+        if (!(error instanceof ReviewComplete)) throw error;
+      }
+      if (controller.signal.aborted || this.stopped || !decision) return;
       const effects: PrincipalEffects = { negotiations, messages: [], delegations: [] };
       if (decision.message) effects.messages.push(this.entry(records, { kind: 'message', text: decision.message.trim() }));
       if (decision.question) effects.messages.push(this.entry({ ...records, messages: [...records.messages, ...effects.messages] }, {
         kind: 'question', questionId: crypto.randomUUID(), text: decision.question.question.trim(), options: decision.question.options,
       }));
-      let delegationTime = Math.max(Date.now(), ...[...records.messages, ...records.delegations].map((entry) => Date.parse(entry.createdAt))) + 1;
-      effects.delegations = (decision.delegations ?? []).map((delegation) => ({ ...delegation, brief: delegation.brief.trim(),
-        id: crypto.randomUUID(), sourceMessageId: latestPrincipalInput(records.messages)!, createdAt: new Date(delegationTime++).toISOString() }));
+      let delegationTime = Math.max(
+        Date.now(),
+        ...[...records.messages, ...records.delegations].map((entry) => Date.parse(entry.createdAt)),
+      ) + 1;
+
+      const mergedDelegations = new Map<string, string>();
+      for (const d of openedDelegations) {
+        mergedDelegations.set(d.opportunityId, d.brief);
+      }
+      for (const d of decision.delegations ?? []) {
+        mergedDelegations.set(d.opportunityId, d.brief.trim());
+      }
+
+      effects.delegations = [...mergedDelegations.entries()].map(([opportunityId, brief]) => ({
+        opportunityId,
+        brief,
+        id: crypto.randomUUID(),
+        sourceMessageId: latestPrincipalInput(records.messages)!,
+        createdAt: new Date(delegationTime++).toISOString(),
+      }));
       if (!effects.messages.length && !effects.delegations.length) return;
       if (!await this.records.write(effects, records.version)) return;
       await this.refresh();

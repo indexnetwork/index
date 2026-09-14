@@ -5,6 +5,7 @@ import { MemoryMessageStore } from '../core/sessions.ts';
 import type { Tool } from '../core/tools.ts';
 import type { Step } from '../core/types.ts';
 
+import type { DiscoveryClient } from './discovery.types.ts';
 import { latestPrincipalInput, type PrincipalDelegation, type PrincipalRecords, type PrincipalRecordsView } from './principal.records.ts';
 import { PrincipalInbox, type PrincipalMessage, type PrincipalQuestion } from './principal.inbox.ts';
 
@@ -97,7 +98,7 @@ export class NegotiationAgent {
   constructor(
     private readonly participant: { owner: User; intentId: string; guidance: string; client: NegotiationClient },
     private readonly host: NegotiationHost,
-    private readonly options: Pick<AgentOptions, 'model' | 'now'> & { records: PrincipalRecords },
+    private readonly options: Pick<AgentOptions, 'model' | 'now'> & { records: PrincipalRecords; discovery?: DiscoveryClient },
   ) {
     this.records = options.records;
     this.inbox = new PrincipalInbox((records) => this.createAgent(records), this.records, () => participant.client.listNegotiations(), {
@@ -116,7 +117,7 @@ export class NegotiationAgent {
         host.error(null, participant.owner, 'Principal communication failed: ' + reason);
         void this.stop();
       },
-    });
+    }, options.discovery);
   }
 
   private createAgent(records?: PrincipalRecordsView): Agent {
@@ -185,7 +186,7 @@ export class NegotiationAgent {
     return JSON.stringify([record.turnCount, record.awaitingUserId, record.outcome, record.protocol.blockedReason, delegation?.id]);
   }
 
-  private tools(task: MatchTask, turn: TurnState, records: PrincipalRecordsView, initial: Negotiation, delegation: PrincipalDelegation): Tool<never>[] {
+  private tools(task: MatchTask, turn: TurnState, records: PrincipalRecordsView, initial: Negotiation, delegation: PrincipalDelegation): Tool[] {
     const { owner, client } = this.participant;
     const current = () => {
       this.controller.signal.throwIfAborted();

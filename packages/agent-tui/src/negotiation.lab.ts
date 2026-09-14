@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { MemoryPrincipalRecords, NegotiationAgent, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
+import { MemoryPrincipalRecords, NegotiationAgent, type DiscoveryCandidate, type DiscoveryClient, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
 
 import { NEGOTIATION_GUIDANCE, Negotiations, decideNegotiationOpening, type NegotiationState } from '@indexnetwork/protocol';
 
@@ -236,6 +236,76 @@ export class NegotiationLab extends EventEmitter {
           if (id === null) { this.agentStatus = (owner.name ?? owner.id) + ': ' + reason; this.emit('change'); }
         },
       };
+      const discovery: DiscoveryClient = {
+        scope: async (signal) => {
+          signal.throwIfAborted();
+          return { version: 'lab-v1', networkIds: ['local-simulation'] };
+        },
+        discoverCounterparties: async (input, _scopeVersion, signal) => {
+          signal.throwIfAborted();
+          const queryWords = new Set(input.query.toLowerCase().split(/\W+/).filter((w) => w.length > 2));
+          const candidates: DiscoveryCandidate[] = this.users
+            .filter((other) => other.userId !== user.userId)
+            .map((other) => {
+              const text = `${other.name} ${other.intent} ${other.principalContext}`.toLowerCase();
+              const words = text.split(/\W+/).filter((w) => w.length > 2);
+              let matches = 0;
+              for (const word of words) {
+                if (queryWords.has(word)) matches++;
+              }
+              const score = queryWords.size > 0 ? matches / queryWords.size : 0;
+              const similarity = Math.min(0.95, Math.max(0.1, Number((score * 0.7 + 0.25).toFixed(2))));
+              return {
+                candidateUserId: other.userId,
+                candidateIntentId: other.intentId,
+                networkId: 'local-simulation',
+                similarity,
+                candidatePayload: other.intent,
+                candidateSummary: other.intent.length > 100 ? other.intent.slice(0, 100) + '...' : other.intent,
+                profile: {
+                  identity: { name: other.name },
+                  context: other.principalContext,
+                },
+                networkContext: 'Local simulation network',
+                recentlyRejected: false,
+              };
+            })
+            .filter((candidate) => candidate.similarity >= input.minSimilarity)
+            .sort((a, b) => b.similarity - a.similarity);
+
+          return { candidates };
+        },
+        openNegotiation: async (candidate, reasoning, brief, signal) => {
+          signal.throwIfAborted();
+          const target = this.users.find((u) => u.intentId === candidate.candidateIntentId);
+          if (!target) return { status: 'unavailable' };
+
+          const principals = (user.id < target.id ? [user, target] : [target, user]) as [TuiPrincipal, TuiPrincipal];
+          const opportunityId = `local:${principals.map(({ id }) => id).map(encodeURIComponent).join(':')}`;
+
+          let demo = this.negotiations.get(opportunityId);
+          if (!demo) {
+            demo = new NegotiationDemo(principals, opportunityId);
+            demo.on('change', () => this.emit('change'));
+            demo.on('negotiation.updated', () => {
+              for (const principal of principals) {
+                void this.agents.get(principal.id)!.receive({ kind: 'negotiation.updated', opportunityId });
+              }
+            });
+            this.negotiations.set(opportunityId, demo);
+          }
+
+          demo.status = `Opened by ${user.name ?? user.userId}`;
+          this.emit('change');
+
+          for (const principal of principals) {
+            void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId });
+          }
+
+          return { status: 'opened', opportunityId };
+        },
+      };
+
       this.agents.set(user.id, new NegotiationAgent({
         owner: { id: user.userId, name: user.name },
         intentId: user.intentId,
@@ -245,7 +315,11 @@ export class NegotiationLab extends EventEmitter {
           readNegotiation: (id) => clientFor(id).readNegotiation(id),
           submitTurn: (id, turn) => clientFor(id).submitTurn(id, turn),
         },
-      }, host, { ...options, records: new MemoryPrincipalRecords({ intent: { id: user.intentId, payload: user.intent }, principalContext: user.principalContext }, listNegotiations) }));
+      }, host, {
+        ...options,
+        records: new MemoryPrincipalRecords({ intent: { id: user.intentId, payload: user.intent }, principalContext: user.principalContext }, listNegotiations),
+        discovery,
+      }));
     }
   }
 

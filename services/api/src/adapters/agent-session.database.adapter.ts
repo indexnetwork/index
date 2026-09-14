@@ -4,11 +4,11 @@ import { pendingPrincipalQuestion, validPrincipalEffects, acceptedPrincipalMessa
 import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
-import { publishUserEvent } from '../lib/user-events';
+import { publishUserEvent, publishUserInvalidation } from '../lib/user-events';
 import { agentSessions, agents, conversations, intents, intentNetworks, networkMembers, networks, negotiations, negotiationTurns, users, messages, type Message } from '../schemas/database.schema';
 
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
-import { SYSTEM_AGENT_ID } from './database.shared';
+import { SYSTEM_AGENT_ID, activeIntentLifecycleWhere } from './database.shared';
 
 export interface AgentExecution { userId: string; intentId: string; token: string }
 
@@ -274,6 +274,122 @@ export class AgentSessionDatabaseAdapter implements PrincipalRecords {
       await publishPendingQuestionEvent(this.execution.userId, this.execution.intentId, { id: message.questionId!, question: message.text, options: message.options });
     }
     return true;
+  }
+
+  /** @returns Current owned intent and authorized active assignments. @throws When execution ownership is lost. */
+  async discoveryScope(): Promise<{ version: string; networkIds: string[] } | null> {
+    if (this.failure) throw this.failure;
+
+    return db.transaction(async (tx) => {
+      await AgentSessionDatabaseAdapter.assertOwner(tx, this.execution);
+
+      const [external] = await tx
+        .select({ id: agents.id })
+        .from(agents)
+        .where(
+          and(
+            eq(agents.ownerId, this.execution.userId),
+            eq(agents.type, 'external'),
+            eq(agents.handleNegotiations, true),
+            isNull(agents.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      if (external) {
+        throw new AgentSessionIneligibleError('This principal has selected an external negotiation executor.');
+      }
+
+      const [intent] = await tx
+        .select({ payload: intents.payload, updatedAt: intents.updatedAt })
+        .from(intents)
+        .where(
+          and(
+            eq(intents.id, this.execution.intentId),
+            eq(intents.userId, this.execution.userId),
+            isNull(intents.archivedAt),
+            activeIntentLifecycleWhere(),
+          ),
+        );
+
+      if (!intent) return null;
+
+      const assignments = await tx
+        .select({
+          networkId: intentNetworks.networkId,
+          assignedAt: intentNetworks.createdAt,
+          membershipUpdatedAt: networkMembers.updatedAt,
+        })
+        .from(intentNetworks)
+        .innerJoin(
+          networkMembers,
+          and(
+            eq(networkMembers.networkId, intentNetworks.networkId),
+            eq(networkMembers.userId, this.execution.userId),
+            isNull(networkMembers.deletedAt),
+          ),
+        )
+        .innerJoin(
+          networks,
+          and(
+            eq(networks.id, intentNetworks.networkId),
+            isNull(networks.deletedAt),
+          ),
+        )
+        .where(eq(intentNetworks.intentId, this.execution.intentId))
+        .orderBy(asc(intentNetworks.networkId));
+
+      return {
+        version: JSON.stringify({ intent, assignments }),
+        networkIds: assignments.map((row) => row.networkId),
+      };
+    });
+  }
+
+  /**
+   * Clear warming after a completed search while the source remains active and assigned.
+   * @param networkIds - Authorized networks that the search actually covered.
+   * @throws When session ownership has changed.
+   */
+  async markSearched(networkIds: string[]): Promise<void> {
+    if (!networkIds.length) return;
+
+    const updated = await db.transaction(async (tx) => {
+      await AgentSessionDatabaseAdapter.assertOwner(tx, this.execution);
+
+      const networkIdConditions = sql.join(
+        networkIds.map((id) => sql`${id}`),
+        sql`, `,
+      );
+
+      return tx
+        .update(intents)
+        .set({ firstDiscoverySucceededAt: new Date() })
+        .where(
+          and(
+            eq(intents.id, this.execution.intentId),
+            eq(intents.userId, this.execution.userId),
+            isNull(intents.archivedAt),
+            activeIntentLifecycleWhere(),
+            isNull(intents.firstDiscoverySucceededAt),
+            sql`exists (
+              select 1 from ${intentNetworks}
+              join ${networkMembers} on ${networkMembers.networkId} = ${intentNetworks.networkId}
+              join ${networks} on ${networks.id} = ${intentNetworks.networkId}
+              where ${intentNetworks.intentId} = ${intents.id}
+                and ${networkMembers.userId} = ${intents.userId}
+                and ${networkMembers.deletedAt} is null
+                and ${networks.deletedAt} is null
+                and ${intentNetworks.networkId} in (${networkIdConditions})
+            )`,
+          ),
+        )
+        .returning({ id: intents.id });
+    });
+
+    if (updated.length) {
+      await publishUserInvalidation(this.execution.userId, 'intent.updated', this.execution.intentId);
+    }
   }
 
   /** Release this process's lease without erasing the saved conversation or pending question. */
