@@ -6,6 +6,11 @@ export const DISCOVERY_MIN_SIMILARITY = 0.20;
  */
 export const DISCOVERY_MIN_MATCHES = 10;
 
+/**
+ * Maximum opportunities a discovery run opens, however large the pool is.
+ */
+export const DISCOVERY_MAX_MATCHES = 30;
+
 function validateThreshold(name: string, value: number, max: number): number {
   if (!Number.isFinite(value) || value < 0 || value > max) {
     throw new Error(`${name} must be a finite decimal between 0 and ${max} (inclusive)`);

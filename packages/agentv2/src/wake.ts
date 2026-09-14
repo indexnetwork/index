@@ -35,11 +35,13 @@ function principalFacts(user: User): Pick<User, "name" | "intro" | "location" | 
  * standing that already carries it.
  *
  * @param opportunities - Every opportunity on this signal.
+ * @param focus - The only opportunity to work, when this wake has one.
  * @returns Those a decide run must work, in snapshot order.
  */
-function pending(opportunities: Opportunity[]): Opportunity[] {
+function pending(opportunities: Opportunity[], focus?: string): Opportunity[] {
   return opportunities.filter(
     (opportunity) =>
+      (!focus || opportunity.id === focus) &&
       opportunity.status === "negotiating" &&
       opportunity.awaiting !== "them" &&
       (!opportunity.brief || !opportunity.decision || opportunity.stall),
@@ -71,6 +73,10 @@ function needsPrincipal(conversation: ConversationEntry[], opportunities: Opport
  * to the principal if they are owed something.
  *
  * A wake with nothing to decide and nothing to say never reaches the model.
+ *
+ * A focused wake is the passive case: it decides that one opportunity and
+ * stays silent toward the principal, so a counterpart's turn cannot pull the
+ * whole signal into work nobody asked for.
  *
  * @param input - The signal, its conversation, its opportunities, and the model.
  * @returns The actions for the host to persist and run. Empty means stay silent.
@@ -218,9 +224,9 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
 
   // One failed decide costs that opportunity and nothing else: it stays
   // unbriefed, so the next wake owes it again.
-  await Promise.allSettled(pending(opportunities).map(decide));
+  await Promise.allSettled(pending(opportunities, input.focus).map(decide));
 
-  if (needsPrincipal(principalConversation, opportunities)) await attend();
+  if (!input.focus && needsPrincipal(principalConversation, opportunities)) await attend();
 
   return { actions };
 }

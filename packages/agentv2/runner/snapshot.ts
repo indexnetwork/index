@@ -11,6 +11,8 @@ export interface Runtime {
   log?: (line: string) => void;
   /** Open this negotiation now, as soon as its brief and decision are published. */
   onNegotiate?: (opportunityId: string) => void;
+  /** Decide only this opportunity, and say nothing to the principal. */
+  focus?: string;
 }
 
 const BRIEF = "Brief: ";
@@ -112,7 +114,7 @@ function describe(action: WakeAction): string {
  *
  * @param client - Index for this owner.
  * @param intent - The signal to wake over.
- * @param runtime - Model, clock, and cancellation.
+ * @param runtime - Model, clock, cancellation, and the opportunity to focus on.
  * @returns The wake's actions, and the ones Index has nowhere to put.
  */
 export async function wakeIntent(
@@ -120,7 +122,7 @@ export async function wakeIntent(
   intent: Intent,
   runtime: Runtime,
 ): Promise<WakeResult & { unapplied: WakeAction[] }> {
-  const { model, now, signal, log = () => {}, onNegotiate } = runtime;
+  const { model, now, signal, log = () => {}, onNegotiate, focus } = runtime;
   const [user, open, inbox] = await Promise.all([
     client.me(),
     client.listNegotiations(),
@@ -195,6 +197,7 @@ export async function wakeIntent(
     model,
     now,
     signal,
+    focus,
     // One opportunity's brief and decision, published and opened on their own,
     // so its negotiator runs while the rest are still being decided.
     onDecision: async (decided) => {

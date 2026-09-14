@@ -59,6 +59,11 @@ export interface WakeInput {
   principalConversation: ConversationEntry[];
   opportunities: Opportunity[];
   model: Model;
+  /**
+   * One opportunity to work alone. No other opportunity is decided and the
+   * principal is not addressed, however much either is owed.
+   */
+  focus?: string;
   now?: () => Date;
   signal?: AbortSignal;
   /**
