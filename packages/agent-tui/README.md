@@ -89,12 +89,9 @@ trusted local testing entry point; HTTP authentication, scope checks, and human
 consent gates remain enforced. A principal with a selected external negotiation
 executor must release that binding before its local agent can run.
 
-H2A messages and checkpoints are persisted in the same transaction. Restarting
-restores the conversation, pending question, related requests, and outstanding
-work, then rereads the A2A records. H2A stays idle until an accepted message or
-answer. Session leases prevent two local processes
-from running the same principal/intent. Ctrl+C releases leases and retains state;
-a crashed process's lease expires after 60 seconds.
+- H2A outputs commit atomically to durable records. Restart reconstructs history, exact pending questions and private briefs; it does not replay model work or restore request queues.
+- H2A stays idle until an accepted message or answer. A2A requires a saved brief and pauses independently when it lacks facts or authority.
+- Existing session leases prevent competing runtimes. Ctrl+C releases leases while retaining records; a crashed process's lease expires after 60 seconds.
 
 For single-user testing through normal HTTP authentication and the web app,
 see [the API's live testing instructions](../../services/api/README.md#personal-agents-and-live-web-testing).

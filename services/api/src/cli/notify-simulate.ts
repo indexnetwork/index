@@ -107,10 +107,10 @@ async function main(): Promise<void> {
 
   const { and, desc, eq, isNull, ne } = await import('drizzle-orm/sql');
   const { default: db, closeDb } = await import('../lib/drizzle/drizzle');
-  const { agentSessions, intents, users } = await import('../schemas/database.schema');
+  const { intents, users } = await import('../schemas/database.schema');
   const { OpportunityDatabaseAdapter } = await import('../adapters/opportunity.database.adapter');
   const { ConversationDatabaseAdapter } = await import('../adapters/conversation.database.adapter');
-  const { publishPendingQuestionEvent } = await import('../adapters/agent-session.database.adapter');
+  const { AgentSessionDatabaseAdapter } = await import('../adapters/agent-session.database.adapter');
   const { buildProfileFromUser } = await import('../adapters/database.shared');
   const { closeRedisConnection } = await import('../adapters/cache.adapter');
   const {
@@ -173,31 +173,26 @@ async function main(): Promise<void> {
     if (args.command === 'question') {
       const intent = await newestActiveIntent(recipient.email, recipient.id);
 
-      const conversations = new ConversationDatabaseAdapter();
-      const conversation = await conversations.getOrCreateAgentDm(recipient.id);
       const question = {
         id: crypto.randomUUID(),
         question: args.text
           ?? 'Are you open to a first call this week, or would you rather see their work first?',
         options: ['A call this week', 'Send their work first'],
-        scope: 'intent' as const,
-        matches: [],
       };
-      await db
-        .insert(agentSessions)
-        .values({
-          userId: recipient.id,
-          intentId: intent.id,
-          conversationId: conversation.id,
-          state: { inbox: { incomingMessageIds: [], requests: [], outcomes: [], question }, matches: [] },
-        })
-        .onConflictDoUpdate({
-          target: [agentSessions.userId, agentSessions.intentId],
-          set: { state: { inbox: { incomingMessageIds: [], requests: [], outcomes: [], question }, matches: [] } },
-        });
-      await publishPendingQuestionEvent(recipient.id, intent.id, question);
+      const records = new AgentSessionDatabaseAdapter(recipient.id, intent.id);
+      try {
+        await records.start();
+        const current = await records.read();
+        const saved = await records.write({ negotiations: [], delegations: [], messages: [{
+          id: crypto.randomUUID(), createdAt: new Date().toISOString(), kind: 'question',
+          questionId: question.id, text: question.question, options: question.options, matches: [],
+        }] }, current.version);
+        if (!saved) throw new Error('Answer the existing question before simulating another.');
+      } finally {
+        await records.close();
+      }
 
-      console.log('Parked pending question', question.id);
+      console.log('Recorded pending question', question.id);
       console.log('Published question.pending via publishPendingQuestionEvent');
       console.log('  channel:', userEventChannel(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);

@@ -418,13 +418,11 @@ export const intentNetworks = pgTable('protocol_intent_networks', {
 }));
 
 
-/** Private personal-agent checkpoint and execution lease, one per principal and intent. */
+/** Host execution lease; runtime context lives only in canonical domain records. */
 export const agentSessions = pgTable('agent_sessions', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
   conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
-  state: jsonb('state'),
-  revision: integer('revision').notNull().default(0),
   leaseToken: text('lease_token'),
   leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

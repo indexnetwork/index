@@ -36,7 +36,7 @@ export class ApiNegotiationHost extends EventEmitter {
   constructor(readonly users: readonly ApiPrincipal[], model: Model) {
     super();
     for (const principal of users) {
-      const store = new AgentSessionDatabaseAdapter(principal.userId, principal.intentId);
+      const records = new AgentSessionDatabaseAdapter(principal.userId, principal.intentId);
       const read = async (id: string) => {
         const record = await negotiationService.read(id, principal.userId);
         if (!record || record.intentId !== principal.intentId) throw new Error('Negotiation is outside this principal/intent session.');
@@ -52,16 +52,18 @@ export class ApiNegotiationHost extends EventEmitter {
         error: (id, _owner, reason) => { const match = id ? this.negotiations.get(id) : undefined; if (match) Object.assign(match, { phase: 'error', status: reason }); this.agentStatus = `${principal.name}: ${reason}`; this.emit('change'); },
       };
       this.agents.set(principal.id, new NegotiationAgent({
-        owner: { id: principal.userId, name: principal.name }, intent: { id: principal.intentId, payload: principal.intent },
-        principalContext: principal.principalContext, guidance: NEGOTIATION_GUIDANCE,
-        client: { readNegotiation: read, submitTurn: async (id, turn) => {
-          const result = await negotiationService.submitTurn(id, principal.userId, turn, store.execution);
+        owner: { id: principal.userId, name: principal.name }, intentId: principal.intentId, guidance: NEGOTIATION_GUIDANCE,
+        client: { listNegotiations: async () => {
+          const matches = await negotiationService.scan(principal.userId, principal.intentId);
+          return Promise.all(matches.map((match) => read(match.opportunityId)));
+        }, readNegotiation: read, submitTurn: async (id, turn) => {
+          const result = await negotiationService.submitTurn(id, principal.userId, turn, { ...records.execution, contextVersion: turn.expectedContextVersion });
           if ('rejection' in result) throw new Error(result.rejection);
           this.observe(principal, result);
           void this.scan();
           return this.record(result);
         } },
-      }, host, { model, store }));
+      }, host, { model, records }));
     }
   }
 
@@ -73,7 +75,7 @@ export class ApiNegotiationHost extends EventEmitter {
     }));
   }
 
-  /** Restore sessions and subscribe to background match observations independently of TUI selection. @throws When a selected principal has an external negotiation executor. */
+  /** Read records and subscribe to background match observations independently of TUI selection. @throws When a selected principal has an external negotiation executor. */
   async start(): Promise<void> {
     const registry = new AgentDatabaseAdapter();
     for (const userId of new Set(this.users.map((user) => user.userId))) {

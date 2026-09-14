@@ -36,12 +36,13 @@ A2A conversation inside each match. Pending matches retain Start Chat and Skip.
 
 The normal API server starts agents for active intents at boot and reconciles
 new intents, profile/intent changes, and selected external executors every five
-seconds. Agents run with no browser or TUI connected. Shutdown saves outstanding
-work and releases session leases. Restart restores pending questions and resumes
-matches from current protocol records.
+seconds. Agents run with no browser or TUI connected. Shutdown cancels model
+work and releases session leases. Restart reconstructs committed history and
+pending questions without replaying interrupted work; H2A waits for accepted
+principal input.
 
 `GET /api/conversations/agent/messages?intentId=<id>` returns that intent's H2A
-history and `agent` state (`status`, `pending`, `queuedQuestions`). Send text to
+history and `agent` state (`status`, `pending`). Send text to
 `POST /api/conversations/agent/messages` with `parts: [{ kind: "text", text }]`,
 `metadata: { intentId }`, and the displayed `questionId`, or `null` for a direct
 message. A successful response contains the persisted message; a changed
@@ -80,7 +81,7 @@ eligible paused intents. Use reset to start the experiment from the beginning.
 
 Reset briefly stops the dev API and any replay in its container, then pauses
 non-archived, non-terminal intents and clears discovery progress, opportunities,
-negotiations/turns, outcome feedback, agent checkpoints and agent conversations.
+negotiations/turns, outcome feedback, agent execution leases and agent conversations.
 Human conversations keep their messages but lose old match provenance. Users,
 API keys/sessions, profiles, intents, networks, memberships, assignments and
 embeddings/HyDE remain. The exact API deployment is restarted and health-checked,
@@ -104,13 +105,17 @@ bun run --cwd services/api agent:tui google/gemini-3.8-flash anthropic/claude-ha
 Uses the root `.env.development`, existing database principals/intents, and the
 API's negotiation services. Space selects principal/intent sessions; Enter starts
 all selected agents. No HTTP server or login is needed for this trusted local
-command. HTTP guards are unchanged. Models, the session store, protocol guidance,
+command. HTTP guards are unchanged. Models, record operations, protocol guidance,
 and protocol-backed reads/writes are injected into `@indexnetwork/agent`.
 
 `packages/protocol` owns participation rules and consent/transition gates;
 `packages/agent` owns reasoning, parallel matches, and the shared H2A inbox.
 The API composes both. It persists `protocol_*` domain tables, `agent_sessions`
-checkpoints/leases, and intent-tagged H2A `messages` in the owner's existing DM.
+execution leases, and intent-tagged H2A `messages` in the owner's existing DM.
+Private delegations and question retirements use typed `messages.metadata` records
+excluded from chat history, previews, unread counts and notifications. Migration
+0182 preserves existing questions and historical review notes before dropping
+`agent_sessions.state` and `revision`; the lease remains for a later slice.
 A2A agreement remains pending human approval. Stop the normal API server before
 using this standalone TUI for the same intents: each session has one runtime
 owner, shared across both entry points.

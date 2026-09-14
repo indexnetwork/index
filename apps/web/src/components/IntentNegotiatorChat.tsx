@@ -143,13 +143,12 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
 
       {pending && <section aria-label="Your agent's question" className="mt-3 max-h-72 shrink-0 overflow-y-auto rounded-xl border border-amber-200 bg-amber-50 p-3">
         <p className="mb-2 text-xs font-semibold text-amber-800">Your agent needs your input</p>
-        {references(pending.scope, pending.matches)}
         <p className="mb-3 whitespace-pre-wrap text-sm text-gray-900">{pending.question}</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {pending.options?.map((option) => <button key={option} type="button" disabled={sending || !canSend} onClick={() => void send(option)}
             className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-sm text-gray-800 hover:border-amber-400 disabled:opacity-50">{option}</button>)}
         </div>
-        <p className="mt-2 text-xs text-amber-800">Choose an answer or write your own below.{agent.queuedQuestions > 0 ? ` ${agent.queuedQuestions} other request${agent.queuedQuestions === 1 ? " is" : "s are"} waiting.` : ""}</p>
+        <p className="mt-2 text-xs text-amber-800">Choose an answer or write your own below.</p>
       </section>}
 
       {(error || loadError) && <p role="alert" className="mt-2 text-sm text-red-700">{error || loadError}</p>}

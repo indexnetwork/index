@@ -34,14 +34,11 @@ export interface PrincipalQuestion {
   id: string;
   question: string;
   options?: string[];
-  scope: 'intent' | 'match';
-  matches: { opportunityId: string; counterparty: { id: string; name: string | null } }[];
 }
 
 export interface PersonalAgentState {
   status: 'running' | 'starting' | 'paused' | 'external' | 'unavailable';
   pending: PrincipalQuestion | null;
-  queuedQuestions: number;
 }
 
 export interface ConversationHistory {

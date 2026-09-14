@@ -12,7 +12,7 @@ import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-sessio
 import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
-export type NegotiationExecution = AgentExecution | { userId: string; agentId: string };
+export type NegotiationExecution = (AgentExecution & { contextVersion: string }) | { userId: string; agentId: string };
 
 export type NegotiationTurnAction = 'propose' | 'counter' | 'accept' | 'decline';
 export type NegotiationOutcome = 'agreed' | 'declined' | 'closed';
@@ -515,6 +515,7 @@ export class NegotiationDatabaseAdapter {
         const [negotiation] = await tx.select().from(negotiations)
           .where(eq(negotiations.opportunityId, opportunityId)).limit(1).for('update');
         if (execution && 'intentId' in execution && negotiation && (negotiation.initiatorUserId === callerUserId ? negotiation.initiatorIntentId : negotiation.responderIntentId) !== execution.intentId) throw new Error('Execution belongs to another intent.');
+        if (execution && 'intentId' in execution) await AgentSessionDatabaseAdapter.assertContext(tx, execution, execution.contextVersion);
         const state = negotiation ? await this.state(tx, negotiation, true) : null;
         const decision = decide(state);
         if (!decision.ok || !negotiation) return decision;

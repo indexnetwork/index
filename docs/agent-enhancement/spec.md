@@ -96,6 +96,22 @@ flowchart TD
 - Publish messages/pending-batch notifications only after commit; duplicate requests must not publish the same effect again.
 - Sources: [domain schema](../../services/api/src/schemas/database.schema.ts), [conversation schema](../../services/api/src/schemas/conversation.schema.ts), [session adapter](../../services/api/src/adapters/agent-session.database.adapter.ts), [opening adapter](../../services/api/src/adapters/negotiation.database.adapter.ts).
 
+## Implemented reconstruction boundary
+
+| Record or operation | Current implementation |
+|---|---|
+| H2A history / questions / answers | Existing intent-tagged `messages`; exact historical wording, options, scope and references are preserved. New questions have independent IDs and no negotiation references. |
+| Private delegation | Trusted `system-agent` message with empty parts and `metadata.principalDelegation`: opportunity ID, brief and source input ID. Message ID and `created_at` provide identity/order. Private records do not enter chat history, previews, unread counts, activity or notifications. |
+| Retired historical question | Trusted private message with `metadata.retiredQuestionId`; prevents reconstruction from reviving old canceled questions. New retirement/correction actions remain deferred. |
+| Context reads | Current intent and confirmed profile, ordered messages, delegations, assignments/memberships/networks and executor bindings. H2A also reads current negotiations and derives agreements. |
+| Explicit writes | `PrincipalRecords.accept()` commits principal input; `write()` atomically commits H2A messages/delegations before publication or dependent A2A. Record fingerprints and expected negotiation observations reject stale/duplicate effects. |
+| Execution | Retain the existing lease and protocol turn guards. Model histories, input scheduling, task maps and observed signatures stay in memory. Startup establishes observations without replay; unchanged notifications stay idle. |
+| Conversion / schema | Migration `0182_reconstruct_principal_records` preserves exact current questions, records old retirements and retains review notes as advisory evidence with a null source input. Such notes cannot authorize A2A. Drop only `agent_sessions.state` and `revision`; no new tables. |
+| Deferred | Discovery/opening reconciliation, batches, corrections, lease replacement and final `agent_sessions` deletion. This branch's old snapshot contains no opening instructions to convert. |
+
+- Breaking host API: replace `PrincipalStore` / `PrincipalState` with `PrincipalRecords`; add current negotiation listing and a source-context fence to hosted turn writes. Generic `Agent.ask_user` and public protocol transitions are unchanged.
+- Verification: scripted runtime checks, headless TUI interactions, isolated local Postgres migration/adapter checks, and a live default-model H2A → answer → A2A agreement scenario plus a missing-fact pause case. Broader model acceptance remains pending; no new persistent tests. Shared development and production databases have not been migrated.
+
 ## Open storage and coordination decisions
 
 | Decision before implementation | Required result |
@@ -106,7 +122,7 @@ flowchart TD
 | Stale-context rejection | Before committing an effect, reject decisions superseded by principal input, delegation changes, scope/executor changes or negotiation turns. Do not reintroduce a revisioned agent snapshot. |
 | One-time conversion | Preserve exact current questions, principal history and unresolved effects. Decide which old review notes contain usable delegation evidence; never manufacture authority from a transient note. |
 
-- Keep these decisions open until the storage slice; this design does not select a new coordination service or prescribe a general replay framework.
+- The record layout and checkpoint conversion above are implemented for the current slice. Opening coordination and replacing the execution lease remain open; no new coordination service or general replay framework is selected.
 
 ## Integration
 

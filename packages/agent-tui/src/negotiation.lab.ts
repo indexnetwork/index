@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { MemoryPrincipalStore, NegotiationAgent, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
+import { MemoryPrincipalRecords, NegotiationAgent, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
 
 import { NEGOTIATION_GUIDANCE, Negotiations, decideNegotiationOpening, type NegotiationState } from '@indexnetwork/protocol';
 
@@ -66,7 +66,7 @@ export function parseScenario(value: unknown): DemoScenario {
 /** A disposable A2A record. Principal conversations belong to the agent runtimes. */
 export class NegotiationDemo extends EventEmitter {
   readonly transcript: TranscriptEntry[] = [];
-  phase: 'ready' | 'running' | 'question' | 'settled' | 'error' | 'stopped' = 'ready';
+  phase: 'ready' | 'running' | 'paused' | 'settled' | 'error' | 'stopped' = 'ready';
   status = 'Ready';
   private readonly controller = new AbortController();
   private readonly turns: Negotiation['turns'] = [];
@@ -82,8 +82,8 @@ export class NegotiationDemo extends EventEmitter {
   }
 
   /** @param status - The library's progress for this match. @param phase - Whether it is running or awaiting its principal. */
-  progress(status: string, phase?: 'running' | 'question'): void {
-    if (this.phase === 'settled' || this.phase === 'error' || this.phase === 'stopped' || (this.phase === 'question' && !phase)) return;
+  progress(status: string, phase?: 'running' | 'paused'): void {
+    if (this.phase === 'settled' || this.phase === 'error' || this.phase === 'stopped' || (this.phase === 'paused' && !phase)) return;
     this.phase = phase ?? 'running';
     this.status = status;
     this.emit('change');
@@ -136,6 +136,7 @@ export class NegotiationDemo extends EventEmitter {
    */
   client(ownerId: string): NegotiationClient {
     return {
+      listNegotiations: async () => [await this.read(ownerId)],
       readNegotiation: async () => this.read(ownerId),
       submitTurn: async (_id: string, turn: TurnInput) => {
         const decision = await this.protocol().execute(this.opportunityId, ownerId, turn);
@@ -209,6 +210,9 @@ export class NegotiationLab extends EventEmitter {
     }
     for (const user of this.users) {
       const clientFor = (id: string) => this.negotiations.get(id)!.client(user.userId);
+      const listNegotiations = async () => Promise.all([...this.negotiations.values()]
+        .filter((demo) => demo.principals.some((principal) => principal.id === user.id))
+        .map((demo) => clientFor(demo.opportunityId).readNegotiation(demo.opportunityId)));
       const host: NegotiationHost = {
         status: (id, message, phase) => this.negotiations.get(id)!.progress(message, phase),
         retry: (owner, attempt, reason) => {
@@ -234,14 +238,14 @@ export class NegotiationLab extends EventEmitter {
       };
       this.agents.set(user.id, new NegotiationAgent({
         owner: { id: user.userId, name: user.name },
-        intent: { id: user.intentId, payload: user.intent },
-        principalContext: user.principalContext,
+        intentId: user.intentId,
         guidance: NEGOTIATION_GUIDANCE,
         client: {
+          listNegotiations,
           readNegotiation: (id) => clientFor(id).readNegotiation(id),
           submitTurn: (id, turn) => clientFor(id).submitTurn(id, turn),
         },
-      }, host, { ...options, store: new MemoryPrincipalStore() }));
+      }, host, { ...options, records: new MemoryPrincipalRecords({ intent: { id: user.intentId, payload: user.intent }, principalContext: user.principalContext }, listNegotiations) }));
     }
   }
 
@@ -254,7 +258,7 @@ export class NegotiationLab extends EventEmitter {
     }
   }
 
-  /** Cancel model work, release human questions, and stop all match records. */
+  /** Cancel model work and stop all match records, retaining conversation history. */
   async stop(): Promise<void> {
     await Promise.all([...this.agents.values()].map((agent) => agent.stop()));
     for (const demo of this.negotiations.values()) demo.stop();

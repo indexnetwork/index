@@ -23,8 +23,9 @@ The six bundled scenarios have 5–10 users and 5–14 intents, covering collabo
 research and learning peers, creative partners, local friendships, career mentors,
 and community projects. Filenames sort alphabetically, with the five-user
 cofounder scenario first. Each user-intent pair has a personal agent. All intent
-pairs between different users are simulated matches (10–87 per bundled scenario),
-running independently in the background.
+pairs between different users are simulated matches (10–87 per bundled scenario).
+Send a message as each principal to let H2A review and delegate their matches;
+opening the TUI alone does not start model work. Briefed A2A work then runs independently.
 Each user starts on the board with their first intent. Users/Ctrl+U opens the
 roster: Space/click toggles users, Enter applies, Esc cancels. Keep at least two.
 Click an intent header or press Ctrl+T to switch that user's intent with Up/Down
@@ -38,8 +39,8 @@ A2A appears between exactly two expanded users, even with other users collapsed.
 The chats share space with A2A at narrower widths. Ctrl+N cycles the expanded
 users' selected intents' matches. Other expanded counts hide A2A. All agents keep
 running.
-Related requests can share an intent-wide question without changing it while you
-answer; match-specific approvals remain separate.
+H2A owns one independent question at a time. Its wording stays stable while you
+answer; A2A can pause without creating a question or waking H2A.
 Click a chat to act as that user. Click or use Up/Down to highlight an
 agent-provided option, then Enter to confirm. Select Custom reply or click the
 text box to write your own answer. Esc returns from editing to the choices.

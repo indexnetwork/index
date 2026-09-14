@@ -25,9 +25,10 @@ agent's prompt text and the functions that compose it for both the API and TUI.
 
 | Model message | Composition | Context included |
 | --- | --- | --- |
-| System, shared by A2A and H2A | `buildNegotiationSystemPrompt` → `buildAgentSystemPrompt` | Agent instructions, injected protocol guidance and principal context, then identity, current date, tool-use instructions, and intent. |
-| User, for an A2A turn | `buildNegotiationTurnPrompt` | `MATCH_INSTRUCTIONS`, current negotiation, private H2A history, accepted commitments, and any internal review note. |
-| User, for H2A communication | `buildPrincipalInboxPrompt` | `PRINCIPAL_INBOX_INSTRUCTIONS`, H2A history, incoming messages, the pending question, queued requests, outcomes, and commitments. Direct messages also receive match status snapshots. |
+| System, H2A | `buildNegotiationSystemPrompt` → `buildAgentSystemPrompt` | Current confirmed principal context and intent, protocol guidance, identity and date. |
+| System, A2A | `NegotiationAgent.createAgent` → `buildAgentSystemPrompt` | Protocol guidance, identity and date; authority comes from the private brief. |
+| User, for an A2A turn | `buildNegotiationTurnPrompt` | `MATCH_INSTRUCTIONS`, current negotiation and exact saved brief. |
+| User, for H2A communication | `buildPrincipalInboxPrompt` | `PRINCIPAL_INBOX_INSTRUCTIONS`, canonical history, accepted input, pending question, delegations, live negotiations and agreements. |
 
 [Protocol guidance](../protocol/src/protocol/protocol.prompt.ts) stays owned by
 `packages/protocol`. The [API host](../../services/api/src/lib/agent/negotiation.host.ts)
@@ -178,7 +179,7 @@ import { Agent, ModelClient, NegotiationAgent } from "@indexnetwork/agent";
 const models = ["google/gemini-3.8-flash", "anthropic/claude-haiku-4.5"];
 const model = new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY, models });
 const agent = new Agent({ identity, systemPrompt, model });
-const negotiator = new NegotiationAgent(participant, host, { model, store });
+const negotiator = new NegotiationAgent(participant, host, { model, records });
 ```
 
 OpenRouter accepts one to three models; an injected list replaces the defaults
@@ -207,11 +208,8 @@ are left to OpenRouter; there are no local per-model request counters.
 
 ### Always-on negotiations
 
-Initialize one `NegotiationAgent` per principal/intent. The host supplies the
-principal's confirmed context, protocol guidance and observations, transport,
-a session store, and an observer for conversation and match activity. The
-library owns reasoning, questions, H2A communication, checkpoints, and scheduling.
-The host's protocol owns eligibility, available actions, limits, and transitions.
+- Initialize one `NegotiationAgent` per principal/intent. The host owns records, execution ownership and protocol operations; each activation creates fresh model context.
+- Only accepted `message()` or `answer()` input activates H2A. Startup, scans, A2A activity and opening the app remain observational.
 
 ```ts
 import { NegotiationAgent } from "@indexnetwork/agent";
@@ -219,119 +217,46 @@ import { NegotiationAgent } from "@indexnetwork/agent";
 const agent = new NegotiationAgent(
   {
     owner: { id: user.id, name: user.name },
-    intent: { id: intent.id, payload: intent.statement },
-    principalContext,
-    guidance, // Supplied by the protocol used by this host.
+    intentId: intent.id,
+    guidance,
     client,
   },
   host,
-  { model, store }, // PrincipalStore: load, atomic save, close.
+  { model, records },
 );
 await agent.start();
-
-// Register a separate A2A match under this personal agent and intent.
-void agent.receive({
-  kind: "opportunity.matched",
-  opportunityId,
-});
-
-// Relay persisted turn changes, including settlement, to the participants.
+void agent.receive({ kind: "opportunity.matched", opportunityId });
 void agent.receive({ kind: "negotiation.updated", opportunityId });
 
-// Show agent.conversation and agent.pending when host.conversation() fires.
-// Answer the displayed question; otherwise send a message to the personal agent.
+// Read agent.conversation and agent.pending when host.conversation() fires.
 const question = agent.pending;
 if (question) await agent.answer(question.id, humanInput);
 else await agent.message(humanInput);
 
-// When the host shuts down:
 await agent.stop();
 ```
 
-`NegotiationClient` supplies `readNegotiation()` and `submitTurn()`; it holds
-credentials outside model context. `NegotiationHost` observes status, turns,
-retries, tool steps, completion, and errors. Its `conversation()` notification
-tells the host to read `agent.conversation`, `agent.pending`, and
-`agent.queuedQuestions`. Conversation entries and questions carry a `matches`
-array; questions and answers also declare `intent` or `match` scope. Transport
-and UI code relay events and principal input; they never choose whose agent runs next.
-Direct principal messages have kind `user`; the agent's replies have kind
-`message`. Their `matches` arrays are empty because they belong to the H2A
-conversation rather than a displayed match question.
-An error with a null opportunity ID means the principal communication loop
-failed, and the runtime shuts down that principal/intent.
-Hosts deliver update events after successful writes. The optional `turn()`
-observer reports a submission; event delivery does not depend on that callback.
+| Contract | Responsibility |
+| --- | --- |
+| `PrincipalRecords.start()` / `close()` | Acquire and release host execution ownership. |
+| `read()` | Read current intent/profile, canonical messages, question retirements and private delegations with a source version. No checkpoint write. |
+| `accept(message)` | Atomically accept a user message or answer to the exact pending question; return the committed entry or `null`. Preserve historical answer scope and references. |
+| `write(effects, expectedVersion)` | Commit H2A messages and delegations together; reject stale records, negotiation observations and duplicate identities before publishing notifications. |
+| `NegotiationClient.listNegotiations()` / `readNegotiation()` | Read current protocol records, including passive work and agreements. |
+| `submitTurn()` | Enforce current ownership, source context and `expectedTurnCount`; at most one POST attempt per run. |
+| `NegotiationHost` | Observe conversation, status, turns, retries, steps, completion and errors. A null opportunity ID identifies an H2A failure. |
 
-All matches share one `Agent` instance, H2A history, and accepted commitments.
-Each A2A match keeps its own task, record, and temporary model/tool transcript.
-Duplicate events are coalesced; only one run acts for a principal on a given
-match at a time. Model calls for different matches run concurrently, while
-outgoing submissions are serialized per principal. A new human message, answer, or
-accepted commitment invalidates decisions made against older context before
-they can submit.
-
-Only the principal communication inbox can publish H2A messages. Negotiation
-tasks submit internal `request_principal_input` requests and authoritative
-outcomes. Routine proposals, counters, and model completion summaries stay
-internal. Only accepted `message()` or `answer()` input activates H2A. A2A
-requests, outcomes, cancellation, session restoration, host scans, and opening
-the app leave H2A idle. Eligible A2A work continues independently.
-
-When no question is displayed, `message(text)` records private input and requests
-a reply immediately. The PA sees its latest
-observed match records and full H2A history, so it can answer status questions and
-follow-ups even when no negotiation is active. Additional messages cancel stale
-reviews and schedule processing of the pending user input. Finishing a review
-does not schedule another one for queued A2A work. New facts and instructions become
-shared private context for negotiation decisions; a question is not treated as
-new authority. Empty messages and messages sent while a question is displayed
-are rejected; use that question's ID with `answer()` instead.
-
-The same agent reviews accepted input with the H2A history, instructions, and
-accepted commitments. It can ask one existing focused question, send one
-consolidated outcome update, or stay silent. It can also return a redundant
-request to its negotiation with a pointer to existing principal evidence.
-That internal advice never becomes a human answer or grants new authority.
-
-While a question is displayed, new requests and outcomes remain queued until
-accepted user input. Its ID, wording, options, scope, and displayed match
-references stay unchanged. Match-scoped requests cannot be attached to
-another question.
-
-An answer is recorded once in H2A, cancels any stale communication review,
-requests an H2A review, and immediately releases waiting negotiations to
-reconsider the latest context.
-The model identifies related facts and interprets answers; the runtime enforces
-one displayed question and separate match-scoped requests. Other principals
-never receive this private history.
-
-With one intent for each of 12 users and all pairs matched, this produces
-**12 H2A conversations and 66 A2A conversations**. Settlement or failure ends
-the affected match while the personal agent remains available for other work.
-`stop(opportunityId)` cancels one match and releases its questions; `stop()`
-cancels all model calls and answer waits for this principal/intent.
-
-Each turn makes at most one submission attempt against an observed turn count.
-The injected protocol advertises actions and limits, and the host validates its
-transition against current state when committing. The agent never blindly
-replays an uncertain submission.
-
-`PrincipalStore.load()` returns the private checkpoint and chronological H2A
-messages. `save(state, newMessages)` must persist both atomically under exclusive
-session ownership. `close()` releases ownership. The agent owns the checkpoint
-format, stable message/question IDs, pending requests, and restart reconciliation.
-Human `message()` and `answer()` calls return the persisted input entry, or
-`null` when rejected (for example, when the displayed question changed). They
-resolve only after persistence; storage failure stops the runtime. `stop()` preserves outstanding work and the displayed
-question. Match working transcripts are temporary and regenerated from fresh
-protocol observations after restart.
-
-The [scenario TUI](../agent-tui/README.md) injects `MemoryPrincipalStore`. The
-[API server and TUI](../../services/api/README.md) inject a Postgres session store
-with leases and revision fencing. The normal API server owns runtime lifecycle
-independently of connected clients. Neither `agent` nor `protocol` imports the other;
-the host composes their contracts.
+- H2A may reply, author one independent question, delegate selected negotiations or wait silently. Persist outputs before starting dependent A2A work.
+- Questions retain their ID, wording and options until answered. Empty input, stale answers and direct messages during a pending question are rejected. Question batches and corrections remain deferred.
+- New questions have no negotiation references. Historical messages retain their scope and match references so old approvals do not acquire broader authority.
+- A2A receives only its saved private brief and current protocol record. A new accepted principal input invalidates earlier delegations until H2A explicitly delegates again.
+- `pause_negotiation()` ends local work without a turn, question, answer promise or H2A activation. Unchanged duplicate notifications remain idle; new delegation or meaningful protocol changes can resume eligible work.
+- Each run discards its model transcript. Concurrent matches share only ephemeral scheduling and serialized outgoing writes; no task map, request queue or processed-input marker is persisted.
+- Restart reads committed history and exact question status without rerunning interrupted work. The next accepted input lets H2A reassess unfinished work. An uncertain POST is never retried automatically.
+- `stop(opportunityId)` cancels one local task without changing questions; `stop()` cancels all model work and releases execution ownership. Committed history survives both.
+- The [scenario TUI](../agent-tui/README.md) uses `MemoryPrincipalRecords`. The [API host](../../services/api/README.md) uses existing intent-tagged `messages` for visible history and private delegation/retirement records; private records are excluded from chat history, previews and unread counts.
+- The API retains the existing `agent_sessions` execution lease in this slice. Its `state` and `revision` columns are removed; lease replacement and table removal remain a separate storage slice.
+- Breaking change: `PrincipalState`, `PrincipalStore` and `MemoryPrincipalStore` are removed; hosts must implement `PrincipalRecords`, current negotiation listing and context-fenced turn writes.
 
 ### Knowing the time
 

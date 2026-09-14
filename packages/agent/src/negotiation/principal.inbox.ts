@@ -6,6 +6,7 @@ import type { Tool } from '../core/tools.ts';
 import type { PendingQuestion } from '../core/types.ts';
 
 import type { Negotiation, User } from './negotiation.agent.ts';
+import { latestPrincipalInput, pendingPrincipalQuestion, type PrincipalEffects, type PrincipalRecords, type PrincipalRecordsView } from './principal.records.ts';
 
 export type QuestionScope = 'intent' | 'match';
 
@@ -14,7 +15,7 @@ export interface MatchReference {
   counterparty: User;
 }
 
-/** One human-facing entry, which can concern several negotiations. */
+/** Canonical H2A entry. Historical scope and references retain the limits of earlier answers. */
 export interface PrincipalMessage {
   id: string;
   createdAt: string;
@@ -26,236 +27,136 @@ export interface PrincipalMessage {
   options?: string[];
 }
 
-/** The wording, scope, and references shown to the human remain stable until answered. */
-export interface PrincipalQuestion extends PendingQuestion {
-  id: string;
-  scope: QuestionScope;
-  matches: readonly MatchReference[];
-}
-
-interface InputRequest extends PendingQuestion {
-  id: string;
-  match: MatchReference;
-  scope: QuestionScope;
-  attachedTo?: string;
-  resolve(note?: string): void;
-}
-
-export interface Outcome {
-  match: MatchReference;
-  result: Negotiation | { error: string };
-}
-
-export interface InboxState {
-  incomingMessageIds: string[];
-  requests: Omit<InputRequest, 'resolve'>[];
-  outcomes: Outcome[];
-  question: PrincipalQuestion | null;
-}
+/** An independently authored H2A question; negotiation activity cannot alter it. */
+export interface PrincipalQuestion extends PendingQuestion { id: string }
 
 interface Decision {
-  action: 'reply' | 'ask' | 'update' | 'wait' | 'reconsider';
-  requestId?: string;
-  relatedRequestIds?: string[];
-  opportunityIds?: string[];
   message?: string;
+  question?: PendingQuestion;
+  delegations?: { opportunityId: string; brief: string }[];
 }
 
-/** The single H2A writer; accepted principal input starts reviews, and negotiation tasks only enqueue requests and outcomes. */
+/** Reconstructs H2A on accepted principal input and persists only explicit outputs. */
 export class PrincipalInbox {
-  private readonly messages: PrincipalMessage[] = [];
-  private readonly incomingMessages: PrincipalMessage[] = [];
-  private readonly requests: InputRequest[] = [];
-  private readonly outcomes = new Map<string, Outcome>();
+  private messages: PrincipalMessage[] = [];
   private currentQuestion: PrincipalQuestion | null = null;
-  private running?: Promise<void>;
+  private running: Promise<void> = Promise.resolve();
+  private accepting: Promise<unknown> = Promise.resolve();
   private reviewController?: AbortController;
   private stopped = false;
 
   constructor(
-    private readonly agent: Agent,
-    private readonly context: () => {
-      version: number;
-      acceptedCommitments: Negotiation[];
-      negotiations: { opportunityId: string; stopped: boolean; record?: Negotiation }[];
-    },
-    private readonly host: { changed(): Promise<void>; input(): void; error(reason: string): void },
+    private readonly createAgent: (records: PrincipalRecordsView) => Agent,
+    private readonly records: PrincipalRecords,
+    private readonly negotiations: () => Promise<Negotiation[]>,
+    private readonly host: { changed(): void; input(): void; delegated(ids: string[]): void; error(reason: string): void },
   ) {}
 
-  /** @returns The resumable inbox, excluding the separately stored H2A transcript. */
-  snapshot(): InboxState {
-    return structuredClone({ incomingMessageIds: this.incomingMessages.map(({ id }) => id),
-      requests: this.requests.map(({ resolve: _resolve, ...request }) => request),
-      outcomes: [...this.outcomes.values()], question: this.currentQuestion });
+  /** Read committed history and question status without activating H2A. */
+  async refresh(): Promise<void> {
+    const records = await this.records.read();
+    this.messages = records.messages;
+    const question = pendingPrincipalQuestion(records);
+    if (question?.id !== this.currentQuestion?.id) this.currentQuestion = question;
   }
 
-  /** @param state - Saved inbox. @param messages - Canonical, chronological H2A entries. */
-  restore(state: InboxState | undefined, messages: PrincipalMessage[]): void {
-    this.messages.push(...messages);
-    if (!state) return;
-    this.incomingMessages.push(...messages.filter(({ id }) => state.incomingMessageIds.includes(id)));
-    this.requests.push(...state.requests.map((request) => ({ ...request, resolve: () => {} })));
-    for (const outcome of state.outcomes) this.outcomes.set(outcome.match.opportunityId, outcome);
-    this.currentQuestion = state.question;
+  private entry(records: PrincipalRecordsView, fields: Omit<PrincipalMessage, 'id' | 'createdAt' | 'matches'>): PrincipalMessage {
+    const previous = records.messages.at(-1);
+    return { id: crypto.randomUUID(), createdAt: new Date(Math.max(Date.now(), previous ? Date.parse(previous.createdAt) + 1 : 0)).toISOString(), matches: [], ...fields };
   }
 
-  /** @param opportunityId - A restored match with a saved request. @returns Its existing wait, without asking again. */
-  waitFor(opportunityId: string): Promise<string | undefined> | undefined {
-    const request = this.requests.find((entry) => entry.match.opportunityId === opportunityId);
-    if (!request) return undefined;
-    return new Promise((resolve) => { request.resolve = resolve; });
-  }
-
-  private append(entry: Omit<PrincipalMessage, 'id' | 'createdAt'>): PrincipalMessage {
-    const timestamp = Math.max(Date.now(), this.messages.length ? Date.parse(this.messages[this.messages.length - 1]!.createdAt) + 1 : 0);
-    const message = { id: crypto.randomUUID(), createdAt: new Date(timestamp).toISOString(), ...entry };
-    this.messages.push(message);
-    return message;
-  }
-
-  /** @returns The principal's canonical H2A transcript. */
+  /** @returns The latest committed H2A history observed by this runtime. */
   get conversation(): readonly PrincipalMessage[] { return this.messages; }
-  /** @returns The stable question currently shown to the principal. */
+  /** @returns The exact unretired, unanswered question derived from records. */
   get pending(): PrincipalQuestion | null { return this.currentQuestion; }
-  /** @returns Requests still separate from the displayed question. */
-  get queuedQuestions(): number {
-    return this.requests.filter((request) => request.id !== this.currentQuestion?.id && !request.attachedTo).length;
-  }
 
-  /**
-   * Receive a direct message when no question is displayed.
-   * @param text - The principal's private message to their personal agent.
-   * @returns The persisted input, or null when it cannot be accepted.
-   */
-  async message(text: string): Promise<PrincipalMessage | null> {
-    if (this.stopped || this.currentQuestion || !text.trim()) return null;
-    const message = this.append({ kind: 'user', text: text.trim(), matches: [] });
-    this.incomingMessages.push(message);
-    this.host.input();
-    this.reviewController?.abort();
-    await this.host.changed();
-    this.running = (this.running ?? Promise.resolve()).then(() => this.review(message));
-    return message;
-  }
+  /** @param text - Direct input when no question is displayed. @returns Committed input, or null when rejected. */
+  message(text: string): Promise<PrincipalMessage | null> { return this.accept(text); }
 
-  /**
-   * Enqueue an internal request; only a communication review may present it.
-   * @param match - The originating negotiation.
-   * @param question - The missing information and its scope.
-   * @returns Internal evidence to reconsider, or no note after a human answer or cancellation.
-   */
-  request(match: MatchReference, question: PendingQuestion & { scope: QuestionScope }): Promise<string | undefined> {
-    if (this.stopped) return Promise.resolve(undefined);
-    return new Promise((resolve) => {
-      this.requests.push({ ...question, id: crypto.randomUUID(), match, resolve });
-      void this.host.changed().catch(() => resolve(undefined));
+  /** @param questionId - Exact displayed question. @param text - Complete answer. @returns Committed input, or null for stale or empty input. */
+  answer(questionId: string, text: string): Promise<PrincipalMessage | null> { return this.accept(text, questionId); }
+
+  private accept(text: string, questionId?: string): Promise<PrincipalMessage | null> {
+    const accepted = this.accepting.then(async () => {
+      if (this.stopped || !text.trim()) return null;
+      const records = await this.records.read();
+      const question = pendingPrincipalQuestion(records);
+      if (questionId !== undefined ? questionId !== question?.id : question !== null) return null;
+      const message = await this.records.accept(this.entry(records, { kind: questionId ? 'answer' : 'user', questionId, text: text.trim() }));
+      if (!message) return null;
+      this.host.input();
+      this.reviewController?.abort();
+      await this.refresh();
+      this.host.changed();
+      this.running = this.running.then(() => this.review(message));
+      return message;
     });
+    this.accepting = accepted.catch(() => {});
+    return accepted;
   }
 
-  /**
-   * Record an authoritative outcome for the next batch.
-   * @param match - The negotiation that ended or failed.
-   * @param result - Its persisted state or observed failure.
-   */
-  outcome(match: MatchReference, result: Outcome['result']): void {
-    this.outcomes.set(match.opportunityId, { match, result });
-    void this.host.changed().catch(() => {});
-  }
-
-  /**
-   * Record an answer and reconsider all waiting negotiations.
-   * @param questionId - The exact displayed question.
-   * @param text - The principal's private answer.
-   * @returns The persisted answer, or null when the displayed question changed.
-   */
-  async answer(questionId: string, text: string): Promise<PrincipalMessage | null> {
-    const question = this.currentQuestion;
-    if (this.stopped || !question || question.id !== questionId || !text.trim()) return null;
-    this.currentQuestion = null;
-    this.host.input();
-    this.reviewController?.abort();
-    const message = this.append({ kind: 'answer', questionId, text: text.trim(), matches: question.matches, scope: question.scope });
-    const released = this.requests.splice(0);
-    await this.host.changed();
-    for (const request of released) request.resolve();
-    this.running = (this.running ?? Promise.resolve()).then(() => this.review(message));
-    return message;
-  }
-
-  /** @param opportunityId - The stopped match whose requests should be released. */
-  async cancel(opportunityId: string): Promise<void> {
-    const removed = this.requests.filter((request) => request.match.opportunityId === opportunityId);
-    if (!removed.length) return;
-    this.reviewController?.abort();
-    if (removed.some((request) => request.id === this.currentQuestion?.id)) {
-      this.currentQuestion = null;
-      for (const request of this.requests) request.attachedTo = undefined;
-    }
-    for (const request of removed) {
-      this.requests.splice(this.requests.indexOf(request), 1);
-    }
-    await this.host.changed();
-    for (const request of removed) request.resolve();
-  }
-
-  /** @returns Completion of shutdown after reviews are canceled and question waits released. */
+  /** Cancel model work; committed questions and history survive shutdown. */
   async stop(): Promise<void> {
     this.stopped = true;
     this.reviewController?.abort();
-    for (const request of this.requests) request.resolve();
+    await this.accepting;
     await this.running;
   }
 
   private async review(input: PrincipalMessage): Promise<void> {
-    if (this.stopped || input.kind === 'user' && !this.incomingMessages.includes(input)) return;
+    if (this.stopped) return;
     const controller = new AbortController();
     this.reviewController = controller;
-    const context = this.context();
-    const incomingMessages = [...this.incomingMessages];
-    const question = this.currentQuestion;
-    const requests = [...this.requests];
-    const outcomes = question ? [] : [...this.outcomes.values()];
-    let decision: Decision | undefined;
-    const tool: Tool<Decision> = {
-      name: 'review_principal_inbox',
-      description: 'Choose one human communication action. reply answers direct incoming messages; ask selects an existing request; update publishes one consolidated outcome; wait stays silent and can attach related facts; reconsider returns requests to negotiation with existing principal evidence.',
-      parameters: {
-        type: 'object', additionalProperties: false,
-        properties: {
-          action: { type: 'string', enum: incomingMessages.length ? ['reply'] : ['ask', 'update', 'wait', 'reconsider'] },
-          requestId: { type: 'string', description: 'The existing request to present with ask.' },
-          relatedRequestIds: { type: 'array', items: { type: 'string' }, uniqueItems: true, description: 'Same-fact requests to attach with ask/wait, or requests to reconsider using existing evidence.' },
-          opportunityIds: { type: 'array', items: { type: 'string' }, uniqueItems: true, description: 'Outcome matches to include in an update.' },
-          message: { type: 'string', description: 'A direct reply, concise principal update, or internal evidence for reconsider.' },
-        },
-        required: ['action'],
-      },
-      run: (input) => {
-        if (decision) throw new Error('Only one communication decision per review.');
-        this.validate(input, requests, outcomes, question, incomingMessages);
-        decision = input;
-        return 'Decision recorded.';
-      },
-    };
     try {
-      const result = await this.agent.run(buildPrincipalInboxPrompt({
-        principalConversation: this.messages, incomingMessages, pendingQuestion: question,
-        requests: requests.map(({ resolve: _resolve, ...request }) => request),
-        outcomes, acceptedCommitments: context.acceptedCommitments,
-        negotiations: context.negotiations,
-      }), { history: new MemoryMessageStore(), tools: [tool], maxSteps: 1, signal: controller.signal });
-      if (controller.signal.aborted || this.stopped || context.version !== this.context().version) return;
+      const records = await this.records.read();
+      if (latestPrincipalInput(records.messages) !== input.id) return;
+      const negotiations = await this.negotiations();
+      const pendingQuestion = pendingPrincipalQuestion(records);
+      let decision: Decision | undefined;
+      const tool: Tool<Decision> = {
+        name: 'review_principal_inbox',
+        description: 'Record one review: optionally reply, ask one independent question, and delegate selected negotiations. Empty input means wait silently. Briefs are private; only saved delegations resume A2A.',
+        parameters: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            message: { type: 'string', minLength: 1 },
+            question: { type: 'object', additionalProperties: false, properties: {
+              question: { type: 'string', minLength: 1 },
+              options: { type: 'array', minItems: 2, maxItems: 4, uniqueItems: true, items: { type: 'string', minLength: 1 } },
+            }, required: ['question', 'options'] },
+            delegations: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
+              opportunityId: { type: 'string' }, brief: { type: 'string', minLength: 1, description: 'Objective, confirmed facts, applicable permission and limits, and next focus for this counterpart.' },
+            }, required: ['opportunityId', 'brief'] } },
+          },
+        },
+        run: (value) => {
+          if (decision) throw new Error('Only one decision per review.');
+          this.validate(value, pendingQuestion, negotiations);
+          decision = value;
+          return 'Decision recorded.';
+        },
+      };
+      const result = await this.createAgent(records).run(buildPrincipalInboxPrompt({ records, input, pendingQuestion, negotiations }), {
+        history: new MemoryMessageStore(), tools: [tool], maxSteps: 1, signal: controller.signal,
+      });
+      if (controller.signal.aborted || this.stopped) return;
       if (!decision) {
         const failed = result.steps.find((step) => step.kind === 'tool' && step.error);
         throw new Error(failed?.kind === 'tool' ? failed.error : 'The personal agent did not record a communication decision.');
       }
-      if (decision.action === 'reply') {
-        this.incomingMessages.splice(0, incomingMessages.length);
-        this.append({ kind: 'message', text: decision.message!.trim(), matches: [] });
-        await this.host.changed();
-      } else {
-        await this.apply(decision, requests, outcomes);
-      }
+      const effects: PrincipalEffects = { negotiations, messages: [], delegations: [] };
+      if (decision.message) effects.messages.push(this.entry(records, { kind: 'message', text: decision.message.trim() }));
+      if (decision.question) effects.messages.push(this.entry({ ...records, messages: [...records.messages, ...effects.messages] }, {
+        kind: 'question', questionId: crypto.randomUUID(), text: decision.question.question.trim(), options: decision.question.options,
+      }));
+      let delegationTime = Math.max(Date.now(), ...[...records.messages, ...records.delegations].map((entry) => Date.parse(entry.createdAt))) + 1;
+      effects.delegations = (decision.delegations ?? []).map((delegation) => ({ ...delegation, brief: delegation.brief.trim(),
+        id: crypto.randomUUID(), sourceMessageId: latestPrincipalInput(records.messages)!, createdAt: new Date(delegationTime++).toISOString() }));
+      if (!effects.messages.length && !effects.delegations.length) return;
+      if (!await this.records.write(effects, records.version)) return;
+      await this.refresh();
+      this.host.changed();
+      this.host.delegated(effects.delegations.map(({ opportunityId }) => opportunityId));
     } catch (error) {
       if (!controller.signal.aborted && !this.stopped) this.host.error(error instanceof Error ? error.message : String(error));
     } finally {
@@ -263,57 +164,19 @@ export class PrincipalInbox {
     }
   }
 
-  private validate(input: Decision, requests: InputRequest[], outcomes: Outcome[], question: PrincipalQuestion | null, incomingMessages: PrincipalMessage[]): void {
-    if (!input || !['reply', 'ask', 'update', 'wait', 'reconsider'].includes(input.action)) throw new Error('Choose a communication action.');
-    if (incomingMessages.length || input.action === 'reply') {
-      if (!incomingMessages.length || input.action !== 'reply' || !input.message?.trim()) throw new Error('Answer the incoming principal messages with reply and a nonempty message.');
-      return;
+  private validate(value: Decision, pending: PrincipalQuestion | null, negotiations: Negotiation[]): void {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some((key) => !['message', 'question', 'delegations'].includes(key))) throw new Error('Provide a review decision using only the offered fields.');
+    if (value.message !== undefined && (typeof value.message !== 'string' || !value.message.trim())) throw new Error('A reply must be nonempty.');
+    if (value.question !== undefined) {
+      if (!value.question || typeof value.question !== 'object' || Array.isArray(value.question) || Object.keys(value.question).some((key) => !['question', 'options'].includes(key))) throw new Error('Provide one question and suggested answers.');
+      if (pending) throw new Error('Keep the displayed question stable until answered.');
+      const { question, options } = value.question;
+      if (typeof question !== 'string' || !question.trim() || !Array.isArray(options) || options.length < 2 || options.length > 4
+        || options.some((option) => typeof option !== 'string' || !option.trim()) || new Set(options).size !== options.length) throw new Error('Ask one question with 2–4 distinct suggestions.');
     }
-    const related = input.relatedRequestIds ?? [];
-    if (!Array.isArray(related) || new Set(related).size !== related.length || related.some((id) => !requests.some((request) => request.id === id && id !== question?.id))) throw new Error('Select distinct existing queued requests.');
-    if (input.action === 'reconsider') {
-      if (!related.length || !input.message?.trim()) throw new Error('Reconsider needs request IDs and existing principal evidence.');
-      return;
+    if (value.delegations !== undefined && (!Array.isArray(value.delegations) || new Set(value.delegations.map(({ opportunityId }) => opportunityId)).size !== value.delegations.length
+      || value.delegations.some((delegation) => typeof delegation.brief !== 'string' || !delegation.brief.trim() || !negotiations.some((record) => record.opportunityId === delegation.opportunityId && !record.settledAt)))) {
+      throw new Error('Delegate distinct current, unsettled negotiations with nonempty private briefs.');
     }
-    if (question && input.action !== 'wait') throw new Error('Keep the displayed question stable; use wait for new related requests.');
-    if (!question && requests.length && input.action !== 'ask') throw new Error('Resolve queued principal input before posting updates.');
-    const selected = input.action === 'ask' ? requests.find((request) => request.id === input.requestId) : undefined;
-    if (input.action === 'ask' && !selected) throw new Error('Choose an existing request to ask.');
-    if (related.length && ((selected?.scope ?? question?.scope) !== 'intent' || related.some((id) => requests.find((request) => request.id === id)!.scope !== 'intent'))) {
-      throw new Error('Only requests for the same intent-wide fact may share a question. Match approvals remain separate.');
-    }
-    if (input.action === 'update' && (!input.message?.trim() || !Array.isArray(input.opportunityIds) || !input.opportunityIds.length || input.opportunityIds.some((id) => !outcomes.some((event) => event.match.opportunityId === id)))) {
-      throw new Error('An update needs a message and existing outcome match IDs.');
-    }
-  }
-
-  private async apply(decision: Decision, requests: InputRequest[], outcomes: Outcome[]): Promise<void> {
-    const released: InputRequest[] = [];
-    if (decision.action === 'reconsider') {
-      for (const id of decision.relatedRequestIds!) {
-        const request = requests.find((entry) => entry.id === id)!;
-        this.requests.splice(this.requests.indexOf(request), 1);
-        released.push(request);
-      }
-    } else {
-      if (decision.action === 'ask') {
-        const request = requests.find((entry) => entry.id === decision.requestId)!;
-        const related = requests.filter((entry) => decision.relatedRequestIds?.includes(entry.id) && entry !== request);
-        this.currentQuestion = {
-          id: request.id, question: request.question, options: request.options, scope: request.scope,
-          matches: [request, ...related].map((entry) => entry.match),
-        };
-        this.append({ kind: 'question', questionId: request.id, text: request.question, options: request.options, scope: request.scope, matches: this.currentQuestion.matches });
-      } else if (decision.action === 'update') {
-        this.append({ kind: 'message', text: decision.message!.trim(), matches: outcomes.filter((event) => decision.opportunityIds!.includes(event.match.opportunityId)).map((event) => event.match) });
-      }
-      if (this.currentQuestion) {
-        for (const request of requests) if (decision.relatedRequestIds?.includes(request.id) && request.id !== this.currentQuestion.id) request.attachedTo = this.currentQuestion.id;
-      } else {
-        for (const event of outcomes) if (this.outcomes.get(event.match.opportunityId) === event) this.outcomes.delete(event.match.opportunityId);
-      }
-    }
-    await this.host.changed();
-    for (const request of released) request.resolve(decision.message!.trim());
   }
 }

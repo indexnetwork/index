@@ -21,7 +21,7 @@ export interface TuiNegotiation {
 export interface NegotiationTuiHost {
   title: string;
   users: readonly TuiPrincipal[];
-  agents: ReadonlyMap<string, Pick<NegotiationAgent, 'conversation' | 'pending' | 'queuedQuestions' | 'message' | 'answer'>>;
+  agents: ReadonlyMap<string, Pick<NegotiationAgent, 'conversation' | 'pending' | 'message' | 'answer'>>;
   negotiations: ReadonlyMap<string, TuiNegotiation>;
   agentStatus: string;
   on(event: 'change', listener: () => void): unknown;
@@ -379,11 +379,9 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
       pane.box.title = ` H2A · ${principal.name}${question ? ' · needs you' : ''} `;
       pane.box.borderColor = selected === principal.userId ? COLORS.focus : question ? COLORS.question : COLORS.border;
       pane.box.titleColor = question ? COLORS.question : selected === principal.userId ? COLORS.focus : COLORS.muted;
-      let hint = question
+      const hint = question
         ? pane.editingReply ? 'Enter sends · Esc returns to choices.' : '↑/↓ choose · Enter confirms.'
         : 'Enter sends a message and starts a review.';
-      if (question) hint = (question.scope === 'intent' ? 'For this intent' : 'About ' + question.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ')) + ' · ' + hint;
-      if (agent.queuedQuestions) hint += ' · ' + agent.queuedQuestions + ' queued';
       pane.hint.content = pane.sendError ?? (pane.sending ? 'Sending… · ' + hint : hint);
       pane.hint.fg = question ? COLORS.question : COLORS.muted;
     }
@@ -391,11 +389,10 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
       const entry = collapsedEntries.get(user.id)!;
       const agents = user.intents.map(({ id }) => lab.agents.get(id)!);
       const pending = agents.filter((agent) => agent.pending).length;
-      const queued = agents.reduce((sum, agent) => sum + agent.queuedQuestions, 0);
       entry.visible = roster.includes(user) && !expanded.includes(user);
       const highlight = fg(pending ? COLORS.question : COLORS.muted);
       entry.fg = COLORS.muted;
-      entry.content = t`${highlight(user.name)}\n${user.current.intent}\n${highlight(pending ? `? ${pending}` : '·')}${queued ? ` · ${queued} queued` : ''}`;
+      entry.content = t`${highlight(user.name)}\n${user.current.intent}\n${highlight(pending ? `? ${pending}` : '·')}`;
     }
     const key = expanded.length === 2 ? expanded.map(({ current }) => current.id).join('\0') : '';
     if (key !== pairKey) { pairKey = key; matchIndex = 0; }

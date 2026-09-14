@@ -19,7 +19,6 @@ export class PersonalAgentError extends Error {
 export interface PersonalAgentState {
   status: 'running' | 'starting' | 'paused' | 'external' | 'unavailable';
   pending: PrincipalQuestion | null;
-  queuedQuestions: number;
 }
 
 interface Session {
@@ -191,16 +190,15 @@ export class PersonalAgentService {
   async state(userId: string, intentId: string): Promise<PersonalAgentState> {
     const [owned, external, saved] = await Promise.all([
       this.intents.isOwnedByUser(intentId, userId), this.registry.getSelectedNegotiator(userId),
-      AgentSessionDatabaseAdapter.readSession(userId, intentId),
+      AgentSessionDatabaseAdapter.readConversation(userId, intentId),
     ]);
     if (!owned) throw new PersonalAgentError('Intent not found.', 404);
-    if (external) return { status: 'external', pending: null, queuedQuestions: 0 };
+    if (external) return { status: 'external', pending: null };
     const session = this.sessions.get(intentId);
     const agent = session?.host.agents.get(intentId);
     const status = session?.stopping || agent?.stopped ? 'unavailable' : session?.active ? 'running' : session ? 'starting'
       : this.principals.has(intentId) ? 'unavailable' : 'paused';
-    return { status, pending: status === 'running' ? saved?.state?.inbox.question ?? null : null,
-      queuedQuestions: agent?.queuedQuestions ?? 0 };
+    return { status, pending: status === 'running' ? saved?.pending ?? null : null };
   }
 
   /**
@@ -223,7 +221,7 @@ export class PersonalAgentService {
     try { await session.ready; }
     catch { throw new PersonalAgentError('Your personal agent could not start. Please try again.', 503); }
     if (!this.running || session.stopping || this.sessions.get(input.intentId) !== session) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
-    const saved = await AgentSessionDatabaseAdapter.readSession(input.userId, input.intentId);
+    const saved = await AgentSessionDatabaseAdapter.readConversation(input.userId, input.intentId);
     if (saved?.conversationId !== input.conversationId) throw new PersonalAgentError('Agent conversation not found.', 404);
     const agent = session.host.agents.get(input.intentId)!;
     if (agent.stopped) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
