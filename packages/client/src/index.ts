@@ -7,6 +7,8 @@ export type {
   ConnectedEvent,
   ConversationMessage,
   IntentLifecycleWireStatus,
+  IntentStatus,
+  IntentSummary,
   MatchReference,
   Negotiation,
   NegotiationAction,

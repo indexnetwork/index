@@ -1,6 +1,6 @@
 # @indexnetwork/client
 
-Index HTTP for an agent-bound API key. One class, seven calls, no model or loop.
+Index HTTP for an agent-bound API key. One class, eight calls, no model or loop.
 
 ```ts
 import { IndexClient, wakesHost } from "@indexnetwork/client";
@@ -26,6 +26,7 @@ const stop = client.events((event) => {
 | Method | HTTP |
 |---|---|
 | `me()` | `GET /api/auth/me` → `{ id, name }` (memoized) |
+| `listIntents(limit?)` | `POST /api/intents/list` → `{ id, statement, status }[]` |
 | `listNegotiations()` | `GET /api/negotiations?state=open` |
 | `getNegotiation(id)` | `GET /api/negotiations/:id` |
 | `submitTurn(id, turn)` | `POST /api/negotiations/:id/turns` |

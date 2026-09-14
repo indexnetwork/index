@@ -50,6 +50,15 @@ export interface NegotiationDetail extends Negotiation {
   }[];
 }
 
+export type IntentStatus = "ACTIVE" | "PAUSED" | "FULFILLED" | "EXPIRED" | "ARCHIVED";
+
+/** One of the owner's signals, as an agent working it needs to see it. */
+export interface IntentSummary {
+  id: string;
+  statement: string;
+  status: IntentStatus;
+}
+
 export type QuestionScope = "intent" | "match";
 
 export interface MatchReference {
@@ -210,6 +219,21 @@ export class IndexClient {
     const { user } = await this.request<{ user: { id: string; name: string | null } }>("GET", "/auth/me");
     this.identity = { id: user.id, name: user.name };
     return this.identity;
+  }
+
+  /**
+   * @param limit - How many signals to read. Defaults to 100.
+   * @returns The owner's signals. `ARCHIVED` is derived from `archivedAt`, which is how removal is recorded.
+   */
+  async listIntents(limit = 100): Promise<IntentSummary[]> {
+    const { intents } = await this.request<{
+      intents: { id: string; payload: string; status: string | null; archivedAt: string | null }[];
+    }>("POST", "/intents/list", { limit });
+    return intents.map((intent) => ({
+      id: intent.id,
+      statement: intent.payload,
+      status: (intent.archivedAt ? "ARCHIVED" : intent.status ?? "ACTIVE") as IntentStatus,
+    }));
   }
 
   /**
