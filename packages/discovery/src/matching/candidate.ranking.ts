@@ -1,4 +1,5 @@
 import { timed } from '../core/runtime.js';
+import { DISCOVERY_MAX_MATCHES } from './discovery.constants.js';
 import type { DiscoveryState, EvaluatedOpportunity } from './discovery.state.js';
 import { rankingLog } from './discovery.trace.js';
 
@@ -14,7 +15,8 @@ export async function rankingNode(state: DiscoveryState) {
 
     try {
       const sorted = [...state.evaluatedOpportunities].sort((a, b) => b.score - a.score);
-      const ranked = state.options.limit != null ? sorted.slice(0, state.options.limit) : sorted;
+      const cap = Math.min(state.options.limit ?? DISCOVERY_MAX_MATCHES, DISCOVERY_MAX_MATCHES);
+      const ranked = sorted.slice(0, cap);
 
       const actorSetKey = (opp: EvaluatedOpportunity) =>
         opp.actors
