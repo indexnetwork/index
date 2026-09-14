@@ -1,11 +1,11 @@
 # Index CLI
 
-Command-line interface for [Index Network](https://index.network). Message your hosted personal agent, manage signals, and discover opportunities — all from your terminal.
+Command-line interface for [Index Network](https://index.network). Message your personal agent, manage signals, and discover opportunities — all from your terminal.
 
 ## Installation
 
 ```bash
-npm install -g @indexnetwork/cli@0.25.0
+npm install -g @indexnetwork/cli@0.26.0
 ```
 
 ## Quick Start
@@ -201,7 +201,7 @@ index network invite <id> user@email # Invite directly by email
 
 ### `index conversation`
 
-Read and message the hosted personal agent within a signal, or use human DMs.
+Read and message the personal agent within a signal, or use human DMs.
 
 ```bash
 index conversation show agent --intent-id <id> --json

@@ -1,11 +1,41 @@
-import { log } from '../lib/log';
+import type { PrincipalMessage, PrincipalQuestion } from '@indexnetwork/agent';
 
+import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
+import { AgentSessionDatabaseAdapter, publishPendingQuestionEvent } from '../adapters/agent-session.database.adapter';
 import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
-import { userEventChannel } from '../lib/user-events';
+import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
+import { log } from '../lib/log';
+import { publishUserEvent, userEventChannel } from '../lib/user-events';
 
 const logger = log.service.from('ConversationService');
+
+/** An owner-facing H2A input failure; no agent work is acknowledged by this error. */
+export class AgentConversationError extends Error {
+  constructor(message: string, readonly status: 400 | 404 | 409) { super(message); }
+}
+
+export interface AgentConversationState {
+  status: 'external' | 'hosted';
+  pending: PrincipalQuestion | null;
+  queuedQuestions: number;
+}
+
+function pendingFrom(messages: readonly PrincipalMessage[]): PrincipalQuestion | null {
+  let pending: PrincipalQuestion | null = null;
+  for (const message of messages) {
+    if (message.kind === 'question') {
+      pending = {
+        id: message.questionId ?? message.id, question: message.text, options: message.options,
+        scope: message.scope ?? 'intent', matches: message.matches,
+      };
+    } else if (message.kind === 'answer' || message.kind === 'user') {
+      pending = null;
+    }
+  }
+  return pending;
+}
 
 /** A live subscription on one user's event channel. */
 export interface UserEventSubscription {
@@ -28,6 +58,9 @@ export const AGENT_DM_ID = 'agent';
  * @remarks Delegates all persistence to ConversationDatabaseAdapter. Does not call other services.
  */
 export class ConversationService {
+  private readonly intents = new IntentDatabaseAdapter();
+  private readonly registry = new AgentDatabaseAdapter();
+
   constructor(private db: ConversationDatabaseAdapter = conversationDatabaseAdapter) {}
 
   /**
@@ -225,6 +258,67 @@ export class ConversationService {
   async updateMetadata(conversationId: string, metadata: Record<string, unknown>, userId: string) {
     await this.verifyParticipant(userId, conversationId);
     return this.db.upsertMetadata(conversationId, metadata);
+  }
+
+  /**
+   * @param userId - Authenticated owner.
+   * @param intentId - Intent conversation being read.
+   * @returns Pending question, or the hosted status when Index holds the seat.
+   * @throws AgentConversationError when the caller does not own the intent.
+   */
+  async agentState(userId: string, intentId: string): Promise<AgentConversationState> {
+    if (!await this.intents.isOwnedByUser(intentId, userId)) throw new AgentConversationError('Intent not found.', 404);
+    // The hosted negotiator only takes A2A turns, so it has no owner transcript.
+    if (!await this.registry.getSelectedNegotiator(userId)) {
+      return { status: 'hosted', pending: null, queuedQuestions: 0 };
+    }
+    const { messages } = await AgentSessionDatabaseAdapter.readTranscript(userId, intentId);
+    return { status: 'external', pending: pendingFrom(messages), queuedQuestions: 0 };
+  }
+
+  /**
+   * Persist owner input for the selected external negotiator and notify that runtime.
+   * @param input - Authenticated owner, intent, canonical DM, and the exact displayed question (or null for a direct message).
+   * @returns The persisted message.
+   * @throws AgentConversationError when ownership, availability, or the displayed question changed.
+   */
+  async sendOwnerInput(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }) {
+    if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
+    if (!await this.registry.getSelectedNegotiator(input.userId)) throw new AgentConversationError('The Index negotiator does not chat. Select a negotiator to message your agent.', 409);
+    const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
+    if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
+    const pending = pendingFrom(messages);
+    if (input.questionId ? pending?.id !== input.questionId : pending) {
+      throw new AgentConversationError('The question changed. Refresh the conversation and try again; your message was not sent.', 409);
+    }
+    const message = await AgentSessionDatabaseAdapter.writeOwnerInput({ ...input, pending });
+    await publishUserEvent(input.userId, {
+      type: 'principal.input', id: message.id, title: '', body: '',
+      data: { intentId: input.intentId, questionId: input.questionId, text: input.text },
+    });
+    return message;
+  }
+
+  /**
+   * Persist an external speaker's question or message on the owner's agent DM.
+   * @param input - Owner, selected executor, signal, and agent-authored H2A entries.
+   * @throws AgentConversationError when the intent is not owned.
+   */
+  async publishH2A(input: { userId: string; intentId: string; executorId: string; entries: PrincipalMessage[] }) {
+    if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
+    const { messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
+    const known = new Set(messages.map((message) => message.id));
+    const entries = input.entries.filter((entry) => (entry.kind === 'question' || entry.kind === 'message') && !known.has(entry.id));
+    if (!entries.length) return;
+    const asked = pendingFrom(messages);
+    await AgentSessionDatabaseAdapter.publishAsExecutor({ ...input, entries });
+    const displayed = [...entries].reverse().find((entry) => entry.kind === 'question');
+    if (displayed && displayed.questionId && displayed.questionId !== asked?.id) {
+      await publishPendingQuestionEvent(input.userId, input.intentId, {
+        id: displayed.questionId, question: displayed.text, options: displayed.options,
+        scope: displayed.scope ?? 'intent', matches: displayed.matches,
+      });
+    }
   }
 
   /**

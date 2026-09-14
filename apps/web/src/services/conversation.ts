@@ -39,7 +39,7 @@ export interface PrincipalQuestion {
 }
 
 export interface PersonalAgentState {
-  status: 'running' | 'starting' | 'paused' | 'external' | 'unavailable';
+  status: 'external' | 'hosted';
   pending: PrincipalQuestion | null;
   queuedQuestions: number;
 }

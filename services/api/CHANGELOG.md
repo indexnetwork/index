@@ -9,6 +9,15 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- **BREAKING: the API no longer hosts an in-process personal agent.**
+  `PersonalAgentService` and its always-on `NegotiationAgent` sessions are gone.
+  In their place, `HostedNegotiator` is the default A2A seat: it wakes on
+  `negotiation.turn` and `negotiation.opened`, takes one turn, and stops. It
+  never chats. Owner H2A send and `POST /conversations/agent/h2a` work only with
+  a selected external negotiator, and agent conversation state is `external` or
+  `hosted` (was `unavailable`). The local `agent:tui` lab is unchanged.
+
 ### Added
 - Railway dev intent replay: `db:dev:resume --confirm` shuffles eligible intents
   and resumes them 10–30 seconds apart, with discovery completion/failure logs.
