@@ -1,4 +1,4 @@
-import type { Negotiation, NegotiationTurn, NegotiationUser } from '@indexnetwork/agent';
+import type { Negotiation, NegotiationTurn, NegotiationUser, PrincipalMessage } from '@indexnetwork/agent';
 
 export interface NegotiationSummary {
   opportunityId: string;
@@ -118,5 +118,35 @@ export class IndexClient {
       throw new Error('This signal is inactive or belongs to another owner.');
     }
     return { id: intent.id, payload: intent.payload };
+  }
+
+  /**
+   * @param intentId - The signal.
+   * @param entries - Agent-authored questions and messages not yet on Index.
+   */
+  async publishH2A(intentId: string, entries: PrincipalMessage[]): Promise<void> {
+    await this.request(
+      'POST',
+      `/conversations/agent/h2a?executorId=${encodeURIComponent(this.executorId)}`,
+      { intentId, entries },
+    );
+  }
+
+  /**
+   * @param intentId - The signal.
+   * @returns That signal's H2A transcript on the owner's agent DM.
+   */
+  async agentMessages(intentId: string): Promise<PrincipalMessage[]> {
+    const { messages } = await this.request<{
+      messages: { id: string; createdAt: string; role: string; parts: { kind?: string; text?: string }[]; metadata?: { principalMessage?: Omit<PrincipalMessage, 'id' | 'createdAt' | 'text'> } }[];
+    }>('GET', `/conversations/agent/messages?intentId=${encodeURIComponent(intentId)}`);
+    return messages.map((message) => {
+      const stored = message.metadata?.principalMessage;
+      return {
+        ...stored, id: message.id, createdAt: message.createdAt,
+        kind: stored?.kind ?? (message.role === 'user' ? 'user' : 'message'), matches: stored?.matches ?? [],
+        text: (message.parts ?? []).filter((part) => part?.kind === 'text' && typeof part.text === 'string').map((part) => part.text).join('\n'),
+      };
+    });
   }
 }

@@ -1,6 +1,49 @@
 # Changelog
 
 
+## 0.43.0
+
+### Added
+- **Desktop sidecar Start/Stop.** The Discover header (next to auto-refresh)
+  starts or stops this machine's negotiator. Start still wakes every open
+  signal waiting on the owner.
+
+### Changed
+- The negotiator Bun process is a child of the Hermes gateway: it starts with
+  the `index` platform when this machine is selected, restarts if that child
+  exits, and stops when the gateway exits or the selection moves.
+- **Think and speak turns persist in Hermes.** Each turn writes its prompt
+  and tool calls into `state.db` under the session title, so Sessions can
+  show the match transcript.
+- **Hermes speaks under the hosted system prompt.** Each think/speak turn
+  receives the same standing instructions `Agent.run` uses, so match sessions
+  propose instead of asking permission on every match. A successful
+  `request_principal_input` no longer looks like a tool error.
+- **`INDEX_APP_BASE_URL` may be `http://localhost` (or `127.0.0.1`).** Browser
+  login opens that origin's `/cli-auth` instead of falling back to production.
+- **Questions and answers live on Index web.** Think sessions remain the
+  inbox-review working transcript. The sidecar no longer copies questions
+  onto that chat or treats keystrokes as `/answer`. New H2A is posted to
+  the owner's agent DM (`POST /conversations/agent/h2a?executorId=`), and
+  owner replies arrive as `principal.input` events.
+
+## 0.42.0
+
+### Changed
+- **Hermes is the speaker, not the bound-conversation negotiator.** The
+  previous path — `index_configure_personal_agent`, `index_focus_intent`, a
+  sqlite bind row, reply-address routing, `auxiliary_client.call_llm` /
+  `/complete`, and one announced Hermes session per signal — is gone. The
+  sidecar still runs `@indexnetwork/agent`. Hermes now speaks through
+  Index-platform sessions: one think session per signal (`{intentId}:think`)
+  and one speaker session per match (`{opportunityId}`). Owner text is
+  accepted only on the think session. Hosted Index still uses `Agent.run`.
+
+### Removed
+- Tools `index_configure_personal_agent` and `index_focus_intent`.
+- Hook `pre_llm_call`, `HermesModel`, `native_agent.py`, and
+  `principal.sqlite3` bind/focus state.
+
 ## 0.41.3
 
 ### Added

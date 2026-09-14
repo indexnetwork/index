@@ -21,6 +21,8 @@ import { log } from './log';
  * `question.pending` is scoped to a signal too, but the other way round: the
  * personal agent stopped and cannot continue until its owner answers, so the
  * frame names the intent whose H2A conversation holds the question.
+ * `principal.input` is the owner's answer or message on that same conversation
+ * when an external executor is selected.
  *
  * `message` is the exception to the pointer shape: it is human-addressed and
  * carries its text inline, so a desktop toast needs no follow-up read.
@@ -28,6 +30,7 @@ import { log } from './log';
 export type UserEventType =
   | 'opportunity.new'
   | 'question.pending'
+  | 'principal.input'
   | 'negotiation.turn'
   | 'negotiation.settled'
   | 'negotiation.opened'

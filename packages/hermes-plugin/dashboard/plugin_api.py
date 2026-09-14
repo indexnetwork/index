@@ -160,11 +160,6 @@ tools = _load_module(f"{_runtime_package()}.tools", _TOOLS_PATH)
 # Loaded under the same package so it can share the transport's API resolver;
 # sign-in and every later request must name one Index environment.
 auth_login = _load_module(f"{_runtime_package()}.dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
-# The gateway's own store module, so a negotiator choice made here reaches the
-# same SQLite file the event reader consults.
-principal_state = _load_module(f"{_runtime_package()}.principal_state", _PLUGIN_ROOT / "principal_state.py")
-
-
 def _call_read_intents() -> dict[str, Any]:
     """Fetch all of the caller's non-archived intents across pages over REST `POST /intents/list`.
 
@@ -861,6 +856,75 @@ def _build_dashboard(
     }
 
 
+def _plugin_sidecar():
+    """The negotiator started by the plugin's Index platform, if this process has one."""
+    plugin = sys.modules.get("hermes_plugins.index_network")
+    return getattr(plugin, "_sidecar", None) if plugin is not None else None
+
+
+def _wake_open_signals(sidecar: Any, owner_id: str) -> list[str]:
+    """Start work on every open negotiation waiting for this owner."""
+    payload = tools._api_request("GET", "/negotiations")
+    if payload.get("success") is False:
+        raise RuntimeError(payload.get("error") or "Could not list negotiations.")
+    woken: list[str] = []
+    for item in _list(payload.get("negotiations")):
+        if not isinstance(item, dict) or item.get("settledAt") or item.get("awaitingUserId") != owner_id:
+            continue
+        intent_id = _text(item.get("intentId"))
+        if not intent_id or intent_id in woken:
+            continue
+        sidecar.wake(intent_id)
+        woken.append(intent_id)
+    return woken
+
+
+@full_router.get("/sidecar")
+def sidecar_status() -> dict[str, Any]:
+    """Whether this machine's negotiator process is running."""
+    sidecar = _plugin_sidecar()
+    if sidecar is None:
+        return {"success": True, "running": False}
+    return {"success": True, "running": sidecar.running}
+
+
+@full_router.post("/sidecar/start")
+def sidecar_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Start the negotiator and wake every open signal waiting on this owner."""
+    sidecar = _plugin_sidecar()
+    if sidecar is None:
+        return {"success": False, "error": "The Index plugin is not loaded in this process."}
+    try:
+        agent = tools.selected_agent()
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": str(exc)}
+    if agent.get("type") != "external" or not agent.get("handleNegotiations"):
+        return {"success": False, "error": "Select this Hermes agent to handle negotiations first."}
+    owner_id = _text(agent.get("ownerId"))
+    agent_id = _text(agent.get("id"))
+    if not owner_id or not agent_id:
+        return {"success": False, "error": "Index did not name this agent's owner."}
+    try:
+        sidecar.start(owner_id, agent_id)
+        woken = _wake_open_signals(sidecar, owner_id)
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": str(exc)}
+    return {"success": True, "running": sidecar.running, "woken": len(woken)}
+
+
+@full_router.post("/sidecar/stop")
+def sidecar_stop(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Stop this machine's negotiator process."""
+    sidecar = _plugin_sidecar()
+    if sidecar is None:
+        return {"success": True, "running": False}
+    try:
+        sidecar.stop()
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": str(exc)}
+    return {"success": True, "running": sidecar.running}
+
+
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
     """Report transport health from the configured API key."""
@@ -905,6 +969,9 @@ def _login_app_base_url() -> str:
     except ValueError:
         return tools.INDEX_APP_BASE_URL
     if parts.scheme in ("http", "https") and parts.netloc:
+        hostname = (parts.hostname or "").lower()
+        if hostname in {"localhost", "127.0.0.1", "::1"}:
+            return f"{parts.scheme}://{hostname}:3000"
         host = parts.netloc
         if host.startswith("protocol."):
             host = host[len("protocol."):]
@@ -1981,35 +2048,6 @@ def agent_answer(body: dict[str, Any] | None = Body(default=None)) -> dict[str, 
     )
 
 
-# The name this Hermes registers under when it is chosen to negotiate.
-_HERMES_AGENT_NAME = "Hermes"
-
-
-def _sync_local_executor(agent: Any) -> None:
-    """Start or stop this machine's native runner to match the negotiator choice.
-
-    The gateway's event reader follows `/events` only while a binding row
-    exists, so writing that row here is what actually makes Hermes take turns;
-    the Index slot alone only stops the hosted negotiator. A choice naming any
-    other runtime, or the hosted negotiator, releases this machine.
-
-    @param agent - The agent entity returned by the Index write.
-    """
-    from hermes_constants import get_hermes_home
-
-    row = agent if isinstance(agent, dict) else {}
-    mine = row.get("handleNegotiations") is True and _text(row.get("name")).lower() == _HERMES_AGENT_NAME.lower()
-    store = principal_state.PrincipalStore(get_hermes_home())
-    with store.transaction() as db:
-        if not mine:
-            store.unbind(db)
-            return
-        # An owner conversation, when one is configured later, overlays this
-        # binding; background turns never need one.
-        store.bind(db, {**(store.binding(db) or {}),
-                        "account": _text(row.get("ownerId")), "agentId": _text(row.get("id"))})
-
-
 def _agent_row(agent: Any) -> dict[str, Any]:
     """Map one `/agents` entity onto the negotiator selector's row shape."""
     row = agent if isinstance(agent, dict) else {}
@@ -2067,8 +2105,8 @@ def update_agent(
 
     `handleNegotiations: false` is how the hosted Index negotiator is chosen:
     the API clears the owner's binding rather than naming a hosted agent.
-    Choosing this Hermes also starts its native runner; choosing anything else
-    stops it.
+    The event reader follows `GET /agents/me` and starts or stops the sidecar
+    from that selection.
     """
     agent_id = _text(agent_id)
     if not agent_id:
@@ -2083,7 +2121,6 @@ def update_agent(
     )
     if payload.get("success") is False:
         return payload
-    _sync_local_executor(payload.get("agent"))
     return {"success": True, "agent": _agent_row(payload.get("agent"))}
 
 
