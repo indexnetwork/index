@@ -11,6 +11,8 @@ export interface PrincipalState {
 export interface PrincipalStore {
   load(): Promise<{ state: PrincipalState | null; messages: PrincipalMessage[] }>;
   save(state: PrincipalState, messages: readonly PrincipalMessage[]): Promise<void>;
+  /** Extend exclusive ownership for a long action. Optional for in-memory hosts. */
+  renew?(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -26,6 +28,8 @@ export class MemoryPrincipalStore implements PrincipalStore {
     this.state = structuredClone(state);
     this.messages.push(...structuredClone(messages));
   }
+  /** In-memory hosts have no exclusive lease. */
+  async renew() {}
   /** Release the disposable session. */
   async close() {}
 }

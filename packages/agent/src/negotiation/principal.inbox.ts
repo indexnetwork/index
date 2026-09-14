@@ -82,7 +82,7 @@ export class PrincipalInbox {
       acceptedCommitments: Negotiation[];
       negotiations: { opportunityId: string; stopped: boolean; record?: Negotiation }[];
     },
-    private readonly host: { changed(): Promise<void>; input(): void; error(reason: string): void },
+    private readonly host: { changed(): Promise<void>; input(): void; renew(): Promise<void>; error(reason: string): void },
     /** When set, the host runs this review instead of `agent.run`. */
     private readonly complete?: (input: string, options: RunOptions) => Promise<RunResult>,
   ) {}
@@ -239,6 +239,8 @@ export class PrincipalInbox {
   }
 
   private async review(): Promise<void> {
+    await this.host.renew();
+    if (this.stopped) return;
     const controller = new AbortController();
     this.reviewController = controller;
     const context = this.context();

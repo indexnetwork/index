@@ -130,6 +130,7 @@ export class NegotiationAgent {
     }), {
       changed: () => this.checkpoint(),
       input: () => { this.contextVersion++; },
+      renew: () => this.fence(),
       error: (reason) => {
         host.error(null, owner, 'Principal communication failed: ' + reason);
         void this.stop();
@@ -152,7 +153,9 @@ export class NegotiationAgent {
       this.tasks.set(saved.opportunityId, { ...saved, counterparty: { id: '', name: null }, controller: new AbortController(), notified: false, stopped: false });
     }
     this.loaded = true;
+    await this.fence();
     await Promise.all([...this.tasks.values()].map(async (task) => {
+      await this.fence();
       const previous = task.record;
       const record = await this.participant.client.readNegotiation(task.opportunityId);
       if (previous?.turnCount !== record.turnCount || record.settledAt || record.protocol.blockedReason && record.protocol.blockedReason !== 'not_your_turn') await this.inbox.cancel(task.opportunityId);
@@ -349,9 +352,17 @@ export class NegotiationAgent {
     return [readTool, submitTool, requestTool];
   }
 
+  private fence(): Promise<void> {
+    return this.store.renew?.() ?? Promise.resolve();
+  }
+
   private drain(task: MatchTask): Promise<void> {
     if (task.running) return task.running;
-    task.running = this.run(task).finally(() => {
+    task.running = this.fence().then(() => this.run(task), (error: unknown) => {
+      this.controller.abort();
+      void this.inbox.stop();
+      this.host.error(null, this.participant.owner, error instanceof Error ? error.message : String(error));
+    }).finally(() => {
       task.running = undefined;
       if (task.notified && !task.stopped && !this.controller.signal.aborted) return this.drain(task);
     });
@@ -362,6 +373,13 @@ export class NegotiationAgent {
     const { owner, client, intent } = this.participant;
     const signal = AbortSignal.any([this.controller.signal, task.controller.signal]);
     while (task.notified && !task.stopped && !signal.aborted) {
+      try { await this.fence(); }
+      catch (error) {
+        this.controller.abort();
+        void this.inbox.stop();
+        this.host.error(null, owner, error instanceof Error ? error.message : String(error));
+        return;
+      }
       task.notified = false;
       try {
         let record = await client.readNegotiation(task.opportunityId);

@@ -150,7 +150,9 @@ export class PersonalAgentService {
     void session.ready.catch((error: unknown) => {
       if (session.stopping || this.sessions.get(principal.id) !== session) return;
       const reason = error instanceof Error ? error.message : String(error);
-      if (this.errors.get(principal.id) !== reason) logger.warn('Personal agent could not start', { intentId: principal.intentId, error: reason });
+      if (!(error instanceof AgentSessionLeaseConflict) && this.errors.get(principal.id) !== reason) {
+        logger.warn('Personal agent could not start', { intentId: principal.intentId, error: reason });
+      }
       this.errors.set(principal.id, reason);
       const retry = this.retries.get(principal.id) ?? { principal, attempts: 0 };
       this.retries.set(principal.id, retry);
@@ -245,9 +247,24 @@ export class PersonalAgentService {
     if (saved?.conversationId !== input.conversationId) throw new PersonalAgentError('Agent conversation not found.', 404);
     const agent = session.host.agents.get(input.intentId)!;
     if (agent.stopped) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
-    const receipt = input.questionId ? await agent.answer(input.questionId, input.text) : await agent.message(input.text);
-    if (!receipt) throw new PersonalAgentError('The question changed. Refresh the conversation and try again; your message was not sent.', 409);
-    return AgentSessionDatabaseAdapter.readMessage(receipt.id);
+    try {
+      const receipt = input.questionId ? await agent.answer(input.questionId, input.text) : await agent.message(input.text);
+      if (!receipt) throw new PersonalAgentError('The question changed. Refresh the conversation and try again; your message was not sent.', 409);
+      return AgentSessionDatabaseAdapter.readMessage(receipt.id);
+    } catch (error) {
+      if (!(error instanceof AgentSessionLeaseConflict) && !agent.stopped) throw error;
+      this.cancelRetry(input.intentId);
+      await this.reconcile(input.userId);
+      const retry = this.sessions.get(input.intentId);
+      if (!retry || retry.principal.userId !== input.userId || retry.stopping) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
+      try { await retry.ready; }
+      catch { throw new PersonalAgentError('Your personal agent could not start. Please try again.', 503); }
+      const next = retry.host.agents.get(input.intentId);
+      if (!next || next.stopped) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
+      const receipt = input.questionId ? await next.answer(input.questionId, input.text) : await next.message(input.text);
+      if (!receipt) throw new PersonalAgentError('The question changed. Refresh the conversation and try again; your message was not sent.', 409);
+      return AgentSessionDatabaseAdapter.readMessage(receipt.id);
+    }
   }
 
   /**

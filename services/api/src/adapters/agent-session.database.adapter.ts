@@ -77,9 +77,6 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
   readonly execution: AgentExecution;
   private revision = 0;
   private conversationId = '';
-  private heartbeat?: ReturnType<typeof setInterval>;
-  private renewal: Promise<void> = Promise.resolve();
-  private failure?: Error;
   private askedQuestionId: string | null = null;
   private readonly conversations = new ConversationDatabaseAdapter();
 
@@ -100,13 +97,23 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
     return message;
   }
 
-  /** @param tx - The caller's transaction. @param execution - Its session fence. @throws When ownership expired or moved to another process. */
+  /** Extend the lease if this process still owns it. @param tx - The caller's transaction. @param execution - Its session fence. @throws When ownership expired or moved to another process. */
   static async assertOwner(tx: Transaction, execution: AgentExecution): Promise<void> {
-    const [row] = await tx.select({ token: agentSessions.leaseToken }).from(agentSessions).where(and(
+    const [row] = await tx.update(agentSessions).set({
+      leaseExpiresAt: sql`now() + ${LEASE_SECONDS} * interval '1 second'`, updatedAt: new Date(),
+    }).where(and(
       eq(agentSessions.userId, execution.userId), eq(agentSessions.intentId, execution.intentId),
       eq(agentSessions.leaseToken, execution.token), sql`${agentSessions.leaseExpiresAt} > now()`,
-    )).for('update');
-    if (!row) throw new Error('This personal-agent session is no longer owned by this process.');
+    )).returning({ token: agentSessions.leaseToken });
+    if (!row) await AgentSessionDatabaseAdapter.rejectLostLease(tx, execution);
+  }
+
+  private static async rejectLostLease(tx: Transaction, execution: AgentExecution): Promise<never> {
+    const [lease] = await tx.select({
+      expiresAt: agentSessions.leaseExpiresAt,
+      retryAfterMs: sql<number>`greatest(0, extract(epoch from (${agentSessions.leaseExpiresAt} - clock_timestamp())) * 1000)::integer`,
+    }).from(agentSessions).where(and(eq(agentSessions.userId, execution.userId), eq(agentSessions.intentId, execution.intentId)));
+    throw new AgentSessionLeaseConflict(lease?.expiresAt ?? new Date(), lease?.retryAfterMs ?? 0);
   }
 
   /** Acquire the session and read its canonical intent conversation. @returns The checkpoint and H2A history. @throws If another process owns it or the intent is not the principal's. */
@@ -129,26 +136,12 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
         leaseToken: token, leaseExpiresAt: sql`now() + ${LEASE_SECONDS} * interval '1 second'`, updatedAt: new Date(),
       }).where(and(eq(agentSessions.userId, userId), eq(agentSessions.intentId, intentId),
         or(isNull(agentSessions.leaseToken), sql`${agentSessions.leaseExpiresAt} <= now()`))).returning();
-      if (!acquired) {
-        const [lease] = await tx.select({
-          expiresAt: agentSessions.leaseExpiresAt,
-          retryAfterMs: sql<number>`greatest(0, extract(epoch from (${agentSessions.leaseExpiresAt} - clock_timestamp())) * 1000)::integer`,
-        }).from(agentSessions).where(and(eq(agentSessions.userId, userId), eq(agentSessions.intentId, intentId)));
-        throw new AgentSessionLeaseConflict(lease!.expiresAt!, lease!.retryAfterMs);
-      }
+      if (!acquired) await AgentSessionDatabaseAdapter.rejectLostLease(tx, this.execution);
       return acquired;
     });
     this.revision = row.revision;
     this.conversationId = row.conversationId;
     this.askedQuestionId = (row.state as PrincipalState | null)?.inbox.question?.id ?? null;
-    this.heartbeat = setInterval(() => {
-      this.renewal = this.renewal.then(async () => {
-        const renewed = await db.update(agentSessions).set({ leaseExpiresAt: sql`now() + ${LEASE_SECONDS} * interval '1 second'` })
-          .where(and(eq(agentSessions.userId, userId), eq(agentSessions.intentId, intentId), eq(agentSessions.leaseToken, token), sql`${agentSessions.leaseExpiresAt} > now()`)).returning({ token: agentSessions.leaseToken });
-        if (!renewed.length) throw new Error('Personal-agent execution lease expired.');
-      }).catch((error: unknown) => { this.failure = error instanceof Error ? error : new Error(String(error)); });
-    }, 20_000);
-    this.heartbeat.unref();
     const history = await db.select().from(messages).where(and(eq(messages.conversationId, row.conversationId), sql`${messages.metadata}->>'intentId' = ${intentId}`))
       .orderBy(asc(messages.createdAt), asc(messages.id));
     return { state: row.state as PrincipalState | null, messages: history.map(toPrincipalMessage) };
@@ -220,9 +213,13 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
     });
   }
 
+  /** Extend this process's lease for a long action. @throws When ownership expired or moved. */
+  async renew(): Promise<void> {
+    await db.transaction(async (tx) => { await AgentSessionDatabaseAdapter.assertOwner(tx, this.execution); });
+  }
+
   /** @param state - Opaque agent checkpoint. @param entries - H2A messages published by that checkpoint. @throws On a stale revision, lost lease, or failed transaction. */
   async save(state: PrincipalState, entries: readonly PrincipalMessage[]): Promise<void> {
-    if (this.failure) throw this.failure;
     const persisted = await db.transaction(async (tx) => {
       await AgentSessionDatabaseAdapter.assertOwner(tx, this.execution);
       const updated = await tx.update(agentSessions).set({ state, revision: this.revision + 1, updatedAt: new Date() })
@@ -253,8 +250,6 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
 
   /** Release this process's lease without erasing the saved conversation or pending question. */
   async close(): Promise<void> {
-    clearInterval(this.heartbeat);
-    await this.renewal;
     await db.update(agentSessions).set({ leaseToken: null, leaseExpiresAt: null })
       .where(and(eq(agentSessions.userId, this.execution.userId), eq(agentSessions.intentId, this.execution.intentId), eq(agentSessions.leaseToken, this.execution.token)));
   }
