@@ -600,8 +600,9 @@ final class NativeAPIRequestBridge {
                     && (item["answers"] == nil || validClarifyAnswers(item["answers"]))
             }
         case "/intents":
-            return exactTypedObject(body, required: ["description"]) { item in
+            return exactTypedObject(body, required: ["description"], optional: ["preparationReceipt"]) { item in
                 boundedString(item["description"], maximum: 65_536)
+                    && optionalString(item, "preparationReceipt", maximum: 65_536)
             }
         case let value where value.range(of: #"^/intents/[^/?]+/status$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["ACTIVE", "PAUSED"]) }

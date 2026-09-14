@@ -1,4 +1,4 @@
-import type { Opportunity, OpportunityActor, OpportunityGraphDatabase } from '../../platform/database.js';
+import type { Opportunity, OpportunityActor, OpportunityDatabase } from '../../platform/database.js';
 
 /** The mutation result shape returned by opportunity lifecycle graph nodes. */
 export interface OpportunityMutationResult {
@@ -12,7 +12,7 @@ export interface OpportunityMutationResult {
 
 /** Narrow persistence boundary for user-driven opportunity lifecycle actions. */
 export type OpportunityLifecyclePort = Pick<
-  OpportunityGraphDatabase,
+  OpportunityDatabase,
   | 'getOpportunity'
   | 'getOrCreateDM'
   | 'stampOpportunityActorAction'

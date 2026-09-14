@@ -3,7 +3,7 @@ import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, Crea
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
-import { publishUserEvent, type IntentLifecycleWireStatus } from '../lib/user-events';
+import { publishUserEvent, publishUserInvalidation, type IntentLifecycleWireStatus } from '../lib/user-events';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 
 
@@ -46,15 +46,16 @@ async function publishIntentLifecycle(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+  await negotiationDatabaseAdapter.notifyIntentNegotiations(intentId);
 }
 
 export class IntentDatabaseAdapter {
-  /** @returns Existing active principal/intent choices and only explicitly confirmed profile facts for the local agent host. */
-  async listAgentPrincipals() {
+  /** @param userId - Restrict event-triggered discovery to this owner. @returns Active intents and confirmed profile facts. */
+  async listAgentPrincipals(userId?: string) {
     const rows = await db.select({ userId: schema.users.id, name: schema.users.name, intro: schema.users.intro,
       location: schema.users.location, onboarding: schema.users.onboarding, intentId: schema.intents.id, intent: schema.intents.payload })
       .from(schema.intents).innerJoin(schema.users, eq(schema.users.id, schema.intents.userId))
-      .where(and(isNull(schema.intents.archivedAt), activeIntentLifecycleWhere()))
+      .where(and(isNull(schema.intents.archivedAt), activeIntentLifecycleWhere(), userId ? eq(schema.intents.userId, userId) : undefined))
       .orderBy(schema.users.name, schema.intents.createdAt);
     return rows.map((row) => ({ userId: row.userId, name: row.name, intentId: row.intentId, intent: row.intent,
       confirmedProfile: row.onboarding?.profileConfirmedAt ? { name: row.name, intro: row.intro, location: row.location } : null }));
@@ -120,13 +121,14 @@ export class IntentDatabaseAdapter {
           isIncognito: data.isIncognito ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
-          semanticEntropy: data.semanticEntropy ?? undefined,
-          referentialAnchor: data.referentialAnchor ?? undefined,
-          felicityAuthority: data.felicityAuthority ?? undefined,
-          felicitySincerity: data.felicitySincerity ?? undefined,
-          felicityClarity: data.felicityClarity ?? undefined,
-          intentMode: data.intentMode ?? undefined,
-          speechActType: data.speechActType ?? undefined,
+          // Null means unmeasured; only omitted fields may use database defaults.
+          semanticEntropy: data.semanticEntropy,
+          referentialAnchor: data.referentialAnchor,
+          felicityAuthority: data.felicityAuthority,
+          felicitySincerity: data.felicitySincerity,
+          felicityClarity: data.felicityClarity,
+          intentMode: data.intentMode,
+          speechActType: data.speechActType,
         })
         .returning({
           id: schema.intents.id,
@@ -138,11 +140,31 @@ export class IntentDatabaseAdapter {
           userId: schema.intents.userId,
         });
       if (!created) throw new Error('Insert did not return a row');
+      await publishUserInvalidation(created.userId, 'intent.created', created.id);
       return created;
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
+  }
+
+  /**
+   * Apply measurements only to the exact saved text that was scored.
+   * @param intentId - Saved intent.
+   * @param userId - Expected owner.
+   * @param payload - Exact description sent to the scorer.
+   * @param metadata - Semantic measurements; never content or lifecycle fields.
+   * @returns Once the conditional metadata write finishes.
+   */
+  async updateSemanticMetadata(
+    intentId: string,
+    userId: string,
+    payload: string,
+    metadata: Pick<CreateIntentInput, 'semanticEntropy' | 'referentialAnchor' | 'felicityAuthority' | 'felicitySincerity' | 'felicityClarity' | 'intentMode' | 'speechActType'>,
+  ): Promise<void> {
+    await db.update(schema.intents).set(metadata).where(and(
+      eq(schema.intents.id, intentId), eq(schema.intents.userId, userId), eq(schema.intents.payload, payload),
+    ));
   }
 
   async updateIntent(intentId: string, data: UpdateIntentInput): Promise<CreatedIntentRow | null> {
@@ -196,6 +218,7 @@ export class IntentDatabaseAdapter {
       });
       if (!result) return null;
       if (result.oldFingerprint !== result.newFingerprint) {
+        await publishUserInvalidation(result.updated.userId, 'intent.updated', intentId);
         await IntentEvents.onMaterialUpdated({
           intentId,
           userId: result.updated.userId,

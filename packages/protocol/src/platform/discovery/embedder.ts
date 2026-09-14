@@ -1,52 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// HyDE (Hypothetical Document Embeddings) search types
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export type { Lens, HydeTargetCorpus } from "../../protocol/core.js";
-
-/** A single lens embedding ready for search. */
-export interface LensEmbedding {
-  /** Free-text lens label (e.g. "crypto infrastructure VC"). */
-  lens: string;
-  /** Which corpus to search. */
-  corpus: 'profiles' | 'intents';
-  /** 2000-dim embedding vector. */
-  embedding: number[];
-}
-
-/** Options for searchWithHydeEmbeddings (network scope, limits, min score). */
-export interface HydeSearchOptions {
-  /** Network IDs to scope the search (members / assigned intents only). */
-  networkScope: string[];
-  /** Exclude this user ID from results (e.g. source intent owner). */
-  excludeUserId?: string;
-  /** Max results per lens before merge (default 10). */
-  limitPerStrategy?: number;
-  /** Max results after merge/rank (default 20). */
-  limit?: number;
-  /** Minimum cosine similarity for intent searches (default 0.40). */
-  minScore?: number;
-}
-
-/** A single candidate from HyDE search, with score and which lens matched. */
-export interface HydeCandidate {
-  type: 'intent';
-  id: string;
-  userId: string;
-  score: number;
-  /** Free-text lens label that produced this match. */
-  matchedVia: string;
-  networkId: string;
-  /** Candidate document text (populated for user_context matches; used as candidatePayload). */
-  text?: string;
-  /** Set after merge when user matched via multiple lenses. */
-  matchedLenses?: string[];
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Embedding and vector store
-// ═══════════════════════════════════════════════════════════════════════════════
-
 export interface EmbeddingGenerateOptions {
   signal?: AbortSignal;
 }
@@ -98,22 +49,5 @@ export interface VectorStore {
   ): Promise<VectorSearchResult<T>[]>;
 }
 
-/**
- * Embedder: generate embeddings and run vector / HyDE search.
- * Implementations: OpenAI/OpenRouter for generate, pgvector for search.
- */
-export interface Embedder extends EmbeddingGenerator, VectorStore {
-  /**
-   * Multi-lens HyDE search: run one vector search per lens embedding,
-   * then merge, deduplicate by userId, and rank (boost for multiple lens matches).
-   *
-   * @param lensEmbeddings - Array of lens embeddings to search with
-   * @param options - networkScope, excludeUserId, limits, minScore
-   * @returns Deduplicated, ranked candidates (intent) with scores
-   */
-  searchWithHydeEmbeddings(
-    lensEmbeddings: LensEmbedding[],
-    options: HydeSearchOptions
-  ): Promise<HydeCandidate[]>;
-
-}
+/** Embedding generation and vector search for protocol capabilities. */
+export interface Embedder extends EmbeddingGenerator, VectorStore {}

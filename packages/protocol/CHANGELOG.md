@@ -1,5 +1,30 @@
 # Changelog
 
+## 58.0.0
+
+### Breaking changes
+
+- Extract post-intent discovery into the independent `@indexnetwork/discovery` workspace. Remove `OpportunityGraphFactory`, `OpportunityGraphThresholdOverrides`, `HydeGraphFactory`, `HydeGenerator`, `LensInferrer`, `HydeGraphDatabase`, `HydeCache`, the lens/search DTOs, `buildCandidateEvidence`, and discovery threshold exports from protocol. The extracted path uses plain async TypeScript and validated fetch-based model responses.
+- Replace `IntentFollowUp.generateHyde`, `deleteHyde`, and `resumeDiscovery` with `onIntentSaved`, `onIntentArchived`, and `onIntentResumed`. Scheduling and failure/compensation behavior are unchanged; `scoreIntent` remains a separate best-effort metadata hook.
+- Remove artifact storage methods from protocol database ports and multi-lens retrieval from `Embedder`. Replace `OpportunityGraphDatabase` with the lifecycle/read-only `OpportunityDatabase` port; expose `readOpportunities`, `updateOpportunityStatus`, and `deleteOpportunity` directly. Remove discovery agents from protocol model assignments.
+- Hosts run discovery and commit returned potential pairs with `pairKeyOf` and `decideNegotiationOpening` through atomic `openCounterparties`. Protocol retains intent lifecycle, network/broadcast scope rules, negotiations, and opportunity lifecycle/presentation. Expose `resolveDiscoveryNetworkScope` and `renderDiscoveryNetworkContext` for host composition.
+
+### Preserved behavior
+
+- Keep source-grounded frame-v1 cache identity and generation cohorts, validation failure semantics, real-intent candidate retrieval, membership checks, per-lens/per-network budgets, rejection cooldown, ranking limits, explanations, and atomic pair uniqueness. Hypothetical documents remain query-side retrieval artifacts.
+
+## 57.0.0
+
+### Breaking changes
+- `Intents.clarify()` now applies creation admission to the complete draft and returns `ready` with semantic metadata or `needs_clarification` with feedback and questions. Model failures throw for retry; an empty question list no longer substitutes for admission.
+- Explicit graph creation prepares once and persists exactly one new intent verbatim, including when similar intents exist. It no longer infers, rewrites, or reconciles creation into updates or archival. The reconciler agent injection is removed.
+- Hosts may pass authenticated `preparation` to the creation graph to authorize final user revisions without another admission gate. Preserve metadata only when it measures the submitted text; use null metadata after revisions. Never accept preparation objects from untrusted clients.
+- `IntentFollowUp.scoreIntent` is required for best-effort rescoring after edited creation. It must never reject, rewrite, archive, or undo the saved intent and must apply metadata only while the owner and text still match. `Intents.scoreIntent()` returns measurements without admission filters.
+- Export `PreparedIntent` and `IntentSemanticMetadata` for host integration. Existing explicit update, read, archive, and status operations retain their behavior.
+
+### Fixed
+- Restrict the generic-job shortcut to bare requests. Qualified searches containing "a job" use the verifier's existing admission thresholds and specificity verdict.
+
 All notable changes to `@indexnetwork/protocol` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

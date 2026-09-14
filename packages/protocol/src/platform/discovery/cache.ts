@@ -48,8 +48,6 @@ export interface Cache {
 // NARROWED CACHE INTERFACES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Cache interface for HyDE Graph operations. */
-export type HydeCache = Pick<Cache, 'get' | 'set' | 'delete' | 'exists'>;
 
 /** Cache interface for Opportunity Graph operations. */
 export type OpportunityCache = Pick<Cache, 'get' | 'set' | 'mget'>;

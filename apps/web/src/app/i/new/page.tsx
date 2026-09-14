@@ -20,19 +20,7 @@ const OPENING_OPTIONS = [
   { label: "want to find a co-founder who's actually shipped something", description: "" },
 ];
 
-/** How many clarifying questions follow the opening one. Caps the loop. */
-const MAX_FOLLOW_UPS = 2;
-/** The opening question plus the follow-ups. */
-const STEP_COUNT = 1 + MAX_FOLLOW_UPS;
-
-/**
- * New signal: the agent asks, you answer, it asks again. Each answer is folded
- * back into the payload by /intents/clarify; then you say where it goes and
- * confirm what was written.
- *
- * Clarifying is never a gate — when it fails the flow moves on with the payload
- * as it stands.
- */
+/** Prepare the complete draft before offering an editable final review. */
 export default function NewSignalPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthContext();
@@ -43,35 +31,33 @@ export default function NewSignalPage() {
   const [question, setQuestion] = useState<ClarifyQuestion | null>(null);
   const [queue, setQueue] = useState<ClarifyQuestion[]>([]);
   const [pending, setPending] = useState<ClarifyAnswer[]>([]);
-  const [asked, setAsked] = useState(0);
-  const [beats, setBeats] = useState(0);
+  const [preparationReceipt, setPreparationReceipt] = useState("");
+  const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  // Next beat: another question while there is budget and something to ask, one
-  // more clarification round to fold in what was just answered, else the gate.
+  // Ask the queued questions, then prepare the complete draft before review.
   const advance = async (text: string, waiting: ClarifyQuestion[], answers: ClarifyAnswer[]) => {
-    if (asked < MAX_FOLLOW_UPS && waiting.length > 0) {
+    if (waiting.length > 0) {
       setQuestion(waiting[0]);
       setQueue(waiting.slice(1));
-      setAsked(asked + 1);
       return;
     }
-    if (asked >= MAX_FOLLOW_UPS && answers.length === 0) { setStage("summary"); return; }
 
     setBusy(true);
     try {
       const result = await signalService.clarify(text, answers);
       setPayload(result.payload);
       setPending([]);
-      setStage("ask");
-      if (asked < MAX_FOLLOW_UPS && result.questions.length > 0) {
+      if (result.status === "ready") {
+        setPreparationReceipt(result.preparationReceipt);
+        setStage("summary");
+      } else {
+        setFeedback(result.feedback);
         setQuestion(result.questions[0]);
         setQueue(result.questions.slice(1));
-        setAsked(asked + 1);
-        return;
+        setStage("ask");
       }
-      setStage("summary");
     } catch {
       // The answers are kept, so retrying resumes this round rather than
       // restarting the conversation.
@@ -82,7 +68,6 @@ export default function NewSignalPage() {
   };
 
   const answer = async (text: string) => {
-    setBeats((current) => current + 1);
     if (!question) { setPayload(text); await advance(text, [], []); return; }
     const answers = [...pending, { prompt: question.prompt, answer: text }];
     setPending(answers);
@@ -91,9 +76,11 @@ export default function NewSignalPage() {
   };
 
   const create = async () => {
+    if (creating || !payload.trim() || payload.length > 65_536 || !preparationReceipt) return;
+    const description = payload;
     setCreating(true);
     try {
-      const created = await signalService.create(payload.trim());
+      const created = await signalService.create(description, preparationReceipt);
       navigate(`/i/${created.intentId}`);
     } catch {
       showError("Couldn't create this signal. Try again.");
@@ -103,7 +90,7 @@ export default function NewSignalPage() {
 
   if (!isAuthenticated) return <Navigate to="/" replace />;
 
-  const answered = stage === "summary" ? STEP_COUNT : beats;
+  const answered = stage === "summary" ? 3 : question || busy || stage === "retry" ? 1 : 0;
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] px-5 py-6 sm:px-8 sm:py-10">
@@ -119,7 +106,7 @@ export default function NewSignalPage() {
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#041729] sm:text-4xl">Make what you’re looking for legible.</h1>
 
         <div className="mt-8 flex gap-1.5" aria-label="Signal progress">
-          {Array.from({ length: STEP_COUNT }).map((_, index) => (
+          {Array.from({ length: 3 }).map((_, index) => (
             <span
               key={index}
               className={`h-1.5 flex-1 rounded-full ${
@@ -134,7 +121,7 @@ export default function NewSignalPage() {
             <Loader2 className="h-4 w-4 animate-spin" /> Taking that in…
           </div>
         ) : stage === "summary" ? (
-          <SignalSummary description={payload} busy={creating} onCreate={() => void create()} />
+          <SignalSummary description={payload} onChange={setPayload} busy={creating} onCreate={() => void create()} />
         ) : stage === "retry" ? (
           <section aria-label="Clarification failed" className="mt-8">
             <h2 className="text-2xl font-semibold leading-tight text-[#041729] sm:text-3xl">
@@ -156,6 +143,7 @@ export default function NewSignalPage() {
             options={question ? question.options : OPENING_OPTIONS}
             multiSelect={question ? question.multiSelect : false}
             first={!question}
+            feedback={feedback}
             onAnswer={answer}
           />
         )}
@@ -170,12 +158,14 @@ function Question({
   options,
   multiSelect,
   first,
+  feedback,
   onAnswer,
 }: {
   prompt: string;
   options: Array<{ label: string; description: string }>;
   multiSelect: boolean;
   first: boolean;
+  feedback: string;
   onAnswer: (text: string) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -195,11 +185,13 @@ function Question({
     <section aria-label="Current question" className="mt-8">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">{first ? "First" : "Next"}</p>
       <h2 className="mt-3 text-2xl font-semibold leading-tight text-[#041729] sm:text-3xl">{prompt}</h2>
+      {feedback && <p className="mt-2 text-sm text-gray-500">{feedback}</p>}
       {multiSelect && <p className="mt-2 text-sm text-gray-500">Choose all that apply.</p>}
       <textarea
         value={freeText}
         onChange={(event) => setFreeText(event.target.value)}
         rows={first ? 4 : 2}
+        maxLength={65_536}
         placeholder={first ? "Type what you’re looking for…" : "Tell me in your own words"}
         className="mt-6 w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10"
       />
@@ -245,26 +237,34 @@ function Question({
   );
 }
 
-/** The confirmation gate: the signal as written, and one button. */
+/** Final description editor; preparation remains valid throughout revisions. */
 function SignalSummary({
   description,
+  onChange,
   busy,
   onCreate,
 }: {
   description: string;
+  onChange: (value: string) => void;
   busy: boolean;
   onCreate: () => void;
 }) {
   return (
     <section aria-label="Your signal" className="mt-8">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Here’s your signal</p>
-      <blockquote className="mt-4 border-l-2 border-[#041729] pl-4 text-base leading-relaxed text-[#041729]">
-        {description}
-      </blockquote>
+      <textarea
+        aria-label="Signal description"
+        value={description}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={busy}
+        maxLength={65_536}
+        rows={6}
+        className="mt-4 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-base leading-relaxed text-[#041729] outline-none focus:border-[#041729] disabled:opacity-60"
+      />
       <p className="mt-3 text-xs text-gray-500">Going out to · everywhere</p>
       <button
         type="button"
-        disabled={busy}
+        disabled={busy || !description.trim() || description.length > 65_536}
         onClick={onCreate}
         className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a] disabled:cursor-not-allowed disabled:opacity-40"
       >

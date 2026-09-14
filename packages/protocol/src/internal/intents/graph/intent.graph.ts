@@ -1,5 +1,5 @@
 /**
- * Intent graph: prep → (query | inference → verification → reconciler → executor).
+ * Intent graph: prepare/create, or explicitly read, update, archive, and transition.
  *
  * Every node is a top-level function in a sibling module, taking the graph
  * state and an explicit {@link IntentGraphDeps}. This file composes the
@@ -9,13 +9,13 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { ExplicitIntentInferrer } from "../intent.inferrer.js";
 import { SemanticVerifier } from "../intent.verifier.js";
-import { IntentReconciler } from "../intent.reconciler.js";
+import { IntentClarifier } from "../intent.clarifier.js";
 import type { IntentGraphDatabase } from "../../../platform/database.js";
 import type { EmbeddingGenerator } from "../../../platform/discovery/embedder.js";
 import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
 import { IntentGraphState } from "./intent.graph.state.js";
 import { logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
-import { inferenceNode, prepNode } from "./intent.graph.infer.js";
+import { inferenceNode, preparationNode, prepNode } from "./intent.graph.infer.js";
 import { reconciliationNode, verificationNode } from "./intent.graph.reconcile.js";
 import { executorNode, queryNode } from "./intent.graph.execute.js";
 
@@ -33,7 +33,6 @@ export class IntentGraphFactory {
     agents?: {
       inferrer?: Pick<ExplicitIntentInferrer, 'invoke'>;
       verifier?: Pick<SemanticVerifier, 'invoke'>;
-      reconciler?: Pick<IntentReconciler, 'invoke'>;
     },
   ) {
     this.deps = {
@@ -42,7 +41,7 @@ export class IntentGraphFactory {
       intentFollowUp,
       inferrer: agents?.inferrer ?? new ExplicitIntentInferrer(),
       verifier: agents?.verifier ?? new SemanticVerifier(),
-      reconciler: agents?.reconciler ?? new IntentReconciler(),
+      clarifier: new IntentClarifier(agents?.verifier),
     };
   }
 
@@ -51,30 +50,33 @@ export class IntentGraphFactory {
 
     return new StateGraph(IntentGraphState)
       .addNode("prep", (state: IntentState) => prepNode(state, deps))
+      .addNode("prepareCreation", (state: IntentState) => preparationNode(state, deps))
       .addNode("query", (state: IntentState) => queryNode(state, deps))
       .addNode("inference", (state: IntentState) => inferenceNode(state, deps))
       .addNode("verification", (state: IntentState) => verificationNode(state, deps))
-      .addNode("reconciler", (state: IntentState) => reconciliationNode(state, deps))
+      .addNode("reconciler", (state: IntentState) => reconciliationNode(state))
       .addNode("executor", (state: IntentState) => executorNode(state, deps))
 
       // The graph routes on the shape of its input (see intent.graph.state.ts):
       // - READ:      no content/target → prep → query → END (no LLM calls)
-      // - CREATE:    inputContent only → prep → inference → verification → reconciler → executor → END
-      // - UPDATE:    inputContent + targetIntentIds → same pipeline, bound to that one target
+      // - CREATE:    inputContent only → prep → preparation → executor → END
+      // - UPDATE:    inputContent + targetIntentIds → prep → inference → verification → reconciler → executor
       // - ARCHIVE:   targetIntentIds + archive → prep → reconciler → executor → END (no LLM)
       // - TRANSITION: targetIntentIds + status → prep → reconciler → executor → END (no LLM)
       .addEdge(START, "prep")
 
-      // After prep: read → query; archive/status → reconciler directly; else content path → inference
+      // Create prepares once; update infers; read/archive/status need no models.
       .addConditionalEdges("prep", afterPrepRoute, {
         query: "query",
         inference: "inference",
+        prepareCreation: "prepareCreation",
         reconciler: "reconciler",
         __end__: END,
       })
 
       // Query (read mode) always ends
       .addEdge("query", END)
+      .addEdge("prepareCreation", "executor")
 
       // After inference: decide if we need verification (skip if no intents)
       .addConditionalEdges("inference", shouldRunVerification, {
@@ -116,7 +118,8 @@ export function afterPrepRoute(state: IntentState): string {
     logger.verbose('Deterministic route (archive/status) - skipping inference');
     return 'reconciler';
   }
-  logger.verbose('Content path - running inference');
+  if (!state.targetIntentIds?.length) return 'prepareCreation';
+  logger.verbose('Explicit update - running inference');
   return 'inference';
 }
 

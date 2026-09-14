@@ -28,31 +28,60 @@ bun run dev:web
 
 The API loads the root `.env.development`. Use the disposable development
 database with the migrations applied. Open the web app, sign in normally, and
-open an intent. Its private H2A chat accepts a message whenever no question is
-displayed; otherwise the same input answers that exact question. Suggested
-answers and custom drafts stay attached to the displayed question. Radar keeps
-its Needs you, Waiting, Connected, and Closed categories, with an expandable
-A2A conversation inside each match. Pending matches retain Start Chat and Skip.
+open an intent. Its private H2A chat accepts owner messages only when an
+external negotiator is selected. Suggested answers and custom drafts stay
+attached to the displayed question. Radar keeps its Needs you, Waiting,
+Connected, and Closed categories, with an expandable A2A conversation inside
+each match. Pending matches retain Start Chat and Skip.
 
-The normal API server starts agents for active intents at boot and reconciles
-new intents, profile/intent changes, and selected external executors every five
-seconds. Agents run with no browser or TUI connected. Shutdown saves outstanding
-work and releases session leases. Restart restores pending questions and resumes
-matches from current protocol records.
+The API runs no personal-agent session. Its only hosted agent is
+`HostedNegotiator`, the default A2A seat: it wakes on `negotiation.turn` and
+`negotiation.opened` for owners without a selected external negotiator, takes
+one turn, and stops. It never chats, so H2A questions and messages come from the
+owner's selected external negotiator. `GET /api/conversations/:id/messages`
+with `intentId` returns that intent's H2A history and `agent` state (`external`
+or `hosted`, plus `pending`). Send text to `POST /api/conversations/:id/messages`
+with `parts: [{ kind: "text", text }]`, `metadata: { intentId }`, and the
+displayed `questionId`, or `null` for a direct message. A successful response
+contains the persisted message; a changed question or missing negotiator
+returns 409 without recording the input.
 
-`GET /api/conversations/agent/messages?intentId=<id>` returns that intent's H2A
-history and `agent` state (`status`, `pending`, `queuedQuestions`). Send text to
-`POST /api/conversations/agent/messages` with `parts: [{ kind: "text", text }]`,
-`metadata: { intentId }`, and the displayed `questionId`, or `null` for a direct
-message. A successful response contains the persisted message; a changed
-question returns 409 without recording the input. Normal authentication and
-intent ownership checks apply.
+## Railway dev intent replay
 
-`PersonalAgentService` owns runtime lifecycle and HTTP input routing; its
-injected model and shared `ApiNegotiationHost` supply infrastructure. Input is
-handled by the API process owning the session. An external executor selection
-revokes local execution leases atomically and uses the existing external message
-transport. Removing that selection lets the server restore its local agent.
+After these scripts have been deployed to Railway dev, use the repository root:
+
+```bash
+bun run db:dev:reset --confirm
+bun run db:dev:resume --confirm
+```
+
+The launcher requires an authenticated Railway CLI. Resume also requires a
+registered SSH key (`railway ssh keys add`). It runs inside the dev API container,
+using that service's Redis and model credentials. Keep the terminal connected;
+Ctrl+C stops new activations and waits for current discovery scans to finish.
+
+Each resume shuffles eligible paused intents and selects at most five before
+activating any, then activates them through the normal lifecycle graph with
+10–30-second gaps. Discovery scans can overlap; the command waits for them to
+finish and exits. Progress logs include activation times, intent IDs, and scan
+failures, with selected, resumed, and remaining eligible paused counts in the
+final result (`remaining` is unavailable if the control connection is lost).
+Archived intents and intents without a current network assignment/member are
+reported and skipped. Re-running resume selects another batch from the remaining
+eligible paused intents. Use reset to start the experiment from the beginning.
+
+Reset briefly stops the dev API and any replay in its container, then pauses
+non-archived, non-terminal intents and clears discovery progress, opportunities,
+negotiations/turns, outcome feedback, agent checkpoints and agent conversations.
+Human conversations keep their messages but lose old match provenance. Users,
+API keys/sessions, profiles, intents, networks, memberships, assignments and
+embeddings/HyDE remain. The exact API deployment is restarted and health-checked,
+including after a cleanup failure. Advisory locks exclude overlapping runs.
+
+Both commands are pinned to Railway's dev API and its Neon `protocol_prod`
+endpoint. They reject production and `protocol_sandbox`; local `.env` files
+never choose the target. Reset does not recopy production or replace credentials.
+These commands replace `db:playground:resume` and `db:clear-negotiations`.
 
 ## Personal-agent TUI
 
@@ -72,11 +101,11 @@ and protocol-backed reads/writes are injected into `@indexnetwork/agent`.
 
 `packages/protocol` owns participation rules and consent/transition gates;
 `packages/agent` owns reasoning, parallel matches, and the shared H2A inbox.
-The API composes both. It persists `protocol_*` domain tables, `agent_sessions`
-checkpoints/leases, and intent-tagged H2A `messages` in the owner's existing DM.
-A2A agreement remains pending human approval. Stop the normal API server before
-using this standalone TUI for the same intents: each session has one runtime
-owner, shared across both entry points.
+The TUI composes both against the API database. It persists `protocol_*` domain
+tables, `agent_sessions` checkpoints/leases, and intent-tagged H2A `messages`
+in the owner's existing DM. A2A agreement remains pending human approval. The
+API server does not take these session leases. Do not run two TUIs for the same
+intents.
 
 See [agent-tui controls and behavior](../../packages/agent-tui/README.md).
 

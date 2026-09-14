@@ -155,7 +155,7 @@ export class OpportunityServiceEvents extends EventEmitter {
  *
  * Manages opportunity operations including discovery, listing, and creation.
  * Uses OpportunityControllerDatabase adapter for database operations.
- * Uses OpportunityGraph for AI-powered opportunity discovery.
+ * Reads and updates opportunities produced by host-run discovery.
  * Emits opportunity events (created, expired) after transactional writes so subscribers see consistent state.
  *
  * RESPONSIBILITIES:
@@ -473,6 +473,9 @@ export class OpportunityService {
       id: opp.id,
       presentation,
       myRole: myActor.role,
+      // The viewer's own signal, so a client holding only an opportunity id can
+      // open the signal that owns it rather than a detached card.
+      intentId: myActor.intent ?? null,
       otherParties,
       category: opp.interpretation.category,
       confidence: confidenceNum,
@@ -783,6 +786,13 @@ export class OpportunityService {
     // Best-effort side effects — their failure must not block the user from
     // reaching the chat. The opportunity is already accepted and the DM already
     // resolved.
+    await this.negotiations.closeForOpportunities([opportunityId]).catch((err) => {
+      startChatLogger.error('closeForOpportunities failed (non-blocking)', {
+        opportunityId,
+        userId,
+        error: err,
+      });
+    });
     if (options?.scopeType !== 'intent') {
       await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
         startChatLogger.error('acceptSiblingOpportunities failed (non-blocking)', {

@@ -5,7 +5,6 @@ export type Capability =
   | "opportunities"
   | "negotiations"
   | "agents"
-  | "discovery"
   | "interaction-composition";
 
 /** Internal implementation directories with a fixed capability assignment. */
@@ -19,7 +18,6 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   negotiations: "negotiations",
   agents: "agents",
   chat: "agents",
-  discovery: "discovery",
   maintenance: "interaction-composition",
 };
 
@@ -37,7 +35,6 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
   opportunities: undefined,
   negotiations: undefined,
   agents: "agents",
-  discovery: undefined,
   // The composition root is the one all-capability point; it has no barrel of
   // its own and is reached through the package entry point instead.
   "interaction-composition": undefined,
@@ -53,7 +50,6 @@ export const CAPABILITY_BARREL_FILENAMES: Readonly<Partial<Record<Capability, st
   intents: "../capabilities/intents.ts",
   networks: "../capabilities/networks.ts",
   agents: "agent.module.ts",
-  discovery: "../capabilities/discovery.ts",
 };
 
 /** The barrel filename a capability's public surface must live in. */
@@ -63,7 +59,7 @@ export function barrelFilenameForCapability(capability: Capability): string {
 
 /** The source-relative barrel path for a capability, if it has one. */
 export function barrelPathForCapability(capability: Capability): string | undefined {
-  if (["intents", "networks", "agents", "discovery", "contexts"].includes(capability)) return `capabilities/${capability}.ts`;
+  if (["intents", "networks", "agents", "contexts"].includes(capability)) return `capabilities/${capability}.ts`;
   const directory = CAPABILITY_BARREL_DIRECTORIES[capability];
   return directory ? `internal/${directory}/${barrelFilenameForCapability(capability)}` : undefined;
 }
@@ -73,13 +69,11 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   Record<Capability, readonly Capability[]>
 > = {
   intents: ["agents"],
-  contexts: ["agents", "discovery"],
+  contexts: ["agents"],
   networks: ["agents", "intents"],
-  opportunities: ["agents", "intents", "negotiations", "discovery"],
+  opportunities: ["agents", "intents", "negotiations"],
   negotiations: ["opportunities"],
   agents: ["negotiations"],
-  // discovery needs only the debug-metadata type it stamps on graph state.
-  discovery: ["agents"],
   "interaction-composition": [
     "intents",
     "contexts",
@@ -87,7 +81,6 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
     "opportunities",
     "negotiations",
     "agents",
-    "discovery",
   ],
 };
 
@@ -122,7 +115,6 @@ export function barrelCapabilityForSourcePath(
   if (pathFromSource === "capabilities/intents.ts") return "intents";
   if (pathFromSource === "capabilities/networks.ts") return "networks";
   if (pathFromSource === "capabilities/agents.ts") return "agents";
-  if (pathFromSource === "capabilities/discovery.ts") return "discovery";
   const normalized = implementationPath(pathFromSource);
   const match = /^([a-z-]+)\/([a-z0-9.-]+\.ts)$/.exec(normalized);
   if (!match) return undefined;

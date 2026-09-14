@@ -36,9 +36,10 @@ function nativeAuthed() {
 // that comes up empty, so the caller can say so instead of opening a blank
 // window.
 // A conversation link (minted by the app's own OS toasts) names a thread
-// rather than a person card, and the card it belongs to is what the floating
-// chat needs a name and face from: read the conversation's provenance, then
-// resolve that opportunity the same way a card link does.
+// rather than a person card. Its provenance carries both the signal the thread
+// belongs to and the opportunity behind it, so the caller can open that signal
+// on the chat, and fall back to a floating chat with a name and face when the
+// signal is no longer on the hub.
 async function resolveDeepLinkConversation(route, people) {
   if (!nativeAuthed() || !window.IndexApp) return null;
   const client = window.IndexApp.getClient();
@@ -49,7 +50,9 @@ async function resolveDeepLinkConversation(route, people) {
     const via = conv && Array.isArray(conv.via) ? conv.via[0] : null;
     if (!via) return null;
     const person = await resolveDeepLinkPerson({ route: "card", id: via.opportunityId }, people);
-    return person ? { person, conversationId: route.id } : null;
+    return person
+      ? { person, conversationId: route.id, intentId: via.intentId || null }
+      : null;
   } catch (e) {
     return null;
   }
@@ -72,8 +75,11 @@ async function resolveDeepLinkPerson(route, people) {
       const person = window.IndexApi.mapPeopleFromOpportunities([row])[0] || null;
       // GET /opportunities/:id names the counterpart under otherParties rather
       // than the counterpartUserId/counterpartName the list mapper reads, and
-      // the profile needs the user id to fetch their bio.
+      // the profile needs the user id to fetch their bio. `intentId` is the
+      // viewer's own signal, which is what decides between opening that signal
+      // and floating a card.
       const other = Array.isArray(row.otherParties) ? row.otherParties[0] : null;
+      if (person) person.intentId = row.intentId || null;
       if (person && other) {
         person.userId = person.userId || other.id || null;
         person.name = other.name || person.name;
@@ -231,21 +237,28 @@ function App() {
     const link = pendingLink;
     resolvingRef.current = link;
     (async () => {
-      // A conversation floats over whatever is on screen, like a card does:
-      // the thread is the interruption, not a reason to change signals.
+      // A conversation belongs to a signal, so open that signal on the thread.
+      // The floating chat is what is left when the signal is gone: the thread
+      // still reads, it just has no session to live in.
       if (link.route === "conversation") {
         const target = await resolveDeepLinkConversation(link, peopleRef.current);
         if (resolvingRef.current !== link) return;
         resolvingRef.current = null;
-        if (target) setLinkedChat(target);
-        else setNotice("couldn't open that conversation.");
+        const intent = target && findIntent(target.intentId);
+        if (intent) {
+          openIntentOn(intent, { kind: "chat", personId: target.person.id });
+        } else if (target) {
+          setLinkedChat(target);
+        } else {
+          setNotice("couldn't open that conversation.");
+        }
         setPendingLink(null);
         return;
       }
-      // A question is the one link that does change signals: it is answered in
-      // that signal's own conversation with its agent, and nowhere else.
+      // A question names its signal directly: it is answered in that signal's
+      // own conversation with its agent, and nowhere else.
       if (link.route === "signal") {
-        const intent = (INTENTS || []).find((i) => i.id === link.id);
+        const intent = findIntent(link.id);
         resolvingRef.current = null;
         if (intent) {
           pickExistingIntent(intent);
@@ -260,10 +273,19 @@ function App() {
       // A newer link arrived mid-flight and owns the slot now; let it finish.
       if (resolvingRef.current !== link) return;
       resolvingRef.current = null;
-      if (person) setLinkedCard({ person, route: link.route });
-      else setNotice(link.route === "card"
-        ? "that opportunity isn't on your radar."
-        : "couldn't open that profile.");
+      // An opportunity is read inside the signal that surfaced it. A profile
+      // link names no signal at all, so it stays a floating card, as does an
+      // opportunity whose signal has left the hub.
+      const owner = link.route === "card" && person ? findIntent(person.intentId) : null;
+      if (owner) {
+        openIntentOn(owner, { kind: "profile", personId: person.id, status: person.status });
+      } else if (person) {
+        setLinkedCard({ person, route: link.route });
+      } else {
+        setNotice(link.route === "card"
+          ? "that opportunity isn't on your radar."
+          : "couldn't open that profile.");
+      }
       setPendingLink(null);
     })();
   }, [pendingLink, screen]);
@@ -385,7 +407,11 @@ function App() {
   // it persists across screens (so it works from the landing screen too).
   const [chatGroups, setChatGroups] = useState({}); // signalTitle -> [{id,name,unread}]
   const chatOpenRef = useRef(null);                  // { signal, open } for the active session
-  const [pendingChat, setPendingChat] = useState(null);
+  // What to open inside a signal once it mounts: { kind: "chat" | "profile",
+  // personId, status }. The menubar resumes a signal on a chat; a deep link can
+  // also land on a profile, and carries the status so the radar opens on the
+  // stage that person is actually in.
+  const [pendingFocus, setPendingFocus] = useState(null);
   const registerChats = (signal, list, openFn) => {
     if (!signal) return;
     setChatGroups(prev => ({ ...prev, [signal]: list }));
@@ -454,6 +480,9 @@ function App() {
     setScreen("main");
     seedField();
   };
+  const findIntent = (id) => (id ? (INTENTS || []).find((i) => i.id === id) || null : null);
+  // Resume a signal and say what to open inside it once the session mounts.
+  const openIntentOn = (intent, focus) => { pickExistingIntent(intent); setPendingFocus(focus); };
   const goNewIntent = () => setScreen("new-intent");
   const finishNewIntent = async (answers, created, intentId) => {
     setConversation([]);
@@ -499,7 +528,7 @@ function App() {
       chatOpenRef.current.open(personId);
     } else {
       const intent = INTENTS.find(i => i.title === signal);
-      if (intent) { pickExistingIntent(intent); setPendingChat(personId); }
+      if (intent) openIntentOn(intent, { kind: "chat", personId });
     }
   };
 
@@ -598,8 +627,8 @@ function App() {
             simRate={simRate} setSimRate={setSimRate}
             onBack={() => setScreen("intents")}
             registerChats={registerChats}
-            pendingChat={pendingChat}
-            onPendingHandled={() => setPendingChat(null)}
+            pendingFocus={pendingFocus}
+            onPendingHandled={() => setPendingFocus(null)}
             focusQuestion={focusQuestion}
           />
         )}

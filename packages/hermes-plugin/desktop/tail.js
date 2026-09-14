@@ -146,6 +146,44 @@ function DesktopPage() {
     React.createElement(DashboardComponent))
 }
 
+const DISCOVER_PATH = '/index-network'
+// Host stamps this on the contributed sidebar row (`sidebar-nav-${contribution.id}`).
+const DISCOVER_NAV_TOUR = 'sidebar-nav-index-network:nav'
+
+function discoverHash() {
+  const path = ((window.location.hash || '').replace(/^#/, '')).split('?')[0]
+  return path === DISCOVER_PATH || path.startsWith(DISCOVER_PATH + '/')
+}
+
+// Discover is a workspace-pane route. Hash navigation is a no-op when the
+// workspace already holds the zone (a chat or another page), and a focused
+// session tile keeps the page behind it. Re-open the tab every time — the
+// host fronts an existing id instead of stacking a duplicate.
+function showDiscover(to) {
+  if (to) host.navigate(to)
+  else if (!discoverHash()) host.navigate(DISCOVER_PATH)
+  if (typeof host.openWorkspace !== 'function') return
+  try {
+    host.openWorkspace('index-network', {
+      title: 'Discover',
+      render: function () { return React.createElement(DesktopPage) }
+    })
+  } catch (e) { /* older hosts without the door */ }
+}
+
+function onDiscoverHash() {
+  if (discoverHash()) showDiscover()
+}
+
+function onDiscoverNavClick(event) {
+  const t = event.target
+  if (!t || !t.closest) return
+  const labeled = t.closest('[data-tour="' + DISCOVER_NAV_TOUR + '"]')
+  const button = t.closest('button')
+  if (!labeled && !(button && button.querySelector('[data-tour="' + DISCOVER_NAV_TOUR + '"]'))) return
+  showDiscover(DISCOVER_PATH)
+}
+
 export default {
   id: 'index-network',
   name: 'Index Network',
@@ -161,18 +199,26 @@ export default {
     const stopNotifications = startDesktopNotifications(ctx)
     ctx.onDispose(stopNotifications)
 
+    window.addEventListener('hashchange', onDiscoverHash)
+    document.addEventListener('click', onDiscoverNavClick)
+    ctx.onDispose(function () {
+      window.removeEventListener('hashchange', onDiscoverHash)
+      document.removeEventListener('click', onDiscoverNavClick)
+    })
+    onDiscoverHash()
+
     ctx.registerMany([
       {
         id: 'page',
         area: ROUTES_AREA,
         title: 'Discover',
-        data: { path: '/index-network' },
+        data: { path: DISCOVER_PATH },
         render: function () { return React.createElement(DesktopPage) }
       },
       {
         id: 'nav',
         area: SIDEBAR_NAV_AREA,
-        data: { path: '/index-network', label: 'Discover', codicon: 'sparkle' }
+        data: { path: DISCOVER_PATH, label: 'Discover', codicon: 'sparkle' }
       },
       {
         id: 'open',
@@ -181,7 +227,7 @@ export default {
           id: 'index-network.open',
           label: 'Open Index Network',
           keywords: ['index', 'network', 'intents', 'opportunities', 'onboarding', 'getting started', 'profile'],
-          run: function () { host.navigate('/index-network') }
+          run: function () { showDiscover(DISCOVER_PATH) }
         }
       }
     ])

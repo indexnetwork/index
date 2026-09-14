@@ -105,6 +105,16 @@ window.IndexApp = (function () {
   window.__indexHermesSetup = function (result) {
     while (hermesWaiters.length) hermesWaiters.shift()(result || {});
   };
+  const hermesProgress = new Set();
+  window.__indexHermesProgress = function (payload) {
+    const step = typeof payload === "string" ? payload : (payload && payload.step);
+    if (!step) return;
+    hermesProgress.forEach((cb) => { try { cb(step); } catch (e) { /* ignore */ } });
+  };
+  function onHermesProgress(cb) {
+    hermesProgress.add(cb);
+    return () => hermesProgress.delete(cb);
+  }
   function setupHermes() {
     if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
     return new Promise((resolve) => {
@@ -345,14 +355,11 @@ window.IndexApp = (function () {
 
   // ---- bounded native SSE -------------------------------------------------
 
-  // GET /events, live inbox events. Returns an abort handle.
+  // Views share the app's existing authenticated /events connection.
+  const inboxHandlers = new Set();
   function streamInbox(onEvent) {
-    const controller = new AbortController();
-    nativeAPIBridge.request(
-      { kind:"sse", method:"GET", path:"/events" },
-      { signal:controller.signal, onEvent, timeoutMs:300000 },
-    ).catch((e) => { /* aborted or network drop; caller may retry */ });
-    return { close: () => controller.abort() };
+    inboxHandlers.add(onEvent);
+    return { close: () => inboxHandlers.delete(onEvent) };
   }
 
   // ---- desktop notifications ------------------------------------------------
@@ -374,6 +381,16 @@ window.IndexApp = (function () {
     if (!hasBridge()) return false;
     window.webkit.messageHandlers.indexAuth.postMessage({ action: "setNotifyPrefs", value: prefs || null });
     return true;
+  }
+
+  // ---- protocol server ------------------------------------------------------
+
+  // Point this mac at another protocol deployment. Swift owns the consequences:
+  // it signs the device out against the server it is leaving, stores the new
+  // origin, and reloads the page so INDEX_NATIVE is rebuilt against it. Takes a
+  // bare origin without the /api prefix.
+  function setProtocolServer(apiUrl) {
+    return post("setProtocolServer", { value: String(apiUrl || "") });
   }
 
   // ---- open at login --------------------------------------------------------
@@ -432,7 +449,9 @@ window.IndexApp = (function () {
       if (copy) notify(copy);
     }
     function onRealtime(event) {
-      if (stopped || !event || event.type === "connected") return;
+      if (stopped || !event) return;
+      inboxHandlers.forEach((handler) => handler(event));
+      if (event.type === "connected") return;
       // Own-send suppression is a message question: notification frames have no
       // sender, and isOwnMessage fails closed on anything without `message`.
       if (event.message && N.isOwnMessage(event, getUserId ? getUserId() : null)) return;
@@ -492,12 +511,14 @@ window.IndexApp = (function () {
     detectHarnesses,
     setupHermes,
     teardownHermes,
+    onHermesProgress,
     onAuthChanged,
     onDeepLink,
     streamInbox,
     notify,
     setNotifyPrefs,
     notifyPrefs,
+    setProtocolServer,
     openAtLogin,
     setOpenAtLogin,
     onOpenAtLoginChanged,

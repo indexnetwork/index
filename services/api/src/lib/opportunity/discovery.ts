@@ -2,9 +2,9 @@
 import { log } from '../log';
 import { background } from '../background';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
-import { buildIntentDiscoveryTrigger, type DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
-export type { DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
+import { runOpportunityDiscovery, type DiscoveryDatabase as DiscoveryHostDatabase } from './discovery.shared';
+import { buildIntentDiscoveryTrigger, type DiscoveryInvokeOptions } from './discovery-trigger.builders';
+export type { DiscoveryInvokeOptions } from './discovery-trigger.builders';
 import { createIntentDiscoveryLock, type IntentDiscoveryLock } from './discovery.intent-lock';
 /**
  * Same-intent overlap guard (see discovery.intent-lock.ts). The lock outlives
@@ -35,11 +35,11 @@ export interface DiscoveryJobData {
 export type DiscoveryDatabase = Pick<
   ChatDatabaseAdapter,
   'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded'
->;
+> & DiscoveryHostDatabase;
 
 export interface DiscoveryDeps {
   database?: DiscoveryDatabase;
-  invokeOpportunityGraph?: (opts: DiscoveryGraphInvokeOptions) => Promise<void>;
+  invokeDiscovery?: (opts: DiscoveryInvokeOptions) => Promise<void>;
   /** Same-intent overlap guard; defaults to an in-process map. */
   intentLock?: IntentDiscoveryLock;
   /** Test hook: shortens the re-check delay of a deferred same-intent run. */
@@ -54,8 +54,7 @@ function delay(ms: number): Promise<void> {
 
 export class IntentDiscovery {
   private readonly logger = log.job.from('IntentDiscovery');
-  private readonly database: DiscoveryDatabase | ChatDatabaseAdapter;
-  private readonly graphDb: OpportunityGraphDb;
+  private readonly database: DiscoveryDatabase;
   private readonly intentLock: IntentDiscoveryLock;
   private readonly sameIntentDeferDelayMs: number;
   private readonly maxSameIntentWaitMs: number;
@@ -64,7 +63,6 @@ export class IntentDiscovery {
   constructor(deps?: DiscoveryDeps) {
     this.deps = deps;
     this.database = deps?.database ?? new ChatDatabaseAdapter();
-    this.graphDb = createOpportunityGraphDb(this.database);
     this.intentLock = deps?.intentLock ?? createIntentDiscoveryLock();
     this.sameIntentDeferDelayMs = deps?.sameIntentDeferDelayMs ?? SAME_INTENT_DEFER_DELAY_MS;
     this.maxSameIntentWaitMs = deps?.maxSameIntentWaitMs ?? MAX_SAME_INTENT_WAIT_MS;
@@ -173,12 +171,10 @@ export class IntentDiscovery {
     });
 
     await runOpportunityDiscovery({
-      graphDb: this.graphDb,
+      database: this.database,
       deps: this.deps,
       invokeOpts,
       logger: this.logger,
-      label: 'Discovery',
-      errorLabel: 'discovery',
       logContext: { intentId, userId },
     });
 

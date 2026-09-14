@@ -5,9 +5,8 @@
  * {@link Intents} class. The directories beside this file are private
  * implementation, grouped by what they do rather than by layer:
  *
- *   graph/               the lifecycle graph — prep, infer, verify, reconcile, execute
+ *   graph/               the lifecycle graph — prepare/create; infer/verify explicit updates
  *   intent.inferrer      an utterance into candidate signals
- *   intent.reconciler    candidate signals into create/update/expire actions
  *   intent.verifier      felicity and entropy verdicts
  *   intent.clarifier     a typed payload into a clarified payload plus questions
  *
@@ -23,10 +22,13 @@ import { IntentGraphFactory } from "../internal/intents/graph/intent.graph.js";
 import { normalizeIntentDescription } from "../internal/intents/graph/intent.graph.shared.js";
 import { IntentClarifier } from "../internal/intents/intent.clarifier.js";
 import { ExplicitIntentInferrer } from "../internal/intents/intent.inferrer.js";
-import { IntentReconciler } from "../internal/intents/intent.reconciler.js";
+import { semanticMetadata } from "../internal/intents/intent.admission.js";
 import { SemanticVerifier } from "../internal/intents/intent.verifier.js";
 
 import type { ClarifyAnswer, ClarifyInput, ClarifyQuestion, ClarifyQuestionOption, ClarifyResult } from "../internal/intents/intent.clarifier.js";
+
+export type { IntentSemanticMetadata } from "../internal/intents/intent.admission.js";
+export type { PreparedIntent } from "../internal/intents/intent.clarifier.js";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -59,7 +61,6 @@ export interface IntentsDeps {
   agents?: {
     inferrer?: Pick<ExplicitIntentInferrer, "invoke">;
     verifier?: Pick<SemanticVerifier, "invoke">;
-    reconciler?: Pick<IntentReconciler, "invoke">;
   };
 }
 
@@ -73,7 +74,7 @@ export interface IntentsDeps {
 export class Intents {
   private readonly deps: IntentsDeps;
 
-  private verifier?: SemanticVerifier;
+  private verifier?: Pick<SemanticVerifier, "invoke">;
   private clarifier?: IntentClarifier;
 
   constructor(deps: IntentsDeps = {}) {
@@ -83,7 +84,7 @@ export class Intents {
   // ── Lifecycle graph ─────────────────────────────────────────────────────────
 
   /**
-   * Build the intent lifecycle graph — load, infer, verify, reconcile, execute.
+   * Build the intent lifecycle graph — prepare and create, or explicitly read, update, archive, and transition.
    *
    * @throws If the instance was constructed without a `database`.
    */
@@ -105,7 +106,7 @@ export class Intents {
    * @param profileContext - The speaker's profile, serialized as JSON.
    */
   public async verifyIntent(content: string, profileContext: string) {
-    this.verifier ??= new SemanticVerifier();
+    this.verifier ??= this.deps.agents?.verifier ?? new SemanticVerifier();
     return this.verifier.invoke(content, profileContext);
   }
 
@@ -114,20 +115,32 @@ export class Intents {
   /**
    * Run one stateless clarification round over a signal payload.
    *
-   * With no answers the payload comes back unchanged alongside the questions
-   * worth asking; with answers the payload is rewritten to state them, then
-   * whatever is still open is asked. Answering is always optional.
+   * Fold answers into the draft, then apply creation admission to its final
+   * form. Only a ready result authorizes final review and user revisions.
+   * @returns The admitted draft or repairable feedback and questions.
+   * @throws On model failure; the host must expose a retryable failure.
    *
    * @param input - The payload and any answers gathered so far.
    */
   public async clarify(input: ClarifyInput): Promise<ClarifyResult> {
-    this.clarifier ??= new IntentClarifier();
+    this.clarifier ??= new IntentClarifier(this.deps.agents?.verifier);
     return this.clarifier.invoke(input);
+  }
+
+  /**
+   * Measure text without applying any admission filters.
+   * @param content - The exact saved description.
+   * @param profileContext - The speaker's profile, serialized as JSON.
+   * @returns Metadata even when the verdict would fail admission.
+   * @throws On model failure; callers must leave the saved intent intact.
+   */
+  public async scoreIntent(content: string, profileContext = "") {
+    return semanticMetadata(await this.verifyIntent(content, profileContext));
   }
 
   // ── Stateless surface ───────────────────────────────────────────────────────
 
-  /** Normalize a signal description to its persisted form. */
+  /** Normalize explicit updates. Creation preserves the submitted description verbatim. */
   public static normalizeDescription(description: string): string {
     return normalizeIntentDescription(description);
   }

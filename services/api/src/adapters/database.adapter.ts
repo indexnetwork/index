@@ -194,10 +194,6 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     // ─────────────────────────────────────────────────────────────────────────────
     // HyDE Operations
     // ─────────────────────────────────────────────────────────────────────────────
-    getHydeDocument: (sourceType: Parameters<ChatDatabaseAdapter['getHydeDocument']>[0], sourceId: string, strategy: string) => db.getHydeDocument(sourceType, sourceId, strategy),
-    getHydeDocumentsForSource: (sourceType: Parameters<ChatDatabaseAdapter['getHydeDocumentsForSource']>[0], sourceId: string) => db.getHydeDocumentsForSource(sourceType, sourceId),
-    saveHydeDocument: (data: Parameters<ChatDatabaseAdapter['saveHydeDocument']>[0]) => db.saveHydeDocument(data),
-    deleteHydeDocumentsForSource: (sourceType: Parameters<ChatDatabaseAdapter['deleteHydeDocumentsForSource']>[0], sourceId: string) => db.deleteHydeDocumentsForSource(sourceType, sourceId),
   };
 }
 
@@ -443,10 +439,5 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     // HyDE Operations (cross-user for opportunity matching)
     // ─────────────────────────────────────────────────────────────────────────────
-    getHydeDocument: (sourceType: Parameters<ChatDatabaseAdapter['getHydeDocument']>[0], sourceId: string, strategy: string) => db.getHydeDocument(sourceType, sourceId, strategy),
-    getHydeDocumentsForSource: (sourceType: Parameters<ChatDatabaseAdapter['getHydeDocumentsForSource']>[0], sourceId: string) => db.getHydeDocumentsForSource(sourceType, sourceId),
-    saveHydeDocument: (data: Parameters<ChatDatabaseAdapter['saveHydeDocument']>[0]) => db.saveHydeDocument(data),
-    deleteExpiredHydeDocuments: () => db.deleteExpiredHydeDocuments(),
-    getStaleHydeDocuments: (threshold: Date) => db.getStaleHydeDocuments(threshold),
   };
 }

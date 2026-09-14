@@ -4,6 +4,7 @@ import db from '../lib/drizzle/drizzle';
 import { RuntimeNotFoundError } from '../lib/agent/runtime-errors';
 import * as schema from '../schemas/database.schema';
 import { log } from '../lib/log';
+import { publishUserInvalidation } from '../lib/user-events';
 
 const logger = log.lib.from('agent.database.adapter');
 
@@ -126,14 +127,17 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
   }
 
   async deleteAgent(agentId: string): Promise<void> {
-    await db
+    const [deleted] = await db
       .update(schema.agents)
       .set({
         deletedAt: new Date(),
         status: 'inactive',
         updatedAt: new Date(),
       })
-      .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)));
+      .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)))
+      .returning({ ownerId: schema.agents.ownerId, handleNegotiations: schema.agents.handleNegotiations });
+
+    if (deleted?.handleNegotiations) await publishUserInvalidation(deleted.ownerId, 'agent.configuration');
 
     logger.info('Soft-deleted agent', { agentId });
   }
@@ -179,6 +183,14 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       .limit(1);
 
     return row ? this.toAgentRow(row) : null;
+  }
+
+  /** @param ownerId - Restrict an event-triggered check to one owner. @returns Owners whose external executor is selected. */
+  async listSelectedNegotiatorOwners(ownerId?: string): Promise<string[]> {
+    const rows = await db.select({ ownerId: schema.agents.ownerId }).from(schema.agents)
+      .where(and(eq(schema.agents.type, 'external'), eq(schema.agents.handleNegotiations, true),
+        isNull(schema.agents.deletedAt), ownerId ? eq(schema.agents.ownerId, ownerId) : undefined));
+    return rows.map((row) => row.ownerId);
   }
 
   /**
@@ -260,6 +272,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       return target.id;
     });
 
+    await publishUserInvalidation(input.ownerId, 'agent.configuration');
     return selectedId ? this.getAgent(selectedId) : null;
   }
 

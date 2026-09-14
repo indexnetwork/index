@@ -8,7 +8,7 @@
 
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
 import type { NetworkAssignmentMetadata } from '../../protocol/schemas/network-assignment.schema.js';
-import type { ActiveIntent, ArchiveResult, CreateHydeDocumentData, CreateIntentData, CreateOpportunityData, CreatedIntent, HydeDocument, HydeSourceType, Id, IntentRecord, NetworkAssignmentContext, NetworkIntentDetails, NetworkMemberDetails, NetworkMembership, OnboardingState, Opportunity, OpportunityQueryOptions, OpportunityStatus, OwnedNetwork, SimilarIntent, SimilarIntentSearchOptions, UpdateIntentData, UpdateNetworkSettingsData, UserRecord, UserSocial } from './entities.js';
+import type { ActiveIntent, ArchiveResult, CreateIntentData, CreateOpportunityData, CreatedIntent, Id, IntentRecord, NetworkAssignmentContext, NetworkIntentDetails, NetworkMemberDetails, NetworkMembership, OnboardingState, Opportunity, OpportunityQueryOptions, OpportunityStatus, OwnedNetwork, SimilarIntent, SimilarIntentSearchOptions, UpdateIntentData, UpdateNetworkSettingsData, UserRecord, UserSocial } from './entities.js';
 // ═══════════════════════════════════════════════════════════════════════════════
 // USER DATABASE INTERFACE (Own Resources Only)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -191,21 +191,6 @@ export interface UserDatabase {
   /** Accept sibling opportunities between the authenticated user and another actor. */
   acceptSiblingOpportunities(counterpartUserId: string, excludeOpportunityId: string): Promise<string[]>;
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // HyDE Operations (own sources only)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /** Get a HyDE document for the user's own source. */
-  getHydeDocument(sourceType: HydeSourceType, sourceId: string, strategy: string): Promise<HydeDocument | null>;
-
-  /** Get all HyDE documents for the user's own source. */
-  getHydeDocumentsForSource(sourceType: HydeSourceType, sourceId: string): Promise<HydeDocument[]>;
-
-  /** Save a HyDE document for the user's own source. */
-  saveHydeDocument(data: CreateHydeDocumentData): Promise<HydeDocument>;
-
-  /** Delete HyDE documents for the user's own source. */
-  deleteHydeDocumentsForSource(sourceType: HydeSourceType, sourceId: string): Promise<number>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -354,24 +339,6 @@ export interface SystemDatabase {
   /** Expire stale opportunities (maintenance). */
   expireStaleOpportunities(): Promise<number>;
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // HyDE Operations (cross-user for opportunity matching)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /** Get a HyDE document (cross-user for matching). */
-  getHydeDocument(sourceType: HydeSourceType, sourceId: string, strategy: string): Promise<HydeDocument | null>;
-
-  /** Get all HyDE documents for a source (cross-user). */
-  getHydeDocumentsForSource(sourceType: HydeSourceType, sourceId: string): Promise<HydeDocument[]>;
-
-  /** Save a HyDE document (system-level). */
-  saveHydeDocument(data: CreateHydeDocumentData): Promise<HydeDocument>;
-
-  /** Delete expired HyDE documents (maintenance). */
-  deleteExpiredHydeDocuments(): Promise<number>;
-
-  /** Get stale HyDE documents for refresh (maintenance). */
-  getStaleHydeDocuments(threshold: Date): Promise<HydeDocument[]>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -383,11 +350,10 @@ export interface SystemDatabase {
 //
 // Access control relationship to UserDatabase/SystemDatabase:
 // - IntentGraphDatabase → maps to UserDatabase (mutations) + SystemDatabase (reads)
-// - OpportunityGraphDatabase → maps to SystemDatabase (cross-user operations)
+// - OpportunityDatabase → maps to SystemDatabase (cross-user operations)
 // - NetworkGraphDatabase → maps to UserDatabase (own networks)
 // - IntentNetworkGraphDatabase → maps to both (own intent ↔ shared network)
 // - NetworkMembershipGraphDatabase → maps to SystemDatabase (cross-user)
-// - HydeGraphDatabase → maps to both (own HyDE vs cross-user matching)
 //
 // Graphs continue to use these narrowed types because:
 // 1. They receive the raw database adapter with userId passed per method

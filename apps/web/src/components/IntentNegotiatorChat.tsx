@@ -38,7 +38,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pending = agent?.pending;
   const draftChanged = draft.text.length > 0 && draft.questionId !== (pending?.id ?? null);
-  const canSend = agent?.status === "running" || agent?.status === "external";
+  const canSend = agent?.status === "external";
 
   const mergeMessages = useCallback((incoming: ConversationMessage[]) => {
     setMessages((previous) => [...new Map([...previous, ...incoming].map((message) => [message.id, message])).values()]
@@ -115,11 +115,9 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="intent-negotiator-chat">
       <p className="mb-3 text-xs text-gray-500" aria-live="polite">
-        {agent?.status === "running" ? "Your agent is active across all matches."
-          : agent?.status === "external" ? "Messages go to your selected negotiator."
-            : agent?.status === "paused" ? "Resume this intent to continue with your agent."
-              : agent?.status === "unavailable" ? "Your agent is temporarily unavailable."
-                : "Connecting to your personal agent…"}
+        {agent?.status === "external" ? "Messages go to your selected negotiator."
+          : agent?.status === "hosted" ? "The Index negotiator handles matches but does not chat. Select a negotiator in Settings to message your agent."
+            : "Loading your agent conversation…"}
       </p>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {loading ? <Loader2 className="mx-auto my-10 h-5 w-5 animate-spin text-gray-400" />

@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
-import { Intents } from '@indexnetwork/protocol';
-import { IntentCreateRejectedError, IntentNetworkMembershipError, intentService } from '../services/intent.service';
+import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
+import { IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
 
 const logger = log.controller.from('intent');
 
 const CreateSchema = z.object({
-  description: z.string().trim().min(1, 'description is required').max(65_536),
+  description: z.string().max(65_536).refine((text) => text.trim().length > 0, 'description is required'),
+  preparationReceipt: z.string().min(1).max(65_536).optional(),
   networkIds: z.array(z.string().uuid('networkIds must be UUIDs')).default([]),
 }).strict();
 const ClarifySchema = z.object({
@@ -69,17 +70,13 @@ export class IntentController {
   /**
    * Run one stateless clarification round over a draft signal.
    *
-   * Nothing is stored: the caller sends the payload it is holding plus any
-   * answers gathered so far, and gets back the payload with those answers
-   * written into it alongside whatever is still worth asking. Answering is
-   * always optional — the client may go straight to create.
-   *
-   * @param req - Request with body `{ payload: string; answers?: { question, answer }[] }`
-   * @returns The rewritten payload and the next questions.
+   * @param req - Current payload and answers not yet folded into it.
+   * @param user - Authenticated owner.
+   * @returns An admitted draft with a receipt, or repairable feedback and questions.
    */
   @Post('/clarify')
   @UseGuards(AuthGuard)
-  async clarify(req: Request) {
+  async clarify(req: Request, user: AuthenticatedUser) {
     const raw = await req.json().catch(() => ({}));
     const parsed = ClarifySchema.safeParse(raw);
     if (!parsed.success) {
@@ -89,14 +86,18 @@ export class IntentController {
       );
     }
 
-    const result = await new Intents().clarify(parsed.data);
-    return Response.json(result);
+    try {
+      return Response.json(await intentService.clarify(user.id, parsed.data));
+    } catch (error) {
+      logger.error('Intent preparation failed', { userId: user.id, error });
+      return Response.json({ error: 'preparation_failed', detail: 'Could not prepare this signal. Your answers are kept; try again.', retryable: true }, { status: 503 });
+    }
   }
 
   /**
    * Create one signal and share it in the networks the owner chose.
    *
-   * @param req - Request with body `{ description: string; networkIds?: string[] }`
+   * @param req - Request with body `{ description: string; networkIds?: string[]; preparationReceipt?: string }`
    * @param user - Authenticated user from AuthGuard
    * @returns The created intent id and the networks it was linked to.
    */
@@ -111,12 +112,18 @@ export class IntentController {
         { status: 400 },
       );
     }
-    const { description, networkIds } = parsed.data;
+    const { description, networkIds, preparationReceipt } = parsed.data;
 
     try {
-      const created = await intentService.create(user.id, description, networkIds);
+      const created = await intentService.create(user.id, description, networkIds, preparationReceipt);
       return Response.json({ intentId: created.id, networkIds: created.networkIds });
     } catch (err) {
+      if (err instanceof IntentPreparationReceiptError) {
+        return Response.json({ error: 'invalid_preparation', detail: err.message }, { status: 403 });
+      }
+      if (err instanceof IntentPreparationFailedError) {
+        return Response.json({ error: 'preparation_failed', detail: err.message, retryable: true }, { status: 503 });
+      }
       if (err instanceof IntentNetworkMembershipError) {
         return Response.json({
           error: 'forbidden',

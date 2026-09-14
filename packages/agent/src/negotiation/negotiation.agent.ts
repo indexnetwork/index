@@ -3,7 +3,7 @@ import { buildNegotiationSystemPrompt, buildNegotiationTurnPrompt } from '../pro
 import { Agent, type AgentOptions } from '../core/agent.ts';
 import { MemoryMessageStore } from '../core/sessions.ts';
 import type { Tool } from '../core/tools.ts';
-import type { Step } from '../core/types.ts';
+import type { RunResult, Step } from '../core/types.ts';
 
 import type { PrincipalStore } from './principal.state.ts';
 import { PrincipalInbox, type PrincipalMessage, type PrincipalQuestion, type QuestionScope } from './principal.inbox.ts';
@@ -59,6 +59,12 @@ export type NegotiationEvent =
   | { kind: 'opportunity.matched'; opportunityId: string }
   | { kind: 'negotiation.updated'; opportunityId: string };
 
+/** A host that runs completions outside `Agent.run`, e.g. a Hermes session. */
+export interface Speaker {
+  turn(input: { opportunityId: string; counterparty?: string; systemPrompt: string; prompt: string; tools: Tool<never>[]; signal: AbortSignal }): Promise<RunResult>;
+  inbox(input: { systemPrompt: string; prompt: string; tools: Tool<never>[]; signal: AbortSignal }): Promise<RunResult>;
+}
+
 interface MatchTask {
   opportunityId: string;
   counterparty: User;
@@ -80,11 +86,14 @@ interface TurnState {
 }
 
 /** Internal control flow: discard a decision made against outdated principal context. */
-class ContextChanged extends Error {}
+class ContextChanged extends Error {
+  override readonly name = 'ContextChanged';
+}
 
 /** One personal agent and H2A conversation per principal/intent, with concurrent match tasks. */
 export class NegotiationAgent {
   private readonly agent: Agent;
+  private readonly speaker?: Speaker;
   private readonly tasks = new Map<string, MatchTask>();
   private readonly inbox: PrincipalInbox;
   private readonly commitments = new Map<string, Negotiation>();
@@ -100,10 +109,11 @@ export class NegotiationAgent {
   constructor(
     private readonly participant: { owner: User; intent: Intent; principalContext: string; guidance: string; client: NegotiationClient },
     private readonly host: NegotiationHost,
-    options: Pick<AgentOptions, 'model' | 'now'> & { store: PrincipalStore },
+    options: Pick<AgentOptions, 'model' | 'now'> & { store: PrincipalStore; speaker?: Speaker },
   ) {
     const { owner, intent, principalContext, guidance } = participant;
     this.store = options.store;
+    this.speaker = options.speaker;
     this.agent = new Agent({
       model: options.model,
       now: options.now,
@@ -120,11 +130,14 @@ export class NegotiationAgent {
     }), {
       changed: () => this.checkpoint(),
       input: () => { this.contextVersion++; },
+      renew: () => this.fence(),
       error: (reason) => {
         host.error(null, owner, 'Principal communication failed: ' + reason);
         void this.stop();
       },
-    });
+    }, options.speaker && ((input, run) => options.speaker!.inbox({
+      systemPrompt: this.agent.instructions(), prompt: input, tools: run.tools ?? [], signal: run.signal ?? this.controller.signal,
+    })));
   }
 
   /** Restore the intent session and reconcile every saved match before resuming work. @returns Completion of restoration. */
@@ -140,7 +153,9 @@ export class NegotiationAgent {
       this.tasks.set(saved.opportunityId, { ...saved, counterparty: { id: '', name: null }, controller: new AbortController(), notified: false, stopped: false });
     }
     this.loaded = true;
+    await this.fence();
     await Promise.all([...this.tasks.values()].map(async (task) => {
+      await this.fence();
       const previous = task.record;
       const record = await this.participant.client.readNegotiation(task.opportunityId);
       if (previous?.turnCount !== record.turnCount || record.settledAt || record.protocol.blockedReason && record.protocol.blockedReason !== 'not_your_turn') await this.inbox.cancel(task.opportunityId);
@@ -278,6 +293,7 @@ export class NegotiationAgent {
           await this.checkpoints;
           this.controller.signal.throwIfAborted();
           task.controller.signal.throwIfAborted();
+          if (turn.stale) throw new ContextChanged();
           if (turn.attempted) throw new Error('This turn already used its POST attempt. Stop; do not retry.');
           if (turn.contextVersion !== this.contextVersion) {
             turn.stale = true;
@@ -319,6 +335,7 @@ export class NegotiationAgent {
       run: async (input) => {
         this.controller.signal.throwIfAborted();
         task.controller.signal.throwIfAborted();
+        if (turn.stale) throw new ContextChanged();
         if (turn.attempted) throw new Error('Stop after a submission attempt; do not request principal input.');
         if (turn.contextVersion !== this.contextVersion) { turn.stale = true; throw new ContextChanged(); }
         if (!input || typeof input.question !== 'string' || !input.question.trim() || !['intent', 'match'].includes(input.scope)
@@ -326,17 +343,26 @@ export class NegotiationAgent {
           throw new Error('Provide one question, 2–4 suggested answers, and intent or match scope.');
         }
         this.host.status(task.opportunityId, 'Waiting for ' + (owner.name ?? owner.id) + "'s input", 'question');
-        task.reviewNote = await this.inbox.request({ opportunityId: task.opportunityId, counterparty: task.counterparty }, input);
+        const waiting = this.inbox.request({ opportunityId: task.opportunityId, counterparty: task.counterparty }, input);
         turn.stale = true;
+        if (!this.speaker) task.reviewNote = await waiting;
         throw new ContextChanged();
       },
     };
     return [readTool, submitTool, requestTool];
   }
 
+  private fence(): Promise<void> {
+    return this.store.renew?.() ?? Promise.resolve();
+  }
+
   private drain(task: MatchTask): Promise<void> {
     if (task.running) return task.running;
-    task.running = this.run(task).finally(() => {
+    task.running = this.fence().then(() => this.run(task), (error: unknown) => {
+      this.controller.abort();
+      void this.inbox.stop();
+      this.host.error(null, this.participant.owner, error instanceof Error ? error.message : String(error));
+    }).finally(() => {
       task.running = undefined;
       if (task.notified && !task.stopped && !this.controller.signal.aborted) return this.drain(task);
     });
@@ -347,6 +373,13 @@ export class NegotiationAgent {
     const { owner, client, intent } = this.participant;
     const signal = AbortSignal.any([this.controller.signal, task.controller.signal]);
     while (task.notified && !task.stopped && !signal.aborted) {
+      try { await this.fence(); }
+      catch (error) {
+        this.controller.abort();
+        void this.inbox.stop();
+        this.host.error(null, owner, error instanceof Error ? error.message : String(error));
+        return;
+      }
       task.notified = false;
       try {
         let record = await client.readNegotiation(task.opportunityId);
@@ -376,7 +409,13 @@ export class NegotiationAgent {
           record, principalConversation: this.inbox.conversation, acceptedCommitments: [...this.commitments.values()], communicationReview: task.reviewNote,
         });
         task.reviewNote = undefined;
-        const result = await this.agent.run(input, { history, tools, onStep, signal });
+        const result = this.speaker
+          ? await this.speaker.turn({
+            opportunityId: task.opportunityId, counterparty: task.counterparty.name ?? undefined,
+            systemPrompt: this.agent.instructions(), prompt: input, tools, signal,
+          })
+          : await this.agent.run(input, { history, tools, onStep, signal });
+        if (turn.stale) throw new ContextChanged();
         signal.throwIfAborted();
         record = await client.readNegotiation(task.opportunityId);
         signal.throwIfAborted();

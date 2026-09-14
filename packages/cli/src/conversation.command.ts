@@ -1,7 +1,7 @@
 /**
  * Conversation command handlers for the Index CLI.
  *
- * Human conversations and scoped hosted personal-agent messages over HTTP.
+ * Human conversations and scoped personal-agent messages over HTTP.
  */
 
 import type { ApiClient } from "./api.client";

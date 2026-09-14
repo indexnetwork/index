@@ -1,9 +1,9 @@
 import { buildPrincipalInboxPrompt } from '../prompts/agent.prompt.ts';
 
-import type { Agent } from '../core/agent.ts';
+import type { Agent, RunOptions } from '../core/agent.ts';
 import { MemoryMessageStore } from '../core/sessions.ts';
 import type { Tool } from '../core/tools.ts';
-import type { PendingQuestion } from '../core/types.ts';
+import type { PendingQuestion, RunResult } from '../core/types.ts';
 
 import type { Negotiation, User } from './negotiation.agent.ts';
 
@@ -82,7 +82,9 @@ export class PrincipalInbox {
       acceptedCommitments: Negotiation[];
       negotiations: { opportunityId: string; stopped: boolean; record?: Negotiation }[];
     },
-    private readonly host: { changed(): Promise<void>; input(): void; error(reason: string): void },
+    private readonly host: { changed(): Promise<void>; input(): void; renew(): Promise<void>; error(reason: string): void },
+    /** When set, the host runs this review instead of `agent.run`. */
+    private readonly complete?: (input: string, options: RunOptions) => Promise<RunResult>,
   ) {}
 
   /** @returns The resumable inbox, excluding the separately stored H2A transcript. */
@@ -237,6 +239,8 @@ export class PrincipalInbox {
   }
 
   private async review(): Promise<void> {
+    await this.host.renew();
+    if (this.stopped) return;
     const controller = new AbortController();
     this.reviewController = controller;
     const context = this.context();
@@ -267,12 +271,14 @@ export class PrincipalInbox {
       },
     };
     try {
-      const result = await this.agent.run(buildPrincipalInboxPrompt({
+      const prompt = buildPrincipalInboxPrompt({
         principalConversation: this.messages, incomingMessages, pendingQuestion: question,
         requests: requests.map(({ resolve: _resolve, ...request }) => request),
         outcomes, acceptedCommitments: context.acceptedCommitments,
         negotiations: context.negotiations,
-      }), { history: new MemoryMessageStore(), tools: [tool], maxSteps: 1, signal: controller.signal });
+      });
+      const options = { history: new MemoryMessageStore(), tools: [tool], maxSteps: 1, signal: controller.signal };
+      const result = await (this.complete ?? this.agent.run.bind(this.agent))(prompt, options);
       if (controller.signal.aborted || this.stopped || context.version !== this.context().version) return;
       if (!decision) {
         const failed = result.steps.find((step) => step.kind === 'tool' && step.error);

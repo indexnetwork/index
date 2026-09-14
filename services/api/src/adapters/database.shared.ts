@@ -13,6 +13,7 @@ import type { User, NotificationPreferences, OnboardingState } from '../schemas/
 import type { Conversation, ConversationParticipant, ConversationSession, Message } from '../schemas/conversation.schema';
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
+import { publishUserInvalidation } from '../lib/user-events';
 
 // Re-export the import surface so domain adapter files import everything from one module.
 export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log };
@@ -201,6 +202,7 @@ export async function persistProfileIdentityToUser(userId: string, profile: User
   await db.update(users)
     .set({ ...update, updatedAt: new Date() })
     .where(eq(users.id, userId));
+  await publishUserInvalidation(userId, 'agent.configuration');
 }
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)

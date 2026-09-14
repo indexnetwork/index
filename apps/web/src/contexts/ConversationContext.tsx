@@ -66,8 +66,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const refreshNegotiationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conversationMessageHandlersRef = useRef(new Set<(event: ConversationMessageEvent) => void>());
-  const pendingOptimisticIdsRef = useRef(new Set<string>());
-
   const subscribeConversationMessage = useCallback(
     (handler: (event: ConversationMessageEvent) => void) => {
       conversationMessageHandlersRef.current.add(handler);
@@ -75,6 +73,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     },
     [],
   );
+  const pendingOptimisticIdsRef = useRef(new Set<string>());
 
   // --- REST helpers (conversation calls go through the typed client) ---
 
@@ -325,10 +324,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               setIsConnected(true);
               void refreshNegotiationsRef.current();
               break;
-            case 'negotiation.turn':
-            case 'negotiation.settled':
+            case 'negotiation.changed':
             case 'negotiation.opened':
-            case 'intent.lifecycle':
               if (negotiationsRefreshTimeoutRef.current) clearTimeout(negotiationsRefreshTimeoutRef.current);
               negotiationsRefreshTimeoutRef.current = setTimeout(() => {
                 negotiationsRefreshTimeoutRef.current = null;
@@ -373,17 +370,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                     : c
                 );
               });
-              // Negotiation turns use the same stream but their summaries are
-              // owner-filtered separately (`agent:<ownerId>` participants).
-              // Trailing-debounce revalidation so a multi-turn burst refetches
-              // once; intent provenance and Radar still react without polling.
-              if (negotiationsRefreshTimeoutRef.current) {
-                clearTimeout(negotiationsRefreshTimeoutRef.current);
-              }
-              negotiationsRefreshTimeoutRef.current = setTimeout(() => {
-                negotiationsRefreshTimeoutRef.current = null;
-                void refreshNegotiationsRef.current();
-              }, 500);
               conversationMessageHandlersRef.current.forEach((handler) => handler({
                 conversationId: convId,
                 message: msg,

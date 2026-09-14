@@ -94,6 +94,9 @@ jobs:
           cd ../..
           cd services/api && bun install
 
+      - name: Check discovery
+        run: bunx eslint packages/discovery/src && bun run --cwd packages/discovery typecheck && bun run --cwd packages/discovery build
+
       - name: Type check packages/protocol
         run: cd packages/protocol && bun run build
 
@@ -103,8 +106,11 @@ jobs:
       - name: Check agent
         run: bun run --cwd packages/agent check
 
-      - name: Check generated Hermes instructions
-        run: bun run check:hermes-instructions
+      - name: Check client
+        run: bun run --cwd packages/client check
+
+      - name: Check Hermes negotiator runtime
+        run: bun run --cwd packages/hermes-plugin typecheck:runtime && bun run --cwd packages/hermes-plugin build:runtime
 
       - name: Check agent TUI
         run: bun run --cwd packages/agent-tui check && bun run --cwd packages/agent-tui build

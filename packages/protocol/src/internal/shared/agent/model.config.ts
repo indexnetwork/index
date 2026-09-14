@@ -40,13 +40,8 @@ function getBaseModelConfig(config?: ModelConfig) {
   const settings = {
     intentInferrer:       { model: "google/gemini-3.7-flash" },
     intentVerifier:       { model: "google/gemini-3.7-flash" },
-    intentReconciler:     { model: "google/gemini-3.7-flash" },
     intentClarifier:      { model: "google/gemini-3.7-flash" },
     profileGenerator:     { model: "google/gemini-3.7-flash" },
-    hydeGenerator:        { model: "google/gemini-3.7-flash" },
-    hydeValidator:        { model: "google/gemini-3.7-flash", temperature: 0.0, maxTokens: 2048 },
-    lensInferrer:         { model: "google/gemini-3.7-flash" },
-    opportunityEvaluator: { model: "google/gemini-3.7-flash" },
     opportunityPresenter: { model: "google/gemini-3.7-flash" },
     negotiator:           { model: "google/gemini-3.7-flash" },
     negotiationReflector: { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 2048 },

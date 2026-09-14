@@ -41,7 +41,10 @@ const inputReset = (disabled) => ({
   color: disabled ? "var(--ink-2)" : "#000",
 });
 
-function TextField({ label, required, value, onChange, disabled, placeholder, right }) {
+// onCommit , for a field that acts on its own rather than waiting for the
+//            window's save: fired once the value is finished with, on blur or
+//            Enter, never on every keystroke.
+function TextField({ label, required, value, onChange, onCommit, disabled, placeholder, right }) {
   return (
     <div style={{ minWidth:0 }}>
       <FieldLabel required={required} right={right}>{label}</FieldLabel>
@@ -51,6 +54,8 @@ function TextField({ label, required, value, onChange, disabled, placeholder, ri
           disabled={disabled}
           placeholder={placeholder}
           onChange={e => onChange && onChange(e.target.value)}
+          onBlur={() => onCommit && onCommit()}
+          onKeyDown={e => { if (e.key === "Enter" && onCommit) onCommit(); }}
           style={inputReset(disabled)}
         />
       </div>
@@ -396,36 +401,6 @@ const NOTIFY_OPTIONS = [
     blurb:"one quiet summary each morning instead of live pings." },
 ];
 
-// Registering the app as a login item is a system operation, not a preference
-// this screen stores, so it applies on click rather than waiting for confirm and
-// renders whatever status macOS reports back. Absent in browser preview, where
-// there is no login item to offer.
-function OpenAtLoginToggle() {
-  const app = window.IndexApp;
-  const [status, setStatus] = useState(() => (app && app.openAtLogin ? app.openAtLogin() : null));
-  useEffect(() => {
-    if (!app || !app.onOpenAtLoginChanged) return;
-    return app.onOpenAtLoginChanged(setStatus);
-  }, []);
-  if (!status) return null;
-  const on = status === "enabled";
-  return (
-    <React.Fragment>
-      <SectionRule>startup</SectionRule>
-      <div style={{ marginTop:12 }}>
-        <Toggle
-          on={on}
-          onClick={() => app.setOpenAtLogin(!on)}
-          title="start index when i log in"
-          blurb={status === "requiresApproval"
-            ? "macos wants you to allow this under login items in system settings."
-            : "index keeps working in the background from login, without you opening it first."}
-        />
-      </div>
-    </React.Fragment>
-  );
-}
-
 function NotificationsPane({ notify, toggle }) {
   return (
     <div>
@@ -446,8 +421,6 @@ function NotificationsPane({ notify, toggle }) {
           />
         ))}
       </div>
-
-      <OpenAtLoginToggle/>
     </div>
   );
 }
@@ -718,6 +691,124 @@ function AccessPane() {
   );
 }
 
+/* ---------- pane 4 · advanced ---------- */
+
+// Which protocol server this mac talks to. The three deployments people
+// actually switch between, plus whatever host a branch is running on.
+const PROTOCOL_PRESETS = [
+  { value:"main",  label:"main",  url:"https://protocol.index.network" },
+  { value:"dev",   label:"dev",   url:"https://protocol.dev.index.network" },
+  { value:"local", label:"local", url:"http://localhost:3001" },
+];
+
+/** The origin behind INDEX_NATIVE.apiBaseUrl, which carries the /api prefix. */
+function activeProtocolUrl() {
+  const base = (window.INDEX_NATIVE && window.INDEX_NATIVE.apiBaseUrl) || "";
+  return String(base).replace(/\/+$/, "").replace(/\/api$/, "");
+}
+
+/** A bare http(s) origin, the shape the API is addressed by — never a path. */
+function isProtocolOrigin(value) {
+  return /^https?:\/\/[^/\s]+$/.test(String(value).trim().replace(/\/+$/, ""));
+}
+
+// Machine-local like the login item, so it applies on the spot rather than on
+// save. Absent in browser preview, where there is no native store to write to.
+function ProtocolSection() {
+  const app = window.IndexApp;
+  const active = activeProtocolUrl();
+  const preset = PROTOCOL_PRESETS.find(p => p.url === active);
+  const [choice, setChoice] = useState(preset ? preset.value : "custom");
+  const [custom, setCustom] = useState(preset ? "" : active);
+  if (!active || !app || !app.setProtocolServer) return null;
+
+  // Sessions belong to one server, so switching signs this mac out; the page
+  // reloads against the new host either way.
+  const apply = (url) => { if (url !== active) app.setProtocolServer(url); };
+  const pick = (value) => {
+    setChoice(value);
+    const next = PROTOCOL_PRESETS.find(p => p.value === value);
+    if (next) apply(next.url);
+  };
+  const commit = () => {
+    const url = custom.trim().replace(/\/+$/, "");
+    if (isProtocolOrigin(url)) apply(url);
+  };
+
+  return (
+    <React.Fragment>
+      <RuleLabel>protocol server</RuleLabel>
+      <p style={{
+        margin:"12px 0", maxWidth:520,
+        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
+      }}>
+        requests go to <span style={{ fontFamily:"var(--mac-mono)", fontSize:12 }}>{active}</span>.
+        switching signs this mac out — a session belongs to the server it was made on.
+      </p>
+      <MacSegmented
+        value={choice}
+        onChange={pick}
+        options={[
+          ...PROTOCOL_PRESETS.map(p => ({ value:p.value, label:p.label })),
+          { value:"custom", label:"custom" },
+        ]}
+      />
+      {choice === "custom" && (
+        <div style={{ marginTop:12, maxWidth:360 }}>
+          <TextField
+            label="origin"
+            value={custom}
+            onChange={setCustom}
+            onCommit={commit}
+            placeholder="https://protocol.example.com"
+          />
+        </div>
+      )}
+    </React.Fragment>
+  );
+}
+
+// Registering the app as a login item is a system operation, not a preference
+// this screen stores, so it applies on click rather than waiting for confirm and
+// renders whatever status macOS reports back. Absent in browser preview, where
+// there is no login item to offer.
+function OpenAtLoginToggle() {
+  const app = window.IndexApp;
+  const [status, setStatus] = useState(() => (app && app.openAtLogin ? app.openAtLogin() : null));
+  useEffect(() => {
+    if (!app || !app.onOpenAtLoginChanged) return;
+    return app.onOpenAtLoginChanged(setStatus);
+  }, []);
+  if (!status) return null;
+  const on = status === "enabled";
+  return (
+    <React.Fragment>
+      <SectionRule>startup</SectionRule>
+      <div style={{ marginTop:12 }}>
+        <Toggle
+          on={on}
+          onClick={() => app.setOpenAtLogin(!on)}
+          title="start index when i log in"
+          blurb={status === "requiresApproval"
+            ? "macos wants you to allow this under login items in system settings."
+            : "index keeps working in the background from login, without you opening it first."}
+        />
+      </div>
+    </React.Fragment>
+  );
+}
+
+// The settings this mac keeps for itself: neither belongs to the account, and
+// both take effect the moment they are pressed.
+function AdvancedPane() {
+  return (
+    <div>
+      <ProtocolSection/>
+      <OpenAtLoginToggle/>
+    </div>
+  );
+}
+
 /* ---------- shell ---------- */
 
 // onClose , leave without committing. In settings that closes the pane; at
@@ -887,6 +978,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
                     { value:"profile",  label:"profile" },
                     { value:"notify",   label:"notifications" },
                     { value:"keys",     label:"access" },
+                    { value:"advanced", label:"advanced" },
                   ]}
                 />
               </div>
@@ -900,6 +992,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             {tab === "profile" && <ProfilePane me={ME} form={form} set={set} profileOnly={profileOnly}/>}
             {tab === "notify"  && <NotificationsPane notify={notify} toggle={toggle}/>}
             {tab === "keys"    && <AccessPane/>}
+            {tab === "advanced" && <AdvancedPane/>}
           </div>
 
           <div style={{

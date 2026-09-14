@@ -254,7 +254,7 @@ export default function AgentsPage() {
                           <span className="text-sm text-gray-700">Index Negotiator</span>
                           <span className="ml-2 text-xs text-gray-400 font-ibm-plex-mono">hosted</span>
                           <p className="text-xs text-gray-400 font-ibm-plex-mono mt-0.5">
-                            Hosted by Index. Runs for your active intents.
+                            Hosted by Index. Takes negotiation turns for you; it does not chat.
                           </p>
                         </td>
                         <td className="px-4 py-2 text-xs text-gray-400 font-ibm-plex-mono">—</td>

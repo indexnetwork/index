@@ -1,28 +1,17 @@
-"""Index Network Hermes plugin.
-
-This plugin follows the official Hermes plugin guide: plugin.yaml declares the
-capabilities, schemas.py defines what the LLM sees, tools.py implements handlers
-that always return JSON strings, and register(ctx) wires everything into Hermes.
-"""
+"""Index Network Hermes plugin."""
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
-from . import schemas, tools, transport
-from .native_agent import NativeAgent, SKILL_PATH
+from . import schemas, tools
+from .bridge import HermesBridge
+from .sidecar import Sidecar
+from .speaker import register_tools
 
 
 def _install_desktop_plugin():
-    """Copy the shipped Hermes Desktop bundle into ~/.hermes/desktop-plugins.
-
-    The desktop app loads plugins from its own folder, separate from the
-    gateway's ~/.hermes/plugins, so `hermes plugins install` alone would not
-    surface the desktop tab. Self-installing here keeps it a one-step install
-    and refreshes the copy on upgrades (content comparison). Best-effort: the
-    desktop app is optional and this must never break gateway startup.
-    """
     src = Path(__file__).parent / "desktop" / "dist"
     dest = Path.home() / ".hermes" / "desktop-plugins" / "index-network"
     try:
@@ -36,22 +25,22 @@ def _install_desktop_plugin():
         pass
 
 
+_sidecar: Sidecar | None = None
+
+
 def register(ctx):
-    """Register the Index Network capabilities with Hermes."""
+    global _sidecar
     _install_desktop_plugin()
-    native = NativeAgent(ctx)
-    # Imported here because it reaches into the gateway packages, which the
-    # dashboard and desktop surfaces import this package without.
+    from hermes_constants import get_hermes_home
     from . import events
 
-    events.register_platform(ctx, native)
-    ctx.register_skill(name="personal-agent", path=SKILL_PATH,
-                       description="Native Index personal-agent negotiation and private inbox review.")
-    for hook in ("pre_gateway_dispatch", "pre_llm_call", "pre_tool_call", "transform_llm_output", "post_llm_call"):
-        ctx.register_hook(hook, getattr(native, hook))
-    for name, schema in schemas.NATIVE_AGENT_SCHEMAS.items():
-        target = native if name in ("configure_personal_agent", "focus_intent") else native.operations
-        ctx.register_tool(name=f"index_{name}", toolset="index-network", schema=schema, handler=target.handler(name))
+    home = get_hermes_home()
+    bridge = HermesBridge()
+    sidecar = Sidecar(bridge, home)
+    _sidecar = sidecar
+    bridge.sidecar = sidecar
+    events.register_platform(ctx, sidecar)
+    register_tools(ctx, sidecar)
     for name, schema, handler in (
         ("index_read_intents", schemas.INDEX_READ_INTENTS, tools.index_read_intents),
         ("index_create_intent", schemas.INDEX_CREATE_INTENT, tools.index_create_intent),

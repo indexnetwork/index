@@ -143,21 +143,23 @@ def _load_module(name: str, path: Path):
     return module
 
 
-def _load_tools_module():
-    package_name = "index_network_hermes_dashboard_runtime"
-    package = sys.modules.get(package_name)
-    if package is None:
-        package = types.ModuleType(package_name)
+_RUNTIME_PACKAGE = "index_network_hermes_dashboard_runtime"
+
+
+def _runtime_package() -> str:
+    """Name a synthetic package rooted at the plugin, so `from .x import y` works."""
+    if _RUNTIME_PACKAGE not in sys.modules:
+        package = types.ModuleType(_RUNTIME_PACKAGE)
         package.__path__ = [str(_PLUGIN_ROOT)]
-        package.__package__ = package_name
-        sys.modules[package_name] = package
-    return _load_module(f"{package_name}.tools", _TOOLS_PATH)
+        package.__package__ = _RUNTIME_PACKAGE
+        sys.modules[_RUNTIME_PACKAGE] = package
+    return _RUNTIME_PACKAGE
 
 
-tools = _load_tools_module()
-auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
-
-
+tools = _load_module(f"{_runtime_package()}.tools", _TOOLS_PATH)
+# Loaded under the same package so it can share the transport's API resolver;
+# sign-in and every later request must name one Index environment.
+auth_login = _load_module(f"{_runtime_package()}.dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
 def _call_read_intents() -> dict[str, Any]:
     """Fetch all of the caller's non-archived intents across pages over REST `POST /intents/list`.
 
@@ -854,6 +856,75 @@ def _build_dashboard(
     }
 
 
+def _plugin_sidecar():
+    """The negotiator started by the plugin's Index platform, if this process has one."""
+    plugin = sys.modules.get("hermes_plugins.index_network")
+    return getattr(plugin, "_sidecar", None) if plugin is not None else None
+
+
+def _wake_open_signals(sidecar: Any, owner_id: str) -> list[str]:
+    """Start work on every open negotiation waiting for this owner."""
+    payload = tools._api_request("GET", "/negotiations")
+    if payload.get("success") is False:
+        raise RuntimeError(payload.get("error") or "Could not list negotiations.")
+    woken: list[str] = []
+    for item in _list(payload.get("negotiations")):
+        if not isinstance(item, dict) or item.get("settledAt") or item.get("awaitingUserId") != owner_id:
+            continue
+        intent_id = _text(item.get("intentId"))
+        if not intent_id or intent_id in woken:
+            continue
+        sidecar.wake(intent_id)
+        woken.append(intent_id)
+    return woken
+
+
+@full_router.get("/sidecar")
+def sidecar_status() -> dict[str, Any]:
+    """Whether this machine's negotiator process is running."""
+    sidecar = _plugin_sidecar()
+    if sidecar is None:
+        return {"success": True, "running": False}
+    return {"success": True, "running": sidecar.running}
+
+
+@full_router.post("/sidecar/start")
+def sidecar_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Start the negotiator and wake every open signal waiting on this owner."""
+    sidecar = _plugin_sidecar()
+    if sidecar is None:
+        return {"success": False, "error": "The Index plugin is not loaded in this process."}
+    try:
+        agent = tools.selected_agent()
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": str(exc)}
+    if agent.get("type") != "external" or not agent.get("handleNegotiations"):
+        return {"success": False, "error": "Select this Hermes agent to handle negotiations first."}
+    owner_id = _text(agent.get("ownerId"))
+    agent_id = _text(agent.get("id"))
+    if not owner_id or not agent_id:
+        return {"success": False, "error": "Index did not name this agent's owner."}
+    try:
+        sidecar.start(owner_id, agent_id)
+        woken = _wake_open_signals(sidecar, owner_id)
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": str(exc)}
+    return {"success": True, "running": sidecar.running, "woken": len(woken)}
+
+
+@full_router.post("/sidecar/stop")
+def sidecar_stop(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Stop this machine's negotiator process."""
+    sidecar = _plugin_sidecar()
+    if sidecar is None:
+        return {"success": True, "running": False}
+    try:
+        sidecar.stop()
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": str(exc)}
+    return {"success": True, "running": sidecar.running}
+
+
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
     """Report transport health from the configured API key."""
@@ -898,6 +969,9 @@ def _login_app_base_url() -> str:
     except ValueError:
         return tools.INDEX_APP_BASE_URL
     if parts.scheme in ("http", "https") and parts.netloc:
+        hostname = (parts.hostname or "").lower()
+        if hostname in {"localhost", "127.0.0.1", "::1"}:
+            return f"{parts.scheme}://{hostname}:3000"
         host = parts.netloc
         if host.startswith("protocol."):
             host = host[len("protocol."):]
@@ -1972,6 +2046,112 @@ def agent_answer(body: dict[str, Any] | None = Body(default=None)) -> dict[str, 
             "questionId": question_id or None,
         },
     )
+
+
+def _agent_row(agent: Any) -> dict[str, Any]:
+    """Map one `/agents` entity onto the negotiator selector's row shape."""
+    row = agent if isinstance(agent, dict) else {}
+    return {
+        "id": _text(row.get("id")),
+        "name": _text(row.get("name"), "agent"),
+        "description": _text(row.get("description")),
+        "status": _text(row.get("status"), "active"),
+        "handleNegotiations": row.get("handleNegotiations") is True,
+    }
+
+
+@full_router.get("/agents")
+def list_agents() -> dict[str, Any]:
+    """The owner's registered agents, and which one currently handles negotiations.
+
+    System agents are dropped: the hosted Index negotiator is the selector's
+    "no external agent selected" state, not a row the owner can bind.
+    """
+    payload = tools._api_request("GET", "/agents")
+    if payload.get("success") is False:
+        return payload
+    rows = [
+        _agent_row(agent)
+        for agent in _list(payload.get("agents"))
+        if isinstance(agent, dict) and _text(agent.get("type")) == "external"
+    ]
+    rows = [row for row in rows if row["id"]]
+    selected = next((row["id"] for row in rows if row["handleNegotiations"]), "")
+    return {"success": True, "agents": rows, "selectedAgentId": selected or None}
+
+
+@full_router.post("/agents")
+def create_agent(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Register an external agent via REST `POST /agents` (session-only upstream)."""
+    name = _text(body.get("name")) if isinstance(body, dict) else ""
+    if not name:
+        return {"success": False, "error": "An agent name is required."}
+    request_body: dict[str, Any] = {"name": name}
+    description = _text(body.get("description")) if isinstance(body, dict) else ""
+    if description:
+        request_body["description"] = description
+    payload = tools._api_request("POST", "/agents", request_body)
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "agent": _agent_row(payload.get("agent"))}
+
+
+@full_router.patch("/agents/{agent_id}")
+def update_agent(
+    agent_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    """Bind or release this agent's negotiation executor slot.
+
+    `handleNegotiations: false` is how the hosted Index negotiator is chosen:
+    the API clears the owner's binding rather than naming a hosted agent.
+    The event reader follows `GET /agents/me` and starts or stops the sidecar
+    from that selection.
+    """
+    agent_id = _text(agent_id)
+    if not agent_id:
+        return {"success": False, "error": "An agent id is required."}
+    handle = body.get("handleNegotiations") if isinstance(body, dict) else None
+    if not isinstance(handle, bool):
+        return {"success": False, "error": "handleNegotiations must be true or false."}
+    payload = tools._api_request(
+        "PATCH",
+        f"/agents/{quote(agent_id, safe='')}",
+        {"handleNegotiations": handle},
+    )
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "agent": _agent_row(payload.get("agent"))}
+
+
+@full_router.get("/negotiations")
+def list_negotiations() -> dict[str, Any]:
+    """The owner's open negotiations via REST `GET /negotiations?state=open`."""
+    payload = tools._api_request("GET", "/negotiations?state=open")
+    if payload.get("success") is False:
+        return payload
+    current_user_id = _text(_fetch_me().get("id"))
+    items: list[dict[str, Any]] = []
+    for negotiation in _list(payload.get("negotiations")):
+        if not isinstance(negotiation, dict):
+            continue
+        counterparty = negotiation.get("counterparty")
+        counterparty = counterparty if isinstance(counterparty, dict) else {}
+        awaiting = _text(negotiation.get("awaitingUserId"))
+        items.append({
+            "id": _text(negotiation.get("id")),
+            "opportunityId": _text(negotiation.get("opportunityId")),
+            "intentId": _text(negotiation.get("intentId")),
+            "name": _text(counterparty.get("name"), "Match"),
+            "avatar": _avatar_url(counterparty.get("avatar")),
+            "statement": _truncate(counterparty.get("statement")),
+            "counterpartUserId": _text(counterparty.get("userId")),
+            # Unassigned turns exist (a settled record clears it), so "theirs"
+            # is never inferred from "not mine".
+            "awaiting": "you" if awaiting and awaiting == current_user_id else ("them" if awaiting else ""),
+            "turnCount": _count(negotiation.get("turnCount")),
+        })
+    return {"success": True, "negotiations": items}
 
 
 def _conversation_stream():

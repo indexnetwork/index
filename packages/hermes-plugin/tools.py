@@ -80,11 +80,12 @@ def _positive_int(value: Any, name: str, *, maximum: int | None = None) -> tuple
 def _app_base_url() -> str:
     """Return the universal-link origin used for Index deep links.
 
-    Only a well-formed `https://<host>` origin is honored. A malformed or
-    schemeless override (for example `index.network`) falls back to the constant:
-    a base that parses to an empty scheme/netloc would make every relative path
-    compare equal to it in `index_open_app` and turn that tool into a generic
-    local-file opener.
+    A well-formed `https://<host>` origin is honored. `http://` is allowed only
+    for loopback, so local Vite (`http://localhost:3000`) can serve `/cli-auth`.
+    A malformed or schemeless override (for example `index.network`) falls back
+    to the constant: a base that parses to an empty scheme/netloc would make
+    every relative path compare equal to it in `index_open_app` and turn that
+    tool into a generic local-file opener.
     """
     raw = os.environ.get("INDEX_APP_BASE_URL", "").strip().rstrip("/")
     if not raw:
@@ -93,7 +94,11 @@ def _app_base_url() -> str:
         parts = urllib.parse.urlsplit(raw)
     except ValueError:
         return INDEX_APP_BASE_URL
-    if parts.scheme != "https" or not parts.netloc:
+    host = (parts.hostname or "").lower()
+    loopback = host in {"localhost", "127.0.0.1", "::1"}
+    if not parts.netloc or parts.scheme not in {"https", "http"}:
+        return INDEX_APP_BASE_URL
+    if parts.scheme == "http" and not loopback:
         return INDEX_APP_BASE_URL
     return raw
 
@@ -144,6 +149,22 @@ def _api_request(
         return exc.as_payload()
     except Exception as exc:  # noqa: BLE001 - Hermes handlers must not raise.
         return _error_payload(f"Index transport response could not be processed: {exc}")
+
+
+def selected_agent() -> dict[str, Any]:
+    """Read the agent this key's owner selected to handle negotiations.
+
+    @returns The selected agent entity.
+    @throws ValueError when the read fails, or when the API cannot fence a turn
+            to one external executor — without that fence a stale negotiator on
+            another machine could still submit turns for this owner.
+    """
+    payload = _api_request("GET", "/agents/me")
+    if payload.get("success") is False or payload.get("error"):
+        raise ValueError(payload.get("error") or "Index request failed")
+    if payload.get("negotiationExecutorFence") is not True:
+        raise ValueError("This Index API does not support fenced external turns. Upgrade the API before enabling the Hermes personal agent.")
+    return payload["agent"]
 
 
 def _api_result(

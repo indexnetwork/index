@@ -154,19 +154,24 @@ async function main(): Promise<void> {
     return { id: fallback.id, email: fallback.email, name: fallback.name };
   }
 
+  async function newestActiveIntent(recipientEmail: string, recipientId: string) {
+    const [intent] = await db
+      .select({ id: intents.id, payload: intents.payload })
+      .from(intents)
+      .where(and(eq(intents.userId, recipientId), isNull(intents.archivedAt)))
+      .orderBy(desc(intents.createdAt))
+      .limit(1);
+    if (!intent) {
+      throw new Error(`${recipientEmail} has no active signal to ask about. Create one first.`);
+    }
+    return intent;
+  }
+
   try {
     const recipient = await resolveUserByEmail(args.userEmail);
 
     if (args.command === 'question') {
-      const [intent] = await db
-        .select({ id: intents.id, payload: intents.payload })
-        .from(intents)
-        .where(and(eq(intents.userId, recipient.id), isNull(intents.archivedAt)))
-        .orderBy(desc(intents.createdAt))
-        .limit(1);
-      if (!intent) {
-        throw new Error(`${recipient.email} has no active signal to ask about. Create one first.`);
-      }
+      const intent = await newestActiveIntent(recipient.email, recipient.id);
 
       const conversations = new ConversationDatabaseAdapter();
       const conversation = await conversations.getOrCreateAgentDm(recipient.id);
@@ -204,6 +209,9 @@ async function main(): Promise<void> {
     const counterpart = await resolveCounterpart(recipient.id, args.counterpartEmail);
 
     if (args.command === 'opportunity') {
+      // A real opportunity records the signal it was found for, and the app
+      // reads it to open that signal, so a simulated one has to carry it too.
+      const intent = await newestActiveIntent(recipient.email, recipient.id);
       const opportunities = new OpportunityDatabaseAdapter();
       const created = await opportunities.createOpportunity({
         detection: {
@@ -212,7 +220,7 @@ async function main(): Promise<void> {
           timestamp: new Date().toISOString(),
         },
         actors: [
-          { networkId: COMMONS_NETWORK_ID, userId: recipient.id, role: 'patient' },
+          { networkId: COMMONS_NETWORK_ID, userId: recipient.id, intent: intent.id, role: 'patient' },
           { networkId: COMMONS_NETWORK_ID, userId: counterpart.id, role: 'agent' },
         ],
         interpretation: {
@@ -240,6 +248,7 @@ async function main(): Promise<void> {
       console.log('  channel:', userEventChannel(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);
       console.log('  counterpart:', counterpart.email, `(${counterpart.id})`);
+      console.log('  signal:', intent.id, `(${intent.payload.slice(0, 60)})`);
       return;
     }
 

@@ -6,10 +6,40 @@ import base64
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Iterator
 
 _DEFAULT_API = "https://protocol.index.network"
+_INDEX_DOMAIN = "index.network"
+
+
+def api_origin() -> str:
+    """Resolve the Index API origin, without its `/api` prefix.
+
+    `INDEX_API_URL` wins. Failing that the origin is derived from
+    `INDEX_APP_BASE_URL` by adding the `protocol.` host label
+    (`dev.index.network` -> `protocol.dev.index.network`), because sign-in and
+    every REST call have to name one environment: an env carrying only the web
+    origin would otherwise approve a device code on dev and redeem it on
+    production, which answers 404. Hosts outside `index.network` are left alone,
+    since a local API's port cannot be derived from the web app's.
+    """
+    configured = os.environ.get("INDEX_API_URL", "").strip().rstrip("/")
+    if configured:
+        return configured.removesuffix("/api")
+    app_url = os.environ.get("INDEX_APP_BASE_URL", "").strip().rstrip("/")
+    if not app_url:
+        return _DEFAULT_API
+    parts = urllib.parse.urlsplit(app_url)
+    host = parts.netloc
+    if parts.scheme not in ("http", "https") or not host:
+        return _DEFAULT_API
+    if host != _INDEX_DOMAIN and not host.endswith(f".{_INDEX_DOMAIN}"):
+        return _DEFAULT_API
+    if host.startswith("protocol."):
+        return f"{parts.scheme}://{host}"
+    return f"{parts.scheme}://protocol.{host}"
 
 _API_KEY_HELP = (
     "Sign in from the Hermes dashboard (log in with browser), or set "
@@ -34,8 +64,7 @@ class EnvironmentCredentialTransport:
         self._api_key = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
         if not self._api_key:
             raise TransportError("api_key_missing", _API_KEY_HELP)
-        origin = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
-        self._origin = origin.removesuffix("/api")
+        self._origin = api_origin()
         self._api = self._origin + "/api"
 
     def _headers(self, *, content_type: str = "application/json", accept: str = "application/json") -> dict[str, str]:

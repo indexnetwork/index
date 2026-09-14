@@ -19,7 +19,7 @@ See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
 and [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 Private source under `src/internal/` is domain-first: `agents`, `networks`,
-`discovery`, `opportunities`, with `shared` for cross-cutting model and scope
+`opportunities`, with `shared` for cross-cutting model and scope
 helpers. The `intents` capability is
 organized by function behind a single exported class, `Intents`: files sit flat
 and named for what they do, with `graph/` the one multi-file stage
@@ -102,8 +102,8 @@ The package defines interfaces — your application provides the concrete implem
 | `UserDatabase` / `SystemDatabase` | Context-bound databases built by `createUserDatabase` / `createSystemDatabase` |
 | `Embedder` | Vector embeddings for semantic search |
 | `Scraper` | Web content extraction |
-| `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
-| `IntentFollowUp` | Post-persist intent follow-up (HyDE, resume discovery) |
+| `Cache` / `OpportunityCache` | Presentation/result caching |
+| `IntentFollowUp` | Lifecycle follow-up (`scoreIntent`, `onIntentSaved`, `onIntentArchived`, `onIntentResumed`) |
 | `ProfileEnricher` | Enrich profiles from external sources |
 | `NegotiationDatabase` | Current negotiation state and atomic commit with the supplied protocol decision function |
 | `NegotiationContextDatabase` | Read-only negotiation turn log, for opportunity presentation (folded into `CompositeDatabase`) |
@@ -118,8 +118,8 @@ All interfaces are exported from the package root — import them with `import t
 
 ### 3. Compile the graphs
 
-Graphs are the package's only execution surface. Each factory takes the adapters
-above and returns a compiled LangGraph. Optional capabilities default to a
+Intent/network graph factories take the adapters above and return compiled LangGraphs.
+Opportunity read and lifecycle operations are plain async functions. Optional capabilities default to a
 degraded-but-functional mode when omitted.
 
 ## Graphs
@@ -128,8 +128,6 @@ A `*GraphFactory` class is exported for each workflow:
 
 ```typescript
 import {
-  OpportunityGraphFactory,
-  HydeGraphFactory,
   RadarGraphFactory,
 } from "@indexnetwork/protocol";
 ```
@@ -143,9 +141,26 @@ The intent and community graphs are the exceptions: they are reached through the
 
 | Factory | Workflow |
 |---|---|
-| `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, open counterparties. The host database must implement `openCounterparties`, which turns each scored pair into an opportunity and its negotiation record, keyed on `pairKey` so both principals' runs converge on one. |
-| `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
+
+## Post-intent discovery
+
+`@indexnetwork/discovery` owns lens inference, source-frame extraction, HyDE
+preparation/validation, candidate retrieval, ranking, and explanations. It has
+no protocol, agent, or LangChain dependency. The API supplies its model,
+embedding/search, artifact storage/cache, cancellation, and tracing ports.
+
+`Discovery.discover()` returns potential intent pairs with network, intent,
+user, score, reasoning, and evidence. The host assigns `pairKeyOf(...)` and calls
+`openCounterparties(pairs, decideNegotiationOpening)`; protocol opening rules run
+inside the existing host transaction. Network/broadcast scope remains a protocol
+rule exposed through `resolveDiscoveryNetworkScope`, with context permissions
+handled by `renderDiscoveryNetworkContext`.
+
+`IntentFollowUp.onIntentSaved` schedules artifact preparation and matching;
+`onIntentArchived` schedules artifact cleanup; `onIntentResumed` starts matching
+again. Keep saved/archived follow-ups best-effort and preserve resume failure
+compensation. `scoreIntent` remains independent metadata work.
 
 ## Intents
 
@@ -169,10 +184,27 @@ first use, so an unused method costs nothing.
 
 | Method | Purpose |
 |---|---|
-| `createGraph()` | Compile the lifecycle graph — prep, infer, verify, reconcile, execute. Requires `database` |
+| `createGraph()` | Prepare and create exactly one new signal; explicitly read, update, archive, or transition existing signals. Requires `database` |
 | `verifyIntent(content, profileContext)` | Felicity conditions, speech-act classification, semantic entropy, specificity |
-| `clarify({ payload, answers? })` | One stateless round: the payload, rewritten to state any answers, plus the questions still worth asking |
-| `Intents.normalizeDescription(description)` | Normalize a description to its persisted form |
+| `clarify({ payload, answers? })` | Fold answers into the draft, then return `ready` with metadata or `needs_clarification` with feedback and questions; model failures throw for retry |
+| `scoreIntent(content, profileContext?)` | Measure saved text without admission filters; a negative verdict still returns metadata |
+| `Intents.normalizeDescription(description)` | Normalize an explicit update description; creation preserves text verbatim |
+
+Creation with `inputContent` prepares the description once and persists that exact
+text in a new record, even if a similar signal exists. Guided hosts call `clarify`
+until it returns `ready`, then issue their own authenticated preparation receipt
+bound to the owner and admitted draft. After authenticating the receipt, pass
+`preparation: { metadata }` to `createGraph().invoke()` alongside the final
+`inputContent`. If the user edited the text, pass `metadata: null`: permission to
+create survives revisions, but the draft's scores do not describe the edited text.
+Never accept this graph input directly from an untrusted client.
+
+No inference, admission, or reconciliation runs on prepared creation. The graph
+persists first and invokes `IntentFollowUp.scoreIntent` for revised text. Hosts
+must run scoring as best-effort background work, apply only metadata while the
+owner and payload still match, and leave the saved record usable on negative
+verdicts or failures. Authentication, nonempty text, length limits, and network
+membership remain the host's responsibility.
 
 ## Networks
 

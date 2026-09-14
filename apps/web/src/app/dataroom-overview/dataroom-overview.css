@@ -27,3 +27,55 @@
 .dro .foot a{color:var(--muted);text-decoration:none;}
 .dro .foot a:hover{color:var(--ink);text-decoration:underline;text-underline-offset:2px;}
 .dro .foot .dot{color:#E6E6E2;}
+
+/* Screenshot thumbnails and their lightbox. The body HTML is injected with
+   dangerouslySetInnerHTML, so inline <script> never runs, and a :target
+   lightbox is out because <ScrollRestoration> sends the page to the top on
+   every hash change. A checkbox toggle changes no URL, so the reader stays
+   exactly where they were. */
+.dro .dro-shot{position:relative;display:block;cursor:zoom-in;line-height:0;}
+.dro .dro-shot::after{
+  content:'';position:absolute;right:8px;bottom:8px;width:26px;height:26px;border-radius:5px;
+  background:rgba(17,17,17,.58) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7'/%3E%3C/svg%3E") center/14px no-repeat;
+  opacity:.85;transition:opacity .2s ease,background-color .2s ease;
+}
+.dro .dro-shot:hover::after{opacity:1;background-color:rgba(17,17,17,.82);}
+.dro .dro-shot img{
+  width:100%;display:block;border:1px solid #e3e4e0;
+  /* The two screenshots are not the same shape; crop the thumbnails to one
+     height and let the lightbox show each image whole. */
+  aspect-ratio:16/9;object-fit:cover;object-position:top;
+  transition:transform .3s cubic-bezier(.2,.8,.24,1),box-shadow .3s ease;
+}
+.dro .dro-shot:hover img{transform:translateY(-2px);box-shadow:0 8px 24px rgba(17,17,17,.14);}
+
+/* Fixed, not absolute: clicking a <label> focuses its control, and a control
+   parked at the end of the document would scroll the reader there. */
+.dro .dro-lb-toggle{position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;}
+.dro .dro-lb{
+  position:fixed;inset:0;z-index:60;
+  display:flex;align-items:center;justify-content:center;padding:32px;
+  background:rgba(17,17,17,.42);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  opacity:0;visibility:hidden;
+  transition:opacity .3s ease,visibility 0s linear .3s;
+}
+.dro .dro-lb-toggle:checked + .dro-lb{
+  opacity:1;visibility:visible;
+  transition:opacity .3s ease,visibility 0s;
+}
+.dro .dro-lb-close{position:absolute;inset:0;display:block;cursor:zoom-out;}
+.dro .dro-lb img{
+  position:relative;pointer-events:none;
+  max-width:min(1100px,92vw);max-height:86vh;width:auto;display:block;
+  box-shadow:0 24px 70px rgba(0,0,0,.34);
+  opacity:0;transform:scale(.94) translateY(12px);
+  transition:opacity .3s ease,transform .45s cubic-bezier(.2,.8,.24,1);
+}
+.dro .dro-lb-toggle:checked + .dro-lb img{opacity:1;transform:none;}
+.dro .dro-lb-toggle:focus-visible + .dro-lb{outline:none;}
+
+@media (prefers-reduced-motion:reduce){
+  .dro .dro-shot img,.dro .dro-lb,.dro .dro-lb img{transition-duration:.01ms;}
+  .dro .dro-lb img{transform:none;}
+}

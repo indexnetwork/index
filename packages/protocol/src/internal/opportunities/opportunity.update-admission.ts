@@ -1,7 +1,7 @@
-import type { Opportunity, OpportunityGraphDatabase, OpportunityStatus } from '../../platform/database.js';
+import type { Opportunity, OpportunityDatabase, OpportunityStatus } from '../../platform/database.js';
 
 /** Narrow persistence read port for authorizing a user-driven opportunity update. */
-export type OpportunityUpdateAdmissionPort = Pick<OpportunityGraphDatabase, 'getOpportunity'>;
+export type OpportunityUpdateAdmissionPort = Pick<OpportunityDatabase, 'getOpportunity'>;
 
 const BLOCKED_UPDATE_STATUSES = new Set<OpportunityStatus>([
   'accepted',

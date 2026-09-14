@@ -1,0 +1,23 @@
+export {
+  ApiError,
+  IndexClient,
+  wakesHost,
+} from "./client.ts";
+export type {
+  ConnectedEvent,
+  ConversationMessage,
+  IntentLifecycleWireStatus,
+  IntentStatus,
+  IntentSummary,
+  MatchReference,
+  Me,
+  Negotiation,
+  NegotiationAction,
+  NegotiationDetail,
+  NegotiationOutcome,
+  PersonalAgentState,
+  PrincipalMessage,
+  PrincipalQuestion,
+  QuestionScope,
+  UserEvent,
+} from "./client.ts";

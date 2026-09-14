@@ -478,6 +478,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             else if action == "setOpenAtLogin" {
                 setOpenAtLogin(body?["value"] as? Bool == true, admittedGeneration: admittedGeneration)
             }
+            else if action == "setProtocolServer" {
+                setProtocolServer(body?["value"] as? String ?? "", admittedGeneration: admittedGeneration)
+            }
             return
         }
         if message.name == "indexNotify" {
@@ -525,19 +528,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private func setupHermes(admittedGeneration: UInt64) {
         let credential = currentOwnerCredential()?.credential
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result: [String: Any] = credential
-                .map { HermesSetup.run(sessionToken: $0) }
-                ?? ["ok": false, "error": "sign in first"]
-            let json = (try? JSONSerialization.data(withJSONObject: result))
-                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
-            DispatchQueue.main.async {
-                guard let self,
-                      self.webViewReady,
-                      admittedGeneration == self.trustedDocumentGeneration,
-                      self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
-                self.webView.evaluateJavaScript(
-                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
-                    completionHandler: nil)
+            let result: [String: Any]
+            if let credential {
+                result = HermesSetup.run(sessionToken: credential) { step in
+                    self?.postHermesProgress(step, admittedGeneration: admittedGeneration)
+                }
+            } else {
+                result = ["ok": false, "error": "sign in first"]
+            }
+            self?.postHermesResult(result, admittedGeneration: admittedGeneration)
+            // hermes://open/<path> focuses Desktop and navigates; bare
+            // hermes://index-network is ignored (plugin host with no rest).
+            if result["ok"] as? Bool == true {
+                DispatchQueue.main.async {
+                    guard let url = URL(string: "hermes://open/index-network") else { return }
+                    NSWorkspace.shared.open(url)
+                }
             }
         }
     }
@@ -546,18 +552,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     /// then hand the result to the page via window.__indexHermesSetup.
     private func teardownHermes(admittedGeneration: UInt64) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = HermesSetup.teardown()
-            let json = (try? JSONSerialization.data(withJSONObject: result))
-                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
-            DispatchQueue.main.async {
-                guard let self,
-                      self.webViewReady,
-                      admittedGeneration == self.trustedDocumentGeneration,
-                      self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
-                self.webView.evaluateJavaScript(
-                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
-                    completionHandler: nil)
+            let result = HermesSetup.teardown { step in
+                self?.postHermesProgress(step, admittedGeneration: admittedGeneration)
             }
+            self?.postHermesResult(result, admittedGeneration: admittedGeneration)
+        }
+    }
+
+    private func postHermesProgress(_ step: String, admittedGeneration: UInt64) {
+        guard let data = try? JSONSerialization.data(withJSONObject: ["step": step]),
+              let json = String(data: data, encoding: .utf8) else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.webViewReady,
+                  admittedGeneration == self.trustedDocumentGeneration,
+                  self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
+            self.webView.evaluateJavaScript(
+                "if (typeof window.__indexHermesProgress === 'function') { window.__indexHermesProgress(\(json)); }",
+                completionHandler: nil)
+        }
+    }
+
+    private func postHermesResult(_ result: [String: Any], admittedGeneration: UInt64) {
+        let json = (try? JSONSerialization.data(withJSONObject: result))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.webViewReady,
+                  admittedGeneration == self.trustedDocumentGeneration,
+                  self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
+            self.webView.evaluateJavaScript(
+                "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
+                completionHandler: nil)
         }
     }
 
@@ -1001,6 +1027,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         default:
             return true
         }
+    }
+
+    // MARK: - Protocol server
+
+    /// The advanced pane's server picker. A session is minted by one deployment
+    /// and means nothing to another, so this signs the device out against the
+    /// server it is leaving before the origin moves, then rebuilds everything
+    /// that captured the old one: the runtime bridge, the document-start
+    /// metadata, and the page itself.
+    ///
+    /// - Parameters:
+    ///   - apiURL: A bare http(s) origin, without the `/api` prefix.
+    ///   - admittedGeneration: Document epoch the request was admitted under.
+    private func setProtocolServer(_ apiURL: String, admittedGeneration: UInt64) {
+        let next = AppConfig.trimTrailingSlash(apiURL)
+        guard AppConfig.isProtocolOrigin(next),
+              next != AppConfig.trimTrailingSlash(AppConfig.apiURL) else { return }
+        logout(admittedGeneration: admittedGeneration)
+        AppConfig.setProtocolServer(apiURL: next)
+        configureNativeAPIBridge()
+        installNativeUserScripts(on: userContentController)
+        loadBundledHTML()
     }
 
     // MARK: - Open at login

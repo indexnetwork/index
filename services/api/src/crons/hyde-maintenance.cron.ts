@@ -1,10 +1,8 @@
 import cron from 'node-cron';
+
+import { createArtifacts } from '../lib/opportunity/discovery.shared';
 import { log } from '../lib/log';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 
 /** Age in ms after which HyDE documents are considered stale (30 days). Used for weekly refresh. */
 const STALE_HYDE_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -16,6 +14,8 @@ export type HydeMaintenanceDatabase = Pick<
   | 'getStaleHydeDocuments'
   | 'getIntentForIndexing'
   | 'deleteHydeDocumentsForSource'
+  | 'getHydeDocument'
+  | 'saveHydeDocument'
 >;
 
 /**
@@ -39,13 +39,13 @@ export interface HydeMaintenanceDeps {
  * from the protocol server to schedule daily cleanup (03:00) and weekly refresh (Sunday 04:00).
  *
  * @remarks
- * Handlers orchestrate by calling adapters and the HyDE graph—no business logic here.
+ * Handlers orchestrate adapters and discovery artifact preparation.
  */
 export class HydeMaintenanceCron {
   private readonly logger = log.job.from('HydeJob');
   private readonly cleanupLogger = log.job.from('HydeJob:Cleanup');
   private readonly refreshLogger = log.job.from('HydeJob:Refresh');
-  private readonly database: HydeMaintenanceDatabase | ChatDatabaseAdapter;
+  private readonly database: HydeMaintenanceDatabase;
   private readonly invokeHydeOverride?: HydeMaintenanceDeps['invokeHyde'];
 
   /**
@@ -70,7 +70,7 @@ export class HydeMaintenanceCron {
   }
 
   /**
-   * Refresh HyDE documents older than the stale threshold (30 days). Re-invokes the HyDE graph per document.
+   * Refresh HyDE documents older than the stale threshold (30 days).
    * @returns Number of documents refreshed
    */
   async refreshStaleHyde(): Promise<number> {
@@ -80,7 +80,7 @@ export class HydeMaintenanceCron {
     const staleDocuments = await db.getStaleHydeDocuments(staleThreshold);
     this.refreshLogger.verbose('Found stale HyDE documents', { count: staleDocuments.length });
 
-    let hydeGraph: ReturnType<HydeGraphFactory['createGraph']> | null = null;
+    let artifacts: ReturnType<typeof createArtifacts> | undefined;
     const invokeHyde = async (input: {
       sourceText: string;
       sourceType: 'intent';
@@ -91,15 +91,8 @@ export class HydeMaintenanceCron {
         await this.invokeHydeOverride(input);
         return;
       }
-      if (!hydeGraph) {
-        const embedder = new EmbedderAdapter();
-        const cache = new RedisCacheAdapter();
-        const inferrer = new LensInferrer();
-        const generator = new HydeGenerator();
-        const graphDb = this.database as unknown as HydeGraphDatabase;
-        hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
-      }
-      await hydeGraph.invoke(input);
+      artifacts ??= createArtifacts(this.database);
+      await artifacts.prepare(input, { logger: this.refreshLogger });
     };
 
     let refreshedCount = 0;

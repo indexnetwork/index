@@ -1,40 +1,21 @@
-/** Client for the two-call signal flow: clarify a payload, then create it. */
+/** Client for preparing a signal and saving its final revision. */
+import type { ClarifyAnswer, ClarifyQuestion, ClarifyResult as ProtocolClarifyResult } from "@indexnetwork/protocol";
+
 import { apiClient } from "@/lib/api";
 
-/** One answer already given, paired with the question it answers. */
-export interface ClarifyAnswer {
-  prompt: string;
-  answer: string;
-}
+export type { ClarifyAnswer, ClarifyQuestion };
 
-/** One selectable choice on a clarifying question. */
-export interface ClarifyQuestionOption {
-  label: string;
-  description: string;
-}
-
-/** One clarifying question, shaped for direct rendering. */
-export interface ClarifyQuestion {
-  prompt: string;
-  options: ClarifyQuestionOption[];
-  multiSelect: boolean;
-}
-
-/** The payload as it now reads, plus whatever is still worth asking. */
-export interface ClarifyResult {
-  payload: string;
-  questions: ClarifyQuestion[];
-}
+/** The API host replaces admitted metadata with authenticated preparation. */
+export type ClarifyResult =
+  | (Omit<Extract<ProtocolClarifyResult, { status: "ready" }>, "metadata"> & { preparationReceipt: string })
+  | Extract<ProtocolClarifyResult, { status: "needs_clarification" }>;
 
 export const signalService = {
-  /**
-   * Run one clarification round. Nothing is stored: every call carries the
-   * whole payload and every answer given so far.
-   */
+  /** Prepare a draft; keep pending answers until this round succeeds. */
   clarify: (payload: string, answers: ClarifyAnswer[] = []) =>
     apiClient.post<ClarifyResult>("/intents/clarify", { payload, answers }),
 
-  /** Persist the signal. */
-  create: (description: string) =>
-    apiClient.post<{ intentId: string }>("/intents", { description }),
+  /** Save the final text using server-authorized preparation. */
+  create: (description: string, preparationReceipt: string) =>
+    apiClient.post<{ intentId: string }>("/intents", { description, preparationReceipt }),
 };

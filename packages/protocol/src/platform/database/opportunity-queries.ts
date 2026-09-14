@@ -1,84 +1,14 @@
 import type { NegotiationOpening, NegotiationOpeningDecision } from '../../protocol/negotiation.rules.js';
 
 /**
- * Database operations for HyDE documents and the opportunity lifecycle.
+ * Database operations for the opportunity lifecycle.
  */
 
 import type { OutcomeOutbox } from './capabilities.js';
-import type { CreateHydeDocumentData, CreateIntentCounterpartyData, CreateOpportunityData, HydeDocument, HydeSourceType, IntentScopedOpportunityPersistenceResult, OpenedNegotiation, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
+import type { CreateIntentCounterpartyData, CreateOpportunityData, IntentScopedOpportunityPersistenceResult, OpenedNegotiation, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
 
-/** HyDE document and opportunity persistence operations. */
+/** Opportunity persistence operations. */
 export interface DatabaseOpportunityQueries {
-  // ─────────────────────────────────────────────────────────────────────────────
-  // HyDE Document Operations (Opportunity Redesign)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Get a HyDE document by source and strategy/lens hash.
-   * Returns the first matching document when multiple target corpuses exist.
-   *
-   * @param sourceType - 'intent' | 'query'
-   * @param sourceId - Source entity ID (e.g. intent ID, user ID)
-   * @param strategy - Lens hash (SHA-256 of lens label) or legacy strategy name
-   * @returns The HyDE document or null if not found
-   */
-  getHydeDocument(
-    sourceType: HydeSourceType,
-    sourceId: string,
-    strategy: string
-  ): Promise<HydeDocument | null>;
-
-  /**
-   * Get all HyDE documents for a source (all strategies).
-   *
-   * @param sourceType - 'intent' | 'query'
-   * @param sourceId - Source entity ID
-   * @returns Array of HyDE documents for that source
-   */
-  getHydeDocumentsForSource(
-    sourceType: HydeSourceType,
-    sourceId: string
-  ): Promise<HydeDocument[]>;
-
-  /**
-   * Save a HyDE document (upsert by sourceType + sourceId + strategy/lensHash + targetCorpus).
-   *
-   * @param data - HyDE document data
-   * @returns The saved HyDE document
-   */
-  saveHydeDocument(data: CreateHydeDocumentData): Promise<HydeDocument>;
-
-  /**
-   * Delete all HyDE documents for a source (e.g. when intent archived).
-   *
-   * @param sourceType - 'intent' | 'query'
-   * @param sourceId - Source entity ID
-   * @returns Number of documents deleted
-   */
-  deleteHydeDocumentsForSource(
-    sourceType: HydeSourceType,
-    sourceId: string
-  ): Promise<number>;
-
-  /**
-   * Delete expired HyDE documents (expires_at <= now). Used by maintenance jobs.
-   *
-   * @returns Number of documents deleted
-   */
-  deleteExpiredHydeDocuments(): Promise<number>;
-
-  /**
-   * Get stale HyDE documents for refresh (e.g. createdAt < threshold).
-   *
-   * @param threshold - Date threshold; documents created before this are considered stale
-   * @returns Array of stale HyDE documents
-   */
-  getStaleHydeDocuments(threshold: Date): Promise<HydeDocument[]>;
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Opportunity Operations (Opportunity Redesign)
-  // ─────────────────────────────────────────────────────────────────────────────
-
   /**
    * Create a new opportunity.
    *
