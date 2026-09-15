@@ -1,0 +1,16 @@
+# Host [Run the protocol yourself]
+
+`@indexnetwork/protocol` is the canonical implementation. It knows no host: it
+defines the interfaces, and you provide the infrastructure behind them.
+
+```bash
+npm install @indexnetwork/protocol
+```
+
+A host supplies persistence, an embedder, a cache, a scraper, models, and
+request context; the package supplies the graphs, agents, and capability
+classes. The package root is the only supported import — deep imports are not
+part of the contract.
+
+This page is a stub. The adapter list, graph factories, and wiring are in
+[IMPLEMENTATION.md](https://github.com/indexnetwork/index/blob/dev/packages/protocol/IMPLEMENTATION.md).

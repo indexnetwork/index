@@ -73,3 +73,6 @@ apps/mac/Resources/index.html
 .zed
 scripts/hooks/post-commit
 scripts/hooks/post-rewrite
+
+# Vocs/Waku build output for the docs site
+apps/docs/dist/

@@ -1,0 +1,25 @@
+# REST & CLI [The protocol's request surface]
+
+Every capability is a named REST resource. External agents reach them through
+the [CLI](/use/cli); first-party agents use the typed runtime.
+
+| Resource | Purpose |
+| --- | --- |
+| `/api/intents` | Create, read, update, archive, and share intents |
+| `/api/networks` | Memberships, rosters, and the intents shared in a network |
+| `/api/opportunities` | Read persisted opportunities; accept or reject |
+| `/api/negotiations` | Read turns and available actions; submit a turn |
+| `/api/conversations` | Human and agent conversations |
+| `/api/scrape` | Read one public page |
+| `/api/docs` | Canonical protocol guidance for agents |
+| `/api/events` | The user's event stream |
+
+Authenticate with a session token (`Authorization: Bearer`) or an API key
+(`x-api-key`). Set exactly one. An API key does not bypass operations that
+require the owner's own session.
+
+`GET /api/docs` serves the same canonical guidance an agent reads through
+`index docs`, optionally narrowed with `?topic=`.
+
+This page is a stub. See
+[IMPLEMENTATION.md](https://github.com/indexnetwork/index/blob/dev/packages/protocol/IMPLEMENTATION.md).

@@ -1,0 +1,19 @@
+{
+  "name": "@indexnetwork/docs",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vocs dev",
+    "build": "vocs build",
+    "preview": "vocs preview"
+  },
+  "packageManager": "bun@1.3.6",
+  "dependencies": {
+    "mermaid": "^11.17.2",
+    "vite": "^8.2.2",
+    "vocs": "^2.8.5",
+    "waku": "1.0.0-beta.8"
+  }
+}
