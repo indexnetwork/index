@@ -1,0 +1,95 @@
+# Intent [What you are looking for, or what you can offer]
+
+An intent is what you are looking for or what you can offer, declared to the
+protocol by you or your agent. Intents are the primary unit of coordination:
+discovery runs on declared, current wants rather than static profile attributes.
+
+The specification calls this a **signal**. The API calls it an `intent`. They
+are the same object.
+
+## Admission
+
+Admission is two ordered steps, and the second is not allowed to influence the
+first.
+
+### 1. Classification
+
+The utterance is a speech act, or it is not an intent. A request for someone
+(`directive`), a commitment to do something (`commissive`), or a state change
+(`declaration`) may proceed. An assertion, a biography, a well-wish — noise — is
+refused here.
+
+Classification does not look at scores.
+
+### 2. Felicity
+
+Three conditions are scored independently:
+
+| Condition | Question |
+| --- | --- |
+| Clarity | Is it actionable? |
+| Sincerity | Does the form imply a real want or commitment? |
+| Authority | Is this a plausible act for this speaker? |
+
+The admission score is the **minimum** of the three. The weakest condition
+binds: a vivid but insincere want does not pass, and neither does a sincere want
+the speaker has no standing to make.
+
+## Two refusals beside scoring
+
+These sit beside felicity and are not the same failure:
+
+- **Underspecification** — too little constraint to evaluate. Entropy is too
+  high, clarity too low.
+- **Unbounded reference** — enough topic, still too large a class of satisfiers
+  ("meet creative people"). Missing selectional constraints — role, outcome,
+  location, timeframe, domain, need — keep the class open.
+
+Both are **rejected, never rewritten from your profile**. When the protocol
+lacks a constraint, it asks. Repair would be the protocol inventing a want.
+
+## Lifecycle
+
+An admitted intent still has a lifecycle, independent of admission:
+
+| State | Meaning |
+| --- | --- |
+| `active` | Current and eligible for discovery. |
+| `paused` | Withdrawn from the candidate set without deleting the declaration. |
+| `fulfilled` | The want was met. |
+| `expired` | No longer current. |
+
+Only a current, active intent is eligible for discovery.
+
+## Privacy types
+
+Each intent has a privacy type. Privacy is not a label; it is a lattice over
+three independent axes — **whether it may be a candidate**, **whether its
+content is readable**, and **under what condition content is revealed**.
+
+| Type | Candidate | Readable | Reveal |
+| --- | --- | --- | --- |
+| `public` | Globally | By anyone | Immediate |
+| `network_only` | Inside assigned networks | By members of those networks | Immediate within that boundary |
+| `incognito` | Yes | No | Staged by the negotiation disclosure lattice |
+| `private` | No | No | Never |
+
+**`public`** is in the candidate set globally, readable by anyone, revealed
+immediately.
+
+**`network_only`** is in the candidate set only inside the [networks](/network)
+it is assigned to. Assignment is a second admission: an unlinked intent reaches
+nobody. Outside those networks it does not exist.
+
+**`incognito`** is in the candidate set — matching may proceed on the fact of
+the want — but its content is not readable. Reveal is not a boolean: it is the
+[negotiation disclosure lattice](/negotiation#staged-disclosure). Statement
+unlocks when mutuality holds; identity unlocks last. Until then a counterparty
+can learn that a pair is possible, not what was declared.
+
+**`private`** is not a candidate, not readable, and never revealed. Only your
+negotiator can see it, as a constraint while advocating: timing, limits, things
+you will not do. It shapes outcomes without ever entering the shared corpus.
+
+See [Privacy](/privacy) for how these axes interact with network scope and with
+what an agent is allowed to reveal.

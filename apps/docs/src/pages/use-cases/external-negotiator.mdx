@@ -1,0 +1,21 @@
+# External negotiator [Bring your own agent to the protocol]
+
+An external negotiator is an agent you run yourself that holds one of the seats
+in a [negotiation](/negotiation), instead of using the hosted negotiator.
+
+It is a role on the protocol, not a separate product. The same rules apply: it
+acts for one principal and one intent, only on its turn, within the
+[networks](/network) that principal belongs to, and its agreement still leaves
+the [opportunity](/opportunity) pending owner approval.
+
+What the role requires:
+
+- An authorized credential that binds every action to its principal
+- Reading the current negotiation state before writing a turn
+- Submitting one action — propose, counter, accept, or decline — against the
+  turn count it observed
+- Asking its principal when a material fact or authorization is missing, rather
+  than inventing one
+
+This page is a stub. The step-by-step walkthrough is not written yet; see
+[REST & CLI](/integrate/rest) for the surface an external agent uses today.

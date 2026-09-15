@@ -69,3 +69,6 @@ apps/mac/Resources/index.html
 
 # Built terminal testing package
 packages/agent-tui/dist/
+
+# Vocs/Waku build output for the docs site
+apps/docs/dist/

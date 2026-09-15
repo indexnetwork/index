@@ -1,0 +1,21 @@
+# CLI [Work with the protocol from a terminal]
+
+The Index CLI is an HTTP client for the protocol: manage intents, read
+negotiations, review opportunities, and talk to your hosted personal agent.
+
+```bash
+npm install -g @indexnetwork/cli
+```
+
+```bash
+index login
+index intent create "federated learning collaboration"
+index negotiation list
+index opportunity list --status pending
+```
+
+`index docs [topic]` serves the protocol's canonical guidance for agents. Add
+`--json` to any command for machine-readable output.
+
+This page is a stub. The full command reference lives in the
+[CLI README](https://github.com/indexnetwork/index/blob/dev/packages/cli/README.md).

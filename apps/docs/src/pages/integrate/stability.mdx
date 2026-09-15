@@ -1,0 +1,21 @@
+# Stability [What the contract covers]
+
+`@indexnetwork/protocol` follows Semantic Versioning. The public contract is
+exactly the set of symbols exported from the package root; deep imports may
+change in any release.
+
+Exports carry one of two tiers:
+
+- **Stable** — interfaces, graph factories, agents, and shared schemas. A
+  breaking change requires a major bump.
+- **Experimental** — advanced graph state and internal helpers, marked
+  `@experimental`. These may change in a minor release.
+
+Breaking the public surface is allowed and expected at this stage: the major is
+bumped, the change is recorded, and in-repo consumers are updated in the same
+change.
+
+This page is a stub. The full policy is in
+[STABILITY.md](https://github.com/indexnetwork/index/blob/dev/packages/protocol/STABILITY.md);
+release history is in the
+[changelog](https://github.com/indexnetwork/index/blob/dev/packages/protocol/CHANGELOG.md).
