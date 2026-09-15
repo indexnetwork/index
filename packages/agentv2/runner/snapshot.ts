@@ -1,7 +1,7 @@
 import type { ConversationMessage, IndexClient, MatchReference, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
 
 import { negotiate, wake } from "../src/index.ts";
-import type { ConversationEntry, Decision, Intent, Model, NegotiateResult, Opportunity, WakeAction, WakeResult } from "../src/index.ts";
+import type { ConversationEntry, Decision, Intent, Model, NegotiateResult, Opportunity, Stall, WakeAction, WakeResult } from "../src/index.ts";
 
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
 export interface Runtime {
@@ -17,6 +17,7 @@ export interface Runtime {
 
 const BRIEF = "Brief: ";
 const DECISION = "Decision: ";
+const STALL = "Stall: ";
 const DECISIONS: readonly string[] = ["continue", "accept", "decline", "stop"];
 
 function textOf(message: ConversationMessage): string {
@@ -31,8 +32,8 @@ function textOf(message: ConversationMessage): string {
 /**
  * Read the agent DM as the wake's conversation.
  *
- * Briefs and decisions live here as prefixed agent messages tagged with their
- * opportunity: that is the whole store, and the principal can read it too.
+ * Briefs, decisions and stalls live here as prefixed agent messages tagged with
+ * their opportunity: that is the whole store, and the principal can read it too.
  *
  * @param messages - The agent DM slice for one signal, oldest first.
  * @returns The conversation as a wake takes it.
@@ -49,6 +50,9 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
     }
     if (message.role === "agent" && text.startsWith(DECISION)) {
       return { kind: "decision", text: text.slice(DECISION.length), ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
+    }
+    if (message.role === "agent" && text.startsWith(STALL)) {
+      return { kind: "stall", text: text.slice(STALL.length), ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
     }
 
     const kind = principal?.kind ?? (message.role === "user" ? "user" : "message");
@@ -82,13 +86,27 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
   };
 }
 
-function standing(conversation: ConversationEntry[]): Map<string, { brief?: string; decision?: Decision }> {
-  const perOpportunity = new Map<string, { brief?: string; decision?: Decision }>();
+/**
+ * What each opportunity carries into this run: its latest brief and decision,
+ * and a stall still waiting to be answered.
+ *
+ * A stall stands only until the next decision for that opportunity, which is
+ * the wake's answer to it.
+ *
+ * @param conversation - The signal's conversation, oldest first.
+ * @returns The standing brief, decision and stall per opportunity.
+ */
+function standing(conversation: ConversationEntry[]): Map<string, { brief?: string; decision?: Decision; stall?: Stall }> {
+  const perOpportunity = new Map<string, { brief?: string; decision?: Decision; stall?: Stall }>();
   for (const entry of conversation) {
-    if (!entry.opportunity || (entry.kind !== "brief" && entry.kind !== "decision")) continue;
+    if (!entry.opportunity || (entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall")) continue;
     const current = perOpportunity.get(entry.opportunity) ?? {};
     if (entry.kind === "brief") current.brief = entry.text;
-    else if (DECISIONS.includes(entry.text)) current.decision = entry.text as Decision;
+    else if (entry.kind === "stall") current.stall = { reason: entry.text };
+    else if (DECISIONS.includes(entry.text)) {
+      current.decision = entry.text as Decision;
+      delete current.stall;
+    }
     perOpportunity.set(entry.opportunity, current);
   }
   return perOpportunity;
@@ -247,6 +265,17 @@ export async function negotiateOpportunity(
   const opportunity = { ...toOpportunity(detail, user.id), ...carried };
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
   const result = await negotiate({ user, intent, brief: carried.brief, opportunity, model, now, signal });
-  if ("turn" in result) await client.submitTurn(opportunityId, { ...result.turn, expectedTurnCount: detail.turnCount });
+  if ("turn" in result) {
+    await client.submitTurn(opportunityId, { ...result.turn, expectedTurnCount: detail.turnCount });
+    return result;
+  }
+
+  // The stall is this run's whole product, so it goes on the conversation: the
+  // next wake owes this opportunity a decision, and the principal can be asked.
+  const match = { opportunityId, counterparty: { id: detail.counterparty.userId, name: detail.counterparty.name } };
+  const text = result.stall.suggestedAsk
+    ? `${result.stall.reason}\n\nTo ask: ${result.stall.suggestedAsk}`
+    : result.stall.reason;
+  await client.sendPrincipal(intent.id, [entry("message", `${STALL}${text}`, [match])]);
   return result;
 }

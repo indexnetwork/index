@@ -39,6 +39,8 @@ export function startRunner(options: RunnerOptions): Runner {
   const again = new Set<string>();
   const waves = new Map<string, Set<string>>();
   const working = new Set<string>();
+  /** Opportunities whose stall is waiting on the principal, by signal. */
+  const stalled = new Map<string, string>();
   let stopped = false;
 
   const runtime = () => ({ model, now, signal: abort.signal, log });
@@ -65,17 +67,37 @@ export function startRunner(options: RunnerOptions): Runner {
   }
 
   /**
+   * Work one negotiation, and wake the signal when it stalls: the stall stands
+   * on the conversation, so that wake owes this opportunity a decision and can
+   * ask the principal for what the brief was missing.
+   *
+   * Only the first stall wakes, and the opportunity is then held out of the
+   * wake's own negotiators until the principal answers: without that, deciding
+   * and stalling would trade places without end.
+   *
    * @param intent - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
    */
   async function negotiate(intent: Intent, opportunityId: string): Promise<void> {
     const result = await negotiateOpportunity(client, opportunityId, intent, runtime());
-    log("turn" in result ? `turn ${result.turn.action} on ${opportunityId}` : `stall on ${opportunityId}: ${result.stall.reason}`);
+    if ("turn" in result) {
+      log(`turn ${result.turn.action} on ${opportunityId}`);
+      stalled.delete(opportunityId);
+      return;
+    }
+    log(`stall on ${opportunityId}: ${result.stall.reason}`);
+    if (stalled.has(opportunityId)) return;
+    stalled.set(opportunityId, intent.id);
+    wakeNow(intent.id);
   }
 
   function negotiateNow(intentId: string, opportunityId: string): void {
     const intent = intents.get(intentId);
     if (stopped || !intent || working.has(opportunityId)) return;
+    // The wake this stall asked for re-decides the opportunity, but the
+    // negotiator has nothing new until the principal answers, and reopening it
+    // would stall, reflect, and re-decide without end.
+    if (stalled.has(opportunityId)) return;
     const wave = waves.get(intentId) ?? new Set<string>();
     waves.set(intentId, wave);
     working.add(opportunityId);
@@ -137,8 +159,15 @@ export function startRunner(options: RunnerOptions): Runner {
         log(`event ${event.type} on ${event.data.opportunityId}`);
         inboundTurn(event.data.intentId, event.data.opportunityId);
         break;
-      case "negotiation.opened":
       case "principal.input":
+        // The answer is what every stall on this signal was waiting for.
+        for (const [opportunityId, intentId] of stalled) {
+          if (intentId === event.data.intentId) stalled.delete(opportunityId);
+        }
+        log(`event ${event.type} on ${event.data.intentId}`);
+        wakeNow(event.data.intentId);
+        break;
+      case "negotiation.opened":
         log(`event ${event.type} on ${event.data.intentId}`);
         wakeNow(event.data.intentId);
         break;

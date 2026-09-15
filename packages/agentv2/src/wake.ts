@@ -1,6 +1,6 @@
 import { run } from "./loop.ts";
 import { tool, type Tool } from "./tool.ts";
-import type { ConversationEntry, Decision, Opportunity, User, WakeAction, WakeInput, WakeResult } from "./types.ts";
+import type { Decision, Opportunity, User, WakeAction, WakeInput, WakeResult } from "./types.ts";
 
 /** How long a brief may be. Enough to authorise a negotiator, not to retell the signal. */
 const BRIEF_LIMIT = 400;
@@ -49,30 +49,12 @@ function pending(opportunities: Opportunity[], focus?: string): Opportunity[] {
 }
 
 /**
- * Whether the principal is owed something. Briefs and decisions are the
- * agent's own work, so they never make this true on their own.
- *
- * @param conversation - The signal's conversation, oldest first.
- * @param opportunities - Every opportunity on this signal.
- * @returns Whether to spend a run on ask, note and expire.
- */
-function needsPrincipal(conversation: ConversationEntry[], opportunities: Opportunity[]): boolean {
-  const answered = new Set(conversation.filter((entry) => entry.kind === "answer").map((entry) => entry.questionId));
-  const last = conversation.at(-1);
-  return (
-    conversation.some((entry) => entry.kind === "question" && !answered.has(entry.questionId)) ||
-    opportunities.some((opportunity) => opportunity.stall) ||
-    last?.kind === "user" ||
-    last?.kind === "answer"
-  );
-}
-
-/**
  * One wake over a signal: decide every opportunity that is this seat's move,
  * all at once and each reported through `onDecision` as it lands, then speak
- * to the principal if they are owed something.
+ * to the principal.
  *
- * A wake with nothing to decide and nothing to say never reaches the model.
+ * Speaking is the run's own judgement, not the host's: every unfocused wake
+ * reaches the model for it, and staying silent is one of its outcomes.
  *
  * A focused wake is the passive case: it decides that one opportunity and
  * stays silent toward the principal, so a counterpart's turn cannot pull the
@@ -86,10 +68,12 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   const actions: WakeAction[] = [];
   const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
   const principal = principalFacts(user);
-  // Briefs and decisions are already carried on the opportunities themselves,
-  // so the conversation a run reads is only what passed between the principal
-  // and their counterparts.
-  const conversation = principalConversation.filter((entry) => entry.kind !== "brief" && entry.kind !== "decision");
+  // Briefs, decisions and stalls are already carried on the opportunities
+  // themselves, so the conversation a run reads is only what passed between the
+  // principal and their counterparts.
+  const conversation = principalConversation.filter(
+    (entry) => entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall",
+  );
   const runtime = {
     model: input.model,
     identity,
@@ -226,7 +210,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   // unbriefed, so the next wake owes it again.
   await Promise.allSettled(pending(opportunities, input.focus).map(decide));
 
-  if (!input.focus && needsPrincipal(principalConversation, opportunities)) await attend();
+  if (!input.focus) await attend();
 
   return { actions };
 }
