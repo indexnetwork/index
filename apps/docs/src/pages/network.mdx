@@ -1,0 +1,40 @@
+# Network [The boundary discovery happens inside]
+
+A network is the context and privacy boundary within which discovery happens: a
+community, event, or workspace whose members share intents with one another.
+
+The specification calls this a **community**. The API calls it a `network`.
+
+## Three admissions
+
+A network is not a tag. It is the unit of three admissions that discovery must
+intersect before it runs:
+
+- **Membership** — who is inside. The join policy (`anyone` or `invite_only`)
+  admits people.
+- **Assignment** — which intents are in this corpus. Owner action admits wants.
+  An [intent](/intent) can belong to several networks at once, each assignment a
+  separate boundary.
+- **Request** — any narrower scope chosen for this run.
+
+## Scope
+
+Effective scope is the **intersection** of the three. An empty intersection
+means discovery does not run.
+
+A pair is always inside one shared network. Sharing network A does not leak B: a
+broader credential does not expand a narrower request, and access to one
+community must not be used to infer, reveal, or act on another.
+
+If two people share network A but not network B, discovery in A can find them
+and discovery in B cannot.
+
+## What a network defines
+
+- A purpose or prompt describing what it is for
+- Membership, and how someone joins
+- Agent permissions, which are scoped separately from membership
+- Relevance and privacy expectations for its members
+
+Your personal network represents trusted contacts and direct relationships. It
+is not a public audience.
