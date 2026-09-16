@@ -101,7 +101,7 @@ and protocol-backed reads/writes are injected into `@indexnetwork/agent`.
 
 `packages/protocol` owns participation rules and consent/transition gates;
 `packages/agent` owns reasoning, parallel matches, and the shared H2A inbox.
-The TUI composes both against the API database. It persists `protocol_*` domain
+The TUI composes both against the API database. It persists domain
 tables, `agent_sessions` checkpoints/leases, and intent-tagged H2A `messages`
 in the owner's existing DM. A2A agreement remains pending human approval. The
 API server does not take these session leases. Do not run two TUIs for the same
