@@ -9,6 +9,7 @@ export const ContextInjectionSchema = z.object({
 export const NetworkPermissionsSchema = z.object({
   joinPolicy: z.enum(['anyone', 'invite_only']).optional(),
   contextInjection: ContextInjectionSchema.optional(),
+  requireAdminApproval: z.boolean().optional(),
 });
 
 export type NetworkMemberMetadata = z.infer<typeof NetworkMemberMetadataSchema>;

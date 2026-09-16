@@ -1,4 +1,4 @@
-import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
+import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkJoinRequests, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -33,6 +33,7 @@ export function buildNetworkShareResponse(row: NetworkShareResponseRow, memberCo
     prompt: row.prompt,
     imageUrl: row.imageUrl,
     joinPolicy: permissions.joinPolicy,
+    requireAdminApproval: permissions.joinPolicy === 'invite_only' && permissions.requireAdminApproval === true,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
@@ -508,6 +509,22 @@ export class ChatDatabaseAdapter {
     // when a network has multiple owners. Keep the first encounter only.
     const uniqueRows = [...new Map(rows.map(r => [r.id, r])).values()];
 
+    const ownedNetworkIds = ids.filter((id) => {
+      const viewerPermissions = membershipByNetworkId.get(id) ?? [];
+      return viewerPermissions.includes('owner') || viewerPermissions.includes('admin');
+    });
+    const pendingJoinRows = ownedNetworkIds.length > 0
+      ? await db
+          .select({ networkId: schema.networkJoinRequests.networkId, count: count() })
+          .from(schema.networkJoinRequests)
+          .where(and(
+            inArray(schema.networkJoinRequests.networkId, ownedNetworkIds),
+            eq(schema.networkJoinRequests.status, 'pending'),
+          ))
+          .groupBy(schema.networkJoinRequests.networkId)
+      : [];
+    const pendingJoinCountByNetworkId = new Map(pendingJoinRows.map(r => [r.networkId, Number(r.count)]));
+
     const networksWithCounts = await Promise.all(
       uniqueRows.map(async (row) => {
         const [memberCount] = await db
@@ -528,6 +545,7 @@ export class ChatDatabaseAdapter {
           metadata: (row.metadata ?? {}) as Record<string, unknown>,
           permissions: toPublicNetworkPermissions(row.permissions),
           role,
+          pendingJoinCount: role === 'owner' ? (pendingJoinCountByNetworkId.get(row.id) ?? 0) : 0,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           user: {
@@ -1363,7 +1381,7 @@ export class ChatDatabaseAdapter {
   async updateNetworkSettings(
     networkId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; requireAdminApproval?: boolean; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
   ) {
     const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
     if (!isOwner) {
@@ -1379,7 +1397,7 @@ export class ChatDatabaseAdapter {
     if (data.title !== undefined) updateData.title = data.title;
     if (data.prompt !== undefined) updateData.prompt = data.prompt;
     if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
-    if (data.joinPolicy !== undefined) {
+    if (data.joinPolicy !== undefined || data.requireAdminApproval !== undefined) {
       const currentPerms = (existing.permissions as schema.NetworkPermissionsState | null) ?? {
         joinPolicy: 'invite_only',
         invitationLink: null,
@@ -1388,6 +1406,7 @@ export class ChatDatabaseAdapter {
         ...currentPerms,
         joinPolicy: data.joinPolicy ?? currentPerms.joinPolicy ?? 'invite_only',
         invitationLink: currentPerms.invitationLink ?? { code: crypto.randomUUID() },
+        requireAdminApproval: data.requireAdminApproval ?? currentPerms.requireAdminApproval === true,
       };
     }
     if (data.metadata !== undefined) updateData.metadata = data.metadata;
@@ -1401,6 +1420,14 @@ export class ChatDatabaseAdapter {
     }
 
     await db.update(networks).set(updateData).where(eq(networks.id, networkId));
+
+    const nextPerms = updateData.permissions as schema.NetworkPermissionsState | undefined;
+    const stillGated = nextPerms
+      ? nextPerms.joinPolicy === 'invite_only' && nextPerms.requireAdminApproval === true
+      : true;
+    if (!stillGated) {
+      await this.admitPendingJoinRequests(networkId);
+    }
 
     return this.loadNetworkSettingsDTO(networkId);
   }
@@ -1595,6 +1622,11 @@ export class ChatDatabaseAdapter {
       autoAssign: true,
     }).onConflictDoNothing({ target: [networkMembers.networkId, networkMembers.userId] }).returning();
 
+    // Membership settles any outstanding join request, however it was granted.
+    await db.delete(networkJoinRequests).where(
+      and(eq(networkJoinRequests.networkId, networkId), eq(networkJoinRequests.userId, userId)),
+    );
+
     return { success: true, alreadyMember: result.length === 0 };
   }
 
@@ -1758,11 +1790,13 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Accept an invitation to join a network using the invitation code.
+   * Accept an invitation to join a network using the invitation code. Joins
+   * immediately unless the network gates link joins behind owner approval, in
+   * which case the caller is recorded as a pending request instead.
    * @param code - The invitation link code
    * @param userId - The authenticated user accepting the invitation
-   * @returns The network, membership details, and alreadyMember flag
-   * @throws Error if the code is invalid or the network is not found
+   * @returns The network and the outcome: joined, already_member, or pending
+   * @throws Error if the code is invalid, or the user was previously declined
    */
   async acceptNetworkInvitation(code: string, userId: string) {
     const network = await this.getNetworkByShareCode(code);
@@ -1770,7 +1804,34 @@ export class ChatDatabaseAdapter {
       throw new Error('Invalid or expired invitation link');
     }
 
-    const result = await this.addMemberToNetwork(network.id, userId, 'member');
+    if (await this.isNetworkMember(network.id, userId)) {
+      await db.delete(networkJoinRequests).where(
+        and(eq(networkJoinRequests.networkId, network.id), eq(networkJoinRequests.userId, userId)),
+      );
+      return { status: 'already_member' as const, network, membership: null };
+    }
+
+    const [existingRequest] = await db
+      .select({ status: networkJoinRequests.status })
+      .from(networkJoinRequests)
+      .where(and(eq(networkJoinRequests.networkId, network.id), eq(networkJoinRequests.userId, userId)))
+      .limit(1);
+
+    // A decline outlives the gate that produced it: lifting approval admits the
+    // queue, it does not reopen the link to someone already turned away.
+    if (existingRequest?.status === 'declined') {
+      throw new Error('Your request to join this network was declined');
+    }
+
+    if (network.requireAdminApproval) {
+      await db.insert(networkJoinRequests)
+        .values({ networkId: network.id, userId })
+        .onConflictDoNothing({ target: [networkJoinRequests.networkId, networkJoinRequests.userId] });
+
+      return { status: 'pending' as const, network, membership: null };
+    }
+
+    await this.addMemberToNetwork(network.id, userId, 'member');
 
     const [memberRow] = await db
       .select({
@@ -1787,6 +1848,7 @@ export class ChatDatabaseAdapter {
       .limit(1);
 
     return {
+      status: 'joined' as const,
       network,
       membership: memberRow
         ? {
@@ -1798,8 +1860,96 @@ export class ChatDatabaseAdapter {
             createdAt: memberRow.createdAt,
           }
         : null,
-      alreadyMember: result.alreadyMember,
     };
+  }
+
+  /**
+   * List the people waiting for approval to join a network. Owner-only.
+   * @param networkId - The network whose queue to read
+   * @param requestingUserId - The caller; must be an owner of the network
+   * @returns Pending requesters with name, email, and when they asked
+   * @throws Error if the caller is not an owner
+   */
+  async getNetworkJoinRequests(networkId: string, requestingUserId: string) {
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
+    if (!isOwner) {
+      throw new Error('Access denied: Not an owner of this network');
+    }
+
+    return db
+      .select({
+        userId: networkJoinRequests.userId,
+        name: users.name,
+        email: users.email,
+        avatar: users.avatar,
+        requestedAt: networkJoinRequests.createdAt,
+      })
+      .from(networkJoinRequests)
+      .innerJoin(users, eq(networkJoinRequests.userId, users.id))
+      .where(and(
+        eq(networkJoinRequests.networkId, networkId),
+        eq(networkJoinRequests.status, 'pending'),
+        isNull(users.deletedAt),
+      ))
+      .orderBy(desc(networkJoinRequests.createdAt));
+  }
+
+  /**
+   * Approve or decline a pending join request. Owner-only. Approving adds the
+   * member; declining keeps the row so the link cannot be re-used to re-request.
+   * @param networkId - The network being joined
+   * @param targetUserId - The person who asked to join
+   * @param requestingUserId - The caller; must be an owner of the network
+   * @param decision - Whether to approve or decline the request
+   * @throws Error if the caller is not an owner or the request is not pending
+   */
+  async reviewNetworkJoinRequest(
+    networkId: string,
+    targetUserId: string,
+    requestingUserId: string,
+    decision: 'approve' | 'decline',
+  ): Promise<{ success: boolean }> {
+    const isOwner = await this.isNetworkOwner(networkId, requestingUserId);
+    if (!isOwner) {
+      throw new Error('Access denied: Not an owner of this network');
+    }
+
+    const [request] = await db
+      .select({ status: networkJoinRequests.status })
+      .from(networkJoinRequests)
+      .where(and(eq(networkJoinRequests.networkId, networkId), eq(networkJoinRequests.userId, targetUserId)))
+      .limit(1);
+
+    if (request?.status !== 'pending') {
+      throw new Error('Join request not found');
+    }
+
+    if (decision === 'approve') {
+      // addMemberToNetwork clears the request row.
+      await this.addMemberToNetwork(networkId, targetUserId, 'member');
+    } else {
+      await db.update(networkJoinRequests)
+        .set({ status: 'declined', updatedAt: new Date() })
+        .where(and(eq(networkJoinRequests.networkId, networkId), eq(networkJoinRequests.userId, targetUserId)));
+    }
+
+    return { success: true };
+  }
+
+  /**
+   * Admit everyone currently waiting on a network, used when its owner stops
+   * gating link joins. Declined requests stay declined.
+   * @param networkId - The network whose queue to drain
+   */
+  private async admitPendingJoinRequests(networkId: string): Promise<void> {
+    const pending = await db
+      .select({ userId: networkJoinRequests.userId })
+      .from(networkJoinRequests)
+      .where(and(eq(networkJoinRequests.networkId, networkId), eq(networkJoinRequests.status, 'pending')));
+
+    for (const row of pending) {
+      await this.addMemberToNetwork(networkId, row.userId, 'member');
+    }
   }
 
   async getNetworkDetail(networkId: string, requestingUserId: string) {
