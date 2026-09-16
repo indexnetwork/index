@@ -34,8 +34,6 @@ import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/s
 import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
-import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
-import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
@@ -75,22 +73,12 @@ const opportunityEventService = new OpportunityEventService({
 OpportunityEvents.onActionable = (payload) => opportunityEventService.publishOpportunityActionable(payload);
 
 opportunityExpirationCron.start();
-checkpointRetentionCron.start();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
-
-// Warm up the PostgresSaver checkpointer at boot so the first graph run
-// doesn't pay the table-setup round trip and misconfiguration surfaces at
-// startup instead of mid-run. Non-fatal: graphs degrade to no checkpointer.
-getCheckpointer().catch((err) => {
-  logger.warn('Checkpointer warm-up failed; graphs will run without persistence', {
-    error: err instanceof Error ? err.message : String(err),
-  });
-});
 
 /** Match pathname against a route pattern with :param placeholders; returns params or null. */
 function matchPath(pattern: string, pathname: string): Record<string, string> | null {

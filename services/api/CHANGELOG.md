@@ -29,7 +29,7 @@ section before promoting to `main`).
 - **BREAKING: `POST /intents/:id/visit` and `protocol_intents.last_visited_at`.**
   The endpoint stamped a column no read path consulted any more, so the route,
   the web hook behind it, and the column are gone (migration
-  `0183_drop_intent_last_visited_at`).
+  `0184_drop_intent_last_visited_at`).
 
 ### Added
 - **Discovery is on demand, and the agent judges it.**
@@ -42,6 +42,11 @@ section before promoting to `main`).
   and need an active signal.
 
 ### Removed
+- **LangGraph PostgresSaver.** The unused `PostgresSaver` checkpointer, its
+  boot-time table setup, the hourly `checkpoint-retention` cron, and the
+  `checkpoints` / `checkpoint_blobs` / `checkpoint_writes` /
+  `checkpoint_migrations` tables are gone. Graph runs were already compiling
+  without a checkpointer; conversation continuity stays on `chat_messages`.
 - **BREAKING: writing a signal no longer starts a search.** HyDE and lens
   inference are gone with the `@indexnetwork/discovery` package, along with the
   background `IntentDiscovery` runner, the `protocol_hyde_documents` table and
