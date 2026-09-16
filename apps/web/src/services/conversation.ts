@@ -40,8 +40,8 @@ export interface PrincipalQuestion {
 
 export interface PersonalAgentState {
   status: 'external' | 'hosted';
-  pending: PrincipalQuestion | null;
-  queuedQuestions: number;
+  /** Every question still waiting on the owner, oldest first. */
+  questions: PrincipalQuestion[];
 }
 
 export interface ConversationHistory {
@@ -95,6 +95,15 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   sendMessage: async (conversationId: string, parts: unknown[], opts?: { metadata?: Record<string, unknown>; questionId?: string | null }): Promise<ConversationMessage> => {
     const response = await api.post<{ message: ConversationMessage }>(`/conversations/${conversationId}/messages`, { parts, metadata: opts?.metadata, questionId: opts?.questionId });
     return response.message;
+  },
+
+  /**
+   * Answer several of the agent's questions in one write, so the wake they
+   * trigger sees all of them.
+   */
+  sendAnswers: async (intentId: string, answers: { questionId: string; text: string }[]): Promise<ConversationMessage[]> => {
+    const response = await api.post<{ messages: ConversationMessage[] }>('/conversations/agent/answers', { intentId, answers });
+    return response.messages;
   },
 
   /** Get or create a DM conversation with a peer user. */

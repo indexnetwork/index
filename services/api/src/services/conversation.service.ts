@@ -18,8 +18,8 @@ export class AgentConversationError extends Error {
 
 export interface AgentConversationState {
   status: 'external' | 'hosted';
-  pending: PrincipalQuestion | null;
-  queuedQuestions: number;
+  /** Every question still waiting on the owner, oldest first. */
+  questions: PrincipalQuestion[];
 }
 
 /**
@@ -274,27 +274,27 @@ export class ConversationService {
   /**
    * @param userId - Authenticated owner.
    * @param intentId - Intent conversation being read.
-   * @returns Pending question, or the hosted status when Index holds the seat.
+   * @returns Every unanswered question, or the hosted status when Index holds the seat.
    * @throws AgentConversationError when the caller does not own the intent.
    */
   async agentState(userId: string, intentId: string): Promise<AgentConversationState> {
     if (!await this.intents.isOwnedByUser(intentId, userId)) throw new AgentConversationError('Intent not found.', 404);
     // The hosted negotiator only takes A2A turns, so it has no owner transcript.
     if (!await this.registry.getSelectedNegotiator(userId)) {
-      return { status: 'hosted', pending: null, queuedQuestions: 0 };
+      return { status: 'hosted', questions: [] };
     }
     const { messages } = await AgentSessionDatabaseAdapter.readTranscript(userId, intentId);
-    const queue = unanswered(messages);
-    return { status: 'external', pending: queue.at(-1) ?? null, queuedQuestions: Math.max(queue.length - 1, 0) };
+    return { status: 'external', questions: unanswered(messages) };
   }
 
   /**
    * Persist owner input for the selected external negotiator and notify that runtime.
    *
-   * Whatever the owner sends is kept: a message written while a question is on
+   * Whatever the owner sends is kept: a message written while questions are on
    * screen, or an answer to a question that has since been overtaken, still
-   * reaches the agent, which decides what it applies to. Only input naming the
-   * question currently displayed is recorded as that question's answer.
+   * reaches the agent, which decides what it applies to. Input naming any
+   * question still waiting is recorded as that question's answer, so the owner
+   * can work through them in whatever order they like.
    *
    * @param input - Authenticated owner, intent, canonical DM, and the question the owner was answering (or null for a direct message).
    * @returns The persisted message.
@@ -305,14 +305,52 @@ export class ConversationService {
     if (!await this.registry.getSelectedNegotiator(input.userId)) throw new AgentConversationError('The Index negotiator does not chat. Select a negotiator to message your agent.', 409);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
-    const displayed = unanswered(messages).at(-1) ?? null;
-    const answered = input.questionId && displayed?.id === input.questionId ? displayed : null;
+    const answered = input.questionId
+      ? unanswered(messages).find((question) => question.id === input.questionId) ?? null
+      : null;
     const message = await AgentSessionDatabaseAdapter.writeOwnerInput({ ...input, questionId: answered?.id ?? null, pending: answered });
     await publishUserEvent(input.userId, {
       type: 'principal.input', id: message.id, title: '', body: '',
       data: { intentId: input.intentId, questionId: answered?.id ?? null, text: input.text },
     });
     return message;
+  }
+
+  /**
+   * Persist several owner answers at once for the selected external negotiator.
+   *
+   * Every answer is matched against one reading of the queue and written in a
+   * single transaction, so the wake they trigger sees all of them rather than
+   * deciding on the first and clearing the rest. An answer naming a question
+   * that is no longer waiting is still kept, as a plain message.
+   *
+   * @param input - Authenticated owner, intent, canonical DM, and the answers to write.
+   * @returns The persisted messages, in the order given.
+   * @throws AgentConversationError when the intent is not owned or Index holds the seat.
+   */
+  async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId: string; text: string }[] }) {
+    if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
+    if (!await this.registry.getSelectedNegotiator(input.userId)) throw new AgentConversationError('The Index negotiator does not chat. Select a negotiator to message your agent.', 409);
+    const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
+    if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
+    const queue = unanswered(messages);
+    const prepared = input.answers.map((answer) => ({
+      text: answer.text,
+      question: queue.find((question) => question.id === answer.questionId) ?? null,
+    }));
+    const persisted = await AgentSessionDatabaseAdapter.writeOwnerAnswers({
+      userId: input.userId, intentId: input.intentId, conversationId, answers: prepared,
+    });
+    // Published only once the batch is durable: the first wake then reads a
+    // transcript that already holds every answer.
+    for (const [index, message] of persisted.entries()) {
+      const answer = prepared[index]!;
+      await publishUserEvent(input.userId, {
+        type: 'principal.input', id: message.id, title: '', body: '',
+        data: { intentId: input.intentId, questionId: answer.question?.id ?? null, text: answer.text },
+      });
+    }
+    return persisted;
   }
 
   /**

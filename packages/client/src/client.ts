@@ -99,8 +99,8 @@ export interface PrincipalQuestion {
 
 export interface PersonalAgentState {
   status: "running" | "starting" | "paused" | "external" | "unavailable";
-  pending: PrincipalQuestion | null;
-  queuedQuestions: number;
+  /** Every question still waiting on the owner, oldest first. */
+  questions: PrincipalQuestion[];
 }
 
 export interface ConversationMessage {
