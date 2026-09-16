@@ -81,7 +81,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
 
   const send = async (suggested?: string) => {
     const text = (suggested ?? draft.text).trim();
-    if (!text || !conversationId || sending || !canSend || suggested === undefined && draftChanged) return;
+    if (!text || !conversationId || sending || !canSend) return;
     const submittedDraft = draft;
     const questionId = suggested === undefined ? draft.questionId : pending?.id ?? null;
     setSending(true);
@@ -152,9 +152,9 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
 
       {(error || loadError) && <p role="alert" className="mt-2 text-sm text-red-700">{error || loadError}</p>}
       {draftChanged && <div className="mt-2 text-xs text-gray-600">
-        The question changed while you were writing. Your draft is kept.{" "}
+        The question changed while you were writing. Send it anyway and your agent decides what it answers, or{" "}
         <button type="button" className="font-medium underline" onClick={() => setDraft((current) => ({ ...current, questionId: pending?.id ?? null }))}>
-          {pending ? "Use this draft as an answer" : "Send it as a message"}
+          {pending ? "answer the question above instead" : "send it as a message"}
         </button>
       </div>}
       <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="mt-3 flex shrink-0 items-end gap-2 rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3">
@@ -164,7 +164,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           placeholder={pending ? "Write your answer…" : "Message your personal agent…"}
           aria-label={pending ? "Answer your personal agent" : "Message your personal agent"}
           className="max-h-32 min-w-0 flex-1 resize-y border-none bg-transparent text-sm leading-6 text-gray-900 outline-none" />
-        <button type="submit" disabled={!draft.text.trim() || !conversationId || sending || !canSend || draftChanged}
+        <button type="submit" disabled={!draft.text.trim() || !conversationId || sending || !canSend}
           aria-label={pending ? "Send answer" : "Send message"}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#041729] text-white disabled:opacity-50">
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}

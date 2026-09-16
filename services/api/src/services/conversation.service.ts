@@ -22,19 +22,30 @@ export interface AgentConversationState {
   queuedQuestions: number;
 }
 
-function pendingFrom(messages: readonly PrincipalMessage[]): PrincipalQuestion | null {
-  let pending: PrincipalQuestion | null = null;
+/**
+ * The questions still waiting on the owner, oldest first.
+ *
+ * A question leaves the queue only when an answer names it: a message written
+ * to the agent answers nothing on its own, and a newer question does not
+ * retire the ones asked before it.
+ *
+ * @param messages - The owner's agent DM for one signal, oldest first.
+ * @returns Every unanswered question, oldest first; the last is the displayed one.
+ */
+function unanswered(messages: readonly PrincipalMessage[]): PrincipalQuestion[] {
+  const queue: PrincipalQuestion[] = [];
   for (const message of messages) {
     if (message.kind === 'question') {
-      pending = {
+      queue.push({
         id: message.questionId ?? message.id, question: message.text, options: message.options,
         scope: message.scope ?? 'intent', matches: message.matches,
-      };
-    } else if (message.kind === 'answer' || message.kind === 'user') {
-      pending = null;
+      });
+    } else if (message.kind === 'answer' && message.questionId) {
+      const answered = queue.findIndex((question) => question.id === message.questionId);
+      if (answered >= 0) queue.splice(answered, 1);
     }
   }
-  return pending;
+  return queue;
 }
 
 /** A live subscription on one user's event channel. */
@@ -273,28 +284,33 @@ export class ConversationService {
       return { status: 'hosted', pending: null, queuedQuestions: 0 };
     }
     const { messages } = await AgentSessionDatabaseAdapter.readTranscript(userId, intentId);
-    return { status: 'external', pending: pendingFrom(messages), queuedQuestions: 0 };
+    const queue = unanswered(messages);
+    return { status: 'external', pending: queue.at(-1) ?? null, queuedQuestions: Math.max(queue.length - 1, 0) };
   }
 
   /**
    * Persist owner input for the selected external negotiator and notify that runtime.
-   * @param input - Authenticated owner, intent, canonical DM, and the exact displayed question (or null for a direct message).
+   *
+   * Whatever the owner sends is kept: a message written while a question is on
+   * screen, or an answer to a question that has since been overtaken, still
+   * reaches the agent, which decides what it applies to. Only input naming the
+   * question currently displayed is recorded as that question's answer.
+   *
+   * @param input - Authenticated owner, intent, canonical DM, and the question the owner was answering (or null for a direct message).
    * @returns The persisted message.
-   * @throws AgentConversationError when ownership, availability, or the displayed question changed.
+   * @throws AgentConversationError when the intent is not owned or Index holds the seat.
    */
   async sendOwnerInput(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     if (!await this.registry.getSelectedNegotiator(input.userId)) throw new AgentConversationError('The Index negotiator does not chat. Select a negotiator to message your agent.', 409);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
-    const pending = pendingFrom(messages);
-    if (input.questionId ? pending?.id !== input.questionId : pending) {
-      throw new AgentConversationError('The question changed. Refresh the conversation and try again; your message was not sent.', 409);
-    }
-    const message = await AgentSessionDatabaseAdapter.writeOwnerInput({ ...input, pending });
+    const displayed = unanswered(messages).at(-1) ?? null;
+    const answered = input.questionId && displayed?.id === input.questionId ? displayed : null;
+    const message = await AgentSessionDatabaseAdapter.writeOwnerInput({ ...input, questionId: answered?.id ?? null, pending: answered });
     await publishUserEvent(input.userId, {
       type: 'principal.input', id: message.id, title: '', body: '',
-      data: { intentId: input.intentId, questionId: input.questionId, text: input.text },
+      data: { intentId: input.intentId, questionId: answered?.id ?? null, text: input.text },
     });
     return message;
   }
@@ -310,7 +326,7 @@ export class ConversationService {
     const known = new Set(messages.map((message) => message.id));
     const entries = input.entries.filter((entry) => (entry.kind === 'question' || entry.kind === 'message') && !known.has(entry.id));
     if (!entries.length) return;
-    const asked = pendingFrom(messages);
+    const asked = unanswered(messages).at(-1) ?? null;
     await AgentSessionDatabaseAdapter.publishAsExecutor({ ...input, entries });
     const displayed = [...entries].reverse().find((entry) => entry.kind === 'question');
     if (displayed && displayed.questionId && displayed.questionId !== asked?.id) {
