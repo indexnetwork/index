@@ -36,20 +36,20 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
   try {
     const tables = [
       'agent_sessions',
-      'protocol_intent_networks',
+      'intent_networks',
       'messages',
-      'protocol_negotiation_turns',
-      'protocol_negotiations',
+      'negotiation_turns',
+      'negotiations',
       'conversation_metadata',
       'conversation_participants',
       'conversations',
-      'protocol_opportunities',
+      'opportunities',
       'user_notification_settings',
-      'protocol_intents',
-      'protocol_agents',
+      'intents',
+      'agents',
       'apikey',
-      'protocol_network_members',
-      'protocol_networks',
+      'network_members',
+      'networks',
       'users',
     ];
 

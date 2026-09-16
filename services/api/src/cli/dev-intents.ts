@@ -56,10 +56,10 @@ export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSq
   const [row] = await sql`
     SELECT
       (SELECT count(*)::int FROM users) AS users,
-      (SELECT count(*)::int FROM protocol_intents) AS intents,
-      (SELECT count(*)::int FROM protocol_networks) AS networks,
-      (SELECT count(*)::int FROM protocol_network_members) AS memberships,
-      (SELECT count(*)::int FROM protocol_intent_networks) AS assignments,
+      (SELECT count(*)::int FROM intents) AS intents,
+      (SELECT count(*)::int FROM networks) AS networks,
+      (SELECT count(*)::int FROM network_members) AS memberships,
+      (SELECT count(*)::int FROM intent_networks) AS assignments,
       (SELECT count(*)::int FROM apikey) AS api_keys,
       (SELECT count(*)::int FROM accounts) AS accounts,
       (SELECT count(*)::int FROM sessions) AS sessions,
@@ -69,16 +69,16 @@ export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSq
       (SELECT count(*)::int FROM messages m WHERE NOT EXISTS (
         SELECT 1 FROM conversation_participants p WHERE p.conversation_id = m.conversation_id AND p.participant_type = 'agent'
       )) AS human_messages,
-      (SELECT count(*)::int FROM protocol_opportunities) AS opportunities,
-      (SELECT count(*)::int FROM protocol_negotiations) AS negotiations,
-      (SELECT count(*)::int FROM protocol_negotiation_turns) AS turns,
-      (SELECT count(*)::int FROM protocol_opportunity_outcome_events) AS feedback,
+      (SELECT count(*)::int FROM opportunities) AS opportunities,
+      (SELECT count(*)::int FROM negotiations) AS negotiations,
+      (SELECT count(*)::int FROM negotiation_turns) AS turns,
+      (SELECT count(*)::int FROM opportunity_outcome_events) AS feedback,
       (SELECT count(*)::int FROM agent_sessions) AS agent_sessions,
       (SELECT count(*)::int FROM conversations c WHERE EXISTS (
         SELECT 1 FROM conversation_participants p WHERE p.conversation_id = c.id AND p.participant_type = 'agent'
       )) AS agent_conversations,
       (SELECT count(*)::int FROM conversation_metadata WHERE metadata ? 'matchProvenance') AS match_provenance,
-      (SELECT count(*)::int FROM protocol_intents WHERE archived_at IS NULL
+      (SELECT count(*)::int FROM intents WHERE archived_at IS NULL
         AND (status IS NULL OR status IN ('ACTIVE', 'PAUSED'))
         AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL)
       ) AS intents_to_reset
@@ -94,7 +94,7 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
         AND classid = 0 AND objid IN (${RESET_LOCK}, ${REPLAY_LOCK}) AND objsubid = 1`;
     if (locks.held !== 2) throw new Error('Reset lost its operation locks; refusing to clear data.');
     const before = await readResetCounts(tx);
-    await tx`UPDATE protocol_intents SET status = 'PAUSED', first_discovery_succeeded_at = NULL,
+    await tx`UPDATE intents SET status = 'PAUSED', first_discovery_succeeded_at = NULL,
       updated_at = greatest(now(), updated_at + interval '1 millisecond')
       WHERE archived_at IS NULL AND (status IS NULL OR status IN ('ACTIVE', 'PAUSED'))
         AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL)`;
@@ -104,9 +104,9 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
     )`;
     await tx`UPDATE conversation_metadata SET metadata = metadata - 'matchProvenance', updated_at = now()
       WHERE metadata ? 'matchProvenance'`;
-    await tx`DELETE FROM protocol_opportunity_outcome_events`;
+    await tx`DELETE FROM opportunity_outcome_events`;
     // Negotiations and their turns cascade from their opportunity.
-    await tx`DELETE FROM protocol_opportunities`;
+    await tx`DELETE FROM opportunities`;
     const after = await readResetCounts(tx);
     const cleared = new Set(['opportunities', 'negotiations', 'turns', 'feedback', 'agent_sessions', 'agent_conversations', 'match_provenance', 'intents_to_reset']);
     for (const [name, count] of Object.entries(after)) {
@@ -121,16 +121,16 @@ export interface ReplayIntent { id: string; userId: string }
 /** Select only intents that can discover counterparts in an existing network. */
 export async function replayCandidates(sql: postgres.Sql): Promise<ReplayIntent[]> {
   const candidates = await sql<ReplayIntent[]>`
-    SELECT i.id, i.user_id AS "userId" FROM protocol_intents i
+    SELECT i.id, i.user_id AS "userId" FROM intents i
     WHERE i.status = 'PAUSED' AND i.archived_at IS NULL AND EXISTS (
-      SELECT 1 FROM protocol_intent_networks a
-      JOIN protocol_networks n ON n.id = a.network_id AND n.deleted_at IS NULL
-      JOIN protocol_network_members m ON m.network_id = n.id AND m.user_id = i.user_id AND m.deleted_at IS NULL
+      SELECT 1 FROM intent_networks a
+      JOIN networks n ON n.id = a.network_id AND n.deleted_at IS NULL
+      JOIN network_members m ON m.network_id = n.id AND m.user_id = i.user_id AND m.deleted_at IS NULL
       WHERE a.intent_id = i.id
     ) ORDER BY i.id`;
   const [counts] = await sql`SELECT count(*)::int AS total,
     count(*) FILTER (WHERE archived_at IS NOT NULL)::int AS archived,
-    count(*) FILTER (WHERE status = 'PAUSED' AND archived_at IS NULL)::int AS paused FROM protocol_intents`;
+    count(*) FILTER (WHERE status = 'PAUSED' AND archived_at IS NULL)::int AS paused FROM intents`;
   console.log('[dev-intents] Cohort:', JSON.stringify({ ...counts, eligible: candidates.length, withoutNetwork: counts.paused - candidates.length }));
   return candidates;
 }
