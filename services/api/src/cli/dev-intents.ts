@@ -80,7 +80,7 @@ export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSq
       (SELECT count(*)::int FROM conversation_metadata WHERE metadata ? 'matchProvenance') AS match_provenance,
       (SELECT count(*)::int FROM protocol_intents WHERE archived_at IS NULL
         AND (status IS NULL OR status IN ('ACTIVE', 'PAUSED'))
-        AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL OR last_visited_at IS NOT NULL)
+        AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL)
       ) AS intents_to_reset
   `;
   return row as Counts;
@@ -95,9 +95,9 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
     if (locks.held !== 2) throw new Error('Reset lost its operation locks; refusing to clear data.');
     const before = await readResetCounts(tx);
     await tx`UPDATE protocol_intents SET status = 'PAUSED', first_discovery_succeeded_at = NULL,
-      last_visited_at = NULL, updated_at = greatest(now(), updated_at + interval '1 millisecond')
+      updated_at = greatest(now(), updated_at + interval '1 millisecond')
       WHERE archived_at IS NULL AND (status IS NULL OR status IN ('ACTIVE', 'PAUSED'))
-        AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL OR last_visited_at IS NOT NULL)`;
+        AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL)`;
     await tx`DELETE FROM agent_sessions`;
     await tx`DELETE FROM conversations c WHERE EXISTS (
       SELECT 1 FROM conversation_participants p WHERE p.conversation_id = c.id AND p.participant_type = 'agent'

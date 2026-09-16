@@ -1,7 +1,7 @@
-import { Negotiations, observeNegotiation, decideNegotiationOpening, pairKeyOf, type NegotiationTurn } from '@indexnetwork/protocol';
+import { Negotiations, observeNegotiation, type NegotiationTurn } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
-import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationScanRecord, type NegotiationTurnAction, type NegotiationView, type OpenedNegotiation, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationScanRecord, type NegotiationTurnAction, type NegotiationView, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
 import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
 
 const logger = log.service.from('NegotiationService');
@@ -13,18 +13,6 @@ export type NegotiationDetail = StoredNegotiationDetail & { protocol: NonNullabl
 export interface SubmitTurnFailure {
   rejection: SubmitTurnRejection;
 }
-
-/**
- * What came of opening a pair by hand. Everything but `opened` and
- * `already_open` means nothing was written.
- */
-export type OpenOutcome =
-  | { kind: 'opened'; negotiation: OpenedNegotiation }
-  | { kind: 'already_open'; negotiation: OpenedNegotiation }
-  | { kind: 'unseated'; intentId: string }
-  | { kind: 'same_signal' }
-  | { kind: 'same_owner' }
-  | { kind: 'not_opened' };
 
 /**
  * The negotiation record, and the turns taken against it.
@@ -116,59 +104,6 @@ export class NegotiationService {
       data: { opportunityId, intentId: seat.intentId, outcome: result.outcome, blockedReason: result.blockedReason, turnIndex: result.turnIndex + 1 },
     })));
     return record;
-  }
-
-  /**
-   * Open a negotiation between two seated signals without asking discovery.
-   *
-   * Discovery decides both whether a pair is worth opening and which side
-   * moves first. This decides neither: the caller names the pair, and the
-   * initiator is the side they put first, which is the side that owes the
-   * opening turn.
-   *
-   * Idempotent by pair. A pair discovery reached first comes back as
-   * `already_open` with the record it wrote, so a caller opening the same set
-   * twice — or racing the discovery run its own signal just triggered — is
-   * safe.
-   *
-   * @param params - The network and the two signals, initiator first.
-   * @returns The opened or already-open record, or why it could not open.
-   */
-  async open(params: {
-    networkId: string;
-    initiatorIntentId: string;
-    responderIntentId: string;
-  }): Promise<OpenOutcome> {
-    const { networkId, initiatorIntentId, responderIntentId } = params;
-    if (initiatorIntentId === responderIntentId) return { kind: 'same_signal' };
-
-    const [initiator, responder] = await Promise.all([
-      this.negotiations.seatedIntent(initiatorIntentId, networkId),
-      this.negotiations.seatedIntent(responderIntentId, networkId),
-    ]);
-    if (!initiator) return { kind: 'unseated', intentId: initiatorIntentId };
-    if (!responder) return { kind: 'unseated', intentId: responderIntentId };
-    if (initiator.userId === responder.userId) return { kind: 'same_owner' };
-
-    const pairKey = pairKeyOf(networkId, initiator.intentId, responder.intentId);
-    const [opened] = await this.negotiations.openCounterparties([{
-      pairKey,
-      networkId,
-      intentA: initiator.intentId,
-      intentB: responder.intentId,
-      userA: initiator.userId,
-      userB: responder.userId,
-      score: 100,
-      reasoning: 'Opened directly by the network owner rather than by discovery, so it carries no compatibility score.',
-      evidence: [],
-      detection: { source: 'operator_open', createdBy: 'network-owner' },
-    }], decideNegotiationOpening);
-    if (opened) return { kind: 'opened', negotiation: opened };
-
-    // open() reports "already there" and "could not" identically, so the only
-    // way to tell them apart is to look.
-    const existing = await this.negotiations.findByPairKey(pairKey);
-    return existing ? { kind: 'already_open', negotiation: existing } : { kind: 'not_opened' };
   }
 
   /**

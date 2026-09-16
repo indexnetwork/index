@@ -1,0 +1,1 @@
+ALTER TABLE "protocol_intents" DROP COLUMN "last_visited_at";
