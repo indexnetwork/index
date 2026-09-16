@@ -112,8 +112,6 @@ const envSchema = z.object({
   LANGSMITH_WORKSPACE_ID: z.string().optional(),
   LOG_LEVEL: z.union([z.literal(''), z.enum(['verbose', 'debug', 'info', 'warn', 'error'])]).optional(),
 
-  // 11b. LangGraph checkpoint retention
-
   // 11c. Frame-drift measurement (disabled by default)
 
   // 12. Platform-provided metadata

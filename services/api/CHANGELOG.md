@@ -20,6 +20,11 @@ section before promoting to `main`).
   and need an active signal.
 
 ### Removed
+- **LangGraph PostgresSaver.** The unused `PostgresSaver` checkpointer, its
+  boot-time table setup, the hourly `checkpoint-retention` cron, and the
+  `checkpoints` / `checkpoint_blobs` / `checkpoint_writes` /
+  `checkpoint_migrations` tables are gone. Graph runs were already compiling
+  without a checkpointer; conversation continuity stays on `chat_messages`.
 - **BREAKING: writing a signal no longer starts a search.** HyDE and lens
   inference are gone with the `@indexnetwork/discovery` package, along with the
   background `IntentDiscovery` runner, the `protocol_hyde_documents` table and

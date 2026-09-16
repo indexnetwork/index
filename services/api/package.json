@@ -30,7 +30,6 @@
     "@indexnetwork/protocol": "workspace:*",
     "@langchain/core": "^1.1.17",
     "@langchain/langgraph": "^1.4.12",
-    "@langchain/langgraph-checkpoint-postgres": "^1.0.0",
     "@langchain/openai": "^1.2.3",
     "@sentry/bun": "^10.55.0",
     "better-auth": "^1.5.6",

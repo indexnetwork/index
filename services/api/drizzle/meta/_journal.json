@@ -1261,6 +1261,13 @@
       "when": 1789581576734,
       "tag": "0182_drop_hyde_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1789582800000,
+      "tag": "0183_drop_langgraph_checkpoints",
+      "breakpoints": true
     }
   ]
 }
