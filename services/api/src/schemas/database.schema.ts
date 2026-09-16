@@ -251,7 +251,7 @@ export interface OpportunityContext {
   conversationId?: Id<'conversations'>;
 }
 
-export const opportunities = pgTable('protocol_opportunities', {
+export const opportunities = pgTable('opportunities', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   detection: jsonb('detection').$type<OpportunityDetection>().notNull(),
   actors: jsonb('actors').$type<OpportunityActor[]>().notNull(),
@@ -265,7 +265,7 @@ export const opportunities = pgTable('protocol_opportunities', {
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 }, (table) => ({
-  statusIdx: index('protocol_opportunities_status_idx').on(table.status),
+  statusIdx: index('opportunities_status_idx').on(table.status),
 }));
 
 /**
@@ -273,7 +273,7 @@ export const opportunities = pgTable('protocol_opportunities', {
  * server: both seats read this record and take turns against it, and Index
  * computes the settlement from its own turn log.
  */
-export const negotiations = pgTable('protocol_negotiations', {
+export const negotiations = pgTable('negotiations', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   /**
    * Stable identity of the two-intent pair, from the protocol's `pairKeyOf`.
@@ -293,11 +293,11 @@ export const negotiations = pgTable('protocol_negotiations', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  pairKeyIdx: uniqueIndex('protocol_negotiations_pair_key_idx').on(table.pairKey),
-  opportunityIdx: uniqueIndex('protocol_negotiations_opportunity_id_idx').on(table.opportunityId),
-  initiatorIntentIdx: index('protocol_negotiations_initiator_intent_idx').on(table.initiatorIntentId),
-  responderIntentIdx: index('protocol_negotiations_responder_intent_idx').on(table.responderIntentId),
-  awaitingIdx: index('protocol_negotiations_awaiting_user_idx').on(table.awaitingUserId),
+  pairKeyIdx: uniqueIndex('negotiations_pair_key_idx').on(table.pairKey),
+  opportunityIdx: uniqueIndex('negotiations_opportunity_id_idx').on(table.opportunityId),
+  initiatorIntentIdx: index('negotiations_initiator_intent_idx').on(table.initiatorIntentId),
+  responderIntentIdx: index('negotiations_responder_intent_idx').on(table.responderIntentId),
+  awaitingIdx: index('negotiations_awaiting_user_idx').on(table.awaitingUserId),
 }));
 
 /**
@@ -305,7 +305,7 @@ export const negotiations = pgTable('protocol_negotiations', {
  * `(negotiation_id, turn_index)` is the concurrency control: a seat racing
  * its counterparty, or retrying, collides rather than appending twice.
  */
-export const negotiationTurns = pgTable('protocol_negotiation_turns', {
+export const negotiationTurns = pgTable('negotiation_turns', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   negotiationId: text('negotiation_id').notNull().references(() => negotiations.id, { onDelete: 'cascade' }),
   turnIndex: integer('turn_index').notNull(),
@@ -314,10 +314,10 @@ export const negotiationTurns = pgTable('protocol_negotiation_turns', {
   message: text('message').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  orderIdx: uniqueIndex('protocol_negotiation_turns_negotiation_turn_idx').on(table.negotiationId, table.turnIndex),
+  orderIdx: uniqueIndex('negotiation_turns_negotiation_turn_idx').on(table.negotiationId, table.turnIndex),
 }));
 
-export const intents = pgTable('protocol_intents', {
+export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   payload: text('payload').notNull(),
   summary: text('summary'),
@@ -345,10 +345,10 @@ export const intents = pgTable('protocol_intents', {
   felicityClarity: integer('felicity_clarity'),
   status: intentStatusEnum('status').default('ACTIVE'),
 }, (table) => [
-  index('protocol_embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
+  index('embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
 ]);
 
-export const networks = pgTable('protocol_networks', {
+export const networks = pgTable('networks', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   title: text('title').notNull(),
   key: text('key'),
@@ -366,10 +366,10 @@ export const networks = pgTable('protocol_networks', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
-  networksKeyUnique: uniqueIndex('protocol_networks_key_unique').on(table.key),
+  networksKeyUnique: uniqueIndex('networks_key_unique').on(table.key),
 }));
 
-export const networkMembers = pgTable('protocol_network_members', {
+export const networkMembers = pgTable('network_members', {
   networkId: text('network_id').notNull().references(() => networks.id),
   userId: text('user_id').notNull().references(() => users.id),
   permissions: text('permissions').array().notNull().default([]),
@@ -383,7 +383,7 @@ export const networkMembers = pgTable('protocol_network_members', {
   pk: primaryKey({ columns: [table.networkId, table.userId] }),
 }));
 
-export const intentNetworks = pgTable('protocol_intent_networks', {
+export const intentNetworks = pgTable('intent_networks', {
   intentId: text('intent_id').notNull().references(() => intents.id),
   networkId: text('network_id').notNull().references(() => networks.id),
   relevancyScore: numeric('relevancy_score'),
@@ -391,7 +391,7 @@ export const intentNetworks = pgTable('protocol_intent_networks', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.intentId, t.networkId] }),
-  networkIdIdx: index('protocol_intent_networks_network_id_idx').on(t.networkId),
+  networkIdIdx: index('intent_networks_network_id_idx').on(t.networkId),
 }));
 
 
@@ -412,7 +412,7 @@ export const agentSessions = pgTable('agent_sessions', {
 // Agents
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const agents = pgTable('protocol_agents', {
+export const agents = pgTable('agents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
@@ -432,13 +432,13 @@ export const agents = pgTable('protocol_agents', {
   handleNegotiations: boolean('handle_negotiations').notNull().default(false),
   lastDailySummaryAt: timestamp('last_daily_summary_at', { withTimezone: true }),
 }, (table) => ({
-  ownerIdIdx: index('protocol_agents_owner_id_idx').on(table.ownerId),
-  typeIdx: index('protocol_agents_type_idx').on(table.type),
-  lastSeenAtIdx: index('protocol_agents_last_seen_at_idx').on(table.lastSeenAt),
-  uniqueHermesInstallation: uniqueIndex('protocol_uniq_agents_hermes_installation')
+  ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
+  typeIdx: index('agents_type_idx').on(table.type),
+  lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
+  uniqueHermesInstallation: uniqueIndex('uniq_agents_hermes_installation')
     .on(table.ownerId, table.runtimeKind, table.installationId)
     .where(sql`${table.type} = 'external' AND ${table.runtimeKind} = 'hermes' AND ${table.installationId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
-  uniqueSelectedNegotiationExecutor: uniqueIndex('protocol_uniq_agents_selected_negotiation_executor')
+  uniqueSelectedNegotiationExecutor: uniqueIndex('uniq_agents_selected_negotiation_executor')
     .on(table.ownerId)
     .where(sql`${table.type} = 'external' AND ${table.handleNegotiations} = true AND ${table.deletedAt} IS NULL`),
 }));
@@ -460,7 +460,7 @@ export const agents = pgTable('protocol_agents', {
  * only as a non-reversible dedup hash.
  */
 export const opportunityOutcomeEvents = pgTable(
-  'protocol_opportunity_outcome_events',
+  'opportunity_outcome_events',
   {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     /**
@@ -501,8 +501,8 @@ export const opportunityOutcomeEvents = pgTable(
       .defaultNow(),
   },
   (t) => ({
-    idempotent: uniqueIndex('protocol_uniq_opp_outcome_events_idempotency').on(t.idempotencyKey),
-    scopeLookup: index('protocol_idx_opp_outcome_events_scope').on(
+    idempotent: uniqueIndex('uniq_opp_outcome_events_idempotency').on(t.idempotencyKey),
+    scopeLookup: index('idx_opp_outcome_events_scope').on(
       t.recipientUserId,
       t.intentId,
       t.intentFingerprint,

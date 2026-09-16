@@ -10,6 +10,12 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: domain tables drop the `protocol_` prefix.** `protocol_intents`,
+  `protocol_networks`, `protocol_network_members`, `protocol_intent_networks`,
+  `protocol_agents`, `protocol_opportunities`, `protocol_negotiations`,
+  `protocol_negotiation_turns`, and `protocol_opportunity_outcome_events`
+  rename back to the unprefixed names. Indexes and constraints follow. Existing
+  rows are preserved by `ALTER TABLE … RENAME`.
 - **Migration history squashed to a single baseline.** The 182 journal entries
   accumulated since February are replaced by one `0000_initial_schema`
   generated from `database.schema.ts`, so `drizzle/` now holds one SQL file and
