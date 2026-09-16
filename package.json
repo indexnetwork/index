@@ -12,8 +12,7 @@
     "packages/agent",
     "packages/client",
     "packages/agentv2",
-    "packages/agent-tui",
-    "packages/discovery"
+    "packages/agent-tui"
   ],
   "scripts": {
     "dev": "bash scripts/dev.sh",
@@ -52,7 +51,6 @@
     "worktree:build": "bash scripts/worktree-build.sh"
   },
   "devDependencies": {
-    "@indexnetwork/discovery": "workspace:*",
     "@eslint/js": "^10.0.1",
     "eslint": "^9.39.1",
     "eslint-import-resolver-typescript": "^4.4.4",

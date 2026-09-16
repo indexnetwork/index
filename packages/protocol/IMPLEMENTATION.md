@@ -143,24 +143,24 @@ The intent and community graphs are the exceptions: they are reached through the
 |---|---|
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 
-## Post-intent discovery
+## On-demand discovery
 
-`@indexnetwork/discovery` owns lens inference, source-frame extraction, HyDE
-preparation/validation, candidate retrieval, ranking, and explanations. It has
-no protocol, agent, or LangChain dependency. The API supplies its model,
-embedding/search, artifact storage/cache, cancellation, and tracing ports.
+Discovery is not a protocol workflow and does not run when a signal is written.
+The host exposes it as a search: the owner's agent sends a query, the host
+embeds it and retrieves candidate signals from the communities that signal is
+shared in, and the agent picks which counterparties are worth an opportunity.
+Nothing is generated ahead of the query and nothing is cached.
 
-`Discovery.discover()` returns potential intent pairs with network, intent,
-user, score, reasoning, and evidence. The host assigns `pairKeyOf(...)` and calls
-`openCounterparties(pairs, decideNegotiationOpening)`; protocol opening rules run
-inside the existing host transaction. Network/broadcast scope remains a protocol
-rule exposed through `resolveDiscoveryNetworkScope`, with context permissions
-handled by `renderDiscoveryNetworkContext`.
+Protocol owns only what the picks are committed with. The host assigns
+`pairKeyOf(...)` and calls `openCounterparties(pairs, decideNegotiationOpening)`,
+which writes the opportunity and its negotiation; opening rules run inside the
+existing host transaction. Network/broadcast scope remains a protocol rule
+exposed through `resolveDiscoveryNetworkScope`, with context permissions handled
+by `renderDiscoveryNetworkContext`.
 
-`IntentFollowUp.onIntentSaved` schedules artifact preparation and matching;
-`onIntentArchived` schedules artifact cleanup; `onIntentResumed` starts matching
-again. Keep saved/archived follow-ups best-effort and preserve resume failure
-compensation. `scoreIntent` remains independent metadata work.
+`IntentFollowUp` therefore has no matching work to schedule: `onIntentSaved`,
+`onIntentArchived`, and `onIntentResumed` exist for hosts that want them and may
+do nothing. `scoreIntent` remains independent metadata work.
 
 ## Intents
 

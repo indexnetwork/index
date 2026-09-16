@@ -60,7 +60,6 @@ export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSq
       (SELECT count(*)::int FROM protocol_networks) AS networks,
       (SELECT count(*)::int FROM protocol_network_members) AS memberships,
       (SELECT count(*)::int FROM protocol_intent_networks) AS assignments,
-      (SELECT count(*)::int FROM protocol_hyde_documents) AS hyde,
       (SELECT count(*)::int FROM apikey) AS api_keys,
       (SELECT count(*)::int FROM accounts) AS accounts,
       (SELECT count(*)::int FROM sessions) AS sessions,
@@ -197,12 +196,10 @@ async function resume(): Promise<void> {
   const pool = openDevControl(process.env.DATABASE_URL, () => {
     if (!closing) { connectionLost = true; stop.abort(); }
   });
-  const interrupt = () => { stop.abort(); console.log('[dev-intents] Stopping activations; draining discovery.'); };
+  const interrupt = () => { stop.abort(); console.log('[dev-intents] Stopping activations.'); };
   process.on('SIGINT', interrupt);
   process.on('SIGTERM', interrupt);
   process.on('SIGHUP', interrupt);
-  const pending = new Set<Promise<void>>();
-  const discoveryFailures: string[] = [];
   let closeRuntime: (() => Promise<void>) | undefined;
   let control: postgres.ReservedSql | undefined;
   try {
@@ -213,37 +210,19 @@ async function resume(): Promise<void> {
     const candidates = await replayCandidates(control);
     const [{ closeDb }, { getRedisClient }] = await Promise.all([import('../lib/drizzle/drizzle'), import('../adapters/cache.adapter')]);
     closeRuntime = async () => { try { await getRedisClient().quit(); } finally { await closeDb(); } };
-    const [{ Intents }, { IntentService }, { intentDatabaseAdapter }, { intentIndexing }, { intentDiscovery }] = await Promise.all([
+    const [{ Intents }, { IntentService }, { intentDatabaseAdapter }, { intentIndexing }] = await Promise.all([
       import('@indexnetwork/protocol'), import('../services/intent.service'), import('../adapters/database.adapter'),
-      import('../lib/intent/indexing'), import('../lib/opportunity/discovery'),
+      import('../lib/intent/indexing'),
     ]);
-    const graph = new Intents({ database: intentDatabaseAdapter, followUp: {
-      scoreIntent: data => intentIndexing.scoreIntent(data),
-      onIntentSaved: data => intentIndexing.onIntentSaved(data),
-      onIntentArchived: data => intentIndexing.onIntentArchived(data),
-      onIntentResumed: async data => {
-        const job = intentDiscovery.runDiscover({ ...data, trigger: 'intent_resume' }).then(
-          () => { console.log(`[dev-intents] ${data.intentId} discovery finished`); },
-          (error: unknown) => {
-            discoveryFailures.push(data.intentId);
-            console.error(`[dev-intents] ${data.intentId} discovery failed:`, error instanceof Error ? error.message : String(error));
-          },
-        );
-        pending.add(job);
-        void job.finally(() => pending.delete(job));
-      },
-    } }).createGraph();
+    const graph = new Intents({ database: intentDatabaseAdapter, followUp: intentIndexing }).createGraph();
     const service = new IntentService({ intentGraph: graph });
     const result = await runReplay(candidates, ({ id, userId }) => service.transitionStatus(id, userId, 'ACTIVE'), stop.signal);
-    console.log(`[dev-intents] Draining ${pending.size} discovery job(s).`);
-    await Promise.all(pending);
     const remaining = connectionLost ? null : (await replayCandidates(control)).length;
-    console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, remaining, discoveryFailures, interrupted: stop.signal.aborted }));
+    console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, remaining, interrupted: stop.signal.aborted }));
     if (connectionLost) throw new Error('Replay lost its control connection; remaining intents were not activated.');
-    if (result.failed.length || discoveryFailures.length) throw new Error('Replay completed with failures; see intent IDs above.');
+    if (result.failed.length) throw new Error('Replay completed with failures; see intent IDs above.');
     if (stop.signal.aborted) process.exitCode = 130;
   } finally {
-    await Promise.all(pending);
     try { await closeRuntime?.(); }
     finally {
       closing = true;

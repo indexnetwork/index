@@ -1,8 +1,9 @@
-import { Intents, Networks, type ClarifyInput } from '@indexnetwork/protocol';
+import { Intents, Networks, decideNegotiationOpening, pairKeyOf, type ClarifyInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
 import { issuePreparationReceipt, readPreparationReceipt } from '../lib/intent/intent.preparation';
 import { IntentEvents } from '../events/intent.event';
@@ -38,6 +39,51 @@ export class IntentNetworkMembershipError extends Error {
 export interface IntentGraphRunner {
   invoke(input: Record<string, unknown>, options?: { recursionLimit?: number }): Promise<Record<string, unknown>>;
 }
+
+/** How many counterparties one search returns. */
+const DISCOVER_LIMIT = 10;
+
+/** Semantic retrieval cutoff, 0..1. Below this a candidate is noise. */
+const DISCOVER_MIN_SCORE = 0.20;
+
+/** How many counterparties one call may turn into opportunities. */
+const CREATE_OPPORTUNITIES_LIMIT = 10;
+
+/**
+ * Provenance for an opportunity the owner's agent created after a search. The
+ * agent's judgement is which counterparties it picked, so there is no score to
+ * carry: the pair exists because the agent chose it.
+ */
+const AGENT_PICK_REASONING =
+  'Created by the owner\'s personal agent after an on-demand search, so it carries no compatibility score.';
+
+/** One counterparty a search surfaced, as an agent judging it needs to see it. */
+export interface DiscoveredCounterparty {
+  intentId: string;
+  userId: string;
+  name: string;
+  statement: string;
+  networkId: string;
+  score: number;
+}
+
+/** The outcome of searching an owned signal's communities. */
+export type IntentDiscoverOutcome =
+  | { kind: 'ok'; counterparties: DiscoveredCounterparty[] }
+  | { kind: 'not_found' }
+  | { kind: 'inactive' };
+
+/** One counterparty an agent picked to turn into an opportunity. */
+export interface CounterpartyPick {
+  intentId: string;
+  networkId: string;
+}
+
+/** The outcome of creating opportunities for picked counterparties. */
+export type CreateOpportunitiesOutcome =
+  | { kind: 'ok'; opportunities: { opportunityId: string }[] }
+  | { kind: 'not_found' }
+  | { kind: 'inactive' };
 
 /** The outcome of rewriting an owned signal's description. */
 export type IntentUpdateOutcome =
@@ -361,6 +407,131 @@ export class IntentService {
   }
 
   /**
+   * Search the communities an owned signal is shared in for counterparties.
+   *
+   * The query is the caller's, embedded as written and matched against stored
+   * signal vectors. Nothing is judged and nothing is written: the caller reads
+   * the ranked counterparties and decides which are worth an opportunity.
+   *
+   * @param intentId - Full intent UUID, owned by the caller.
+   * @param userId - Authenticated owner.
+   * @param query - What to look for, in the caller's own words.
+   * @returns Ranked counterparties, or why the signal cannot be searched.
+   */
+  async discover(intentId: string, userId: string, query: string): Promise<IntentDiscoverOutcome> {
+    const intent = await this.adapter.getIntentById(intentId, userId);
+    if (!intent) return { kind: 'not_found' };
+    if (intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) return { kind: 'inactive' };
+
+    const networkScope = await chatDatabaseAdapter.getNetworkIdsForIntent(intentId);
+    if (networkScope.length === 0) return { kind: 'ok', counterparties: [] };
+
+    logger.verbose('Discovering counterparties', { intentId, userId, networkCount: networkScope.length });
+
+    const embedding = await this.embedder.generate(query) as number[];
+    const candidates = await this.embedder.searchIntentCandidates(embedding, {
+      networkScope,
+      excludeUserId: userId,
+      limit: DISCOVER_LIMIT,
+      minScore: DISCOVER_MIN_SCORE,
+    });
+
+    // One signal shared in several of the searched communities comes back once
+    // per community; the strongest hit is the one worth reporting.
+    const best = new Map<string, { networkId: string; score: number }>();
+    for (const candidate of candidates) {
+      const seen = best.get(candidate.id);
+      if (!seen || candidate.score > seen.score) {
+        best.set(candidate.id, { networkId: candidate.networkId, score: candidate.score });
+      }
+    }
+
+    const rows = await this.adapter.listCounterpartyCandidates(intentId, [...best.keys()]);
+    const counterparties = rows
+      .map((row) => {
+        const hit = best.get(row.id)!;
+        return {
+          intentId: row.id,
+          userId: row.userId,
+          name: row.name,
+          statement: row.statement,
+          networkId: hit.networkId,
+          score: hit.score,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    await chatDatabaseAdapter.markIntentFirstDiscoverySucceeded(intentId);
+
+    return { kind: 'ok', counterparties };
+  }
+
+  /**
+   * Create one opportunity per counterparty the caller picked.
+   *
+   * Opening is idempotent on the pair: a counterparty that already shares an
+   * opportunity with this signal reports that one rather than a second.
+   * Counterparties that are no longer seated in the named community are
+   * skipped, because a membership can end between the search and this call.
+   *
+   * @param intentId - Full intent UUID, owned by the caller.
+   * @param userId - Authenticated owner.
+   * @param picks - Counterparty signals and the community each pair sits in.
+   * @returns The opportunities that now exist, or why none could be created.
+   */
+  async createOpportunities(
+    intentId: string,
+    userId: string,
+    picks: CounterpartyPick[],
+  ): Promise<CreateOpportunitiesOutcome> {
+    const intent = await this.adapter.getIntentById(intentId, userId);
+    if (!intent) return { kind: 'not_found' };
+    if (intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) return { kind: 'inactive' };
+
+    logger.verbose('Creating opportunities from picked counterparties', { intentId, userId, count: picks.length });
+
+    const pairs = [];
+    for (const pick of picks.slice(0, CREATE_OPPORTUNITIES_LIMIT)) {
+      if (pick.intentId === intentId) continue;
+      const [initiator, responder] = await Promise.all([
+        negotiationDatabaseAdapter.seatedIntent(intentId, pick.networkId),
+        negotiationDatabaseAdapter.seatedIntent(pick.intentId, pick.networkId),
+      ]);
+      if (!initiator || !responder || initiator.userId === responder.userId) continue;
+      pairs.push({
+        pairKey: pairKeyOf(pick.networkId, initiator.intentId, responder.intentId),
+        networkId: pick.networkId,
+        intentA: initiator.intentId,
+        intentB: responder.intentId,
+        userA: initiator.userId,
+        userB: responder.userId,
+        score: 100,
+        reasoning: AGENT_PICK_REASONING,
+        evidence: [],
+        detection: { source: 'personal_agent', createdBy: userId },
+      });
+    }
+
+    if (pairs.length === 0) return { kind: 'ok', opportunities: [] };
+
+    await negotiationDatabaseAdapter.openCounterparties(pairs, decideNegotiationOpening);
+
+    // `openCounterparties` reports only what it created, and reports "already
+    // an opportunity" and "not eligible" identically. Reading each pair back is
+    // how a pair that was already open still counts as done here.
+    const records = await Promise.all(
+      pairs.map((pair) => negotiationDatabaseAdapter.findByPairKey(pair.pairKey)),
+    );
+
+    return {
+      kind: 'ok',
+      opportunities: records
+        .filter((record): record is NonNullable<typeof record> => record !== null)
+        .map((record) => ({ opportunityId: record.opportunityId })),
+    };
+  }
+
+  /**
    * Pause or resume an owned intent via the Intent Graph's `transition` action.
    * The graph enqueues resume discovery and compensates back to PAUSED if that
    * enqueue fails; ownership and lifecycle rules are enforced by the adapter's
@@ -397,10 +568,10 @@ export class IntentService {
 
   /**
    * Archive an intent via the Intent Graph's `expire` action (archives the
-   * row, drops its network associations, expires referencing opportunities,
-   * and enqueues the HyDE delete). Ownership is checked here: the graph's
-   * expire path, like create/update, does not filter by owner — that's the
-   * caller's responsibility.
+   * row, drops its network associations, and expires referencing
+   * opportunities). Ownership is checked here: the graph's expire path, like
+   * create/update, does not filter by owner — that's the caller's
+   * responsibility.
    *
    * @param intentId - The intent ID
    * @param userId - The user ID (for ownership verification)

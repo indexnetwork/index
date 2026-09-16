@@ -6,6 +6,8 @@ export {
 export type {
   ConnectedEvent,
   ConversationMessage,
+  Counterparty,
+  CounterpartyPick,
   IntentLifecycleWireStatus,
   IntentStatus,
   IntentSummary,

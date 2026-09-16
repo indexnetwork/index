@@ -226,6 +226,16 @@ export async function wakeIntent(
     now,
     signal,
     focus,
+    discoverCounterparties: async (query) => {
+      const counterparties = await client.discover(intent.id, query);
+      log(`  searched "${query}": ${counterparties.length} counterparties`);
+      return counterparties;
+    },
+    createOpportunities: async (picks) => {
+      const created = await client.createOpportunities(intent.id, picks);
+      log(`  created ${created.length} of ${picks.length} opportunities`);
+      return created;
+    },
     // One opportunity's brief and decision, published and opened on their own,
     // so its negotiator runs while the rest are still being decided.
     onDecision: async (decided) => {

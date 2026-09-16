@@ -9,7 +9,24 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- **Discovery is on demand, and the agent judges it.**
+  `POST /intents/:id/discover` takes `{ query }`, embeds it as written, and
+  returns ranked counterparties from the communities that signal is shared in,
+  with each one's statement and owner. It writes nothing, and counterparties the
+  signal already has an opportunity with are left out.
+  `POST /intents/:id/opportunities` takes the counterparties the caller picked
+  and creates one opportunity each, idempotent on the pair. Both are owner-only
+  and need an active signal.
+
 ### Removed
+- **BREAKING: writing a signal no longer starts a search.** HyDE and lens
+  inference are gone with the `@indexnetwork/discovery` package, along with the
+  background `IntentDiscovery` runner, the `protocol_hyde_documents` table and
+  its maintenance cron, and the orphaned-indexing reconcile command. Signals
+  still carry embeddings, so they are still findable; nothing is generated ahead
+  of a query, and nothing is cached. An owner who wants matches searches for
+  them.
 - **BREAKING: the API no longer hosts an in-process personal agent.**
   `PersonalAgentService` and its always-on `NegotiationAgent` sessions are gone.
   In their place, `HostedNegotiator` is the default A2A seat: it wakes on
@@ -20,7 +37,7 @@ section before promoting to `main`).
 
 ### Added
 - Railway dev intent replay: `db:dev:resume --confirm` shuffles eligible intents
-  and resumes them 10–30 seconds apart, with discovery completion/failure logs.
+  and resumes them 10–30 seconds apart.
   `db:dev:reset --confirm` stops the dev API, clears matching and agent state,
   pauses intents, then restores the same deployment. Both commands pin the dev
   database and preserve accounts, credentials, and the intent/network dataset.

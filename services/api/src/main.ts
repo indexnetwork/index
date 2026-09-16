@@ -36,7 +36,6 @@ import { auth } from './lib/betterauth/auth.instance';
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
 import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
-import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
@@ -77,7 +76,6 @@ OpportunityEvents.onActionable = (payload) => opportunityEventService.publishOpp
 
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
-hydeMaintenanceCron.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';
@@ -160,7 +158,7 @@ function classifyRequestSubsystem(pathname: string): string {
   return 'server';
 }
 
-// Cron jobs (newsletter, opportunity finder, HyDE) are registered above.
+// Cron jobs are registered above.
 Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors

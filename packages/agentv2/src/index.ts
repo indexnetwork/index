@@ -10,6 +10,8 @@ export type { Model, ModelClientOptions, ModelMessage, ToolDefinition } from "./
 
 export type {
   ConversationEntry,
+  Counterparty,
+  CounterpartyPick,
   Decision,
   Intent,
   NegotiateInput,
