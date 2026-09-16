@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
@@ -28,6 +28,15 @@ const UpdateSchema = z.object({
 }).strict();
 const LinkSchema = z.object({
   networkId: z.string().uuid('networkId must be a UUID'),
+}).strict();
+const DiscoverSchema = z.object({
+  query: z.string().trim().min(1, 'query is required').max(2_000),
+}).strict();
+const CreateOpportunitiesSchema = z.object({
+  counterparties: z.array(z.object({
+    intentId: z.string().uuid('intentId must be a UUID'),
+    networkId: z.string().uuid('networkId must be a UUID'),
+  }).strict()).min(1, 'counterparties is required').max(10),
 }).strict();
 
 @Controller('/intents')
@@ -141,27 +150,81 @@ export class IntentController {
   }
 
   /**
-   * POST /intents/:id/visit — explicit human intent-page visit ping.
-   * Session-only, owner-only, monotonic, and intentionally independent from
-   * the generic GET so API reads never suppress proactive delivery.
+   * Search an owned signal's communities for counterparties.
    *
-   * @param _req - Session-authenticated request.
-   * @param user - Authenticated owner from SessionOnlyGuard.
+   * Nothing is written and nothing is judged here: the caller reads the ranked
+   * counterparties and decides which are worth an opportunity.
+   *
+   * @param req - Request with body `{ query: string }`.
+   * @param user - Authenticated owner.
    * @param params - Intent UUID or short prefix.
-   * @returns The authoritative monotonic visit timestamp.
+   * @returns The ranked counterparties this query found.
    */
-  @Post('/:id/visit')
-  @UseGuards(SessionOnlyGuard)
-  async visit(_req: Request, user: AuthenticatedUser, params: { id: string }) {
+  @Post('/:id/discover')
+  @UseGuards(AuthGuard)
+  async discover(req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = DiscoverSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+
     const resolved = await intentService.resolveId(params.id, user.id);
     if ('error' in resolved) {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
-    const lastVisitedAt = await intentService.visit(resolved.id, user.id);
-    if (!lastVisitedAt) {
+
+    const result = await intentService.discover(resolved.id, user.id, parsed.data.query);
+    if (result.kind === 'not_found') {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
     }
-    return Response.json({ success: true, lastVisitedAt: lastVisitedAt.toISOString() });
+    if (result.kind === 'inactive') {
+      return Response.json({ error: 'Only an active signal can be searched' }, { status: 409 });
+    }
+
+    return Response.json({ counterparties: result.counterparties });
+  }
+
+  /**
+   * Create one opportunity per counterparty the caller picked.
+   *
+   * Idempotent on the pair: a counterparty that already shares an opportunity
+   * with this signal reports that one rather than a second.
+   *
+   * @param req - Request with body `{ counterparties: { intentId, networkId }[] }`.
+   * @param user - Authenticated owner.
+   * @param params - Intent UUID or short prefix.
+   * @returns The opportunities that now exist for the picked counterparties.
+   */
+  @Post('/:id/opportunities')
+  @UseGuards(AuthGuard)
+  async createOpportunities(req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = CreateOpportunitiesSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const result = await intentService.createOpportunities(resolved.id, user.id, parsed.data.counterparties);
+    if (result.kind === 'not_found') {
+      return Response.json({ error: 'Intent not found' }, { status: 404 });
+    }
+    if (result.kind === 'inactive') {
+      return Response.json({ error: 'Only an active signal can open opportunities' }, { status: 409 });
+    }
+
+    return Response.json({ opportunities: result.opportunities });
   }
 
   /**

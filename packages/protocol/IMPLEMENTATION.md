@@ -143,24 +143,24 @@ The intent and community graphs are the exceptions: they are reached through the
 |---|---|
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 
-## Post-intent discovery
+## On-demand discovery
 
-`@indexnetwork/discovery` owns lens inference, source-frame extraction, HyDE
-preparation/validation, candidate retrieval, ranking, and explanations. It has
-no protocol, agent, or LangChain dependency. The API supplies its model,
-embedding/search, artifact storage/cache, cancellation, and tracing ports.
+Discovery is not a protocol workflow and does not run when a signal is written.
+The host exposes it as a search: the owner's agent sends a query, the host
+embeds it and retrieves candidate signals from the communities that signal is
+shared in, and the agent picks which counterparties are worth an opportunity.
+Nothing is generated ahead of the query and nothing is cached.
 
-`Discovery.discover()` returns potential intent pairs with network, intent,
-user, score, reasoning, and evidence. The host assigns `pairKeyOf(...)` and calls
-`openCounterparties(pairs, decideNegotiationOpening)`; protocol opening rules run
-inside the existing host transaction. Network/broadcast scope remains a protocol
-rule exposed through `resolveDiscoveryNetworkScope`, with context permissions
-handled by `renderDiscoveryNetworkContext`.
+Protocol owns only what the picks are committed with. The host assigns
+`pairKeyOf(...)` and calls `openCounterparties(pairs, decideNegotiationOpening)`,
+which writes the opportunity and its negotiation; opening rules run inside the
+existing host transaction. Network/broadcast scope remains a protocol rule
+exposed through `resolveDiscoveryNetworkScope`, with context permissions handled
+by `renderDiscoveryNetworkContext`.
 
-`IntentFollowUp.onIntentSaved` schedules artifact preparation and matching;
-`onIntentArchived` schedules artifact cleanup; `onIntentResumed` starts matching
-again. Keep saved/archived follow-ups best-effort and preserve resume failure
-compensation. `scoreIntent` remains independent metadata work.
+`IntentFollowUp` therefore has no matching work to schedule: `onIntentSaved`,
+`onIntentArchived`, and `onIntentResumed` exist for hosts that want them and may
+do nothing. `scoreIntent` remains independent metadata work.
 
 ## Intents
 
@@ -247,9 +247,12 @@ index --api-url https://protocol.index.network intent list --json
 
 `GET /api/docs` serves canonical protocol guidance, including the resource
 routes and negotiation rules. Integrations read that guidance before writing.
-Negotiation observation and turns use `/api/negotiations`; personal-agent
-conversations require an intent scope and the current question ID when answering
-a pending question.
+`GET /api/negotiations` lists the seat's negotiations across every opportunity;
+one negotiation is observed and turned through its opportunity, at
+`GET /api/opportunities/:id/negotiation` and
+`POST /api/opportunities/:id/negotiation/turns`, because exactly one is written
+with each opportunity. Personal-agent conversations require an intent scope and
+the current question ID when answering a pending question.
 
 ## Publishing
 

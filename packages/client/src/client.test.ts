@@ -127,6 +127,41 @@ test("sendPrincipal refuses without executorId and fences the write", async () =
   server.stop(true);
 });
 
+test("discover posts the query and returns the counterparties as ranked", async () => {
+  let seen: { path: string; body: unknown } | undefined;
+  const counterparty = {
+    intentId: "i2", userId: "u2", name: "Ada", statement: "Looking for a co-founder",
+    networkId: "n1", score: 0.42,
+  };
+  const server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      seen = { path: new URL(req.url).pathname, body: await req.json() };
+      return Response.json({ counterparties: [counterparty] });
+    },
+  });
+  const client = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" });
+  expect(await client.discover("i1", "biotech founders in Lisbon")).toEqual([counterparty]);
+  expect(seen).toEqual({ path: "/api/intents/i1/discover", body: { query: "biotech founders in Lisbon" } });
+  server.stop(true);
+});
+
+test("createOpportunities posts the picks and returns the opportunities", async () => {
+  let seen: { path: string; body: unknown } | undefined;
+  const server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      seen = { path: new URL(req.url).pathname, body: await req.json() };
+      return Response.json({ opportunities: [{ opportunityId: "o1" }] });
+    },
+  });
+  const client = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" });
+  const picks = [{ intentId: "i2", networkId: "n1" }];
+  expect(await client.createOpportunities("i1", picks)).toEqual([{ opportunityId: "o1" }]);
+  expect(seen).toEqual({ path: "/api/intents/i1/opportunities", body: { counterparties: picks } });
+  server.stop(true);
+});
+
 test("wakesHost is true only for opened, turn, and principal.input", () => {
   const opened = { type: "negotiation.opened" as const, id: "1", title: "", body: "", data: { intentId: "i", count: 1 } };
   const turn = { type: "negotiation.turn" as const, id: "2", title: "", body: "", data: { opportunityId: "o", intentId: "i", turnIndex: 1 } };

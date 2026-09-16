@@ -66,7 +66,7 @@ The system models human collaboration through a linguistic and information-theor
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
 | **Network** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share a network. |
 | **Opportunity** | A persisted intent pair admitted by protocol negotiation rules. The host receives candidate pairs from discovery, commits them atomically, and uses protocol lifecycle and presentation functions to serve them. |
-| **HyDE** | Query-side retrieval artifacts owned by `@indexnetwork/discovery`. Source frames constrain generation; validation controls which documents can be persisted. Candidate retrieval searches real intent embeddings. |
+| **Discovery** | A search the owner's agent runs on demand: its query is embedded and matched against real intent embeddings, scoped to the communities the searching signal is shared in. The agent judges the results; retrieval ranks them. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
 | **Semantic Entropy** | Constraint density of an intent (0.0 = maximally constrained, 1.0 = trivially satisfiable). High-entropy intents ("I want a job") trigger an **elaboration loop** — a request for missing constraints before persistence. |
 | **Semantic Governance** | The full pipeline that ensures only actionable, felicitous, sufficiently clear intents enter the graph. Referential breadth is retained as warning metadata on the persisted signal rather than acting as a universal write prohibition. Implemented by the Intent Verifier and Intent Clarifier agents. |
@@ -80,14 +80,14 @@ The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` i
 The host resolves the authenticated principal in a REST controller, calls its
 service, and the service invokes the capability graphs.
 
-### Post-intent matching
+### On-demand matching
 
-After protocol persists an intent, the host's `onIntentSaved` hook schedules
-`@indexnetwork/discovery`. That independent library prepares source-grounded
-retrieval artifacts and returns potential intent pairs. The API commits them
-through `openCounterparties` using protocol pair identity and opening rules.
-The personal agent owns subsequent negotiation behavior; protocol still owns
-negotiation rules and opportunity lifecycle/presentation.
+Persisting an intent starts no matching. The owner's agent searches when it has
+a reason to, and the API commits the counterparties it picks through
+`openCounterparties` using protocol pair identity and opening rules — that call
+is what creates the opportunity. The personal agent owns subsequent negotiation
+behavior; protocol still owns negotiation rules and opportunity
+lifecycle/presentation.
 
 ## Business Logic Flows
 

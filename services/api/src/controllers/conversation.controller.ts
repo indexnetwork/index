@@ -6,7 +6,7 @@ import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { log } from '../lib/log';
 import { agentService } from '../services/agent.service';
-import { AgentConversationError, ConversationService } from '../services/conversation.service';
+import { AGENT_DM_ID, AgentConversationError, ConversationService } from '../services/conversation.service';
 
 type RouteParams = Record<string, string>;
 
@@ -326,6 +326,54 @@ export class ConversationController {
       }
       const message = err instanceof Error ? err.message : String(err);
       logger.error('publishH2A failed', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
+   * POST /conversations/agent/answers — the owner answers several of their
+   * agent's questions at once.
+   *
+   * One request so the answers land together: written as one batch, they reach
+   * the agent as a single state to decide from.
+   *
+   * @param req - `{ intentId, answers: [{ questionId, text }] }`.
+   * @param user - Authenticated owner (session token).
+   * @returns The persisted messages.
+   */
+  @Post('/agent/answers')
+  @UseGuards(AuthGuard)
+  async answerQuestions(req: Request, user: AuthenticatedUser) {
+    let body: { intentId?: string; answers?: { questionId?: unknown; text?: unknown }[] };
+    try {
+      body = await req.json() as typeof body;
+    } catch {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    if (typeof body.intentId !== 'string' || !Array.isArray(body.answers) || !body.answers.length) {
+      return Response.json({ error: 'intentId and a non-empty answers array are required' }, { status: 400 });
+    }
+    const answers = body.answers.map((answer) => ({
+      questionId: typeof answer?.questionId === 'string' ? answer.questionId : '',
+      text: typeof answer?.text === 'string' ? answer.text.trim() : '',
+    }));
+    if (answers.some((answer) => !answer.questionId || !answer.text)) {
+      return Response.json({ error: 'Every answer needs a questionId and text' }, { status: 400 });
+    }
+
+    const resolved = await this.conversationService.resolveId(AGENT_DM_ID, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    try {
+      const messages = await this.conversationService.answerQuestions({
+        userId: user.id, intentId: body.intentId, conversationId: resolved.id, answers,
+      });
+      return Response.json({ messages }, { status: 201 });
+    } catch (err: unknown) {
+      if (err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('answerQuestions failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }

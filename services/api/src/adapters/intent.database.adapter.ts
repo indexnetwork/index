@@ -1,4 +1,4 @@
-import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
+import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, ne, or, ownIntentsListWhere, sql } from './database.shared';
 
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
@@ -90,24 +90,6 @@ export class IntentDatabaseAdapter {
       logger.error('IntentDatabaseAdapter.getActiveIntents error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
-  }
-
-  /**
-   * Monotonically record an explicit owner visit without touching updatedAt.
-   *
-   * @param intentId - Intent being viewed.
-   * @param userId - Expected owner.
-   * @returns The authoritative visit timestamp, or null for missing/foreign rows.
-   */
-  async visitIntent(intentId: string, userId: string): Promise<Date | null> {
-    const [visited] = await db
-      .update(schema.intents)
-      .set({
-        lastVisitedAt: sql`GREATEST(COALESCE(${schema.intents.lastVisitedAt}, '-infinity'::timestamptz), NOW())`,
-      })
-      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
-      .returning({ lastVisitedAt: schema.intents.lastVisitedAt });
-    return visited?.lastVisitedAt ?? null;
   }
 
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
@@ -743,6 +725,49 @@ export class IntentDatabaseAdapter {
       .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
       .limit(1);
     return row.length > 0;
+  }
+
+  /**
+   * Read discovered candidate signals with the facts an agent needs to judge
+   * them, minus the ones this signal already shares an opportunity with.
+   *
+   * Every opportunity carries a negotiation naming both seats, so those rows
+   * are what "already paired" means; without this filter a search would keep
+   * returning counterparties the signal is already working.
+   *
+   * @param intentId - The searching signal, whose existing pairs are excluded.
+   * @param candidateIntentIds - Candidate signal ids from vector retrieval.
+   * @returns One row per still-open candidate, with its statement and owner.
+   */
+  async listCounterpartyCandidates(
+    intentId: string,
+    candidateIntentIds: string[],
+  ): Promise<{ id: string; userId: string; name: string; statement: string }[]> {
+    if (candidateIntentIds.length === 0) return [];
+
+    const paired = await db.select({
+      initiatorIntentId: schema.negotiations.initiatorIntentId,
+      responderIntentId: schema.negotiations.responderIntentId,
+    })
+      .from(schema.negotiations)
+      .where(or(
+        eq(schema.negotiations.initiatorIntentId, intentId),
+        eq(schema.negotiations.responderIntentId, intentId),
+      ));
+
+    const taken = new Set(paired.flatMap((row) => [row.initiatorIntentId, row.responderIntentId]));
+    const unpaired = candidateIntentIds.filter((id) => !taken.has(id));
+    if (unpaired.length === 0) return [];
+
+    return db.select({
+      id: schema.intents.id,
+      userId: schema.intents.userId,
+      name: schema.users.name,
+      statement: schema.intents.payload,
+    })
+      .from(schema.intents)
+      .innerJoin(schema.users, eq(schema.users.id, schema.intents.userId))
+      .where(and(inArray(schema.intents.id, unpaired), isNull(schema.users.deletedAt)));
   }
 
   /**

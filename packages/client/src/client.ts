@@ -59,6 +59,22 @@ export interface IntentSummary {
   status: IntentStatus;
 }
 
+/** One counterparty a search surfaced, as an agent judging it needs to see it. */
+export interface Counterparty {
+  intentId: string;
+  userId: string;
+  name: string;
+  statement: string;
+  networkId: string;
+  score: number;
+}
+
+/** One counterparty an agent picked to turn into an opportunity. */
+export interface CounterpartyPick {
+  intentId: string;
+  networkId: string;
+}
+
 /** The authenticated owner, with the profile facts an agent may state as theirs. */
 export interface Me {
   id: string;
@@ -99,8 +115,8 @@ export interface PrincipalQuestion {
 
 export interface PersonalAgentState {
   status: "running" | "starting" | "paused" | "external" | "unavailable";
-  pending: PrincipalQuestion | null;
-  queuedQuestions: number;
+  /** Every question still waiting on the owner, oldest first. */
+  questions: PrincipalQuestion[];
 }
 
 export interface ConversationMessage {
@@ -266,6 +282,42 @@ export class IndexClient {
   }
 
   /**
+   * Search one signal's communities for counterparties.
+   *
+   * Nothing is written: the caller reads these and decides which are worth an
+   * opportunity.
+   *
+   * @param intentId - The signal to search from.
+   * @param query - What to look for, in the caller's own words.
+   * @returns Counterparties, strongest first.
+   */
+  async discover(intentId: string, query: string): Promise<Counterparty[]> {
+    const { counterparties } = await this.request<{ counterparties: Counterparty[] }>(
+      "POST", `/intents/${encodeURIComponent(intentId)}/discover`, { query },
+    );
+    return counterparties;
+  }
+
+  /**
+   * Create one opportunity per picked counterparty. Idempotent on the pair: a
+   * counterparty already sharing an opportunity with this signal reports that
+   * one rather than a second.
+   *
+   * @param intentId - The signal the opportunities belong to.
+   * @param counterparties - Counterparty signals and the community each pair sits in.
+   * @returns The opportunities that now exist.
+   */
+  async createOpportunities(
+    intentId: string,
+    counterparties: CounterpartyPick[],
+  ): Promise<{ opportunityId: string }[]> {
+    const result = await this.request<{ opportunities: { opportunityId: string }[] }>(
+      "POST", `/intents/${encodeURIComponent(intentId)}/opportunities`, { counterparties },
+    );
+    return result.opportunities;
+  }
+
+  /**
    * @returns Open negotiations for this seat.
    */
   async listNegotiations(): Promise<Negotiation[]> {
@@ -279,7 +331,7 @@ export class IndexClient {
    */
   async getNegotiation(id: string): Promise<NegotiationDetail> {
     const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
-      "GET", `/negotiations/${encodeURIComponent(id)}`,
+      "GET", `/opportunities/${encodeURIComponent(id)}/negotiation`,
     );
     return negotiation;
   }
@@ -294,7 +346,7 @@ export class IndexClient {
     turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
   ): Promise<NegotiationDetail> {
     const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
-      "POST", this.fence(`/negotiations/${encodeURIComponent(id)}/turns`), turn,
+      "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/turns`), turn,
     );
     return negotiation;
   }

@@ -1,5 +1,5 @@
 /**
- * Embedder adapter: OpenRouter API with OpenAI embedding model + pgvector search (HyDE lens-based).
+ * Embedder adapter: OpenRouter API with OpenAI embedding model + pgvector search.
  * Uses the shared OpenRouter + OpenAI embedding config from lib/embedding.
  */
 
@@ -169,7 +169,7 @@ export class EmbedderAdapter {
     options.signal?.throwIfAborted();
     return traceAppOperation({
       name: 'vector search intent candidates', op: 'db.vector_search',
-      attributes: { subsystem: 'database', 'db.system': 'postgresql', 'search.strategy': 'hyde', 'search.limit': options.limit },
+      attributes: { subsystem: 'database', 'db.system': 'postgresql', 'search.strategy': 'query', 'search.limit': options.limit },
     }, () => this.searchIntentCandidatesInner(embedding, options));
   }
 
@@ -225,9 +225,9 @@ export class EmbedderAdapter {
   // Private: generic search (single-vector)
   // ─────────────────────────────────────────────────────────────────────────
 
-  // NOTE: profile-HyDE discovery (the `searchProfiles` profiles-corpus reader) was
-  // retired in WS10 (IND-367). It was the last runtime read of `user_profiles` and was
-  // already unreachable. Discovery now runs on HyDE query retrieval over intents.
+  // NOTE: the `searchProfiles` profiles-corpus reader was retired in WS10 (IND-367).
+  // It was the last runtime read of `user_profiles` and was already unreachable.
+  // Retrieval now runs on the caller's own query over intents.
   // See IND-365 for the table drop.
 
   private async searchIntents(

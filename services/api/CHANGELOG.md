@@ -9,7 +9,59 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- **Migration history squashed to a single baseline.** The 182 journal entries
+  accumulated since February are replaced by one `0000_initial_schema`
+  generated from `database.schema.ts`, so `drizzle/` now holds one SQL file and
+  one snapshot. Existing databases keep their data: they are baselined by
+  replacing `drizzle.__drizzle_migrations` with the single row
+  (`hash` `bc5e6550…`, `created_at` `1789588855899`), after which `db:migrate`
+  is a no-op. Historical backfills stay applied; they are simply no longer
+  replayable, and an empty database now gets the current schema plus `db:seed`.
+- **BREAKING: a negotiation is reached through its opportunity.**
+  `GET /negotiations/:opportunityId` is now `GET /opportunities/:id/negotiation`
+  and `POST /negotiations/:opportunityId/turns` is now
+  `POST /opportunities/:id/negotiation/turns`. There is exactly one negotiation
+  per opportunity — unique index on `opportunity_id`, both written by the same
+  `openCounterparties` transaction — so the old paths named one resource and
+  took the other's key. Both nested routes accept a short id prefix, which the
+  old ones did not. `GET /negotiations` is unchanged and remains the only view
+  that spans opportunities.
+
 ### Removed
+- **BREAKING: five routes nothing called.** `POST /negotiations/open` (staff
+  hand-open; `POST /intents/:id/opportunities` already opens negotiations),
+  `GET /networks/:networkId/opportunities` (duplicated
+  `GET /opportunities?networkId=`), and `GET /debug/intents/:id` plus
+  `GET /debug/chat/:id`. `GET /debug/radar` stays.
+- **BREAKING: `POST /intents/:id/visit` and `protocol_intents.last_visited_at`.**
+  The endpoint stamped a column no read path consulted any more, so the route,
+  the web hook behind it, and the column are gone (the column is simply absent
+  from the new baseline; its migration was squashed away).
+
+### Added
+- **Discovery is on demand, and the agent judges it.**
+  `POST /intents/:id/discover` takes `{ query }`, embeds it as written, and
+  returns ranked counterparties from the communities that signal is shared in,
+  with each one's statement and owner. It writes nothing, and counterparties the
+  signal already has an opportunity with are left out.
+  `POST /intents/:id/opportunities` takes the counterparties the caller picked
+  and creates one opportunity each, idempotent on the pair. Both are owner-only
+  and need an active signal.
+
+### Removed
+- **LangGraph PostgresSaver.** The unused `PostgresSaver` checkpointer, its
+  boot-time table setup, the hourly `checkpoint-retention` cron, and the
+  `checkpoints` / `checkpoint_blobs` / `checkpoint_writes` /
+  `checkpoint_migrations` tables are gone. Graph runs were already compiling
+  without a checkpointer; conversation continuity stays on `chat_messages`.
+- **BREAKING: writing a signal no longer starts a search.** HyDE and lens
+  inference are gone with the `@indexnetwork/discovery` package, along with the
+  background `IntentDiscovery` runner, the `protocol_hyde_documents` table and
+  its maintenance cron, and the orphaned-indexing reconcile command. Signals
+  still carry embeddings, so they are still findable; nothing is generated ahead
+  of a query, and nothing is cached. An owner who wants matches searches for
+  them.
 - **BREAKING: the API no longer hosts an in-process personal agent.**
   `PersonalAgentService` and its always-on `NegotiationAgent` sessions are gone.
   In their place, `HostedNegotiator` is the default A2A seat: it wakes on
@@ -20,7 +72,7 @@ section before promoting to `main`).
 
 ### Added
 - Railway dev intent replay: `db:dev:resume --confirm` shuffles eligible intents
-  and resumes them 10–30 seconds apart, with discovery completion/failure logs.
+  and resumes them 10–30 seconds apart.
   `db:dev:reset --confirm` stops the dev API, clears matching and agent state,
   pauses intents, then restores the same deployment. Both commands pin the dev
   database and preserve accounts, credentials, and the intent/network dataset.

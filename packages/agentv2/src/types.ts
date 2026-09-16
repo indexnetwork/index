@@ -20,12 +20,28 @@ export type NegotiationAction = "propose" | "counter" | "accept" | "decline";
 /** A one-shot instruction the next negotiator run must carry out. */
 export type Decision = "continue" | "accept" | "decline" | "stop";
 
+/** One counterparty a search surfaced, as a run judging it sees them. */
+export interface Counterparty {
+  intentId: string;
+  userId: string;
+  name: string;
+  statement: string;
+  networkId: string;
+  score: number;
+}
+
+/** One counterparty a run picked to become an opportunity. */
+export interface CounterpartyPick {
+  intentId: string;
+  networkId: string;
+}
+
 /**
  * One entry of the principal conversation. Briefs and decisions are entries
  * too: they are how a wake's work persists, and the principal can read them.
  */
 export interface ConversationEntry {
-  kind: "user" | "message" | "question" | "answer" | "brief" | "decision";
+  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall";
   text: string;
   scope?: "intent" | "opportunity";
   counterpart?: string;
@@ -50,6 +66,8 @@ export interface Opportunity {
   decision?: Decision;
   /** Why the last negotiator run stopped without a turn. */
   stall?: Stall;
+  /** Whether the principal has spoken to this opportunity since its last decision. */
+  answered?: boolean;
 }
 
 /** Everything a wake sees: one signal, its conversation, and all of its opportunities. */
@@ -72,6 +90,14 @@ export interface WakeInput {
    * while the others are still being decided.
    */
   onDecision?: (actions: WakeAction[]) => void | Promise<void>;
+  /**
+   * Search this signal's communities. Given both this and
+   * {@link WakeInput.createOpportunities}, an unfocused wake looks for new
+   * counterparties; given neither, it only works what it already has.
+   */
+  discoverCounterparties?: (query: string) => Promise<Counterparty[]>;
+  /** Turn picked counterparties into opportunities. Nothing else opens one. */
+  createOpportunities?: (counterparties: CounterpartyPick[]) => Promise<{ opportunityId: string }[]>;
 }
 
 export type WakeAction =

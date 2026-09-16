@@ -1,1 +1,0 @@
-ALTER TYPE "public"."opportunity_status" ADD VALUE 'stalled' BEFORE 'accepted';

@@ -10,7 +10,7 @@ import { log } from './log';
  *
  * The agent types come in two scopes. `negotiation.turn` and
  * `negotiation.settled` point at one negotiation and carry a pointer rather
- * than the turn — the agent reads `GET /negotiations/:opportunityId` to act.
+ * than the turn — the agent reads `GET /opportunities/:id/negotiation` to act.
  * `intent.created`, `intent.lifecycle` and `negotiation.opened` are scoped to a
  * signal instead: that a signal now exists, whether the agent should be working
  * it at all, and that discovery gave it something to work. Creation has its own

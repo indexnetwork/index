@@ -1,6 +1,6 @@
 # @indexnetwork/client
 
-Index HTTP for an agent-bound API key. One class, eight calls, no model or loop.
+Index HTTP for an agent-bound API key. One class, ten calls, no model or loop.
 
 ```ts
 import { IndexClient, wakesHost } from "@indexnetwork/client";
@@ -27,14 +27,18 @@ const stop = client.events((event) => {
 |---|---|
 | `me()` | `GET /api/auth/me` → `{ id, name, intro, location, timezone, profileConfirmed }` (memoized) |
 | `listIntents(limit?)` | `POST /api/intents/list` → `{ id, statement, status }[]` |
+| `discover(intentId, query)` | `POST /api/intents/:id/discover` → `{ intentId, userId, name, statement, networkId, score }[]` |
+| `createOpportunities(intentId, counterparties)` | `POST /api/intents/:id/opportunities` → `{ opportunityId }[]` |
 | `listNegotiations()` | `GET /api/negotiations?state=open` |
-| `getNegotiation(id)` | `GET /api/negotiations/:id` |
-| `submitTurn(id, turn)` | `POST /api/negotiations/:id/turns` |
+| `getNegotiation(id)` | `GET /api/opportunities/:id/negotiation` |
+| `submitTurn(id, turn)` | `POST /api/opportunities/:id/negotiation/turns` |
 | `events(onEvent)` | `GET /api/events` SSE. Returns a stop handle. |
 | `principalInbox(intentId)` | `GET /api/conversations/agent/messages?intentId=` |
 | `sendPrincipal(intentId, entries)` | `POST /api/conversations/agent/h2a?executorId=` |
 
 `sendPrincipal` requires an executor id. `submitTurn` needs `expectedTurnCount`. Handshake `{ type: "connected" }` is not passed to `onEvent`.
+
+`discover` writes nothing; `createOpportunities` is idempotent on the pair, so a counterparty that already shares an opportunity reports that one. Both need an active signal the key's owner owns.
 
 `wakesHost` is true only for `negotiation.opened`, `negotiation.turn`, and `principal.input`.
 

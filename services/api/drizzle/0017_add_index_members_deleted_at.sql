@@ -1,1 +1,0 @@
-ALTER TABLE "index_members" ADD COLUMN "deleted_at" timestamp;

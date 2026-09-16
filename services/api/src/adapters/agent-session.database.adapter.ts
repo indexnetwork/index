@@ -213,6 +213,40 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
     });
   }
 
+  /**
+   * Persist several owner answers on the agent DM as one write.
+   *
+   * The single transaction is the point: the wake these answers trigger reads a
+   * transcript that already holds all of them, instead of deciding on the first
+   * and discarding the rest.
+   *
+   * @param input - Owner, signal, canonical DM, and each answer with the question it names.
+   * @returns The inserted messages, in the order given.
+   */
+  static async writeOwnerAnswers(input: {
+    userId: string; intentId: string; conversationId: string;
+    answers: readonly { text: string; question: PrincipalQuestion | null }[];
+  }): Promise<Message[]> {
+    const conversations = new ConversationDatabaseAdapter();
+    const persisted = await db.transaction(async (tx) => {
+      const inserted: Message[] = [];
+      for (const answer of input.answers) {
+        const human: Omit<PrincipalMessage, 'id' | 'createdAt' | 'text'> = answer.question
+          ? { kind: 'answer', questionId: answer.question.id, matches: answer.question.matches, scope: answer.question.scope }
+          : { kind: 'user', matches: [] };
+        inserted.push(await conversations.insertMessageWithConversationSession(tx, {
+          id: crypto.randomUUID(), conversationId: input.conversationId,
+          senderId: input.userId, role: 'user',
+          parts: [{ kind: 'text', text: answer.text }],
+          metadata: { intentId: input.intentId, principalMessage: human }, extensions: null,
+        }));
+      }
+      return inserted;
+    });
+    await Promise.all(persisted.map((message) => conversations.publishMessage(message)));
+    return persisted;
+  }
+
   /** Extend this process's lease for a long action. @throws When ownership expired or moved. */
   async renew(): Promise<void> {
     await db.transaction(async (tx) => { await AgentSessionDatabaseAdapter.assertOwner(tx, this.execution); });

@@ -1,1 +1,0 @@
-ALTER TABLE "indexes" ADD COLUMN "image_url" text;

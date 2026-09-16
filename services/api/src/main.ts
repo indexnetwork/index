@@ -11,7 +11,7 @@ import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
 import { NetworkRequestController } from './controllers/network-request.controller';
 import { IntentController } from './controllers/intent.controller';
-import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
+import { OpportunityController } from './controllers/opportunity.controller';
 import { NegotiationController } from './controllers/negotiation.controller';
 import { AuthController } from './controllers/auth.controller';
 import { EnrichmentController } from './controllers/enrichment.controller';
@@ -34,9 +34,6 @@ import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/s
 import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
-import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
-import { getCheckpointer } from './adapters/checkpointer.adapter';
-import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
@@ -76,23 +73,12 @@ const opportunityEventService = new OpportunityEventService({
 OpportunityEvents.onActionable = (payload) => opportunityEventService.publishOpportunityActionable(payload);
 
 opportunityExpirationCron.start();
-checkpointRetentionCron.start();
-hydeMaintenanceCron.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
-
-// Warm up the PostgresSaver checkpointer at boot so the first graph run
-// doesn't pay the table-setup round trip and misconfiguration surfaces at
-// startup instead of mid-run. Non-fatal: graphs degrade to no checkpointer.
-getCheckpointer().catch((err) => {
-  logger.warn('Checkpointer warm-up failed; graphs will run without persistence', {
-    error: err instanceof Error ? err.message : String(err),
-  });
-});
 
 /** Match pathname against a route pattern with :param placeholders; returns params or null. */
 function matchPath(pattern: string, pathname: string): Record<string, string> | null {
@@ -138,7 +124,6 @@ controllerInstances.set(NetworkController, new NetworkController());
 controllerInstances.set(NetworkRequestController, new NetworkRequestController());
 controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(OpportunityController, new OpportunityController());
-controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
 controllerInstances.set(NegotiationController, new NegotiationController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
@@ -160,7 +145,7 @@ function classifyRequestSubsystem(pathname: string): string {
   return 'server';
 }
 
-// Cron jobs (newsletter, opportunity finder, HyDE) are registered above.
+// Cron jobs are registered above.
 Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors

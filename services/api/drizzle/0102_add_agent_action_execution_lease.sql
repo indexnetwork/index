@@ -1,1 +1,0 @@
-ALTER TABLE "agent_action_proposals" ADD COLUMN "execution_lease_at" timestamp with time zone;

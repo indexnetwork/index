@@ -1,5 +1,22 @@
 # Changelog
 
+## 59.0.1
+
+### Documentation
+
+- `IMPLEMENTATION.md` now describes the host's negotiation routes as they are: `GET /api/negotiations` lists a seat's negotiations, and one is observed and turned through its opportunity at `GET /api/opportunities/:id/negotiation` and `POST /api/opportunities/:id/negotiation/turns`. No exported surface changed.
+
+## 59.0.0
+
+### Breaking changes
+
+- Discovery is no longer a post-persist workflow. `IntentFollowUp.onIntentSaved`, `onIntentArchived`, and `onIntentResumed` no longer imply matching work and may do nothing; hosts search on demand instead. The interface shape is unchanged, so implementations keep compiling. `scoreIntent` is unaffected.
+- Remove the `@indexnetwork/discovery` workspace. There is no lens inference, hypothetical-document generation or validation, artifact cache, or match explainer anywhere in the repository. Retrieval is one embedding of the caller's own query against real intent embeddings, and the judging is the caller's.
+
+### Preserved behavior
+
+- Pair identity and opening are unchanged: `pairKeyOf` plus `openCounterparties(pairs, decideNegotiationOpening)` still writes the opportunity and its negotiation atomically, and remains the only way one is created. Network/broadcast scope (`resolveDiscoveryNetworkScope`, `renderDiscoveryNetworkContext`), negotiation rules, and opportunity lifecycle/presentation are untouched.
+
 ## 58.0.0
 
 ### Breaking changes
