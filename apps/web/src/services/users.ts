@@ -7,7 +7,7 @@ interface BatchUsersResponse {
 
 import type { NegotiationOutcome } from './negotiations';
 
-/** One entry of a profile's negotiation history. The turn log lives on `/negotiations/:opportunityId`. */
+/** One entry of a profile's negotiation history. The turn log lives on `/opportunities/:id/negotiation`. */
 export interface NegotiationHistoryEntry {
   id: string;
   opportunityId: string;

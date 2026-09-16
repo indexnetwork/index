@@ -247,9 +247,12 @@ index --api-url https://protocol.index.network intent list --json
 
 `GET /api/docs` serves canonical protocol guidance, including the resource
 routes and negotiation rules. Integrations read that guidance before writing.
-Negotiation observation and turns use `/api/negotiations`; personal-agent
-conversations require an intent scope and the current question ID when answering
-a pending question.
+`GET /api/negotiations` lists the seat's negotiations across every opportunity;
+one negotiation is observed and turned through its opportunity, at
+`GET /api/opportunities/:id/negotiation` and
+`POST /api/opportunities/:id/negotiation/turns`, because exactly one is written
+with each opportunity. Personal-agent conversations require an intent scope and
+the current question ID when answering a pending question.
 
 ## Publishing
 

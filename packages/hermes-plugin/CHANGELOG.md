@@ -1,6 +1,15 @@
 # Changelog
 
 
+## 0.44.0
+
+### Changed
+- Follow the API's negotiation routes onto the opportunity: the runtime reads
+  `GET /opportunities/:id/negotiation` and submits to
+  `POST /opportunities/:id/negotiation/turns`. `GET /negotiations`, which the
+  dashboard and the wake path poll, is unchanged. Needs an API at 0.125.0 or
+  later.
+
 ## 0.43.0
 
 ### Added

@@ -1268,6 +1268,13 @@
       "when": 1789582800000,
       "tag": "0183_drop_langgraph_checkpoints",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1789587920408,
+      "tag": "0184_drop_intent_last_visited_at",
+      "breakpoints": true
     }
   ]
 }

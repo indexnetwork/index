@@ -396,17 +396,6 @@ export class IntentService {
   }
 
   /**
-   * Record an explicit human visit to an owned intent page.
-   *
-   * @param intentId - Full intent ID.
-   * @param userId - Authenticated owner.
-   * @returns Monotonic visit time, or null when missing/foreign.
-   */
-  async visit(intentId: string, userId: string): Promise<Date | null> {
-    return this.adapter.visitIntent(intentId, userId);
-  }
-
-  /**
    * Search the communities an owned signal is shared in for counterparties.
    *
    * The query is the caller's, embedded as written and matched against stored

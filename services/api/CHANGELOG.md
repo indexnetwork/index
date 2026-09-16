@@ -9,6 +9,28 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: a negotiation is reached through its opportunity.**
+  `GET /negotiations/:opportunityId` is now `GET /opportunities/:id/negotiation`
+  and `POST /negotiations/:opportunityId/turns` is now
+  `POST /opportunities/:id/negotiation/turns`. There is exactly one negotiation
+  per opportunity — unique index on `opportunity_id`, both written by the same
+  `openCounterparties` transaction — so the old paths named one resource and
+  took the other's key. Both nested routes accept a short id prefix, which the
+  old ones did not. `GET /negotiations` is unchanged and remains the only view
+  that spans opportunities.
+
+### Removed
+- **BREAKING: five routes nothing called.** `POST /negotiations/open` (staff
+  hand-open; `POST /intents/:id/opportunities` already opens negotiations),
+  `GET /networks/:networkId/opportunities` (duplicated
+  `GET /opportunities?networkId=`), and `GET /debug/intents/:id` plus
+  `GET /debug/chat/:id`. `GET /debug/radar` stays.
+- **BREAKING: `POST /intents/:id/visit` and `protocol_intents.last_visited_at`.**
+  The endpoint stamped a column no read path consulted any more, so the route,
+  the web hook behind it, and the column are gone (migration
+  `0184_drop_intent_last_visited_at`).
+
 ### Added
 - **Discovery is on demand, and the agent judges it.**
   `POST /intents/:id/discover` takes `{ query }`, embeds it as written, and

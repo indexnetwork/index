@@ -30,8 +30,8 @@ const stop = client.events((event) => {
 | `discover(intentId, query)` | `POST /api/intents/:id/discover` → `{ intentId, userId, name, statement, networkId, score }[]` |
 | `createOpportunities(intentId, counterparties)` | `POST /api/intents/:id/opportunities` → `{ opportunityId }[]` |
 | `listNegotiations()` | `GET /api/negotiations?state=open` |
-| `getNegotiation(id)` | `GET /api/negotiations/:id` |
-| `submitTurn(id, turn)` | `POST /api/negotiations/:id/turns` |
+| `getNegotiation(id)` | `GET /api/opportunities/:id/negotiation` |
+| `submitTurn(id, turn)` | `POST /api/opportunities/:id/negotiation/turns` |
 | `events(onEvent)` | `GET /api/events` SSE. Returns a stop handle. |
 | `principalInbox(intentId)` | `GET /api/conversations/agent/messages?intentId=` |
 | `sendPrincipal(intentId, entries)` | `POST /api/conversations/agent/h2a?executorId=` |

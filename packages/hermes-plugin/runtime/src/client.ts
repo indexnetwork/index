@@ -62,7 +62,7 @@ export class IndexClient {
   /** @param id - The match. @returns The negotiation as this owner's seat sees it. */
   async readNegotiation(id: string): Promise<Negotiation> {
     const { negotiation } = await this.request<{ negotiation: Negotiation }>(
-      'GET', `/negotiations/${encodeURIComponent(id)}`,
+      'GET', `/opportunities/${encodeURIComponent(id)}/negotiation`,
     );
     return negotiation;
   }
@@ -75,7 +75,7 @@ export class IndexClient {
   async submitTurn(id: string, turn: NegotiationTurn): Promise<Negotiation> {
     const { negotiation } = await this.request<{ negotiation: Negotiation }>(
       'POST',
-      `/negotiations/${encodeURIComponent(id)}/turns?executorId=${encodeURIComponent(this.executorId)}`,
+      `/opportunities/${encodeURIComponent(id)}/negotiation/turns?executorId=${encodeURIComponent(this.executorId)}`,
       turn,
     );
     return negotiation;

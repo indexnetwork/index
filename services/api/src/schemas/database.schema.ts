@@ -325,7 +325,6 @@ export const intents = pgTable('protocol_intents', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
-  lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   /**
    * When the intent's first background discovery run completed successfully
    * (from background discovery). Null until
