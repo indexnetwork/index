@@ -1,1 +1,0 @@
-DROP TABLE "integrations" CASCADE;

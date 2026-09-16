@@ -1,1 +1,0 @@
-ALTER TABLE "networks" ADD COLUMN "request_status" text;

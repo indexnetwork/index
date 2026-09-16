@@ -1,1 +1,0 @@
-ALTER TABLE "user_notification_settings" ADD CONSTRAINT "user_notification_settings_user_id_unique" UNIQUE("user_id");

@@ -1,1 +1,0 @@
-ALTER TABLE "intent_indexes" ADD COLUMN "relevancy_score" numeric;

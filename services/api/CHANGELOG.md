@@ -10,6 +10,14 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **Migration history squashed to a single baseline.** The 182 journal entries
+  accumulated since February are replaced by one `0000_initial_schema`
+  generated from `database.schema.ts`, so `drizzle/` now holds one SQL file and
+  one snapshot. Existing databases keep their data: they are baselined by
+  replacing `drizzle.__drizzle_migrations` with the single row
+  (`hash` `bc5e6550…`, `created_at` `1789588855899`), after which `db:migrate`
+  is a no-op. Historical backfills stay applied; they are simply no longer
+  replayable, and an empty database now gets the current schema plus `db:seed`.
 - **BREAKING: a negotiation is reached through its opportunity.**
   `GET /negotiations/:opportunityId` is now `GET /opportunities/:id/negotiation`
   and `POST /negotiations/:opportunityId/turns` is now
@@ -28,8 +36,8 @@ section before promoting to `main`).
   `GET /debug/chat/:id`. `GET /debug/radar` stays.
 - **BREAKING: `POST /intents/:id/visit` and `protocol_intents.last_visited_at`.**
   The endpoint stamped a column no read path consulted any more, so the route,
-  the web hook behind it, and the column are gone (migration
-  `0184_drop_intent_last_visited_at`).
+  the web hook behind it, and the column are gone (the column is simply absent
+  from the new baseline; its migration was squashed away).
 
 ### Added
 - **Discovery is on demand, and the agent judges it.**
