@@ -1,2 +1,0 @@
-DROP INDEX "chat_session_summaries_session_latest_idx";--> statement-breakpoint
-CREATE INDEX "chat_session_summaries_session_latest_idx" ON "chat_session_summaries" USING btree ("conversation_id","created_at" DESC NULLS LAST);

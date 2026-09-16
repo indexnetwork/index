@@ -1,1 +1,0 @@
-ALTER TABLE "connect_links" ADD COLUMN "preferred_surface" text;

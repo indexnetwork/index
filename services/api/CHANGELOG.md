@@ -9,6 +9,16 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- **Migration history squashed to a single baseline.** The 181 journal entries
+  accumulated since February are replaced by one `0000_initial_schema`
+  generated from `database.schema.ts`, so `drizzle/` now holds one SQL file and
+  one snapshot. Existing databases keep their data: they are baselined by
+  replacing `drizzle.__drizzle_migrations` with the single row
+  (`hash` `3d9bbc55…`, `created_at` `1789587632538`), after which `db:migrate`
+  is a no-op. Historical backfills stay applied; they are simply no longer
+  replayable, and an empty database now gets the current schema plus `db:seed`.
+
 ### Added
 - **Discovery is on demand, and the agent judges it.**
   `POST /intents/:id/discover` takes `{ query }`, embeds it as written, and

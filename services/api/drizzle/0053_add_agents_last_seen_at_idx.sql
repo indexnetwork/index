@@ -1,1 +1,0 @@
-CREATE INDEX "agents_last_seen_at_idx" ON "agents" USING btree ("last_seen_at");

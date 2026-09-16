@@ -13,7 +13,7 @@ dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
 import postgres from 'postgres';
 
-const MIGRATION_FILE = path.resolve(process.cwd(), 'drizzle/0000_handy_ironclad.sql');
+const MIGRATION_FILE = path.resolve(process.cwd(), 'drizzle/0000_initial_schema.sql');
 
 async function main(): Promise<void> {
   const connectionString = process.env.DATABASE_URL;

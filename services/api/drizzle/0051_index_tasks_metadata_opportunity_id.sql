@@ -1,1 +1,0 @@
-CREATE INDEX "tasks_metadata_opportunity_id_idx" ON "tasks" USING btree (("metadata"->>'opportunityId')) WHERE "tasks"."metadata"->>'type' = 'negotiation';

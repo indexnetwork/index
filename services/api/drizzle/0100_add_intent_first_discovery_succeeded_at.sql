@@ -1,1 +1,0 @@
-ALTER TABLE "intents" ADD COLUMN "first_discovery_succeeded_at" timestamp with time zone;
