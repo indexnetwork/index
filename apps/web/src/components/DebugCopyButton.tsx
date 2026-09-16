@@ -4,7 +4,7 @@ import { Bug, Check, X, Loader2 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
 interface DebugCopyButtonProps {
-  /** API path to fetch debug data from (e.g. "/debug/intents/abc123") */
+  /** API path to fetch debug data from (e.g. "/debug/radar") */
   fetchPath: string;
   /** Optional tooltip override */
   title?: string;
