@@ -50,6 +50,8 @@ export interface Opportunity {
   decision?: Decision;
   /** Why the last negotiator run stopped without a turn. */
   stall?: Stall;
+  /** Whether the principal has spoken to this opportunity since its last decision. */
+  answered?: boolean;
 }
 
 /** Everything a wake sees: one signal, its conversation, and all of its opportunities. */

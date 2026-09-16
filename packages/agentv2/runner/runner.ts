@@ -68,12 +68,15 @@ export function startRunner(options: RunnerOptions): Runner {
 
   /**
    * Work one negotiation, and wake the signal when it stalls: the stall stands
-   * on the conversation, so that wake owes this opportunity a decision and can
-   * ask the principal for what the brief was missing.
+   * on the conversation, so that wake can ask the principal for what the brief
+   * was missing.
    *
-   * Only the first stall wakes, and the opportunity is then held out of the
-   * wake's own negotiators until the principal answers: without that, deciding
-   * and stalling would trade places without end.
+   * A stall inside a wave waits for the wake that fires when the wave empties,
+   * so every stall of that batch is put to the principal together rather than
+   * one wake, one question at a time. Only the first stall of an opportunity
+   * counts, and it is then held out of the wake's own negotiators until the
+   * principal answers: without that, asking and stalling would trade places
+   * without end.
    *
    * @param intent - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
@@ -88,6 +91,7 @@ export function startRunner(options: RunnerOptions): Runner {
     log(`stall on ${opportunityId}: ${result.stall.reason}`);
     if (stalled.has(opportunityId)) return;
     stalled.set(opportunityId, intent.id);
+    if (waves.get(intent.id)?.has(opportunityId)) return;
     wakeNow(intent.id);
   }
 

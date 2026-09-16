@@ -88,17 +88,26 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
 
 /**
  * What each opportunity carries into this run: its latest brief and decision,
- * and a stall still waiting to be answered.
+ * a stall still waiting to be answered, and whether the principal has spoken
+ * to it since that decision.
  *
- * A stall stands only until the next decision for that opportunity, which is
- * the wake's answer to it.
+ * A stall and an answer stand only until the next decision for that
+ * opportunity, which is the wake's reply to both.
  *
  * @param conversation - The signal's conversation, oldest first.
- * @returns The standing brief, decision and stall per opportunity.
+ * @returns The standing brief, decision, stall and answer per opportunity.
  */
-function standing(conversation: ConversationEntry[]): Map<string, { brief?: string; decision?: Decision; stall?: Stall }> {
-  const perOpportunity = new Map<string, { brief?: string; decision?: Decision; stall?: Stall }>();
+function standing(conversation: ConversationEntry[]): Map<string, { brief?: string; decision?: Decision; stall?: Stall; answered?: boolean }> {
+  const perOpportunity = new Map<string, { brief?: string; decision?: Decision; stall?: Stall; answered?: boolean }>();
   for (const entry of conversation) {
+    // An answer names one negotiation; anything else the principal writes
+    // speaks to every negotiation this signal is running.
+    if (entry.kind === "answer" || entry.kind === "user") {
+      for (const [id, carried] of perOpportunity) {
+        if (!entry.opportunity || entry.opportunity === id) carried.answered = true;
+      }
+      continue;
+    }
     if (!entry.opportunity || (entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall")) continue;
     const current = perOpportunity.get(entry.opportunity) ?? {};
     if (entry.kind === "brief") current.brief = entry.text;
@@ -106,6 +115,7 @@ function standing(conversation: ConversationEntry[]): Map<string, { brief?: stri
     else if (DECISIONS.includes(entry.text)) {
       current.decision = entry.text as Decision;
       delete current.stall;
+      delete current.answered;
     }
     perOpportunity.set(entry.opportunity, current);
   }

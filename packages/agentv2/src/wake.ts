@@ -15,9 +15,13 @@ const DECIDE_PROMPT = [
 
 const ATTEND_PROMPT = [
   "You speak to your principal about this signal. Ask a question when a missing personal fact or an approval to commit them would change the next move. Write a note when an outcome or obstacle is worth their attention. Retire a question whose answer can no longer change anything.",
+  "Ask in this one run for every counterpart still waiting on a fact, one ask each. This is when they are put to your principal together; a counterpart you leave out waits for a later run.",
   "Routine progress is not worth a note, and a negotiator's own decisions are not yours to report. Stay silent when nothing needs them.",
-  "Do not invent facts. Do not re-ask what this conversation already answered.",
+  "Do not invent facts. Do not re-ask what this conversation already answered, and do not ask again what it already has an unanswered question for.",
 ].join("\n\n");
+
+/** How many turns attend gets: enough to ask every stalled counterpart, then stop. */
+const ATTEND_STEPS = 4;
 
 const DECISIONS: Decision[] = ["continue", "accept", "decline", "stop"];
 
@@ -34,6 +38,10 @@ function principalFacts(user: User): Pick<User, "name" | "intro" | "location" | 
  * The opportunities this wake owes a decision: this seat's move, with nothing
  * standing that already carries it.
  *
+ * A stall does not owe one. It is what the principal is asked about, and their
+ * answer is what puts the opportunity back here — deciding on the stall alone
+ * would close the negotiation with the fact still missing.
+ *
  * @param opportunities - Every opportunity on this signal.
  * @param focus - The only opportunity to work, when this wake has one.
  * @returns Those a decide run must work, in snapshot order.
@@ -44,7 +52,7 @@ function pending(opportunities: Opportunity[], focus?: string): Opportunity[] {
       (!focus || opportunity.id === focus) &&
       opportunity.status === "negotiating" &&
       opportunity.awaiting !== "them" &&
-      (!opportunity.brief || !opportunity.decision || opportunity.stall),
+      (!opportunity.brief || !opportunity.decision || opportunity.answered),
   );
 }
 
@@ -136,7 +144,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       tool({
         name: "ask",
         description:
-          "Ask the principal one question, when a missing personal fact or an approval to commit them would change the next move. Use opportunity scope for one counterpart's terms or any approval, intent scope for a standing fact.",
+          "Ask the principal one question, when a missing personal fact or an approval to commit them would change the next move. Call it once per counterpart that still needs a fact. Use opportunity scope for one counterpart's terms or any approval, intent scope for a standing fact.",
         parameters: {
           type: "object",
           additionalProperties: false,
@@ -198,6 +206,9 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
 
     return run({
       ...runtime,
+      // Every stalled counterpart is asked in this one run, so attend needs the
+      // turns to put more than one question; decide still gets a single call.
+      maxSteps: ATTEND_STEPS,
       instructions: ATTEND_PROMPT,
       prompt:
         "Say what your principal needs to hear about this signal now, or nothing.\n" +
