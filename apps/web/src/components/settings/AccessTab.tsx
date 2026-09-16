@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { Member } from '@/services/networks';
+import { useNetworksState } from '@/contexts/NetworksContext';
+import { JoinRequest, Member } from '@/services/networks';
 import UserAvatar from '@/components/UserAvatar';
 import { useNavigate } from 'react-router';
 import { log } from '@/lib/logger';
@@ -35,8 +36,12 @@ export default function AccessTab({
 }: AccessTabProps) {
   const navigate = useNavigate();
   const { user: currentUser } = useAuthContext();
+  const { refreshNetworks } = useNetworksState();
 
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(network.permissions?.joinPolicy === 'anyone');
+  const [requireApproval, setRequireApproval] = useState(network.permissions?.requireAdminApproval === true);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [reviewingUserId, setReviewingUserId] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
@@ -60,6 +65,7 @@ export default function AccessTab({
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local state from prop changes */
   useEffect(() => {
     setAnyoneCanJoin(network.permissions?.joinPolicy === 'anyone');
+    setRequireApproval(network.permissions?.requireAdminApproval === true);
     if (network.permissions?.invitationLink?.code) {
       setInvitationLink({ code: network.permissions.invitationLink.code });
     } else {
@@ -83,6 +89,25 @@ export default function AccessTab({
   useEffect(() => {
     loadMembers(); // eslint-disable-line react-hooks/set-state-in-effect -- load on mount
   }, [loadMembers]);
+
+  const isGated = !anyoneCanJoin && requireApproval;
+
+  const loadJoinRequests = useCallback(async () => {
+    try {
+      setJoinRequests(await networkService.listJoinRequests(networkId));
+    } catch (err) {
+      logger.error('Error loading join requests', { error: err });
+    }
+  }, [networkService, networkId]);
+
+  useEffect(() => {
+    // Turning the gate off admits everyone waiting, so an ungated network has no queue.
+    if (!isGated) {
+      setJoinRequests([]); // eslint-disable-line react-hooks/set-state-in-effect -- clears the queue with the gate
+      return;
+    }
+    loadJoinRequests();
+  }, [isGated, loadJoinRequests]);
 
   const searchUsers = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -132,9 +157,41 @@ export default function AccessTab({
       if (updatedNetwork.permissions?.invitationLink?.code) {
         setInvitationLink({ code: updatedNetwork.permissions.invitationLink.code });
       }
+      await refreshNetworks();
     } catch (err) {
       logger.error('Error updating permissions', { error: err });
       error('Failed to update permissions');
+    }
+  };
+
+  const handleUpdateApproval = async (nextRequireApproval: boolean) => {
+    setRequireApproval(nextRequireApproval);
+    try {
+      await networkService.updatePermissions(networkId, { requireAdminApproval: nextRequireApproval });
+      const updatedNetwork = await networkService.getNetwork(networkId);
+      onUpdated(updatedNetwork);
+      if (!nextRequireApproval) await loadMembers();
+      await refreshNetworks();
+    } catch (err) {
+      setRequireApproval(!nextRequireApproval);
+      logger.error('Error updating approval requirement', { error: err });
+      error('Failed to update approval requirement');
+    }
+  };
+
+  const handleReviewRequest = async (userId: string, decision: 'approve' | 'decline') => {
+    setReviewingUserId(userId);
+    try {
+      await networkService.reviewJoinRequest(networkId, userId, decision);
+      setJoinRequests(prev => prev.filter(r => r.id !== userId));
+      if (decision === 'approve') await loadMembers();
+      await refreshNetworks();
+      success(decision === 'approve' ? 'Request approved' : 'Request declined');
+    } catch (err) {
+      logger.error('Error reviewing join request', { error: err });
+      error('Failed to review request');
+    } finally {
+      setReviewingUserId(null);
     }
   };
 
@@ -268,7 +325,58 @@ export default function AccessTab({
               </div>
             </button>
           </div>
+
+          {!anyoneCanJoin && (
+            <label className="mt-2 flex items-center gap-3 p-3 border border-gray-200 rounded-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={requireApproval}
+                onChange={(e) => handleUpdateApproval(e.target.checked)}
+                className="h-4 w-4 flex-shrink-0 accent-black"
+              />
+              <div>
+                <p className="text-sm font-medium text-black">Require admin approval</p>
+                <p className="text-xs text-gray-400">Require an admin to approve new members joining via the group link.</p>
+              </div>
+            </label>
+          )}
         </div>
+
+        {joinRequests.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
+              Pending approval <span className="normal-case font-normal">({joinRequests.length})</span>
+            </p>
+            <div className="space-y-0.5">
+              {joinRequests.map((request) => (
+                <div key={request.id} className="flex items-center gap-3 px-3 py-2 rounded-sm hover:bg-gray-50 transition-colors">
+                  <UserAvatar id={request.id} name={request.name} avatar={request.avatar} size={28} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-black truncate">{request.name}</p>
+                    <p className="text-xs text-gray-400 truncate">{request.email}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-7"
+                    disabled={reviewingUserId === request.id}
+                    onClick={() => handleReviewRequest(request.id, 'decline')}
+                  >
+                    Decline
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="text-xs h-7"
+                    disabled={reviewingUserId === request.id}
+                    onClick={() => handleReviewRequest(request.id, 'approve')}
+                  >
+                    Approve
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">

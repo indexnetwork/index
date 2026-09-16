@@ -262,6 +262,7 @@ export default function NetworksPage() {
                       const viewerRole = (network as { role?: 'owner' | 'member' }).role;
                       const isOwner = viewerRole === 'owner'
                         || (viewerRole !== 'member' && user?.id === network.user?.id);
+                      const pendingJoinCount = (network as { pendingJoinCount?: number }).pendingJoinCount ?? 0;
                       return (
                         <button
                           key={network.id}
@@ -278,6 +279,11 @@ export default function NetworksPage() {
                               {network._count?.members || 0} members
                             </p>
                           </div>
+                          {pendingJoinCount > 0 && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 ml-3 bg-amber-50 text-amber-700">
+                              {pendingJoinCount} waiting
+                            </span>
+                          )}
                           <span className={`text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 ml-3 ${
                             isOwner ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'
                           }`}>

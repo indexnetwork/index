@@ -15,6 +15,13 @@
       "when": 1789590435620,
       "tag": "0001_unprefix_protocol_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789597726667,
+      "tag": "0002_create_network_join_requests",
+      "breakpoints": true
     }
   ]
 }

@@ -20,6 +20,18 @@ export interface Member {
   updatedAt?: string;
 }
 
+/** Outcome of opening an invite link: joined now, already in, or waiting for an owner. */
+export type AcceptInvitationStatus = 'joined' | 'already_member' | 'pending';
+
+// A person waiting for an owner to approve their link join
+export interface JoinRequest {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string | null;
+  requestedAt: string;
+}
+
 // Response interface for getMembers with pagination
 export interface GetMembersResponse {
   members: Member[];
@@ -221,7 +233,7 @@ export const createNetworksService = (api: ReturnType<typeof useAuthenticatedAPI
 
   // Permissions Management
   // Update network permissions (joinPolicy)
-  updatePermissions: async (networkId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only' }): Promise<Network> => {
+  updatePermissions: async (networkId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only'; requireAdminApproval?: boolean }): Promise<Network> => {
     const response = await api.patch<APIResponse<Network>>(`/networks/${networkId}/permissions`, permissions);
     if (!response.network) {
       throw new Error('Failed to update permissions');
@@ -264,19 +276,27 @@ export const createNetworksService = (api: ReturnType<typeof useAuthenticatedAPI
     };
   },
 
-  // Accept invitation and join network
-  acceptInvitation: async (code: string): Promise<{ network: Network; membership: Member; alreadyMember?: boolean }> => {
+  // Accept invitation: joins, enters an existing membership, or waits for an owner
+  acceptInvitation: async (code: string): Promise<{ status: AcceptInvitationStatus; network: Network }> => {
     const response = await api.post<{
-      message: string;
+      status: AcceptInvitationStatus;
       network: Network;
-      membership: Member;
-      alreadyMember?: boolean;
     }>(`/networks/invitation/${code}/accept`);
     return {
+      status: response.status,
       network: response.network,
-      membership: response.membership,
-      alreadyMember: response.alreadyMember
     };
+  },
+
+  // List people waiting for approval to join a network (owner only)
+  listJoinRequests: async (networkId: string): Promise<JoinRequest[]> => {
+    const response = await api.get<{ requests: JoinRequest[] }>(`/networks/${networkId}/join-requests`);
+    return response.requests || [];
+  },
+
+  // Approve or decline a pending join request (owner only)
+  reviewJoinRequest: async (networkId: string, userId: string, decision: 'approve' | 'decline'): Promise<void> => {
+    await api.post(`/networks/${networkId}/join-requests/${userId}/review`, { decision });
   },
 
   // Get current user's member settings (including permissions)

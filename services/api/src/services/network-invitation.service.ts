@@ -138,6 +138,15 @@ class NetworkInvitationService {
       .values({ networkId, userId, permissions: ['member'], autoAssign: true })
       .onConflictDoNothing()
       .returning({ userId: schema.networkMembers.userId });
+
+    // An owner adding someone settles any request they had waiting.
+    await db
+      .delete(schema.networkJoinRequests)
+      .where(and(
+        eq(schema.networkJoinRequests.networkId, networkId),
+        eq(schema.networkJoinRequests.userId, userId),
+      ));
+
     return { alreadyMember: inserted.length === 0 };
   }
 }
