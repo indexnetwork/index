@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
+import { negotiationService, negotiationTurnSchema as submitTurnSchema, type SubmitTurnRejection } from '../services/negotiation.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
+import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
 const logger = log.controller.from('opportunity');
 
@@ -13,6 +15,21 @@ const listStatusSchema = z.enum(['pending', 'accepted', 'rejected', 'expired']);
 const radarStatusSchema = z.enum(['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
+
+/** How each refusal to take a turn reads on the wire. */
+const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: string }> = {
+  not_found: { status: 404, error: 'No negotiation for this opportunity' },
+  not_a_seat: { status: 403, error: 'You do not hold a seat in this negotiation' },
+  already_settled: { status: 409, error: 'This negotiation has already settled' },
+  not_your_turn: { status: 403, error: 'It is not your turn' },
+  propose_not_first: { status: 400, error: 'propose is only valid as the opening turn; use counter' },
+  counter_is_first: { status: 400, error: 'counter needs a turn to answer; use propose' },
+  accept_without_offer: { status: 400, error: 'accept needs a standing offer from the other seat' },
+  signal_inactive: { status: 409, error: 'A signal in this negotiation is paused or removed' },
+  turn_limit: { status: 409, error: 'The protocol turn limit was reached; the outcome remains undecided' },
+  invalid_turn: { status: 400, error: 'Invalid negotiation action or message' },
+  raced: { status: 409, error: 'The other seat moved first; re-read the negotiation' },
+};
 
 function parseIntentScopeFromUrl(url: URL): { scopeType?: 'intent'; scopeId?: string } | Response {
   const rawScopeType = url.searchParams.get('scopeType') ?? undefined;
@@ -319,6 +336,101 @@ export class OpportunityController {
       );
     }
     return Response.json(result);
+  }
+
+  /**
+   * GET /opportunities/:id/negotiation — the opportunity's negotiation with
+   * its turn log.
+   *
+   * Singular because there is exactly one: the opportunity and its negotiation
+   * are written together, and the schema holds that with a unique index on the
+   * opportunity.
+   *
+   * @param _req - Incoming request (unused).
+   * @param user - Authenticated user from AuthGuard, who must hold a seat.
+   * @param params - Route params; `id` is a full UUID or short prefix.
+   * @returns The record as this seat sees it, or 404 when it is not theirs.
+   */
+  @Get('/:id/negotiation')
+  @UseGuards(AuthGuard)
+  async readNegotiation(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const negotiation = await negotiationService.read(resolved.id, user.id);
+    if (!negotiation) return Response.json({ error: 'No negotiation for this opportunity' }, { status: 404 });
+    return Response.json({ negotiation });
+  }
+
+  /**
+   * POST /opportunities/:id/negotiation/turns — submit one structured decision.
+   *
+   * @param req - Carries the action and message, plus an optional executorId query fence for external runtimes.
+   * @param user - Authenticated user from AuthGuard, who must hold a seat.
+   * @param params - Route params; `id` is a full UUID or short prefix.
+   * @returns The negotiation after the turn, or the refusal.
+   */
+  @Post('/:id/negotiation/turns')
+  @UseGuards(AuthGuard)
+  async submitTurn(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+
+    const executorId = new URL(req.url).searchParams.get('executorId');
+    if (executorId !== null && !uuidQuerySchema.safeParse(executorId).success) {
+      return Response.json({ error: 'executorId must be a UUID' }, { status: 400 });
+    }
+
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    const parsed = submitTurnSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid turn' }, { status: 400 });
+    }
+
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const opportunityId = resolved.id;
+
+    let result;
+    try {
+      result = await negotiationService.submitTurn(opportunityId, user.id, parsed.data,
+        executorId ? { userId: user.id, agentId: executorId } : undefined);
+    } catch (error) {
+      if (error instanceof RuntimeConflictError) {
+        return Response.json({ error: 'The selected negotiation executor changed; stop this work' }, { status: 409 });
+      }
+      throw error;
+    }
+    if ('rejection' in result) {
+      const response = REJECTION_RESPONSES[result.rejection];
+      logger.verbose('Turn refused', { userId: user.id, opportunityId, rejection: result.rejection });
+      return Response.json({ error: response.error }, { status: response.status });
+    }
+
+    logger.info('Turn submitted', {
+      userId: user.id,
+      opportunityId,
+      action: parsed.data.action,
+      outcome: result.outcome,
+    });
+    return Response.json({ negotiation: result });
   }
 
 }

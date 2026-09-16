@@ -56,9 +56,9 @@ export const createNegotiationService = (api: ReturnType<typeof import('../lib/a
     return response.negotiations;
   },
 
-  /** Read one negotiation with its turn log. */
+  /** Read an opportunity's negotiation with its turn log. */
   getNegotiation: async (opportunityId: string): Promise<NegotiationDetail> => {
-    const response = await api.get<{ negotiation: NegotiationDetail }>(`/negotiations/${opportunityId}`);
+    const response = await api.get<{ negotiation: NegotiationDetail }>(`/opportunities/${opportunityId}/negotiation`);
     return response.negotiation;
   },
 });

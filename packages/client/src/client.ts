@@ -331,7 +331,7 @@ export class IndexClient {
    */
   async getNegotiation(id: string): Promise<NegotiationDetail> {
     const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
-      "GET", `/negotiations/${encodeURIComponent(id)}`,
+      "GET", `/opportunities/${encodeURIComponent(id)}/negotiation`,
     );
     return negotiation;
   }
@@ -346,7 +346,7 @@ export class IndexClient {
     turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
   ): Promise<NegotiationDetail> {
     const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
-      "POST", this.fence(`/negotiations/${encodeURIComponent(id)}/turns`), turn,
+      "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/turns`), turn,
     );
     return negotiation;
   }
