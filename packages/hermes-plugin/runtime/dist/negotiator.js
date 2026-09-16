@@ -461,6 +461,9 @@ class PrincipalInbox {
     this.immediate = false;
   }
   async review() {
+    await this.host.renew();
+    if (this.stopped)
+      return;
     const controller = new AbortController;
     this.reviewController = controller;
     const context = this.context();
@@ -640,6 +643,7 @@ class NegotiationAgent {
       input: () => {
         this.contextVersion++;
       },
+      renew: () => this.fence(),
       error: (reason) => {
         host.error(null, owner, "Principal communication failed: " + reason);
         this.stop();
@@ -662,7 +666,9 @@ class NegotiationAgent {
       this.tasks.set(saved.opportunityId, { ...saved, counterparty: { id: "", name: null }, controller: new AbortController, notified: false, stopped: false });
     }
     this.loaded = true;
+    await this.fence();
     await Promise.all([...this.tasks.values()].map(async (task) => {
+      await this.fence();
       const previous = task.record;
       const record = await this.participant.client.readNegotiation(task.opportunityId);
       if (previous?.turnCount !== record.turnCount || record.settledAt || record.protocol.blockedReason && record.protocol.blockedReason !== "not_your_turn")
@@ -856,10 +862,17 @@ class NegotiationAgent {
     };
     return [readTool, submitTool, requestTool];
   }
+  fence() {
+    return this.store.renew?.() ?? Promise.resolve();
+  }
   drain(task) {
     if (task.running)
       return task.running;
-    task.running = this.run(task).finally(() => {
+    task.running = this.fence().then(() => this.run(task), (error) => {
+      this.controller.abort();
+      this.inbox.stop();
+      this.host.error(null, this.participant.owner, error instanceof Error ? error.message : String(error));
+    }).finally(() => {
       task.running = undefined;
       if (task.notified && !task.stopped && !this.controller.signal.aborted)
         return this.drain(task);
@@ -870,6 +883,14 @@ class NegotiationAgent {
     const { owner, client, intent } = this.participant;
     const signal = AbortSignal.any([this.controller.signal, task.controller.signal]);
     while (task.notified && !task.stopped && !signal.aborted) {
+      try {
+        await this.fence();
+      } catch (error) {
+        this.controller.abort();
+        this.inbox.stop();
+        this.host.error(null, owner, error instanceof Error ? error.message : String(error));
+        return;
+      }
       task.notified = false;
       try {
         let record = await client.readNegotiation(task.opportunityId);
@@ -1002,11 +1023,11 @@ class IndexClient {
     return payload;
   }
   async readNegotiation(id) {
-    const { negotiation } = await this.request("GET", `/negotiations/${encodeURIComponent(id)}`);
+    const { negotiation } = await this.request("GET", `/opportunities/${encodeURIComponent(id)}/negotiation`);
     return negotiation;
   }
   async submitTurn(id, turn) {
-    const { negotiation } = await this.request("POST", `/negotiations/${encodeURIComponent(id)}/turns?executorId=${encodeURIComponent(this.executorId)}`, turn);
+    const { negotiation } = await this.request("POST", `/opportunities/${encodeURIComponent(id)}/negotiation/turns?executorId=${encodeURIComponent(this.executorId)}`, turn);
     return negotiation;
   }
   async listNegotiations() {
@@ -1082,6 +1103,7 @@ class FilePrincipalStore {
     this.envelope.delivered.push(...ids);
     await this.flush();
   }
+  async renew() {}
   async close() {
     await this.writing;
   }

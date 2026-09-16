@@ -116,7 +116,6 @@ CREATE TABLE "protocol_intents" (
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	"archived_at" timestamp,
-	"last_visited_at" timestamp with time zone,
 	"first_discovery_succeeded_at" timestamp with time zone,
 	"user_id" text NOT NULL,
 	"source_id" text,

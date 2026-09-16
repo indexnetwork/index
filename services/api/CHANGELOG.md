@@ -10,14 +10,34 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
-- **Migration history squashed to a single baseline.** The 181 journal entries
+- **Migration history squashed to a single baseline.** The 182 journal entries
   accumulated since February are replaced by one `0000_initial_schema`
   generated from `database.schema.ts`, so `drizzle/` now holds one SQL file and
   one snapshot. Existing databases keep their data: they are baselined by
   replacing `drizzle.__drizzle_migrations` with the single row
-  (`hash` `3d9bbc55…`, `created_at` `1789587632538`), after which `db:migrate`
+  (`hash` `bc5e6550…`, `created_at` `1789588855899`), after which `db:migrate`
   is a no-op. Historical backfills stay applied; they are simply no longer
   replayable, and an empty database now gets the current schema plus `db:seed`.
+- **BREAKING: a negotiation is reached through its opportunity.**
+  `GET /negotiations/:opportunityId` is now `GET /opportunities/:id/negotiation`
+  and `POST /negotiations/:opportunityId/turns` is now
+  `POST /opportunities/:id/negotiation/turns`. There is exactly one negotiation
+  per opportunity — unique index on `opportunity_id`, both written by the same
+  `openCounterparties` transaction — so the old paths named one resource and
+  took the other's key. Both nested routes accept a short id prefix, which the
+  old ones did not. `GET /negotiations` is unchanged and remains the only view
+  that spans opportunities.
+
+### Removed
+- **BREAKING: five routes nothing called.** `POST /negotiations/open` (staff
+  hand-open; `POST /intents/:id/opportunities` already opens negotiations),
+  `GET /networks/:networkId/opportunities` (duplicated
+  `GET /opportunities?networkId=`), and `GET /debug/intents/:id` plus
+  `GET /debug/chat/:id`. `GET /debug/radar` stays.
+- **BREAKING: `POST /intents/:id/visit` and `protocol_intents.last_visited_at`.**
+  The endpoint stamped a column no read path consulted any more, so the route,
+  the web hook behind it, and the column are gone (the column is simply absent
+  from the new baseline; its migration was squashed away).
 
 ### Added
 - **Discovery is on demand, and the agent judges it.**

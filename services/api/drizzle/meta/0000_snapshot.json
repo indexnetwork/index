@@ -1,5 +1,5 @@
 {
-  "id": "e85f0346-d9ec-497d-98b9-2cb496105dd6",
+  "id": "6cf62c02-227a-433f-846a-786772e79040",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -880,12 +880,6 @@
         "archived_at": {
           "name": "archived_at",
           "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_visited_at": {
-          "name": "last_visited_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

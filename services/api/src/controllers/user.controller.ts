@@ -15,7 +15,7 @@ const BATCH_MAX_IDS = 100;
  *
  * @param negotiation - The record as the viewer's seat sees it.
  * @returns Counterparty, settlement and turn count; the turn log is on the
- *   detail read at `GET /negotiations/:opportunityId`.
+ *   detail read at `GET /opportunities/:id/negotiation`.
  */
 function toHistoryEntry(negotiation: NegotiationView) {
   return {

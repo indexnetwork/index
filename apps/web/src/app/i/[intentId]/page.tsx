@@ -12,7 +12,6 @@ import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/Opportun
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
-import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
@@ -170,7 +169,6 @@ export default function IntentDetailPage() {
   const { intentId } = useParams<{ intentId: string }>();
   const intentsService = useIntents();
   const opportunitiesService = useOpportunities();
-  useIntentVisitPing(intentId);
   const { error: showError } = useNotifications();
 
   const [intent, setIntent] = useState<Awaited<

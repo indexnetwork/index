@@ -507,15 +507,15 @@ export class ApiClient {
     return (await this.get("/api/agents/me")).json();
   }
 
-  /** Read a negotiation directly by opportunity ID, including protocol guidance. */
+  /** Read an opportunity's negotiation, including protocol guidance. */
   async getNegotiation(opportunityId: string): Promise<NegotiationDetail> {
-    const body = await (await this.get(`/api/negotiations/${encodeURIComponent(opportunityId)}`)).json() as { negotiation: NegotiationDetail };
+    const body = await (await this.get(`/api/opportunities/${encodeURIComponent(opportunityId)}/negotiation`)).json() as { negotiation: NegotiationDetail };
     return body.negotiation;
   }
 
   /** Submit one observed turn; rejected or uncertain writes are never replayed. */
   async submitNegotiationTurn(opportunityId: string, turn: { action: NegotiationTurnAction; message: string; expectedTurnCount: number }): Promise<NegotiationDetail> {
-    const body = await (await this.post(`/api/negotiations/${encodeURIComponent(opportunityId)}/turns`, turn)).json() as { negotiation: NegotiationDetail };
+    const body = await (await this.post(`/api/opportunities/${encodeURIComponent(opportunityId)}/negotiation/turns`, turn)).json() as { negotiation: NegotiationDetail };
     return body.negotiation;
   }
 

@@ -23,16 +23,6 @@ const updateStatusLogger = log.service.from("OpportunityService.updateOpportunit
  */
 const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'accepted'];
 
-/**
- * Default statuses for the per-network community list. Stricter than
- * {@link DEFAULT_LIST_STATUSES}: it also drops `latent`. The per-user list can
- * include `latent` because the adapter applies a role-based visibility guard
- * that gates candidate-pool opportunities per actor — but the network list only
- * checks membership, with no per-actor guard, so surfacing `latent` would leak
- * pre-draft candidates to every member. Live community statuses only.
- */
-const DEFAULT_NETWORK_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'accepted'];
-
 function sanitizeOpportunityForResponse<T extends Opportunity>(
   opportunity: T,
   names: { counterpartName?: string; viewerName?: string } = {},
@@ -808,49 +798,6 @@ export class OpportunityService {
       opportunity: sanitizeOpportunityForResponse(updated),
     };
   }
-
-  /**
-   * Get opportunities for a specific network.
-   *
-   * @param networkId - The network ID
-   * @param userId - User requesting (for authorization)
-   * @param options - Filter options
-   * @returns List of opportunities or error
-   */
-  async getOpportunitiesForNetwork(
-    networkId: string,
-    userId: string,
-    options?: {
-      status?: 'pending' | 'accepted' | 'rejected' | 'expired';
-      statuses?: OpportunityStatus[];
-      limit?: number;
-      offset?: number;
-    }
-  ) {
-    logger.verbose('Getting opportunities for network', { networkId, userId, options });
-
-    const isOwner = await this.db.isNetworkOwner(networkId, userId);
-    const isMember = await this.db.isNetworkMember(networkId, userId);
-
-    if (!isOwner && !isMember) {
-      return { error: 'Not a member of this network', status: 403 };
-    }
-
-    // IND-254: the network list had no status filtering at all, so it leaked
-    // draft/latent and terminal-stale expired/rejected into the community view.
-    // Default to live community statuses (no latent) unless an explicit
-    // status/statuses filter is given. Non-owner members only see opportunities
-    // they are an actor on; owners keep the full curator list. The actor filter
-    // goes to the query, not to the result, so limit/offset paginate visible rows.
-    const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
-    const scoped = { ...options, ...(isOwner ? {} : { actorUserId: userId }) };
-    const rows = await this.db.getOpportunitiesForNetwork(
-      networkId,
-      hasExplicitStatus ? scoped : { ...scoped, statuses: DEFAULT_NETWORK_LIST_STATUSES },
-    );
-    return rows.map((opp) => sanitizeOpportunityForResponse(opp));
-  }
-
 
   /**
    * Get chat context for a conversation between two users.

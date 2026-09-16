@@ -1,5 +1,11 @@
 # Changelog
 
+## 59.0.1
+
+### Documentation
+
+- `IMPLEMENTATION.md` now describes the host's negotiation routes as they are: `GET /api/negotiations` lists a seat's negotiations, and one is observed and turned through its opportunity at `GET /api/opportunities/:id/negotiation` and `POST /api/opportunities/:id/negotiation/turns`. No exported surface changed.
+
 ## 59.0.0
 
 ### Breaking changes
