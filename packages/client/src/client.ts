@@ -59,6 +59,22 @@ export interface IntentSummary {
   status: IntentStatus;
 }
 
+/** One counterparty a search surfaced, as an agent judging it needs to see it. */
+export interface Counterparty {
+  intentId: string;
+  userId: string;
+  name: string;
+  statement: string;
+  networkId: string;
+  score: number;
+}
+
+/** One counterparty an agent picked to turn into an opportunity. */
+export interface CounterpartyPick {
+  intentId: string;
+  networkId: string;
+}
+
 /** The authenticated owner, with the profile facts an agent may state as theirs. */
 export interface Me {
   id: string;
@@ -263,6 +279,42 @@ export class IndexClient {
       statement: intent.payload,
       status: (intent.archivedAt ? "ARCHIVED" : intent.status ?? "ACTIVE") as IntentStatus,
     }));
+  }
+
+  /**
+   * Search one signal's communities for counterparties.
+   *
+   * Nothing is written: the caller reads these and decides which are worth an
+   * opportunity.
+   *
+   * @param intentId - The signal to search from.
+   * @param query - What to look for, in the caller's own words.
+   * @returns Counterparties, strongest first.
+   */
+  async discover(intentId: string, query: string): Promise<Counterparty[]> {
+    const { counterparties } = await this.request<{ counterparties: Counterparty[] }>(
+      "POST", `/intents/${encodeURIComponent(intentId)}/discover`, { query },
+    );
+    return counterparties;
+  }
+
+  /**
+   * Create one opportunity per picked counterparty. Idempotent on the pair: a
+   * counterparty already sharing an opportunity with this signal reports that
+   * one rather than a second.
+   *
+   * @param intentId - The signal the opportunities belong to.
+   * @param counterparties - Counterparty signals and the community each pair sits in.
+   * @returns The opportunities that now exist.
+   */
+  async createOpportunities(
+    intentId: string,
+    counterparties: CounterpartyPick[],
+  ): Promise<{ opportunityId: string }[]> {
+    const result = await this.request<{ opportunities: { opportunityId: string }[] }>(
+      "POST", `/intents/${encodeURIComponent(intentId)}/opportunities`, { counterparties },
+    );
+    return result.opportunities;
   }
 
   /**

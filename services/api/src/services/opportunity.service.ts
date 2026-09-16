@@ -161,7 +161,6 @@ export class OpportunityServiceEvents extends EventEmitter {
  * RESPONSIBILITIES:
  * - List opportunities for users and networks
  * - Get and present individual opportunities
- * - Discover opportunities via HyDE graph
  * - Create manual opportunities
  * - Update opportunity status
  */

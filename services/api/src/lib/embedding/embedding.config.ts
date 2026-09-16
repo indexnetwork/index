@@ -11,7 +11,7 @@
  */
 export const OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-large';
 
-/** Embedding vector size; must match DB schema (e.g. intents, hyde_documents, user_contexts). */
+/** Embedding vector size; must match DB schema (e.g. intents, user_contexts). */
 export const OPENROUTER_EMBEDDING_DIMENSIONS = 2000;
 
 /** Base URL for OpenRouter (embeddings are OpenAI-compatible). */

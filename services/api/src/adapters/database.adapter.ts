@@ -10,7 +10,6 @@ export { ChatDatabaseAdapter } from './chat.database.adapter';
 export { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 export { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from './negotiation.database.adapter';
-export { HydeDatabaseAdapter } from './hyde.database.adapter';
 export { UserDatabaseAdapter } from './user.database.adapter';
 export { ConversationDatabaseAdapter } from './conversation.database.adapter';
 
@@ -190,10 +189,6 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     },
     acceptSiblingOpportunities: (counterpartUserId: string, excludeOpportunityId: string) =>
       db.acceptSiblingOpportunities(authUserId, counterpartUserId, excludeOpportunityId),
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // HyDE Operations
-    // ─────────────────────────────────────────────────────────────────────────────
   };
 }
 
@@ -435,9 +430,5 @@ export function createSystemDatabase(
      * that operate system-wide, not scoped to any particular user.
      */
     expireStaleOpportunities: () => db.expireStaleOpportunities(),
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // HyDE Operations (cross-user for opportunity matching)
-    // ─────────────────────────────────────────────────────────────────────────────
   };
 }

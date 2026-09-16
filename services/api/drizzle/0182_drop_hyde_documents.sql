@@ -1,0 +1,1 @@
+DROP TABLE "protocol_hyde_documents" CASCADE;
