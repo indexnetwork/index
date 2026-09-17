@@ -245,7 +245,7 @@ export class NetworkController {
   @UseGuards(AuthGuard)
   async updatePermissions(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; contextInjection?: { discovery: boolean } };
+      const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; requireAdminApproval?: boolean; contextInjection?: { discovery: boolean } };
 
       const result = await networkService.updatePermissions(params.id, user.id, body);
       logger.verbose('Permissions updated for network', { networkId: params.id });
@@ -516,9 +516,56 @@ export class NetworkController {
       return Response.json(result);
     } catch (err: unknown) {
       const msg = errorMessage(err);
+      if (msg.includes('was declined')) {
+        return Response.json({ error: msg }, { status: 403 });
+      }
       const isKnownError = msg.includes('Invalid or expired invitation link');
       logger.warn('Failed to accept invitation', { error: msg, userId: user.id });
       return Response.json({ error: isKnownError ? msg : 'Failed to accept invitation' }, { status: isKnownError ? 400 : 500 });
+    }
+  }
+
+  /**
+   * List the people waiting for approval to join a network. Owner-only.
+   */
+  @Get('/:id/join-requests')
+  @UseGuards(AuthGuard)
+  async getJoinRequests(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      const requests = await networkService.getJoinRequests(params.id, user.id);
+      return Response.json({ requests });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return Response.json({ error: msg }, { status: 403 });
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Approve or decline a pending join request. Owner-only.
+   */
+  @Post('/:id/join-requests/:userId/review')
+  @UseGuards(AuthGuard)
+  async reviewJoinRequest(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    const body = await req.json().catch(() => ({})) as { decision?: string };
+    if (body.decision !== 'approve' && body.decision !== 'decline') {
+      return Response.json({ error: "decision must be 'approve' or 'decline'" }, { status: 400 });
+    }
+    try {
+      await networkService.reviewJoinRequest(params.id, params.userId, user.id, body.decision);
+      logger.verbose('Join request reviewed', { networkId: params.id, targetUserId: params.userId, decision: body.decision });
+      return Response.json({ success: true });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return Response.json({ error: msg }, { status: 403 });
+      }
+      if (msg.includes('Join request not found')) {
+        return Response.json({ error: msg }, { status: 404 });
+      }
+      throw err;
     }
   }
 

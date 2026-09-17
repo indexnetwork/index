@@ -31,7 +31,11 @@ export interface NetworkPermissionsState {
   joinPolicy: 'anyone' | 'invite_only';
   invitationLink: { code: string } | null;
   contextInjection?: { discovery: boolean };
+  /** Only honoured while `joinPolicy` is `invite_only`: link joins wait for an owner. */
+  requireAdminApproval?: boolean;
 }
+
+export type NetworkJoinRequestStatus = 'pending' | 'declined';
 
 /**
  * Early-access "request a network" details, stored under `networks.metadata.request`.
@@ -381,6 +385,17 @@ export const networkMembers = pgTable('network_members', {
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
   pk: primaryKey({ columns: [table.networkId, table.userId] }),
+}));
+
+export const networkJoinRequests = pgTable('network_join_requests', {
+  networkId: text('network_id').notNull().references(() => networks.id),
+  userId: text('user_id').notNull().references(() => users.id),
+  status: text('status').$type<NetworkJoinRequestStatus>().notNull().default('pending'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.networkId, table.userId] }),
+  networkStatusIdx: index('network_join_requests_network_id_status_idx').on(table.networkId, table.status),
 }));
 
 export const intentNetworks = pgTable('intent_networks', {
