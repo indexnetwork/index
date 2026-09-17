@@ -20,8 +20,8 @@ const WAKE_PROMPT = [
   BRIEF_PROMPT,
   "A signal with nothing open yet is the one case where breadth is the whole job: search it in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone a search finds is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time.",
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
-  "Do not re-ask what this conversation already answered, and do not ask again what already has an unanswered question. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
-  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, why the question you are about to ask matters, why you searched or opened something. Not a summary of the signal, and never a negotiator's own moves.",
+  "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
+  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, why the questions you are about to ask matter, why you searched or opened something. Not a summary of the signal, and never a negotiator's own moves.",
   "Do not invent facts. Do not contradict what your principal's conversation already settled. You never take a negotiation turn yourself.",
 ].join("\n\n");
 
@@ -105,7 +105,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "note_principal",
       description:
-        "Tell your principal what you did on this wake: the decisions you just made, the reason for the question you are about to ask, why you searched or opened something. Required before any question. Do not write one when this wake did nothing worth their attention.",
+        "Tell your principal what you did on this wake: the decisions you just made, the reason for the questions you are about to ask, why you searched or opened something. Required before any question. Do not write one when this wake did nothing worth their attention.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -121,7 +121,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "ask_principal",
       description:
-        "Ask your principal one question, when a missing personal fact or an approval to commit them would change the next move. Use opportunity scope for one counterpart's terms or any approval, intent scope for a standing fact. Call note_principal first.",
+        "Ask your principal one question, when a missing personal fact or an approval to commit them would change the next move. One question per missing fact: negotiations stalled on the same fact share a single intent-scoped question, and a fact that is one counterpart's own terms — or any approval — is opportunity-scoped. A question already waiting on your principal rules out asking for that same fact again, nothing else: a stall whose fact no open question covers still has to be asked, or that negotiation waits on an answer that will never come. Call note_principal first.",
       parameters: {
         type: "object",
         additionalProperties: false,

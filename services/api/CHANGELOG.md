@@ -10,6 +10,15 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **A burst of stalls reaches the owner as one wake.** `HostedAgent` woke the
+  signal on the first negotiator that stalled, so that wake read the transcript
+  while its siblings were still running and asked about whichever missing fact
+  it happened to see; the stalls that landed after it were folded into a
+  follow-up wake which then had nothing to say, leaving those negotiations
+  waiting on a question nobody had asked. A wake now fires once no negotiator of
+  that signal is in flight and a stall is waiting, so every stall of a burst is
+  put to the owner together, and the wake may ask one question per missing fact
+  rather than staying silent whenever any question is already open.
 - **The hosted seat is a whole personal agent, not just an A2A responder.**
   `HostedNegotiator` is replaced by `HostedAgent`, which runs
   `@indexnetwork/agentv2` — `briefIfMissing`, `wake`, `negotiate` — for every

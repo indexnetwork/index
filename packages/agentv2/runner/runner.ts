@@ -25,8 +25,9 @@ export interface Runner {
  * for one.
  *
  * A counterpart's turn and an opening are the passive triggers: each briefs
- * that one opportunity if it needs briefing, takes its turn, and stops. No
- * sibling is decided, the principal is not addressed, and no wake follows.
+ * that one opportunity if it needs briefing and takes its turn. No sibling is
+ * decided, and the principal is addressed only once those negotiators are done
+ * and one of them stalled.
  *
  * @param options - Index, the model, and where to report.
  * @returns A handle that wakes a signal on demand and stops everything.
@@ -37,8 +38,8 @@ export function startRunner(options: RunnerOptions): Runner {
   const intents = new Map<string, Intent>();
   const waking = new Set<string>();
   const again = new Set<string>();
-  const waves = new Map<string, Set<string>>();
-  const working = new Set<string>();
+  /** Opportunities with a negotiator in flight, by signal. */
+  const working = new Map<string, string>();
   /** Opportunities whose stall is waiting on the principal, by signal. */
   const stalled = new Map<string, string>();
   let stopped = false;
@@ -73,17 +74,13 @@ export function startRunner(options: RunnerOptions): Runner {
   }
 
   /**
-   * Work one negotiation, and wake the signal when it stalls: the stall stands
-   * on the conversation, so that wake can ask the principal for what the brief
-   * was missing.
+   * Work one negotiation. A stall stands on the conversation and is recorded
+   * here; waking on it is {@link finish}'s call, not this run's.
    *
-   * A stall inside a wave waits for the wake that fires when the wave empties,
-   * so every stall of that batch is put to the principal together rather than
-   * one wake, one question at a time. Only the first stall of an opportunity
-   * counts, and a continue is then held out of the wake's own negotiators
-   * until the principal answers: without that, asking and stalling would
-   * trade places without end. Accept and decline still run — that turn is
-   * what the stall was waiting for.
+   * A continue is held out of the wake's own negotiators while an opportunity
+   * is stalled: without that, asking and stalling would trade places without
+   * end. Accept and decline still run — that turn is what the stall was
+   * waiting for.
    *
    * @param intent - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
@@ -96,10 +93,23 @@ export function startRunner(options: RunnerOptions): Runner {
       return;
     }
     log(`stall on ${opportunityId}: ${result.stall.reason}`);
-    if (stalled.has(opportunityId)) return;
     stalled.set(opportunityId, intent.id);
-    if (waves.get(intent.id)?.has(opportunityId)) return;
-    startWake(intent.id);
+  }
+
+  /**
+   * One negotiator is done. Wake the signal only once nothing else of it is in
+   * flight and a stall is waiting, so every stall of a burst is put to the
+   * principal by one wake rather than one wake, one question at a time —
+   * whether a wake or a counterpart's turn started these negotiators.
+   *
+   * @param intentId - The signal that negotiator belonged to.
+   * @param opportunityId - The negotiation it worked.
+   */
+  function finish(intentId: string, opportunityId: string): void {
+    working.delete(opportunityId);
+    if (stopped) return;
+    if ([...working.values()].includes(intentId)) return;
+    if ([...stalled.values()].includes(intentId)) startWake(intentId);
   }
 
   /**
@@ -114,18 +124,8 @@ export function startRunner(options: RunnerOptions): Runner {
     // the fact: release the hold so that turn goes out.
     if (decision === "accept" || decision === "decline") stalled.delete(opportunityId);
     if (stalled.has(opportunityId)) return;
-    const wave = waves.get(intentId) ?? new Set<string>();
-    waves.set(intentId, wave);
-    working.add(opportunityId);
-    wave.add(opportunityId);
-    void takeTurn(intent, opportunityId).catch(onError).finally(() => {
-      working.delete(opportunityId);
-      wave.delete(opportunityId);
-      // One wake when the wave empties, not per negotiator, and only for a
-      // wave that stalled: one that produced only turns has nothing to think
-      // about.
-      if (!wave.size && !stopped && [...stalled.values()].includes(intentId)) startWake(intentId);
-    });
+    working.set(opportunityId, intentId);
+    void takeTurn(intent, opportunityId).catch(onError).finally(() => finish(intentId, opportunityId));
   }
 
   /**
@@ -151,7 +151,8 @@ export function startRunner(options: RunnerOptions): Runner {
 
   /**
    * A counterpart's turn: take ours back, briefing this one opportunity first
-   * if it has never been briefed. No wake.
+   * if it has never been briefed. Only a stall reaches the principal, through
+   * {@link finish}.
    *
    * @param intentId - The signal it belongs to.
    * @param opportunityId - The negotiation they moved on.
@@ -159,8 +160,8 @@ export function startRunner(options: RunnerOptions): Runner {
   function onCounterpartTurn(intentId: string, opportunityId: string): void {
     const intent = intents.get(intentId);
     if (stopped || !intent || working.has(opportunityId)) return;
-    working.add(opportunityId);
-    void takeTurn(intent, opportunityId).catch(onError).finally(() => working.delete(opportunityId));
+    working.set(opportunityId, intentId);
+    void takeTurn(intent, opportunityId).catch(onError).finally(() => finish(intentId, opportunityId));
   }
 
   // Signals already running when this process started are adopted, not woken:

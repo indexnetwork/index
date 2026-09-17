@@ -39,8 +39,8 @@ export class HostedAgent {
   /** Signals with a wake in flight, and those that asked for one while it ran. */
   private readonly waking = new Set<string>();
   private readonly again = new Set<string>();
-  /** Opportunities with a negotiator in flight. */
-  private readonly working = new Set<string>();
+  /** Opportunities with a negotiator in flight, by the signal they stand on. */
+  private readonly working = new Map<string, string>();
   /** Opportunities whose stall is waiting on the principal, by the signal they stand on. */
   private readonly stalled = new Map<string, string>();
   private readonly joined = new Set<string>();
@@ -113,9 +113,9 @@ export class HostedAgent {
 
   /**
    * Route one frame the way the reference runner routes it: a counterpart's
-   * turn and an opening each move one opportunity and never wake, because
-   * neither is something the principal has to think about. Their own input, a
-   * new signal, and a resumed one are.
+   * turn and an opening each move one opportunity and reach the principal only
+   * if that negotiator stalls, because neither is something they have to think
+   * about. Their own input, a new signal, and a resumed one are.
    *
    * @param record - One entry from an owner's stream.
    */
@@ -223,14 +223,13 @@ export class HostedAgent {
   }
 
   /**
-   * Work one negotiation, and wake the signal when it stalls: the stall stands
-   * on the conversation, so that wake can ask the principal for what the brief
-   * was missing.
+   * Work one negotiation. A stall stands on the conversation and is recorded
+   * here; waking on it is {@link finish}'s call, not this run's.
    *
-   * Only the first stall of an opportunity counts, and a continue is then held
-   * out of the wake's own negotiators until the principal answers — without
-   * that, asking and stalling would trade places without end. Accept and
-   * decline still run: that turn is what the stall was waiting for.
+   * A continue is held out of the wake's own negotiators while an opportunity
+   * is stalled — without that, asking and stalling would trade places without
+   * end. Accept and decline still run: that turn is what the stall was waiting
+   * for.
    *
    * @param userId - The seat owner.
    * @param intentId - The signal this negotiation belongs to.
@@ -241,40 +240,61 @@ export class HostedAgent {
     if (!this.running || this.working.has(opportunityId)) return;
     if (decision === 'accept' || decision === 'decline') this.stalled.delete(opportunityId);
     if (this.stalled.has(opportunityId)) return;
-    this.working.add(opportunityId);
+    this.working.set(opportunityId, intentId);
     // The wake waits for this negotiator to be out of flight: it re-decides the
     // opportunity, and a decision starts a negotiator for it again.
-    const stalled = await this.takeTurn(userId, intentId, opportunityId)
-      .finally(() => { this.working.delete(opportunityId); });
-    if (stalled) await this.wake(userId, intentId);
+    try {
+      await this.takeTurn(userId, intentId, opportunityId);
+    } finally {
+      await this.finish(userId, intentId, opportunityId);
+    }
+  }
+
+  /**
+   * One negotiator is done. Wake the signal only once nothing else of it is in
+   * flight and a stall is waiting, so every stall of a burst is put to the
+   * principal by one wake rather than one wake, one question at a time —
+   * whether a wake or a counterpart's turn started these negotiators.
+   *
+   * @param userId - The seat owner.
+   * @param intentId - The signal that negotiator belonged to.
+   * @param opportunityId - The negotiation it worked.
+   */
+  private async finish(userId: string, intentId: string, opportunityId: string): Promise<void> {
+    this.working.delete(opportunityId);
+    if (!this.running) return;
+    for (const signal of this.working.values()) if (signal === intentId) return;
+    for (const signal of this.stalled.values()) {
+      if (signal === intentId) {
+        await this.wake(userId, intentId);
+        return;
+      }
+    }
   }
 
   /**
    * @param userId - The seat owner.
    * @param intentId - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
-   * @returns Whether this run is the stall the principal has to answer.
    */
-  private async takeTurn(userId: string, intentId: string, opportunityId: string): Promise<boolean> {
-    if (!await this.holdsSeat(userId)) return false;
+  private async takeTurn(userId: string, intentId: string, opportunityId: string): Promise<void> {
+    if (!await this.holdsSeat(userId)) return;
     const intent = await this.activeIntent(userId, intentId);
-    if (!intent) return false;
+    if (!intent) return;
 
     const index = new HostedIndex(userId);
     // A turn that hit the limit without settling is still a `negotiation.turn`
     // frame with nobody awaiting. Reading first is what keeps that from reaching
     // the negotiator, which would stall and ask for a wake over nothing.
     const record = await index.getNegotiation(opportunityId).catch(() => null);
-    if (!record || record.settledAt || record.awaitingUserId !== userId) return false;
+    if (!record || record.settledAt || record.awaitingUserId !== userId) return;
 
     const result = await runNegotiate(index, opportunityId, intent, this.runtime());
     if ('turn' in result) {
       this.stalled.delete(opportunityId);
-      return false;
+      return;
     }
-    const first = !this.stalled.has(opportunityId);
     this.stalled.set(opportunityId, intentId);
-    return first;
   }
 
   /**
