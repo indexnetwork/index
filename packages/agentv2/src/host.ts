@@ -1,7 +1,10 @@
-import type { ConversationMessage, IndexClient, MatchReference, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
+import type { ConversationMessage, Index, MatchReference, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
 
-import { briefIfMissing, negotiate, wake } from "../src/index.ts";
-import type { ConversationEntry, Decision, Intent, Model, NegotiateResult, Opportunity, Stall, WakeAction, WakeResult } from "../src/index.ts";
+import { briefIfMissing } from "./brief.ts";
+import type { Model } from "./model.ts";
+import { negotiate } from "./negotiate.ts";
+import type { ConversationEntry, Decision, Intent, NegotiateResult, Opportunity, Stall, WakeAction, WakeResult } from "./types.ts";
+import { wake } from "./wake.ts";
 
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
 export interface Runtime {
@@ -10,7 +13,7 @@ export interface Runtime {
   signal?: AbortSignal;
   log?: (line: string) => void;
   /** Open this negotiation now, as soon as its brief and decision are published. */
-  onNegotiate?: (opportunityId: string) => void;
+  onNegotiate?: (opportunityId: string, decision?: Decision) => void;
 }
 
 const BRIEF = "Brief: ";
@@ -170,7 +173,7 @@ interface PublishContext {
  * @param context - Counterpart tags, open questions, and where to report.
  */
 export async function publishActions(
-  client: IndexClient,
+  client: Index,
   intentId: string,
   actions: WakeAction[],
   context: PublishContext,
@@ -229,7 +232,7 @@ function counterpartsOf(details: NegotiationDetail[]): Map<string, MatchReferenc
  * @param runtime - Model, clock, cancellation, and where to open negotiations.
  * @returns The wake's actions.
  */
-export async function runWake(client: IndexClient, intent: Intent, runtime: Runtime): Promise<WakeResult> {
+export async function runWake(client: Index, intent: Intent, runtime: Runtime): Promise<WakeResult> {
   const { model, now, signal, log = () => {}, onNegotiate } = runtime;
   const [user, open, inbox] = await Promise.all([
     client.me(),
@@ -270,8 +273,16 @@ export async function runWake(client: IndexClient, intent: Intent, runtime: Runt
     onBrief: async (decided) => {
       await publishActions(client, intent.id, decided, context);
       for (const action of decided) {
-        if (action.type === "decision" && action.decision !== "stop") onNegotiate?.(action.opportunityId);
+        if (action.type === "decision" && action.decision !== "stop") onNegotiate?.(action.opportunityId, action.decision);
       }
+    },
+    // A newly opened opportunity is this seat's turn at turn zero with no
+    // brief, so nothing else will ever move it. Each one starts here and is
+    // briefed by its own run rather than by this wake, whose step budget a
+    // batch of them would exhaust.
+    onOpened: (opportunityIds) => {
+      log(`  opened ${opportunityIds.length}`);
+      for (const opportunityId of opportunityIds) onNegotiate?.(opportunityId);
     },
   });
 
@@ -300,7 +311,7 @@ export async function runWake(client: IndexClient, intent: Intent, runtime: Runt
  * @returns The submitted turn, or why this run took none.
  */
 export async function runNegotiate(
-  client: IndexClient,
+  client: Index,
   opportunityId: string,
   intent: Intent,
   runtime: Runtime,

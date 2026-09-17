@@ -2,7 +2,7 @@ import './startup.env';
 
 import * as Sentry from '@sentry/bun';
 
-import { ModelClient } from '@indexnetwork/agent';
+import { ModelClient } from '@indexnetwork/agentv2';
 
 import { DebugController } from './controllers/debug.controller';
 import { DocsController } from './controllers/docs.controller';
@@ -24,7 +24,7 @@ import { EventsController } from './controllers/events.controller';
 import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
 import { OpportunityEventService } from './services/opportunity-event.service';
-import { HostedNegotiator } from './lib/agent/hosted.negotiator';
+import { HostedAgent } from './lib/agent/hosted.agent';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
 import { log, sanitizeForLog } from './lib/log';
@@ -400,14 +400,14 @@ Bun.serve({
 
 logger.info('Server running', { port: PORT });
 
-// The default A2A seat for owners without an external negotiator.
-const hostedNegotiator = new HostedNegotiator(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
-void hostedNegotiator.start();
+// The default seat for owners without an external negotiator.
+const hostedAgent = new HostedAgent(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
+void hostedAgent.start();
 
 // Graceful shutdown
 const shutdown = async () => {
   logger.info('Shutting down...');
-  await hostedNegotiator.stop();
+  await hostedAgent.stop();
   await Sentry.close(2000);
   process.exit(0);
 };

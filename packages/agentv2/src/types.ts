@@ -1,4 +1,4 @@
-import type { IndexClient } from "@indexnetwork/client";
+import type { Index } from "@indexnetwork/client";
 
 import type { Model } from "./model.ts";
 
@@ -79,7 +79,7 @@ export interface WakeInput {
   opportunities: Opportunity[];
   model: Model;
   /** Index for this owner, for the two operations the model triggers mid-loop. */
-  client: IndexClient;
+  client: Index;
   now?: () => Date;
   signal?: AbortSignal;
   /**
@@ -89,6 +89,13 @@ export interface WakeInput {
    * once the loop ends; the model is never told the host could not persist.
    */
   onBrief?: (actions: WakeAction[]) => void | Promise<void>;
+  /**
+   * The opportunities this wake just opened, as Index created them. They have
+   * no brief yet and it is this seat's turn on every one, so nothing else will
+   * ever move them: the host starts each one, which briefs it and takes the
+   * first turn.
+   */
+  onOpened?: (opportunityIds: string[]) => void;
 }
 
 export type WakeAction =
