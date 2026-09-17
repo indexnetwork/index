@@ -10,6 +10,14 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **`POST /intents/:id/discover` returns a top-N, not whatever clears a score.**
+  The similarity floor of `0.20` is gone, and the body takes an optional
+  `limit` (integer, 1..30, default 10). Retrieval now reads deeper than the
+  limit and drops counterparties this signal already shares a negotiation with
+  before cutting, so a caller asking for ten gets the ten strongest people it
+  can still open rather than three survivors of a cutoff. `create_opportunities`
+  is unchanged at ten per call: which counterparties to open is still the
+  agent's call.
 - **The H2A inbox is a chat, not the responder seat.**
   `POST /conversations/agent/answers` no longer returns 409 when Index holds the
   negotiator seat. Owner answers are recorded whether or not an external

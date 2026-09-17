@@ -4,7 +4,7 @@ import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
-import { IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
+import { DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
 
 const logger = log.controller.from('intent');
 
@@ -31,6 +31,7 @@ const LinkSchema = z.object({
 }).strict();
 const DiscoverSchema = z.object({
   query: z.string().trim().min(1, 'query is required').max(2_000),
+  limit: z.number().int().min(1).max(DISCOVER_LIMIT_MAX).optional(),
 }).strict();
 const CreateOpportunitiesSchema = z.object({
   counterparties: z.array(z.object({
@@ -155,7 +156,7 @@ export class IntentController {
    * Nothing is written and nothing is judged here: the caller reads the ranked
    * counterparties and decides which are worth an opportunity.
    *
-   * @param req - Request with body `{ query: string }`.
+   * @param req - Request with body `{ query: string, limit?: number }`, `limit` being the top-N to return.
    * @param user - Authenticated owner.
    * @param params - Intent UUID or short prefix.
    * @returns The ranked counterparties this query found.
@@ -177,7 +178,7 @@ export class IntentController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const result = await intentService.discover(resolved.id, user.id, parsed.data.query);
+    const result = await intentService.discover(resolved.id, user.id, parsed.data);
     if (result.kind === 'not_found') {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
     }
