@@ -59,6 +59,34 @@ function NetworksRow({ count, pending, onClick }) {
   );
 }
 
+// Handing out a link is its own errand, so it gets its own shelf row rather
+// than living inside one network's access tab. Chain-link mark, same 34px
+// block as the rows around it.
+function InviteRow({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display:"flex", alignItems:"center", gap:12, width:"100%",
+        padding:"5px 13px", cursor:"pointer", textAlign:"left",
+        border:"none", background:"#F2F0EC",
+      }}>
+      <span style={{
+        flex:"0 0 auto", width:34, height:34,
+        display:"flex", alignItems:"center", justifyContent:"center",
+      }}>
+        <span style={{ width:9, height:9, border:"2px solid #000" }}/>
+        <span style={{ width:7, height:2, background:"#000" }}/>
+        <span style={{ width:9, height:9, border:"2px solid #000" }}/>
+      </span>
+      <span style={{
+        flex:1, minWidth:0,
+        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+      }}>invite</span>
+    </button>
+  );
+}
+
 // The agents destination. Same quiet shelf treatment as the networks row above
 // it: both are destinations, not settings, so both get a plain glyph. Your
 // negotiator's picture belongs where the agent is speaking, not on a row whose
@@ -217,6 +245,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
 
   const [hovered, setHovered] = useState(null);
   const [showAgents, setShowAgents] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
 
   // Width the shelf's scrollbar takes when it appears, so the pinned
   // new-signal row below can line up with the rows inside. Measured rather
@@ -248,6 +277,15 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
     return (
       <Agents
         onClose={() => setShowAgents(false)}
+      />
+    );
+  }
+
+  if (showInvite) {
+    return (
+      <InviteNetworks
+        networks={NETWORKS}
+        onClose={() => setShowInvite(false)}
       />
     );
   }
@@ -328,6 +366,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
               {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
                 <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
+                <InviteRow onClick={() => setShowInvite(true)}/>
                 <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
                 <UserMenu me={ME} onSelect={onAccountSelect}/>
               </div>

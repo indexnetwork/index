@@ -320,8 +320,11 @@ const memberActStyle = {
   fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
 };
 
+// An owner can hand out a link to any network they run; everyone else only to
+// a public one, which anyone could join anyway.
 function networkShareUrl(net) {
-  if (!net || !networkIsOwner(net)) return null;
+  if (!net) return null;
+  if (!networkIsOwner(net) && net.joinPolicy !== "anyone") return null;
   const base = (window.IndexApp && window.IndexApp.webBaseUrl
     ? window.IndexApp.webBaseUrl()
     : "https://index.network").replace(/\/+$/, "");
