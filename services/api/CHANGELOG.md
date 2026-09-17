@@ -16,9 +16,11 @@ section before promoting to `main`).
   it happened to see; the stalls that landed after it were folded into a
   follow-up wake which then had nothing to say, leaving those negotiations
   waiting on a question nobody had asked. A wake now fires once no negotiator of
-  that signal is in flight and a stall is waiting, so every stall of a burst is
-  put to the owner together, and the wake may ask one question per missing fact
-  rather than staying silent whenever any question is already open.
+  that signal is in flight and a stall no wake has read is waiting, so every
+  stall of a burst is put to the owner together, and the wake may ask one
+  question per missing fact rather than staying silent whenever any question is
+  already open. A stall the owner already has stays standing until they answer
+  and no longer re-wakes the signal over each turn that lands meanwhile.
 - **The hosted seat is a whole personal agent, not just an A2A responder.**
   `HostedNegotiator` is replaced by `HostedAgent`, which runs
   `@indexnetwork/agentv2` — `briefIfMissing`, `wake`, `negotiate` — for every

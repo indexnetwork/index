@@ -43,6 +43,8 @@ export class HostedAgent {
   private readonly working = new Map<string, string>();
   /** Opportunities whose stall is waiting on the principal, by the signal they stand on. */
   private readonly stalled = new Map<string, string>();
+  /** Stalls no wake has read yet, by signal: the only ones worth waking for. */
+  private readonly unread = new Map<string, string>();
   private readonly joined = new Set<string>();
   private abort = new AbortController();
   private reader?: ReturnType<typeof createRedisClient>;
@@ -205,6 +207,9 @@ export class HostedAgent {
       return;
     }
     this.waking.add(intentId);
+    // This wake reads every stall standing on the signal, so none of them is a
+    // reason to wake again.
+    for (const [opportunityId, signal] of this.unread) if (signal === intentId) this.unread.delete(opportunityId);
 
     try {
       if (!await this.holdsSeat(userId)) return;
@@ -252,9 +257,12 @@ export class HostedAgent {
 
   /**
    * One negotiator is done. Wake the signal only once nothing else of it is in
-   * flight and a stall is waiting, so every stall of a burst is put to the
-   * principal by one wake rather than one wake, one question at a time —
-   * whether a wake or a counterpart's turn started these negotiators.
+   * flight and a stall no wake has read is waiting, so every stall of a burst
+   * is put to the principal by one wake rather than one wake, one question at a
+   * time — whether a wake or a counterpart's turn started these negotiators.
+   *
+   * A stall the principal already has stays standing until they answer, and is
+   * not a reason to wake over every turn that lands meanwhile.
    *
    * @param userId - The seat owner.
    * @param intentId - The signal that negotiator belonged to.
@@ -264,7 +272,7 @@ export class HostedAgent {
     this.working.delete(opportunityId);
     if (!this.running) return;
     for (const signal of this.working.values()) if (signal === intentId) return;
-    for (const signal of this.stalled.values()) {
+    for (const signal of this.unread.values()) {
       if (signal === intentId) {
         await this.wake(userId, intentId);
         return;
@@ -292,9 +300,11 @@ export class HostedAgent {
     const result = await runNegotiate(index, opportunityId, intent, this.runtime());
     if ('turn' in result) {
       this.stalled.delete(opportunityId);
+      this.unread.delete(opportunityId);
       return;
     }
     this.stalled.set(opportunityId, intentId);
+    this.unread.set(opportunityId, intentId);
   }
 
   /**

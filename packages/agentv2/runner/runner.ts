@@ -42,6 +42,8 @@ export function startRunner(options: RunnerOptions): Runner {
   const working = new Map<string, string>();
   /** Opportunities whose stall is waiting on the principal, by signal. */
   const stalled = new Map<string, string>();
+  /** Stalls no wake has read yet, by signal: the only ones worth waking for. */
+  const unread = new Map<string, string>();
   let stopped = false;
 
   const runtime = () => ({ model, now, signal: abort.signal, log });
@@ -61,6 +63,9 @@ export function startRunner(options: RunnerOptions): Runner {
     }
     waking.add(intentId);
     void (async () => {
+      // This wake reads every stall standing on the signal, so none of them is
+      // a reason to wake again.
+      for (const [opportunityId, signal] of unread) if (signal === intentId) unread.delete(opportunityId);
       log(`wake ${intent.statement}`);
       const started = Date.now();
       // Each opportunity opens the moment its own decision is published, so
@@ -90,17 +95,22 @@ export function startRunner(options: RunnerOptions): Runner {
     if ("turn" in result) {
       log(`turn ${result.turn.action} on ${opportunityId}`);
       stalled.delete(opportunityId);
+      unread.delete(opportunityId);
       return;
     }
     log(`stall on ${opportunityId}: ${result.stall.reason}`);
     stalled.set(opportunityId, intent.id);
+    unread.set(opportunityId, intent.id);
   }
 
   /**
    * One negotiator is done. Wake the signal only once nothing else of it is in
-   * flight and a stall is waiting, so every stall of a burst is put to the
-   * principal by one wake rather than one wake, one question at a time —
-   * whether a wake or a counterpart's turn started these negotiators.
+   * flight and a stall no wake has read is waiting, so every stall of a burst
+   * is put to the principal by one wake rather than one wake, one question at a
+   * time — whether a wake or a counterpart's turn started these negotiators.
+   *
+   * A stall the principal already has stays standing until they answer, and is
+   * not a reason to wake over every turn that lands meanwhile.
    *
    * @param intentId - The signal that negotiator belonged to.
    * @param opportunityId - The negotiation it worked.
@@ -109,7 +119,7 @@ export function startRunner(options: RunnerOptions): Runner {
     working.delete(opportunityId);
     if (stopped) return;
     if ([...working.values()].includes(intentId)) return;
-    if ([...stalled.values()].includes(intentId)) startWake(intentId);
+    if ([...unread.values()].includes(intentId)) startWake(intentId);
   }
 
   /**
