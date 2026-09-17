@@ -18,6 +18,9 @@
   --radius: 6px;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   overflow-y: auto;
   padding-top: 1rem;
@@ -248,4 +251,55 @@
 
 .index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid:hover:not(:disabled) {
   background: var(--ui-text-secondary, #333);
+}
+
+/* Signal chat fills the pane so the composer sits on the bottom. The shared
+   sheet caps the transcript at 18rem for a scrolling web page. */
+.index-network-desktop-page:has(.index-dashboard__detail) {
+  overflow: hidden;
+  padding-bottom: 1rem;
+}
+
+.index-network-desktop-page:has(.index-dashboard__detail) .index-dashboard,
+.index-network-desktop-page .index-dashboard__body,
+.index-network-desktop-page .index-dashboard__detail {
+  flex: 1;
+  min-height: 0;
+}
+
+.index-network-desktop-page .index-dashboard__detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.index-network-desktop-page .index-dashboard__detail-cols,
+.index-network-desktop-page .index-dashboard__detail .index-dashboard__card {
+  min-height: 0;
+  height: 100%;
+}
+
+.index-network-desktop-page .index-dashboard__detail .index-dashboard__card {
+  display: flex;
+  flex-direction: column;
+}
+
+.index-network-desktop-page .index-dashboard__detail .index-dashboard__card-content,
+.index-network-desktop-page .index-dashboard__agent-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.index-network-desktop-page .index-dashboard__agent-thread {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.index-network-desktop-page .index-dashboard__detail .index-dashboard__opps {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
 }
