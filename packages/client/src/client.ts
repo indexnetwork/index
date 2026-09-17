@@ -98,7 +98,8 @@ export interface PrincipalMessage {
   id: string;
   createdAt: string;
   questionId?: string;
-  kind: "question" | "answer" | "user" | "message";
+  /** `expire` is the agent retiring its own question: it leaves the queue unanswered. */
+  kind: "question" | "answer" | "user" | "message" | "expire";
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;
@@ -289,11 +290,13 @@ export class IndexClient {
    *
    * @param intentId - The signal to search from.
    * @param query - What to look for, in the caller's own words.
+   * @param limit - How many counterparties to return, 1..30. Index decides when omitted.
    * @returns Counterparties, strongest first.
    */
-  async discover(intentId: string, query: string): Promise<Counterparty[]> {
+  async discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]> {
     const { counterparties } = await this.request<{ counterparties: Counterparty[] }>(
-      "POST", `/intents/${encodeURIComponent(intentId)}/discover`, { query },
+      "POST", `/intents/${encodeURIComponent(intentId)}/discover`,
+      { query, ...(limit === undefined ? {} : { limit }) },
     );
     return counterparties;
   }

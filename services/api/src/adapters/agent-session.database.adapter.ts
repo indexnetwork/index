@@ -180,7 +180,7 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
       if (!selected) throw new RuntimeConflictError();
       const inserted: Message[] = [];
       for (const entry of input.entries) {
-        if (entry.kind !== 'question' && entry.kind !== 'message') continue;
+        if (entry.kind !== 'question' && entry.kind !== 'message' && entry.kind !== 'expire') continue;
         const { id, createdAt, text, ...principalMessage } = entry;
         inserted.push(await conversations.insertMessageWithConversationSession(tx, {
           id, createdAt: new Date(createdAt), conversationId: conversation.id,

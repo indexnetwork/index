@@ -19,7 +19,8 @@ export interface PrincipalMessage {
   id: string;
   createdAt: string;
   questionId?: string;
-  kind: 'question' | 'answer' | 'user' | 'message';
+  /** `expire` is the agent retiring its own question: it leaves the queue unanswered. */
+  kind: 'question' | 'answer' | 'user' | 'message' | 'expire';
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;

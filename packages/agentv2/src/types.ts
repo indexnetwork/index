@@ -1,3 +1,5 @@
+import type { IndexClient } from "@indexnetwork/client";
+
 import type { Model } from "./model.ts";
 
 export interface User {
@@ -20,28 +22,12 @@ export type NegotiationAction = "propose" | "counter" | "accept" | "decline";
 /** A one-shot instruction the next negotiator run must carry out. */
 export type Decision = "continue" | "accept" | "decline" | "stop";
 
-/** One counterparty a search surfaced, as a run judging it sees them. */
-export interface Counterparty {
-  intentId: string;
-  userId: string;
-  name: string;
-  statement: string;
-  networkId: string;
-  score: number;
-}
-
-/** One counterparty a run picked to become an opportunity. */
-export interface CounterpartyPick {
-  intentId: string;
-  networkId: string;
-}
-
 /**
  * One entry of the principal conversation. Briefs and decisions are entries
  * too: they are how a wake's work persists, and the principal can read them.
  */
 export interface ConversationEntry {
-  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall";
+  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall" | "expire";
   text: string;
   scope?: "intent" | "opportunity";
   counterpart?: string;
@@ -70,6 +56,21 @@ export interface Opportunity {
   answered?: boolean;
 }
 
+/**
+ * Everything a first brief sees: one opportunity and the conversation behind
+ * it. No siblings, and no way to reach the principal — this run only writes
+ * the standing state a negotiator needs to exist.
+ */
+export interface BriefInput {
+  user: User;
+  intent: Intent;
+  principalConversation: ConversationEntry[];
+  opportunity: Opportunity;
+  model: Model;
+  now?: () => Date;
+  signal?: AbortSignal;
+}
+
 /** Everything a wake sees: one signal, its conversation, and all of its opportunities. */
 export interface WakeInput {
   user: User;
@@ -77,27 +78,17 @@ export interface WakeInput {
   principalConversation: ConversationEntry[];
   opportunities: Opportunity[];
   model: Model;
-  /**
-   * One opportunity to work alone. No other opportunity is decided and the
-   * principal is not addressed, however much either is owed.
-   */
-  focus?: string;
+  /** Index for this owner, for the two operations the model triggers mid-loop. */
+  client: IndexClient;
   now?: () => Date;
   signal?: AbortSignal;
   /**
    * One opportunity's brief and decision, the moment they are decided. The
    * wake waits for it, so the host can persist and act on that opportunity
-   * while the others are still being decided.
+   * while the wake goes on thinking. A failure here is raised from `wake`
+   * once the loop ends; the model is never told the host could not persist.
    */
-  onDecision?: (actions: WakeAction[]) => void | Promise<void>;
-  /**
-   * Search this signal's communities. Given both this and
-   * {@link WakeInput.createOpportunities}, an unfocused wake looks for new
-   * counterparties; given neither, it only works what it already has.
-   */
-  discoverCounterparties?: (query: string) => Promise<Counterparty[]>;
-  /** Turn picked counterparties into opportunities. Nothing else opens one. */
-  createOpportunities?: (counterparties: CounterpartyPick[]) => Promise<{ opportunityId: string }[]>;
+  onBrief?: (actions: WakeAction[]) => void | Promise<void>;
 }
 
 export type WakeAction =

@@ -27,9 +27,10 @@ export interface AgentConversationState {
 /**
  * The questions still waiting on the owner, oldest first.
  *
- * A question leaves the queue only when an answer names it: a message written
- * to the agent answers nothing on its own, and a newer question does not
- * retire the ones asked before it.
+ * A question leaves the queue when an answer names it, or when the agent
+ * retires it with an `expire` entry: a message written to the agent answers
+ * nothing on its own, and a newer question does not retire the ones asked
+ * before it.
  *
  * @param messages - The owner's agent DM for one signal, oldest first.
  * @returns Every unanswered question, oldest first; the last is the displayed one.
@@ -42,9 +43,9 @@ function unanswered(messages: readonly PrincipalMessage[]): PrincipalQuestion[] 
         id: message.questionId ?? message.id, question: message.text, options: message.options,
         scope: message.scope ?? 'intent', matches: message.matches,
       });
-    } else if (message.kind === 'answer' && message.questionId) {
-      const answered = queue.findIndex((question) => question.id === message.questionId);
-      if (answered >= 0) queue.splice(answered, 1);
+    } else if ((message.kind === 'answer' || message.kind === 'expire') && message.questionId) {
+      const retired = queue.findIndex((question) => question.id === message.questionId);
+      if (retired >= 0) queue.splice(retired, 1);
     }
   }
   return queue;
@@ -368,7 +369,9 @@ export class ConversationService {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     const known = new Set(messages.map((message) => message.id));
-    const entries = input.entries.filter((entry) => (entry.kind === 'question' || entry.kind === 'message') && !known.has(entry.id));
+    const entries = input.entries.filter(
+      (entry) => (entry.kind === 'question' || entry.kind === 'message' || entry.kind === 'expire') && !known.has(entry.id),
+    );
     if (!entries.length) return;
     const asked = unanswered(messages).at(-1) ?? null;
     await AgentSessionDatabaseAdapter.publishAsExecutor({ ...input, entries });
