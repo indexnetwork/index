@@ -975,9 +975,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         evaluateInTrustedDocument("if (typeof window.__indexOpenView === 'function') { window.__indexOpenView(\(jsonValue(name))); }")
     }
 
-    /// The product site; there is no bundled help book.
+    /// Docs; there is no bundled help book.
     @objc func openHelp(_ sender: Any?) {
-        openExternally(URL(string: AppConfig.productURL))
+        openExternally(URL(string: "https://docs.index.network"))
     }
 
     /// Compare this build's commit with the rolling release and offer the DMG.
