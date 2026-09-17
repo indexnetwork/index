@@ -18,6 +18,11 @@
      page's face; body copy stays in the host app's own sans. */
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
+  /* The desktop host turns selection off app-wide; inside the plugin, text is
+     text: intents, messages and profile copy are all worth copying. */
+  -webkit-user-select: text;
+  user-select: text;
+
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
