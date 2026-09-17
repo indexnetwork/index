@@ -1001,6 +1001,29 @@
     );
   }
 
+  /**
+   * A network's picture layered over its generated avatar, like UserAvatar: a
+   * stored image that fails to load (a key can outlive its file) uncovers the
+   * fallback underneath instead of leaving a broken tile.
+   */
+  function NetworkAvatar(props) {
+    const children = [React.createElement(BoringAvatar, { key: "fallback", seed: props.seed || "network" })];
+    if (props.imageUrl) {
+      children.push(React.createElement("img", {
+        key: "img",
+        className: "index-dashboard__net-avatar-img",
+        src: props.imageUrl,
+        alt: "",
+        loading: "lazy",
+        onError: function (e) { if (e && e.currentTarget) e.currentTarget.style.display = "none"; },
+      }));
+    }
+    return React.createElement("span", {
+      className: "index-dashboard__net-avatar" + (props.className ? " " + props.className : ""),
+      "aria-hidden": "true",
+    }, children);
+  }
+
   function UserAvatar(props) {
     const seed = props.id || props.name || "default";
     const size = props.size;
@@ -1125,32 +1148,33 @@
 
   function IntentRow(props) {
     const intent = props.intent;
-    const className = props.selected ? "index-dashboard__intent-row index-dashboard__intent-row--selected" : "index-dashboard__intent-row";
-    // Mirrors the mac app's signal rows: the beacon blinks while the signal
-    // is live (real mac rows are only ever live or paused).
-    const running = intent.status === "live";
+    // The row carries its own signal instead of a status tag: a dot and a meta
+    // line that say whether anything is waiting on this intent.
+    const matches = intentMatchCount(intent);
+    const className = "index-dashboard__intent-row"
+      + (matches ? " index-dashboard__intent-row--matched" : "")
+      + (props.selected ? " index-dashboard__intent-row--selected" : "");
     return React.createElement("button", { type: "button", className: className, onClick: function () { props.onSelect(intent.id); } },
+      React.createElement("span", { className: "index-dashboard__intent-dot", "aria-hidden": "true" }),
       React.createElement("div", { className: "index-dashboard__intent-main" },
         React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
-        intent.status
-          ? React.createElement(BadgeText, { tone: statusTone(intent.status) },
-            running ? React.createElement("span", { className: "index-dashboard__live-dot" }) : null,
-            intent.status,
-          )
-          : null,
+        React.createElement("div", { className: "index-dashboard__intent-meta" },
+          React.createElement("span", { className: "index-dashboard__intent-matches" },
+            matches ? (matches === 1 ? "1 match" : matches + " matches") : "no matches yet",
+          ),
+          intent.status === "paused"
+            ? React.createElement("span", { className: "index-dashboard__intent-meta-item" }, "paused")
+            : null,
+        ),
       ),
-      React.createElement("div", { className: "index-dashboard__intent-counts" },
-        PendingBadge(intent.pendingCount),
-      ),
+      React.createElement("span", { className: "index-dashboard__intent-chevron", "aria-hidden": "true" }, "\u203A"),
     );
   }
 
-  // One consolidated, unlabeled number per row: awaiting opportunities. Every
-  // surface (Hermes web/desktop, mac app) shows this same count so they stay
-  // consistent.
-  function PendingBadge(count) {
-    if (!count) return null;
-    return React.createElement(BadgeText, null, formatCount(count));
+  // One consolidated number per row: awaiting opportunities. Every surface
+  // (Hermes web/desktop, mac app) shows this same count so they stay consistent.
+  function intentMatchCount(intent) {
+    return Number.isFinite(intent.pendingCount) ? intent.pendingCount : 0;
   }
 
   function IntentPitch() {
@@ -1164,7 +1188,7 @@
       }) : null,
       React.createElement("div", { className: "index-dashboard__pitch-body" },
         React.createElement("h2", { className: "index-dashboard__pitch-title" },
-          "meet the person your agent is already looking for.",
+          "social layer between personal agents",
         ),
         React.createElement("p", { className: "index-dashboard__pitch-text" },
           "tell index what you're after. agents negotiate quietly in the background, and let you know if there's an alignment.",
@@ -1658,11 +1682,7 @@
     }
 
     const head = React.createElement("div", { className: "index-dashboard__net-detail-head" },
-      React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-avatar--lg", "aria-hidden": "true" },
-        local.imageUrl
-          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: local.imageUrl, alt: "", loading: "lazy" })
-          : React.createElement(BoringAvatar, { seed: local.id || local.title }),
-      ),
+      React.createElement(NetworkAvatar, { className: "index-dashboard__net-avatar--lg", imageUrl: local.imageUrl, seed: local.id || local.title }),
       React.createElement("div", { className: "index-dashboard__net-detail-head-text" },
         React.createElement("h3", { className: "index-dashboard__net-detail-title" }, local.title || "Untitled network"),
         React.createElement("div", { className: "index-dashboard__net-detail-bits" },
@@ -2002,11 +2022,7 @@
       className: "index-dashboard__net-row index-dashboard__net-row--button",
       onClick: props.onOpen ? function () { props.onOpen(network); } : undefined,
     },
-      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
-        network.imageUrl
-          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
-          : React.createElement(BoringAvatar, { seed: network.id || network.title }),
-      ),
+      React.createElement(NetworkAvatar, { imageUrl: network.imageUrl, seed: network.id || network.title }),
       React.createElement("span", { className: "index-dashboard__net-meta" },
         React.createElement("span", { className: "index-dashboard__net-title" }, network.title || "Untitled network"),
         React.createElement("span", { className: "index-dashboard__net-sub" },
@@ -2025,11 +2041,7 @@
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
     const joining = props.joiningId === network.id;
     return React.createElement("div", { className: "index-dashboard__net-row" },
-      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
-        network.imageUrl
-          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
-          : React.createElement(BoringAvatar, { seed: network.id || network.title }),
-      ),
+      React.createElement(NetworkAvatar, { imageUrl: network.imageUrl, seed: network.id || network.title }),
       React.createElement("span", { className: "index-dashboard__net-meta" },
         React.createElement("span", { className: "index-dashboard__net-title" }, network.title || "Untitled network"),
         React.createElement("span", { className: "index-dashboard__net-sub" },
@@ -2078,11 +2090,7 @@
     const req = props.request;
     const needsChanges = req.status === "needs_changes";
     return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-request-row" },
-      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
-        req.imageUrl
-          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: req.imageUrl, alt: "", loading: "lazy" })
-          : React.createElement(BoringAvatar, { seed: req.id || req.title }),
-      ),
+      React.createElement(NetworkAvatar, { imageUrl: req.imageUrl, seed: req.id || req.title }),
       React.createElement("span", { className: "index-dashboard__net-meta" },
         React.createElement("span", { className: "index-dashboard__net-title" }, req.title || "Untitled network"),
         React.createElement("span", { className: "index-dashboard__net-sub" }, needsChanges ? "Needs changes" : "In review"),
@@ -2209,11 +2217,7 @@
         "Network creation is still early. Fill this in and it gets reviewed before it goes live."),
       React.createElement("div", { className: "index-dashboard__net-request-identity" },
         React.createElement("label", { className: "index-dashboard__net-request-photo", title: "Change network picture" },
-          React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-request-photo-mark", "aria-hidden": "true" },
-            photo
-              ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: photo, alt: "" })
-              : React.createElement(BoringAvatar, { seed: trimmed || "network" }),
-          ),
+          React.createElement(NetworkAvatar, { className: "index-dashboard__net-request-photo-mark", imageUrl: photo, seed: trimmed || "network" }),
           React.createElement("input", {
             ref: photoFileRef,
             type: "file",
@@ -2861,7 +2865,10 @@
 
   function ProfileField(props) {
     return React.createElement("label", { className: "index-dashboard__profile-field" },
-      React.createElement("span", { className: "index-dashboard__profile-label" }, props.label),
+      React.createElement("span", { className: "index-dashboard__profile-label-row" },
+        React.createElement("span", { className: "index-dashboard__profile-label" }, props.label),
+        props.note ? React.createElement("span", { className: "index-dashboard__profile-label-note" }, props.note) : null,
+      ),
       props.children,
       props.hint ? React.createElement("span", { className: "index-dashboard__profile-hint" }, props.hint) : null,
     );
@@ -3130,7 +3137,10 @@
     }
 
     function optionRow(key, name, sub, checked, onSelect) {
-      return React.createElement("label", { key: key, className: "index-dashboard__agent-row" },
+      return React.createElement("label", {
+        key: key,
+        className: "index-dashboard__agent-row" + (checked ? " index-dashboard__agent-row--selected" : ""),
+      },
         React.createElement("input", {
           type: "radio",
           name: "index-negotiator",
@@ -3143,6 +3153,7 @@
           React.createElement("strong", { className: "index-dashboard__agent-name" }, name),
           React.createElement("span", { className: "index-dashboard__agent-sub" }, sub),
         ),
+        checked ? React.createElement("span", { className: "index-dashboard__agent-active" }, "active") : null,
       );
     }
 
@@ -3158,8 +3169,8 @@
     return React.createElement("div", { className: "index-dashboard__profile-section" },
       error ? React.createElement("div", { className: "index-dashboard__error" }, error) : null,
       React.createElement(ProfileField, {
-        label: "Negotiator",
-        hint: "Index negotiates for you until you choose one of your own agents.",
+        label: "Who negotiates for you",
+        hint: "index negotiates for you until you choose one of your own agents.",
       },
         React.createElement("div", { className: "index-dashboard__agent-rows" },
           [optionRow(
@@ -3222,10 +3233,12 @@
       return React.createElement("div", { className: "index-dashboard__error" }, error);
     }
     if (!items || items.length === 0) {
-      return React.createElement(EmptyState, null, "No negotiation is open right now.");
+      return React.createElement("p", { className: "index-dashboard__negos-empty" },
+        "no negotiations yet. your agent will start them for you.");
     }
 
-    return React.createElement("div", { className: "index-dashboard__negos" },
+    return React.createElement(ProfileField, { label: "In progress (" + formatCount(items.length) + ")" },
+      React.createElement("div", { className: "index-dashboard__negos" },
       items.map(function (item, index) {
         const yours = item.awaiting === "you";
         return React.createElement("article", {
@@ -3244,10 +3257,13 @@
               : null,
           ),
           item.awaiting
-            ? React.createElement(BadgeText, yours ? { tone: "warning" } : {}, yours ? "your turn" : "their turn")
+            ? React.createElement("span", {
+              className: "index-dashboard__nego-turn" + (yours ? " index-dashboard__nego-turn--yours" : ""),
+            }, yours ? "Your turn \u2192" : "Their turn")
             : null,
         );
       }),
+      ),
     );
   }
 
@@ -3284,15 +3300,12 @@
     const step = stepState[0];
     const setStep = stepState[1];
     const assembledRef = useRef(null);
-    const advancedOpenState = useState(false);
-    const advancedOpen = advancedOpenState[0];
-    const setAdvancedOpen = advancedOpenState[1];
 
     const readOnly = !!props.readOnly;
     const gettingStarted = !!props.gettingStarted;
-    // The two panes behind Advanced own the whole body: neither edits the
+    // These two panes own the whole body: neither edits the
     // profile, so the form's save bar has nothing to do while one is open.
-    const advancedActive = !readOnly && !gettingStarted
+    const paneTab = !readOnly && !gettingStarted
       && (tab === "agents" || tab === "negotiations");
 
     function applyProfile(p) {
@@ -3542,39 +3555,8 @@
       return React.createElement("button", {
         type: "button",
         className: "index-dashboard__profile-tab" + (active ? " index-dashboard__profile-tab--active" : ""),
-        onClick: function () { setTab(id); setAdvancedOpen(false); },
+        onClick: function () { setTab(id); },
       }, label);
-    }
-
-    // Advanced sits in the tab row but opens a menu instead of a pane, so the
-    // owner controls behind it stay out of the way of everyday settings.
-    function advancedItem(id, label) {
-      return React.createElement("button", {
-        type: "button",
-        role: "menuitem",
-        className: "index-dashboard__advanced-item"
-          + (tab === id ? " index-dashboard__advanced-item--active" : ""),
-        onClick: function () { setTab(id); setAdvancedOpen(false); },
-      }, label);
-    }
-
-    function advancedMenu() {
-      return React.createElement("div", { className: "index-dashboard__advanced" },
-        React.createElement("button", {
-          type: "button",
-          className: "index-dashboard__profile-tab"
-            + (advancedActive ? " index-dashboard__profile-tab--active" : ""),
-          "aria-expanded": advancedOpen ? "true" : "false",
-          "aria-haspopup": "menu",
-          onClick: function () { setAdvancedOpen(!advancedOpen); },
-        }, "Advanced ▾"),
-        advancedOpen
-          ? React.createElement("div", { className: "index-dashboard__advanced-menu", role: "menu" },
-            advancedItem("agents", "Settings"),
-            advancedItem("negotiations", "Negotiations"),
-          )
-          : null,
-      );
     }
 
     function socialRows() {
@@ -3602,11 +3584,7 @@
             onClick: function () { removeCustom(index); },
           }, "×"),
         );
-      })).concat([
-        customSocials().length < 3
-          ? React.createElement("button", { key: "add", type: "button", className: "index-dashboard__profile-add", onClick: addCustom }, "+ Add website")
-          : null,
-      ]);
+      }));
     }
 
     function profileTab() {
@@ -3626,6 +3604,10 @@
             React.createElement("strong", { className: "index-dashboard__profile-identity-name" }, form.name || "Your name"),
             form.location ? React.createElement("span", { className: "index-dashboard__profile-identity-sub" }, form.location) : null,
           ),
+          React.createElement("label", { className: "index-dashboard__profile-photo-link" },
+            "Change photo",
+            React.createElement("input", { type: "file", accept: "image/*", className: "index-dashboard__profile-avatar-input", onChange: onAvatarFile }),
+          ),
         ),
         React.createElement("div", { className: "index-dashboard__profile-grid" },
           React.createElement(ProfileField, { label: "Name" },
@@ -3635,11 +3617,14 @@
             React.createElement("input", { className: "index-dashboard__profile-input", value: form.location, placeholder: "Brooklyn, NY", onChange: function (e) { patchForm({ location: e.target.value }); } }),
           ),
         ),
-        React.createElement(ProfileField, { label: "Introduction" },
+        React.createElement(ProfileField, { label: "Introduction", note: "agents share this when negotiating" },
           React.createElement("textarea", { className: "index-dashboard__textarea", rows: 4, value: form.intro, placeholder: "Tell others about yourself…", onChange: function (e) { patchForm({ intro: e.target.value }); } }),
         ),
         React.createElement(ProfileField, { label: "Socials" },
           React.createElement("div", { className: "index-dashboard__profile-socials" }, socialRows()),
+          customSocials().length < 3
+            ? React.createElement("button", { type: "button", className: "index-dashboard__profile-add", onClick: addCustom }, "+ add website")
+            : null,
         ),
       );
     }
@@ -3659,7 +3644,8 @@
             return React.createElement("option", { key: tz, value: tz }, tz.replace(/_/g, " "));
           })),
         ),
-        React.createElement("div", { className: "index-dashboard__profile-checks" },
+        React.createElement(ProfileField, { label: "Email" },
+          React.createElement("div", { className: "index-dashboard__profile-checks" },
           [["connectionUpdates", "Connection updates", "Email when someone connects with you"], ["weeklyNewsletter", "Weekly newsletter", "Weekly summary of new connections"]].map(function (row) {
             const key = row[0];
             return React.createElement("label", { key: key, className: "index-dashboard__profile-check" },
@@ -3670,6 +3656,7 @@
               React.createElement("input", { type: "checkbox", checked: !!prefs[key], onChange: function (e) { setPref(key, e.target.checked); } }),
             );
           }),
+          ),
         ),
       );
     }
@@ -3718,7 +3705,7 @@
 
     const title = gettingStarted
       ? "Getting started"
-      : (readOnly ? ((form && form.name) || "Profile") : "Settings");
+      : (readOnly ? ((form && form.name) || "Profile") : "settings");
 
     const panel = React.createElement("div", {
       className: "index-dashboard__profile-panel" + (gettingStarted ? " index-dashboard__profile-panel--getting-started" : ""),
@@ -3740,14 +3727,15 @@
           "Here's what I pulled together. Make sure it's right.")
         : null,
       (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
-        tabButton("profile", "Profile Settings"),
+        tabButton("profile", "Profile"),
         tabButton("notifications", "Notifications"),
-        advancedMenu(),
+        tabButton("agents", "Negotiator"),
+        tabButton("negotiations", "Negotiations"),
       ),
       panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
-      advancedActive
-        // Each Advanced pane loads its own data, so it opens without waiting on
-        // the profile fetch behind it.
+      paneTab
+        // Each pane loads its own data, so it opens without waiting on the
+        // profile fetch behind it.
         ? React.createElement("div", { className: "index-dashboard__profile-body" },
           tab === "agents"
             ? React.createElement(NegotiatorSettings)
@@ -3758,10 +3746,10 @@
           : React.createElement("div", { className: "index-dashboard__profile-body" },
             readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
           )),
-      (!readOnly && form && !advancedActive)
+      (!readOnly && form && !paneTab)
         ? React.createElement("div", { className: "index-dashboard__profile-bar" },
           React.createElement("span", { className: "index-dashboard__profile-note" },
-            note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "You have unsaved changes" : ""))),
+            note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "\u25cf unsaved changes" : ""))),
           React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
             gettingStarted
               ? React.createElement(Button, {
@@ -3774,12 +3762,12 @@
               : React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
             React.createElement(Button, {
               type: "button",
-              className: gettingStarted ? "index-dashboard__getting-started-btn" : undefined,
+              className: gettingStarted ? "index-dashboard__getting-started-btn" : "index-dashboard__profile-save",
               disabled: saving || (!gettingStarted && !dirty),
               onClick: save,
             }, saving
               ? (gettingStarted ? "Confirming…" : "Saving…")
-              : (gettingStarted ? "Looks good" : "Save Changes")),
+              : (gettingStarted ? "Looks good" : "Save changes")),
           ),
         )
         : null,

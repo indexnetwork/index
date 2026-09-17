@@ -360,11 +360,6 @@
   animation: index-dashboard-blink 1.2s steps(2) infinite;
 }
 
-/* Beacon inside a status badge (intent rows): space it off the label. */
-.index-dashboard__badge .index-dashboard__live-dot {
-  margin-right: 0.35rem;
-}
-
 /* Paused signal: same badge in the warning tone (--ui-yellow on desktop
    themes, amber on the web dashboard), dot held steady — nothing is pulsing
    while the agent is on hold. */
@@ -489,22 +484,24 @@
 
 .index-dashboard__list-cols {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 3rem;
   align-items: start;
 }
 
-/* Same box language as the intent / network rows below it: square corners,
-   the row border tint, the row surface. */
+/* One compact line above the columns rather than a banner: the headline, its
+   subtitle, and the animation held to the right on the same rule. */
 .index-dashboard__pitch {
   display: flex;
   flex-direction: row-reverse;
   align-items: center;
-  gap: 1rem;
-  padding: 1.5rem;
-  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0.5rem 0 1.25rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
   border-radius: 0;
-  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
+  background: transparent;
 }
 
 .index-dashboard__pitch-body {
@@ -514,19 +511,18 @@
 
 .index-dashboard__pitch-media {
   flex: 0 0 auto;
-  width: 84px;
+  width: 120px;
   height: 84px;
-  object-fit: cover;
-  transform: scale(1.25);
+  object-fit: contain;
   align-self: center;
 }
 
 .index-dashboard__pitch-title {
   margin: 0;
   font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, monospace);
-  font-size: 1.65rem;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 1.625rem;
+  font-weight: 600;
+  line-height: 1.25;
   letter-spacing: -0.01em;
   color: var(--color-card-foreground, inherit);
 }
@@ -541,9 +537,9 @@
 }
 
 .index-dashboard__pitch-text {
-  margin: 0;
-  font-size: 0.92rem;
-  line-height: 1.6;
+  margin: 0.375rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
@@ -596,10 +592,10 @@
    down: a head action should sit quieter than the row it introduces. The
    two-class selector outranks the host's own button sizing. */
 .index-dashboard .index-dashboard__net-create-btn {
-  gap: 0.35rem;
-  min-height: 1.9rem;
-  padding: 0.25rem 0.7rem;
-  font-size: 0.72rem;
+  gap: 0.3rem;
+  min-height: 1.6rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.68rem;
   letter-spacing: 0.08em;
 }
 
@@ -637,6 +633,7 @@
   flex: 1 1 auto;
   min-width: 0;
   gap: 1.25rem;
+  padding: 0;
   /* Lets the active tab's underline hang into the head's bottom padding, so
      the tab labels sit on the same line as the Intents card title. */
   margin-bottom: -0.43rem;
@@ -822,7 +819,7 @@
   width: 100%;
   padding: 1rem;
   border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
-  border-radius: 0;
+  border-radius: 2px;
   background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
   color: var(--color-card-foreground, inherit);
   font: inherit;
@@ -1405,6 +1402,7 @@
 }
 
 .index-dashboard__net-avatar {
+  position: relative;
   display: inline-flex;
   width: 40px;
   height: 40px;
@@ -1419,6 +1417,14 @@
   height: 100%;
   display: block;
   object-fit: cover;
+}
+
+/* The picture sits on top of the generated avatar, which shows through when
+   the image is missing or fails to load. */
+.index-dashboard__net-avatar-img {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
 }
 
 .index-dashboard__net-meta {
@@ -1481,17 +1487,63 @@
 
 .index-dashboard__intent-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
+  align-items: flex-start;
+  gap: 1rem;
   width: 100%;
-  padding: 1rem;
+  padding: 0.875rem 1.125rem;
   border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
-  border-radius: 0;
+  border-radius: 2px;
   background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
   color: var(--color-card-foreground, inherit);
   text-align: left;
   cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+/* An intent something is waiting on carries a green edge and a lit dot; the
+   rest stay quiet. */
+.index-dashboard__intent-row--matched {
+  border-color: color-mix(in srgb, var(--color-success, #3d9a5b) 35%, transparent);
+}
+
+.index-dashboard__intent-row:hover {
+  border-color: color-mix(in srgb, var(--color-success, #3d9a5b) 60%, transparent);
+}
+
+.index-dashboard__intent-dot {
+  flex: 0 0 auto;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin-top: 0.4375rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 30%, transparent);
+}
+
+.index-dashboard__intent-row--matched .index-dashboard__intent-dot {
+  background: var(--color-success, #3d9a5b);
+}
+
+.index-dashboard__intent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.875rem;
+  margin-top: 0.1rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.6875rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__intent-row--matched .index-dashboard__intent-matches {
+  color: var(--color-success, #3d9a5b);
+}
+
+.index-dashboard__intent-chevron {
+  flex: 0 0 auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 1rem;
+  line-height: 1.3;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
 .index-dashboard__intent-row--selected {
@@ -1502,22 +1554,16 @@
 .index-dashboard__intent-main {
   display: grid;
   gap: 0.25rem;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-/* Keep the status tag compact (like a cron badge) instead of stretching to the
-   grid column width. */
-.index-dashboard__intent-main .index-dashboard__badge {
-  justify-self: start;
-}
-
-/* Row parity across the two list columns: an intent row (a <button>, so the UA
-   gives it border-box) and a network row (a <div>) are otherwise the same
-   object at two sizes: pin the box model and the height so the columns keep
-   step line for line. */
 .index-dashboard__intent-row,
 .index-dashboard__net-row {
   box-sizing: border-box;
+}
+
+.index-dashboard__net-row {
   min-height: 4.875rem;
 }
 
@@ -1525,29 +1571,12 @@
 .index-dashboard__net-title {
   font-size: 0.875rem;
   font-weight: 500;
-  line-height: 1.3;
-}
-
-.index-dashboard__intent-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.index-dashboard__intent-sub {
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font-size: 0.74rem;
-}
-
-.index-dashboard__intent-counts {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.3rem;
+  line-height: 1.45;
 }
 
 .index-dashboard__back-pill {
   justify-self: start;
+  width: fit-content;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -1926,7 +1955,7 @@
 }
 
 .index-dashboard__getting-started-copy {
-  margin: 0;
+  margin: 1rem 1.75rem 0;
   color: var(--color-card-foreground, inherit);
   font-size: 0.95rem;
   line-height: 1.45;
@@ -2127,19 +2156,20 @@
 }
 
 .index-dashboard__profile-signout {
+  padding: 0.3125rem 0.75rem;
   border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: calc(var(--radius, 0.75rem) * 0.6);
+  border-radius: 2px;
   background: transparent;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.35rem 0.7rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
   cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
 }
 
 .index-dashboard__profile-signout:hover {
-  color: var(--color-foreground, #f8fafc);
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 35%, transparent);
+  color: var(--color-card-foreground, inherit);
 }
 
 /* Profile / settings overlay panel. */
@@ -2158,14 +2188,17 @@
 .index-dashboard__profile-panel {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
   width: 100%;
-  max-width: 40rem;
-  padding: 1.25rem;
+  max-width: 44rem;
+  overflow: hidden;
   border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: var(--radius, 0.75rem);
+  border-radius: 4px;
   background: var(--color-card, #0f172a);
-  box-shadow: 0 20px 60px color-mix(in srgb, #000 45%, transparent);
+  box-shadow: 0 12px 40px color-mix(in srgb, #000 45%, transparent);
+}
+
+.index-dashboard__profile-panel > .index-dashboard__error {
+  margin: 1rem 1.75rem 0;
 }
 
 .index-dashboard__profile-header {
@@ -2173,6 +2206,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  padding: 1.125rem 1.75rem;
+  border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
 }
 
 .index-dashboard__profile-title {
@@ -2180,98 +2215,64 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  letter-spacing: 0.1875rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 1.0625rem;
+  font-weight: 600;
   line-height: 1.2;
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  color: var(--color-card-foreground, inherit);
 }
 
 .index-dashboard__profile-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.9rem;
-  height: 1.9rem;
   border: none;
-  border-radius: calc(var(--radius, 0.75rem) * 0.6);
   background: transparent;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font-size: 1.25rem;
+  font-size: 1rem;
   line-height: 1;
   cursor: pointer;
+  transition: color 120ms ease;
 }
 
 .index-dashboard__profile-close:hover {
-  color: var(--color-foreground, #f8fafc);
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: var(--color-card-foreground, inherit);
 }
 
 .index-dashboard__profile-tabs {
   display: flex;
-  gap: 0.25rem;
+  gap: 1.5rem;
+  padding: 0 1.75rem;
   border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
 }
 
 .index-dashboard__profile-tab {
-  padding: 0.5rem 0.85rem;
+  padding: 0.875rem 0 0.75rem;
   border: none;
   border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font: inherit;
-  font-size: 0.85rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.index-dashboard__profile-tab:hover {
+  color: var(--color-card-foreground, inherit);
 }
 
 .index-dashboard__profile-tab--active {
-  border-bottom-color: var(--color-primary, #4fd1c5);
+  border-bottom-color: var(--color-success, #3d9a5b);
   color: var(--color-card-foreground, inherit);
-  font-weight: 700;
-}
-
-.index-dashboard__advanced {
-  position: relative;
-  display: flex;
-}
-
-.index-dashboard__advanced-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 5;
-  display: grid;
-  min-width: 11rem;
-  padding: 0.25rem;
-  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  background: var(--color-card, #0b1220);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-}
-
-.index-dashboard__advanced-item {
-  padding: 0.5rem 0.6rem;
-  border: none;
-  background: transparent;
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font: inherit;
-  font-size: 0.85rem;
-  text-align: left;
-  cursor: pointer;
-}
-
-.index-dashboard__advanced-item:hover {
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  color: var(--color-card-foreground, inherit);
-}
-
-.index-dashboard__advanced-item--active {
-  color: var(--color-card-foreground, inherit);
-  font-weight: 700;
 }
 
 .index-dashboard__profile-body {
   display: flex;
   flex-direction: column;
+  padding: 1.5rem 1.75rem 1.75rem;
 }
 
 .index-dashboard__profile-section {
@@ -2291,9 +2292,19 @@
 }
 
 .index-dashboard__profile-avatar-circle {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   font-size: 1.1rem;
+}
+
+/* Same picker as the avatar, spelled out on the right of the row. */
+.index-dashboard__profile-photo-link {
+  position: relative;
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.6875rem;
+  color: var(--color-success, #3d9a5b);
+  cursor: pointer;
 }
 
 .index-dashboard__profile-avatar-input {
@@ -2312,19 +2323,28 @@
 }
 
 .index-dashboard__profile-identity-name {
-  font-size: 1rem;
+  font-size: 1.0625rem;
   color: var(--color-card-foreground, inherit);
 }
 
 .index-dashboard__profile-identity-sub {
-  font-size: 0.8rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
 .index-dashboard__profile-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.85rem;
+  gap: 1rem;
+}
+
+/* The intro box reads like the other fields in the modal. */
+.index-dashboard__profile-field .index-dashboard__textarea {
+  padding: 0.75rem 0.875rem;
+  border-radius: 2px;
+  min-height: 4.5rem;
+  line-height: 1.55;
 }
 
 .index-dashboard__profile-field {
@@ -2332,15 +2352,32 @@
   gap: 0.35rem;
 }
 
+.index-dashboard__profile-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .index-dashboard__profile-label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--color-card-foreground, inherit);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__profile-label-note {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.65rem;
+  color: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 70%, transparent);
 }
 
 .index-dashboard__profile-hint {
-  font-size: 0.74rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
   line-height: 1.45;
+  margin-top: 0.5rem;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
@@ -2348,9 +2385,9 @@
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
-  padding: 0.55rem 0.65rem;
+  padding: 0.625rem 0.875rem;
   border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: calc(var(--radius, 0.75rem) * 0.6);
+  border-radius: 2px;
   background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);
   color: var(--color-card-foreground, inherit);
   font: inherit;
@@ -2361,34 +2398,46 @@
   cursor: pointer;
 }
 
-.index-dashboard__profile-socials {
-  display: grid;
-  gap: 0.4rem;
+.index-dashboard__profile-socials,
+.index-dashboard__profile-checks {
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: 2px;
+  overflow: hidden;
 }
 
 .index-dashboard__profile-social {
-  display: flex;
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.4rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 55%, transparent);
+}
+
+.index-dashboard__profile-social:last-child {
+  border-bottom: none;
 }
 
 .index-dashboard__profile-social-prefix {
-  flex-shrink: 0;
-  font-size: 0.76rem;
+  padding: 0.625rem 0.875rem;
+  border-right: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 55%, transparent);
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 4%, transparent);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  min-width: 6.5rem;
 }
 
-.index-dashboard__profile-social-input {
-  flex: 1;
+/* Inside the table the value cell is the field itself: no second box. */
+.index-dashboard__profile-social .index-dashboard__profile-social-input {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.84rem;
 }
 
 .index-dashboard__profile-social-remove {
   flex-shrink: 0;
-  width: 1.8rem;
-  height: 1.8rem;
-  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: calc(var(--radius, 0.75rem) * 0.5);
+  width: 2rem;
+  height: 2rem;
+  border: none;
   background: transparent;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
   font-size: 1.05rem;
@@ -2397,71 +2446,181 @@
 }
 
 .index-dashboard__profile-add {
-  padding: 0.5rem;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.875rem;
   border: 1px dashed var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: calc(var(--radius, 0.75rem) * 0.6);
+  border-radius: 2px;
   background: transparent;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font: inherit;
-  font-size: 0.82rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  text-align: center;
   cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
 }
 
-.index-dashboard__profile-checks {
-  display: grid;
-  gap: 0.5rem;
+.index-dashboard__profile-add:hover {
+  border-color: var(--color-success, #3d9a5b);
+  color: var(--color-success, #3d9a5b);
 }
 
 .index-dashboard__profile-check {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: calc(var(--radius, 0.75rem) * 0.6);
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 55%, transparent);
   cursor: pointer;
+}
+
+.index-dashboard__profile-check:last-child {
+  border-bottom: none;
 }
 
 .index-dashboard__profile-check-label {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 600;
   color: var(--color-card-foreground, inherit) !important;
 }
 
 .index-dashboard__profile-check-desc {
   margin: 0.15rem 0 0 !important;
-  font-size: 0.76rem;
+  font-size: 0.78rem;
+}
+
+/* Pill toggle in place of a checkbox: the box is the track, ::after the knob. */
+.index-dashboard__profile-check input[type="checkbox"] {
+  position: relative;
+  flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 25%, transparent);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.index-dashboard__profile-check input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 120ms ease;
+}
+
+.index-dashboard__profile-check input[type="checkbox"]:checked {
+  background: var(--color-success, #3d9a5b);
+}
+
+.index-dashboard__profile-check input[type="checkbox"]:checked::after {
+  left: 17px;
 }
 
 .index-dashboard__agent-rows,
 .index-dashboard__negos {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.375rem;
 }
 
 .index-dashboard__agent-row,
 .index-dashboard__nego {
   display: flex;
-  gap: 0.65rem;
-  padding: 0.65rem 0.75rem;
+  gap: 0.875rem;
+  padding: 0.8125rem 1rem;
   border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: calc(var(--radius, 0.75rem) * 0.6);
+  border-radius: 2px;
 }
 
 .index-dashboard__agent-row {
   align-items: flex-start;
   cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+.index-dashboard__agent-row:hover {
+  border-color: var(--color-success, #3d9a5b);
+}
+
+.index-dashboard__agent-row--selected {
+  border-color: color-mix(in srgb, var(--color-success, #3d9a5b) 45%, transparent);
+}
+
+/* The agent that holds the slot says so, the way a matched intent does. */
+.index-dashboard__agent-active {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-success, #3d9a5b) 15%, transparent);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.65rem;
+  color: var(--color-success, #3d9a5b);
 }
 
 .index-dashboard__nego {
-  align-items: center;
+  align-items: flex-start;
 }
 
+.index-dashboard__nego .index-dashboard__avatar {
+  width: 36px;
+  height: 36px;
+}
+
+/* Whose move it is: amber when it is yours, quiet when it is not. */
+.index-dashboard__nego-turn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 0.3125rem 0.75rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: 2px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__nego-turn--yours {
+  border-color: color-mix(in srgb, var(--ui-yellow, #fbbf24) 35%, transparent);
+  background: color-mix(in srgb, var(--ui-yellow, #fbbf24) 12%, transparent);
+  color: var(--ui-yellow, #fbbf24);
+}
+
+.index-dashboard__negos-empty {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+/* 14px ring, filled when chosen. */
 .index-dashboard__agent-radio {
-  margin: 0.2rem 0 0;
-  accent-color: var(--color-primary, #4fd1c5);
+  position: relative;
+  flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0.125rem 0 0;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid color-mix(in srgb, var(--midground, #ffe6cb) 35%, transparent);
+  border-radius: 50%;
+  background: transparent;
   cursor: pointer;
+}
+
+.index-dashboard__agent-radio:checked {
+  border-color: var(--color-success, #3d9a5b);
+  background: var(--color-success, #3d9a5b);
+  box-shadow: inset 0 0 0 2px var(--color-card, #0f172a);
 }
 
 .index-dashboard__agent-radio:disabled {
@@ -2478,29 +2637,38 @@
 
 .index-dashboard__agent-name,
 .index-dashboard__nego-name {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 600;
   color: var(--color-card-foreground, inherit);
 }
 
-.index-dashboard__agent-sub,
-.index-dashboard__nego-text {
-  font-size: 0.76rem;
+.index-dashboard__agent-sub {
+  font-size: 0.78rem;
   line-height: 1.45;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__nego-text {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-card-foreground, inherit);
 }
 
 .index-dashboard__profile-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding-top: 0.85rem;
+  justify-content: flex-end;
+  gap: 0.625rem;
+  margin: 0 1.75rem;
+  padding: 1rem 0 1.75rem;
   border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
 }
 
 .index-dashboard__profile-note {
-  font-size: 0.78rem;
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  margin-right: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
+  color: var(--ui-yellow, #fbbf24);
 }
 
 .index-dashboard__profile-bar-actions {
@@ -2510,14 +2678,31 @@
 }
 
 .index-dashboard__profile-discard {
-  padding: 0.4rem 0.75rem;
+  padding: 0.5625rem 1.125rem;
   border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: calc(var(--radius, 0.75rem) * 0.6);
+  border-radius: 2px;
   background: transparent;
-  color: var(--color-card-foreground, inherit);
-  font: inherit;
-  font-size: 0.82rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
   cursor: pointer;
+}
+
+/* Save is the modal's one filled action. */
+.index-dashboard .index-dashboard__profile-save {
+  padding: 0.5625rem 1.125rem;
+  min-height: 0;
+  border: none;
+  border-radius: 2px;
+  background: var(--color-success, #3d9a5b);
+  color: #fff;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.index-dashboard .index-dashboard__profile-save:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-success, #3d9a5b) 85%, #000);
 }
 
 .index-dashboard__profile-discard:disabled {
