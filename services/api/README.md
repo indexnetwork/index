@@ -34,13 +34,17 @@ drafts stay attached to the displayed question. Radar keeps its Needs you, Waiti
 Connected, and Closed categories, with an expandable A2A conversation inside
 each match. Pending matches retain Start Chat and Skip.
 
-The API runs no personal-agent session. Its only hosted agent is
-`HostedNegotiator`, the default A2A seat: it wakes on `negotiation.turn` and
-`negotiation.opened` for owners without a selected external negotiator, takes
-one turn, and stops. It never chats, so H2A questions and messages come from the
-owner's selected external negotiator. `GET /api/conversations/:id/messages`
-with `intentId` returns that intent's H2A history and `agent` state (`external`
-or `hosted`, plus `questions`). Send text to `POST /api/conversations/:id/messages`
+The API runs no personal-agent session. Its hosted agent is `HostedAgent`, the
+default seat for owners without a selected external negotiator: it runs
+`@indexnetwork/agentv2` — brief, wake and negotiate — against `HostedIndex`, an
+in-process implementation of the same `Index` protocol an external runner reaches
+over HTTP. Nothing runs on a clock. A counterpart's turn and an opening each move
+one opportunity; the owner's own input, a new signal and a resumed one are what
+cause a wake. So a hosted seat searches, opens opportunities and asks its owner
+questions, where the former `HostedNegotiator` only took A2A turns.
+`GET /api/conversations/:id/messages` with `intentId` returns that intent's H2A
+history and `agent` state (`external` or `hosted`, plus `questions` — now
+populated for both). Send text to `POST /api/conversations/:id/messages`
 with `parts: [{ kind: "text", text }]`, `metadata: { intentId }`, and the
 displayed `questionId`, or `null` for a direct message. A successful response
 contains the persisted message; input naming a question that is no longer

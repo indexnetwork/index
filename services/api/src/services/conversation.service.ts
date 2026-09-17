@@ -280,17 +280,17 @@ export class ConversationService {
   /**
    * @param userId - Authenticated owner.
    * @param intentId - Intent conversation being read.
-   * @returns Every unanswered question, or the hosted status when Index holds the seat.
+   * @returns Who holds the seat, and every question of theirs still waiting.
    * @throws AgentConversationError when the caller does not own the intent.
    */
   async agentState(userId: string, intentId: string): Promise<AgentConversationState> {
     if (!await this.intents.isOwnedByUser(intentId, userId)) throw new AgentConversationError('Intent not found.', 404);
-    // The hosted negotiator only takes A2A turns, so it has no owner transcript.
-    if (!await this.registry.getSelectedNegotiator(userId)) {
-      return { status: 'hosted', questions: [] };
-    }
+    // Both seats ask: Index's hosted agent wakes on this signal and writes to
+    // the same transcript, so the status names the speaker rather than deciding
+    // whether there is one.
+    const external = await this.registry.getSelectedNegotiator(userId) !== null;
     const { messages } = await AgentSessionDatabaseAdapter.readTranscript(userId, intentId);
-    return { status: 'external', questions: unanswered(messages) };
+    return { status: external ? 'external' : 'hosted', questions: unanswered(messages) };
   }
 
   /**
@@ -361,11 +361,11 @@ export class ConversationService {
   }
 
   /**
-   * Persist an external speaker's question or message on the owner's agent DM.
-   * @param input - Owner, selected executor, signal, and agent-authored H2A entries.
+   * Persist an agent's question or message on the owner's agent DM.
+   * @param input - Owner, signal, the selected executor when one is speaking, and agent-authored H2A entries.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async publishH2A(input: { userId: string; intentId: string; executorId: string; entries: PrincipalMessage[] }) {
+  async publishH2A(input: { userId: string; intentId: string; executorId?: string; entries: PrincipalMessage[] }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     const known = new Set(messages.map((message) => message.id));
@@ -374,7 +374,7 @@ export class ConversationService {
     );
     if (!entries.length) return;
     const asked = unanswered(messages).at(-1) ?? null;
-    await AgentSessionDatabaseAdapter.publishAsExecutor({ ...input, entries });
+    await AgentSessionDatabaseAdapter.publishAgentEntries({ ...input, entries });
     const displayed = [...entries].reverse().find((entry) => entry.kind === 'question');
     if (displayed && displayed.questionId && displayed.questionId !== asked?.id) {
       await publishPendingQuestionEvent(input.userId, input.intentId, {

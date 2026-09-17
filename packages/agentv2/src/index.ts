@@ -9,6 +9,11 @@ export { briefIfMissing } from "./brief.ts";
 export { wake } from "./wake.ts";
 export { negotiate } from "./negotiate.ts";
 
+// One run each, against whatever implements Index: read what the run needs,
+// call it, publish what it produced.
+export { runNegotiate, runWake } from "./host.ts";
+export type { Runtime } from "./host.ts";
+
 export { ModelClient } from "./model.ts";
 export type { Model, ModelClientOptions, ModelMessage, ToolDefinition } from "./model.ts";
 

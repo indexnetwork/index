@@ -129,6 +129,8 @@ export interface ConversationMessage {
   role: "user" | "agent";
   parts: unknown;
   createdAt: string;
+  /** Carries `intentId` and the entry's `principalMessage` on the agent DM. */
+  metadata?: unknown;
 }
 
 export type IntentLifecycleWireStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
@@ -178,9 +180,67 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
 }
 
 /**
+ * The Index protocol as one owner sees it, independent of transport.
+ *
+ * `IndexClient` is the REST implementation an external agent uses. A host that
+ * already owns the data implements the same surface in-process.
+ */
+export interface Index {
+  /** @returns The owner this instance acts for. */
+  me(): Promise<Me>;
+  /** @param limit - How many signals to read. @returns The owner's signals. */
+  listIntents(limit?: number): Promise<IntentSummary[]>;
+  /**
+   * @param intentId - The signal to search from.
+   * @param query - What to look for, in the caller's own words.
+   * @param limit - How many counterparties to return, 1..30.
+   * @returns Counterparties, strongest first.
+   */
+  discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]>;
+  /**
+   * @param intentId - The signal the opportunities belong to.
+   * @param counterparties - Counterparty signals and the community each pair sits in.
+   * @returns The opportunities that now exist.
+   */
+  createOpportunities(intentId: string, counterparties: CounterpartyPick[]): Promise<{ opportunityId: string }[]>;
+  /** @returns Open negotiations for this seat. */
+  listNegotiations(): Promise<Negotiation[]>;
+  /** @param id - Opportunity id. @returns The negotiation as this seat sees it. */
+  getNegotiation(id: string): Promise<NegotiationDetail>;
+  /**
+   * @param id - Opportunity id.
+   * @param turn - Action, message, and the log length it was decided against.
+   * @returns The negotiation after the turn.
+   */
+  submitTurn(
+    id: string,
+    turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
+  ): Promise<NegotiationDetail>;
+  /**
+   * @param intentId - Signal whose principal conversation to read.
+   * @returns The agent DM slice for that signal.
+   */
+  principalInbox(intentId: string): Promise<{
+    conversationId: string;
+    messages: ConversationMessage[];
+    agent?: PersonalAgentState;
+  }>;
+  /**
+   * @param intentId - Signal.
+   * @param entries - `question` and `message` entries.
+   */
+  sendPrincipal(intentId: string, entries: PrincipalMessage[]): Promise<void>;
+  /**
+   * @param onEvent - Frames the caller handles.
+   * @returns Stop handle.
+   */
+  events(onEvent: (event: UserEvent) => void): () => void;
+}
+
+/**
  * The Index protocol over REST, as an agent-bound API key.
  */
-export class IndexClient {
+export class IndexClient implements Index {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly executorId?: string;

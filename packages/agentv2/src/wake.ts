@@ -8,10 +8,17 @@ import type { ConversationEntry, Decision, WakeAction, WakeInput, WakeResult } f
 /** How many turns a wake gets: room to decide a few things, speak, and search. */
 const WAKE_STEPS = 8;
 
+/** How many angles one search may cover. All of them run in that single call. */
+const SEARCH_QUERIES = 5;
+
+/** How many counterparties one call may open, matching what Index accepts. */
+const OPEN_LIMIT = 30;
+
 const WAKE_PROMPT = [
   "You think for your principal about one signal, because something just happened on it. Your job is to work out what that event actually changes, and to act only there.",
   "A wake is situational. You are not reviewing the signal: you do not owe every opportunity a decision, every open question an answer, or the principal a status report. Touching nothing is a normal outcome, and staying silent is better than manufacturing work.",
   BRIEF_PROMPT,
+  "A signal with nothing open yet is the one case where breadth is the whole job: search it in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone a search finds is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time.",
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
   "Do not re-ask what this conversation already answered, and do not ask again what already has an unanswered question. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
   "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, why the question you are about to ask matters, why you searched or opened something. Not a summary of the signal, and never a negotiator's own moves.",
@@ -53,9 +60,6 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   const conversation = principalOnly(input.principalConversation);
   const open = openQuestions(input.principalConversation);
   const byId = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
-  // A run may only create what its own searches returned, so the network a
-  // pair sits in is the one Index reported rather than one the model names.
-  const found = new Map<string, Counterparty>();
   let noted = false;
   /** The host's first failure to persist a decision, raised once the loop is done. */
   let unpersisted: unknown;
@@ -169,56 +173,42 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       },
     }),
     tool({
-      name: "discover_counterparties",
+      name: "reach_counterparties",
       description:
-        "Search this signal's communities for people it should reach. A query is the kind of person this signal needs, in your own words, not the signal restated. Returns counterparties with their own statement, strongest first. Anyone this signal is already working is left out, and nothing you search for is shown to anyone.",
-      parameters: {
-        type: "object",
-        additionalProperties: false,
-        properties: { query: { type: "string", minLength: 1 } },
-        required: ["query"],
-      },
-      run: async ({ query }: { query: string }) => {
-        const counterparties = await client.discover(intent.id, query);
-        for (const counterparty of counterparties) found.set(counterparty.intentId, counterparty);
-        return counterparties.length
-          ? counterparties
-          : "No counterparties matched that query. Try a different one, or stop.";
-      },
-    }),
-    tool({
-      name: "create_opportunities",
-      description:
-        "Open an opportunity for each counterparty worth your principal's time, naming only counterparties a search in this wake returned. Creating one commits them to working it, so create none when nothing pairs: a weak match costs more than an empty search.",
+        "Search this signal's communities and open an opportunity with everyone the search finds. A query is the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer — each is searched separately and the results are merged, so different angles reach people a single query cannot. Everyone found is opened and briefed for you: your judgement belongs in the queries, not in narrowing what they return, because opening explores a pair rather than committing your principal to it and only the negotiator can establish whether one is worth anything. Anyone this signal is already working is left out, and nothing you search for is shown to anyone.",
       parameters: {
         type: "object",
         additionalProperties: false,
         properties: {
-          counterparties: {
+          queries: {
             type: "array",
             minItems: 1,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: { intentId: { type: "string" } },
-              required: ["intentId"],
-            },
+            maxItems: SEARCH_QUERIES,
+            items: { type: "string", minLength: 1 },
           },
         },
-        required: ["counterparties"],
+        required: ["queries"],
       },
-      run: async ({ counterparties }: { counterparties: { intentId: string }[] }) => {
-        const picks: CounterpartyPick[] = counterparties.map((pick) => {
-          const counterparty = found.get(pick.intentId);
-          if (!counterparty) {
-            throw new Error(
-              `No counterparty ${pick.intentId} in this wake's results. Search first, and name only what a search returned.`,
-            );
-          }
-          return { intentId: counterparty.intentId, networkId: counterparty.networkId };
-        });
+      run: async ({ queries }: { queries: string[] }) => {
+        // Each angle asks for as many as one call may open, so a single query is
+        // never the reason only a handful are reached. People are what a signal
+        // needs, so a person holding several matching signals keeps one seat.
+        const results = await Promise.all(queries.map((query) => client.discover(intent.id, query, OPEN_LIMIT)));
+        const found = new Map<string, Counterparty>();
+        for (const counterparty of results.flat()) {
+          const seen = found.get(counterparty.userId);
+          if (!seen || counterparty.score > seen.score) found.set(counterparty.userId, counterparty);
+        }
+        const picks: CounterpartyPick[] = [...found.values()]
+          .sort((left, right) => right.score - left.score)
+          .slice(0, OPEN_LIMIT)
+          .map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
+        if (!picks.length) return "No counterparties matched those queries. Try different ones, or stop.";
         const created = await client.createOpportunities(intent.id, picks);
-        return `Created ${created.length} of ${picks.length}. The rest were already opportunities or are no longer reachable.`;
+        // Each one is briefed and proposed on outside this wake, so searching is
+        // the whole of this call: do not brief what it just opened.
+        input.onOpened?.(created.map((opportunity) => opportunity.opportunityId));
+        return `Reached ${created.length} of ${picks.length} found, and each one is being briefed and proposed to now. The rest were already opportunities or are no longer reachable.`;
       },
     }),
   ];

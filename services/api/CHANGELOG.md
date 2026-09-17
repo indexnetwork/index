@@ -10,14 +10,38 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **The hosted seat is a whole personal agent, not just an A2A responder.**
+  `HostedNegotiator` is replaced by `HostedAgent`, which runs
+  `@indexnetwork/agentv2` — `briefIfMissing`, `wake`, `negotiate` — for every
+  owner who has selected no external negotiator. It reaches Index through
+  `HostedIndex`, an in-process implementation of the same `Index` protocol an
+  external runner reaches over HTTP: the agent package is unchanged and no
+  request leaves the process. Frames route the way the reference runner routes
+  them — a counterpart's turn and an opening move one opportunity each and never
+  wake, while the owner's input, a new signal and a resumed one do. The Redis
+  consumer group is still `hosted-negotiator`, so a wake is taken by exactly one
+  API process and no offset is lost on deploy. Consequences for owners on the
+  hosted seat: it now searches their communities, opens opportunities, and asks
+  them questions, where before it only took one A2A turn per wake.
+- **`agent.status` no longer decides whether there are questions.**
+  `GET /conversations/:id/messages` with `intentId` returns the unanswered
+  questions on the signal's transcript for both seats; `status` still names the
+  speaker (`hosted` or `external`). It previously hard-coded
+  `{ status: 'hosted', questions: [] }`, which was correct only while the hosted
+  seat could not speak to its owner.
+- **`POST /intents/:id/opportunities` opens up to 30 counterparties per call**,
+  where it took the first 10 and silently dropped the rest. An agent that
+  searched its communities broadly can now act on what it found in one call
+  instead of having two thirds of its picks disappear without saying so. Request
+  validation shares that number with the service rather than carrying its own
+  copy, which is what left a batch of 30 rejected as invalid after the service
+  had already been raised.
 - **`POST /intents/:id/discover` returns a top-N, not whatever clears a score.**
   The similarity floor of `0.20` is gone, and the body takes an optional
   `limit` (integer, 1..30, default 10). Retrieval now reads deeper than the
   limit and drops counterparties this signal already shares a negotiation with
   before cutting, so a caller asking for ten gets the ten strongest people it
-  can still open rather than three survivors of a cutoff. `create_opportunities`
-  is unchanged at ten per call: which counterparties to open is still the
-  agent's call.
+  can still open rather than three survivors of a cutoff.
 - **The H2A inbox is a chat, not the responder seat.**
   `POST /conversations/agent/answers` no longer returns 409 when Index holds the
   negotiator seat. Owner answers are recorded whether or not an external

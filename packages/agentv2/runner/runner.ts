@@ -1,11 +1,10 @@
-import type { IndexClient } from "@indexnetwork/client";
+import type { Index } from "@indexnetwork/client";
 
 import type { Intent, Model } from "../src/index.ts";
-
-import { runNegotiate, runWake } from "./host.ts";
+import { runNegotiate, runWake } from "../src/host.ts";
 
 export interface RunnerOptions {
-  client: IndexClient;
+  client: Index;
   model: Model;
   now?: () => Date;
   /** Every wake, turn and stall, as one line. */
@@ -25,9 +24,9 @@ export interface Runner {
  * happens because something changed on the signal, or because the host asked
  * for one.
  *
- * A counterpart's turn is the passive trigger: it briefs that one opportunity
- * if it needs briefing, takes its turn, and stops. No sibling is decided, the
- * principal is not addressed, and no wake follows.
+ * A counterpart's turn and an opening are the passive triggers: each briefs
+ * that one opportunity if it needs briefing, takes its turn, and stops. No
+ * sibling is decided, the principal is not addressed, and no wake follows.
  *
  * @param options - Index, the model, and where to report.
  * @returns A handle that wakes a signal on demand and stops everything.
@@ -65,7 +64,7 @@ export function startRunner(options: RunnerOptions): Runner {
       const started = Date.now();
       // Each opportunity opens the moment its own decision is published, so
       // the first turns go out while the wake is still thinking.
-      await runWake(client, intent, { ...runtime(), onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId) });
+      await runWake(client, intent, { ...runtime(), onNegotiate: (opportunityId, decision) => startNegotiate(intentId, opportunityId, decision) });
       log(`  wake done in ${Math.round((Date.now() - started) / 1000)}s`);
     })().catch(onError).finally(() => {
       waking.delete(intentId);
@@ -81,9 +80,10 @@ export function startRunner(options: RunnerOptions): Runner {
    * A stall inside a wave waits for the wake that fires when the wave empties,
    * so every stall of that batch is put to the principal together rather than
    * one wake, one question at a time. Only the first stall of an opportunity
-   * counts, and it is then held out of the wake's own negotiators until the
-   * principal answers: without that, asking and stalling would trade places
-   * without end.
+   * counts, and a continue is then held out of the wake's own negotiators
+   * until the principal answers: without that, asking and stalling would
+   * trade places without end. Accept and decline still run — that turn is
+   * what the stall was waiting for.
    *
    * @param intent - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
@@ -105,13 +105,14 @@ export function startRunner(options: RunnerOptions): Runner {
   /**
    * @param intentId - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation a decision just authorised.
+   * @param decision - The wake's decision, when this start came from one.
    */
-  function startNegotiate(intentId: string, opportunityId: string): void {
+  function startNegotiate(intentId: string, opportunityId: string, decision?: string): void {
     const intent = intents.get(intentId);
     if (stopped || !intent || working.has(opportunityId)) return;
-    // The wake this stall asked for re-decides the opportunity, but the
-    // negotiator has nothing new until the principal answers, and reopening it
-    // would stall, wake, and re-decide without end.
+    // A continue after a stall still has no new fact. Accept and decline are
+    // the fact: release the hold so that turn goes out.
+    if (decision === "accept" || decision === "decline") stalled.delete(opportunityId);
     if (stalled.has(opportunityId)) return;
     const wave = waves.get(intentId) ?? new Set<string>();
     waves.set(intentId, wave);
@@ -125,6 +126,27 @@ export function startRunner(options: RunnerOptions): Runner {
       // about.
       if (!wave.size && !stopped && [...stalled.values()].includes(intentId)) startWake(intentId);
     });
+  }
+
+  /**
+   * Start every negotiation on one signal that is waiting on this seat and has
+   * no turn yet.
+   *
+   * Whoever opened it, an opportunity at turn zero waiting on us moves only
+   * because we move it. Each one is briefed by its own run and proposed to,
+   * which is why an opening needs no wake: the wake that opened them already
+   * started them, and this covers the ones a counterpart opened and anything
+   * left unstarted when this process reconnects.
+   *
+   * @param intentId - The signal whose negotiations to start.
+   */
+  async function startUnstarted(intentId: string): Promise<void> {
+    const [user, open] = await Promise.all([client.me(), client.listNegotiations()]);
+    for (const negotiation of open) {
+      if (negotiation.intentId !== intentId) continue;
+      if (negotiation.awaitingUserId !== user.id || negotiation.turnCount > 0) continue;
+      startNegotiate(intentId, negotiation.opportunityId);
+    }
   }
 
   /**
@@ -185,7 +207,7 @@ export function startRunner(options: RunnerOptions): Runner {
         break;
       case "negotiation.opened":
         log(`event ${event.type} on ${event.data.intentId}`);
-        startWake(event.data.intentId);
+        void startUnstarted(event.data.intentId).catch(onError);
         break;
       case "intent.created":
         log(`event ${event.type}: ${event.data.intentId}`);

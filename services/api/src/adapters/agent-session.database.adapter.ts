@@ -160,24 +160,31 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
   }
 
   /**
-   * Persist agent-authored H2A while this executor is still selected.
-   * @param input - Owner, signal, selected agent, and question/message entries.
+   * Persist agent-authored H2A on the owner's agent DM.
+   *
+   * An external speaker names itself and is only allowed to write while it is
+   * still the selected negotiator. Index's own hosted agent names no executor:
+   * it is the seat of last resort, so there is nothing to revalidate.
+   *
+   * @param input - Owner, signal, the selected agent when one is speaking, and question/message entries.
    * @returns The inserted conversation messages.
-   * @throws RuntimeConflictError when this agent is no longer the selected negotiator.
+   * @throws RuntimeConflictError when a named agent is no longer the selected negotiator.
    */
-  static async publishAsExecutor(input: {
-    userId: string; intentId: string; executorId: string; entries: readonly PrincipalMessage[];
+  static async publishAgentEntries(input: {
+    userId: string; intentId: string; executorId?: string; entries: readonly PrincipalMessage[];
   }): Promise<Message[]> {
     const conversations = new ConversationDatabaseAdapter();
     const conversation = await conversations.getOrCreateAgentDm(input.userId);
     const persisted = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${input.userId}`}, 0))`);
-      const [selected] = await tx.select({ id: agents.id }).from(agents).where(and(
-        eq(agents.id, input.executorId), eq(agents.ownerId, input.userId),
-        eq(agents.type, 'external'), eq(agents.status, 'active'),
-        eq(agents.handleNegotiations, true), isNull(agents.deletedAt),
-      ));
-      if (!selected) throw new RuntimeConflictError();
+      if (input.executorId) {
+        const [selected] = await tx.select({ id: agents.id }).from(agents).where(and(
+          eq(agents.id, input.executorId), eq(agents.ownerId, input.userId),
+          eq(agents.type, 'external'), eq(agents.status, 'active'),
+          eq(agents.handleNegotiations, true), isNull(agents.deletedAt),
+        ));
+        if (!selected) throw new RuntimeConflictError();
+      }
       const inserted: Message[] = [];
       for (const entry of input.entries) {
         if (entry.kind !== 'question' && entry.kind !== 'message' && entry.kind !== 'expire') continue;
