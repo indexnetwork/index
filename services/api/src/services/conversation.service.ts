@@ -293,21 +293,21 @@ export class ConversationService {
   }
 
   /**
-   * Persist owner input for the selected external negotiator and notify that runtime.
+   * Persist owner input on this signal's inbox and notify the runtime.
    *
    * Whatever the owner sends is kept: a message written while questions are on
    * screen, or an answer to a question that has since been overtaken, still
    * reaches the agent, which decides what it applies to. Input naming any
    * question still waiting is recorded as that question's answer, so the owner
-   * can work through them in whatever order they like.
+   * can work through them in whatever order they like. The inbox is not the
+   * responder seat — a message is accepted whether or not a negotiator is selected.
    *
    * @param input - Authenticated owner, intent, canonical DM, and the question the owner was answering (or null for a direct message).
    * @returns The persisted message.
-   * @throws AgentConversationError when the intent is not owned or Index holds the seat.
+   * @throws AgentConversationError when the intent is not owned.
    */
   async sendOwnerInput(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
-    if (!await this.registry.getSelectedNegotiator(input.userId)) throw new AgentConversationError('The Index negotiator does not chat. Select a negotiator to message your agent.', 409);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
     const answered = input.questionId
