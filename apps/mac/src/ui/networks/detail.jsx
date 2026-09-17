@@ -401,20 +401,24 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
     return () => { cancelled = true; };
   }, [client, local.id]);
 
+  // `live`, not `client`: getClient() hands back a new object every render, so
+  // depending on it would re-run this on every render.
   useEffect(() => {
-    if (!client || !local.id || !isOwner || !gated) {
-      setJoinRequests([]);
+    if (!live || !local.id || !isOwner || !gated) {
+      setJoinRequests(prev => (prev.length ? [] : prev));
       return;
     }
+    const c = window.IndexApp.getClient();
+    if (!c) return;
     let cancelled = false;
-    client.networks.listJoinRequests(local.id)
+    c.networks.listJoinRequests(local.id)
       .then((res) => {
         if (cancelled) return;
         setJoinRequests((res && res.requests) || []);
       })
-      .catch(() => { if (!cancelled) setJoinRequests([]); });
+      .catch(() => { if (!cancelled) setJoinRequests(prev => (prev.length ? [] : prev)); });
     return () => { cancelled = true; };
-  }, [client, local.id, isOwner, gated]);
+  }, [live, local.id, isOwner, gated]);
 
   useEffect(() => {
     if (isOwner && typeof members.length === "number" && members.length > 0) {
