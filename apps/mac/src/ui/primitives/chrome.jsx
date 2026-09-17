@@ -86,6 +86,68 @@ function Chip({ children, onClick, active }) {
   );
 }
 
+/* ---------- Toggle: Workbench checkbox, a raised square that fills when checked ---------- */
+function Toggle({ on, onClick, title, blurb }) {
+  return (
+    <button
+      onClick={onClick}
+      role="switch"
+      aria-checked={on}
+      style={{
+        display:"flex", gap:11, alignItems:"flex-start", textAlign:"left",
+        width:"100%", padding:"10px 12px", cursor:"pointer",
+        border:"1px solid #000", background:"#fff",
+        boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
+      }}>
+      <span style={{
+        flex:"0 0 auto", width:16, height:16, marginTop:1,
+        border:"1px solid #000",
+        background: on ? "#FF8A00" : "#EDEAE1",
+        boxShadow: on
+          ? "inset 1px 1px 0 #8A4500, inset -1px -1px 0 #FFD7A0"
+          : "inset 1px 1px 0 #FFF, inset -1px -1px 0 var(--ink-3)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        fontFamily:"var(--mac-mono)", fontSize:11, fontWeight:700, color:"#000",
+      }}>{on ? "✓" : ""}</span>
+      <span style={{ minWidth:0 }}>
+        <span style={{
+          display:"block", fontFamily:"var(--mac-mono)", fontSize:12,
+          fontWeight:600, color:"#000",
+        }}>{title}</span>
+        <span style={{
+          display:"block", marginTop:3, fontFamily:"var(--mac-sans)",
+          fontSize:12, lineHeight:1.45, color:"var(--ink-2)",
+        }}>{blurb}</span>
+      </span>
+    </button>
+  );
+}
+
+/* ---------- QCount: one unlabeled number, the thing waiting on you ---------- */
+// The tooltip carries the explanation the label used to.
+function QCount({ n, muted, title }) {
+  if (muted) {
+    return null;
+  }
+  return (
+    <span
+      title={title || `${n} waiting on you — pending opportunities`}
+      style={{
+        display:"flex", alignItems:"baseline", justifyContent:"center",
+        padding:"3px 8px",
+        border:"1px solid #000",
+        background:"#FF8A00",
+        boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500",
+        flex:"0 0 auto",
+      }}>
+      <span style={{
+        fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:700,
+        lineHeight:1, color:"#000", letterSpacing:-0.3,
+      }}>{n}</span>
+    </span>
+  );
+}
+
 /* ---------- ScoreBar: Workbench progress gauge ---------- */
 function ScoreBar({ value, w = 56 }) {
   const pct = Math.max(0, Math.min(1, value));

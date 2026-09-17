@@ -250,8 +250,9 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/auth/me$"#), ("PATCH", #"^/auth/profile/update$"#),
         ("GET", #"^/networks$"#), ("POST", #"^/networks$"#),
         ("GET", #"^/networks/discovery/public(?:\?.*)?$"#),
-        ("GET", #"^/networks/[^/?]+/(?:overview|my-intents|members)$"#),
+        ("GET", #"^/networks/[^/?]+/(?:overview|my-intents|members|join-requests)$"#),
         ("POST", #"^/networks/[^/?]+/(?:join|leave)$"#),
+        ("POST", #"^/networks/[^/?]+/join-requests/[^/?]+/review$"#),
         ("POST", #"^/networks/[^/?]+/members(?:/invite)?$"#),
         ("PATCH", #"^/networks/[^/?]+/members/[^/?]+$"#),
         ("DELETE", #"^/networks/[^/?]+/members/[^/?]+$"#),
@@ -594,8 +595,13 @@ final class NativeAPIRequestBridge {
                 validNetworkMemberPermissions($0["permissions"])
             }
         case let value where value.range(of: #"^/networks/[^/?]+/permissions$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["joinPolicy"]) {
-                enumString($0["joinPolicy"], ["anyone", "invite_only"])
+            return exactTypedObject(body, required: ["joinPolicy"], optional: ["requireAdminApproval"]) { item in
+                enumString(item["joinPolicy"], ["anyone", "invite_only"])
+                    && optionalBool(item, "requireAdminApproval")
+            }
+        case let value where value.range(of: #"^/networks/[^/?]+/join-requests/[^/?]+/review$"#, options: .regularExpression) != nil:
+            return exactTypedObject(body, required: ["decision"]) {
+                enumString($0["decision"], ["approve", "decline"])
             }
         case "/network-requests": return validNetworkRequest(body)
         case let value where value.range(of: #"^/network-requests/[^/?]+$"#, options: .regularExpression) != nil:

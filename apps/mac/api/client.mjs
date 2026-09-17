@@ -342,6 +342,15 @@ export function createIndexApiClient(options = {}) {
         `/networks/${encodeURIComponent(networkId)}/regenerate-invitation`,
         { ...options, method: 'PATCH', body: {} },
       ),
+      // People waiting on an owner because the network gates link joins.
+      listJoinRequests: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/join-requests`,
+        options,
+      ),
+      reviewJoinRequest: (networkId, userId, decision, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/join-requests/${encodeURIComponent(userId)}/review`,
+        { ...options, method: 'POST', body: { decision } },
+      ),
       getMembers: (networkId, options = {}) => request(
         `/networks/${encodeURIComponent(networkId)}/members`,
         options,

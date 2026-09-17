@@ -289,6 +289,9 @@ window.IndexApp = (function () {
       hidden: n.hidden === true,
       privacy: joinPolicy === "anyone" ? "public" : "private",
       joinPolicy,
+      requireAdminApproval: !!(n.permissions && n.permissions.requireAdminApproval),
+      // Owners only: the API sends 0 to everyone else.
+      pendingJoinCount: Number(n.pendingJoinCount) || 0,
       invitationCode: invite && invite.code ? invite.code : null,
       // Same key resolution as user avatars: S3 keys need the storage base.
       photo: avatarUrl(n.imageUrl || n.photo || null),

@@ -118,6 +118,8 @@ function Networks({ onClose, onOpenSignal }) {
       members: 1,
       privacy: access,
       joinPolicy,
+      requireAdminApproval: false,
+      pendingJoinCount: 0,
       invitationCode: null,
       role: "owner",
       joined: true,
