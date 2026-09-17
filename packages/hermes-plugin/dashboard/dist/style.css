@@ -2764,14 +2764,13 @@
 
 /* Messages / conversations */
 .index-dashboard__msg-panel {
-  max-width: 52rem;
+  max-width: 62.5rem;
   height: min(80vh, 44rem);
 }
 
 .index-dashboard__msg-body {
   display: grid;
-  grid-template-columns: 16rem 1fr;
-  gap: 0.75rem;
+  grid-template-columns: 20rem 1fr;
   flex: 1;
   min-height: 0;
 }
@@ -2779,42 +2778,68 @@
 .index-dashboard__msg-list {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  overflow-y: auto;
-  padding-right: 0.25rem;
+  min-height: 0;
   border-right: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+}
+
+.index-dashboard__msg-search-bar {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+}
+
+.index-dashboard__msg-convs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .index-dashboard__msg-conv {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.6rem;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
   border: none;
-  border-radius: calc(var(--radius, 0.75rem) * 0.7);
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 55%, transparent);
+  border-radius: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: background 120ms ease;
 }
 
 .index-dashboard__msg-conv:hover {
-  background: color-mix(in srgb, currentColor 8%, transparent);
+  background: color-mix(in srgb, currentColor 6%, transparent);
 }
 
+/* The open thread keeps a green edge, the way a matched intent does. */
 .index-dashboard__msg-conv--active {
-  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 16%, transparent);
+  border-left-color: var(--color-success, #3d9a5b);
+  background: color-mix(in srgb, var(--color-success, #3d9a5b) 10%, transparent);
 }
 
 .index-dashboard__msg-conv-avatar {
   flex-shrink: 0;
+  width: 36px;
+  height: 36px;
 }
 
 .index-dashboard__msg-conv-main {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.1875rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.index-dashboard__msg-conv-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
   min-width: 0;
 }
 
@@ -2822,23 +2847,31 @@
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.85rem;
+  font-size: 0.84rem;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.index-dashboard__msg-conv--unread .index-dashboard__msg-conv-name {
-  font-weight: 700;
+.index-dashboard__msg-conv-time {
+  flex-shrink: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.65rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__msg-conv--unread .index-dashboard__msg-conv-preview {
+  color: var(--color-card-foreground, inherit);
 }
 
 .index-dashboard__msg-conv-dot {
   flex-shrink: 0;
+  align-self: center;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-  background: var(--color-primary, #4fd1c5);
+  background: var(--color-success, #3d9a5b);
 }
 
 .index-dashboard__msg-conv-badge {
@@ -2856,14 +2889,13 @@
 .index-dashboard__msg-search {
   width: 100%;
   box-sizing: border-box;
-  margin-bottom: 0.4rem;
-  padding: 0.4rem 0.6rem;
+  padding: 0.5625rem 0.75rem;
   border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: calc(var(--radius, 0.75rem) * 0.6);
-  background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
   color: var(--color-card-foreground, inherit);
-  font: inherit;
-  font-size: 0.8rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
 }
 
 .index-dashboard__msg-conv-preview {
@@ -2881,30 +2913,73 @@
   min-width: 0;
 }
 
+/* Who the thread is with. */
+.index-dashboard__msg-thread-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8125rem 1.5rem;
+  border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+}
+
+.index-dashboard__msg-thread-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+}
+
+.index-dashboard__msg-thread-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-card-foreground, inherit);
+}
+
 .index-dashboard__msg-thread {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.875rem;
   flex: 1;
   overflow-y: auto;
-  padding: 0.25rem 0.5rem;
+  padding: 1.25rem 1.5rem;
+}
+
+/* A message is its bubble plus the time under it, both on the sender's side. */
+.index-dashboard__msg-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: flex-start;
+  max-width: 65%;
+}
+
+.index-dashboard__msg-row--mine {
+  align-items: flex-end;
+  align-self: flex-end;
+}
+
+.index-dashboard__msg-time {
+  margin-top: 0.25rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.625rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
 .index-dashboard__msg-bubble {
-  max-width: 80%;
-  align-self: flex-start;
-  padding: 0.45rem 0.7rem;
-  border-radius: 0.9rem;
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  font-size: 0.85rem;
-  line-height: 1.35;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 8%, transparent);
+  color: var(--color-card-foreground, inherit);
+  font-size: 0.84rem;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .index-dashboard__msg-bubble--mine {
-  align-self: flex-end;
-  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 22%, transparent);
+  border-color: var(--color-success, #3d9a5b);
+  background: var(--color-success, #3d9a5b);
+  color: #fff;
 }
 
 /* Transcript markdown. Surfaces are mixed from currentColor so one rule reads
@@ -2977,18 +3052,63 @@
   opacity: 0.7;
 }
 
+/* One field with the send key inside it: Enter sends, the arrow is the tap
+   target for the same thing. */
 .index-dashboard__msg-composer {
   display: flex;
-  align-items: flex-end;
-  gap: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  align-items: center;
+  gap: 0.625rem;
+  margin: 0.875rem 1.5rem;
+  padding: 0.5625rem 0.5625rem 0.5625rem 0.875rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
 }
 
-.index-dashboard__msg-input {
+.index-dashboard .index-dashboard__msg-input {
   flex: 1;
   resize: none;
   max-height: 8rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.84rem;
+}
+
+.index-dashboard__msg-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 10%, transparent);
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.index-dashboard__msg-send:hover:not(:disabled) {
+  background: var(--color-success, #3d9a5b);
+  color: #fff;
+}
+
+.index-dashboard__msg-send:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Nothing selected, nothing to say yet: a line, not a dashed box. */
+.index-dashboard__msg-convs .index-dashboard__empty,
+.index-dashboard__msg-thread .index-dashboard__empty {
+  border: none;
+  padding: 1.25rem 1rem;
+  font-size: 0.875rem;
 }
 
 @media (max-width: 720px) {
@@ -2997,7 +3117,7 @@
   }
 
   .index-dashboard__msg-list {
-    max-height: 12rem;
+    max-height: 14rem;
     border-right: none;
     border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
   }

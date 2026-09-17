@@ -3847,6 +3847,18 @@
     };
   }
 
+  function timeStamp(iso, coarse) {
+    if (!iso) return "";
+    const at = new Date(iso);
+    if (isNaN(at.getTime())) return "";
+    const clock = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (!coarse) return clock;
+    const days = (Date.now() - at.getTime()) / 86400000;
+    if (days < 1) return clock;
+    if (days < 7) return at.toLocaleDateString([], { weekday: "short" });
+    return at.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+
   function MessagesPanel(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
@@ -4096,20 +4108,23 @@
     return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
       React.createElement("div", { className: "index-dashboard__profile-panel index-dashboard__msg-panel", onClick: function (e) { e.stopPropagation(); } },
         React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Messages"),
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "messages"),
           React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
         listErr ? React.createElement("div", { className: "index-dashboard__error" }, listErr) : null,
         React.createElement("div", { className: "index-dashboard__msg-body" },
           React.createElement("div", { className: "index-dashboard__msg-list" },
-            React.createElement("input", {
-              type: "search",
-              className: "index-dashboard__msg-search",
-              placeholder: "Search conversations…",
-              value: query,
-              onChange: function (e) { setQuery(e.target.value); },
-              "aria-label": "Search conversations",
-            }),
+            React.createElement("div", { className: "index-dashboard__msg-search-bar" },
+              React.createElement("input", {
+                type: "search",
+                className: "index-dashboard__msg-search",
+                placeholder: "\u2315 search conversations…",
+                value: query,
+                onChange: function (e) { setQuery(e.target.value); },
+                "aria-label": "Search conversations",
+              }),
+            ),
+            React.createElement("div", { className: "index-dashboard__msg-convs" },
             listLoading
               ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading…")
               : (convs.length === 0
@@ -4132,19 +4147,34 @@
                         className: "index-dashboard__avatar index-dashboard__msg-conv-avatar",
                       }),
                       React.createElement("span", { className: "index-dashboard__msg-conv-main" },
-                        React.createElement("span", { className: "index-dashboard__msg-conv-name" },
-                          unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,
-                          c.title || "Conversation",
-                          c.kind === "negotiation" ? React.createElement("span", { className: "index-dashboard__msg-conv-badge" }, "Agent") : null,
+                        React.createElement("span", { className: "index-dashboard__msg-conv-top" },
+                          React.createElement("span", { className: "index-dashboard__msg-conv-name" },
+                            c.title || "Conversation",
+                            c.kind === "negotiation" ? React.createElement("span", { className: "index-dashboard__msg-conv-badge" }, "Agent") : null,
+                          ),
+                          React.createElement("span", { className: "index-dashboard__msg-conv-time" }, timeStamp(c.lastMessageAt, true)),
                         ),
                         c.lastMessagePreview ? React.createElement("span", { className: "index-dashboard__msg-conv-preview" }, c.lastMessagePreview) : null,
                       ),
+                      unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,
                     );
                   }))),
+            ),
           ),
           React.createElement("div", { className: "index-dashboard__msg-thread-col" },
             activeId
               ? React.createElement(React.Fragment, null,
+                activeConv
+                  ? React.createElement("div", { className: "index-dashboard__msg-thread-head" },
+                    React.createElement(UserAvatar, {
+                      id: activeConv.counterpartUserId,
+                      name: activeConv.counterpartName || activeConv.title,
+                      avatar: activeConv.avatar,
+                      className: "index-dashboard__avatar index-dashboard__msg-thread-avatar",
+                    }),
+                    React.createElement("span", { className: "index-dashboard__msg-thread-name" }, activeConv.title || "Conversation"),
+                  )
+                  : null,
                 React.createElement("div", { className: "index-dashboard__msg-thread", ref: threadRef },
                   threadLoading
                     ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading messages…")
@@ -4155,13 +4185,18 @@
                           let cls = "index-dashboard__msg-bubble";
                           if (m.mine) cls += " index-dashboard__msg-bubble--mine";
                           if (m.isInternal) cls += " index-dashboard__msg-bubble--internal";
-                          if (m.isInternal) {
-                            return React.createElement("div", { key: m.id, className: cls },
-                              React.createElement("span", { className: "index-dashboard__msg-internal-label" }, "Internal assessment"),
-                              React.createElement("span", null, m.text),
-                            );
-                          }
-                          return React.createElement("div", { key: m.id, className: cls }, m.text);
+                          return React.createElement("div", {
+                            key: m.id,
+                            className: "index-dashboard__msg-row" + (m.mine ? " index-dashboard__msg-row--mine" : ""),
+                          },
+                            m.isInternal
+                              ? React.createElement("div", { className: cls },
+                                React.createElement("span", { className: "index-dashboard__msg-internal-label" }, "Internal assessment"),
+                                React.createElement("span", null, m.text),
+                              )
+                              : React.createElement("div", { className: cls }, m.text),
+                            React.createElement("span", { className: "index-dashboard__msg-time" }, timeStamp(m.createdAt)),
+                          );
                         });
                       })(),
                 ),
@@ -4170,11 +4205,17 @@
                     className: "index-dashboard__textarea index-dashboard__msg-input",
                     rows: 1,
                     value: input,
-                    placeholder: activeConv ? ("Message " + (activeConv.counterpartName || activeConv.title) + "…") : "Type a message…",
+                    placeholder: "write a message…",
                     onChange: function (e) { setInput(e.target.value); },
                     onKeyDown: onComposerKey,
                   }),
-                  React.createElement(Button, { type: "button", disabled: sending || !input.trim(), onClick: send }, sending ? "Sending…" : "Send"),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "index-dashboard__msg-send",
+                    "aria-label": "Send",
+                    disabled: sending || !input.trim(),
+                    onClick: send,
+                  }, "\u2191"),
                 ),
               )
               : React.createElement("div", { className: "index-dashboard__msg-thread" },
