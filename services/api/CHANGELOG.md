@@ -10,6 +10,21 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **Realtime frames are Redis Streams, not pub/sub.** `events:user:<userId>` is
+  a stream (`XADD` with `MAXLEN ~ 1000`) instead of a pub/sub channel, so a
+  consumer keeps an offset rather than seeing only what is published while it is
+  attached. Frame JSON is unchanged. `GET /events` sends each frame's stream id
+  as the SSE `id:` field and accepts `Last-Event-ID` (or `?after=`) to resume
+  from it. `?consumer=<agentId>` names one of the caller's own agents and keeps
+  that consumer's offset in Redis instead: frames it never acknowledged are
+  redelivered after a reconnect, and two connections under one agent compete for
+  frames rather than each taking every one. An unknown or unowned `consumer` is
+  `404`, and a consumer's first connection starts at the oldest retained frame
+  rather than going live. An offset older than the 1000-frame window is gone — the client falls
+  back to live frames and reconciles over REST, which is what it already did,
+  and notification snapshots stay deleted. The hosted negotiator reads the
+  `hosted-negotiator` group across every owner's stream, so a wake is taken by
+  exactly one API process instead of every process racing on the same frame.
 - **BREAKING: domain tables drop the `protocol_` prefix.** `protocol_intents`,
   `protocol_networks`, `protocol_network_members`, `protocol_intent_networks`,
   `protocol_agents`, `protocol_opportunities`, `protocol_negotiations`,
