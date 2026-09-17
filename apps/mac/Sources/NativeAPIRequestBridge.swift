@@ -183,6 +183,9 @@ final class NativeAPIStreamDelegate: NSObject, URLSessionDataDelegate {
         var values: [String] = []
         for rawLine in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false) {
             if rawLine.hasPrefix(":") { continue }
+            // `id:` carries the server's resume offset, which this bounded
+            // stream has no use for. Rejecting it would drop every frame.
+            if rawLine.hasPrefix("id:") || rawLine.hasPrefix("event:") || rawLine.hasPrefix("retry:") { continue }
             guard rawLine == "data" || rawLine.hasPrefix("data:") else {
                 fail(.transportFailure, task: task); return false
             }
