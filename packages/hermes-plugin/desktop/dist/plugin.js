@@ -55,6 +55,7 @@ function DesktopButton(props) {
 const DESKTOP_ENV = {
   sdk: { React: React, components: { Button: DesktopButton }, fetchJSON: desktopFetchJSON },
   assets: {},
+  navigate: function (path) { host.navigate(path) },
   onComponent: function (component) { DashboardComponent = component }
 }
 
@@ -777,43 +778,87 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     );
   }
 
-  // Desktop cannot put selection in the URL hash — Hermes HashRouter owns
-  // that for `#/index-network`. Persist the view so ⌘R remounts the same page.
-  const DESKTOP_VIEW_KEY = "index-network.view";
+  // Discover lives at `/index-network` (Hermes HashRouter: `#/index-network`).
+  // View state is query on that path — never a bare `#intent=` fragment, which
+  // misses the plugin route and the host's `*` catch-all sends you to new chat.
+  const PAGE_PATH = "/index-network";
+  const LAST_PATH_KEY = "index-network.path";
 
-  function loadDesktopView() {
-    if (!DESKTOP_ENV) return null;
-    try {
-      const data = JSON.parse(window.localStorage.getItem(DESKTOP_VIEW_KEY) || "null");
-      return data && typeof data === "object" ? data : null;
-    } catch (e) {
-      return null;
+  function pageSearchParams() {
+    const hash = window.location.hash || "";
+    const mark = hash.indexOf("?");
+    const params = new URLSearchParams(window.location.search || "");
+    if (mark >= 0) {
+      new URLSearchParams(hash.slice(mark)).forEach(function (value, key) {
+        if (!params.has(key)) params.set(key, value);
+      });
     }
+    return params;
   }
 
-  function saveDesktopView(view) {
-    if (!DESKTOP_ENV) return;
-    try {
-      window.localStorage.setItem(DESKTOP_VIEW_KEY, JSON.stringify(view || {}));
-    } catch (e) { /* noop */ }
+  function parseView() {
+    const params = pageSearchParams();
+    const chat = params.get("chat");
+    return {
+      intentId: params.get("intent") || null,
+      messagesOpen: params.has("chat"),
+      messagesTarget: chat || null,
+      profileOpen: params.get("profile") === "1",
+      viewUserId: params.get("user") || null,
+    };
   }
 
   function parseHash() {
-    if (DESKTOP_ENV) {
-      const view = loadDesktopView();
-      return { intentId: (view && view.intentId) || null };
+    return { intentId: parseView().intentId };
+  }
+
+  function viewPath(view) {
+    const params = pageSearchParams();
+    if (view.intentId) params.set("intent", view.intentId);
+    else params.delete("intent");
+    if (view.messagesOpen) params.set("chat", view.messagesTarget || "");
+    else params.delete("chat");
+    if (view.profileOpen) params.set("profile", "1");
+    else params.delete("profile");
+    if (view.viewUserId) params.set("user", view.viewUserId);
+    else params.delete("user");
+    const q = params.toString();
+    return q ? PAGE_PATH + "?" + q : PAGE_PATH;
+  }
+
+  function currentPageHref() {
+    if (DESKTOP_ENV) return ((window.location.hash || "").replace(/^#/, "")).split("#")[0] || "";
+    return window.location.pathname + window.location.search;
+  }
+
+  function rememberPagePath(path) {
+    try {
+      if (path && path.split("?")[0] === PAGE_PATH) window.localStorage.setItem(LAST_PATH_KEY, path);
+    } catch (e) { /* noop */ }
+  }
+
+  function onPagePath() {
+    const path = currentPageHref().split("?")[0];
+    return path === PAGE_PATH || path.startsWith(PAGE_PATH + "/");
+  }
+
+  function writeView(view, force) {
+    const target = viewPath(view);
+    rememberPagePath(target);
+    if (currentPageHref() === target) return;
+    if (!force && !onPagePath()) return;
+    if (DESKTOP_ENV && DESKTOP_ENV.navigate) {
+      DESKTOP_ENV.navigate(target);
+      return;
     }
-    const raw = (window.location.hash || "").replace(/^#/, "");
-    const params = {};
-    raw.split("&").forEach(function (pair) {
-      if (!pair) return;
-      const idx = pair.indexOf("=");
-      const key = idx >= 0 ? pair.slice(0, idx) : pair;
-      params[key] = idx >= 0 ? decodeURIComponent(pair.slice(idx + 1)) : "";
-    });
-    return {
-      intentId: params.intent || null,
-    };
+    if (DESKTOP_ENV) {
+      const hash = "#" + target;
+      if ((window.location.hash || "") !== hash) window.location.hash = hash;
+      return;
+    }
+    if (window.location.pathname + window.location.search !== target) {
+      window.history.replaceState(null, "", target);
+    }
   }
 
   /**
@@ -841,17 +886,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   }
 
   function writeHash(intentId) {
-    if (DESKTOP_ENV) {
-      const view = loadDesktopView() || {};
-      if (intentId) view.intentId = intentId;
-      else delete view.intentId;
-      saveDesktopView(view);
-      return;
-    }
-    const target = intentId ? "#intent=" + encodeURIComponent(intentId) : "";
-    if ((window.location.hash || "") !== target) {
-      window.location.hash = target;
-    }
+    const view = parseView();
+    view.intentId = intentId || null;
+    writeView(view, true);
   }
 
   function EmptyState(props) {
@@ -4229,8 +4266,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const useState = React.useState;
     const useEffect = React.useEffect;
     const useRef = React.useRef;
-    const initial = parseHash();
-    const restored = DESKTOP_ENV ? (loadDesktopView() || {}) : {};
+    const initial = parseView();
     // Root node + host theme; every animated asset resolves against SCHEME.
     const rootRef = useRef(null);
     const scheme = useColorScheme(rootRef);
@@ -4280,16 +4316,16 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const autoState = useState(true);
     const autoRefresh = autoState[0];
     const setAutoRefresh = autoState[1];
-    const profileOpenState = useState(!!restored.profileOpen);
+    const profileOpenState = useState(!!initial.profileOpen);
     const profileOpen = profileOpenState[0];
     const setProfileOpen = profileOpenState[1];
-    const viewUserState = useState(restored.viewUserId || null);
+    const viewUserState = useState(initial.viewUserId || null);
     const viewUserId = viewUserState[0];
     const setViewUserId = viewUserState[1];
-    const messagesOpenState = useState(!!restored.messagesOpen);
+    const messagesOpenState = useState(!!initial.messagesOpen);
     const messagesOpen = messagesOpenState[0];
     const setMessagesOpen = messagesOpenState[1];
-    const messagesTargetState = useState(restored.messagesTarget || null);
+    const messagesTargetState = useState(initial.messagesTarget || null);
     const messagesTarget = messagesTargetState[0];
     const setMessagesTarget = messagesTargetState[1];
     // Bumped by a question notification, so the card scrolls into view even
@@ -4799,24 +4835,29 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     }, [autoRefresh, auth]);
 
     useEffect(function () {
-      if (DESKTOP_ENV) return undefined;
-      function onHashChange() {
-        setSelectedId(parseHash().intentId);
+      function applyView() {
+        const view = parseView();
+        setSelectedId(view.intentId);
+        setMessagesOpen(view.messagesOpen);
+        setMessagesTarget(view.messagesTarget);
+        setProfileOpen(view.profileOpen);
+        setViewUserId(view.viewUserId);
       }
-      window.addEventListener("hashchange", onHashChange);
+      window.addEventListener("hashchange", applyView);
+      window.addEventListener("popstate", applyView);
       return function () {
-        window.removeEventListener("hashchange", onHashChange);
+        window.removeEventListener("hashchange", applyView);
+        window.removeEventListener("popstate", applyView);
       };
     }, []);
 
     useEffect(function () {
-      if (!DESKTOP_ENV) return;
-      saveDesktopView({
-        intentId: selectedId || undefined,
-        profileOpen: profileOpen || undefined,
-        viewUserId: viewUserId || undefined,
-        messagesOpen: messagesOpen || undefined,
-        messagesTarget: messagesTarget || undefined,
+      writeView({
+        intentId: selectedId,
+        profileOpen: profileOpen,
+        viewUserId: viewUserId,
+        messagesOpen: messagesOpen,
+        messagesTarget: messagesTarget,
       });
     }, [selectedId, profileOpen, viewUserId, messagesOpen, messagesTarget]);
 
@@ -4846,7 +4887,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         } else {
           setSelectedId(target.id);
           writeHash(target.id);
-          setFocusQuestion(function (n) { return n + 1; });
+          if (selectedIdRef.current !== target.id) {
+            setFocusQuestion(function (n) { return n + 1; });
+          }
         }
       }
       applyFocus();
@@ -5286,12 +5329,28 @@ function DesktopPage() {
 }
 
 const DISCOVER_PATH = '/index-network'
+const LAST_PATH_KEY = 'index-network.path'
 // Host stamps this on the contributed sidebar row (`sidebar-nav-${contribution.id}`).
 const DISCOVER_NAV_TOUR = 'sidebar-nav-index-network:nav'
 
+function discoverHref() {
+  return ((window.location.hash || '').replace(/^#/, '')).split('#')[0] || ''
+}
+
 function discoverHash() {
-  const path = ((window.location.hash || '').replace(/^#/, '')).split('?')[0]
+  const path = discoverHref().split('?')[0]
   return path === DISCOVER_PATH || path.startsWith(DISCOVER_PATH + '/')
+}
+
+function readLastDiscoverPath() {
+  try { return window.localStorage.getItem(LAST_PATH_KEY) || '' } catch (e) { return '' }
+}
+
+function writeLastDiscoverPath(path) {
+  try {
+    if (path) window.localStorage.setItem(LAST_PATH_KEY, path)
+    else window.localStorage.removeItem(LAST_PATH_KEY)
+  } catch (e) { /* noop */ }
 }
 
 // Discover is a workspace-pane route. Hash navigation is a no-op when the
@@ -5311,7 +5370,12 @@ function showDiscover(to) {
 }
 
 function onDiscoverHash() {
-  if (discoverHash()) showDiscover()
+  if (discoverHash()) {
+    writeLastDiscoverPath(discoverHref())
+    showDiscover()
+    return
+  }
+  writeLastDiscoverPath('')
 }
 
 function onDiscoverNavClick(event) {
@@ -5344,7 +5408,6 @@ export default {
       window.removeEventListener('hashchange', onDiscoverHash)
       document.removeEventListener('click', onDiscoverNavClick)
     })
-    onDiscoverHash()
 
     ctx.registerMany([
       {
@@ -5370,5 +5433,11 @@ export default {
         }
       }
     ])
+
+    // Register the route first. Hermes's `*` catch-all rewrites unknown paths
+    // (including `#/index-network` before this plugin mounts) to new chat.
+    // Restore the last Discover path after the route exists so reload stays here.
+    if (discoverHash()) onDiscoverHash()
+    else if (readLastDiscoverPath()) showDiscover(readLastDiscoverPath())
   }
 }

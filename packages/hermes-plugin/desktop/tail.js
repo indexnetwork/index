@@ -147,12 +147,28 @@ function DesktopPage() {
 }
 
 const DISCOVER_PATH = '/index-network'
+const LAST_PATH_KEY = 'index-network.path'
 // Host stamps this on the contributed sidebar row (`sidebar-nav-${contribution.id}`).
 const DISCOVER_NAV_TOUR = 'sidebar-nav-index-network:nav'
 
+function discoverHref() {
+  return ((window.location.hash || '').replace(/^#/, '')).split('#')[0] || ''
+}
+
 function discoverHash() {
-  const path = ((window.location.hash || '').replace(/^#/, '')).split('?')[0]
+  const path = discoverHref().split('?')[0]
   return path === DISCOVER_PATH || path.startsWith(DISCOVER_PATH + '/')
+}
+
+function readLastDiscoverPath() {
+  try { return window.localStorage.getItem(LAST_PATH_KEY) || '' } catch (e) { return '' }
+}
+
+function writeLastDiscoverPath(path) {
+  try {
+    if (path) window.localStorage.setItem(LAST_PATH_KEY, path)
+    else window.localStorage.removeItem(LAST_PATH_KEY)
+  } catch (e) { /* noop */ }
 }
 
 // Discover is a workspace-pane route. Hash navigation is a no-op when the
@@ -172,7 +188,12 @@ function showDiscover(to) {
 }
 
 function onDiscoverHash() {
-  if (discoverHash()) showDiscover()
+  if (discoverHash()) {
+    writeLastDiscoverPath(discoverHref())
+    showDiscover()
+    return
+  }
+  writeLastDiscoverPath('')
 }
 
 function onDiscoverNavClick(event) {
@@ -205,7 +226,6 @@ export default {
       window.removeEventListener('hashchange', onDiscoverHash)
       document.removeEventListener('click', onDiscoverNavClick)
     })
-    onDiscoverHash()
 
     ctx.registerMany([
       {
@@ -231,5 +251,11 @@ export default {
         }
       }
     ])
+
+    // Register the route first. Hermes's `*` catch-all rewrites unknown paths
+    // (including `#/index-network` before this plugin mounts) to new chat.
+    // Restore the last Discover path after the route exists so reload stays here.
+    if (discoverHash()) onDiscoverHash()
+    else if (readLastDiscoverPath()) showDiscover(readLastDiscoverPath())
   }
 }
