@@ -28,9 +28,9 @@ bun run dev:web
 
 The API loads the root `.env.development`. Use the disposable development
 database with the migrations applied. Open the web app, sign in normally, and
-open an intent. Its private H2A chat accepts owner messages only when an
-external negotiator is selected. Suggested answers and custom drafts stay
-attached to the displayed question. Radar keeps its Needs you, Waiting,
+open an intent. Its private H2A chat always accepts owner messages and answers,
+whether or not an external negotiator is selected. Suggested answers and custom
+drafts stay attached to the displayed question. Radar keeps its Needs you, Waiting,
 Connected, and Closed categories, with an expandable A2A conversation inside
 each match. Pending matches retain Start Chat and Skip.
 
@@ -40,11 +40,11 @@ The API runs no personal-agent session. Its only hosted agent is
 one turn, and stops. It never chats, so H2A questions and messages come from the
 owner's selected external negotiator. `GET /api/conversations/:id/messages`
 with `intentId` returns that intent's H2A history and `agent` state (`external`
-or `hosted`, plus `pending`). Send text to `POST /api/conversations/:id/messages`
+or `hosted`, plus `questions`). Send text to `POST /api/conversations/:id/messages`
 with `parts: [{ kind: "text", text }]`, `metadata: { intentId }`, and the
 displayed `questionId`, or `null` for a direct message. A successful response
-contains the persisted message; a changed question or missing negotiator
-returns 409 without recording the input.
+contains the persisted message; input naming a question that is no longer
+waiting is still recorded, as a plain message.
 
 ## Railway dev intent replay
 

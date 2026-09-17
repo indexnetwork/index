@@ -4,7 +4,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useConversations } from "@/contexts/APIContext";
-import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type PrincipalQuestion } from "@/services/conversation";
 import { cn } from "@/lib/utils";
@@ -18,11 +17,9 @@ function messageText(message: ConversationMessage): string {
 
 /** One private intent conversation; every open question is answered in a single submit. */
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
-  const { user } = useAuthContext();
   const conversations = useConversations();
   const { subscribeConversationMessage, isConnected } = useConversation();
-  const storageKey = `principal-draft:${user?.id}:${intentId}`;
-  const [draft, setDraft] = useState(() => sessionStorage.getItem(storageKey) ?? "");
+  const [draft, setDraft] = useState("");
   const [selections, setSelections] = useState<Record<string, string>>({});
   const [writing, setWriting] = useState<Record<string, boolean>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -30,8 +27,6 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const [agent, setAgent] = useState<PersonalAgentState>();
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  const [loadError, setLoadError] = useState("");
   const requests = useRef({ generation: 0, mounted: false });
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -40,7 +35,6 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   // Read off the questions on screen, so a selection whose question is gone
   // counts for nothing and is never sent.
   const chosen = questions.filter((question) => selections[question.id]?.trim());
-  const canSend = agent?.status === "external";
 
   const mergeMessages = useCallback((incoming: ConversationMessage[]) => {
     setMessages((previous) => [...new Map([...previous, ...incoming].map((message) => [message.id, message])).values()]
@@ -56,9 +50,8 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
       setConversationId(loaded.conversationId);
       mergeMessages(loaded.messages);
       setAgent(loaded.agent);
-      setLoadError("");
-    } catch (failure) {
-      if (current === requests.current.generation) setLoadError(failure instanceof Error ? failure.message : "Could not load your conversation.");
+    } catch {
+      // Keep the last good transcript; the stream or the next read reconciles it.
     } finally {
       if (current === requests.current.generation) setLoading(false);
     }
@@ -78,21 +71,17 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     void refresh();
   }), [conversationId, intentId, mergeMessages, refresh, subscribeConversationMessage]);
 
-  useEffect(() => { sessionStorage.setItem(storageKey, draft); }, [draft, storageKey]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages.length, questions.length]);
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || !conversationId || sending || !canSend) return;
+    if (!text || sending) return;
+    setDraft("");
     setSending(true);
-    setError("");
     try {
-      const message = await conversations.sendMessage(conversationId, [{ kind: "text", text }], { metadata: { intentId } });
-      mergeMessages([message]);
-      sessionStorage.removeItem(storageKey);
-      setDraft("");
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not send your message. Your draft is kept.");
+      mergeMessages([await conversations.sendMessage(AGENT_DM_ID, [{ kind: "text", text }], { metadata: { intentId } })]);
+    } catch {
+      // Nothing to say: the refresh below is the transcript's only truth.
     } finally {
       await refresh();
       setSending(false);
@@ -102,18 +91,15 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
 
   /** Send every answered question as one write, so the agent decides from all of them at once. */
   const sendAnswers = async () => {
-    if (!chosen.length || sending || !canSend) return;
+    if (!chosen.length || sending) return;
+    const answers = chosen.map((question) => ({ questionId: question.id, text: selections[question.id]!.trim() }));
+    setSelections({});
+    setWriting({});
     setSending(true);
-    setError("");
     try {
-      const sent = await conversations.sendAnswers(intentId, chosen.map((question) => (
-        { questionId: question.id, text: selections[question.id]!.trim() }
-      )));
-      mergeMessages(sent);
-      setSelections({});
-      setWriting({});
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not send your answers. Your choices are kept.");
+      mergeMessages(await conversations.sendAnswers(intentId, answers));
+    } catch {
+      // Nothing to say: the refresh below is the transcript's only truth.
     } finally {
       await refresh();
       setSending(false);
@@ -121,7 +107,6 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   };
 
   const choose = (questionId: string, text: string) => {
-    setError("");
     setSelections((current) => ({ ...current, [questionId]: current[questionId] === text ? "" : text }));
   };
 
@@ -138,9 +123,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="intent-negotiator-chat">
       <p className="mb-3 text-xs text-gray-500" aria-live="polite">
-        {agent?.status === "external" ? "Messages go to your selected negotiator."
-          : agent?.status === "hosted" ? "The Index negotiator handles matches but does not chat. Select a negotiator in Settings to message your agent."
-            : "Loading your agent conversation…"}
+        {agent ? "Your inbox for this intent." : "Loading your agent conversation…"}
       </p>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {loading ? <Loader2 className="mx-auto my-10 h-5 w-5 animate-spin text-gray-400" />
@@ -171,7 +154,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             {references(question.scope, question.matches)}
             <p className="mb-3 whitespace-pre-wrap text-sm text-gray-900">{question.question}</p>
             <div className="grid gap-2 sm:grid-cols-2">
-              {question.options?.map((option) => <button key={option} type="button" disabled={sending || !canSend}
+              {question.options?.map((option) => <button key={option} type="button" disabled={sending}
                 aria-pressed={selections[question.id] === option}
                 onClick={() => { choose(question.id, option); setWriting((current) => ({ ...current, [question.id]: false })); }}
                 className={cn("rounded-lg border px-3 py-2 text-left text-sm disabled:opacity-50",
@@ -181,29 +164,28 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             </div>
             {writing[question.id]
               ? <input autoFocus value={question.options?.includes(selections[question.id] ?? "") ? "" : selections[question.id] ?? ""}
-                onChange={(event) => { setError(""); setSelections((current) => ({ ...current, [question.id]: event.target.value })); }}
+                onChange={(event) => setSelections((current) => ({ ...current, [question.id]: event.target.value }))}
                 placeholder="Write your answer…" aria-label="Write your own answer"
                 className="mt-2 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-amber-400" />
               : <button type="button" className="mt-2 text-xs text-amber-800 underline underline-offset-2"
                 onClick={() => setWriting((current) => ({ ...current, [question.id]: true }))}>write your own</button>}
           </article>)}
         </div>
-        <button type="button" disabled={!chosen.length || sending || !canSend} onClick={() => void sendAnswers()}
+        <button type="button" disabled={!chosen.length || sending} onClick={() => void sendAnswers()}
           className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[#041729] px-3 py-2 text-sm text-white disabled:opacity-50">
           {sending && <Loader2 className="h-4 w-4 animate-spin" />}
           {chosen.length > 1 ? `Send ${chosen.length} answers` : "Send answer"}
         </button>
       </section>}
 
-      {(error || loadError) && <p role="alert" className="mt-2 text-sm text-red-700">{error || loadError}</p>}
       <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="mt-3 flex shrink-0 items-end gap-2 rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3">
         <textarea ref={inputRef} rows={2} value={draft}
-          onChange={(event) => { setError(""); setDraft(event.target.value); }}
+          onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
           placeholder="Message your personal agent…"
           aria-label="Message your personal agent"
           className="max-h-32 min-w-0 flex-1 resize-y border-none bg-transparent text-sm leading-6 text-gray-900 outline-none" />
-        <button type="submit" disabled={!draft.trim() || !conversationId || sending || !canSend}
+        <button type="submit" disabled={!draft.trim() || sending}
           aria-label="Send message"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#041729] text-white disabled:opacity-50">
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}

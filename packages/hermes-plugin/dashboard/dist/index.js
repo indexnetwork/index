@@ -437,6 +437,88 @@
     });
   }
 
+  /**
+   * Read the owner's realtime event stream, one parsed frame at a time.
+   *
+   * The plugin backend relays the upstream stream with its own API key. We
+   * consume that relay with SDK.authedFetch (which injects the Hermes dashboard
+   * session auth — the `X-Hermes-Session-Token` header in loopback mode,
+   * cookies in gated mode) plus a streaming body reader, rather than a raw
+   * EventSource: EventSource cannot set the session header and the host does not
+   * accept a ?token= query param on plugin routes, so it would fail to
+   * authenticate in the default desktop (loopback) mode. Reconnects with
+   * exponential backoff (5s * 2^n, capped at 60s, 10 tries).
+   *
+   * Connects nothing in the desktop host, whose REST bridge buffers whole
+   * responses and so cannot stream; those callers live on their own poll.
+   *
+   * @returns The cleanup function for the caller's effect.
+   */
+  function subscribeUserEvents(onFrame) {
+    if (DESKTOP_ENV) return function () { /* nothing was opened */ };
+
+    let retryTimer = null;
+    let retries = 0;
+    let stopped = false;
+    let reader = null;
+
+    function scheduleRetry() {
+      if (stopped) return;
+      retries += 1;
+      if (retries > 10) return;
+      retryTimer = setTimeout(connect, Math.min(5000 * Math.pow(2, retries - 1), 60000));
+    }
+
+    function streamFetch() {
+      const url = API + "/conversations/stream";
+      const opts = { headers: { Accept: "text/event-stream" } };
+      if (SDK.authedFetch) return SDK.authedFetch(url, opts);
+      return window.fetch(url, Object.assign({ credentials: "include" }, opts));
+    }
+
+    function connect() {
+      streamFetch()
+        .then(function (response) {
+          if (!response || !response.ok || !response.body || !response.body.getReader) {
+            throw new Error("stream unavailable");
+          }
+          retries = 0;
+          reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          function pump() {
+            return reader.read().then(function (result) {
+              if (stopped) { try { reader.cancel(); } catch (e) { /* noop */ } return; }
+              if (result.done) { scheduleRetry(); return; }
+              buffer += decoder.decode(result.value, { stream: true });
+              let sep;
+              while ((sep = buffer.indexOf("\n\n")) >= 0) {
+                const frame = buffer.slice(0, sep);
+                buffer = buffer.slice(sep + 2);
+                const lines = frame.split("\n");
+                for (let i = 0; i < lines.length; i++) {
+                  if (lines[i].indexOf("data:") !== 0) continue;
+                  let data;
+                  try { data = JSON.parse(lines[i].slice(5).trim()); } catch (e) { continue; }
+                  if (data) onFrame(data);
+                }
+              }
+              return pump();
+            });
+          }
+          return pump();
+        })
+        .catch(function () { if (!stopped) scheduleRetry(); });
+    }
+
+    connect();
+    return function () {
+      stopped = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (reader) { try { reader.cancel(); } catch (e) { /* noop */ } }
+    };
+  }
+
   function BadgeText(props) {
     const className = "index-dashboard__badge" + (props.className ? " " + props.className : "");
     const badgeProps = { className: className };
@@ -632,10 +714,32 @@
     );
   }
 
+  // Desktop cannot put selection in the URL hash — Hermes HashRouter owns
+  // that for `#/index-network`. Persist the view so ⌘R remounts the same page.
+  const DESKTOP_VIEW_KEY = "index-network.view";
+
+  function loadDesktopView() {
+    if (!DESKTOP_ENV) return null;
+    try {
+      const data = JSON.parse(window.localStorage.getItem(DESKTOP_VIEW_KEY) || "null");
+      return data && typeof data === "object" ? data : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveDesktopView(view) {
+    if (!DESKTOP_ENV) return;
+    try {
+      window.localStorage.setItem(DESKTOP_VIEW_KEY, JSON.stringify(view || {}));
+    } catch (e) { /* noop */ }
+  }
+
   function parseHash() {
-    // The desktop app owns window.location.hash (its router routes on it) —
-    // keep intent selection purely in component state there.
-    if (DESKTOP_ENV) return { intentId: null };
+    if (DESKTOP_ENV) {
+      const view = loadDesktopView();
+      return { intentId: (view && view.intentId) || null };
+    }
     const raw = (window.location.hash || "").replace(/^#/, "");
     const params = {};
     raw.split("&").forEach(function (pair) {
@@ -674,7 +778,13 @@
   }
 
   function writeHash(intentId) {
-    if (DESKTOP_ENV) return;
+    if (DESKTOP_ENV) {
+      const view = loadDesktopView() || {};
+      if (intentId) view.intentId = intentId;
+      else delete view.intentId;
+      saveDesktopView(view);
+      return;
+    }
     const target = intentId ? "#intent=" + encodeURIComponent(intentId) : "";
     if ((window.location.hash || "") !== target) {
       window.location.hash = target;
@@ -766,12 +876,15 @@
     const counts = props.counts || {};
     return React.createElement("div", { className: "index-dashboard__radar-strip" },
       RADAR_BUCKETS.map(function (bucket) {
+        const active = props.selected === bucket.key;
         return React.createElement(StatPill, {
           key: bucket.key,
           value: counts[bucket.key] || 0,
           label: bucket.label,
-          active: props.selected === bucket.key,
-          onSelect: props.onSelect ? function () { props.onSelect(bucket.key); } : null,
+          active: active,
+          // Mac-app parity: picking a stage filters to it, picking it again
+          // goes back to the whole radar.
+          onSelect: props.onSelect ? function () { props.onSelect(active ? "all" : bucket.key); } : null,
         });
       }),
     );
@@ -889,12 +1002,12 @@
           key: "accept", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { props.onAccept(opportunity); },
-        }, acting ? "Working…" : "Accept"),
+        }, acting ? "Working…" : "accept"),
         React.createElement(Button, {
           key: "pass", type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { if (props.onSkip) props.onSkip(opportunity); },
-        }, "Pass"),
+        }, "pass"),
       ];
     } else if (status === "accepted") {
       if (props.onStartChat && opportunity.counterpartUserId) {
@@ -902,7 +1015,7 @@
           key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { props.onStartChat(opportunity); },
-        }, acting ? "Working…" : "Open chat ›")];
+        }, acting ? "Working…" : "send message")];
       } else if (opportunity.chatUrl) {
         actionButtons = [React.createElement("a", {
           key: "open", className: "index-dashboard__opp-openchat",
@@ -931,7 +1044,11 @@
           }),
           React.createElement("div", { className: "index-dashboard__opp-meta" },
             React.createElement("strong", { className: "index-dashboard__opp-name" }, opportunity.name || "New match"),
-            React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle || "Suggested connection"),
+            // Mac-app parity: a radar row is a name and what the pairing is for,
+            // nothing else. Only the negotiations rows carry a subtitle.
+            opportunity.subtitle
+              ? React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle)
+              : null,
           ),
         ),
         // Mac-app parity: the head's right column shows the action buttons when
@@ -2215,23 +2332,23 @@
     );
   }
 
-  function DetailHead(props) {
-    return React.createElement("div", { className: "index-dashboard__detail-head" },
-      props.onBack ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: props.onBack }, ICON_ARROW_LEFT(), "Back") : null,
-      React.createElement("div", { className: "index-dashboard__detail-card" },
-        React.createElement("div", { className: "index-dashboard__detail-title-row" },
-          React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
-          props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
+  /**
+   * The head of the signal pane: what the signal asks for, the controls that
+   * hold or end it, and what its agent is doing — the mac app's signal window
+   * header (apps/mac/src/ui/mainview/conversation.jsx).
+   */
+  function SignalHead(props) {
+    return React.createElement("div", { className: "index-dashboard__signal-head" },
+      React.createElement("div", { className: "index-dashboard__detail-title-row" },
+        React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
+        props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
+      ),
+      React.createElement("div", { className: "index-dashboard__detail-live" },
+        React.createElement("span", { className: "index-dashboard__live" + (props.paused ? " index-dashboard__live--paused" : "") },
+          React.createElement("span", { className: "index-dashboard__live-dot" }),
+          props.paused ? "paused" : "live",
         ),
-      props.live
-        ? React.createElement("div", { className: "index-dashboard__detail-live" },
-          React.createElement("span", { className: "index-dashboard__live" + (props.paused ? " index-dashboard__live--paused" : "") },
-            React.createElement("span", { className: "index-dashboard__live-dot" }),
-            props.paused ? "paused" : "live",
-          ),
-          React.createElement("span", { className: "index-dashboard__detail-live-text" }, props.paused ? "agent on hold" : "agent is looking in the background"),
-        )
-        : null,
+        React.createElement("span", { className: "index-dashboard__detail-live-text" }, props.paused ? "agent on hold" : "agent is looking in the background"),
       ),
     );
   }
@@ -2261,13 +2378,117 @@
     );
   }
 
+  const MARKDOWN_INLINE = /`([^`]+)`|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[([^\]]+)\]\(([^)\s]+)\)/g;
+
+  /** Bold, italic, inline code, and http(s) links inside one block of text. */
+  function markdownInline(text, key) {
+    const nodes = [];
+    let last = 0;
+    let match;
+    MARKDOWN_INLINE.lastIndex = 0;
+    while ((match = MARKDOWN_INLINE.exec(text))) {
+      if (match.index > last) nodes.push(text.slice(last, match.index));
+      const nodeKey = key + ":" + match.index;
+      if (match[1] != null) nodes.push(React.createElement("code", { key: nodeKey }, match[1]));
+      else if (match[2] != null) nodes.push(React.createElement("strong", { key: nodeKey }, match[2]));
+      else if (match[3] != null) nodes.push(React.createElement("em", { key: nodeKey }, match[3]));
+      else if (/^https?:\/\/\S+$/i.test(match[5])) {
+        nodes.push(React.createElement("a", {
+          key: nodeKey, href: match[5], target: "_blank", rel: "noopener noreferrer",
+        }, match[4]));
+      } else {
+        nodes.push(match[0]);
+      }
+      last = match.index + match[0].length;
+    }
+    if (last < text.length) nodes.push(text.slice(last));
+    return nodes;
+  }
+
+  /**
+   * The markdown a transcript actually carries, as React elements.
+   *
+   * Built from elements rather than an HTML string, so nothing the agent or the
+   * owner writes can become markup. Paragraphs, bullet and numbered lists,
+   * headings, fenced and inline code, bold, italic, and http(s) links; anything
+   * else stays literal text. The bubble's `white-space: pre-wrap` keeps the
+   * line breaks inside a paragraph.
+   */
+  function Markdown(props) {
+    const lines = String(props.text || "").split("\n");
+    const blocks = [];
+    let paragraph = [];
+    let items = null;
+    let ordered = false;
+    let code = null;
+
+    function flushParagraph() {
+      if (!paragraph.length) return;
+      const key = "b" + blocks.length;
+      blocks.push(React.createElement("p", { key: key }, markdownInline(paragraph.join("\n"), key)));
+      paragraph = [];
+    }
+
+    function flushList() {
+      if (!items) return;
+      const key = "b" + blocks.length;
+      blocks.push(React.createElement(ordered ? "ol" : "ul", { key: key }, items.map(function (item, i) {
+        return React.createElement("li", { key: key + ":" + i }, markdownInline(item, key + ":" + i));
+      })));
+      items = null;
+    }
+
+    function flushCode() {
+      if (!code) return;
+      blocks.push(React.createElement("pre", { key: "b" + blocks.length },
+        React.createElement("code", null, code.join("\n"))));
+      code = null;
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*```/.test(line)) {
+        if (code) { flushCode(); } else { flushParagraph(); flushList(); code = []; }
+        continue;
+      }
+      if (code) { code.push(line); continue; }
+      if (!line.trim()) { flushParagraph(); flushList(); continue; }
+
+      const heading = line.match(/^ {0,3}#{1,6}\s+(.*)$/);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        const key = "b" + blocks.length;
+        blocks.push(React.createElement("h4", { key: key }, markdownInline(heading[1], key)));
+        continue;
+      }
+
+      const item = line.match(/^\s*[-*]\s+(.*)$/) || line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (item) {
+        flushParagraph();
+        const isOrdered = !/^\s*[-*]\s/.test(line);
+        if (items && ordered !== isOrdered) flushList();
+        if (!items) { items = []; ordered = isOrdered; }
+        items.push(item[1]);
+        continue;
+      }
+
+      flushList();
+      paragraph.push(line);
+    }
+    flushParagraph();
+    flushList();
+    flushCode();
+
+    return React.createElement("div", { className: "index-dashboard__md" }, blocks);
+  }
+
   /**
    * This intent's H2A conversation with the owner's personal agent.
    *
-   * The agent conversation is not in the messages list — it is per-signal and
-   * lives here, next to the radar it is about. Every question still waiting is
-   * carded, and all the answers the owner picks are sent as one write so the
-   * agent decides from them together.
+   * Lives in the signal pane, next to the radar. Transcript, questions still
+   * waiting, and a composer for messaging the negotiator. Answers picked across
+   * several questions are sent as one write.
    */
   function AgentChat(props) {
     const useState = React.useState;
@@ -2292,44 +2513,40 @@
     const sendingState = useState(false);
     const sending = sendingState[0];
     const setSending = sendingState[1];
-    const errorState = useState("");
-    const error = errorState[0];
-    const setError = errorState[1];
     const rootRef = useRef(null);
     const threadRef = useRef(null);
     const aliveRef = useRef(true);
-    const loadedRef = useRef(false);
     const intentId = props.intentId;
 
     function read() {
       return fetchPluginJSON(API + "/agent/conversation?intentId=" + encodeURIComponent(intentId))
         .then(function (payload) {
-          if (!aliveRef.current) return;
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Your agent conversation could not be read.");
-          }
-          if (!loadedRef.current) {
-            loadedRef.current = true;
-            setError("");
-          }
+          if (!aliveRef.current || !payload || payload.success === false) return;
           setMessages(payload.messages || []);
           setAgent(payload.agent || null);
         })
-        .catch(function (err) {
-          // A failed poll keeps the transcript that is already up, but a read that has
-          // never succeeded must say so rather than sit on "Loading…" forever.
-          if (aliveRef.current && !loadedRef.current) {
-            setError(err.message || "Your agent conversation could not be read.");
-          }
-        });
+        .catch(function () { /* Keep the last good transcript; the next read is 5s away. */ });
     }
 
     useEffect(function () {
       aliveRef.current = true;
-      loadedRef.current = false;
       read();
       const timer = setInterval(read, 5000);
       return function () { aliveRef.current = false; clearInterval(timer); };
+    }, [intentId]);
+
+    // The same stream the messages panel reads already carries this signal's
+    // H2A: an agent message arrives as `message` tagged with the intent, a new
+    // question as `question.pending`. The poll above stays as the backstop for
+    // frames missed while disconnected, and is the only path in the desktop
+    // host, whose REST bridge cannot stream.
+    useEffect(function () {
+      return subscribeUserEvents(function (data) {
+        const forIntent = data.type === "message"
+          ? (data.message && data.message.metadata && data.message.metadata.intentId)
+          : data.type === "question.pending" && data.data && data.data.intentId;
+        if (forIntent === intentId) read();
+      });
     }, [intentId]);
 
     const questions = (agent && Array.isArray(agent.questions)) ? agent.questions : [];
@@ -2339,7 +2556,6 @@
       const answer = selections[question.id];
       return typeof answer === "string" && answer.trim();
     });
-    const canSend = !!agent && agent.status === "external";
 
     useEffect(function () {
       const node = threadRef.current;
@@ -2353,49 +2569,38 @@
 
     function send() {
       const text = draft.trim();
-      if (!text || sending || !canSend) return;
+      if (!text || sending) return;
+      setDraft("");
       setSending(true);
-      setError("");
       fetchPluginJSON(API + "/agent/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intentId: intentId, text: text }),
       })
-        .then(function (payload) {
-          if (payload && payload.success === false) throw new Error(payload.error || "Your message could not be sent.");
-          setDraft("");
-        })
-        .catch(function (err) { setError(err && err.message ? err.message : "Your message could not be sent. Your draft is kept."); })
+        .catch(function () { /* Nothing to say: the read below is the transcript's only truth. */ })
         .then(read)
         .then(function () { if (aliveRef.current) setSending(false); });
     }
 
     function sendAnswers() {
-      if (!chosen.length || sending || !canSend) return;
+      if (!chosen.length || sending) return;
+      const answers = chosen.map(function (question) {
+        return { questionId: question.id, text: selections[question.id].trim() };
+      });
+      setSelections({});
+      setWriting({});
       setSending(true);
-      setError("");
       fetchPluginJSON(API + "/agent/answers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          intentId: intentId,
-          answers: chosen.map(function (question) {
-            return { questionId: question.id, text: selections[question.id].trim() };
-          }),
-        }),
+        body: JSON.stringify({ intentId: intentId, answers: answers }),
       })
-        .then(function (payload) {
-          if (payload && payload.success === false) throw new Error(payload.error || "Your answers could not be sent.");
-          setSelections({});
-          setWriting({});
-        })
-        .catch(function (err) { setError(err && err.message ? err.message : "Your answers could not be sent. Your choices are kept."); })
+        .catch(function () { /* Nothing to say: the read below is the transcript's only truth. */ })
         .then(read)
         .then(function () { if (aliveRef.current) setSending(false); });
     }
 
     function choose(questionId, text) {
-      setError("");
       setSelections(function (current) {
         const next = Object.assign({}, current);
         next[questionId] = current[questionId] === text ? "" : text;
@@ -2413,8 +2618,6 @@
       const raw = messages[i];
       const content = extractContent(raw.parts);
       const provenance = (raw.metadata && raw.metadata.principalMessage) || {};
-      // A carded question is the live prompt below; showing it twice reads as
-      // the agent repeating itself.
       if (!content.text) continue;
       if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) continue;
       const mine = raw.role === "user";
@@ -2423,112 +2626,105 @@
         className: "index-dashboard__msg-bubble" + (mine ? " index-dashboard__msg-bubble--mine" : ""),
       },
         React.createElement(AgentRefs, { scope: provenance.scope, matches: provenance.matches, onOpenUser: props.onOpenUser }),
-        React.createElement("span", null, content.text),
+        React.createElement(Markdown, { text: content.text }),
       ));
     }
 
-    return React.createElement("div", { ref: rootRef },
-      React.createElement(Panel, {
-        title: "Your agent",
-        description: !agent
-          ? error ? "Retrying…" : "Loading your agent conversation…"
-          : canSend
-            ? "Messages go to the negotiator you selected."
-            : "The Index negotiator handles matches but does not chat. Select a negotiator in Settings to message your agent.",
-      },
-        React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef },
-          bubbles.length
-            ? bubbles
-            : React.createElement(EmptyState, null, "Ask about your matches, share a preference, or give your agent direction for this signal."),
-        ),
-        questions.length
-          ? React.createElement("div", { className: "index-dashboard__agent-questions" },
-            questions.map(function (question) {
-              const options = Array.isArray(question.options) ? question.options : [];
-              const answer = selections[question.id] || "";
-              return React.createElement("article", { key: question.id, className: "index-dashboard__agent-q" },
-                React.createElement(AgentRefs, { scope: question.scope, matches: question.matches, onOpenUser: props.onOpenUser }),
-                React.createElement("p", { className: "index-dashboard__agent-q-text" }, question.question),
-                options.length
-                  ? React.createElement("div", { className: "index-dashboard__action-group" },
-                    options.map(function (option) {
-                      return React.createElement(Button, {
-                        key: option,
-                        type: "button",
-                        outlined: answer !== option,
-                        disabled: sending || !canSend,
-                        "aria-pressed": answer === option ? "true" : "false",
-                        onClick: function () { choose(question.id, option); },
-                      }, option);
-                    }),
-                  )
-                  : null,
-                writing[question.id] || !options.length
-                  ? React.createElement("textarea", {
-                    className: "index-dashboard__textarea index-dashboard__msg-input",
-                    rows: 1,
-                    value: options.indexOf(answer) >= 0 ? "" : answer,
-                    placeholder: "Write your answer…",
-                    "aria-label": "Write your own answer",
-                    disabled: sending || !canSend,
-                    onChange: function (e) {
-                      setError("");
-                      const text = e.target.value;
-                      setSelections(function (current) {
-                        const next = Object.assign({}, current);
-                        next[question.id] = text;
-                        return next;
-                      });
-                    },
-                  })
-                  : React.createElement("button", {
-                    type: "button",
-                    className: "index-dashboard__agent-q-write",
-                    disabled: sending || !canSend,
-                    onClick: function () {
-                      setWriting(function (current) {
-                        const next = Object.assign({}, current);
-                        next[question.id] = true;
-                        return next;
-                      });
-                    },
-                  }, "write your own"),
-              );
-            }),
-            React.createElement(Button, {
-              type: "button",
-              disabled: !chosen.length || sending || !canSend,
-              onClick: sendAnswers,
-            }, chosen.length > 1 ? "Send " + chosen.length + " answers" : "Send answer"),
-          )
-          : null,
-        error ? React.createElement("div", { className: "index-dashboard__error", role: "alert" }, error) : null,
-        React.createElement("div", { className: "index-dashboard__msg-composer" },
-          React.createElement("textarea", {
-            className: "index-dashboard__textarea index-dashboard__msg-input",
-            rows: 1,
-            value: draft,
-            placeholder: "Message your personal agent…",
-            "aria-label": "Message your personal agent",
-            disabled: !canSend,
-            onChange: function (e) { setError(""); setDraft(e.target.value); },
-            onKeyDown: function (e) {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-            },
+    return React.createElement("div", { ref: rootRef, className: "index-dashboard__agent-chat" },
+      React.createElement("p", { className: "index-dashboard__card-description" },
+        agent ? "Your inbox for this signal." : "Loading your agent conversation…",
+      ),
+      React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef },
+        bubbles.length
+          ? bubbles
+          : React.createElement(EmptyState, null, "Ask about your matches, share a preference, or give your agent direction for this signal."),
+      ),
+      questions.length
+        ? React.createElement("div", { className: "index-dashboard__agent-questions" },
+          questions.map(function (question) {
+            const options = Array.isArray(question.options) ? question.options : [];
+            const answer = selections[question.id] || "";
+            return React.createElement("article", { key: question.id, className: "index-dashboard__agent-q" },
+              React.createElement(AgentRefs, { scope: question.scope, matches: question.matches, onOpenUser: props.onOpenUser }),
+              React.createElement("p", { className: "index-dashboard__agent-q-text" }, question.question),
+              options.length
+                ? React.createElement("div", { className: "index-dashboard__action-group" },
+                  options.map(function (option) {
+                    return React.createElement(Button, {
+                      key: option,
+                      type: "button",
+                      outlined: answer !== option,
+                      disabled: sending,
+                      "aria-pressed": answer === option ? "true" : "false",
+                      onClick: function () { choose(question.id, option); },
+                    }, option);
+                  }),
+                )
+                : null,
+              writing[question.id] || !options.length
+                ? React.createElement("textarea", {
+                  className: "index-dashboard__textarea index-dashboard__msg-input",
+                  rows: 1,
+                  value: options.indexOf(answer) >= 0 ? "" : answer,
+                  placeholder: "Write your answer…",
+                  "aria-label": "Write your own answer",
+                  disabled: sending,
+                  onChange: function (e) {
+                    const text = e.target.value;
+                    setSelections(function (current) {
+                      const next = Object.assign({}, current);
+                      next[question.id] = text;
+                      return next;
+                    });
+                  },
+                })
+                : React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__agent-q-write",
+                  disabled: sending,
+                  onClick: function () {
+                    setWriting(function (current) {
+                      const next = Object.assign({}, current);
+                      next[question.id] = true;
+                      return next;
+                    });
+                  },
+                }, "write your own"),
+            );
           }),
           React.createElement(Button, {
             type: "button",
-            disabled: !draft.trim() || sending || !canSend,
-            onClick: send,
-          }, sending ? "Sending…" : "Send"),
-        ),
+            disabled: !chosen.length || sending,
+            onClick: sendAnswers,
+          }, chosen.length > 1 ? "Send " + chosen.length + " answers" : "Send answer"),
+        )
+        : null,
+      React.createElement("div", { className: "index-dashboard__msg-composer" },
+        React.createElement("textarea", {
+          className: "index-dashboard__textarea index-dashboard__msg-input",
+          rows: 1,
+          value: draft,
+          placeholder: "Message your personal agent…",
+          "aria-label": "Message your personal agent",
+          onChange: function (e) { setDraft(e.target.value); },
+          onKeyDown: function (e) {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+          },
+        }),
+        React.createElement(Button, {
+          type: "button",
+          disabled: !draft.trim() || sending,
+          onClick: send,
+        }, sending ? "Sending…" : "Send"),
       ),
     );
   }
 
   function IntentDetail(props) {
     const intent = props.intent;
-    const bucketState = React.useState("pending");
+    // Opens on the whole radar, like the mac app: the accepted rows sit next to
+    // the ones awaiting you instead of being a tab away.
+    const bucketState = React.useState("all");
     const selectedBucket = bucketState[0];
     const setSelectedBucket = bucketState[1];
     // Armed archive: the first click arms the segment ("sure?"), the second
@@ -2550,45 +2746,52 @@
     const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
     const allOpps = Array.isArray(intent.opportunities) ? intent.opportunities : [];
     const visibleOpps = allOpps.filter(function (opp) {
-      return bucketForStatus(opp.status) === selectedBucket;
+      const bucket = bucketForStatus(opp.status);
+      if (!bucket) return false;
+      return selectedBucket === "all" || bucket === selectedBucket;
     });
     const radarEmpty = "No matches here yet.";
     const radarLoading = !!props.radarLoading;
+    const signalHead = React.createElement(SignalHead, {
+      title: intent.title || "Untitled intent",
+      paused: paused,
+      actions: (function () {
+        const archiving = props.archivingId === intent.id;
+        return React.createElement("span", { className: "index-dashboard__action-group" },
+          Tip("pause", paused ? "Resume" : "Pause", React.createElement("button", {
+            type: "button",
+            "aria-label": paused ? "Resume" : "Pause",
+            className: "index-dashboard__action-seg "
+              + (paused ? "index-dashboard__action-seg--resume index-dashboard__action-seg--filled" : "index-dashboard__action-seg--pause"),
+            onClick: props.onPause ? function () { setArmed(false); props.onPause(intent.id, paused); } : undefined,
+          }, paused ? ICON_PLAY() : ICON_PAUSE())),
+          React.createElement("span", { key: "sep", className: "index-dashboard__action-sep", "aria-hidden": "true" }),
+          Tip("archive", archiving ? "Archiving…" : armed ? "Confirm archive" : "Archive", React.createElement("button", {
+            type: "button",
+            "aria-label": armed ? "Confirm archive" : "Archive",
+            className: "index-dashboard__action-seg index-dashboard__action-seg--archive"
+              + (armed || archiving ? " index-dashboard__action-seg--filled" : ""),
+            disabled: archiving,
+            onClick: archiving ? undefined : function () {
+              if (!armed) { setArmed(true); return; }
+              setArmed(false);
+              if (props.onArchive) props.onArchive(intent.id);
+            },
+          }, ICON_TRASH(), armed ? "sure?" : null)),
+        );
+      })(),
+    });
     return React.createElement("div", { className: "index-dashboard__detail" },
-      React.createElement(DetailHead, {
-        title: intent.title || "Untitled intent",
-        live: true,
-        paused: paused,
-        onBack: props.onBack,
-        actions: (function () {
-          const archiving = props.archivingId === intent.id;
-          return React.createElement("span", { className: "index-dashboard__action-group" },
-            Tip("pause", paused ? "Resume" : "Pause", React.createElement("button", {
-              type: "button",
-              "aria-label": paused ? "Resume" : "Pause",
-              className: "index-dashboard__action-seg "
-                + (paused ? "index-dashboard__action-seg--resume index-dashboard__action-seg--filled" : "index-dashboard__action-seg--pause"),
-              onClick: props.onPause ? function () { setArmed(false); props.onPause(intent.id, paused); } : undefined,
-            }, paused ? ICON_PLAY() : ICON_PAUSE())),
-            React.createElement("span", { key: "sep", className: "index-dashboard__action-sep", "aria-hidden": "true" }),
-            Tip("archive", archiving ? "Archiving…" : armed ? "Confirm archive" : "Archive", React.createElement("button", {
-              type: "button",
-              "aria-label": armed ? "Confirm archive" : "Archive",
-              className: "index-dashboard__action-seg index-dashboard__action-seg--archive"
-                + (armed || archiving ? " index-dashboard__action-seg--filled" : ""),
-              disabled: archiving,
-              onClick: archiving ? undefined : function () {
-                if (!armed) { setArmed(true); return; }
-                setArmed(false);
-                if (props.onArchive) props.onArchive(intent.id);
-              },
-            }, ICON_TRASH(), armed ? "sure?" : null)),
-          );
-        })(),
-      }),
+      props.onBack
+        ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: props.onBack }, ICON_ARROW_LEFT(), "Back")
+        : null,
+      // signal | radar, the two windows the mac app puts side by side.
       React.createElement("div", { className: "index-dashboard__detail-cols" },
-        React.createElement(AgentChat, { intentId: intent.id, focusQuestion: props.focusQuestion, onOpenUser: props.onOpenUser }),
-        React.createElement(Panel, { title: "Radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
+        React.createElement(Panel, { title: "signal" },
+          signalHead,
+          React.createElement(AgentChat, { intentId: intent.id, focusQuestion: props.focusQuestion, onOpenUser: props.onOpenUser }),
+        ),
+        React.createElement(Panel, { title: "radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           props.actionError ? React.createElement("div", { className: "index-dashboard__error" }, props.actionError) : null,
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
           radarLoading && !allOpps.length
@@ -3741,20 +3944,10 @@
     useEffect(function () { loadList(props.initialConversationId || null); }, []);
 
     // Authoritative realtime, mirroring the web app's ConversationContext:
-    // dedup by message id, live conversation-summary updates, refresh-on-unknown,
-    // and reconnect with exponential backoff (5s * 2^n, capped at 60s, 10 tries).
-    //
-    // The plugin backend relays the upstream Redis stream with its own API key.
-    // We consume that relay with SDK.authedFetch (which injects the Hermes
-    // dashboard session auth — the `X-Hermes-Session-Token` header in loopback
-    // mode, cookies in gated mode) plus a streaming body reader, rather than a
-    // raw EventSource: EventSource cannot set the session header and the host
-    // does not accept a ?token= query param on plugin routes, so it would fail
-    // to authenticate in the default desktop (loopback) mode.
-    function applyIncoming(dataStr) {
-      let data;
-      try { data = JSON.parse(dataStr); } catch (e) { return; }
-      if (!data || data.type !== "message" || !data.message) return;
+    // dedup by message id, live conversation-summary updates, and
+    // refresh-on-unknown.
+    function applyIncoming(data) {
+      if (data.type !== "message" || !data.message) return;
       const convId = data.conversationId || data.message.conversationId;
       if (!convId) return;
       const msg = normalizeMessage(data.message, userIdRef.current);
@@ -3790,64 +3983,7 @@
         return function () { clearInterval(pollId); };
       }
 
-      let retryTimer = null;
-      let retries = 0;
-      let stopped = false;
-      let reader = null;
-
-      function scheduleRetry() {
-        if (stopped) return;
-        retries += 1;
-        if (retries > 10) return;
-        const delay = Math.min(5000 * Math.pow(2, retries - 1), 60000);
-        retryTimer = setTimeout(connect, delay);
-      }
-
-      function streamFetch() {
-        const url = API + "/conversations/stream";
-        const opts = { headers: { Accept: "text/event-stream" } };
-        if (SDK.authedFetch) return SDK.authedFetch(url, opts);
-        return window.fetch(url, Object.assign({ credentials: "include" }, opts));
-      }
-
-      function connect() {
-        streamFetch()
-          .then(function (response) {
-            if (!response || !response.ok || !response.body || !response.body.getReader) {
-              throw new Error("stream unavailable");
-            }
-            retries = 0;
-            reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
-            function pump() {
-              return reader.read().then(function (result) {
-                if (stopped) { try { reader.cancel(); } catch (e) { /* noop */ } return; }
-                if (result.done) { scheduleRetry(); return; }
-                buffer += decoder.decode(result.value, { stream: true });
-                let sep;
-                while ((sep = buffer.indexOf("\n\n")) >= 0) {
-                  const frame = buffer.slice(0, sep);
-                  buffer = buffer.slice(sep + 2);
-                  const lines = frame.split("\n");
-                  for (let i = 0; i < lines.length; i++) {
-                    if (lines[i].indexOf("data:") === 0) applyIncoming(lines[i].slice(5).trim());
-                  }
-                }
-                return pump();
-              });
-            }
-            return pump();
-          })
-          .catch(function () { if (!stopped) scheduleRetry(); });
-      }
-
-      connect();
-      return function () {
-        stopped = true;
-        if (retryTimer) clearTimeout(retryTimer);
-        if (reader) { try { reader.cancel(); } catch (e) { /* noop */ } }
-      };
+      return subscribeUserEvents(applyIncoming);
     }, []);
 
     useEffect(function () {
@@ -4031,6 +4167,7 @@
     const useEffect = React.useEffect;
     const useRef = React.useRef;
     const initial = parseHash();
+    const restored = DESKTOP_ENV ? (loadDesktopView() || {}) : {};
     // Root node + host theme; every animated asset resolves against SCHEME.
     const rootRef = useRef(null);
     const scheme = useColorScheme(rootRef);
@@ -4080,16 +4217,16 @@
     const autoState = useState(true);
     const autoRefresh = autoState[0];
     const setAutoRefresh = autoState[1];
-    const profileOpenState = useState(false);
+    const profileOpenState = useState(!!restored.profileOpen);
     const profileOpen = profileOpenState[0];
     const setProfileOpen = profileOpenState[1];
-    const viewUserState = useState(null);
+    const viewUserState = useState(restored.viewUserId || null);
     const viewUserId = viewUserState[0];
     const setViewUserId = viewUserState[1];
-    const messagesOpenState = useState(false);
+    const messagesOpenState = useState(!!restored.messagesOpen);
     const messagesOpen = messagesOpenState[0];
     const setMessagesOpen = messagesOpenState[1];
-    const messagesTargetState = useState(null);
+    const messagesTargetState = useState(restored.messagesTarget || null);
     const messagesTarget = messagesTargetState[0];
     const setMessagesTarget = messagesTargetState[1];
     // Bumped by a question notification, so the card scrolls into view even
@@ -4608,6 +4745,17 @@
         window.removeEventListener("hashchange", onHashChange);
       };
     }, []);
+
+    useEffect(function () {
+      if (!DESKTOP_ENV) return;
+      saveDesktopView({
+        intentId: selectedId || undefined,
+        profileOpen: profileOpen || undefined,
+        viewUserId: viewUserId || undefined,
+        messagesOpen: messagesOpen || undefined,
+        messagesTarget: messagesTarget || undefined,
+      });
+    }, [selectedId, profileOpen, viewUserId, messagesOpen, messagesTarget]);
 
     // A notification tap re-enters this page with its target on the URL. An
     // opportunity or a conversation opens as a panel over whatever was already

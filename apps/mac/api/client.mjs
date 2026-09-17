@@ -473,6 +473,10 @@ export function createIndexApiClient(options = {}) {
         `/conversations/${encodeURIComponent(conversationId)}/messages`,
         { ...options, method: 'POST', body },
       ),
+      sendAnswers: (intentId, answers, options = {}) => request(
+        '/conversations/agent/answers',
+        { ...options, method: 'POST', body: { intentId, answers } },
+      ),
       getOrCreateDm: (peerUserId, options = {}) => request(
         '/conversations/dm',
         { ...options, method: 'POST', body: { peerUserId } },

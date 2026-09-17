@@ -102,6 +102,12 @@ interface ConversationEventMessage {
   senderAvatar?: string;
   role: 'user' | 'agent';
   parts: unknown;
+  /**
+   * The persisted row's metadata, carried verbatim. Owner surfaces filter the
+   * agent DM by `metadata.intentId` to tell one signal's H2A from another's, so
+   * this frame is the live path for that inbox, not just a notification.
+   */
+  metadata: unknown;
   createdAt: Date;
 }
 

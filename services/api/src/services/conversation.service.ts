@@ -322,20 +322,21 @@ export class ConversationService {
   }
 
   /**
-   * Persist several owner answers at once for the selected external negotiator.
+   * Persist several owner answers at once.
    *
    * Every answer is matched against one reading of the queue and written in a
    * single transaction, so the wake they trigger sees all of them rather than
    * deciding on the first and clearing the rest. An answer naming a question
-   * that is no longer waiting is still kept, as a plain message.
+   * that is no longer waiting is still kept, as a plain message. Like
+   * {@link sendOwnerInput}, the write is accepted whether or not a negotiator
+   * is selected: the inbox is a chat, not the responder seat.
    *
    * @param input - Authenticated owner, intent, canonical DM, and the answers to write.
    * @returns The persisted messages, in the order given.
-   * @throws AgentConversationError when the intent is not owned or Index holds the seat.
+   * @throws AgentConversationError when the intent is not owned.
    */
   async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId: string; text: string }[] }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
-    if (!await this.registry.getSelectedNegotiator(input.userId)) throw new AgentConversationError('The Index negotiator does not chat. Select a negotiator to message your agent.', 409);
     const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
     const queue = unanswered(messages);

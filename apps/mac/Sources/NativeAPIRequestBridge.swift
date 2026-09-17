@@ -278,7 +278,7 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/auth/api-key/(?:create|delete)$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
-        ("POST", #"^/conversations/(?:dm|[^/?]+/messages)$"#),
+        ("POST", #"^/conversations/(?:dm|agent/answers|[^/?]+/messages)$"#),
         ("PATCH", #"^/conversations/[^/?]+/metadata$"#),
         ("DELETE", #"^/conversations/[^/?]+$"#),
     ]
@@ -536,12 +536,21 @@ final class NativeAPIRequestBridge {
             }
         }
     }
+    private static func validAgentAnswers(_ value: NativeJSONValue?) -> Bool {
+        guard case .array(let values) = value, !values.isEmpty, values.count <= 20 else { return false }
+        return values.allSatisfy { item in
+            exactTypedObject(item, required: ["questionId", "text"]) { answer in
+                identifier(answer["questionId"]) && boundedString(answer["text"], maximum: 65_536)
+            }
+        }
+    }
     private static func validMessageParts(_ value: NativeJSONValue?) -> Bool {
         guard case .array(let values) = value, !values.isEmpty, values.count <= 100 else { return false }
         return values.allSatisfy { item in
-            exactTypedObject(item, required: ["text"], optional: ["type"]) { part in
+            exactTypedObject(item, required: ["text"], optional: ["type", "kind"]) { part in
                 boundedString(part["text"], maximum: 65_536)
                     && (part["type"] == nil || enumString(part["type"], ["text"]))
+                    && (part["kind"] == nil || enumString(part["kind"], ["text"]))
             }
         }
     }
@@ -634,8 +643,18 @@ final class NativeAPIRequestBridge {
             return exactTypedObject(body, required: ["keyId"]) { identifier($0["keyId"]) }
         case "/conversations/dm":
             return exactTypedObject(body, required: ["peerUserId"]) { identifier($0["peerUserId"]) }
+        case "/conversations/agent/answers":
+            return exactTypedObject(body, required: ["intentId", "answers"]) { item in
+                uuidIdentifier(item["intentId"]) && validAgentAnswers(item["answers"])
+            }
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["parts"]) { validMessageParts($0["parts"]) }
+            return exactTypedObject(body, required: ["parts"], optional: ["metadata", "questionId"]) { item in
+                validMessageParts(item["parts"])
+                    && (item["questionId"] == nil || identifier(item["questionId"]))
+                    && (item["metadata"] == nil || exactTypedObject(item["metadata"], optional: ["intentId"]) { meta in
+                        meta["intentId"] == nil || uuidIdentifier(meta["intentId"])
+                    })
+            }
         case let value where value.range(of: #"^/conversations/[^/?]+/metadata$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["metadata"]) { item in
                 exactTypedObject(item["metadata"], optional: ["title"]) { metadata in
@@ -686,7 +705,7 @@ final class NativeAPIRequestBridge {
             allowed = ["statuses", "presentation", "limit", "offset", "scopeType", "scopeId", "noCache"]
         case "/opportunities/chat-context": allowed = ["peerUserId"]
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
-            allowed = ["limit", "before", "after"]
+            allowed = ["limit", "before", "after", "intentId"]
         default: return false
         }
         return Set(names).isSubset(of: allowed)

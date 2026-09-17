@@ -250,39 +250,78 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     return () => clearInterval(t);
   }, [live, refreshRadar]);
 
-  /* ----- the signal's own agent: the question it is held on ----- */
-  // GET /conversations/agent?intentId= is the whole H2A contract: the agent's
-  // side of this signal plus the one question it is suspended on. The same poll
-  // the web app runs, because a question can appear without anything else on
-  // this screen changing.
-  const [agentQuestion, setAgentQuestion] = useState(null);
-  useEffect(() => {
-    setAgentQuestion(null);
-    if (!live || !client) return;
-    let alive = true;
+  /* ----- the signal inbox: transcript, pending questions, owner writes ----- */
+  // GET /conversations/agent/messages?intentId= is the H2A inbox. Questions
+  // from a responder are `agent.questions`; the owner's own words are just
+  // messages. Same poll the web app runs.
+  const [agentMessages, setAgentMessages] = useState([]);
+  const [agentQuestions, setAgentQuestions] = useState([]);
+  const refreshInbox = React.useCallback(() => {
+    if (!live || !client || !intentId) return Promise.resolve();
     const forIntent = intentId;
-    const read = () => client.conversations.messages("agent", { intentId: forIntent })
+    return client.conversations.messages("agent", { intentId: forIntent })
       .then((res) => {
-        if (!alive || intentIdRef.current !== forIntent) return;
-        setAgentQuestion((res && res.agent && res.agent.pending) || null);
+        if (intentIdRef.current !== forIntent) return;
+        const questions = (res && res.agent && res.agent.questions) || [];
+        setAgentQuestions(questions);
+        const carded = {};
+        questions.forEach((q) => { if (q && q.id) carded[q.id] = true; });
+        setAgentMessages(window.IndexApp.normalizeList(res, "messages").map((m) => {
+          const text = ((m && m.parts) || [])
+            .filter((p) => p && typeof p.text === "string")
+            .map((p) => p.text).join("\n").trim();
+          const provenance = (m.metadata && m.metadata.principalMessage) || {};
+          if (!text) return null;
+          if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) return null;
+          return {
+            id: m.id,
+            kind: m.role === "user" ? "user" : "agent",
+            text,
+            scope: provenance.scope,
+            matches: provenance.matches,
+          };
+        }).filter(Boolean));
       })
-      .catch(() => { /* a failed read leaves the last known question up */ });
-    read();
-    const t = setInterval(read, 5000);
-    return () => { alive = false; clearInterval(t); };
+      .catch(() => {});
   }, [live, client, intentId]);
+  useEffect(() => {
+    setAgentMessages([]);
+    setAgentQuestions([]);
+    if (!live || !client) return;
+    refreshInbox();
+    const t = setInterval(refreshInbox, 5000);
+    return () => clearInterval(t);
+  }, [live, client, refreshInbox]);
 
-  // The answer goes back naming the question it answers, so a question that
-  // changed while it was being written is rejected rather than mis-filed.
-  const answerAgentQuestion = (text) => {
-    const question = agentQuestion;
-    if (!question || !client || !intentId) return;
-    setAgentQuestion(null);
+  // The app's one /events connection already carries this signal's H2A: a new
+  // agent message arrives as `message` tagged with the intent, a new question
+  // as `question.pending`. Read on either so the inbox is live; the poll above
+  // stays as the backstop, since the native stream does not resume by event id.
+  useEffect(() => {
+    if (!live || !client || !intentId || !window.IndexApp) return;
+    const sub = window.IndexApp.streamInbox((event) => {
+      if (!event) return;
+      const forIntent = event.type === "message"
+        ? event.message && event.message.metadata && event.message.metadata.intentId
+        : event.type === "question.pending" && event.data && event.data.intentId;
+      if (forIntent !== intentId) return;
+      refreshInbox();
+    });
+    return () => { if (sub && sub.close) sub.close(); };
+  }, [live, client, intentId, refreshInbox]);
+
+  const sendAgentMessage = (text, onDone) => {
+    if (!client || !intentId || !text) return;
     client.conversations.sendMessage("agent", {
       parts: [{ kind: "text", text }],
       metadata: { intentId },
-      questionId: question.id,
-    }).catch(() => setAgentQuestion(question));
+    }).then(() => refreshInbox()).finally(() => onDone && onDone());
+  };
+
+  const sendAgentAnswers = (answers, onDone) => {
+    if (!client || !intentId || !answers.length) return;
+    client.conversations.sendAnswers(intentId, answers)
+      .then(() => refreshInbox()).finally(() => onDone && onDone());
   };
 
   // The four states an opportunity can be in for you, in the order they happen:
@@ -598,8 +637,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             conversation={conversation}
             negotiatingPeople={live ? [] : negotiatingPeople}
             onRespondPerson={respondPerson}
-            agentQuestion={agentQuestion}
-            onAnswerAgent={answerAgentQuestion}
+            agentMessages={live ? agentMessages : null}
+            agentQuestions={live ? agentQuestions : []}
+            onSendAgent={live ? sendAgentMessage : null}
+            onSendAnswers={live ? sendAgentAnswers : null}
             focusQuestion={focusQuestion}
             paused={paused}
             onTogglePause={togglePause}

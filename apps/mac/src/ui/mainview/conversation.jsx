@@ -28,9 +28,16 @@ function SignalAction({ label, active = false, onClick, danger = false }) {
 }
 
 function ConversationPane({ profile, conversation, negotiatingPeople = [], onRespondPerson,
-                            agentQuestion = null, onAnswerAgent, focusQuestion = 0,
-                            paused = false, onTogglePause, onArchive }) {
+                            agentMessages = null, agentQuestions = [], onSendAgent, onSendAnswers,
+                            focusQuestion = 0, paused = false, onTogglePause, onArchive }) {
   const scrollRef = useRef(null);
+  const [draft, setDraft] = useState("");
+  const [selections, setSelections] = useState({});
+  const [writing, setWriting] = useState({});
+  const [sending, setSending] = useState(false);
+  const inbox = agentMessages != null;
+  const questions = inbox ? (agentQuestions || []) : [];
+  const chosen = questions.filter((q) => typeof selections[q.id] === "string" && selections[q.id].trim());
   // Archiving takes the signal off the hub and there's no way back to it from
   // here, so the first click arms the button and the second one commits. It
   // disarms itself after a few seconds if you meant to click something else.
@@ -59,11 +66,13 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   useEffect(() => {
     if (!focusQuestion || !agentQuestionRef.current) return;
     agentQuestionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [focusQuestion, agentQuestion && agentQuestion.id]);
+  }, [focusQuestion, questions.length]);
+  useEffect(() => { setSelections({}); setWriting({}); }, [profile && profile.intentId]);
+  const feedLen = inbox ? agentMessages.length : conversation.length;
 
   const [stuck, setStuck] = useState(true);
   const [unread, setUnread] = useState(0);
-  const lastLen = useRef(conversation.length);
+  const lastLen = useRef(feedLen);
   // Distance from the bottom of the feed, kept live as you scroll. We restore
   // this exact gap after any content change so answering a question (which
   // shrinks its card) never yanks the viewport around.
@@ -72,7 +81,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   React.useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const grew = conversation.length > lastLen.current;
+    const grew = feedLen > lastLen.current;
     if (bottomGap.current <= 24) {
       // pinned to the bottom, stay pinned, following new content
       el.scrollTop = el.scrollHeight;
@@ -80,10 +89,10 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
     } else {
       // scrolled up, hold the same spot so nothing jumps under you
       el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - bottomGap.current);
-      if (grew) setUnread(u => u + (conversation.length - lastLen.current));
+      if (grew) setUnread(u => u + (feedLen - lastLen.current));
     }
-    lastLen.current = conversation.length;
-  }, [conversation, negotiatingPeople]);
+    lastLen.current = feedLen;
+  }, [feedLen, negotiatingPeople, questions.length]);
 
   const onScroll = (e) => {
     const el = e.currentTarget;
@@ -186,20 +195,78 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
         overflowY:"auto", padding:"16px 18px 8px",
         display:"flex", flexDirection:"column",
       }}>
-        {/* inner column pinned to the bottom, messages stack just above the
-            input and only grow upward into the scrollback as they accumulate */}
+        {inbox ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:14, minHeight:0 }}>
+            {agentMessages.length === 0 ? (
+              <div style={{
+                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", lineHeight:1.45,
+              }}>Ask about your matches, share a preference, or give your agent direction for this signal.</div>
+            ) : agentMessages.map((it) =>
+              it.kind === "user"
+                ? <UserLine key={it.id}>{it.text}</UserLine>
+                : <AgentLine key={it.id}><AgentMarkdown text={it.text}/></AgentLine>
+            )}
+            {questions.length > 0 && (
+              <div ref={agentQuestionRef} style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {questions.map((question) => {
+                  const options = Array.isArray(question.options) ? question.options : [];
+                  const answer = selections[question.id] || "";
+                  return (
+                    <article key={question.id} style={{
+                      border:"1px solid #000", background:"#fff", padding:"14px 16px", display:"grid", gap:11,
+                    }}>
+                      <div style={{
+                        fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500, lineHeight:1.4,
+                      }}>{question.question}</div>
+                      {options.map((option, i) => (
+                        <OptionRow key={option} letter={String.fromCharCode(65 + i)} label={option}
+                          onClick={() => {
+                            setSelections((cur) => ({ ...cur, [question.id]: cur[question.id] === option ? "" : option }));
+                            setWriting((cur) => ({ ...cur, [question.id]: false }));
+                          }}/>
+                      ))}
+                      {writing[question.id] || !options.length ? (
+                        <input
+                          value={options.indexOf(answer) >= 0 ? "" : answer}
+                          onChange={(e) => setSelections((cur) => ({ ...cur, [question.id]: e.target.value }))}
+                          placeholder="Write your answer…"
+                          aria-label="Write your own answer"
+                          style={{
+                            border:"1px solid #000", padding:"7px 9px",
+                            fontFamily:"var(--mac-sans)", fontSize:13, outline:"none",
+                          }}
+                        />
+                      ) : (
+                        <button type="button" onClick={() => setWriting((cur) => ({ ...cur, [question.id]: true }))}
+                          style={{
+                            background:"none", border:"none", padding:0, textAlign:"left", cursor:"pointer",
+                            fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+                          }}>write your own</button>
+                      )}
+                    </article>
+                  );
+                })}
+                <SignalAction
+                  label={chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}
+                  active={chosen.length > 0 && !sending}
+                  onClick={() => {
+                    if (!chosen.length || sending || !onSendAnswers) return;
+                    setSending(true);
+                    onSendAnswers(chosen.map((q) => ({ questionId: q.id, text: selections[q.id].trim() })), () => {
+                      setSelections({});
+                      setWriting({});
+                      setSending(false);
+                    });
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        ) : (
         <div style={{
           marginTop:"auto",
           display:"flex", flexDirection:"column", gap:14,
         }}>
-          {/* the one question your own agent is held on for this signal */}
-          {agentQuestion && (
-            <div ref={agentQuestionRef}>
-              <AgentQuestionCard question={agentQuestion} onAnswer={onAnswerAgent}/>
-            </div>
-          )}
-
-          {/* standing questions from people in your radar */}
           {groupQuestions(negotiatingPeople).map(g =>
             g.people.length >= 2 ? (
               <CollectiveQuestionCard key={"cq-" + g.q} question={g.q} people={g.people} onRespond={onRespondPerson}/>
@@ -207,10 +274,6 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               <PersonQuestionCard key={"pq-" + g.people[0].id} person={g.people[0]} onRespond={onRespondPerson}/>
             )
           )}
-
-          {/* one chronological stream, questions stay exactly where they
-              arrived. answering one updates it in place (shows your reply)
-              instead of yanking it up to the top of the feed */}
           {conversation
             .filter(it => it.kind === "clarifier" || it.kind === "user" || it.kind === "agent")
             .map((it) =>
@@ -223,6 +286,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               )
             )}
         </div>
+        )}
       </div>
 
       {!stuck && unread > 0 && (
@@ -236,6 +300,46 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
           borderRadius:9, cursor:"pointer", zIndex:5,
           boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
         }}>↓ {unread} new</button>
+      )}
+
+      {onSendAgent && (
+        <div style={{
+          padding:"10px 12px",
+          borderTop:"1px solid #000",
+          display:"flex", gap:8, alignItems:"center",
+          background:"#fff",
+        }}>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                const text = draft.trim();
+                if (!text || sending) return;
+                setDraft("");
+                setSending(true);
+                onSendAgent(text, () => setSending(false));
+              }
+            }}
+            placeholder="Message your personal agent…"
+            aria-label="Message your personal agent"
+            style={{
+              flex:1, minWidth:0,
+              border:"1px solid #000",
+              padding:"7px 9px",
+              fontFamily:"var(--mac-sans)", fontSize:13,
+              outline:"none", background:"#fff", color:"#000",
+            }}
+          />
+          <SignalAction label={sending ? "sending…" : "send"} onClick={() => {
+            const text = draft.trim();
+            if (!text || sending) return;
+            setDraft("");
+            setSending(true);
+            onSendAgent(text, () => setSending(false));
+          }}/>
+        </div>
       )}
 
     </div>
@@ -544,10 +648,11 @@ function AgentLine({ children, pending, highlight, collective }) {
 }
 // A message you typed, rendered as a sent bubble on the right, so the
 // conversation reads like a chat: your words land at the bottom, distinct
-// from the questions coming in on the left.
+// from the questions coming in on the left. Your text goes through the same
+// markdown as the agent's, so a list you typed reads as a list.
 function UserLine({ children }) {
   return (
-    <div className="fade-up" style={{ display:"flex", justifyContent:"flex-end" }}>
+    <div className="fade-up own-md" style={{ display:"flex", justifyContent:"flex-end" }}>
       <div style={{
         maxWidth:"78%",
         background:"#000", color:"#fff",
@@ -556,7 +661,7 @@ function UserLine({ children }) {
         border:"1px solid #000",
         boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
         wordBreak:"break-word",
-      }}>{children}</div>
+      }}><AgentMarkdown text={children}/></div>
     </div>
   );
 }

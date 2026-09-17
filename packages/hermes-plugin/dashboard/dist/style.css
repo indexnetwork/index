@@ -477,11 +477,14 @@
   min-width: 0;
 }
 
+/* signal | radar, in the mac app's proportions (apps/mac/src/ui/mainview/
+   core.jsx), stretched so the two panes read as one pair of windows rather
+   than two stacked cards of different heights. */
 .index-dashboard__detail-cols {
   display: grid;
-  grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+  grid-template-columns: minmax(0, 56fr) minmax(0, 44fr);
   gap: 1rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .index-dashboard__list-cols {
@@ -1543,14 +1546,8 @@
   gap: 0.3rem;
 }
 
-.index-dashboard__detail-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-}
-
 .index-dashboard__back-pill {
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -1675,6 +1672,14 @@
   border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
   border-radius: 0;
   background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
+}
+
+.index-dashboard__signal-head {
+  display: grid;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
 }
 
 .index-dashboard__detail-title-row {
@@ -2715,6 +2720,57 @@
 .index-dashboard__msg-bubble--mine {
   align-self: flex-end;
   background: color-mix(in srgb, var(--color-primary, #4fd1c5) 22%, transparent);
+}
+
+/* Transcript markdown. Surfaces are mixed from currentColor so one rule reads
+   on the agent bubble, your own bubble, and either host theme. */
+.index-dashboard__md > :first-child { margin-top: 0; }
+.index-dashboard__md > :last-child { margin-bottom: 0; }
+
+.index-dashboard__md p,
+.index-dashboard__md ul,
+.index-dashboard__md ol,
+.index-dashboard__md pre {
+  margin: 0 0 0.4rem;
+}
+
+.index-dashboard__md ul,
+.index-dashboard__md ol {
+  padding-left: 1.1rem;
+}
+
+.index-dashboard__md li { margin: 0.1rem 0; }
+
+.index-dashboard__md h4 {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.index-dashboard__md code {
+  padding: 0 0.2rem;
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", monospace);
+  font-size: 0.8rem;
+}
+
+.index-dashboard__md pre {
+  overflow-x: auto;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  white-space: pre;
+}
+
+.index-dashboard__md pre code {
+  padding: 0;
+  background: none;
+}
+
+.index-dashboard__md a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .index-dashboard__msg-bubble--internal {

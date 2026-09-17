@@ -106,8 +106,10 @@ _STATUS_BUCKET = {
 # split pending/negotiating display buckets above).
 _NEGOTIATION_STATUSES = {"pending", "negotiating", "stalled"}
 
-# Lifecycle statuses the web intent radar requests (rejected hidden client-side).
-_RADAR_STATUSES = "pending,negotiating,stalled,accepted,expired"
+# Lifecycle statuses the intent radar requests, exactly the set the mac app asks
+# for. `stalled` is a negotiation state, not an opportunity lifecycle status, and
+# the API rejects the whole query when it appears here.
+_RADAR_STATUSES = "pending,negotiating,accepted,expired"
 
 # Static images the DESKTOP plugin fetches as base64 (its REST bridge cannot
 # address the dashboard's static file mount by URL). Allow-list only.
@@ -665,8 +667,10 @@ def _radar_item(card: dict[str, Any], intent_id: str | None = None) -> dict[str,
     item: dict[str, Any] = {
         "opportunityId": _text(card.get("opportunityId")),
         "name": _text(card.get("name"), "New match"),
-        "subtitle": "Suggested connection",
-        "mainText": _truncate(card.get("mainText") or card.get("headline")),
+        # One line per card, the mac app's `blurb`: the headline is what the
+        # presenter wrote for this pairing, and the long form only stands in
+        # when there is no headline.
+        "mainText": _truncate(card.get("headline") or card.get("mainText")),
     }
     avatar = _avatar_url(card.get("avatar"))
     if avatar:

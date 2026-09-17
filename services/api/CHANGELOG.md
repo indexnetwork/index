@@ -10,6 +10,15 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- **The H2A inbox is a chat, not the responder seat.**
+  `POST /conversations/agent/answers` no longer returns 409 when Index holds the
+  negotiator seat. Owner answers are recorded whether or not an external
+  negotiator is selected, matching `POST /conversations/:id/messages`, which
+  already accepted owner text unconditionally. `agent.status` still reports
+  `hosted` or `external`, and the hosted negotiator still publishes no
+  questions; it is no longer a write gate. The `message` frame's `metadata` is
+  now part of the declared wire shape rather than an incidental passthrough:
+  owner surfaces drive the H2A inbox live off `metadata.intentId`.
 - **Realtime frames are Redis Streams, not pub/sub.** `events:user:<userId>` is
   a stream (`XADD` with `MAXLEN ~ 1000`) instead of a pub/sub channel, so a
   consumer keeps an offset rather than seeing only what is published while it is
