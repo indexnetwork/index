@@ -4,7 +4,7 @@ import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
-import { DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
+import { CREATE_OPPORTUNITIES_LIMIT, DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
 
 const logger = log.controller.from('intent');
 
@@ -37,7 +37,7 @@ const CreateOpportunitiesSchema = z.object({
   counterparties: z.array(z.object({
     intentId: z.string().uuid('intentId must be a UUID'),
     networkId: z.string().uuid('networkId must be a UUID'),
-  }).strict()).min(1, 'counterparties is required').max(10),
+  }).strict()).min(1, 'counterparties is required').max(CREATE_OPPORTUNITIES_LIMIT),
 }).strict();
 
 @Controller('/intents')

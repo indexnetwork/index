@@ -55,7 +55,7 @@ export const DISCOVER_LIMIT_MAX = 30;
 const DISCOVER_RETRIEVAL_MAX = 90;
 
 /** How many counterparties one call may turn into opportunities. */
-const CREATE_OPPORTUNITIES_LIMIT = 30;
+export const CREATE_OPPORTUNITIES_LIMIT = 30;
 
 /**
  * Provenance for an opportunity the owner's agent created after a search. The
