@@ -2013,9 +2013,9 @@ def opportunity_counterpart(opportunity_id: str) -> dict[str, Any]:
     return {"success": True, "userId": counterpart_id}
 
 
-@full_router.get("/agent/question")
-def agent_question(intentId: str = "") -> dict[str, Any]:
-    """Return the one question this signal's personal agent is suspended on."""
+@full_router.get("/agent/conversation")
+def agent_conversation(intentId: str = "") -> dict[str, Any]:
+    """Return this signal's H2A transcript and the questions still waiting on the owner."""
     intent_id = _text(intentId)
     if not intent_id:
         return {"success": False, "error": "An intent id is required."}
@@ -2026,25 +2026,47 @@ def agent_question(intentId: str = "") -> dict[str, Any]:
     if payload.get("success") is False:
         return payload
     agent = payload.get("agent") if isinstance(payload.get("agent"), dict) else {}
-    return {"success": True, "question": agent.get("pending")}
+    return {
+        "success": True,
+        "conversationId": _text(payload.get("conversationId")),
+        "messages": [row for row in _list(payload.get("messages")) if isinstance(row, dict)],
+        "agent": {
+            "status": _text(agent.get("status"), "hosted"),
+            "questions": [row for row in _list(agent.get("questions")) if isinstance(row, dict)],
+        },
+    }
 
 
-@full_router.post("/agent/answer")
-def agent_answer(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Answer that question, naming it so a stale answer is refused rather than mis-filed."""
+@full_router.post("/agent/message")
+def agent_message(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Send the owner's own words to this signal's personal agent."""
     intent_id = _text(body.get("intentId")) if isinstance(body, dict) else ""
     text = _text(body.get("text")) if isinstance(body, dict) else ""
-    question_id = _text(body.get("questionId")) if isinstance(body, dict) else ""
     if not intent_id or not text:
-        return {"success": False, "error": "An intent id and answer text are required."}
+        return {"success": False, "error": "An intent id and message text are required."}
     return tools._api_request(
         "POST",
         "/conversations/agent/messages",
-        {
-            "parts": [{"kind": "text", "text": text}],
-            "metadata": {"intentId": intent_id},
-            "questionId": question_id or None,
-        },
+        {"parts": [{"kind": "text", "text": text}], "metadata": {"intentId": intent_id}},
+    )
+
+
+@full_router.post("/agent/answers")
+def agent_answers(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Answer several questions at once, naming each so a stale answer is refused rather than mis-filed."""
+    intent_id = _text(body.get("intentId")) if isinstance(body, dict) else ""
+    answers = [
+        {"questionId": _text(row.get("questionId")), "text": _text(row.get("text"))}
+        for row in (_list(body.get("answers")) if isinstance(body, dict) else [])
+        if isinstance(row, dict)
+    ]
+    answers = [row for row in answers if row["questionId"] and row["text"]]
+    if not intent_id or not answers:
+        return {"success": False, "error": "An intent id and at least one answered question are required."}
+    return tools._api_request(
+        "POST",
+        "/conversations/agent/answers",
+        {"intentId": intent_id, "answers": answers},
     )
 
 

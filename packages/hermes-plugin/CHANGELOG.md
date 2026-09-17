@@ -1,6 +1,26 @@
 # Changelog
 
 
+## 0.45.0
+
+### Added
+- **H2A chat on Discover's signal detail.** The signal panel now shows the
+  owner's whole conversation with their personal agent for that signal: the
+  transcript, every question still waiting (with its options, a write-your-own
+  answer, and the matches it is about), and a composer for messaging the agent
+  directly. Answers picked across several questions are sent as one write, so
+  the agent decides from all of them at once. Previously the panel only offered
+  the single pending question, and read a field the API no longer returns, so
+  nothing appeared at all. Questions and answers still live on the same agent DM
+  Index web uses. A read that fails says so and keeps retrying, rather than
+  sitting on a loading line forever — which is what an out-of-date plugin
+  backend looks like until Hermes restarts and mounts the new routes.
+
+### Changed
+- **BREAKING (dashboard REST):** `GET /agent/question` and `POST /agent/answer`
+  are replaced by `GET /agent/conversation`, `POST /agent/message`, and
+  `POST /agent/answers`.
+
 ## 0.44.0
 
 ### Changed

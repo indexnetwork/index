@@ -2236,86 +2236,291 @@
     );
   }
 
+  /** The chips naming what an entry applies to: this intent, or particular matches. */
+  function AgentRefs(props) {
+    const matches = Array.isArray(props.matches) ? props.matches : [];
+    if (!props.scope && !matches.length) return null;
+    return React.createElement("div", { className: "index-dashboard__agent-refs" },
+      props.scope
+        ? React.createElement("span", { className: "index-dashboard__agent-scope" },
+          props.scope === "match" ? "For this match" : "For this intent")
+        : null,
+      matches.map(function (match) {
+        const counterparty = match.counterparty || {};
+        const name = counterparty.name || "View match";
+        if (!props.onOpenUser || !counterparty.id) {
+          return React.createElement("span", { key: match.opportunityId || name, className: "index-dashboard__agent-ref" }, name);
+        }
+        return React.createElement("button", {
+          key: match.opportunityId || name,
+          type: "button",
+          className: "index-dashboard__agent-ref index-dashboard__agent-ref--link",
+          onClick: function () { props.onOpenUser(counterparty.id); },
+        }, name);
+      }),
+    );
+  }
+
   /**
-   * The one question this intent's personal agent is suspended on.
+   * This intent's H2A conversation with the owner's personal agent.
    *
    * The agent conversation is not in the messages list — it is per-signal and
-   * lives here, next to the radar it is asking about. Renders nothing until
-   * there is a question, which is most of the time.
+   * lives here, next to the radar it is about. Every question still waiting is
+   * carded, and all the answers the owner picks are sent as one write so the
+   * agent decides from them together.
    */
-  function AgentQuestion(props) {
-    const questionState = React.useState(null);
-    const question = questionState[0];
-    const setQuestion = questionState[1];
-    const draftState = React.useState("");
+  function AgentChat(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
+
+    const messagesState = useState([]);
+    const messages = messagesState[0];
+    const setMessages = messagesState[1];
+    const agentState = useState(null);
+    const agent = agentState[0];
+    const setAgent = agentState[1];
+    const draftState = useState("");
     const draft = draftState[0];
     const setDraft = draftState[1];
-    const rootRef = React.useRef(null);
+    const selectionsState = useState({});
+    const selections = selectionsState[0];
+    const setSelections = selectionsState[1];
+    const writingState = useState({});
+    const writing = writingState[0];
+    const setWriting = writingState[1];
+    const sendingState = useState(false);
+    const sending = sendingState[0];
+    const setSending = sendingState[1];
+    const errorState = useState("");
+    const error = errorState[0];
+    const setError = errorState[1];
+    const rootRef = useRef(null);
+    const threadRef = useRef(null);
+    const aliveRef = useRef(true);
+    const loadedRef = useRef(false);
     const intentId = props.intentId;
 
-    React.useEffect(function () {
-      let alive = true;
-      function read() {
-        fetchPluginJSON(API + "/agent/question?intentId=" + encodeURIComponent(intentId))
-          .then(function (payload) {
-            if (!alive || !payload || payload.success === false) return;
-            setQuestion(payload.question || null);
-          })
-          .catch(function () { /* a failed read leaves the last question up */ });
-      }
-      read();
-      const timer = setInterval(read, 5000);
-      return function () { alive = false; clearInterval(timer); };
-    }, [intentId]);
-
-    React.useEffect(function () {
-      if (!props.focusQuestion || !rootRef.current) return;
-      rootRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, [props.focusQuestion, question && question.id]);
-
-    if (!question) return null;
-
-    function answer(text) {
-      const asked = question;
-      setQuestion(null);
-      setDraft("");
-      fetchPluginJSON(API + "/agent/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intentId: intentId, text: text, questionId: asked.id }),
-      }).catch(function () { setQuestion(asked); });
+    function read() {
+      return fetchPluginJSON(API + "/agent/conversation?intentId=" + encodeURIComponent(intentId))
+        .then(function (payload) {
+          if (!aliveRef.current) return;
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Your agent conversation could not be read.");
+          }
+          if (!loadedRef.current) {
+            loadedRef.current = true;
+            setError("");
+          }
+          setMessages(payload.messages || []);
+          setAgent(payload.agent || null);
+        })
+        .catch(function (err) {
+          // A failed poll keeps the transcript that is already up, but a read that has
+          // never succeeded must say so rather than sit on "Loading…" forever.
+          if (aliveRef.current && !loadedRef.current) {
+            setError(err.message || "Your agent conversation could not be read.");
+          }
+        });
     }
 
-    const options = Array.isArray(question.options) ? question.options : [];
-    return React.createElement("div", { ref: rootRef },
-      React.createElement(Panel, { title: "Your agent", description: "It is holding this signal until you answer." },
-        React.createElement("p", { className: "index-dashboard__card-description" }, question.question),
-        React.createElement("div", { className: "index-dashboard__action-group" },
-          options.map(function (option) {
-            return React.createElement(Button, {
-              key: option,
-              type: "button",
-              outlined: true,
-              onClick: function () { answer(option); },
-            }, option);
+    useEffect(function () {
+      aliveRef.current = true;
+      loadedRef.current = false;
+      read();
+      const timer = setInterval(read, 5000);
+      return function () { aliveRef.current = false; clearInterval(timer); };
+    }, [intentId]);
+
+    const questions = (agent && Array.isArray(agent.questions)) ? agent.questions : [];
+    const carded = {};
+    for (let i = 0; i < questions.length; i++) carded[questions[i].id] = true;
+    const chosen = questions.filter(function (question) {
+      const answer = selections[question.id];
+      return typeof answer === "string" && answer.trim();
+    });
+    const canSend = !!agent && agent.status === "external";
+
+    useEffect(function () {
+      const node = threadRef.current;
+      if (node) node.scrollTop = node.scrollHeight;
+    }, [messages.length, questions.length]);
+
+    useEffect(function () {
+      if (!props.focusQuestion || !rootRef.current) return;
+      rootRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, [props.focusQuestion, questions.length]);
+
+    function send() {
+      const text = draft.trim();
+      if (!text || sending || !canSend) return;
+      setSending(true);
+      setError("");
+      fetchPluginJSON(API + "/agent/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intentId: intentId, text: text }),
+      })
+        .then(function (payload) {
+          if (payload && payload.success === false) throw new Error(payload.error || "Your message could not be sent.");
+          setDraft("");
+        })
+        .catch(function (err) { setError(err && err.message ? err.message : "Your message could not be sent. Your draft is kept."); })
+        .then(read)
+        .then(function () { if (aliveRef.current) setSending(false); });
+    }
+
+    function sendAnswers() {
+      if (!chosen.length || sending || !canSend) return;
+      setSending(true);
+      setError("");
+      fetchPluginJSON(API + "/agent/answers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intentId: intentId,
+          answers: chosen.map(function (question) {
+            return { questionId: question.id, text: selections[question.id].trim() };
           }),
+        }),
+      })
+        .then(function (payload) {
+          if (payload && payload.success === false) throw new Error(payload.error || "Your answers could not be sent.");
+          setSelections({});
+          setWriting({});
+        })
+        .catch(function (err) { setError(err && err.message ? err.message : "Your answers could not be sent. Your choices are kept."); })
+        .then(read)
+        .then(function () { if (aliveRef.current) setSending(false); });
+    }
+
+    function choose(questionId, text) {
+      setError("");
+      setSelections(function (current) {
+        const next = Object.assign({}, current);
+        next[questionId] = current[questionId] === text ? "" : text;
+        return next;
+      });
+      setWriting(function (current) {
+        const next = Object.assign({}, current);
+        next[questionId] = false;
+        return next;
+      });
+    }
+
+    const bubbles = [];
+    for (let i = 0; i < messages.length; i++) {
+      const raw = messages[i];
+      const content = extractContent(raw.parts);
+      const provenance = (raw.metadata && raw.metadata.principalMessage) || {};
+      // A carded question is the live prompt below; showing it twice reads as
+      // the agent repeating itself.
+      if (!content.text) continue;
+      if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) continue;
+      const mine = raw.role === "user";
+      bubbles.push(React.createElement("div", {
+        key: raw.id,
+        className: "index-dashboard__msg-bubble" + (mine ? " index-dashboard__msg-bubble--mine" : ""),
+      },
+        React.createElement(AgentRefs, { scope: provenance.scope, matches: provenance.matches, onOpenUser: props.onOpenUser }),
+        React.createElement("span", null, content.text),
+      ));
+    }
+
+    return React.createElement("div", { ref: rootRef },
+      React.createElement(Panel, {
+        title: "Your agent",
+        description: !agent
+          ? error ? "Retrying…" : "Loading your agent conversation…"
+          : canSend
+            ? "Messages go to the negotiator you selected."
+            : "The Index negotiator handles matches but does not chat. Select a negotiator in Settings to message your agent.",
+      },
+        React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef },
+          bubbles.length
+            ? bubbles
+            : React.createElement(EmptyState, null, "Ask about your matches, share a preference, or give your agent direction for this signal."),
         ),
+        questions.length
+          ? React.createElement("div", { className: "index-dashboard__agent-questions" },
+            questions.map(function (question) {
+              const options = Array.isArray(question.options) ? question.options : [];
+              const answer = selections[question.id] || "";
+              return React.createElement("article", { key: question.id, className: "index-dashboard__agent-q" },
+                React.createElement(AgentRefs, { scope: question.scope, matches: question.matches, onOpenUser: props.onOpenUser }),
+                React.createElement("p", { className: "index-dashboard__agent-q-text" }, question.question),
+                options.length
+                  ? React.createElement("div", { className: "index-dashboard__action-group" },
+                    options.map(function (option) {
+                      return React.createElement(Button, {
+                        key: option,
+                        type: "button",
+                        outlined: answer !== option,
+                        disabled: sending || !canSend,
+                        "aria-pressed": answer === option ? "true" : "false",
+                        onClick: function () { choose(question.id, option); },
+                      }, option);
+                    }),
+                  )
+                  : null,
+                writing[question.id] || !options.length
+                  ? React.createElement("textarea", {
+                    className: "index-dashboard__textarea index-dashboard__msg-input",
+                    rows: 1,
+                    value: options.indexOf(answer) >= 0 ? "" : answer,
+                    placeholder: "Write your answer…",
+                    "aria-label": "Write your own answer",
+                    disabled: sending || !canSend,
+                    onChange: function (e) {
+                      setError("");
+                      const text = e.target.value;
+                      setSelections(function (current) {
+                        const next = Object.assign({}, current);
+                        next[question.id] = text;
+                        return next;
+                      });
+                    },
+                  })
+                  : React.createElement("button", {
+                    type: "button",
+                    className: "index-dashboard__agent-q-write",
+                    disabled: sending || !canSend,
+                    onClick: function () {
+                      setWriting(function (current) {
+                        const next = Object.assign({}, current);
+                        next[question.id] = true;
+                        return next;
+                      });
+                    },
+                  }, "write your own"),
+              );
+            }),
+            React.createElement(Button, {
+              type: "button",
+              disabled: !chosen.length || sending || !canSend,
+              onClick: sendAnswers,
+            }, chosen.length > 1 ? "Send " + chosen.length + " answers" : "Send answer"),
+          )
+          : null,
+        error ? React.createElement("div", { className: "index-dashboard__error", role: "alert" }, error) : null,
         React.createElement("div", { className: "index-dashboard__msg-composer" },
           React.createElement("textarea", {
             className: "index-dashboard__textarea index-dashboard__msg-input",
             rows: 1,
             value: draft,
-            placeholder: "Write your answer…",
-            onChange: function (e) { setDraft(e.target.value); },
+            placeholder: "Message your personal agent…",
+            "aria-label": "Message your personal agent",
+            disabled: !canSend,
+            onChange: function (e) { setError(""); setDraft(e.target.value); },
             onKeyDown: function (e) {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (draft.trim()) answer(draft.trim()); }
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
             },
           }),
           React.createElement(Button, {
             type: "button",
-            disabled: !draft.trim(),
-            onClick: function () { if (draft.trim()) answer(draft.trim()); },
-          }, "Answer"),
+            disabled: !draft.trim() || sending || !canSend,
+            onClick: send,
+          }, sending ? "Sending…" : "Send"),
         ),
       ),
     );
@@ -2382,7 +2587,7 @@
         })(),
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
-        React.createElement(AgentQuestion, { intentId: intent.id, focusQuestion: props.focusQuestion }),
+        React.createElement(AgentChat, { intentId: intent.id, focusQuestion: props.focusQuestion, onOpenUser: props.onOpenUser }),
         React.createElement(Panel, { title: "Radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           props.actionError ? React.createElement("div", { className: "index-dashboard__error" }, props.actionError) : null,
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
