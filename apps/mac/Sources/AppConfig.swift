@@ -24,17 +24,6 @@ enum AppConfig {
     /// The REST base including the `/api` prefix applied in services/api main.ts.
     static var apiBaseURL: String { trimTrailingSlash(apiURL) + "/api" }
 
-    /// Where the Help menu sends people. APP_URL is usually unset — the web layer
-    /// derives its origin from the API host instead — so fall back to the host
-    /// this build was made for rather than to the localhost default.
-    static var productURL: String {
-        let configured = trimTrailingSlash(appURL)
-        if let host = URL(string: configured)?.host, host != "localhost", host != "127.0.0.1" {
-            return configured
-        }
-        return "https://" + (deepLinkHosts.first ?? "index.network")
-    }
-
     /// Point the app at another protocol deployment. UserDefaults is the layer
     /// the reads above consult first, so this outranks the built-in default and
     /// whatever Info.plist carries. The web origin is derived rather than asked

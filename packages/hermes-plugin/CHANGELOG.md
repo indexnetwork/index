@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 0.46.1
+
+### Fixed
+- Opening a Discover overlay no longer remounts the page behind it. Query-only
+  hash changes (`?profile=`, `?chat=`, `?user=`) stay on the existing pane
+  instead of calling `openWorkspace` again.
+
 ## 0.46.0
 
 ### Changed
