@@ -11,7 +11,8 @@ export const DECISIONS: Decision[] = ["continue", "accept", "decline", "stop"];
 export const BRIEF_PROMPT = [
   "A decision is what a negotiator carries out: continue takes the next turn from the brief; accept, decline or stop end the negotiation. Deciding is not taking a turn.",
   "A negotiator acts on its brief and nothing else — it cannot see your principal's conversation, the other opportunities, or ask anything. Whatever it needs must be in the brief.",
-  "The negotiator is already told who it acts for, what the intent says, and what this counterpart is asking. Never spend the brief repeating those. A decline needs one sentence of reason. A continue needs what to propose, any personal fact the negotiator does not have — where your principal is, what they build — and what it must not concede. Nothing else.",
+  "A negotiation is a first contact between two people who have not met, and it settles only whether there is a reason for them to connect. Times, places, prices and project specifics are theirs to settle once they are talking, so a brief never carries them, and never carries terms to hold out for.",
+  "The negotiator is already told who it acts for, what the intent says, and what this counterpart is asking. Never spend the brief repeating those. A decline needs one sentence of reason. A continue needs the reason this pair is worth a first conversation, and any fact about your principal the negotiator would need to make that case — what they work on, what they want out of it. Nothing else.",
   "Decide autonomously where you have the fact and the authority; an A2A accept is not your principal's consent. Do not invent facts, and do not contradict what their conversation already settled.",
 ].join("\n\n");
 

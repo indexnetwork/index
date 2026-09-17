@@ -82,11 +82,6 @@ export function startRunner(options: RunnerOptions): Runner {
    * Work one negotiation. A stall stands on the conversation and is recorded
    * here; waking on it is {@link finish}'s call, not this run's.
    *
-   * A continue is held out of the wake's own negotiators while an opportunity
-   * is stalled: without that, asking and stalling would trade places without
-   * end. Accept and decline still run — that turn is what the stall was
-   * waiting for.
-   *
    * @param intent - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
    */
@@ -123,8 +118,13 @@ export function startRunner(options: RunnerOptions): Runner {
   }
 
   /**
+   * Work one negotiation, whether a decision authorised it or a counterpart
+   * just moved it. A stalled opportunity is held either way: their next turn
+   * carries no fact the stall was missing, so re-running the negotiator would
+   * only stall again.
+   *
    * @param intentId - The signal this negotiation belongs to.
-   * @param opportunityId - The negotiation a decision just authorised.
+   * @param opportunityId - The negotiation to work.
    * @param decision - The wake's decision, when this start came from one.
    */
   function startNegotiate(intentId: string, opportunityId: string, decision?: string): void {
@@ -159,21 +159,6 @@ export function startRunner(options: RunnerOptions): Runner {
     }
   }
 
-  /**
-   * A counterpart's turn: take ours back, briefing this one opportunity first
-   * if it has never been briefed. Only a stall reaches the principal, through
-   * {@link finish}.
-   *
-   * @param intentId - The signal it belongs to.
-   * @param opportunityId - The negotiation they moved on.
-   */
-  function onCounterpartTurn(intentId: string, opportunityId: string): void {
-    const intent = intents.get(intentId);
-    if (stopped || !intent || working.has(opportunityId)) return;
-    working.set(opportunityId, intentId);
-    void takeTurn(intent, opportunityId).catch(onError).finally(() => finish(intentId, opportunityId));
-  }
-
   // Signals already running when this process started are adopted, not woken:
   // their being there is not something that happened.
   let adopted = false;
@@ -205,7 +190,7 @@ export function startRunner(options: RunnerOptions): Runner {
     switch (event.type) {
       case "negotiation.turn":
         log(`event ${event.type} on ${event.data.opportunityId}`);
-        onCounterpartTurn(event.data.intentId, event.data.opportunityId);
+        startNegotiate(event.data.intentId, event.data.opportunityId);
         break;
       case "principal.input":
         // The answer is what every stall on this signal was waiting for, and
