@@ -838,8 +838,12 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
                       onClick={() => setJoinPolicy(false)}
                     />
                   </div>
-                  {!isPublic && (
-                    <div style={{ marginTop:10 }}>
+                </div>
+
+                {!isPublic && (
+                  <div>
+                    <RuleLabel>Approval</RuleLabel>
+                    <div style={{ marginTop:12 }}>
                       <Toggle
                         on={local.requireAdminApproval === true}
                         onClick={() => setRequireApproval(local.requireAdminApproval !== true)}
@@ -847,8 +851,8 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
                         blurb="Require an admin to approve new members joining via the group link."
                       />
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 <div>
                   <RuleLabel>Invitation link</RuleLabel>
