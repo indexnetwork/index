@@ -5,6 +5,8 @@
  * takes exactly one turn, and stops. Owner chat is not its business — an owner
  * who wants to talk to their agent binds an external negotiator.
  */
+import { setTimeout as sleep } from 'node:timers/promises';
+
 import { NEGOTIATION_GUIDANCE } from '@indexnetwork/protocol';
 
 import type { Model, ModelMessage, ToolDefinition } from '@indexnetwork/agent';
@@ -14,9 +16,14 @@ import { createRedisClient } from '../../adapters/cache.adapter';
 import { IntentDatabaseAdapter } from '../../adapters/intent.database.adapter';
 import { negotiationService, type NegotiationDetail, type NegotiationTurnAction } from '../../services/negotiation.service';
 import { log } from '../log';
-import { userEventChannel } from '../user-events';
+import { ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, type UserEventRecord } from '../user-events';
 
 const logger = log.agent.from('HostedNegotiator');
+
+/** Redis holds this group's offset, so every wake is handled by exactly one replica. */
+const WAKE_GROUP = 'hosted-negotiator';
+/** Short enough that an owner's first-ever stream is picked up by the next scan. */
+const WAKE_BLOCK_MS = 2000;
 
 const SUBMIT_TURN: ToolDefinition = {
   type: 'function',
@@ -40,37 +47,80 @@ export class HostedNegotiator {
   private readonly registry = new AgentDatabaseAdapter();
   private readonly intents = new IntentDatabaseAdapter();
   private readonly inFlight = new Set<string>();
-  private subscriber?: ReturnType<typeof createRedisClient>;
+  private readonly joined = new Set<string>();
+  private reader?: ReturnType<typeof createRedisClient>;
   private running = false;
 
   constructor(private readonly model: Model) {}
 
-  /**
-   * Subscribe to every owner's event channel.
-   *
-   * @returns When the subscription is live.
-   */
+  /** Start reading every owner's event stream. */
   async start(): Promise<void> {
     this.running = true;
-    this.subscriber = createRedisClient();
-    this.subscriber.on('pmessage', (_pattern, channel: string, raw: string) => {
-      const userId = channel.slice(userEventChannel('').length);
-      let frame: { type?: string; data?: { opportunityId?: string; intentId?: string } };
-      try { frame = JSON.parse(raw); } catch { return; }
-      if (frame.type === 'negotiation.turn' && frame.data?.opportunityId) {
-        void this.take(userId, frame.data.opportunityId);
-      } else if (frame.type === 'negotiation.opened' && frame.data?.intentId) {
-        void this.takeForIntent(userId, frame.data.intentId);
-      }
-    });
-    await this.subscriber.psubscribe(userEventChannel('*'));
+    this.reader = createRedisClient();
+    void this.follow(this.reader);
   }
 
-  /** Stop answering and drop the subscription. */
+  /** Stop answering and drop the reader. */
   async stop(): Promise<void> {
     this.running = false;
-    await this.subscriber?.quit().catch(() => {});
-    this.subscriber = undefined;
+    this.reader?.disconnect();
+    this.reader = undefined;
+  }
+
+  /**
+   * Streams are per owner, so each pass discovers them by scan — there is no
+   * pattern to read — joins the group on any new one, then takes one blocking
+   * batch. The group's offset lives in Redis, so a wake reaches exactly one
+   * process, and the first pass claims wakes an earlier process read but never
+   * acknowledged.
+   */
+  private async follow(reader: ReturnType<typeof createRedisClient>): Promise<void> {
+    let from: '>' | '0' = '0';
+
+    while (this.running) {
+      try {
+        const userIds = await scanUserEventStreams();
+        for (const userId of userIds) {
+          if (this.joined.has(userId)) continue;
+          await ensureUserEventGroup(userId, WAKE_GROUP);
+          this.joined.add(userId);
+        }
+
+        if (!userIds.length) {
+          await sleep(WAKE_BLOCK_MS);
+          continue;
+        }
+
+        const records = await readUserEventGroup(reader, {
+          group: WAKE_GROUP, consumer: WAKE_GROUP, userIds, from, blockMs: WAKE_BLOCK_MS,
+        });
+        from = '>';
+
+        for (const record of records) {
+          this.wake(record);
+          await ackUserEvent(WAKE_GROUP, record);
+        }
+      } catch (error: unknown) {
+        if (!this.running) return;
+        logger.error('Hosted wake read failed', { error: error instanceof Error ? error.message : String(error) });
+        // A restarted Redis has no groups, so the next pass rejoins every stream
+        // and picks up whatever this group never acknowledged.
+        this.joined.clear();
+        from = '0';
+        await sleep(WAKE_BLOCK_MS);
+      }
+    }
+  }
+
+  /** Take the seat's turn when the frame says one is owed. */
+  private wake({ userId, data }: UserEventRecord): void {
+    let frame: { type?: string; data?: { opportunityId?: string; intentId?: string } };
+    try { frame = JSON.parse(data); } catch { return; }
+    if (frame.type === 'negotiation.turn' && frame.data?.opportunityId) {
+      void this.take(userId, frame.data.opportunityId);
+    } else if (frame.type === 'negotiation.opened' && frame.data?.intentId) {
+      void this.takeForIntent(userId, frame.data.intentId);
+    }
   }
 
   /** Discovery opened negotiations for this signal; take a turn on each one that owes us. */

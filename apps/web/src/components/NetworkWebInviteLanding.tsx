@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import AuthForm from "@/components/AuthForm";
 import { DOWNLOAD_PATH } from "@/components/DeepLinkLanding";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { APIError } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { Network } from "@/lib/types";
 import { networksService as publicNetworksService, useNetworkService } from "@/services/networks";
@@ -13,6 +14,9 @@ import "@/components/AuthModal.css";
 const logger = log.page.from("l/[code]");
 
 type PreviewStep = "loading" | "ready" | "error";
+
+/** Terminal outcomes that keep the visitor on this page instead of the app. */
+type JoinOutcome = "pending" | "declined";
 
 /**
  * Web invite landing (`/l/:code`): preview the network, sign in inline, accept
@@ -31,6 +35,7 @@ export default function NetworkWebInviteLanding() {
   );
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [joinOutcome, setJoinOutcome] = useState<JoinOutcome | null>(null);
   const [loginRequested, setLoginRequested] = useState(false);
   const joinStartedRef = useRef(false);
 
@@ -69,11 +74,24 @@ export default function NetworkWebInviteLanding() {
     setJoinError(null);
 
     try {
-      await networkService.acceptInvitation(code);
+      const result = await networkService.acceptInvitation(code);
+      if (result.status === "already_member") {
+        navigate(`/networks/${result.network.id}`, { replace: true });
+        return;
+      }
+      if (result.status === "pending") {
+        setJoining(false);
+        setJoinOutcome("pending");
+        return;
+      }
       navigate(DOWNLOAD_PATH, { replace: true });
     } catch (err) {
-      joinStartedRef.current = false;
       setJoining(false);
+      if (err instanceof APIError && err.status === 403) {
+        setJoinOutcome("declined");
+        return;
+      }
+      joinStartedRef.current = false;
       setJoinError((err as Error)?.message || "Couldn't join — the invite may have expired.");
       logger.error("Failed to accept invitation", { error: err });
     }
@@ -127,6 +145,19 @@ export default function NetworkWebInviteLanding() {
               <p className="invite-status invite-status--join">Joining…</p>
             )}
 
+            {joinOutcome === "pending" && (
+              <p className="invite-status invite-status--join">
+                Your request is waiting for an admin to review it. You&apos;ll be
+                in as soon as they approve it.
+              </p>
+            )}
+
+            {joinOutcome === "declined" && (
+              <p className="invite-error">
+                An admin declined your request to join this network.
+              </p>
+            )}
+
             {joinError && (
               <>
                 <p className="invite-error">{joinError}</p>
@@ -140,7 +171,7 @@ export default function NetworkWebInviteLanding() {
               </>
             )}
 
-            {!joining && !joinError && !isAuthenticated && isReady && (
+            {!joining && !joinError && !joinOutcome && !isAuthenticated && isReady && (
               /* The card is chrome only; AuthForm keeps every behaviour it
                   already had (Google OAuth, magic link, password fallback).
                   Its .av-* internals are restyled from invite.css. */

@@ -80,7 +80,7 @@ export class NetworkService {
   /**
    * Update network permissions. Owner-only.
    */
-  async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; contextInjection?: { discovery: boolean } }) {
+  async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; requireAdminApproval?: boolean; contextInjection?: { discovery: boolean } }) {
     const validatedContextInjection = data.contextInjection !== undefined
       ? ContextInjectionSchema.parse(data.contextInjection)
       : undefined;
@@ -222,6 +222,38 @@ export class NetworkService {
   async acceptInvitation(code: string, userId: string) {
     logger.verbose('Accepting invitation', { userId });
     return this.adapter.acceptNetworkInvitation(code, userId);
+  }
+
+  /**
+   * List the people waiting for approval to join a network. Owner-only.
+   * @param networkId - The network whose queue to read
+   * @param userId - The caller; must be an owner of the network
+   * @returns Pending requesters with name and email
+   * @throws Error if the caller is not an owner
+   */
+  async getJoinRequests(networkId: string, userId: string) {
+    logger.verbose('Getting join requests', { networkId, userId });
+    const raw = await this.adapter.getNetworkJoinRequests(networkId, userId);
+    return raw.map(r => ({
+      id: r.userId,
+      name: r.name,
+      email: r.email,
+      avatar: r.avatar,
+      requestedAt: r.requestedAt,
+    }));
+  }
+
+  /**
+   * Approve or decline a pending join request. Owner-only.
+   * @param networkId - The network being joined
+   * @param targetUserId - The person who asked to join
+   * @param userId - The caller; must be an owner of the network
+   * @param decision - Whether to approve or decline the request
+   * @throws Error if the caller is not an owner or the request is not pending
+   */
+  async reviewJoinRequest(networkId: string, targetUserId: string, userId: string, decision: 'approve' | 'decline') {
+    logger.verbose('Reviewing join request', { networkId, targetUserId, decision });
+    return this.adapter.reviewNetworkJoinRequest(networkId, targetUserId, userId, decision);
   }
 
   /**

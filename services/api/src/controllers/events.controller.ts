@@ -1,6 +1,6 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
-import { ConversationService } from '../services/conversation.service';
+import { AgentConversationError, ConversationService } from '../services/conversation.service';
 
 /**
  * The authenticated user's single realtime channel.
@@ -17,17 +17,28 @@ export class EventsController {
   /**
    * GET /events — open the user's SSE channel.
    *
-   * @param _req - The HTTP request object (unused)
+   * Every frame carries its stream id, so a client resumes where it stopped by
+   * reconnecting with `Last-Event-ID` (or `?after=`). An agent that passes
+   * `?consumer=<agentId>` instead keeps its offset server-side.
+   *
+   * @param req - The HTTP request, read for the resume offset and consumer name
    * @param user - Authenticated user from AuthGuard
    * @returns SSE event stream
    */
   @Get('')
   @UseGuards(AuthGuard)
-  async subscribe(_req: Request, user: AuthenticatedUser) {
+  async subscribe(req: Request, user: AuthenticatedUser) {
+    const params = new URL(req.url).searchParams;
     let subscription;
     try {
-      subscription = await this.conversationService.openEventStream(user.id);
-    } catch {
+      subscription = await this.conversationService.openEventStream(user.id, {
+        after: req.headers.get('Last-Event-ID') ?? params.get('after') ?? undefined,
+        consumer: params.get('consumer') ?? undefined,
+      });
+    } catch (error: unknown) {
+      if (error instanceof AgentConversationError) {
+        return Response.json({ error: error.message }, { status: error.status });
+      }
       return Response.json({ error: 'Event stream is temporarily unavailable' }, { status: 503 });
     }
 
@@ -39,9 +50,9 @@ export class EventsController {
       start(controller) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected' })}\n\n`));
 
-        subscription.onMessage((data) => {
+        subscription.onMessage(({ id, data }) => {
           try {
-            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+            controller.enqueue(encoder.encode(`id: ${id}\ndata: ${data}\n\n`));
           } catch { /* stream closed */ }
         });
 

@@ -23,5 +23,6 @@ export function toPublicNetworkPermissions(value: unknown): NetworkPermissionsSt
     joinPolicy: stored.joinPolicy === 'anyone' ? 'anyone' : 'invite_only',
     invitationLink,
     ...(contextInjection ? { contextInjection } : {}),
+    requireAdminApproval: stored.requireAdminApproval === true,
   };
 }

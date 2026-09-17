@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+
 import type { PrincipalMessage, PrincipalQuestion } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
@@ -7,7 +9,7 @@ import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../ada
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
 import { log } from '../lib/log';
-import { publishUserEvent, userEventChannel } from '../lib/user-events';
+import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
 
 const logger = log.service.from('ConversationService');
 
@@ -48,11 +50,14 @@ function unanswered(messages: readonly PrincipalMessage[]): PrincipalQuestion[] 
   return queue;
 }
 
-/** A live subscription on one user's event channel. */
+/** A live read of one user's event stream. */
 export interface UserEventSubscription {
-  onMessage(handler: (data: string) => void): void;
+  onMessage(handler: (event: UserEventRecord) => void): void;
   cleanup(): Promise<void>;
 }
+
+/** How long a read waits on Redis before asking again. */
+const STREAM_BLOCK_MS = 15000;
 
 /** Well-known conversation id for the caller's own agent DM. */
 export const AGENT_DM_ID = 'agent';
@@ -376,58 +381,97 @@ export class ConversationService {
   }
 
   /**
-   * Opens a dedicated Redis subscriber on a user's event channel — messages and
-   * notification frames alike, since one channel carries both.
+   * Follows a user's event stream on a dedicated Redis client — messages and
+   * notification frames alike, since one stream carries both.
    *
-   * Resolves only after Redis acknowledges the subscription, and buffers frames
-   * that arrive before the consumer registers its handler, so a publish racing
-   * the connection is delivered rather than dropped.
+   * A consumer that names itself keeps its offset in Redis: entries it never
+   * acknowledged are redelivered after a reconnect, and two connections under
+   * the same name compete for entries instead of each taking every one. An
+   * anonymous consumer resumes from `after`, or reads only live frames.
    *
-   * @param userId - User to subscribe for
-   * @returns Object with `onMessage` handler registration and `cleanup` teardown function
-   * @throws Error if Redis refuses the subscription
+   * @param userId - Owner whose stream to follow.
+   * @param options - `after` is the last entry the client saw; `consumer` names one of the owner's agents.
+   * @returns Object with `onMessage` handler registration and `cleanup` teardown function.
+   * @throws AgentConversationError when `consumer` does not name an agent this user owns.
+   * @throws Error when Redis is unreachable.
    */
-  async openEventStream(userId: string): Promise<UserEventSubscription> {
-    const sub = createRedisClient();
-    const channel = userEventChannel(userId);
-    let handler: ((data: string) => void) | null = null;
-    let buffered: string[] = [];
-    let cleaned = false;
+  async openEventStream(
+    userId: string,
+    options: { after?: string; consumer?: string } = {},
+  ): Promise<UserEventSubscription> {
+    const group = options.consumer;
+    if (group) {
+      const agent = await this.registry.getAgent(group);
+      if (!agent || agent.ownerId !== userId) {
+        throw new AgentConversationError('consumer must name one of your agents.', 404);
+      }
+    }
 
-    sub.on('message', (receivedChannel: string, data: string) => {
-      if (cleaned || receivedChannel !== channel) return;
-      if (handler) handler(data);
-      else buffered.push(data);
-    });
+    const client = createRedisClient();
+    let cursor = options.after ?? '$';
+    let stopped = false;
 
     try {
-      await sub.subscribe(channel);
+      await client.ping();
+      if (group) await ensureUserEventGroup(userId, group);
     } catch (error: unknown) {
-      cleaned = true;
-      buffered = [];
-      try { await sub.disconnect(); } catch { /* best-effort cleanup */ }
-      logger.error('Redis subscribe failed', {
+      stopped = true;
+      client.disconnect();
+      logger.error('Redis event stream refused', {
         userId,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
 
+    // The agent is the consumer, so its first read collects what an earlier
+    // connection took but never acknowledged, and a second connection under the
+    // same agent competes for entries instead of taking every one again.
+    let from: '>' | '0' = '0';
+
+    const follow = async (handler: (event: UserEventRecord) => void): Promise<void> => {
+      while (!stopped) {
+        try {
+          const records = group
+            ? await readUserEventGroup(client, { group, consumer: group, userIds: [userId], from, blockMs: STREAM_BLOCK_MS })
+            : await readUserEvents(client, new Map([[userId, cursor]]), STREAM_BLOCK_MS);
+          from = '>';
+
+          for (const record of records) {
+            if (stopped) return;
+            handler(record);
+            if (group) await ackUserEvent(group, record);
+            else cursor = record.id;
+          }
+        } catch (error: unknown) {
+          if (stopped) return;
+          logger.error('Redis event stream read failed', {
+            userId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // A restarted Redis has neither the group nor this consumer's pending
+          // entries, so the group is recreated and the next read starts from
+          // whatever the consumer never acknowledged.
+          if (group) {
+            from = '0';
+            await ensureUserEventGroup(userId, group).catch(() => {});
+          }
+          await sleep(STREAM_BLOCK_MS);
+        }
+      }
+    };
+
     return {
-      onMessage(nextHandler) {
-        if (cleaned) return;
-        handler = nextHandler;
-        const pending = buffered;
-        buffered = [];
-        for (const data of pending) handler(data);
+      onMessage(handler) {
+        if (stopped) return;
+        // Read failures are handled by the loop; this releases the connection
+        // if the loop itself ever gives up.
+        void follow(handler).catch(() => { stopped = true; client.disconnect(); });
       },
       async cleanup() {
-        if (cleaned) return;
-        cleaned = true;
-        handler = null;
-        buffered = [];
-        try { await sub.unsubscribe(channel); } catch { /* disconnect still runs */ }
-        try { await sub.disconnect(); } catch { /* best-effort cleanup */ }
+        if (stopped) return;
+        stopped = true;
+        client.disconnect();
       },
     };
   }

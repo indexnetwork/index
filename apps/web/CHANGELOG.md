@@ -8,6 +8,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- **The realtime stream resumes where it left off.** Each frame now arrives with
+  a stream id, and a reconnect asks for `?after=<id>`, so frames published while
+  the tab was disconnected are delivered instead of lost. The reconnect builds a
+  new `EventSource`, which drops the browser's own `Last-Event-ID`, so the id is
+  carried by hand.
 - Read a negotiation at `GET /api/opportunities/:id/negotiation` (was
   `GET /api/negotiations/:opportunityId`). The negotiations inbox still reads
   `GET /api/negotiations`.

@@ -375,7 +375,8 @@ export class IndexClient {
   }
 
   /**
-   * Open the user's SSE channel. Reconnects until stopped. JSON calls do not retry.
+   * Open the user's SSE channel. Reconnects until stopped, resuming from the
+   * last frame it received. JSON calls do not retry.
    * @param onEvent - Parsed frames the caller handles. Handshake is not delivered.
    * @returns Stop handle. After stop there is no reconnect.
    */
@@ -384,6 +385,7 @@ export class IndexClient {
     let stopped = false;
     let delay = 1000;
     let primed = false;
+    let lastEventId = "";
     const seen = new Set<string>();
 
     const catchUp = async () => {
@@ -416,7 +418,11 @@ export class IndexClient {
       while (!stopped) {
         try {
           const response = await fetch(`${this.baseUrl}/api/events`, {
-            headers: { "x-api-key": this.apiKey, Accept: "text/event-stream" },
+            headers: {
+              "x-api-key": this.apiKey,
+              Accept: "text/event-stream",
+              ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}),
+            },
             signal: abort.signal,
           });
           if (!response.ok || !response.body) throw new Error("stream");
@@ -430,12 +436,15 @@ export class IndexClient {
             const parts = buffer.split("\n\n");
             buffer = parts.pop() ?? "";
             for (const part of parts) {
-              if (part.split("\n").every((line) => line.startsWith(":"))) continue;
-              const data = part.split("\n")
+              const lines = part.split("\n");
+              if (lines.every((line) => line.startsWith(":"))) continue;
+              const id = lines.find((line) => line.startsWith("id:"))?.slice(3).trimStart();
+              const data = lines
                 .filter((line) => line.startsWith("data:"))
                 .map((line) => line.slice(5).trimStart())
                 .join("\n");
               if (!data) continue;
+              if (id) lastEventId = id;
               let parsed: unknown;
               try { parsed = JSON.parse(data); } catch { continue; }
               if ((parsed as { type?: string })?.type === "connected") {

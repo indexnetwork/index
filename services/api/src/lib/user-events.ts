@@ -1,10 +1,12 @@
+import type { Redis } from 'ioredis';
+
 import { getRedisClient } from '../adapters/cache.adapter';
 import { log } from './log';
 
 /**
- * One channel per user carries every realtime frame, and nothing on the wire
+ * One stream per user carries every realtime frame, and nothing on the wire
  * separates the audiences: an agent-bound key resolves to its owner, so the
- * agent subscribes to the same channel the owner's app is already reading and
+ * agent reads the same stream the owner's app is already reading and
  * each side ignores the types it does not recognise. `opportunity.new`,
  * `question.pending` and `message` are the human's; the rest are the agent's.
  *
@@ -103,20 +105,169 @@ interface ConversationEventMessage {
   createdAt: Date;
 }
 
-export function userEventChannel(userId: string): string {
-  return `events:user:${userId}`;
+const STREAM_PREFIX = 'events:user:';
+const STREAM_FIELD = 'data';
+/**
+ * Entries a consumer can still resume from. An offset older than this is gone:
+ * the consumer falls back to live frames and reconciles over REST.
+ */
+const STREAM_MAXLEN = 1000;
+const READ_COUNT = 100;
+
+export function userEventStream(userId: string): string {
+  return `${STREAM_PREFIX}${userId}`;
+}
+
+/** One entry read from a user's event stream. */
+export interface UserEventRecord {
+  /** Owner whose stream carried the entry. */
+  userId: string;
+  /** Redis entry id, which is also the consumer's offset once it is handled. */
+  id: string;
+  /** The frame JSON exactly as it was published. */
+  data: string;
 }
 
 /**
- * Publishes a user-scoped event to Redis for SSE consumers.
+ * Reads the frame JSON out of an XREAD/XREADGROUP reply, dropping entries that
+ * do not carry one.
+ */
+function toRecords(reply: unknown): UserEventRecord[] {
+  if (!Array.isArray(reply)) return [];
+
+  const records: UserEventRecord[] = [];
+  for (const stream of reply) {
+    if (!Array.isArray(stream)) continue;
+    const [key, entries] = stream as [unknown, unknown];
+    if (typeof key !== 'string' || !Array.isArray(entries)) continue;
+
+    for (const entry of entries) {
+      if (!Array.isArray(entry)) continue;
+      const [id, fields] = entry as [unknown, unknown];
+      if (typeof id !== 'string' || !Array.isArray(fields)) continue;
+      const at = fields.indexOf(STREAM_FIELD);
+      const data = at === -1 ? undefined : fields[at + 1];
+      if (typeof data === 'string') {
+        records.push({ userId: key.slice(STREAM_PREFIX.length), id, data });
+      }
+    }
+  }
+  return records;
+}
+
+/** Appends one frame to a user's stream. */
+async function append(userId: string, payload: string): Promise<void> {
+  await getRedisClient().xadd(
+    userEventStream(userId), 'MAXLEN', '~', STREAM_MAXLEN, '*', STREAM_FIELD, payload,
+  );
+}
+
+/**
+ * Appends a user-scoped event to that user's stream.
  */
 export async function publishUserEvent(
   userId: string,
   event: UserEvent,
 ): Promise<void> {
   if (!userId) return;
-  const publisher = getRedisClient();
-  await publisher.publish(userEventChannel(userId), JSON.stringify(event));
+  await append(userId, JSON.stringify(event));
+}
+
+/**
+ * Blocking read for consumers that hold their own offset.
+ *
+ * @param client - A dedicated client; a blocked connection serves nothing else.
+ * @param cursors - Owner id to the last entry that consumer handled, or `$` for live only.
+ * @param blockMs - How long Redis waits for an entry before answering empty.
+ * @returns The entries published after each cursor, oldest first.
+ */
+export async function readUserEvents(
+  client: Redis,
+  cursors: ReadonlyMap<string, string>,
+  blockMs: number,
+): Promise<UserEventRecord[]> {
+  const userIds = [...cursors.keys()];
+  if (!userIds.length) return [];
+
+  return toRecords(await client.xread(
+    'COUNT', READ_COUNT, 'BLOCK', blockMs, 'STREAMS',
+    ...userIds.map(userEventStream),
+    ...userIds.map((userId) => cursors.get(userId)!),
+  ));
+}
+
+/**
+ * Creates a consumer group at the start of a user's stream, so the first frame
+ * published after the stream appeared is delivered rather than skipped.
+ *
+ * @param userId - Owner whose stream the group reads.
+ * @param group - Group name; each group sees every entry independently.
+ */
+export async function ensureUserEventGroup(userId: string, group: string): Promise<void> {
+  try {
+    await getRedisClient().xgroup('CREATE', userEventStream(userId), group, '0', 'MKSTREAM');
+  } catch (error: unknown) {
+    if (!String(error).includes('BUSYGROUP')) throw error;
+  }
+}
+
+/**
+ * Blocking read for consumers whose offset Redis holds. Consumers in one group
+ * compete for entries; separate groups each receive every entry.
+ *
+ * @param client - A dedicated client; a blocked connection serves nothing else.
+ * @param options - The group, this consumer's name, and the owners to read.
+ *   `from` is `>` for entries nobody in the group has taken, or `0` to pick up
+ *   this consumer's entries again after it stopped without acknowledging them.
+ * @returns Entries now pending for this consumer until they are acknowledged.
+ */
+export async function readUserEventGroup(
+  client: Redis,
+  options: {
+    group: string;
+    consumer: string;
+    userIds: readonly string[];
+    from: '>' | '0';
+    blockMs: number;
+  },
+): Promise<UserEventRecord[]> {
+  if (!options.userIds.length) return [];
+
+  return toRecords(await client.xreadgroup(
+    'GROUP', options.group, options.consumer, 'COUNT', READ_COUNT, 'BLOCK', options.blockMs, 'STREAMS',
+    ...options.userIds.map(userEventStream),
+    ...options.userIds.map(() => options.from),
+  ));
+}
+
+/**
+ * Advances a group's offset past one handled entry.
+ *
+ * @param group - Group that read the entry.
+ * @param record - The handled entry.
+ */
+export async function ackUserEvent(group: string, record: UserEventRecord): Promise<void> {
+  await getRedisClient().xack(userEventStream(record.userId), group, record.id);
+}
+
+/**
+ * Every owner who has a stream. Streams are per user, so a consumer that
+ * follows all of them discovers new owners here rather than by pattern.
+ *
+ * @returns Owner ids, in no particular order.
+ */
+export async function scanUserEventStreams(): Promise<string[]> {
+  const client = getRedisClient();
+  const userIds: string[] = [];
+  let cursor = '0';
+
+  do {
+    const [next, keys] = await client.scan(cursor, 'MATCH', `${STREAM_PREFIX}*`, 'COUNT', 500);
+    cursor = next;
+    for (const key of keys) userIds.push(key.slice(STREAM_PREFIX.length));
+  } while (cursor !== '0');
+
+  return userIds;
 }
 
 /**
@@ -176,8 +327,8 @@ export function conversationEventRecipientUserIds(
 }
 
 /**
- * Publishes a persisted message to each authorized participant's channel. The
- * channel is user-scoped, never intent-scoped, so the API remains the final
+ * Appends a persisted message to each authorized participant's stream. The
+ * stream is user-scoped, never intent-scoped, so the API remains the final
  * provenance/privacy filter.
  *
  * @param message - Persisted conversation message.
@@ -192,8 +343,7 @@ export async function publishConversationMessageEvent(
     conversationId: message.conversationId,
     message,
   });
-  const publisher = getRedisClient();
   await Promise.all(conversationEventRecipientUserIds(participants).map((userId) => (
-    publisher.publish(userEventChannel(userId), event)
+    append(userId, event)
   )));
 }

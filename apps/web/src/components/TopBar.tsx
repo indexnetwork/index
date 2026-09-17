@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
-import { ChevronDown, Settings, LogOut, Menu, X } from 'lucide-react';
+import { ChevronDown, Settings, LogOut, Menu, UserPlus, X } from 'lucide-react';
 
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import { useConversation } from '@/contexts/ConversationContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
+import InviteNetworksModal from '@/components/modals/InviteNetworksModal';
 import UserAvatar from '@/components/UserAvatar';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { countNegotiationsRequiringAction } from '@/lib/negotiation-inbox';
@@ -28,8 +30,14 @@ export default function TopBar() {
     (conversation) => isVisibleH2HConversation(conversation) && conversation.unreadCount > 0,
   ).length;
   const yourMoveCount = countNegotiationsRequiringAction(negotiations, user?.id);
+  const { networks } = useNetworksState();
+  const pendingJoinCount = networks.reduce(
+    (total, network) => total + ((network as { pendingJoinCount?: number }).pendingJoinCount ?? 0),
+    0,
+  );
 
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navigatingToChat, setNavigatingToChat] = useState(false);
   const userDropdownRef = useRef<HTMLDivElement>(null);
@@ -127,6 +135,14 @@ export default function TopBar() {
       </button>
       <button onClick={() => navigate('/networks')} className={navItemClass(!!isNetworksView)}>
         Networks
+        {pendingJoinCount > 0 && (
+          <span
+            data-testid="networks-pending-join-badge"
+            className="ml-1.5 inline-block min-w-[20px] rounded-full bg-[#041729] px-2 py-0.5 text-center text-xs text-white"
+          >
+            {pendingJoinCount > 99 ? '99+' : pendingJoinCount}
+          </span>
+        )}
       </button>
     </>
   );
@@ -167,6 +183,13 @@ export default function TopBar() {
                     </p>
                   </div>
                   <div className="py-1.5">
+                    <button
+                      className="w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                      onClick={() => { setUserDropdownOpen(false); setInviteModalOpen(true); }}
+                    >
+                      <UserPlus className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      Invite
+                    </button>
                     <button
                       className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
                         isSettingsView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
@@ -215,6 +238,9 @@ export default function TopBar() {
           className="lg:hidden border-t border-gray-100 px-4 py-2 flex flex-col gap-1"
         >
           {navItems}
+          <button onClick={() => setInviteModalOpen(true)} className={navItemClass(false) + ' text-left'}>
+            Invite
+          </button>
           <button onClick={() => navigate('/settings')} className={navItemClass(!!isSettingsView) + ' text-left'}>
             Settings
           </button>
@@ -226,6 +252,8 @@ export default function TopBar() {
           </button>
         </div>
       )}
+
+      {inviteModalOpen && <InviteNetworksModal onClose={() => setInviteModalOpen(false)} />}
     </header>
   );
 }

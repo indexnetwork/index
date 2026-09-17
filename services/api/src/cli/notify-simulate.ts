@@ -114,7 +114,7 @@ async function main(): Promise<void> {
   const { buildProfileFromUser } = await import('../adapters/database.shared');
   const { closeRedisConnection } = await import('../adapters/cache.adapter');
   const {
-    userEventChannel,
+    userEventStream,
     publishUserEvent,
   } = await import('../lib/user-events');
   const { OpportunityEventService } = await import('../services/opportunity-event.service');
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
 
       console.log('Parked pending question', question.id);
       console.log('Published question.pending via publishPendingQuestionEvent');
-      console.log('  channel:', userEventChannel(recipient.id));
+      console.log('  stream:', userEventStream(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);
       console.log('  signal:', intent.id, `(${intent.payload.slice(0, 60)})`);
       console.log('  question:', question.question);
@@ -245,7 +245,7 @@ async function main(): Promise<void> {
 
       console.log('Created opportunity', created.id);
       console.log('Published opportunity.new via OpportunityEventService');
-      console.log('  channel:', userEventChannel(recipient.id));
+      console.log('  stream:', userEventStream(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);
       console.log('  counterpart:', counterpart.email, `(${counterpart.id})`);
       console.log('  signal:', intent.id, `(${intent.payload.slice(0, 60)})`);
@@ -265,7 +265,7 @@ async function main(): Promise<void> {
     console.log('Inserted message', message.id);
     console.log('Published type:message via conversation adapter SSE');
     console.log('  conversation:', conversation.id);
-    console.log('  channel:', userEventChannel(recipient.id));
+    console.log('  stream:', userEventStream(recipient.id));
     console.log('  sender:', counterpart.email, `(${counterpart.id})`);
     console.log('  recipient:', recipient.email, `(${recipient.id})`);
     console.log('  text:', text);
