@@ -20,6 +20,8 @@ section before promoting to `main`).
 - Restore agentv2 event recovery across every signal, owed nonzero turns, and missed principal-input batches. Adopt signals before processing early events; explicit creation/resume events wake the named signal without making restoration itself a wake. Its independent stall/question policies remain unchanged.
 
 ### Fixed
+- Read canonical H2A question status in one SQL snapshot without reconstructing model context. Remove redundant pre-accept reads while retaining transactional ownership, exact-batch and freshness checks.
+- Expose the TUI's hosted reviewing/tool activity and review notices; keep failed-review notices through idle recovery. Add the same explicit Wake action for authenticated owners without granting authority or waking an external executor.
 - Restore a stopped hosted runtime to an idle, sendable inbox without rerunning failed model work. Transient startup failures retain explicit activations and retry with capped backoff instead of leaving the agent permanently unavailable.
 - Wake hosted H2A on an explicit intent resume, with a stable receipt and transactional lifecycle-version check. Resume does not answer or retire questions, invalidate principal evidence, or create new permission.
 - Refresh web agent status, lifecycle and question changes immediately over SSE. Reduce new-owner stream discovery latency and avoid a duplicate principal-record read during startup.

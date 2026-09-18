@@ -121,7 +121,7 @@ export class PrincipalInbox {
     return records;
   }
 
-  private entry(records: PrincipalRecordsView, fields: Omit<PrincipalMessage, 'id' | 'createdAt' | 'matches'>): PrincipalMessage {
+  private entry(records: Pick<PrincipalRecordsView, 'messages'>, fields: Omit<PrincipalMessage, 'id' | 'createdAt' | 'matches'>): PrincipalMessage {
     const previous = records.messages.at(-1);
     return { id: crypto.randomUUID(), createdAt: new Date(Math.max(Date.now(), previous ? Date.parse(previous.createdAt) + 1 : 0)).toISOString(), matches: [], ...fields };
   }
@@ -158,9 +158,10 @@ export class PrincipalInbox {
     const accepted = this.accepting.then(async () => {
       if (this.failure) throw this.failure;
       if (this.stopped || !inputs.length || inputs.some((input) => !input.text.trim())) return null;
-      const records = await this.records.read();
+      // accept() validates against canonical records and assigns their ordering
+      // inside the host's transaction; an extra pre-read cannot authorize input.
       const entries = inputs.map((input) => {
-        const entry = this.entry(records, input);
+        const entry = this.entry({ messages: this.messages }, input);
         if (input.activation) entry.id = input.activation.id;
         return entry;
       });

@@ -99,13 +99,18 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
 
   /** @param userId - Owner. @param intentId - Owned intent. @returns Canonical conversation and reconstructed question status without acquiring runtime ownership. */
   static async readConversation(userId: string, intentId: string) {
-    return db.transaction(async (tx) => {
-      const [conversation] = await tx.select({ id: conversations.id }).from(conversations).where(eq(conversations.dmPair, `agent-dm:${userId}`));
-      const [owned] = await tx.select({ id: intents.id }).from(intents).where(and(eq(intents.id, intentId), eq(intents.userId, userId)));
-      if (!conversation || !owned) return null;
-      const records = await this.readView(tx, userId, intentId, conversation.id);
-      return { conversationId: conversation.id, pending: pendingPrincipalQuestions(records) };
-    }, { isolationLevel: 'repeatable read' });
+    // One statement gives a consistent question snapshot without rebuilding the
+    // profile, network scope and executor fingerprints needed only for model work.
+    const rows = await db.select({ conversationId: conversations.id, standingBriefId: intents.standingBriefId, message: messages })
+      .from(conversations)
+      .innerJoin(intents, and(eq(intents.id, intentId), eq(intents.userId, userId)))
+      .leftJoin(messages, and(eq(messages.conversationId, conversations.id), sql`${messages.metadata}->>'intentId' = ${intentId}`))
+      .where(eq(conversations.dmPair, `agent-dm:${userId}`))
+      .orderBy(asc(messages.createdAt), asc(messages.id));
+    const conversation = rows[0];
+    if (!conversation) return null;
+    const records = this.readHistory(rows.flatMap(({ message }) => message ? [message] : []), conversation.standingBriefId);
+    return { conversationId: conversation.conversationId, pending: pendingPrincipalQuestions(records) };
   }
 
   /** @param userId - Owner. @param intentId - Signal. @returns Visible external inbox records, without restoring a runtime checkpoint. */
@@ -263,19 +268,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
     return db.transaction((tx) => PrincipalRecordsDatabaseAdapter.readView(tx, this.execution.userId, this.execution.intentId, this.conversationId), { isolationLevel: 'repeatable read' });
   }
 
-  private static async readView(tx: Transaction, userId: string, intentId: string, conversationId: string): Promise<PrincipalRecordsView> {
-    const [principal] = await tx.select({ intent: { id: intents.id, payload: intents.payload, status: intents.status, archivedAt: intents.archivedAt, updatedAt: intents.updatedAt, standingBriefId: intents.standingBriefId },
-      name: users.name, intro: users.intro, location: users.location, confirmedAt: sql<string | null>`${users.onboarding}->>'profileConfirmedAt'` })
-      .from(intents).innerJoin(users, eq(users.id, intents.userId)).where(and(eq(intents.id, intentId), eq(intents.userId, userId)));
-    if (!principal) throw new PrincipalRuntimeIneligibleError('Intent not found.');
-    const history = await tx.select().from(messages).where(and(eq(messages.conversationId, conversationId), sql`${messages.metadata}->>'intentId' = ${intentId}`))
-      .orderBy(asc(messages.createdAt), asc(messages.id));
-    const scope = await tx.select({ assignment: intentNetworks, membership: networkMembers, network: networks }).from(intentNetworks)
-      .innerJoin(networks, eq(networks.id, intentNetworks.networkId))
-      .leftJoin(networkMembers, and(eq(networkMembers.networkId, intentNetworks.networkId), eq(networkMembers.userId, userId)))
-      .where(eq(intentNetworks.intentId, intentId)).orderBy(asc(intentNetworks.networkId));
-    const executors = await tx.select({ id: agents.id, type: agents.type, status: agents.status, selected: agents.handleNegotiations, deletedAt: agents.deletedAt })
-      .from(agents).where(eq(agents.ownerId, userId)).orderBy(asc(agents.id));
+  private static readHistory(history: Message[], standingBriefId: string | null) {
     const entries: PrincipalMessage[] = [];
     let standingBrief: PrincipalStandingBrief | null = null;
     const delegations: PrincipalDelegation[] = [];
@@ -284,7 +277,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
       const metadata = message.metadata as PrincipalMetadata | null;
       const internal = message.role === 'agent' && message.senderId === SYSTEM_AGENT_ID;
       if (internal && metadata?.principalStandingBrief) {
-        if (message.id === principal.intent.standingBriefId) standingBrief = { ...metadata.principalStandingBrief, id: message.id, createdAt: message.createdAt.toISOString() };
+        if (message.id === standingBriefId) standingBrief = { ...metadata.principalStandingBrief, id: message.id, createdAt: message.createdAt.toISOString() };
       } else if (internal && metadata?.principalDelegation) {
         delegations.push({ ...metadata.principalDelegation, id: message.id, createdAt: message.createdAt.toISOString() });
       } else if (internal && metadata?.retiredQuestionId) {
@@ -298,12 +291,29 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
           text: (message.parts as { kind: string; text?: string }[]).filter((part) => part && part.kind === 'text' && typeof part.text === 'string').map((part) => part.text).join('\n') });
       }
     }
+    return { messages: entries, retiredQuestionIds, standingBrief, delegations };
+  }
+
+  private static async readView(tx: Transaction, userId: string, intentId: string, conversationId: string): Promise<PrincipalRecordsView> {
+    const [principal] = await tx.select({ intent: { id: intents.id, payload: intents.payload, status: intents.status, archivedAt: intents.archivedAt, updatedAt: intents.updatedAt, standingBriefId: intents.standingBriefId },
+      name: users.name, intro: users.intro, location: users.location, confirmedAt: sql<string | null>`${users.onboarding}->>'profileConfirmedAt'` })
+      .from(intents).innerJoin(users, eq(users.id, intents.userId)).where(and(eq(intents.id, intentId), eq(intents.userId, userId)));
+    if (!principal) throw new PrincipalRuntimeIneligibleError('Intent not found.');
+    const history = await tx.select().from(messages).where(and(eq(messages.conversationId, conversationId), sql`${messages.metadata}->>'intentId' = ${intentId}`))
+      .orderBy(asc(messages.createdAt), asc(messages.id));
+    const scope = await tx.select({ assignment: intentNetworks, membership: networkMembers, network: networks }).from(intentNetworks)
+      .innerJoin(networks, eq(networks.id, intentNetworks.networkId))
+      .leftJoin(networkMembers, and(eq(networkMembers.networkId, intentNetworks.networkId), eq(networkMembers.userId, userId)))
+      .where(eq(intentNetworks.intentId, intentId)).orderBy(asc(intentNetworks.networkId));
+    const executors = await tx.select({ id: agents.id, type: agents.type, status: agents.status, selected: agents.handleNegotiations, deletedAt: agents.deletedAt })
+      .from(agents).where(eq(agents.ownerId, userId)).orderBy(asc(agents.id));
+    const records = this.readHistory(history, principal.intent.standingBriefId);
     return {
       intent: { id: intentId, payload: principal.intent.payload },
       principalContext: principal.confirmedAt
         ? JSON.stringify({ confirmedProfile: { name: principal.name, intro: principal.intro, location: principal.location } })
         : 'No confirmed profile is available. Ask for missing personal facts.',
-      messages: entries, retiredQuestionIds, standingBrief, delegations,
+      ...records,
       version: createHash('sha256').update(JSON.stringify({ principal, history, scope, executors })).digest('hex'),
       executionVersion: createHash('sha256').update(JSON.stringify({
         intent: {
@@ -313,7 +323,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
           archivedAt: principal.intent.archivedAt,
           updatedAt: principal.intent.updatedAt,
         },
-        inputs: entries.filter((entry) => entry.kind === 'user' || entry.kind === 'answer'),
+        inputs: records.messages.filter((entry) => entry.kind === 'user' || entry.kind === 'answer'),
         executors,
       })).digest('hex'),
     };
@@ -354,7 +364,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
     if (!input) return null;
     const result = await db.transaction(async (tx) => {
       await PrincipalRecordsDatabaseAdapter.assertOwner(tx, this.execution);
-      const [intent] = await tx.select({ status: intents.status, archivedAt: intents.archivedAt, updatedAt: intents.updatedAt }).from(intents)
+      const [intent] = await tx.select({ status: intents.status, archivedAt: intents.archivedAt, updatedAt: intents.updatedAt, standingBriefId: intents.standingBriefId }).from(intents)
         .where(and(eq(intents.id, this.execution.intentId), eq(intents.userId, this.execution.userId))).for('share');
       if (!intent || intent.archivedAt || intent.status !== null && intent.status !== 'ACTIVE') throw new PrincipalRuntimeIneligibleError('The principal intent is no longer active.');
       if (input.kind === 'event') {
@@ -372,7 +382,10 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
             || activation.id !== `intent.resumed:${this.execution.intentId}:${activation.lifecycleVersionMs}`) return null;
         } else if (activation?.type !== 'h2a.wake') return null;
       }
-      const current = await PrincipalRecordsDatabaseAdapter.readView(tx, this.execution.userId, this.execution.intentId, this.conversationId);
+      const history = await tx.select().from(messages)
+        .where(and(eq(messages.conversationId, this.conversationId), sql`${messages.metadata}->>'intentId' = ${this.execution.intentId}`))
+        .orderBy(asc(messages.createdAt), asc(messages.id));
+      const current = PrincipalRecordsDatabaseAdapter.readHistory(history, intent.standingBriefId);
       const accepted = acceptedPrincipalMessages(current, inputs);
       if (!accepted) return null;
       const persisted: Message[] = [];

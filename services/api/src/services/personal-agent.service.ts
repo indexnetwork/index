@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { IntentActivation, Model, PrincipalQuestion, PrincipalAnswer, PrincipalMessage } from '@indexnetwork/agent';
+import type { IntentActivation, Model, NegotiationAgent, PrincipalQuestion, PrincipalAnswer, PrincipalMessage, PrincipalToolCall } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { PrincipalRecordsDatabaseAdapter, PrincipalRuntimeIneligibleError, PrincipalRuntimeConflict } from '../adapters/principal-records.database.adapter';
@@ -22,6 +22,9 @@ export class PersonalAgentError extends Error {
 export interface PersonalAgentState {
   status: 'running' | 'starting' | 'paused' | 'external' | 'unavailable';
   pending: readonly PrincipalQuestion[];
+  reviewing?: boolean;
+  reviewNotice?: string;
+  toolCalls?: readonly PrincipalToolCall[];
 }
 
 interface Session {
@@ -44,6 +47,7 @@ export class PersonalAgentService {
   private readonly intents = new IntentDatabaseAdapter();
   private readonly registry = new AgentDatabaseAdapter();
   private readonly errors = new Map<string, string>();
+  private readonly reviewFailures = new Map<string, string>();
   private readonly principals = new Map<string, ApiPrincipal>();
   private readonly desired = new Map<string, ApiPrincipal>();
   private readonly retries = new Map<string, StartupRetry>();
@@ -221,6 +225,16 @@ export class PersonalAgentService {
     const host = new ApiNegotiationHost([principal], this.model);
     const session: Session = { principal, host, active: false, ready: Promise.resolve() };
     this.sessions.set(principal.id, session);
+    host.on('principal.change', () => {
+      if (this.running && !session.stopping && this.sessions.get(principal.id) === session) {
+        void publishUserInvalidation(principal.userId, 'agent.status', principal.intentId);
+      }
+    });
+    host.on('principal.activated', () => { this.reviewFailures.delete(principal.id); });
+    host.on('principal.error', (reason: string) => {
+      this.reviewFailures.set(principal.id, reason);
+      void publishUserInvalidation(principal.userId, 'agent.status', principal.intentId);
+    });
     host.on('change', () => {
       if (this.running && !session.stopping && host.agents.get(principal.id)?.stopped) this.restartSession(session);
     });
@@ -303,7 +317,13 @@ export class PersonalAgentService {
       else if (session?.active && !session.stopping && !agent?.stopped) status = 'running';
       else if (session || this.retries.has(intentId)) status = 'starting';
     }
-    return { status, pending: status === 'running' ? saved?.pending ?? [] : [] };
+    return {
+      status,
+      pending: saved?.pending ?? [],
+      reviewing: status === 'running' && Boolean(agent?.reviewing),
+      reviewNotice: agent?.reviewNotice ?? this.reviewFailures.get(intentId),
+      toolCalls: agent?.toolCalls ?? [],
+    };
   }
 
   /**
@@ -313,6 +333,26 @@ export class PersonalAgentService {
    * @throws When ownership, availability, or the displayed batch changed.
    */
   async send(input: { userId: string; intentId: string; conversationId: string } & ({ text: string; answers?: never } | { answers: readonly PrincipalAnswer[]; text?: never })) {
+    const agent = await this.readyInbox(input);
+    if (!agent) return null;
+    let receipts: readonly PrincipalMessage[] | null;
+    if (input.answers) receipts = await agent.answer(input.answers);
+    else {
+      const message = await agent.message(input.text);
+      receipts = message ? [message] : null;
+    }
+    if (!receipts) throw new PersonalAgentError('The input was not accepted. For answers, refresh and submit the complete current batch; nothing was sent.', 409);
+    return Promise.all(receipts.map((receipt) => PrincipalRecordsDatabaseAdapter.readMessage(receipt.id)));
+  }
+
+  /** @param input - Authenticated owner and canonical intent conversation. @returns Once the explicit wake receipt is committed, not when reasoning completes. @throws If the hosted inbox cannot accept the wake. */
+  async wake(input: { userId: string; intentId: string; conversationId: string }): Promise<void> {
+    const agent = await this.readyInbox(input);
+    if (!agent) throw new PersonalAgentError('Your selected external negotiator owns this inbox.', 409);
+    if (!await agent.wake()) throw new PersonalAgentError('The review was not accepted. Refresh and try again.', 409);
+  }
+
+  private async readyInbox(input: { userId: string; intentId: string; conversationId: string }): Promise<NegotiationAgent | null> {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new PersonalAgentError('Intent not found.', 404);
     if (await this.registry.getSelectedNegotiator(input.userId)) return null;
     if (!this.running) throw new PersonalAgentError('Your personal agent is unavailable.', 503);
@@ -330,14 +370,7 @@ export class PersonalAgentService {
     if (saved?.conversationId !== input.conversationId) throw new PersonalAgentError('Agent conversation not found.', 404);
     const agent = session.host.agents.get(input.intentId)!;
     if (agent.stopped) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
-    let receipts: readonly PrincipalMessage[] | null;
-    if (input.answers) receipts = await agent.answer(input.answers);
-    else {
-      const message = await agent.message(input.text);
-      receipts = message ? [message] : null;
-    }
-    if (!receipts) throw new PersonalAgentError('The input was not accepted. For answers, refresh and submit the complete current batch; nothing was sent.', 409);
-    return Promise.all(receipts.map((receipt) => PrincipalRecordsDatabaseAdapter.readMessage(receipt.id)));
+    return agent;
   }
 
   /** Flush every runtime and release its ownership during API shutdown. */
@@ -346,6 +379,7 @@ export class PersonalAgentService {
     this.subscriber?.disconnect();
     this.pendingOwners.clear();
     this.activations.clear();
+    this.reviewFailures.clear();
     for (const id of this.retries.keys()) this.cancelRetry(id);
     await this.checking;
     await Promise.all([...this.sessions.values()].map((session) => this.stopSession(session)));

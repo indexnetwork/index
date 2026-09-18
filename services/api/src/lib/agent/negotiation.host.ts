@@ -51,9 +51,12 @@ export class ApiNegotiationHost extends EventEmitter {
         return this.record(record);
       };
       const host: NegotiationHost = {
-        event: (event) => log.lib.from('agent-events').info(event.type, { userId: principal.userId, intentId: principal.intentId, ...event }),
+        event: (event) => {
+          log.lib.from('agent-events').info(event.type, { userId: principal.userId, intentId: principal.intentId, ...event });
+          if (event.type === 'h2a.activated') this.emit('principal.activated', principal.intentId);
+        },
         status: (id, status, phase) => { const match = this.negotiations.get(id); if (match) Object.assign(match, { status, phase }); this.emit('change'); },
-        conversation: () => this.emit('change'),
+        conversation: () => { this.emit('principal.change', principal.intentId); this.emit('change'); },
         retry: (_owner, attempt, reason) => { this.agentStatus = `${principal.name}: retry ${attempt} · ${reason}`; this.emit('change'); },
         step: () => { this.agentStatus = ''; },
         end: (record) => { const match = this.negotiations.get(record.opportunityId); if (match) Object.assign(match, { phase: record.settledAt ? 'settled' : 'blocked', status: record.outcome ?? record.protocol.blockedReason ?? 'Paused' }); this.emit('change'); },
@@ -62,6 +65,7 @@ export class ApiNegotiationHost extends EventEmitter {
           const match = id ? this.negotiations.get(id) : undefined;
           if (match) Object.assign(match, { phase: 'error', status: reason });
           this.agentStatus = `${principal.name}: ${reason}`;
+          if (id === null) this.emit('principal.error', reason, principal.intentId);
           this.emit('change');
         },
       };

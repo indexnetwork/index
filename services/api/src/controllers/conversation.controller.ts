@@ -140,12 +140,12 @@ export class ConversationController {
           previousSessionCursor: history.hasPreviousSession ? history.session?.id ?? null : null,
         });
       }
-      const messages = await this.conversationService.getMessages(conversationId, { limit, before, intentId, userId: user.id });
+      const [messages, agent] = await Promise.all([
+        this.conversationService.getMessages(conversationId, { limit, before, intentId, userId: user.id }),
+        this.readAgentState(conversationId, user.id, intentId),
+      ]);
       // The id is echoed because `agent` resolves to a conversation the caller
       // has no other way to name.
-      let agent = intentId && await this.conversationService.isAgentDm(conversationId)
-        ? await this.personalAgents.state(user.id, intentId) : undefined;
-      if (agent?.status === 'external') agent = await this.conversationService.agentState(user.id, intentId!);
       return Response.json({ conversationId, messages, agent });
     } catch (err: unknown) {
       if (err instanceof PersonalAgentError || err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
@@ -156,6 +156,12 @@ export class ConversationController {
       logger.error('getMessages failed', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
+  }
+
+  private async readAgentState(conversationId: string, userId: string, intentId?: string) {
+    if (!intentId || !await this.conversationService.isAgentDm(conversationId)) return undefined;
+    const agent = await this.personalAgents.state(userId, intentId);
+    return agent.status === 'external' ? this.conversationService.agentState(userId, intentId) : agent;
   }
 
   /**
@@ -299,6 +305,32 @@ export class ConversationController {
       if (err instanceof RuntimeConflictError) return Response.json({ error: 'The selected executor changed. Refresh and try again.' }, { status: 409 });
       const message = err instanceof Error ? err.message : String(err);
       logger.error('answerQuestions failed', { userId: user.id, conversationId: resolved.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
+   * Request the same explicit H2A review as the TUI's Wake action.
+   * @param req - The owned intent ID, without new evidence or permission.
+   * @param user - Authenticated principal.
+   * @param params - Canonical agent DM or its alias.
+   * @returns Acceptance of a private wake receipt, never a claim of completed reasoning.
+   */
+  @Post('/:id/wake')
+  @UseGuards(AuthGuard)
+  async wakeAgent(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    if (!params?.id) return Response.json({ error: 'Conversation ID required' }, { status: 400 });
+    const parsed = z.object({ intentId: z.string().min(1) }).strict().safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return Response.json({ error: 'Provide intentId only.' }, { status: 400 });
+    const resolved = await this.conversationService.resolveId(params.id, user.id);
+    if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status });
+    try {
+      await this.personalAgents.wake({ userId: user.id, conversationId: resolved.id, intentId: parsed.data.intentId });
+      return Response.json({ accepted: true }, { status: 202 });
+    } catch (err: unknown) {
+      if (err instanceof PersonalAgentError) return Response.json({ error: err.message }, { status: err.status });
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('wakeAgent failed', { userId: user.id, intentId: parsed.data.intentId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }

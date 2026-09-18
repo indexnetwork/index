@@ -49,6 +49,10 @@ successful completion of model work. Failed runtimes restore an idle inbox witho
 replaying failed reviews. Transient startup failures keep retrying with capped
 backoff, retaining explicit activations until the runtime is ready. The web listens
 for status, lifecycle and question changes rather than waiting for its fallback poll.
+Hosted review activity also refreshes the web's Thinking indicator, collapsible tool
+calls and review notices. These observations are ephemeral, not authority or model
+checkpoints. Failed-review notices survive idle runtime recovery until another
+explicit input is accepted.
 
 Local development preserves inherited environment variables. If OpenRouter returns
 401 despite a valid key in `.env.development`, restart the API with
@@ -56,7 +60,10 @@ Local development preserves inherited environment variables. If OpenRouter retur
 shell or tmux key cannot override the file.
 
 `GET /api/conversations/agent/messages?intentId=<id>` returns H2A history and
-`agent: { status, pending }`. Send direct text to
+`agent: { status, pending, reviewing, toolCalls, reviewNotice }` for the hosted agent;
+external executors retain their own policy and expose `status` and `pending`.
+Question status is read from canonical records even while a hosted runtime is
+restarting or paused. Send direct text to
 `POST /api/conversations/agent/messages` with `parts: [{ kind: "text", text }]`
 and `metadata: { intentId }`. Submit answers at
 `POST /api/conversations/:id/answers` (including the `agent` alias) with
@@ -74,9 +81,13 @@ Existing unbriefed hosted intents need permitted fresh input or a trusted manual
 wake before they become match-ready. Record fingerprints and protocol turn guards
 reject stale hosted writes; private briefs and retirement records stay out of chat.
 
-The trusted runtime's `wake()` operation, used by the TUI, records a private receipt,
-not a chat message or new permission. No HTTP wake endpoint is added. Shutdown
-cancels model work and releases ownership; agents need no browser or TUI connection.
+The TUI and web Wake action use the same runtime `wake()` operation. Authenticated
+owners can request it at `POST /api/conversations/:id/wake` with `{ intentId }`.
+It records a private receipt, not a chat message, answer or new permission, and
+returns 202 after acceptance rather than waiting for model work. Inactive intents,
+other owners' conversations and selected external executors cannot be woken through
+this hosted route. Shutdown cancels model work and releases ownership; agents need
+no browser or TUI connection.
 
 ## Railway dev intent replay
 

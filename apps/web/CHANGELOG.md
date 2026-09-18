@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- Coalesce H2A refreshes instead of discarding every response when reads exceed the polling interval. Pending questions now reach their answer controls rather than remaining plain transcript bubbles.
+- Release send/answer spinners after the write, independently of the follow-up read. Preserve failed-save drafts and exact whole-batch submission.
+- Show the hosted TUI's Thinking indicator, collapsible tool activity, review notices and explicit Wake action.
+
 ### Question batches
 - Present stable personal-agent question batches with separate suggested/custom drafts and an explicit complete-batch submit action. Preserve drafts across reloads, intent switching and failed saves.
 - Keep direct messages separate from answers, including while a question batch is displayed.
@@ -20,15 +25,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Read a negotiation at `GET /api/opportunities/:id/negotiation` (was
   `GET /api/negotiations/:opportunityId`). The negotiations inbox still reads
   `GET /api/negotiations`.
-- **The Index-hosted negotiator only handles matches.** It remains the default
-  in Settings and takes negotiation turns for you, and it authors no chat of its
-  own. The intent chat is still always writable: messages and answers send
-  whether or not an external negotiator is selected.
-- **The intent chat behaves like a chat.** The composer clears as soon as you
-  send instead of waiting for the write, a failed send or read says nothing and
-  keeps the last transcript on screen, and the draft no longer survives a reload
-  in `sessionStorage`. Question cards and the composer are never disabled. The
-  transcript stays live on the realtime stream with a 5s catch-up read.
+- **The hosted personal agent owns H2A and its parallel matches.** It remains
+  the default in Settings. A selected external negotiator keeps its independent
+  runtime and question policy.
+- **The intent chat distinguishes accepted input from reasoning.** Drafts clear
+  only after accepted writes and survive reloads or failed saves. Availability
+  gates submission, while Thinking and tool activity describe a hosted review.
+  SSE updates and a coalesced 5s catch-up read keep the conversation current.
 - Subscribe to the user event stream at `GET /api/events` (was
   `/api/conversations/stream`), and make the CLI setup snippet smoke-test with
   `index intent list --json` on CLI 0.26.0.

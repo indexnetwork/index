@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, BotMessageSquare, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { useConversations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
-import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState } from "@/services/conversation";
+import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type PrincipalToolCall } from "@/services/conversation";
 import { cn } from "@/lib/utils";
 
 type Provenance = { kind?: string; questionId?: string; scope?: string; matches?: { opportunityId: string; counterparty: { name: string | null } }[] };
@@ -34,7 +34,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
-  const requests = useRef({ generation: 0, mounted: false });
+  const requests = useRef({ mounted: false, inFlight: false, queued: false });
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pending = agent?.pending ?? [];
@@ -48,29 +48,45 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!requests.current.mounted) return;
-    const current = ++requests.current.generation;
-    try {
-      const loaded = await conversations.getMessages(AGENT_DM_ID, { intentId });
-      if (current !== requests.current.generation) return;
-      setConversationId(loaded.conversationId);
-      mergeMessages(loaded.messages);
-      setAgent(loaded.agent);
-      setLoadError("");
-    } catch (failure) {
-      if (current === requests.current.generation) setLoadError(failure instanceof Error ? failure.message : "Could not load your conversation.");
-    } finally {
-      if (current === requests.current.generation) setLoading(false);
+    const state = requests.current;
+    if (!state.mounted) return;
+    if (state.inFlight) {
+      state.queued = true;
+      return;
     }
-  }, [conversations, intentId, mergeMessages, requests]);
+    state.inFlight = true;
+    try {
+      do {
+        state.queued = false;
+        try {
+          const loaded = await conversations.getMessages(AGENT_DM_ID, { intentId });
+          if (!state.mounted) return;
+          setConversationId(loaded.conversationId);
+          mergeMessages(loaded.messages);
+          setAgent(loaded.agent);
+          setLoadError("");
+        } catch (failure) {
+          if (state.mounted) setLoadError(failure instanceof Error ? failure.message : "Could not load your conversation.");
+        } finally {
+          if (state.mounted) setLoading(false);
+        }
+        // Polls and SSE changes request one follow-up, never invalidate a usable
+        // response. Otherwise reads slower than the poll interval starve forever.
+      } while (state.mounted && state.queued);
+    } finally {
+      state.inFlight = false;
+    }
+  }, [conversations, intentId, mergeMessages]);
 
   useEffect(() => {
-    const state = requests.current;
-    state.mounted = true;
-    void Promise.resolve().then(refresh);
+    const state = { mounted: true, inFlight: false, queued: false };
+    requests.current = state;
+    void Promise.resolve().then(() => { if (state.mounted) void refresh(); });
     const timer = setInterval(() => { void refresh(); }, 5_000);
-    return () => { state.mounted = false; state.generation++; clearInterval(timer); };
-  }, [refresh, isConnected, requests]);
+    return () => { state.mounted = false; clearInterval(timer); };
+  }, [refresh]);
+
+  useEffect(() => { if (isConnected) void refresh(); }, [isConnected, refresh]);
 
   useEffect(() => subscribeConversationMessage(({ conversationId: id, message }) => {
     if (id !== conversationId || message.metadata?.intentId !== intentId) return;
@@ -98,9 +114,9 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not send your message. Your draft is kept.");
     } finally {
-      await refresh();
       setSending(false);
       inputRef.current?.focus();
+      void refresh();
     }
   };
 
@@ -119,8 +135,22 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not save your answers. Drafts are kept; refresh before retrying.");
     } finally {
-      await refresh();
       setSending(false);
+      void refresh();
+    }
+  };
+
+  const wake = async () => {
+    if (!conversationId || sending || agent?.status !== "running") return;
+    setSending(true);
+    setError("");
+    try {
+      await conversations.wakeAgent(conversationId, intentId);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not wake your agent.");
+    } finally {
+      setSending(false);
+      void refresh();
     }
   };
 
@@ -139,16 +169,38 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     </div>
   );
 
+  const toolGroups = new Map<string, PrincipalToolCall[]>();
+  for (const call of agent?.toolCalls ?? []) {
+    const group = toolGroups.get(call.reviewId) ?? [];
+    group.push(call);
+    toolGroups.set(call.reviewId, group);
+  }
+  const toolCallsAfter = (messageId?: string) => [...toolGroups.entries()]
+    .filter(([, calls]) => calls[0].afterMessageId === messageId)
+    .map(([reviewId, calls]) => <details key={reviewId} className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-500">
+      <summary className="cursor-pointer">{calls.at(-1)?.name} · {calls.at(-1)?.status}</summary>
+      <ul className="mt-2 space-y-1" aria-label="Tool calls">
+        {calls.map((call) => <li key={call.id} className={cn(call.status === "error" && "text-red-700")}>
+          {call.name} · {call.status}
+        </li>)}
+      </ul>
+    </details>);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="intent-negotiator-chat">
-      <p className="mb-3 text-xs text-gray-500" aria-live="polite">
-        {agent?.status === "running" ? "Your agent is active across all matches."
-          : agent?.status === "external" ? "Messages go to your selected negotiator."
-            : agent?.status === "paused" ? "Resume this intent to continue with your agent."
-              : agent?.status === "unavailable" ? "Your agent is temporarily unavailable."
-                : "Connecting to your personal agent…"}
-      </p>
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+        <p className="text-xs text-gray-500" aria-live="polite">
+          {agent?.status === "running" ? "Your agent is active across all matches."
+            : agent?.status === "external" ? "Messages go to your selected negotiator."
+              : agent?.status === "paused" ? "Resume this intent to continue with your agent."
+                : agent?.status === "unavailable" ? "Your agent is temporarily unavailable."
+                  : "Connecting to your personal agent…"}
+        </p>
+        {agent?.status === "running" && <button type="button" onClick={() => void wake()} disabled={sending}
+          className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50">Wake</button>}
+      </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        {toolCallsAfter()}
         {loading ? <Loader2 className="mx-auto my-10 h-5 w-5 animate-spin text-gray-400" />
           : messages.length === 0 ? <div className="flex items-start gap-2 text-sm text-gray-600">
             <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0" />
@@ -156,17 +208,26 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           </div> : messages.map((message) => {
             const content = messageText(message);
             const provenance = message.metadata?.principalMessage as Provenance | undefined;
-            if (!content || provenance?.kind === "question" && pending.some((question) => question.id === provenance.questionId)) return null;
+            if (!content) return null;
+            const awaitingAnswer = provenance?.kind === "question" && pending.some((question) => question.id === provenance.questionId);
             const own = message.role === "user";
-            return <div key={message.id} className={cn("flex", own ? "justify-end" : "justify-start")}>
-              <article className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-sm", own ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900")}>
-                {references(provenance?.scope, provenance?.matches)}
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-              </article>
-            </div>;
+            return <Fragment key={message.id}>
+              {!awaitingAnswer && <div className={cn("flex", own ? "justify-end" : "justify-start")}>
+                <article className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-sm", own ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900")}>
+                  {references(provenance?.scope, provenance?.matches)}
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                </article>
+              </div>}
+              {toolCallsAfter(message.id)}
+            </Fragment>;
           })}
         <div ref={endRef} />
       </div>
+
+      {agent?.reviewing && <p role="status" className="mt-2 flex shrink-0 items-center gap-2 text-xs text-gray-500">
+        <Loader2 className="h-3 w-3 animate-spin" />Thinking…
+      </p>}
+      {agent?.reviewNotice && <p role="status" className="mt-2 shrink-0 text-sm text-amber-800">{agent.reviewNotice}</p>}
 
       {pending.length > 0 && <section aria-label="Your agent's questions" className="mt-3 max-h-80 shrink-0 overflow-y-auto rounded-xl border border-amber-200 bg-amber-50 p-3">
         <p className="mb-2 text-xs font-semibold text-amber-800">Answer all {pending.length} questions, then submit together.</p>

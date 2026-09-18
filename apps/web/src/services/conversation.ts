@@ -37,9 +37,21 @@ export interface PrincipalQuestion {
   options?: string[];
 }
 
+/** Ephemeral hosted review activity, never conversation evidence or authority. */
+export interface PrincipalToolCall {
+  id: string;
+  reviewId: string;
+  name: string;
+  afterMessageId?: string;
+  status: 'running' | 'completed' | 'error' | 'cancelled';
+}
+
 export interface PersonalAgentState {
   status: 'running' | 'starting' | 'paused' | 'external' | 'unavailable';
   pending: PrincipalQuestion[];
+  reviewing?: boolean;
+  reviewNotice?: string;
+  toolCalls?: PrincipalToolCall[];
 }
 
 export interface ConversationHistory {
@@ -99,6 +111,11 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   answerQuestions: async (conversationId: string, intentId: string, answers: { questionId: string; text: string }[]): Promise<ConversationMessage[]> => {
     const response = await api.post<{ messages: ConversationMessage[] }>(`/conversations/${conversationId}/answers`, { intentId, answers });
     return response.messages;
+  },
+
+  /** Request the hosted agent's explicit review; this adds no answer or permission. */
+  wakeAgent: async (conversationId: string, intentId: string): Promise<void> => {
+    await api.post(`/conversations/${conversationId}/wake`, { intentId });
   },
 
   /** Get or create a DM conversation with a peer user. */
