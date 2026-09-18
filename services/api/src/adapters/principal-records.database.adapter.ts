@@ -8,6 +8,7 @@ import db from '../lib/drizzle/drizzle';
 import { publishUserEvent, publishUserInvalidation } from '../lib/user-events';
 import { agents, conversations, intents, intentNetworks, networkMembers, networks, negotiations, opportunities, negotiationTurns, users, messages, type Message } from '../schemas/database.schema';
 
+import { agentDatabaseAdapter } from './agent.database.adapter';
 import { getRedisClient } from './cache.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { SYSTEM_AGENT_ID, activeIntentLifecycleWhere } from './database.shared';
@@ -131,12 +132,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
     const adapter = new ConversationDatabaseAdapter();
     const conversation = await adapter.getOrCreateAgentDm(input.userId);
     const persisted = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${input.userId}`}, 0))`);
-      const [selected] = await tx.select({ id: agents.id }).from(agents).where(and(
-        eq(agents.id, input.executorId), eq(agents.ownerId, input.userId), eq(agents.type, 'external'),
-        eq(agents.status, 'active'), eq(agents.handleNegotiations, true), isNull(agents.deletedAt),
-      ));
-      if (!selected) throw new RuntimeConflictError();
+      await agentDatabaseAdapter.assertSelectedExecutor(tx, input.userId, input.executorId);
       const [intent] = await tx.select({ id: intents.id }).from(intents).where(and(eq(intents.id, input.intentId), eq(intents.userId, input.userId)));
       if (!intent) throw new PrincipalRuntimeIneligibleError('Intent not found.');
       const history = await tx.select({ id: messages.id }).from(messages).where(and(eq(messages.conversationId, conversation.id), sql`${messages.metadata}->>'intentId' = ${input.intentId}`));

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
@@ -195,7 +196,7 @@ export class IntentController {
    * Idempotent on the pair: a counterparty that already shares an opportunity
    * with this signal reports that one rather than a second.
    *
-   * @param req - Request with body `{ counterparties: { intentId, networkId }[] }`.
+   * @param req - `{ counterparties: { intentId, networkId }[] }` and an optional executorId query fence.
    * @param user - Authenticated owner.
    * @param params - Intent UUID or short prefix.
    * @returns The opportunities that now exist for the picked counterparties.
@@ -203,6 +204,10 @@ export class IntentController {
   @Post('/:id/opportunities')
   @UseGuards(AuthGuard)
   async createOpportunities(req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const executorId = new URL(req.url).searchParams.get('executorId');
+    if (executorId !== null && !z.string().uuid().safeParse(executorId).success) {
+      return Response.json({ error: 'executorId must be a UUID' }, { status: 400 });
+    }
     const raw = await req.json().catch(() => ({}));
     const parsed = CreateOpportunitiesSchema.safeParse(raw);
     if (!parsed.success) {
@@ -217,7 +222,15 @@ export class IntentController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const result = await intentService.createOpportunities(resolved.id, user.id, parsed.data.counterparties);
+    let result;
+    try {
+      result = await intentService.createOpportunities(resolved.id, user.id, parsed.data.counterparties, executorId ?? undefined);
+    } catch (error) {
+      if (error instanceof RuntimeConflictError) {
+        return Response.json({ error: 'The selected negotiation executor changed; stop this work' }, { status: 409 });
+      }
+      throw error;
+    }
     if (result.kind === 'not_found') {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
     }

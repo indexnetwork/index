@@ -1,8 +1,9 @@
 # Rebase TODO
 
 Integrate `origin/dev` into `feat/agent-communication` while preserving our
-agent's behavior. Implementation is in progress; checked items record completed
-work, not verification of the entire integration.
+agent's behavior. Local implementation and bounded workflow verification are
+complete; publication is approved. Live-provider and interactive checks remain
+explicitly unrun below.
 
 Related discussion: https://github.com/indexnetwork/index/discussions/1612
 
@@ -80,8 +81,8 @@ Refresh this comparison if the target moves before implementation.
   selected external executors have a different eligibility path. Agentv2's
   per-opportunity briefs are not our intent-wide standing briefs.
 - [x] **Protocol actions:** preserve responder-only acceptance and make affected
-  consumers use authoritative legal actions. Agentv2 currently assumes either
-  side can accept after the first turn; separate packages do not resolve this.
+  consumers use authoritative legal actions. Agentv2 now reads the API's action
+  list instead of assuming either side can accept after the first turn.
 - [x] **Persistence ownership:** move any still-needed responsibilities and
   callers of dev's `agent-session.database.adapter.ts` into the retained
   architecture before removing obsolete storage. Do not lose external inbox
@@ -161,8 +162,9 @@ Refresh this comparison if the target moves before implementation.
 - [x] Review the final diff against dev: independent dev improvements retained,
   our agent behavior preserved, shared boundaries reconciled, no accidental
   runtime consolidation or duplicated hosted execution.
-- [ ] Coordinate before rewriting published feature history. If approved, push
-  with `--force-with-lease` bound to the recorded remote SHA, never plain force.
+- [x] Obtain explicit approval to rewrite the published feature branch and
+  update existing draft PR #1595. Approval is bound to the recorded remote SHA.
+- [ ] Push with `--force-with-lease` bound to that SHA, never plain force.
 - [ ] Open or update the PR into `dev`, summarizing breaking contracts,
   verification, and remaining risks. Do not merge it.
 
@@ -170,8 +172,10 @@ Refresh this comparison if the target moves before implementation.
 
 Local rebase completed on `feat/agent-communication` at `8cdc9cc67`, directly
 above pinned dev `eeab34162`. Existing PR:
-https://github.com/indexnetwork/index/pull/1595. Publication is awaiting explicit
-rewrite approval; the remote feature ref remains `78ad2a676`.
+https://github.com/indexnetwork/index/pull/1595. The operator approved exact-lease
+publication, then requested behavioral verification of both agents according to
+their own definitions. Those probes and the resulting fixes are recorded below.
+The pre-publication remote feature ref is `78ad2a676`.
 
 Verification scripts and logs are retained outside the source tree under the
 common Git directory's `rebase-safety/agent-communication-20260918T095446Z/verification/`.
@@ -216,6 +220,46 @@ common Git directory's `rebase-safety/agent-communication-20260918T095446Z/verif
 - Live-provider evaluation, interactive TUI sessions and visual browser/device
   checks have not been run; builds and fixture probes do not establish those.
   No repository tests were added during reconciliation.
+
+## Independent-agent workflow follow-up
+
+The two implementations were exercised through their actual orchestration and
+shared persistence, not just built. Temporary probes remain outside the source
+tree; no repository tests were added.
+
+- `/tmp/index-agent-workflows-check.ts` and its shell harness use disposable
+  PostgreSQL/pgvector and Redis, real API controller methods/services, and the
+  actual HTTP client and agent loops. Authentication and model replies are
+  fixtures; embeddings are fixed vectors, while retrieval runs against SQL.
+  Non-loopback HTTP is rejected. This is not a full authenticated API deployment
+  or a live-model evaluation.
+- V2 passed multi-query explicit discovery and opening before answers/standing
+  briefs; isolated per-opportunity briefing; authoritative action projection;
+  substantive-fact stalling; brief replacement after principal input; separate
+  human approval; independent questions, partial external answers and retirement;
+  and executor handover for messages, turns and openings.
+- Our actual `NegotiationAgent` passed restoration without a think pass, stable
+  creation replay, exact question batches, private A2A context, local pauses
+  without H2A wakes, unchanged-event replay, correction-driven invalidation,
+  standing-only updates without resumption, and explicit delegation resumption.
+- `/tmp/index-agentv2-runner-check.ts` passed independent passive briefings,
+  a single wake after a burst of stalls, stable holds on already-read stalls,
+  and resumption from principal input and updated briefs.
+- `/tmp/index-agentv2-reconnect-check.ts` initially failed on dropped startup
+  input, first-signal-only catch-up, lost nonzero owed turns, and missed input
+  replay. It also exposed a creation/adoption race. All now pass, including
+  live input racing initial history and duplicate input-frame suppression.
+  Redis transport is still not runtime authority or an exactly-once guarantee.
+- An old v2 executor initially could open new negotiations after handover. The
+  client now supplies its existing executor fence to openings; the opening
+  transaction, turn transaction and H2A publication share the registry's
+  selected-executor check. The negative handover probe now passes.
+- V2 startup requires `INDEX_EXECUTOR_ID`, with its setup and distinct behavior
+  documented in `packages/agentv2/README.md`. Our hosted default is unchanged.
+- Re-ran agent/client existing suites (26 + 9), agentv2 checks, API typecheck/build,
+  root lint (0 errors, 35 warnings), lockfile/subtree parity, and the existing
+  real SQL/Redis authority/session probe. TUI/discovery source still exactly
+  matches the preserved feature snapshot.
 
 ## Deferred discussion
 

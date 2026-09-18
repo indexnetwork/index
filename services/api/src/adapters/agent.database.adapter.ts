@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
-import { RuntimeNotFoundError } from '../lib/agent/runtime-errors';
+import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime-errors';
 import * as schema from '../schemas/database.schema';
 import { log } from '../lib/log';
 import { publishUserInvalidation } from '../lib/user-events';
@@ -298,6 +298,27 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /**
+   * Fence an external effect against executor handover in its write transaction.
+   * @param tx - Transaction that will commit the effect.
+   * @param ownerId - Principal whose executor is selected.
+   * @param agentId - External executor attempting the effect.
+   * @throws RuntimeConflictError when this executor no longer owns the seat.
+   */
+  async assertSelectedExecutor(
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    ownerId: string,
+    agentId: string,
+  ): Promise<void> {
+    await this.acquireOwnerRuntimeLock(tx, ownerId);
+    const [selected] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
+      eq(schema.agents.id, agentId), eq(schema.agents.ownerId, ownerId),
+      eq(schema.agents.type, 'external'), eq(schema.agents.status, 'active'),
+      eq(schema.agents.handleNegotiations, true), isNull(schema.agents.deletedAt),
+    ));
+    if (!selected) throw new RuntimeConflictError();
   }
 
   private async acquireOwnerRuntimeLock(

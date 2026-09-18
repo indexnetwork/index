@@ -492,12 +492,15 @@ export class IntentService {
    * @param intentId - Full intent UUID, owned by the caller.
    * @param userId - Authenticated owner.
    * @param picks - Counterparty signals and the community each pair sits in.
+   * @param executorId - External executor to fence inside each opening transaction.
    * @returns The opportunities that now exist, or why none could be created.
+   * @throws RuntimeConflictError when the selected external executor changed.
    */
   async createOpportunities(
     intentId: string,
     userId: string,
     picks: CounterpartyPick[],
+    executorId?: string,
   ): Promise<CreateOpportunitiesOutcome> {
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
@@ -529,7 +532,8 @@ export class IntentService {
 
     if (pairs.length === 0) return { kind: 'ok', opportunities: [] };
 
-    await negotiationDatabaseAdapter.openCounterparties(pairs, decideNegotiationOpening);
+    await negotiationDatabaseAdapter.openCounterparties(pairs, decideNegotiationOpening,
+      executorId ? { userId, agentId: executorId } : undefined);
 
     // `openCounterparties` reports only what it created, and reports "already
     // an opportunity" and "not eligible" identically. Reading each pair back is

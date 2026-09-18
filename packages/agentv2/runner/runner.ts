@@ -159,10 +159,6 @@ export function startRunner(options: RunnerOptions): Runner {
     }
   }
 
-  // Signals already running when this process started are adopted, not woken:
-  // their being there is not something that happened.
-  let adopted = false;
-
   async function refresh(): Promise<void> {
     const rows = await client.listIntents();
     const active = new Set<string>();
@@ -170,14 +166,9 @@ export function startRunner(options: RunnerOptions): Runner {
     for (const row of rows) {
       if (row.status !== "ACTIVE") continue;
       active.add(row.id);
-      const known = intents.has(row.id);
+      if (!intents.has(row.id)) log(`signal ${row.id}: ${row.statement}`);
       intents.set(row.id, { id: row.id, statement: row.statement });
-      if (!known) {
-        log(`signal ${row.id}: ${row.statement}`);
-        if (adopted) startWake(row.id);
-      }
     }
-    adopted = true;
     for (const id of [...intents.keys()]) {
       if (!active.has(id)) {
         intents.delete(id);
@@ -186,40 +177,46 @@ export function startRunner(options: RunnerOptions): Runner {
     }
   }
 
+  // Existing signals are adopted, not woken just for being present. A frame
+  // may arrive before this read finishes: adopt first, then act on the event.
+  const ready = refresh().catch(onError);
   const stopStream = client.events((event) => {
-    switch (event.type) {
-      case "negotiation.turn":
-        log(`event ${event.type} on ${event.data.opportunityId}`);
-        startNegotiate(event.data.intentId, event.data.opportunityId);
-        break;
-      case "principal.input":
-        // The answer is what every stall on this signal was waiting for, and
-        // it is the moment a standing question may have died.
-        for (const [opportunityId, intentId] of stalled) {
-          if (intentId === event.data.intentId) stalled.delete(opportunityId);
-        }
-        log(`event ${event.type} on ${event.data.intentId}`);
-        startWake(event.data.intentId);
-        break;
-      case "negotiation.opened":
-        log(`event ${event.type} on ${event.data.intentId}`);
-        void startUnstarted(event.data.intentId).catch(onError);
-        break;
-      case "intent.created":
-        log(`event ${event.type}: ${event.data.intentId}`);
-        void refresh().catch(onError);
-        break;
-      case "intent.lifecycle":
-        log(`event ${event.type}: ${event.data.intentId} is ${event.data.status}`);
-        void refresh().catch(onError);
-        break;
-      default:
-        log(`event ${event.type} (no wake)`);
-        break;
-    }
+    void ready.then(() => {
+      if (stopped) return;
+      switch (event.type) {
+        case "negotiation.turn":
+          log(`event ${event.type} on ${event.data.opportunityId}`);
+          startNegotiate(event.data.intentId, event.data.opportunityId);
+          break;
+        case "principal.input":
+          // The answer is what every stall on this signal was waiting for, and
+          // it is the moment a standing question may have died.
+          for (const [opportunityId, intentId] of stalled) {
+            if (intentId === event.data.intentId) stalled.delete(opportunityId);
+          }
+          log(`event ${event.type} on ${event.data.intentId}`);
+          startWake(event.data.intentId);
+          break;
+        case "negotiation.opened":
+          log(`event ${event.type} on ${event.data.intentId}`);
+          void startUnstarted(event.data.intentId).catch(onError);
+          break;
+        case "intent.created":
+          log(`event ${event.type}: ${event.data.intentId}`);
+          void refresh().then(() => startWake(event.data.intentId)).catch(onError);
+          break;
+        case "intent.lifecycle":
+          log(`event ${event.type}: ${event.data.intentId} is ${event.data.status}`);
+          void refresh().then(() => {
+            if (event.data.status === "ACTIVE") startWake(event.data.intentId);
+          }).catch(onError);
+          break;
+        default:
+          log(`event ${event.type} (no wake)`);
+          break;
+      }
+    }).catch(onError);
   });
-
-  void refresh().catch(onError);
 
   return {
     wake: startWake,

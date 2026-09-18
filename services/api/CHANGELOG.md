@@ -16,6 +16,8 @@ section before promoting to `main`).
 - **BREAKING: responder-only acceptance.** Only a session's original responder may accept the initiator's standing offer. All consumers use authoritative legal actions; agreement remains pending human approval. Terminal pairs may open new, separately identified negotiation sessions with read-only prior history and an atomic first delegation.
 - Keep explicit-query discovery in the independent `@indexnetwork/discovery` package, without restoring HyDE or background post-intent matching.
 - Keep dev's opportunity-based routes, network approvals/invites, inbox transport, migration baseline and independent UI improvements. External inbox writes move off the obsolete checkpoint adapter and remain executor-fenced.
+- Fence external negotiation openings against executor handover in the same write transaction, using the same selected-executor check as turns and H2A publication.
+- Restore agentv2 event recovery across every signal, owed nonzero turns, and missed principal-input batches. Adopt signals before processing early events; explicit creation/resume events wake the named signal without making restoration itself a wake. Its independent stall/question policies remain unchanged.
 
 ### Migration
 - Add `0003_add_principal_records_and_negotiation_sessions` after dev's `0000`–`0002` baseline. Preserve checkpoint-era questions, scoped answers and advisory notes before dropping `agent_sessions`; do not restore old runtime state or infer standing authority. Later dev-authored questions are not retired by older checkpoint snapshots.

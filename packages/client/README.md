@@ -17,7 +17,7 @@ const stop = client.events((event) => {
 |---|---|
 | `INDEX_API_URL` | Origin. Default `http://localhost:3001`. |
 | `INDEX_API_KEY` | Required. Sent as `x-api-key`. |
-| `INDEX_EXECUTOR_ID` | Optional. Fences `submitTurn` and `sendPrincipal`. |
+| `INDEX_EXECUTOR_ID` | Required for external agent operation. Fences `createOpportunities`, `submitTurn`, and `sendPrincipal`. |
 
 `new IndexClient({ baseUrl?, apiKey?, executorId? })` fills the same fields. Refuse to construct with no key. Trailing `/` is stripped. Paths are `/api/...`. No `Authorization` header.
 
@@ -43,3 +43,10 @@ const stop = client.events((event) => {
 `wakesHost` is true only for `negotiation.opened`, `negotiation.turn`, and `principal.input`.
 
 Non-2xx throws `ApiError` (`status`, `error`). A 2xx body that is not JSON throws a distinct `Error`. JSON methods do not retry. The stream reconnects until stopped.
+
+On connection, catch-up reports every signal's open negotiations and nonzero
+turns owed to this owner. On reconnect, unseen principal messages produce one
+`principal.input` per signal, naming the last message in the recovered set.
+Initial conversation history is a baseline, not a new principal activation.
+Recovery is bounded by retained stream frames and the conversation slice the
+API returns; it is not an indefinite or exactly-once execution guarantee.

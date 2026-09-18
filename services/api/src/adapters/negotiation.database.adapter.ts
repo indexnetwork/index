@@ -5,9 +5,10 @@
  * Index is the server for every negotiation. Both seats read the same rows and
  * append against them; there is no wire between agents and nothing to mirror.
  */
-import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, matchReadyIntentWhere, negotiations, negotiationTurns, networkMembers, networks, opportunities, or, schema, sql, users } from './database.shared';
+import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, matchReadyIntentWhere, negotiations, negotiationTurns, networkMembers, networks, opportunities, or, sql, users } from './database.shared';
 
 import { PrincipalRecordsDatabaseAdapter, type PrincipalExecution } from './principal-records.database.adapter';
+import { agentDatabaseAdapter } from './agent.database.adapter';
 
 import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
@@ -225,21 +226,36 @@ export class NegotiationDatabaseAdapter {
    * Turn every pair discovery scored into an opportunity with a negotiation
    * beside it, and report the ones newly opened.
    *
-   * NEVER THROWS PER PAIR. One pair that cannot be opened — a revoked
-   * membership, a lost race — must not cost the rest of the run its results,
-   * so each is its own transaction and a failure is skipped rather than
-   * raised.
+   * Each pair has its own transaction. A revoked membership or lost race
+   * skips that pair; executor handover stops the remaining batch. Already
+   * committed openings are announced even when the executor changed.
    *
    * @param pairs - The scored pairs to open.
+   * @param decide - Protocol opening policy.
+   * @param execution - Selected external executor, when an external runtime opens.
    * @returns One entry per pair that became a new opportunity.
+   * @throws RuntimeConflictError when the external executor lost its seat.
    */
-  async openCounterparties(pairs: IntentCounterpartyPair[], decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation[]> {
+  async openCounterparties(
+    pairs: IntentCounterpartyPair[],
+    decide: (pair: NegotiationOpening) => NegotiationOpeningDecision,
+    execution?: { userId: string; agentId: string },
+  ): Promise<OpenedNegotiation[]> {
     const opened: OpenedNegotiation[] = [];
-    for (const pair of pairs) {
-      const result = await db.transaction((tx) => this.open(tx, pair, decide)).catch(() => null);
-      if (result?.created) opened.push(result.record);
+    try {
+      for (const pair of pairs) {
+        const result = await db.transaction(async (tx) => {
+          if (execution) await agentDatabaseAdapter.assertSelectedExecutor(tx, execution.userId, execution.agentId);
+          return this.open(tx, pair, decide);
+        }).catch((error: unknown) => {
+          if (error instanceof RuntimeConflictError) throw error;
+          return null;
+        });
+        if (result?.created) opened.push(result.record);
+      }
+    } finally {
+      await announceOpened(opened);
     }
-    await announceOpened(opened);
     return opened;
   }
 
@@ -538,15 +554,7 @@ export class NegotiationDatabaseAdapter {
         if (execution) {
           if (execution.userId !== callerUserId) throw new Error('Execution belongs to another principal.');
           if ('agentId' in execution) {
-            // Share the selection transaction's owner lock: handover and an
-            // external turn cannot both commit using the old executor binding.
-            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${callerUserId}`}, 0))`);
-            const [selected] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
-              eq(schema.agents.id, execution.agentId), eq(schema.agents.ownerId, callerUserId),
-              eq(schema.agents.type, 'external'), eq(schema.agents.status, 'active'),
-              eq(schema.agents.handleNegotiations, true), isNull(schema.agents.deletedAt),
-            ));
-            if (!selected) throw new RuntimeConflictError();
+            await agentDatabaseAdapter.assertSelectedExecutor(tx, callerUserId, execution.agentId);
           } else {
             await PrincipalRecordsDatabaseAdapter.assertOwner(tx, execution);
           }
