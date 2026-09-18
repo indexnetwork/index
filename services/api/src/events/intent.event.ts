@@ -28,7 +28,7 @@ export interface IntentMaterialUpdateEvent {
   newFingerprint: string;
 }
 
-/** Structured intent observations; only creation/broadcast publication activates H2A. */
+/** Structured intent observations; the hosted service also activates H2A on committed resume frames. */
 export const IntentEvents = {
   onCreated: (intentId: string, userId: string): Promise<void> => publishIntentActivation(userId, intentId, { type: 'intent.created', id: `intent.created:${intentId}` }),
   onMaterialUpdated: async (event: IntentMaterialUpdateEvent): Promise<void> => {

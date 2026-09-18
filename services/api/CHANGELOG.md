@@ -19,6 +19,12 @@ section before promoting to `main`).
 - Fence external negotiation openings against executor handover in the same write transaction, using the same selected-executor check as turns and H2A publication.
 - Restore agentv2 event recovery across every signal, owed nonzero turns, and missed principal-input batches. Adopt signals before processing early events; explicit creation/resume events wake the named signal without making restoration itself a wake. Its independent stall/question policies remain unchanged.
 
+### Fixed
+- Restore a stopped hosted runtime to an idle, sendable inbox without rerunning failed model work. Transient startup failures retain explicit activations and retry with capped backoff instead of leaving the agent permanently unavailable.
+- Wake hosted H2A on an explicit intent resume, with a stable receipt and transactional lifecycle-version check. Resume does not answer or retire questions, invalidate principal evidence, or create new permission.
+- Refresh web agent status, lifecycle and question changes immediately over SSE. Reduce new-owner stream discovery latency and avoid a duplicate principal-record read during startup.
+- Log hosted review failures with their cause, including provider authentication errors previously visible only inside the agent host.
+
 ### Migration
 - Add `0003_add_principal_records_and_negotiation_sessions` after dev's `0000`–`0002` baseline. Preserve checkpoint-era questions, scoped answers and advisory notes before dropping `agent_sessions`; do not restore old runtime state or infer standing authority. Later dev-authored questions are not retired by older checkpoint snapshots.
 - Add standing-brief pointers and per-pair negotiation session identity using unprefixed tables. Existing unbriefed hosted intents require permitted fresh input or a trusted manual wake to become match-ready.

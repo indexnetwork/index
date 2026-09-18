@@ -21,7 +21,7 @@ function messageText(message: ConversationMessage): string {
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
   const { user } = useAuthContext();
   const conversations = useConversations();
-  const { subscribeConversationMessage, isConnected } = useConversation();
+  const { subscribeConversationMessage, subscribeAgentChange, isConnected } = useConversation();
   const storageKey = `principal-batch-draft:${user?.id}:${intentId}`;
   const [draft, setDraft] = useState<Draft>(() => {
     try { return JSON.parse(sessionStorage.getItem(storageKey) ?? "null") ?? { message: "", answers: {} }; }
@@ -77,6 +77,10 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     mergeMessages([message]);
     void refresh();
   }), [conversationId, intentId, mergeMessages, refresh, subscribeConversationMessage]);
+
+  useEffect(() => subscribeAgentChange((changedIntentId) => {
+    if (!changedIntentId || changedIntentId === intentId) void refresh();
+  }), [intentId, refresh, subscribeAgentChange]);
 
   useEffect(() => { sessionStorage.setItem(storageKey, JSON.stringify(draft)); }, [draft, storageKey]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages.length, pendingIds]);

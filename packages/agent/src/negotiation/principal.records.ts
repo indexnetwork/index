@@ -155,8 +155,9 @@ export function acceptedPrincipalMessages(records: Pick<PrincipalRecordsView, 'm
   } else if (inputs.length !== 1 || inputs[0]!.questionId !== undefined || inputs[0]!.batchId !== undefined) return null;
   for (const input of inputs) {
     if (input.kind === 'event') {
-      if (!input.activation || input.id !== input.activation.id || !['intent.created', 'intent.broadcast', 'h2a.wake'].includes(input.activation.type)
-        || input.activation.type === 'intent.broadcast' && !input.activation.networkId) return null;
+      if (!input.activation || input.id !== input.activation.id || !['intent.created', 'intent.broadcast', 'intent.resumed', 'h2a.wake'].includes(input.activation.type)
+        || input.activation.type === 'intent.broadcast' && !input.activation.networkId
+        || input.activation.type === 'intent.resumed' && !Number.isSafeInteger(input.activation.lifecycleVersionMs)) return null;
     } else if (input.activation) return null;
   }
   const previous = records.messages.at(-1);

@@ -40,11 +40,20 @@ resuming interrupted model work. Redis ownership and PostgreSQL owner locks excl
 competing hosted execution and fence external-executor handover.
 
 The service reconciles active seats at boot and follows Redis Streams for intent
-and executor changes. Only accepted principal input, explicit creation/broadcast
-and trusted manual wakes activate H2A. Negotiation changes refresh A2A observations;
+and executor changes. Only accepted principal input, explicit creation/broadcast/resume
+and trusted manual wakes activate H2A. Resume receipts name the committed lifecycle
+version; stale and duplicate resumes cannot activate another review. Negotiation changes refresh A2A observations;
 stalls and reconnects never create H2A activations. Stable activation IDs make
 retained-event delivery idempotent. Stream acknowledgement means dispatch, not
-successful completion of model work.
+successful completion of model work. Failed runtimes restore an idle inbox without
+replaying failed reviews. Transient startup failures keep retrying with capped
+backoff, retaining explicit activations until the runtime is ready. The web listens
+for status, lifecycle and question changes rather than waiting for its fallback poll.
+
+Local development preserves inherited environment variables. If OpenRouter returns
+401 despite a valid key in `.env.development`, restart the API with
+`env -u OPENROUTER_API_KEY bun run dev:api` from the repository root so a stale
+shell or tmux key cannot override the file.
 
 `GET /api/conversations/agent/messages?intentId=<id>` returns H2A history and
 `agent: { status, pending }`. Send direct text to

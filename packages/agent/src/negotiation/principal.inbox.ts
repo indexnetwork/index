@@ -110,14 +110,15 @@ export class PrincipalInbox {
     private readonly discovery?: DiscoveryClient,
   ) {}
 
-  /** Read committed history and question status without activating H2A. */
-  async refresh(): Promise<void> {
+  /** @returns Committed records and refreshed question status without activating H2A. */
+  async refresh(): Promise<PrincipalRecordsView> {
     const records = await this.records.read();
     this.messages = records.messages.filter((message) => message.kind !== 'event');
     const questions = pendingPrincipalQuestions(records);
     if (questions.length !== this.currentQuestions.length || questions.some((question, index) => question.id !== this.currentQuestions[index]?.id)) {
       this.currentQuestions = questions;
     }
+    return records;
   }
 
   private entry(records: PrincipalRecordsView, fields: Omit<PrincipalMessage, 'id' | 'createdAt' | 'matches'>): PrincipalMessage {

@@ -177,8 +177,7 @@ export class NegotiationAgent {
   start(): Promise<void> {
     return this.starting ??= (async () => {
       await this.records.start();
-      await this.inbox.refresh();
-      const records = await this.records.read();
+      const records = await this.inbox.refresh();
       for (const record of await this.participant.client.listNegotiations()) {
         this.task(record.opportunityId).observed = this.signature(record, this.brief(records, record.opportunityId));
       }
@@ -222,7 +221,7 @@ export class NegotiationAgent {
     return this.inbox.activate({ id, type: 'h2a.wake' });
   }
 
-  /** @param activation - Explicit creation or broadcast, never a restoration notification. @returns A private receipt, or null for a duplicate. @throws The original error when H2A has failed. */
+  /** @param activation - Explicit creation, broadcast or resume, never a restoration notification. @returns A private receipt, or null for a duplicate. @throws The original error when H2A has failed. */
   async activate(activation: IntentActivation): Promise<PrincipalMessage | null> {
     await this.start();
     return this.inbox.activate(activation);

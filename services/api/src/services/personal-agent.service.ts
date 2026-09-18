@@ -11,8 +11,8 @@ import { log } from '../lib/log';
 import { publishUserInvalidation, readUserEvents, scanUserEventStreams, type UserEventRecord } from '../lib/user-events';
 
 const logger = log.service.from('PersonalAgentService');
-const MAX_STARTUP_RETRIES = 3;
-const STREAM_BLOCK_MS = 15_000;
+const MAX_STARTUP_RETRY_DELAY_MS = 30_000;
+const STREAM_BLOCK_MS = 1_000;
 
 /** An owner-facing input failure; no agent work is acknowledged by this error. */
 export class PersonalAgentError extends Error {
@@ -47,6 +47,7 @@ export class PersonalAgentService {
   private readonly principals = new Map<string, ApiPrincipal>();
   private readonly desired = new Map<string, ApiPrincipal>();
   private readonly retries = new Map<string, StartupRetry>();
+  private readonly activations = new Map<string, Map<string, IntentActivation>>();
   private readonly pendingOwners = new Set<string | undefined>();
   private running = false;
   private checking?: Promise<void>;
@@ -105,6 +106,14 @@ export class PersonalAgentService {
       await this.activate(record.userId, data.intentId, type === 'intent.created' ? { id, type } : { id, type, networkId: data.networkId });
       return;
     }
+    if (type === 'intent.lifecycle' && data?.status === 'ACTIVE'
+      && typeof data.intentId === 'string' && Number.isSafeInteger(data.lifecycleVersionMs)) {
+      await this.activate(record.userId, data.intentId, {
+        id: `intent.resumed:${data.intentId}:${data.lifecycleVersionMs}`,
+        type: 'intent.resumed', lifecycleVersionMs: data.lifecycleVersionMs,
+      });
+      return;
+    }
     if (!['intent.lifecycle', 'intent.updated', 'agent.configuration'].includes(type)) return;
     if (type === 'intent.lifecycle' && ['PAUSED', 'ARCHIVED'].includes(data?.status)
       && this.retries.get(data.intentId)?.principal.userId === record.userId) this.cancelRetry(data.intentId);
@@ -132,6 +141,9 @@ export class PersonalAgentService {
           this.principals.set(principal.id, principal);
           if (!externalOwners.has(principal.userId)) this.desired.set(principal.id, principal);
         }
+        for (const id of this.activations.keys()) {
+          if (!this.desired.has(id)) this.activations.delete(id);
+        }
         for (const [id, retry] of this.retries) {
           if (ownerId !== undefined && retry.principal.userId !== ownerId) continue;
           if (JSON.stringify(this.desired.get(id)) !== JSON.stringify(retry.principal)) this.cancelRetry(id);
@@ -140,11 +152,7 @@ export class PersonalAgentService {
           if (ownerId !== undefined && session.principal.userId !== ownerId) continue;
           if (!session.stopping && JSON.stringify(this.desired.get(id)) === JSON.stringify(session.principal)
             && !session.host.agents.get(id)?.stopped) continue;
-          // Replacement waits only on this intent's runtime shutdown, never on the reconciliation loop.
-          void this.stopSession(session).then(() => {
-            const principal = this.desired.get(id);
-            if (principal) this.startSession(principal);
-          }, () => {});
+          this.restartSession(session);
         }
         for (const principal of principals) {
           if (this.desired.has(principal.id)) this.startSession(principal);
@@ -164,14 +172,47 @@ export class PersonalAgentService {
     try {
       if (!await this.intents.isOwnedByUser(intentId, userId)) return;
       await this.reconcile(userId);
+      if (!this.desired.has(intentId)) return;
+      let pending = this.activations.get(intentId);
+      if (!pending) {
+        pending = new Map();
+        this.activations.set(intentId, pending);
+      }
+      pending.set(activation.id, activation);
       const session = this.sessions.get(intentId);
-      if (!session || session.principal.userId !== userId) return;
-      await session.ready;
-      if (!this.running || session.stopping || this.sessions.get(intentId) !== session || !session.active) return;
-      await session.host.agents.get(intentId)!.activate(activation);
+      if (session?.active) await this.deliverActivations(session);
     } catch (error) {
-      logger.error('Intent activation was not accepted; no automatic replay', { intentId, eventId: activation.id, error: String(error) });
+      logger.error('Intent activation could not be delivered', { intentId, eventId: activation.id, error: String(error) });
     }
+  }
+
+  /** Keep explicit events through startup/replacement; accepted receipts still prevent model replay. */
+  private async deliverActivations(session: Session): Promise<void> {
+    const intentId = session.principal.id;
+    const pending = this.activations.get(intentId);
+    if (!pending) return;
+    for (const [id, activation] of pending) {
+      const agent = session.host.agents.get(intentId)!;
+      if (!this.running || session.stopping || !session.active || agent.stopped || this.sessions.get(intentId) !== session) return;
+      try {
+        await agent.activate(activation);
+        if (agent.stopped) return;
+        pending.delete(id);
+      } catch (error) {
+        logger.error('Intent activation awaits an available runtime', { intentId, eventId: id, error: String(error) });
+        this.restartSession(session);
+        return;
+      }
+    }
+    if (!pending.size && this.activations.get(intentId) === pending) this.activations.delete(intentId);
+  }
+
+  /** Restore records after a failed runtime; never replay the review that stopped it. */
+  private restartSession(session: Session): void {
+    void this.stopSession(session).then(() => {
+      const principal = this.desired.get(session.principal.id);
+      if (principal) this.startSession(principal);
+    }, () => {});
   }
 
   private startSession(principal: ApiPrincipal, retry?: StartupRetry): void {
@@ -180,12 +221,16 @@ export class PersonalAgentService {
     const host = new ApiNegotiationHost([principal], this.model);
     const session: Session = { principal, host, active: false, ready: Promise.resolve() };
     this.sessions.set(principal.id, session);
+    host.on('change', () => {
+      if (this.running && !session.stopping && host.agents.get(principal.id)?.stopped) this.restartSession(session);
+    });
     session.ready = host.start().then(() => {
       if (!this.running || session.stopping || this.sessions.get(principal.id) !== session) return;
       session.active = true;
       this.errors.delete(principal.id);
       this.cancelRetry(principal.id);
       void publishUserInvalidation(principal.userId, 'agent.status', principal.intentId);
+      void this.deliverActivations(session);
     });
     void session.ready.catch((error: unknown) => {
       if (session.stopping || this.sessions.get(principal.id) !== session) return;
@@ -210,10 +255,9 @@ export class PersonalAgentService {
       }
       return;
     }
-    if (retry.attempts === MAX_STARTUP_RETRIES) return;
     const delay = error instanceof PrincipalRuntimeConflict
       ? Math.max(0, error.retryAt - Date.now()) + 250
-      : 1_000 * 2 ** retry.attempts;
+      : Math.min(MAX_STARTUP_RETRY_DELAY_MS, 1_000 * 2 ** Math.min(retry.attempts, 5));
     retry.attempts++;
     retry.timer = setTimeout(() => {
       retry.timer = undefined;
@@ -250,10 +294,15 @@ export class PersonalAgentService {
     ]);
     if (!owned) throw new PersonalAgentError('Intent not found.', 404);
     if (external) return { status: 'external', pending: [] };
+    if (this.running && !this.sessions.has(intentId) && !this.retries.has(intentId)) await this.reconcile(userId);
     const session = this.sessions.get(intentId);
     const agent = session?.host.agents.get(intentId);
-    const status = session?.stopping || agent?.stopped ? 'unavailable' : session?.active ? 'running' : session ? 'starting'
-      : this.principals.has(intentId) ? 'unavailable' : 'paused';
+    let status: PersonalAgentState['status'] = 'unavailable';
+    if (this.running) {
+      if (!this.principals.has(intentId)) status = 'paused';
+      else if (session?.active && !session.stopping && !agent?.stopped) status = 'running';
+      else if (session || this.retries.has(intentId)) status = 'starting';
+    }
     return { status, pending: status === 'running' ? saved?.pending ?? [] : [] };
   }
 
@@ -296,6 +345,7 @@ export class PersonalAgentService {
     this.running = false;
     this.subscriber?.disconnect();
     this.pendingOwners.clear();
+    this.activations.clear();
     for (const id of this.retries.keys()) this.cancelRetry(id);
     await this.checking;
     await Promise.all([...this.sessions.values()].map((session) => this.stopSession(session)));

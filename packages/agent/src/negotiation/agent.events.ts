@@ -1,7 +1,8 @@
 /** Explicit lifecycle causes of discovery; never inferred from startup or A2A activity. */
 export type IntentActivation =
   | { id: string; type: 'intent.created' }
-  | { id: string; type: 'intent.broadcast'; networkId: string };
+  | { id: string; type: 'intent.broadcast'; networkId: string }
+  | { id: string; type: 'intent.resumed'; lifecycleVersionMs: number };
 
 /** Explicit H2A review causes; a manual wake carries no new principal evidence. */
 export type PrincipalActivation = IntentActivation | { id: string; type: 'h2a.wake' };

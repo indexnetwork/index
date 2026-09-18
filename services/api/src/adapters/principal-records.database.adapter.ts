@@ -354,7 +354,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
     if (!input) return null;
     const result = await db.transaction(async (tx) => {
       await PrincipalRecordsDatabaseAdapter.assertOwner(tx, this.execution);
-      const [intent] = await tx.select({ status: intents.status, archivedAt: intents.archivedAt }).from(intents)
+      const [intent] = await tx.select({ status: intents.status, archivedAt: intents.archivedAt, updatedAt: intents.updatedAt }).from(intents)
         .where(and(eq(intents.id, this.execution.intentId), eq(intents.userId, this.execution.userId))).for('share');
       if (!intent || intent.archivedAt || intent.status !== null && intent.status !== 'ACTIVE') throw new PrincipalRuntimeIneligibleError('The principal intent is no longer active.');
       if (input.kind === 'event') {
@@ -367,6 +367,9 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
             .innerJoin(networkMembers, and(eq(networkMembers.networkId, intentNetworks.networkId), eq(networkMembers.userId, this.execution.userId), isNull(networkMembers.deletedAt), sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`))
             .where(and(eq(intentNetworks.intentId, this.execution.intentId), eq(intentNetworks.networkId, activation.networkId))).for('share');
           if (!link || activation.id !== `intent.broadcast:${this.execution.intentId}:${activation.networkId}:${link.version}`) return null;
+        } else if (activation?.type === 'intent.resumed') {
+          if (activation.lifecycleVersionMs !== intent.updatedAt.getTime()
+            || activation.id !== `intent.resumed:${this.execution.intentId}:${activation.lifecycleVersionMs}`) return null;
         } else if (activation?.type !== 'h2a.wake') return null;
       }
       const current = await PrincipalRecordsDatabaseAdapter.readView(tx, this.execution.userId, this.execution.intentId, this.conversationId);

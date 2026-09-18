@@ -42,6 +42,8 @@ interface ConversationContextType {
   getOrCreateDm: (peerUserId: string) => Promise<ConversationSummary>;
   /** Subscribe to persisted conversation messages from the SSE stream. */
   subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
+  /** Subscribe to agent availability, lifecycle and question changes; an omitted intent affects every signal. */
+  subscribeAgentChange: (handler: (intentId?: string) => void) => () => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
@@ -76,6 +78,11 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     },
     [],
   );
+  const agentChangeHandlersRef = useRef(new Set<(intentId?: string) => void>());
+  const subscribeAgentChange = useCallback((handler: (intentId?: string) => void) => {
+    agentChangeHandlersRef.current.add(handler);
+    return () => { agentChangeHandlersRef.current.delete(handler); };
+  }, []);
   const pendingOptimisticIdsRef = useRef(new Set<string>());
 
   // --- REST helpers (conversation calls go through the typed client) ---
@@ -331,6 +338,13 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               setIsConnected(true);
               void refreshNegotiationsRef.current();
               break;
+            case 'agent.status':
+            case 'agent.configuration':
+            case 'intent.lifecycle':
+            case 'intent.updated':
+            case 'question.pending':
+              agentChangeHandlersRef.current.forEach((handler) => handler(data.data?.intentId));
+              break;
             case 'negotiation.changed':
             case 'negotiation.opened':
               if (negotiationsRefreshTimeoutRef.current) clearTimeout(negotiationsRefreshTimeoutRef.current);
@@ -478,6 +492,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         hideConversation,
         getOrCreateDm,
         subscribeConversationMessage,
+        subscribeAgentChange,
       }}
     >
       {children}

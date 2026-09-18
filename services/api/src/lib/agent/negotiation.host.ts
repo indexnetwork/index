@@ -57,7 +57,13 @@ export class ApiNegotiationHost extends EventEmitter {
         retry: (_owner, attempt, reason) => { this.agentStatus = `${principal.name}: retry ${attempt} · ${reason}`; this.emit('change'); },
         step: () => { this.agentStatus = ''; },
         end: (record) => { const match = this.negotiations.get(record.opportunityId); if (match) Object.assign(match, { phase: record.settledAt ? 'settled' : 'blocked', status: record.outcome ?? record.protocol.blockedReason ?? 'Paused' }); this.emit('change'); },
-        error: (id, _owner, reason) => { const match = id ? this.negotiations.get(id) : undefined; if (match) Object.assign(match, { phase: 'error', status: reason }); this.agentStatus = `${principal.name}: ${reason}`; this.emit('change'); },
+        error: (id, _owner, reason) => {
+          log.lib.from('negotiation-host').error('Agent work failed', { userId: principal.userId, intentId: principal.intentId, opportunityId: id, reason });
+          const match = id ? this.negotiations.get(id) : undefined;
+          if (match) Object.assign(match, { phase: 'error', status: reason });
+          this.agentStatus = `${principal.name}: ${reason}`;
+          this.emit('change');
+        },
       };
       this.agents.set(principal.id, new NegotiationAgent({
         owner: { id: principal.userId, name: principal.name }, intentId: principal.intentId, guidance: NEGOTIATION_GUIDANCE,
