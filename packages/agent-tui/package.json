@@ -11,10 +11,10 @@
     }
   },
   "scripts": {
-    "start": "bun run --cwd ../discovery build && bun run --cwd ../protocol build && bun run --cwd ../agent build && bun src/main.ts",
+    "start": "bun src/main.ts",
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && eslint src",
-    "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target bun --format esm --packages external && tsc --project tsconfig.build.json"
+    "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target bun --format esm --packages external --external '@indexnetwork/*' && tsc --project tsconfig.build.json"
   },
   "dependencies": {
     "@indexnetwork/agent": "workspace:*",

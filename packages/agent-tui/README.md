@@ -16,6 +16,10 @@ bun install
 bun --env-file=.env.development run agent:tui
 ```
 
+The launcher runs from this package and loads the agent, discovery, and protocol
+source entry points through `tsconfig.json`. It does not rebuild shared `dist`
+directories or depend on them remaining present during another workspace build.
+
 Requires `OPENROUTER_API_KEY` and an interactive terminal. Choose a JSON scenario
 with Up/Down + Enter or a click. The chooser displays filenames in alphabetical
 order, starting with the five-user cofounder scenario. The six bundled scenarios
@@ -260,6 +264,9 @@ composes them.
 The protocol advertises available actions, validates submissions against the
 current turn count, enforces 12 total A2A turns, and leaves an exhausted match
 undecided. A2A agreement moves an opportunity to pending human review.
+
+The library build keeps workspace dependencies external and clears these source
+aliases for declarations, so the API-backed TUI still uses normal package exports.
 
 ```bash
 bun run --cwd packages/agent check

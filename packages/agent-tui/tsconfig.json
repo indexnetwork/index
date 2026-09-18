@@ -1,11 +1,19 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2023",
     "module": "Preserve",
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "paths": {
+      "@indexnetwork/agent": ["../agent/src/index.ts"],
+      "@indexnetwork/discovery": ["../discovery/src/index.ts"],
+      "@indexnetwork/protocol": ["../protocol/src/index.ts"]
+    },
     "types": [
       "bun"
     ]
