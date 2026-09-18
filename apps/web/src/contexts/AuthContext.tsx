@@ -157,6 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
       '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/', '/o/', '/waitlist', '/download',
       '/9db20a5fbe',
+      // The Workbench route renders its own sign-in screen.
+      '/web',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
     const isProtectedPage = pathname.startsWith('/i/');

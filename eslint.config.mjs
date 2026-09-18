@@ -17,6 +17,8 @@ export default tseslint.config(
       "**/*.js",
       "**/*.mjs",
       "**/*.cjs",
+      // Vendored from apps/mac by scripts/build-workbench-web.ts.
+      "apps/web/src/app/web/workbench.generated.jsx",
     ],
   },
   eslint.configs.recommended,

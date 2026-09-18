@@ -111,6 +111,7 @@ bun run check:subtree-parity                 # Mirrored packages must pin deps e
 bun run check:lockfile-versions              # Report workspace version drift in bun.lock
 bun run sync:lockfile-versions               # Rewrite those fields in place
 bun run pr:snapshot -- <number|URL|branch>   # Factual PR/review/worktree JSON
+bun run build:workbench-web                  # Re-vendor apps/mac's Workbench UI into /web
 
 # services/api
 bun run dev                                  # Bun.serve dev server, port 3001
@@ -126,6 +127,8 @@ bun run dev | build | start | lint
 
 # apps/mac
 ./build.sh                                   # Assemble HTML, build the WKWebView app
+#   src/ui is also the source of the web app's /web route; re-run
+#   build:workbench-web after changing it (apps/web/src/app/web/README.md).
 
 # packages/protocol
 bun run build                                # Compile to dist/

@@ -1,0 +1,298 @@
+/**
+ * Pure response mappers for the macOS prototype.
+ *
+ * These functions translate services/api response envelopes into the current
+ * `window.INDEX_DATA`-style view models, but this file deliberately has no
+ * dependency on the app bundles and no side effects.
+ */
+import { normalizeSocial, socialHrefOf } from './socials.mjs';
+
+const DEFAULT_EVENT = {
+  name: 'index',
+  venue: 'the network',
+  neighborhood: 'agents talking to agents',
+  date: 'live · always on',
+  doors: '',
+  attending: 0,
+  arrived: 0,
+};
+
+/**
+ * Build the current prototype's EVENT summary from API data.
+ * @param {Object} input
+ * @param {Array<Object>} [input.networks]
+ * @param {Object} [input.user]
+ */
+export function mapEventSummary(input = {}) {
+  const networks = Array.isArray(input.networks) ? input.networks : [];
+  const selected = networks[0];
+  const memberCount = networks.reduce((sum, network) => {
+    const count = network && network._count && typeof network._count.members === 'number'
+      ? network._count.members
+      : 0;
+    return sum + count;
+  }, 0);
+
+  return {
+    ...DEFAULT_EVENT,
+    name: selected?.title || DEFAULT_EVENT.name,
+    venue: DEFAULT_EVENT.venue,
+    neighborhood: selected?.prompt || DEFAULT_EVENT.neighborhood,
+    doors: networks.length ? `${networks.length} networks joined` : DEFAULT_EVENT.doors,
+    attending: memberCount,
+  };
+}
+
+/**
+ * Convert API intents to the current mac signal rows.
+ * @param {Array<Object>} intents
+ */
+export function mapIntents(intents = []) {
+  return intents.map((intent) => mapIntent(intent));
+}
+
+/**
+ * Convert one API intent to a mac signal row.
+ * @param {Object} intent
+ */
+export function mapIntent(intent) {
+  const networkTitles = Array.isArray(intent.networks)
+    ? intent.networks.map((network) => network.networkTitle).filter(Boolean)
+    : [];
+
+  const archived = Boolean(intent.archivedAt);
+  const paused = !archived && String(intent.status || '').toUpperCase() === 'PAUSED';
+
+  return {
+    id: intent.id,
+    title: intent.summary || intent.payload || 'untitled signal',
+    edges: networkTitles.join(' · '),
+    offLimits: '',
+    status: archived ? 'archived' : paused ? 'paused' : 'active',
+    pipeline: { warm: 0, considering: 0, negotiating: 0 },
+    lastSignal: intent.updatedAt ? `updated ${relativeAge(intent.updatedAt)}` : '',
+    age: intent.createdAt ? `running ${relativeAge(intent.createdAt)}` : '',
+    matches: 0,
+    connected: 0,
+    inConversations: 0,
+    // Row badge: opportunities awaiting the user, straight from the server
+    // list count so it matches the Hermes and web dashboards.
+    pending: count(intent.waitingOpportunityCount),
+    inbound: [],
+    source: intent,
+  };
+}
+
+/**
+ * Patch one mapped signal row's hub status after pause/archive/resume.
+ * Keeps the intents shelf in sync without waiting for a full snapshot reload.
+ * @param {Array<Object>} intents
+ * @param {string} intentId
+ * @param {'active'|'paused'|'archived'} nextStatus
+ * @returns {Array<Object>}
+ */
+export function applyMappedIntentStatus(intents = [], intentId, nextStatus) {
+  if (!Array.isArray(intents) || !intentId) return intents;
+  const status = String(nextStatus || '').toLowerCase();
+  if (status !== 'active' && status !== 'paused' && status !== 'archived') return intents;
+  let found = false;
+  const next = intents.map((intent) => {
+    if (!intent || intent.id !== intentId) return intent;
+    found = true;
+    return { ...intent, status };
+  });
+  return found ? next : intents;
+}
+
+/**
+ * Convert the radar view's flat presenter-card list to the current people card shape.
+ * @param {Array<Object>} items
+ */
+export function mapPeopleFromRadarItems(items = []) {
+  return items.map((item) => mapPersonFromRadarCard(item));
+}
+
+/**
+ * Convert a presenter card from GET /opportunities/radar into a mac person card.
+ * @param {Object} card
+ */
+export function mapPersonFromRadarCard(card) {
+  return {
+    id: card.opportunityId || card.userId,
+    // kept separate from `id` (which is the opportunity) so the profile window
+    // can fetch this person's own intro and links
+    userId: card.userId || null,
+    name: card.name || 'unknown',
+    blurb: card.headline || card.mainText || '',
+    // The card's full write-up: what the opportunity is and how these two
+    // fit. `blurb` keeps only the headline when there is one, so without
+    // this the long form was dropped everywhere but the card itself.
+    detail: card.mainText || '',
+    // A home card carries no location. This used to borrow the section heading,
+    // which is a presenter's shout ("GIVE FEEDBACK NOW", "OPPORTUNITIES") and
+    // read as a place under the person's name in chat. Left empty until a real
+    // location arrives; the profile window fetches one from GET /users/:id.
+    location: '',
+    arrived: 0,
+    distance: card.mutualIntentsLabel || '',
+    mutuals: 0,
+    signals: compact([card.mutualIntentsLabel]),
+    overlap: compact([card.headline]),
+    // the presenter card carries a 0-1 match score; it was being dropped
+    score: typeof card.score === 'number' ? card.score : null,
+    status: mapOpportunityStatusToPrototype(card.status),
+    pitchFromAgent: card.narratorChip?.text || card.mainText || '',
+    introVia: card.narratorChip?.name || card.cta || '',
+    ...mapCounterpartProfile(card),
+    source: card,
+  };
+}
+
+/**
+ * The counterpart's own words about themselves: the intro they wrote in their
+ * profile settings, plus their links.
+ *
+ * Opportunity cards carry neither, so this yields empty fields there and the
+ * profile hides those sections. `GET /users/:id` does carry them, and the
+ * profile window fetches it, so this also accepts that payload's shape, where
+ * the intro is `intro` and socials are `{label, value}`.
+ * @param {Object} source
+ * @returns {{bio: string, photo: string | null, socials: Array<{id: string, prefix: string, handle: string}>}}
+ */
+export function mapCounterpartProfile(source = {}) {
+  const profile = source.profile || source.counterpart || source;
+  return {
+    bio: profile.bio || profile.intro || '',
+    // The person's real picture. Radar cards carry `avatar`, list opportunities
+    // `counterpartAvatar`, GET /users/:id `avatar`. Kept raw (full URL or S3
+    // key); the app absolutizes keys against the API storage base.
+    photo: profile.avatar || source.counterpartAvatar || null,
+    socials: mapSocials(profile.socials),
+  };
+}
+
+/**
+ * Normalize social links onto the {id, prefix, handle} shape the UI draws.
+ *
+ * The API stores them as `{label, value}` where value is usually a full URL,
+ * so the label becomes the platform and the value is used verbatim as the
+ * destination. Handle-only sources keep their prefix.
+ * @param {Array<Object>} socials
+ */
+export function mapSocials(socials) {
+  if (!Array.isArray(socials)) return [];
+  return socials
+    .map((entry) => normalizeSocial(entry))
+    // An entry that resolves to no address is dropped here rather than drawn
+    // as a link that goes nowhere. See socials.mjs for what fails to resolve.
+    .filter((entry) => entry.handle && socialHrefOf(entry));
+}
+
+/**
+ * Convert list/detail opportunities to the current people card shape.
+ * @param {Array<Object>} opportunities
+ */
+export function mapPeopleFromOpportunities(opportunities = []) {
+  return opportunities.map((opportunity) => ({
+    id: opportunity.id,
+    userId: opportunity.counterpartUserId || opportunity.counterpart?.id || null,
+    name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
+    blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
+    detail: opportunity.presentation?.description || opportunity.interpretation?.summary || '',
+    location: opportunity.network?.title || '',
+    arrived: 0,
+    distance: opportunity.updatedAt ? `updated ${relativeAge(opportunity.updatedAt)}` : '',
+    mutuals: 0,
+    signals: compact([opportunity.category, opportunity.network?.title]),
+    overlap: compact([opportunity.interpretation?.summary]),
+    score: typeof opportunity.confidence === 'number' ? opportunity.confidence : null,
+    status: mapOpportunityStatusToPrototype(opportunity.status),
+    pitchFromAgent: opportunity.interpretation?.reasoning || opportunity.presentation?.callToAction || '',
+    // Nothing is pre-surfacing any more: an opportunity exists only once an
+    // agent has opened it, so the POOL bucket below is always empty.
+    hidden: false,
+    ...mapCounterpartProfile(opportunity),
+    source: opportunity,
+  }));
+}
+
+/**
+ * Compose a INDEX_DATA-like snapshot without mutating window.INDEX_DATA.
+ * @param {Object} input
+ * @param {Object} [input.user]
+ * @param {Array<Object>} [input.networks]
+ * @param {Array<Object>} [input.intents]
+ * @param {Array<Object>} [input.radarItems]
+ * @param {Array<Object>} [input.opportunities]
+ */
+export function mapIndexSnapshot(input = {}) {
+  const radarItems = Array.isArray(input.radarItems) ? input.radarItems : [];
+  const opportunityRows = Array.isArray(input.opportunities) ? input.opportunities : [];
+  const people = radarItems.length
+    ? mapPeopleFromRadarItems(radarItems)
+    : mapPeopleFromOpportunities(opportunityRows);
+
+  return {
+    EVENT: mapEventSummary({ networks: input.networks, user: input.user }),
+    INTENTS: mapIntents(input.intents || []),
+    PEOPLE: people.filter((person) => !person.hidden),
+    POOL: people.filter((person) => person.hidden),
+    FIELD_EVENTS: [],
+    AMBIENT_NOTES: [],
+  };
+}
+
+/**
+ * @param {string | undefined} status
+ */
+export function mapOpportunityStatusToPrototype(status) {
+  switch (status) {
+    case 'accepted':
+      return 'accepted';
+    case 'pending':
+      return 'ready';
+    case 'negotiating':
+    case 'stalled':
+      return 'negotiating';
+    case 'rejected':
+      return 'passed';
+    case 'expired':
+      return 'expired';
+    default:
+      return 'considering';
+  }
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number}
+ */
+function count(value) {
+  return typeof value === 'number' && value > 0 ? value : 0;
+}
+
+/**
+ * @param {Array<unknown>} values
+ * @returns {Array<string>}
+ */
+function compact(values) {
+  return values.filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim());
+}
+
+/**
+ * @param {string | Date} isoDate
+ */
+function relativeAge(isoDate) {
+  const time = new Date(isoDate).getTime();
+  if (Number.isNaN(time)) return '';
+  const diffMs = Math.max(0, Date.now() - time);
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  return `${weeks}w ago`;
+}

@@ -102,6 +102,7 @@ bun run worktree:dev <name>                  # Run dev servers from a worktree
 bun run check:subtree-parity                 # Mirrored packages must pin dependencies exactly
 bun run check:lockfile-versions              # Report workspace version drift in bun.lock
 bun run sync:lockfile-versions               # Rewrite those fields in place
+bun run build:workbench-web                  # Re-vendor apps/mac's Workbench UI into /web
 
 # services/api
 bun run dev                                  # Bun.serve dev server on port 3001
@@ -115,6 +116,8 @@ bun run dev | build | start | lint
 
 # apps/mac
 ./build.sh                                   # Assemble HTML and build the app
+#   src/ui is also the source of the web app's /web route; re-run
+#   build:workbench-web after changing it (apps/web/src/app/web/README.md).
 
 # packages/protocol
 bun run build                                # Compile to dist/

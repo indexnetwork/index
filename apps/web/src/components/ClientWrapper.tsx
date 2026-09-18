@@ -12,7 +12,8 @@ import { useAuthContext } from "@/contexts/AuthContext";
 const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents'];
 const publicRoutes = ['/c'];
 // /l is chrome-free web invite join; /index stays app-only public join.
-const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth'];
+// /web is the Workbench UI, which draws its own desktop chrome full-bleed.
+const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth', '/web'];
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();

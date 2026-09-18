@@ -42,6 +42,7 @@
     "sync:lockfile-versions": "bun scripts/sync-lockfile-versions.ts",
     "check:lockfile-versions": "bun scripts/sync-lockfile-versions.ts --check",
     "pr:snapshot": "bun scripts/pr-snapshot.ts",
+    "build:workbench-web": "bun scripts/build-workbench-web.ts",
     "test": "cd packages/protocol && bun run test",
     "subtree:setup": "bash scripts/subtree-setup.sh",
     "worktree:setup": "bash scripts/worktree-setup.sh",

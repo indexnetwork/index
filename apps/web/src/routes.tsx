@@ -190,6 +190,12 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/login", () => import("@/app/login/page")),
       },
       {
+        // The mac Workbench UI, served on the web. Its own route tree lives
+        // inside the bundle, so nothing else here changes.
+        path: "/web",
+        lazy: lazyRoute("/web", () => import("@/app/web/page")),
+      },
+      {
         path: "*",
         lazy: lazyRoute("*", () => import("@/app/not-found")),
       },
