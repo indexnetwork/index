@@ -49,10 +49,13 @@ successful completion of model work. Failed runtimes restore an idle inbox witho
 replaying failed reviews. Transient startup failures keep retrying with capped
 backoff, retaining explicit activations until the runtime is ready. The web listens
 for status, lifecycle and question changes rather than waiting for its fallback poll.
-Hosted review activity also refreshes the web's Thinking indicator, collapsible tool
-calls and review notices. These observations are ephemeral, not authority or model
-checkpoints. Failed-review notices survive idle runtime recovery until another
-explicit input is accepted.
+Hosted review activity also refreshes the web's plain-English status line, such as
+“Thinking…” or “Looking for matches…”, and review notices. Resume uses the same
+review activity as manual input, even without a new chat message. Tool observations
+are ephemeral: pausing or restarting the runtime clears old traces, and a fresh
+explicit resume creates new ones without replaying old model work. They are not
+authority or model checkpoints. Failed-review notices survive idle runtime recovery
+until another explicit input is accepted.
 
 Local development preserves inherited environment variables. If OpenRouter returns
 401 despite a valid key in `.env.development`, restart the API with

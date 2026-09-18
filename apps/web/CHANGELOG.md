@@ -10,7 +10,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Fixed
 - Coalesce H2A refreshes instead of discarding every response when reads exceed the polling interval. Pending questions now reach their answer controls rather than remaining plain transcript bubbles.
 - Release send/answer spinners after the write, independently of the follow-up read. Preserve failed-save drafts and exact whole-batch submission.
-- Show the hosted TUI's Thinking indicator, collapsible tool activity, review notices and explicit Wake action.
+- Show hosted work as plain-English live status updates (Thinking, updating your brief, looking for matches) instead of raw tool names or accordion boxes. Keep activity visible independently of chat history, including resume reviews with no new message; retain review notices and the explicit Wake action.
 
 ### Question batches
 - Present stable personal-agent question batches with separate suggested/custom drafts and an explicit complete-batch submit action. Preserve drafts across reloads, intent switching and failed saves.
