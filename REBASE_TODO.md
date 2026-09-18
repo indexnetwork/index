@@ -109,8 +109,8 @@ Refresh this comparison if the target moves before implementation.
 ### 2. Rebase with explicit preservation rules
 
 - [x] Use the existing task worktree; do not create another follow-up worktree.
-- [ ] Replay onto the pinned dev commit, resolving by responsibility rather
-  than blanket `ours`/`theirs` choices.
+- [x] Replay onto the pinned dev commit, resolving by responsibility rather
+  than blanket `ours`/`theirs` choices. Completed as `8cdc9cc67`.
 - [x] Retain our final agent behavior; do not reinstate superseded intermediate
   implementations merely to make an old commit apply.
 - [x] Drop or combine changes only when their intended behavior is already
@@ -139,10 +139,13 @@ Refresh this comparison if the target moves before implementation.
 
 ### 4. Verify behavior and integration
 
-- [ ] Verify our agent and both TUI modes retain their brief, question,
-  activation, discovery, and negotiation behavior.
-- [ ] Verify agentv2/client and Hermes build and work against the retained API
-  contracts; confirm only the intended executor can act for a seat.
+- [x] Verify our agent and both TUI modes retain their brief, question,
+  activation, discovery, and negotiation contracts through focused checks and
+  adapter probes. TUI/discovery source matches the feature snapshot exactly;
+  interactive/live-provider checks remain unrun as noted below.
+- [x] Verify agentv2/client and Hermes builds, client tests, native-session
+  fixture behavior and shared API adapter contracts; confirm executor-handover
+  fences. This is not a live-provider end-to-end certification.
 - [x] Check event disconnect/reconnect and retained-event replay without
   treating Redis delivery or acknowledgement as successful agent execution.
 - [x] Check principal corrections during model work, stale/duplicate writes,
@@ -155,7 +158,7 @@ Refresh this comparison if the target moves before implementation.
 
 ### 5. Review and publish
 
-- [ ] Review the final diff against dev: independent dev improvements retained,
+- [x] Review the final diff against dev: independent dev improvements retained,
   our agent behavior preserved, shared boundaries reconciled, no accidental
   runtime consolidation or duplicated hosted execution.
 - [ ] Coordinate before rewriting published feature history. If approved, push
@@ -164,6 +167,14 @@ Refresh this comparison if the target moves before implementation.
   verification, and remaining risks. Do not merge it.
 
 ## Reconciliation and verification evidence
+
+Local rebase completed on `feat/agent-communication` at `8cdc9cc67`, directly
+above pinned dev `eeab34162`. Existing PR:
+https://github.com/indexnetwork/index/pull/1595. Publication is awaiting explicit
+rewrite approval; the remote feature ref remains `78ad2a676`.
+
+Verification scripts and logs are retained outside the source tree under the
+common Git directory's `rebase-safety/agent-communication-20260918T095446Z/verification/`.
 
 - Original feature history remains in `chore/agent-communication-pre-rebase`
   and `chore/agent-communication-replay-source`; the replay was squashed to
