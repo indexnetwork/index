@@ -2035,8 +2035,8 @@ def agent_conversation(intentId: str = "") -> dict[str, Any]:
         "conversationId": _text(payload.get("conversationId")),
         "messages": [row for row in _list(payload.get("messages")) if isinstance(row, dict)],
         "agent": {
-            "status": _text(agent.get("status"), "hosted"),
-            "questions": [row for row in _list(agent.get("questions")) if isinstance(row, dict)],
+            "status": _text(agent.get("status"), "unavailable"),
+            "pending": [row for row in _list(agent.get("pending")) if isinstance(row, dict)],
         },
     }
 
@@ -2059,14 +2059,15 @@ def agent_message(body: dict[str, Any] | None = Body(default=None)) -> dict[str,
 def agent_answers(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Answer several questions at once, naming each so a stale answer is refused rather than mis-filed."""
     intent_id = _text(body.get("intentId")) if isinstance(body, dict) else ""
-    answers = [
-        {"questionId": _text(row.get("questionId")), "text": _text(row.get("text"))}
-        for row in (_list(body.get("answers")) if isinstance(body, dict) else [])
-        if isinstance(row, dict)
-    ]
-    answers = [row for row in answers if row["questionId"] and row["text"]]
-    if not intent_id or not answers:
-        return {"success": False, "error": "An intent id and at least one answered question are required."}
+    rows = body.get("answers") if isinstance(body, dict) else None
+    if not intent_id or not isinstance(rows, list) or not rows or any(
+        not isinstance(row, dict) or set(row) != {"questionId", "text"}
+        or not isinstance(row["questionId"], str) or not row["questionId"].strip()
+        or not isinstance(row["text"], str) or not row["text"].strip()
+        for row in rows
+    ):
+        return {"success": False, "error": "Provide the complete nonempty questionId/text answer batch; nothing was sent."}
+    answers = [{"questionId": row["questionId"], "text": row["text"].strip()} for row in rows]
     return tools._api_request(
         "POST",
         "/conversations/agent/answers",

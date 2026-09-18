@@ -123,28 +123,3 @@ export async function updateOpportunityLifecycle(
     ...(conversationId && { conversationId }),
   };
 }
-
-/** Expires an opportunity after verifying the caller is one of its actors. */
-export async function deleteOpportunityLifecycle(
-  database: OpportunityLifecyclePort,
-  input: { opportunityId?: string; actorUserId: string },
-): Promise<OpportunityMutationResult> {
-  if (!input.opportunityId) {
-    return { success: false, error: 'opportunityId is required.' };
-  }
-
-  const opportunity = await database.getOpportunity(input.opportunityId);
-  if (!opportunity) {
-    return { success: false, error: 'Opportunity not found.' };
-  }
-  if (!opportunity.actors.some((actor) => actor.userId === input.actorUserId)) {
-    return { success: false, error: 'You are not part of this opportunity.' };
-  }
-
-  await database.updateOpportunityStatus(input.opportunityId, 'expired');
-  return {
-    success: true,
-    opportunityId: input.opportunityId,
-    message: 'Opportunity archived (expired).',
-  };
-}

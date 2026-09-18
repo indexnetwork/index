@@ -405,14 +405,19 @@ export class ApiClient {
    * @returns The created message object.
    * @throws Error on auth failure or network error.
    */
-  async sendMessage(conversationId: string, text: string, intentId?: string, questionId?: string): Promise<ConversationMessage> {
+  async sendMessage(conversationId: string, text: string, intentId?: string): Promise<ConversationMessage> {
     const res = await this.post(`/api/conversations/${conversationId}/messages`, {
       parts: [{ kind: "text", text }],
       ...(intentId ? { metadata: { intentId } } : {}),
-      ...(questionId ? { questionId } : {}),
     });
     const body = (await res.json()) as { message: ConversationMessage };
     return body.message;
+  }
+
+  /** @param intentId - Owned signal. @param answers - Every displayed question's full answer. @returns All committed answers. @throws On an incomplete/stale batch or transport failure. */
+  async answerQuestions(intentId: string, answers: { questionId: string; text: string }[]): Promise<ConversationMessage[]> {
+    const res = await this.post('/api/conversations/agent/answers', { intentId, answers });
+    return ((await res.json()) as { messages: ConversationMessage[] }).messages;
   }
 
   /**

@@ -1,15 +1,15 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { PrincipalMessage, PrincipalQuestion } from '@indexnetwork/agent';
+import type { PrincipalQuestion } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
-import { AgentSessionDatabaseAdapter, publishPendingQuestionEvent } from '../adapters/agent-session.database.adapter';
+import { PrincipalRecordsDatabaseAdapter, publishPendingQuestionEvent, type ExternalPrincipalMessage } from '../adapters/principal-records.database.adapter';
 import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
 import { log } from '../lib/log';
-import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
+import { ackUserEvent, ensureUserEventGroup, latestUserEventId, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
 
 const logger = log.service.from('ConversationService');
 
@@ -18,10 +18,15 @@ export class AgentConversationError extends Error {
   constructor(message: string, readonly status: 400 | 404 | 409) { super(message); }
 }
 
+interface ExternalQuestion extends PrincipalQuestion {
+  scope: 'intent' | 'match';
+  matches: ExternalPrincipalMessage['matches'];
+}
+
 export interface AgentConversationState {
-  status: 'external' | 'hosted';
-  /** Every question still waiting on the owner, oldest first. */
-  questions: PrincipalQuestion[];
+  status: 'external';
+  /** The selected external agent owns its question policy. */
+  pending: ExternalQuestion[];
 }
 
 /**
@@ -35,12 +40,12 @@ export interface AgentConversationState {
  * @param messages - The owner's agent DM for one signal, oldest first.
  * @returns Every unanswered question, oldest first; the last is the displayed one.
  */
-function unanswered(messages: readonly PrincipalMessage[]): PrincipalQuestion[] {
-  const queue: PrincipalQuestion[] = [];
+function unanswered(messages: readonly ExternalPrincipalMessage[]): ExternalQuestion[] {
+  const queue: ExternalQuestion[] = [];
   for (const message of messages) {
     if (message.kind === 'question') {
       queue.push({
-        id: message.questionId ?? message.id, question: message.text, options: message.options,
+        id: message.questionId ?? message.id, batchId: message.batchId ?? message.id, question: message.text, options: message.options,
         scope: message.scope ?? 'intent', matches: message.matches,
       });
     } else if ((message.kind === 'answer' || message.kind === 'expire') && message.questionId) {
@@ -190,28 +195,6 @@ export class ConversationService {
   }
 
   /**
-   * The agent speaks in its owner's agent DM.
-   *
-   * Questions only — outcomes live in Radar. One DM per owner carries every
-   * signal, so the `intentId` tag is what keeps the message on its own: it is
-   * read back only under that signal. The write itself tells the owner:
-   * `createMessage` publishes the message on their conversation channel, which
-   * is where the question gets answered.
-   *
-   * @param conversationId - The owner's agent DM.
-   * @param parts - Message content parts.
-   * @param opts - Metadata, carrying the `intentId` tag.
-   * @returns The created message.
-   */
-  async sendAgentMessage(
-    conversationId: string,
-    parts: unknown[],
-    opts?: { metadata?: Record<string, unknown> },
-  ) {
-    return this.sendMessage(conversationId, SYSTEM_AGENT_ID, 'agent', parts, opts);
-  }
-
-  /**
    * Retrieves messages for a conversation.
    * @param conversationId - Conversation ID
    * @param opts - Optional limit, cursor (before), intent filter, or userId for authorization
@@ -285,12 +268,8 @@ export class ConversationService {
    */
   async agentState(userId: string, intentId: string): Promise<AgentConversationState> {
     if (!await this.intents.isOwnedByUser(intentId, userId)) throw new AgentConversationError('Intent not found.', 404);
-    // Both seats ask: Index's hosted agent wakes on this signal and writes to
-    // the same transcript, so the status names the speaker rather than deciding
-    // whether there is one.
-    const external = await this.registry.getSelectedNegotiator(userId) !== null;
-    const { messages } = await AgentSessionDatabaseAdapter.readTranscript(userId, intentId);
-    return { status: external ? 'external' : 'hosted', questions: unanswered(messages) };
+    const { messages } = await PrincipalRecordsDatabaseAdapter.readTranscript(userId, intentId);
+    return { status: 'external', pending: unanswered(messages) };
   }
 
   /**
@@ -309,12 +288,12 @@ export class ConversationService {
    */
   async sendOwnerInput(input: { userId: string; intentId: string; conversationId: string; text: string; questionId: string | null }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
-    const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
+    const { conversationId, messages } = await PrincipalRecordsDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
     const answered = input.questionId
       ? unanswered(messages).find((question) => question.id === input.questionId) ?? null
       : null;
-    const message = await AgentSessionDatabaseAdapter.writeOwnerInput({ ...input, questionId: answered?.id ?? null, pending: answered });
+    const message = await PrincipalRecordsDatabaseAdapter.writeOwnerInput({ ...input, questionId: answered?.id ?? null, pending: answered });
     await publishUserEvent(input.userId, {
       type: 'principal.input', id: message.id, title: '', body: '',
       data: { intentId: input.intentId, questionId: answered?.id ?? null, text: input.text },
@@ -338,25 +317,23 @@ export class ConversationService {
    */
   async answerQuestions(input: { userId: string; intentId: string; conversationId: string; answers: { questionId: string; text: string }[] }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
-    const { conversationId, messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
+    const { conversationId, messages } = await PrincipalRecordsDatabaseAdapter.readTranscript(input.userId, input.intentId);
     if (conversationId !== input.conversationId) throw new AgentConversationError('Agent conversation not found.', 404);
     const queue = unanswered(messages);
     const prepared = input.answers.map((answer) => ({
       text: answer.text,
       question: queue.find((question) => question.id === answer.questionId) ?? null,
     }));
-    const persisted = await AgentSessionDatabaseAdapter.writeOwnerAnswers({
+    const persisted = await PrincipalRecordsDatabaseAdapter.writeOwnerAnswers({
       userId: input.userId, intentId: input.intentId, conversationId, answers: prepared,
     });
-    // Published only once the batch is durable: the first wake then reads a
-    // transcript that already holds every answer.
-    for (const [index, message] of persisted.entries()) {
-      const answer = prepared[index]!;
-      await publishUserEvent(input.userId, {
-        type: 'principal.input', id: message.id, title: '', body: '',
-        data: { intentId: input.intentId, questionId: answer.question?.id ?? null, text: answer.text },
-      });
-    }
+    // One pointer for the whole committed batch, not a wake per answer. Readers
+    // reconstruct all answers from the canonical inbox, including their scopes.
+    const message = persisted.at(-1)!;
+    await publishUserEvent(input.userId, {
+      type: 'principal.input', id: message.id, title: '', body: '',
+      data: { intentId: input.intentId, questionId: null, text: prepared.map((answer) => answer.text).join('\n') },
+    });
     return persisted;
   }
 
@@ -365,21 +342,21 @@ export class ConversationService {
    * @param input - Owner, signal, the selected executor when one is speaking, and agent-authored H2A entries.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async publishH2A(input: { userId: string; intentId: string; executorId?: string; entries: PrincipalMessage[] }) {
+  async publishH2A(input: { userId: string; intentId: string; executorId: string; entries: ExternalPrincipalMessage[] }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
-    const { messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
+    const { messages } = await PrincipalRecordsDatabaseAdapter.readTranscript(input.userId, input.intentId);
     const known = new Set(messages.map((message) => message.id));
     const entries = input.entries.filter(
       (entry) => (entry.kind === 'question' || entry.kind === 'message' || entry.kind === 'expire') && !known.has(entry.id),
     );
     if (!entries.length) return;
     const asked = unanswered(messages).at(-1) ?? null;
-    await AgentSessionDatabaseAdapter.publishAgentEntries({ ...input, entries });
-    const displayed = [...entries].reverse().find((entry) => entry.kind === 'question');
+    const persisted = await PrincipalRecordsDatabaseAdapter.publishAgentEntries({ ...input, entries });
+    const inserted = new Set(persisted.map((message) => message.id));
+    const displayed = [...entries].reverse().find((entry) => entry.kind === 'question' && inserted.has(entry.id));
     if (displayed && displayed.questionId && displayed.questionId !== asked?.id) {
       await publishPendingQuestionEvent(input.userId, input.intentId, {
-        id: displayed.questionId, question: displayed.text, options: displayed.options,
-        scope: displayed.scope ?? 'intent', matches: displayed.matches,
+        id: displayed.questionId, batchId: displayed.batchId ?? displayed.id, question: displayed.text, options: displayed.options,
       });
     }
   }
@@ -412,12 +389,13 @@ export class ConversationService {
     }
 
     const client = createRedisClient();
-    let cursor = options.after ?? '$';
+    let cursor = options.after ?? '0-0';
     let stopped = false;
 
     try {
       await client.ping();
       if (group) await ensureUserEventGroup(userId, group);
+      else if (!options.after) cursor = await latestUserEventId(userId);
     } catch (error: unknown) {
       stopped = true;
       client.disconnect();
@@ -439,7 +417,7 @@ export class ConversationService {
           const records = group
             ? await readUserEventGroup(client, { group, consumer: group, userIds: [userId], from, blockMs: STREAM_BLOCK_MS })
             : await readUserEvents(client, new Map([[userId, cursor]]), STREAM_BLOCK_MS);
-          from = '>';
+          if (from === '0' && !records.length) from = '>';
 
           for (const record of records) {
             if (stopped) return;

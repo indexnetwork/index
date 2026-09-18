@@ -13,7 +13,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
+  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "answer" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -43,7 +43,7 @@ export interface ParsedCommand {
   action?: string;
   message?: string;
   expectedTurnCount?: number;
-  questionId?: string;
+  answers?: string;
 }
 
 const KNOWN_COMMANDS = new Set(["docs", "agent", "login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
@@ -54,7 +54,7 @@ const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show", "turn"]);
 
 const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite", "update", "delete"]);
 
-const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "stream", "help"]);
+const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "answer", "stream", "help"]);
 
 /**
  * Parse raw CLI arguments into a structured command object.
@@ -127,7 +127,7 @@ export function parseArgs(args: string[]): ParsedCommand {
     if (["--api-url", "--app-url", "--status", "--limit", "--prompt", "-p", "--objective", "--title"].includes(arg)
       && (!args[i + 1] || args[i + 1].startsWith("--"))) throw new Error(`Missing value for ${arg}`);
 
-    if (["--query", "--state", "--action", "--message", "--intent-id", "--question-id", "--expected-turn-count"].includes(arg)) {
+    if (["--query", "--state", "--action", "--message", "--intent-id", "--answers", "--expected-turn-count"].includes(arg)) {
       const value = args[i + 1];
       if (value === undefined || value.startsWith("--")) throw new Error(`Missing value for ${arg}`);
       switch (arg) {
@@ -136,7 +136,7 @@ export function parseArgs(args: string[]): ParsedCommand {
         case "--action": result.action = value; break;
         case "--message": result.message = value; break;
         case "--intent-id": result.intentId = value; break;
-        case "--question-id": result.questionId = value; break;
+        case "--answers": result.answers = value; break;
         case "--expected-turn-count": result.expectedTurnCount = Number(value); break;
       }
       i += 2;

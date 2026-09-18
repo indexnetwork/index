@@ -67,7 +67,7 @@ The ESLint boundaries enforce these roles:
 - Organize source by domain capability and enter a capability through its barrel;
   do not import another capability's implementation files.
 - The package must not depend on host infrastructure such as Drizzle, BullMQ,
-  Redis, or Postgres clients. Define interfaces in `shared/interfaces/` and have
+  Redis, or Postgres clients. Define ports in `src/platform/` and have
   the host implement them. Run `bun run architecture:check` in this package when
   changing its boundaries.
 - Breaking public changes are acceptable: bump the major, add a `CHANGELOG.md`

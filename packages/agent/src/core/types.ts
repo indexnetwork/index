@@ -8,7 +8,7 @@ import type { ModelMessage } from "./model.ts";
  * on, never who it is.
  */
 export interface AgentIdentity {
-  /** Display name, used as the party name the agent speaks under. */
+  /** Display name of the principal this agent represents. */
   name: string;
   /** Stable identifier for the party this agent acts for — a DID, a
    * profile URL, an account id. */

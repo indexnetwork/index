@@ -11,16 +11,18 @@ async function main(): Promise<void> {
   await import('../startup.env');
   if (process.env.NODE_ENV !== 'development' || process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME) throw new Error('The agent TUI is a local development command.');
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('Run the agent TUI in an interactive terminal.');
-  const [{ ApiNegotiationHost }, { closeDb }, { closeRedisConnection }] = await Promise.all([
-    import('../lib/agent/negotiation.host'), import('../lib/drizzle/drizzle'), import('../adapters/cache.adapter'),
+  const [{ ApiNegotiationHost }, { closeDb }, { closeRedisConnection }, { suppressConsoleLogs }] = await Promise.all([
+    import('../lib/agent/negotiation.host'), import('../lib/drizzle/drizzle'), import('../adapters/cache.adapter'), import('../lib/log'),
   ]);
   let host: InstanceType<typeof ApiNegotiationHost> | undefined;
   let renderer: Awaited<ReturnType<typeof createCliRenderer>> | undefined;
+  let restoreConsoleLogs: (() => void) | undefined;
   try {
     const principals = await ApiNegotiationHost.principals();
     if (new Set(principals.map(({ userId }) => userId)).size < 2) throw new Error('The database needs active intents for at least two users.');
     let close!: () => void;
     const closed = new Promise<void>((resolve) => { close = resolve; });
+    restoreConsoleLogs = suppressConsoleLogs();
     renderer = await createCliRenderer({ useMouse: true, autoFocus: false, exitOnCtrlC: true, consoleMode: 'disabled', onDestroy: close });
     const selected = await choosePrincipals(renderer, principals);
     if (!selected || renderer.isDestroyed) return;
@@ -30,6 +32,7 @@ async function main(): Promise<void> {
     await closed;
   } finally {
     renderer?.destroy();
+    restoreConsoleLogs?.();
     await host?.stop();
     await Promise.all([closeDb(), closeRedisConnection()]);
   }

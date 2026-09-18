@@ -1,12 +1,12 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.130.1",
+  "version": "0.131.0",
   "license": "MIT",
   "private": true,
   "scripts": {
-    "predev": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agentv2 build",
+    "predev": "bun run --cwd ../../packages/discovery build && bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build",
     "dev": "NODE_ENV=development bun --watch --preload ./src/instrument.ts src/main.ts",
-    "build": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agentv2 build && tsc",
+    "build": "bun run --cwd ../../packages/discovery build && bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && tsc",
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
@@ -21,7 +21,7 @@
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
-    "agent:tui": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && bun src/cli/agent-tui.ts"
+    "agent:tui": "bun run --cwd ../../packages/discovery build && bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && bun src/cli/agent-tui.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",
@@ -46,8 +46,7 @@
     "uuid": "^11.1.0",
     "zod": "^3.22.4",
     "@indexnetwork/agent": "workspace:*",
-    "@indexnetwork/agentv2": "workspace:*",
-    "@indexnetwork/client": "workspace:*"
+    "@indexnetwork/discovery": "workspace:*"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "1.4.5",

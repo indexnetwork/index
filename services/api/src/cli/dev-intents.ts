@@ -73,7 +73,6 @@ export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSq
       (SELECT count(*)::int FROM negotiations) AS negotiations,
       (SELECT count(*)::int FROM negotiation_turns) AS turns,
       (SELECT count(*)::int FROM opportunity_outcome_events) AS feedback,
-      (SELECT count(*)::int FROM agent_sessions) AS agent_sessions,
       (SELECT count(*)::int FROM conversations c WHERE EXISTS (
         SELECT 1 FROM conversation_participants p WHERE p.conversation_id = c.id AND p.participant_type = 'agent'
       )) AS agent_conversations,
@@ -94,11 +93,10 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
         AND classid = 0 AND objid IN (${RESET_LOCK}, ${REPLAY_LOCK}) AND objsubid = 1`;
     if (locks.held !== 2) throw new Error('Reset lost its operation locks; refusing to clear data.');
     const before = await readResetCounts(tx);
-    await tx`UPDATE intents SET status = 'PAUSED', first_discovery_succeeded_at = NULL,
+    await tx`UPDATE intents SET status = 'PAUSED', first_discovery_succeeded_at = NULL, standing_brief_id = NULL,
       updated_at = greatest(now(), updated_at + interval '1 millisecond')
       WHERE archived_at IS NULL AND (status IS NULL OR status IN ('ACTIVE', 'PAUSED'))
         AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL)`;
-    await tx`DELETE FROM agent_sessions`;
     await tx`DELETE FROM conversations c WHERE EXISTS (
       SELECT 1 FROM conversation_participants p WHERE p.conversation_id = c.id AND p.participant_type = 'agent'
     )`;
@@ -108,7 +106,7 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
     // Negotiations and their turns cascade from their opportunity.
     await tx`DELETE FROM opportunities`;
     const after = await readResetCounts(tx);
-    const cleared = new Set(['opportunities', 'negotiations', 'turns', 'feedback', 'agent_sessions', 'agent_conversations', 'match_provenance', 'intents_to_reset']);
+    const cleared = new Set(['opportunities', 'negotiations', 'turns', 'feedback', 'agent_conversations', 'match_provenance', 'intents_to_reset']);
     for (const [name, count] of Object.entries(after)) {
       if (count !== (cleared.has(name) ? 0 : before[name])) throw new Error(`Reset invariant failed: ${name}`);
     }

@@ -5,7 +5,7 @@ import { SemanticVerifierOutput } from "../intent.verifier.js";
 import type { IntentSemanticMetadata } from "../intent.admission.js";
 import type { PreparedIntent, ClarifyResult } from "../intent.clarifier.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
-import type { ScopeType } from '../../shared/agent/scope.js';
+import type { ScopeType } from '../../../protocol/core.js';
 import type { IntentLifecycleStatus } from "../../../platform/database.js";
 
 /**

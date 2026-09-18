@@ -1,10 +1,12 @@
 import { EventEmitter } from 'node:events';
 
-import { MemoryPrincipalStore, NegotiationAgent, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
+import { MemoryPrincipalRecords, NegotiationAgent, type AgentDomainEvent, type DiscoveryClient, type NegotiationOpeningRequest, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
+import type { EmbeddingGenerator } from '@indexnetwork/discovery';
 
-import { NEGOTIATION_GUIDANCE, Negotiations, decideNegotiationOpening, type NegotiationState } from '@indexnetwork/protocol';
+import { NEGOTIATION_GUIDANCE, Negotiations, decideNegotiationOpening, pairKeyOf, type NegotiationState } from '@indexnetwork/protocol';
 
 import type { TuiPrincipal } from './negotiation.tui';
+import { createScenarioDiscovery, SCENARIO_NETWORK_ID } from './scenario.discovery';
 
 export interface DemoPrincipal {
   id: string;
@@ -66,24 +68,46 @@ export function parseScenario(value: unknown): DemoScenario {
 /** A disposable A2A record. Principal conversations belong to the agent runtimes. */
 export class NegotiationDemo extends EventEmitter {
   readonly transcript: TranscriptEntry[] = [];
-  phase: 'ready' | 'running' | 'question' | 'settled' | 'error' | 'stopped' = 'ready';
+  phase: 'ready' | 'running' | 'paused' | 'settled' | 'error' | 'stopped' = 'ready';
   status = 'Ready';
   private readonly controller = new AbortController();
   private readonly turns: Negotiation['turns'] = [];
   private awaitingUserId: string | null;
-  private outcome: string | null = null;
+  outcome: string | null = null;
+  opportunityStatus: Negotiation['opportunityStatus'];
   private settledAt: string | null = null;
 
-  constructor(readonly principals: readonly [TuiPrincipal, TuiPrincipal], readonly opportunityId: string) {
+  readonly id = crypto.randomUUID();
+  readonly pairKey: string;
+  readonly sessionNumber: number;
+  readonly confidence: number;
+  readonly openingSource: NegotiationOpeningRequest['source'];
+  readonly openingRequestId: string;
+  private readonly previousSessions: Negotiation['previousSessions'];
+
+  /** @returns Whether this session has settled. */
+  get settled(): boolean { return this.settledAt !== null; }
+
+  constructor(readonly principals: readonly [TuiPrincipal, TuiPrincipal], readonly opportunityId: string, session: {
+    number: number; previousSessions: Negotiation['previousSessions']; confidence: number;
+    source: NegotiationOpeningRequest['source']; requestId: string;
+  }) {
     super();
+    this.sessionNumber = session.number;
+    this.previousSessions = session.previousSessions;
+    this.confidence = session.confidence;
+    this.openingSource = session.source;
+    this.openingRequestId = session.requestId;
+    this.pairKey = pairKeyOf(SCENARIO_NETWORK_ID, principals[0].intentId, principals[1].intentId);
     const decision = decideNegotiationOpening({ userA: principals[0].userId, userB: principals[1].userId, intentA: principals[0].intentId, intentB: principals[1].intentId, eligible: true });
     if (!decision) throw new Error('This pair is not eligible to negotiate.');
     this.awaitingUserId = decision.awaitingUserId;
+    this.opportunityStatus = decision.opportunityStatus;
   }
 
   /** @param status - The library's progress for this match. @param phase - Whether it is running or awaiting its principal. */
-  progress(status: string, phase?: 'running' | 'question'): void {
-    if (this.phase === 'settled' || this.phase === 'error' || this.phase === 'stopped' || (this.phase === 'question' && !phase)) return;
+  progress(status: string, phase?: 'running' | 'paused'): void {
+    if (this.phase === 'settled' || this.phase === 'error' || this.phase === 'stopped' || (this.phase === 'paused' && !phase)) return;
     this.phase = phase ?? 'running';
     this.status = status;
     this.emit('change');
@@ -92,16 +116,25 @@ export class NegotiationDemo extends EventEmitter {
   private async read(ownerId: string): Promise<Negotiation> {
     const other = this.principals.find((principal) => principal.userId !== ownerId)!;
     return structuredClone({
+      id: this.id, pairKey: this.pairKey, networkId: SCENARIO_NETWORK_ID, sessionNumber: this.sessionNumber,
+      previousSessions: this.previousSessions,
       opportunityId: this.opportunityId,
+      opportunityStatus: this.opportunityStatus,
       intentId: this.principals.find((principal) => principal.userId === ownerId)!.intentId,
       awaitingUserId: this.awaitingUserId,
       outcome: this.outcome,
       settledAt: this.settledAt,
       turnCount: this.turns.length,
       protocol: (await this.protocol().observe(this.opportunityId, ownerId))!,
-      counterparty: { userId: other.userId, name: other.name, statement: other.intent },
+      counterparty: { intentId: other.intentId, userId: other.userId, name: other.name, statement: other.intent, payload: other.intent },
       turns: this.turns,
     });
+  }
+
+  /** @returns A detached shared transcript, without either principal's private records. */
+  sharedHistory(): Negotiation['previousSessions'][number] {
+    return structuredClone({ id: this.id, opportunityId: this.opportunityId, sessionNumber: this.sessionNumber,
+      outcome: this.outcome, opportunityStatus: this.opportunityStatus, turns: this.turns });
   }
 
   private state(): NegotiationState {
@@ -119,6 +152,7 @@ export class NegotiationDemo extends EventEmitter {
         if (!decision.ok) return decision;
         this.turns.push({ turnIndex: decision.turnIndex, seatUserId: ownerId, action: turn.action, message: turn.message });
         this.outcome = decision.outcome;
+        this.opportunityStatus = decision.opportunityStatus;
         this.settledAt = decision.outcome ? new Date().toISOString() : null;
         this.awaitingUserId = decision.awaitingUserId;
         this.transcript.push({ ownerId, text: turn.message, action: turn.action });
@@ -136,6 +170,7 @@ export class NegotiationDemo extends EventEmitter {
    */
   client(ownerId: string): NegotiationClient {
     return {
+      listNegotiations: async () => [await this.read(ownerId)],
       readNegotiation: async () => this.read(ownerId),
       submitTurn: async (_id: string, turn: TurnInput) => {
         const decision = await this.protocol().execute(this.opportunityId, ownerId, turn);
@@ -180,36 +215,44 @@ export class NegotiationDemo extends EventEmitter {
   }
 }
 
-/** One H2A conversation per user/intent, with one parallel A2A record per match. */
+/** Discoverable user intents with independent H2A conversations; A2A pairs exist only after H2A opens them. */
 export class NegotiationLab extends EventEmitter {
   readonly title = 'NEGOTIATION LAB · local simulation';
   readonly users: TuiPrincipal[];
   readonly negotiations = new Map<string, NegotiationDemo>();
   readonly agents = new Map<string, NegotiationAgent>();
+  readonly events: { userId: string; intentId: string; event: AgentDomainEvent }[] = [];
+  private readonly records = new Map<string, MemoryPrincipalRecords>();
   agentStatus = '';
 
-  constructor(scenario: DemoScenario, options: { model: Model }) {
+  constructor(scenario: DemoScenario, options: { model: Model; embedder: EmbeddingGenerator }) {
     super();
     this.users = scenario.users.flatMap((user) => user.intents.map((intent) => {
       const id = [user.id, intent.id].map(encodeURIComponent).join(':');
       return { id, userId: user.id, name: user.name, intentId: id, intent: intent.intent, principalContext: user.instructions };
     }));
-    for (let index = 0; index < this.users.length; index++) {
-      for (const other of this.users.slice(index + 1)) {
-        if (this.users[index].userId === other.userId) continue;
-        const principals = [this.users[index], other] as const;
-        const id = `local:${principals.map(({ id }) => id).sort().map(encodeURIComponent).join(':')}`;
-        const demo = new NegotiationDemo(principals, id);
-        demo.on('change', () => this.emit('change'));
-        demo.on('negotiation.updated', () => {
-          for (const principal of principals) void this.agents.get(principal.id)!.receive({ kind: 'negotiation.updated', opportunityId: id });
-        });
-        this.negotiations.set(id, demo);
-      }
+    const listNegotiations = async (user: TuiPrincipal) => Promise.all([...this.negotiations.values()]
+      .filter((demo) => demo.principals.some((principal) => principal.id === user.id))
+      .map((demo) => demo.client(user.userId).readNegotiation(demo.opportunityId)));
+    for (const user of this.users) {
+      this.records.set(user.intentId, new MemoryPrincipalRecords(
+        { intent: { id: user.intentId, payload: user.intent }, principalContext: user.principalContext },
+        () => listNegotiations(user),
+      ));
     }
+    const candidateDiscovery = createScenarioDiscovery(
+      this.users,
+      options.embedder,
+      async (userId) => Promise.all([...this.negotiations.values()]
+        .filter((demo) => demo.principals.some((principal) => principal.userId === userId))
+        .map((demo) => demo.client(userId).readNegotiation(demo.opportunityId))),
+      async (intentId) => Boolean((await this.records.get(intentId)!.read()).standingBrief),
+    );
     for (const user of this.users) {
       const clientFor = (id: string) => this.negotiations.get(id)!.client(user.userId);
+      const readNegotiations = () => listNegotiations(user);
       const host: NegotiationHost = {
+        event: (event) => this.events.push({ userId: user.userId, intentId: user.intentId, event: structuredClone(event) }),
         status: (id, message, phase) => this.negotiations.get(id)!.progress(message, phase),
         retry: (owner, attempt, reason) => {
           this.agentStatus = (owner.name ?? owner.id) + ': model retry ' + attempt + ' · ' + reason;
@@ -232,29 +275,103 @@ export class NegotiationLab extends EventEmitter {
           if (id === null) { this.agentStatus = (owner.name ?? owner.id) + ': ' + reason; this.emit('change'); }
         },
       };
+      const records = this.records.get(user.intentId)!;
+      const discovery: DiscoveryClient = {
+        scope: async (signal) => {
+          signal.throwIfAborted();
+          return { version: 'lab-v1', networkIds: [SCENARIO_NETWORK_ID] };
+        },
+        discoverCounterparties: async (input, scopeVersion, signal) => {
+          if (scopeVersion !== 'lab-v1') throw new Error('Discovery scope changed.');
+          return candidateDiscovery.discover({ userId: user.userId, triggerIntentId: user.intentId, ...input }, { signal });
+        },
+        openNegotiation: async (request, signal) => {
+          signal.throwIfAborted();
+          const { target: selection, source } = request;
+          const target = this.users.find((u) => u.intentId === selection.intentId);
+          if (!target || target.userId === user.userId) return { status: 'unavailable' };
+          const targetRecords = this.records.get(target.intentId)!;
+
+          const principals: [TuiPrincipal, TuiPrincipal] = [user, target];
+          const pairKey = pairKeyOf(SCENARIO_NETWORK_ID, user.intentId, target.intentId);
+          let created = false;
+          const result = await records.openNegotiation(request, () => {
+            signal.throwIfAborted();
+            if (!records.hasStandingBrief || !targetRecords.hasStandingBrief) return null;
+            if (request.scopeVersion !== 'lab-v1' || selection.networkId !== SCENARIO_NETWORK_ID
+              || selection.userId !== target.userId || selection.payload !== target.intent) throw new Error('Candidate or discovery scope changed.');
+            // Re-read inside the synchronous commit: both principals can select simultaneously.
+            const latest = [...this.negotiations.values()].filter((demo) => demo.pairKey === pairKey)
+              .sort((a, b) => b.sessionNumber - a.sessionNumber)[0];
+            if ([...this.negotiations.values()].some((demo) => demo.openingRequestId === request.id)) throw new Error('Opening request identity was reused.');
+            if (source.kind === 'negotiation' && (source.negotiationId !== request.expectedLatestNegotiationId
+              || ![...this.negotiations.values()].some((demo) => demo.id === source.negotiationId && demo.pairKey === pairKey))) {
+              throw new Error('Source session does not belong to the selected pair.');
+            }
+            if ((latest?.id ?? null) !== request.expectedLatestNegotiationId
+              || (latest?.outcome ?? null) !== request.expectedLatestOutcome
+              || (latest?.opportunityStatus ?? null) !== request.expectedLatestOpportunityStatus) return null;
+            if (latest && !latest.settled) {
+              return latest.opportunityStatus === 'negotiating' && !latest.outcome
+                ? { opportunityId: latest.opportunityId, created: false } : null;
+            }
+            const previousSessions = [...this.negotiations.values()].filter((demo) => demo.pairKey === pairKey)
+              .sort((a, b) => a.sessionNumber - b.sessionNumber).map((demo) => demo.sharedHistory());
+            const confidence = source.kind === 'search' ? source.similarity : latest!.confidence;
+            const opportunityId = crypto.randomUUID();
+            const demo = new NegotiationDemo(principals, opportunityId, {
+              number: (latest?.sessionNumber ?? 0) + 1, previousSessions, confidence, source, requestId: request.id,
+            });
+            demo.on('change', () => this.emit('change'));
+            demo.on('negotiation.updated', () => {
+              for (const principal of principals) void this.agents.get(principal.id)!.receive({ kind: 'negotiation.updated', opportunityId });
+            });
+            this.negotiations.set(opportunityId, demo);
+            created = true;
+            return { opportunityId, created: true };
+          });
+          if (result.status === 'opened' && created) {
+            const demo = this.negotiations.get(result.opportunityId)!;
+            demo.status = `Opened by ${user.name ?? user.userId}`;
+            this.emit('change');
+            for (const principal of principals) {
+              void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: result.opportunityId });
+            }
+          }
+
+          return result;
+        },
+      };
+
       this.agents.set(user.id, new NegotiationAgent({
         owner: { id: user.userId, name: user.name },
-        intent: { id: user.intentId, payload: user.intent },
-        principalContext: user.principalContext,
+        intentId: user.intentId,
         guidance: NEGOTIATION_GUIDANCE,
         client: {
+          listNegotiations: readNegotiations,
           readNegotiation: (id) => clientFor(id).readNegotiation(id),
           submitTurn: (id, turn) => clientFor(id).submitTurn(id, turn),
         },
-      }, host, { ...options, store: new MemoryPrincipalStore() }));
+      }, host, {
+        model: options.model,
+        records,
+        discovery,
+      }));
     }
   }
 
-  /** Deliver simulated matches to the always-on agents, which own their negotiation lifecycles. */
-  matchAll(): void {
-    for (const demo of this.negotiations.values()) {
-      for (const principal of demo.principals) {
-        void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: demo.opportunityId });
-      }
-    }
+  /**
+   * Announce the newly created fixture intents so H2A can discover without a chat prompt.
+   * @returns After activation receipts are accepted; model work continues independently.
+   * @throws When a host cannot accept a creation event. Repeated calls are deduplicated by the records.
+   */
+  async start(): Promise<void> {
+    await Promise.all(this.users.map((user) => this.agents.get(user.id)!.activate({
+      type: 'intent.created', id: `intent.created:${user.intentId}`,
+    })));
   }
 
-  /** Cancel model work, release human questions, and stop all match records. */
+  /** Cancel model work and stop all match records, retaining conversation history. */
   async stop(): Promise<void> {
     await Promise.all([...this.agents.values()].map((agent) => agent.stop()));
     for (const demo of this.negotiations.values()) demo.stop();

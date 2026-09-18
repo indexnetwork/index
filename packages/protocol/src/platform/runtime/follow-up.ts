@@ -19,7 +19,7 @@ export interface IntentFollowUp {
   scoreIntent(data: { intentId: string; userId: string; payload: string }): Promise<unknown>;
   /** Schedule post-save matching work. Failures must not undo the saved intent. */
   onIntentSaved(data: { intentId: string; userId: string } & IntentFollowUpScope): Promise<unknown>;
-  /** Schedule cleanup of matching artifacts after archival. */
+  /** Schedule post-archive follow-up. Failures must not undo archival. */
   onIntentArchived(data: { intentId: string }): Promise<unknown>;
   /** Start discovery for an intent resumed from PAUSED back to ACTIVE. */
   onIntentResumed(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown>;

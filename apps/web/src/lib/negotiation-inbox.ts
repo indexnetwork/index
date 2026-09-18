@@ -43,7 +43,7 @@ function formatTimeAgo(timestamp: number, now: number): string {
 }
 
 /**
- * Groups the viewer's negotiations by whose turn it is.
+ * Groups the latest session of each intent-pair thread by whose turn it is.
  *
  * The record carries the whole state: `awaitingUserId` is the seat that owes a
  * turn, and `outcome` is set exactly once, when it settles.
@@ -58,7 +58,12 @@ export function deriveNegotiationInbox(
   viewerUserId: string | undefined,
   now = Date.now(),
 ): NegotiationInboxGroups {
-  const items = negotiations.map<NegotiationInboxItem>((negotiation) => {
+  const threads = new Map<string, NegotiationSummary>();
+  for (const negotiation of negotiations) {
+    const latest = threads.get(negotiation.pairKey);
+    if (!latest || negotiation.sessionNumber > latest.sessionNumber) threads.set(negotiation.pairKey, negotiation);
+  }
+  const items = [...threads.values()].map<NegotiationInboxItem>((negotiation) => {
     const presentation = negotiation.outcome
       ? OUTCOME_PRESENTATION[negotiation.outcome]
       : negotiation.awaitingUserId === viewerUserId ? YOUR_MOVE : THEIR_MOVE;

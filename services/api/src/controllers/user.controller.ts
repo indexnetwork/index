@@ -20,7 +20,10 @@ const BATCH_MAX_IDS = 100;
 function toHistoryEntry(negotiation: NegotiationView) {
   return {
     id: negotiation.id,
+    pairKey: negotiation.pairKey,
+    sessionNumber: negotiation.sessionNumber,
     opportunityId: negotiation.opportunityId,
+    opportunityStatus: negotiation.opportunityStatus,
     counterparty: {
       id: negotiation.counterparty.userId,
       name: negotiation.counterparty.name ?? 'Unknown user',
@@ -90,6 +93,7 @@ export class UserController {
       const negotiations = await negotiationService.list(viewer.id, {
         limit,
         offset,
+        latestPerPair: true,
         ...(isSelf ? {} : { counterpartyUserId: params.userId }),
       });
       return Response.json({ negotiations: negotiations.map(toHistoryEntry) });

@@ -1,20 +1,9 @@
-import { Intents } from '@indexnetwork/protocol';
-import type { IntentFollowUp } from '@indexnetwork/protocol';
+import { Intents, type IntentFollowUp } from '@indexnetwork/protocol';
 
 import { background } from '../background';
 import { intentDatabaseAdapter } from '../../adapters/database.adapter';
 
-/**
- * The host side of {@link IntentFollowUp}.
- *
- * Writing a signal no longer starts a search. Discovery is on demand: the
- * owner's agent searches with its own query through `POST /intents/:id/discover`
- * and picks who becomes an opportunity, so there is nothing to prepare when a
- * signal is saved, archived, or resumed.
- *
- * Rescoring stays: it measures the text that was just written and is
- * independent of who the signal reaches.
- */
+/** Host follow-up: independent scoring and lifecycle follow-up. */
 export class IntentIndexing implements IntentFollowUp {
   /**
    * Rescore final revisions after saving without applying admission or lifecycle changes.
@@ -29,18 +18,27 @@ export class IntentIndexing implements IntentFollowUp {
     return Promise.resolve();
   }
 
-  /** @returns Immediately. A saved signal is searched on demand, not on write. */
-  onIntentSaved(): Promise<unknown> {
+  /**
+   * Intent saved follow-up.
+   * @param _data - Saved intent data.
+   */
+  onIntentSaved(_data: { intentId: string; userId: string }): Promise<unknown> {
     return Promise.resolve();
   }
 
-  /** @returns Immediately. There are no per-signal search artifacts to clean up. */
-  onIntentArchived(): Promise<unknown> {
+  /**
+   * Intent archived follow-up.
+   * @param _data - Archived intent data.
+   */
+  onIntentArchived(_data: { intentId: string }): Promise<unknown> {
     return Promise.resolve();
   }
 
-  /** @returns Immediately. A resumed signal is searched on demand, not on resume. */
-  onIntentResumed(): Promise<unknown> {
+  /**
+   * Intent resumed follow-up.
+   * @param _data - Resumed intent data.
+   */
+  onIntentResumed(_data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown> {
     return Promise.resolve();
   }
 }

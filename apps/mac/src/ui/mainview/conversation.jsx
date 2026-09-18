@@ -28,16 +28,27 @@ function SignalAction({ label, active = false, onClick, danger = false }) {
 }
 
 function ConversationPane({ profile, conversation, negotiatingPeople = [], onRespondPerson,
-                            agentMessages = null, agentQuestions = [], onSendAgent, onSendAnswers,
+                            agentMessages = null, agentQuestions = [], agentStatus, onSendAgent, onSendAnswers,
                             focusQuestion = 0, paused = false, onTogglePause, onArchive }) {
   const scrollRef = useRef(null);
   const [draft, setDraft] = useState("");
-  const [selections, setSelections] = useState({});
-  const [writing, setWriting] = useState({});
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
   const inbox = agentMessages != null;
   const questions = inbox ? (agentQuestions || []) : [];
-  const chosen = questions.filter((q) => typeof selections[q.id] === "string" && selections[q.id].trim());
+  const canSend = !inbox || ["running", "external"].includes(agentStatus);
+  const sendMessage = async () => {
+    const text = draft.trim();
+    if (!text || sending || !canSend) return;
+    setSending(true);
+    setError("");
+    try {
+      await onSendAgent(text);
+      setDraft("");
+    } catch (failure) {
+      setError(failure.message || "Could not save your message. Your draft is kept.");
+    } finally { setSending(false); }
+  };
   // Archiving takes the signal off the hub and there's no way back to it from
   // here, so the first click arms the button and the second one commits. It
   // disarms itself after a few seconds if you meant to click something else.
@@ -67,7 +78,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
     if (!focusQuestion || !agentQuestionRef.current) return;
     agentQuestionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusQuestion, questions.length]);
-  useEffect(() => { setSelections({}); setWriting({}); }, [profile && profile.intentId]);
+  useEffect(() => { setDraft(""); setError(""); }, [profile && profile.intentId]);
   const feedLen = inbox ? agentMessages.length : conversation.length;
 
   const [stuck, setStuck] = useState(true);
@@ -207,58 +218,8 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
                 : <AgentLine key={it.id}><AgentMarkdown text={it.text}/></AgentLine>
             )}
             {questions.length > 0 && (
-              <div ref={agentQuestionRef} style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                {questions.map((question) => {
-                  const options = Array.isArray(question.options) ? question.options : [];
-                  const answer = selections[question.id] || "";
-                  return (
-                    <article key={question.id} style={{
-                      border:"1px solid #000", background:"#fff", padding:"14px 16px", display:"grid", gap:11,
-                    }}>
-                      <div style={{
-                        fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500, lineHeight:1.4,
-                      }}>{question.question}</div>
-                      {options.map((option, i) => (
-                        <OptionRow key={option} letter={String.fromCharCode(65 + i)} label={option}
-                          onClick={() => {
-                            setSelections((cur) => ({ ...cur, [question.id]: cur[question.id] === option ? "" : option }));
-                            setWriting((cur) => ({ ...cur, [question.id]: false }));
-                          }}/>
-                      ))}
-                      {writing[question.id] || !options.length ? (
-                        <input
-                          value={options.indexOf(answer) >= 0 ? "" : answer}
-                          onChange={(e) => setSelections((cur) => ({ ...cur, [question.id]: e.target.value }))}
-                          placeholder="Write your answer…"
-                          aria-label="Write your own answer"
-                          style={{
-                            border:"1px solid #000", padding:"7px 9px",
-                            fontFamily:"var(--mac-sans)", fontSize:13, outline:"none",
-                          }}
-                        />
-                      ) : (
-                        <button type="button" onClick={() => setWriting((cur) => ({ ...cur, [question.id]: true }))}
-                          style={{
-                            background:"none", border:"none", padding:0, textAlign:"left", cursor:"pointer",
-                            fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-                          }}>write your own</button>
-                      )}
-                    </article>
-                  );
-                })}
-                <SignalAction
-                  label={chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}
-                  active={chosen.length > 0 && !sending}
-                  onClick={() => {
-                    if (!chosen.length || sending || !onSendAnswers) return;
-                    setSending(true);
-                    onSendAnswers(chosen.map((q) => ({ questionId: q.id, text: selections[q.id].trim() })), () => {
-                      setSelections({});
-                      setWriting({});
-                      setSending(false);
-                    });
-                  }}
-                />
+              <div ref={agentQuestionRef}>
+                <AgentQuestionBatch key={questions[0].batchId} questions={questions} onAnswer={onSendAnswers} disabled={!canSend}/>
               </div>
             )}
           </div>
@@ -315,11 +276,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                const text = draft.trim();
-                if (!text || sending) return;
-                setDraft("");
-                setSending(true);
-                onSendAgent(text, () => setSending(false));
+                void sendMessage();
               }
             }}
             placeholder="Message your personal agent…"
@@ -332,17 +289,56 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               outline:"none", background:"#fff", color:"#000",
             }}
           />
-          <SignalAction label={sending ? "sending…" : "send"} onClick={() => {
-            const text = draft.trim();
-            if (!text || sending) return;
-            setDraft("");
-            setSending(true);
-            onSendAgent(text, () => setSending(false));
-          }}/>
+          <SignalAction label={sending ? "sending…" : "send"} onClick={() => void sendMessage()}/>
+          {error && <p role="alert" style={{ color:"var(--ink-warn)", fontSize:12 }}>{error}</p>}
+          {!canSend && <span style={{ fontSize:11 }}>Agent {agentStatus || "unavailable"}; your draft stays here.</span>}
         </div>
       )}
 
     </div>
+  );
+}
+
+/* Suggestions and custom text stay local until the entire batch is submitted. */
+function AgentQuestionBatch({ questions, onAnswer, disabled }) {
+  const storageKey = "principal-batch-draft:" + questions[0].batchId;
+  const [drafts, setDrafts] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem(storageKey) || "null") || {}; }
+    catch { return {}; }
+  });
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => { sessionStorage.setItem(storageKey, JSON.stringify(drafts)); }, [drafts, storageKey]);
+  const complete = questions.every(question => drafts[question.id]?.trim());
+  const draft = (id, text) => { setError(""); setDrafts(current => ({ ...current, [id]: text })); };
+  const submit = async () => {
+    if (sending || disabled || !complete) return;
+    setSending(true);
+    setError("");
+    try {
+      await onAnswer(questions.map(question => ({ questionId: question.id, text: drafts[question.id] })));
+      sessionStorage.removeItem(storageKey);
+    } catch (failure) {
+      setError(failure.message || "Could not save answers. Drafts are kept; refresh before retrying.");
+    } finally { setSending(false); }
+  };
+  return (
+    <section aria-label="Your agent's questions" style={{ border:"1px solid #000", background:"#fff", padding:"14px 16px", display:"grid", gap:14 }}>
+      <p style={{ fontFamily:"var(--mac-mono)", fontSize:11 }}>Your agent · answer all {questions.length} questions, then submit together.</p>
+      {questions.map((question, index) => (
+        <fieldset key={question.id} disabled={sending || disabled} style={{ border:0, padding:0, margin:0, minWidth:0, display:"grid", gap:6 }}>
+          <legend style={{ fontFamily:"var(--mac-sans)", fontSize:16, marginBottom:10, whiteSpace:"pre-wrap" }}>{index + 1}. {question.question}</legend>
+          {(question.options || []).map((option, i) => <OptionRow key={option} letter={String.fromCharCode(65 + i)} label={option} onClick={() => draft(question.id, option)}/>)}
+          <textarea aria-label={`Answer ${index + 1}`} rows={2} value={drafts[question.id] || ""}
+            placeholder="Choose a suggestion or write your own answer…" onChange={event => draft(question.id, event.target.value)}
+            style={{ width:"100%", boxSizing:"border-box", padding:8, fontFamily:"var(--mac-sans)", fontSize:13 }}/>
+        </fieldset>
+      ))}
+      {error && <p role="alert" style={{ color:"var(--ink-warn)", fontSize:12 }}>{error}</p>}
+      <button disabled={sending || disabled || !complete} onClick={submit} style={{ padding:8, fontFamily:"var(--mac-mono)", fontSize:12 }}>
+        {sending ? "Saving…" : "Submit all answers"}
+      </button>
+    </section>
   );
 }
 

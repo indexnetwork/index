@@ -279,7 +279,7 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/auth/api-key/(?:create|delete)$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
-        ("POST", #"^/conversations/(?:dm|agent/answers|[^/?]+/messages)$"#),
+        ("POST", #"^/conversations/(?:dm|[^/?]+/(?:messages|answers))$"#),
         ("PATCH", #"^/conversations/[^/?]+/metadata$"#),
         ("DELETE", #"^/conversations/[^/?]+$"#),
     ]
@@ -649,14 +649,13 @@ final class NativeAPIRequestBridge {
             return exactTypedObject(body, required: ["keyId"]) { identifier($0["keyId"]) }
         case "/conversations/dm":
             return exactTypedObject(body, required: ["peerUserId"]) { identifier($0["peerUserId"]) }
-        case "/conversations/agent/answers":
+        case let value where value.range(of: #"^/conversations/[^/?]+/answers$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["intentId", "answers"]) { item in
                 uuidIdentifier(item["intentId"]) && validAgentAnswers(item["answers"])
             }
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["parts"], optional: ["metadata", "questionId"]) { item in
+            return exactTypedObject(body, required: ["parts"], optional: ["metadata"]) { item in
                 validMessageParts(item["parts"])
-                    && (item["questionId"] == nil || identifier(item["questionId"]))
                     && (item["metadata"] == nil || exactTypedObject(item["metadata"], optional: ["intentId"]) { meta in
                         meta["intentId"] == nil || uuidIdentifier(meta["intentId"])
                     })

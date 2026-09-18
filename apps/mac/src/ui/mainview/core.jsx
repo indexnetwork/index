@@ -252,18 +252,22 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
   /* ----- the signal inbox: transcript, pending questions, owner writes ----- */
   // GET /conversations/agent/messages?intentId= is the H2A inbox. Questions
-  // from a responder are `agent.questions`; the owner's own words are just
+  // from a responder are `agent.pending`; the owner's own words are just
   // messages. Same poll the web app runs.
   const [agentMessages, setAgentMessages] = useState([]);
   const [agentQuestions, setAgentQuestions] = useState([]);
+  const [agentStatus, setAgentStatus] = useState("unavailable");
+  const inboxSeq = useRef(0);
   const refreshInbox = React.useCallback(() => {
     if (!live || !client || !intentId) return Promise.resolve();
     const forIntent = intentId;
+    const seq = ++inboxSeq.current;
     return client.conversations.messages("agent", { intentId: forIntent })
       .then((res) => {
-        if (intentIdRef.current !== forIntent) return;
-        const questions = (res && res.agent && res.agent.questions) || [];
+        if (intentIdRef.current !== forIntent || seq !== inboxSeq.current) return;
+        const questions = (res && res.agent && res.agent.pending) || [];
         setAgentQuestions(questions);
+        setAgentStatus(res?.agent?.status || "unavailable");
         const carded = {};
         questions.forEach((q) => { if (q && q.id) carded[q.id] = true; });
         setAgentMessages(window.IndexApp.normalizeList(res, "messages").map((m) => {
@@ -287,6 +291,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   useEffect(() => {
     setAgentMessages([]);
     setAgentQuestions([]);
+    setAgentStatus("unavailable");
     if (!live || !client) return;
     refreshInbox();
     const t = setInterval(refreshInbox, 5000);
@@ -303,25 +308,26 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       if (!event) return;
       const forIntent = event.type === "message"
         ? event.message && event.message.metadata && event.message.metadata.intentId
-        : event.type === "question.pending" && event.data && event.data.intentId;
+        : ["question.pending", "agent.status", "intent.lifecycle"].includes(event.type) && event.data && event.data.intentId;
       if (forIntent !== intentId) return;
       refreshInbox();
     });
     return () => { if (sub && sub.close) sub.close(); };
   }, [live, client, intentId, refreshInbox]);
 
-  const sendAgentMessage = (text, onDone) => {
-    if (!client || !intentId || !text) return;
-    client.conversations.sendMessage("agent", {
+  const sendAgentMessage = async (text) => {
+    if (!client || !intentId || !text) throw new Error("The agent conversation is unavailable.");
+    await client.conversations.sendMessage("agent", {
       parts: [{ kind: "text", text }],
       metadata: { intentId },
-    }).then(() => refreshInbox()).finally(() => onDone && onDone());
+    });
+    await refreshInbox();
   };
 
-  const sendAgentAnswers = (answers, onDone) => {
-    if (!client || !intentId || !answers.length) return;
-    client.conversations.sendAnswers(intentId, answers)
-      .then(() => refreshInbox()).finally(() => onDone && onDone());
+  const sendAgentAnswers = async (answers) => {
+    if (!client || !intentId || !answers.length) throw new Error("The agent conversation is unavailable.");
+    await client.conversations.answerQuestions("agent", intentId, answers);
+    await refreshInbox();
   };
 
   // The four states an opportunity can be in for you, in the order they happen:
@@ -639,6 +645,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             onRespondPerson={respondPerson}
             agentMessages={live ? agentMessages : null}
             agentQuestions={live ? agentQuestions : []}
+            agentStatus={agentStatus}
             onSendAgent={live ? sendAgentMessage : null}
             onSendAnswers={live ? sendAgentAnswers : null}
             focusQuestion={focusQuestion}

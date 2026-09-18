@@ -16,7 +16,8 @@ Conversation Commands:
   index conversation show <id> --limit <n> Limit number of messages
   index conversation send <id> <message>   Send a message (accepts short ID)
   index conversation show agent --intent-id <id>  Read scoped agent state
-  index conversation send agent <text> --intent-id <id> [--question-id <id>]
+  index conversation send agent <text> --intent-id <id>
+  index conversation answer agent --intent-id <id> --answers '<questionId/text array>'
   index conversation stream                Listen for real-time events (SSE)
 `;
 
@@ -25,7 +26,7 @@ export interface ConversationOptions {
   limit?: number;
   json?: boolean;
   intentId?: string;
-  questionId?: string;
+  answers?: string;
 }
 
 /**
@@ -42,14 +43,21 @@ export async function handleConversation(
   positionals: string[],
   options?: ConversationOptions,
 ): Promise<void> {
-  if (positionals[0] === "agent" && (subcommand === "show" || subcommand === "send")) {
+  if (positionals[0] === "agent" && (subcommand === "show" || subcommand === "send" || subcommand === "answer")) {
     if (!options?.intentId) throw new Error("Personal-agent conversations require --intent-id <id>");
     let result: unknown;
     if (subcommand === "show") result = await client.getAgentConversation(options.intentId);
-    else {
+    else if (subcommand === "answer") {
+      if (!options.answers) throw new Error("Provide the complete questionId/text array with --answers");
+      let answers;
+      try { answers = JSON.parse(options.answers); }
+      catch { throw new Error("--answers must be a JSON array of questionId/text objects"); }
+      if (!Array.isArray(answers) || !answers.length) throw new Error("--answers must be a nonempty JSON array");
+      result = await client.answerQuestions(options.intentId, answers);
+    } else {
       const text = positionals.slice(1).join(" ");
       if (!text.trim()) throw new Error("A message is required");
-      result = await client.sendMessage("agent", text, options.intentId, options.questionId);
+      result = await client.sendMessage("agent", text, options.intentId);
     }
     console.log(JSON.stringify(result, null, options.json ? undefined : 2));
     return;

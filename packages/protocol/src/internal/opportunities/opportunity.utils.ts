@@ -4,27 +4,6 @@ const logger = log.graph.from('SelectByComposition');
 const dedupeByPersonLog = log.graph.from('DeduplicateByPerson');
 
 /**
- * Validates opportunity actors.
- *
- * Rejects self-matches — the same person occupying both sides of a pairing.
- * The evaluator's actor list can collapse onto a single user; downstream
- * readers then garble identity (a greeting rendered in one party's voice while
- * the card shows the viewer "matched with themselves"). Only `userId`-bearing
- * actors are checked; role-only actors (tests) pass. Duplicate rows for one
- * participant are allowed when at least one other distinct participant is
- * present.
- *
- * @param actors - Array of actors with at least a role and optional userId
- * @throws Error when the actor set is invalid
- */
-export function validateOpportunityActors(actors: Array<{ userId?: string; role: string }>): void {
-  const userIds = actors.filter((a) => a.userId).map((a) => a.userId as string);
-  if (userIds.length > 1 && new Set(userIds).size === 1) {
-    throw new Error('An opportunity cannot match a user with themselves (duplicate participant).');
-  }
-}
-
-/**
  * Read-level ACL: whether a user is an actor on the opportunity and may fetch
  * its details.
  *

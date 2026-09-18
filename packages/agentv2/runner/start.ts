@@ -6,6 +6,9 @@ import { startRunner } from "./runner.ts";
 
 const stamp = (): string => new Date().toLocaleTimeString("en-GB");
 
+if (!process.env.INDEX_EXECUTOR_ID) {
+  throw new Error("INDEX_EXECUTOR_ID is required. Register and select this external agent before starting agentv2.");
+}
 const client = new IndexClient();
 const model = new ModelClient();
 

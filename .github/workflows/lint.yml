@@ -106,6 +106,9 @@ jobs:
       - name: Check client
         run: bun run --cwd packages/client check
 
+      - name: Check independent agentv2 runner
+        run: bun run --cwd packages/agentv2 check
+
       - name: Check Hermes negotiator runtime
         run: bun run --cwd packages/hermes-plugin typecheck:runtime && bun run --cwd packages/hermes-plugin build:runtime
 

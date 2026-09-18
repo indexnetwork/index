@@ -41,6 +41,7 @@ export interface Negotiation {
 }
 
 export interface NegotiationDetail extends Negotiation {
+  protocol: { guidance: string; availableActions: NegotiationAction[]; blockedReason: string | null; maxTurns: number; messageLimit: number };
   turns: {
     turnIndex: number;
     seatUserId: string;
@@ -108,6 +109,7 @@ export interface PrincipalMessage {
 
 export interface PrincipalQuestion {
   id: string;
+  batchId: string;
   question: string;
   options?: string[];
   scope: QuestionScope;
@@ -116,8 +118,8 @@ export interface PrincipalQuestion {
 
 export interface PersonalAgentState {
   status: "running" | "starting" | "paused" | "external" | "unavailable";
-  /** Every question still waiting on the owner, oldest first. */
-  questions: PrincipalQuestion[];
+  /** Questions currently offered by the selected runtime. */
+  pending: PrincipalQuestion[];
 }
 
 export interface ConversationMessage {
@@ -375,7 +377,7 @@ export class IndexClient implements Index {
     counterparties: CounterpartyPick[],
   ): Promise<{ opportunityId: string }[]> {
     const result = await this.request<{ opportunities: { opportunityId: string }[] }>(
-      "POST", `/intents/${encodeURIComponent(intentId)}/opportunities`, { counterparties },
+      "POST", this.fence(`/intents/${encodeURIComponent(intentId)}/opportunities`), { counterparties },
     );
     return result.opportunities;
   }
@@ -450,29 +452,62 @@ export class IndexClient implements Index {
     let primed = false;
     let lastEventId = "";
     const seen = new Set<string>();
+    const knownInputs = new Set<string>();
+    const deliveredInputs = new Set<string>();
 
     const catchUp = async () => {
       const rows = await this.listNegotiations();
-      if (rows.length) {
+      const counts = new Map<string, number>();
+      for (const row of rows) counts.set(row.intentId, (counts.get(row.intentId) ?? 0) + 1);
+      for (const [intentId, count] of counts) {
         onEvent({
           type: "negotiation.opened",
-          id: `${rows[0]!.intentId}:opened:catchup`,
+          id: `${intentId}:opened:catchup`,
           title: "",
           body: "",
-          data: { intentId: rows[0]!.intentId, count: rows.length },
+          data: { intentId, count },
         });
+      }
+      const advanced = rows.filter((row) => row.turnCount > 0 && row.awaitingUserId);
+      if (advanced.length) {
+        const user = await this.me();
+        for (const row of advanced) {
+          if (row.awaitingUserId !== user.id) continue;
+          onEvent({
+            type: "negotiation.turn", id: `${row.id}:turn:catchup:${row.turnCount}`, title: "", body: "",
+            data: { intentId: row.intentId, opportunityId: row.opportunityId, turnIndex: row.turnCount },
+          });
+        }
       }
       const { conversationId, messages } = await this.request<{
         conversationId: string;
         messages: ConversationMessage[];
       }>("GET", "/conversations/agent/messages");
+      const latestInputs = new Map<string, ConversationMessage>();
       for (const message of messages) {
+        const intentId = (message.metadata as { intentId?: unknown } | undefined)?.intentId;
+        if (message.role === "user" && typeof intentId === "string" && !knownInputs.has(message.id)) {
+          knownInputs.add(message.id);
+          if (primed) {
+            deliveredInputs.add(message.id);
+            latestInputs.set(intentId, message);
+          }
+        }
         if (seen.has(message.id) || message.role === "agent") {
           seen.add(message.id);
           continue;
         }
         seen.add(message.id);
         if (primed) onEvent({ type: "message", conversationId, message });
+      }
+      // One wake sees the whole committed answer set, not one wake per answer.
+      // Initial history is only a baseline; a live input racing that read must
+      // still be delivered, which is why known and delivered IDs are separate.
+      for (const [intentId, message] of latestInputs) {
+        const parts = Array.isArray(message.parts) ? message.parts : [];
+        const text = parts.filter((part) => part?.kind === "text" && typeof part.text === "string")
+          .map((part) => part.text).join("\n");
+        onEvent({ type: "principal.input", id: message.id, title: "", body: "", data: { intentId, questionId: null, text } });
       }
       primed = true;
     };
@@ -520,6 +555,11 @@ export class IndexClient implements Index {
               if (event.type === "message") {
                 if (event.message.role === "agent" || seen.has(event.message.id)) continue;
                 seen.add(event.message.id);
+              }
+              if (event.type === "principal.input") {
+                if (deliveredInputs.has(event.id)) continue;
+                knownInputs.add(event.id);
+                deliveredInputs.add(event.id);
               }
               onEvent(event);
             }

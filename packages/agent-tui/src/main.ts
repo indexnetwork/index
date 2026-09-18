@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ModelClient } from '@indexnetwork/agent';
+import { generateEmbeddings, OPENROUTER_EMBEDDING_BASE_URL } from '@indexnetwork/discovery';
 import { createCliRenderer } from '@opentui/core';
+import OpenAI from 'openai';
 
 import { NegotiationLab, parseScenario } from './negotiation.lab';
 import { COLORS, mountNegotiationTui } from './negotiation.tui';
@@ -19,32 +21,45 @@ Choose a JSON scenario from packages/agent-tui/scenarios with Up/Down + Enter or
 click it. Esc or Ctrl+C exits the chooser. Agents start only after selection.
 
 Scenario users have id, name, instructions, and intents: [{ id, intent }, ...].
-The six bundled scenarios have 5–10 users and 5–14 intents, covering collaborators,
+The six bundled scenarios have 5–10 users and 5–14 discoverable intents, covering collaborators,
 research and learning peers, creative partners, local friendships, career mentors,
 and community projects. Filenames sort alphabetically, with the five-user
-cofounder scenario first. Each user-intent pair has a personal agent. All intent
-pairs between different users are simulated matches (10–87 per bundled scenario),
-running independently in the background.
+cofounder scenario first. Each user-intent pair has a personal agent. Scenarios
+start with no negotiations. Loading a scenario emits intent.created for each intent,
+so H2A automatically searches the intent list and opens selected pairs with saved
+briefs. Answer any questions in the H2A panes; briefed A2A work runs independently.
+Changing the visible board or receiving A2A activity does not activate H2A.
+Thinking… marks in-flight H2A reviews and names agents working in the A2A pane;
+it clears when work finishes, pauses or fails, without disabling input. A stale
+review notice asks for a fresh message when a concurrent negotiation change
+invalidates final H2A effects; it never retries or wakes H2A automatically.
 Each user starts on the board with their first intent. Users/Ctrl+U opens the
 roster: Space/click toggles users, Enter applies, Esc cancels. Keep at least two.
 Click an intent header or press Ctrl+T to switch that user's intent with Up/Down
 and Enter, or a click. Esc cancels. Each user-intent pair retains its own agent,
 H2A history, scroll position, draft, pending questions, choices, and in-flight sends.
-Header [−]/Ctrl+O collapses a chat; at least one stays expanded. Overflow collapses
+The full-width Wake button above the input reviews existing context without adding
+a chat message, submitting drafts or invalidating A2A briefs. H2A tool calls appear
+in a bordered group per review, collapsed by default to the latest call. Click to
+expand/collapse running/completed/error/cancelled entries; they are not saved messages.
+Top-border [−]/Ctrl+O collapses a chat; at least one stays expanded. Overflow collapses
 from the end of roster order, preserving focus and targeting 40 columns per chat.
 Click a collapsed user to expand them. Widening restores automatic collapses;
 manual collapses stay until selected. The scrollable list shows pending questions.
 A2A appears between exactly two expanded users, even with other users collapsed.
 The chats share space with A2A at narrower widths. Ctrl+N cycles the expanded
 users' selected intents' matches. Other expanded counts hide A2A. All agents keep
-running.
-Related requests can share an intent-wide question without changing it while you
-answer; match-specific approvals remain separate.
-Click a chat to act as that user. Click or use Up/Down to highlight an
-agent-provided option, then Enter to confirm. Select Custom reply or click the
-text box to write your own answer. Esc returns from editing to the choices.
-When no question is active, Enter sends the text to your personal agent instead.
-Ask about your negotiations or give new instructions in the same H2A conversation.
+running. A2A labels use blue for propose, amber for counter, green for accept and
+red for decline; message bodies stay neutral.
+H2A owns a stable batch of independent questions; A2A can pause without creating
+questions or waking H2A. Click a chat to act as that user. Click or use Up/Down to
+highlight a suggestion, then Enter to draft it. Select Custom reply or click the
+text box to draft your own answer. Esc returns from editing to the choices.
+Ctrl+Left/Right switches questions. Ctrl+S or Submit all answers sends the complete
+batch atomically; suggestions and custom answers stay local until then.
+Ctrl+G switches between questions and direct messages without losing drafts.
+In message mode or with no pending questions, Enter sends a message to your agent.
+Ask about negotiations or give new instructions without answering the batch.
 Tab/Shift+Tab cycles users, expanding collapsed chats, and includes visible A2A.
 Ctrl+J adds a newline; mouse wheel or PgUp/PgDn scrolls history.
 Ctrl+C stops all agents and exports each H2A conversation once, followed by A2A turns.
@@ -74,11 +89,16 @@ async function main(): Promise<void> {
     const filename = await chooseScenario(renderer, filenames);
     if (!filename || renderer.isDestroyed) return;
     const scenario = parseScenario(JSON.parse(readFileSync(join(scenarioDirectory, filename), 'utf8')));
+    const embeddingClient = new OpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY, baseURL: OPENROUTER_EMBEDDING_BASE_URL,
+      defaultHeaders: { 'HTTP-Referer': 'https://index.network', 'X-Title': 'Index Network' },
+    });
     lab = new NegotiationLab(scenario, {
       model: new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY, models: models.length ? models : undefined }),
+      embedder: { generate: (text, dimensions, options) => generateEmbeddings(embeddingClient, text, dimensions, options) },
     });
     mountNegotiationTui(renderer, lab);
-    lab.matchAll();
+    await lab.start();
     await closed;
   } finally {
     renderer.destroy();

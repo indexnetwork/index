@@ -5,8 +5,7 @@ import is the package root; source directories below are package-private.
 
 `protocol/` contains portable contracts and shared protocol instructions, `platform/` contains host ports only,
 `capabilities/` contains named executable behavior, and `internal/` contains all
-graphs, internal model prompts, agents, retrieval, and implementation helpers. See
-[`../docs/protocol-kernel.md`](../docs/protocol-kernel.md).
+graphs, internal model prompts, agents, and implementation helpers.
 
 ## Directory Structure
 
@@ -19,9 +18,8 @@ packages/protocol/src/
   index.ts           Curated package API only
 ```
 
-The existing domain-first implementation tree now lives under `internal/`.
 `Intents`, `Networks`, and `Negotiations` are executable capability modules;
-consumers continue to import only from the package root. `platform/`
+consumers import only from the package root. `platform/`
 defines TypeScript ports for a host to implement; it contains no adapter,
 controller, web, database, queue, cache, or dependency-wiring implementation.
 Those belong in the consuming host.
@@ -50,11 +48,11 @@ output with `setLoggerFactory()`. The package does not implement
 
 | Agent | File | Used By |
 |-------|------|---------|
-| Intent Clarifier | `internal/intents/verification/intent.clarifier.ts` | Intent capability — checks specificity (entropy threshold) before persisting |
-| Intent Inferrer | `internal/intents/inference/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
-| Intent Verifier | `internal/intents/verification/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
-| Network Recommender | `internal/networks/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
-| Opportunity Presenter | `internal/opportunities/opportunity.presenter.ts` | Radar graph, opportunity presentation — generates role-appropriate descriptions (Grice's Maxim of Relation) |
+| Intent Clarifier | `internal/intents/intent.clarifier.ts` | Intent capability — checks specificity (entropy threshold) before persisting |
+| Pool Discriminator Miner | `internal/opportunities/discriminator/discriminator.miner.ts` | Host outcome mining — extracts discriminating questions from a candidate pool |
+| Intent Inferrer | `internal/intents/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
+| Intent Verifier | `internal/intents/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
+| Opportunity Presenter | `internal/opportunities/opportunity.presentation.ts` | Radar graph, opportunity presentation — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 
 ## Core Concepts
 
@@ -66,7 +64,7 @@ The system models human collaboration through a linguistic and information-theor
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
 | **Network** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share a network. |
 | **Opportunity** | A persisted intent pair admitted by protocol negotiation rules. The host receives candidate pairs from discovery, commits them atomically, and uses protocol lifecycle and presentation functions to serve them. |
-| **Discovery** | A search the owner's agent runs on demand: its query is embedded and matched against real intent embeddings, scoped to the communities the searching signal is shared in. The agent judges the results; retrieval ranks them. |
+| **Discovery** | Explicit-query retrieval in `@indexnetwork/discovery`, scoped to the communities the signal is shared in. The query is embedded once against real intent embeddings; the agent judges the ranked results. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
 | **Semantic Entropy** | Constraint density of an intent (0.0 = maximally constrained, 1.0 = trivially satisfiable). High-entropy intents ("I want a job") trigger an **elaboration loop** — a request for missing constraints before persistence. |
 | **Semantic Governance** | The full pipeline that ensures only actionable, felicitous, sufficiently clear intents enter the graph. Referential breadth is retained as warning metadata on the persisted signal rather than acting as a universal write prohibition. Implemented by the Intent Verifier and Intent Clarifier agents. |
@@ -102,11 +100,10 @@ Handled by the **Intent Graph**:
 
 ### Discovery boundary
 
-Lens inference, frame extraction, HyDE validation/cache identity, retrieval,
-ranking, and explanations live in `packages/discovery`. Real active intent
-embeddings form the candidate corpus; hypothetical documents stay on the query
-side. The host implements protocol-authorized network scope and rechecks
-membership and broadcast eligibility when atomically opening each pair.
+Retrieval and candidate hydration live in `packages/discovery`. Real active intent
+embeddings form the candidate corpus. The host implements protocol-authorized
+network scope and rechecks membership and broadcast eligibility when atomically
+opening each pair.
 
 ## Key Invariants
 
@@ -124,14 +121,12 @@ membership and broadcast eligibility when atomically opening each pair.
 | `internal/shared/observability/protocol.logger.ts` | Protocol-layer logging with call-scoped tracing |
 | `internal/shared/agent/model.config.ts` | Centralized model and OpenRouter configuration |
 | `internal/shared/agent/model-signal.ts` | Abort-signal-aware model invocation helper |
-| `internal/shared/agent/scope.ts` | Derives the network scope a request may read and discover across |
 | `internal/shared/assignment/network-assignment.policy.ts` | Row metadata for a manual network assignment |
-| `internal/shared/network/metadata.renderer.ts` | Renders network metadata into prompt context |
-| `internal/opportunities/opportunity.presentation.ts` | Pure card text generation for opportunity display |
-| `internal/opportunities/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
+| `internal/shared/utils/claim-safety.ts` | Strips unsupported affiliation/presence claims from generated text |
+| `internal/opportunities/opportunity.presentation.ts` | Card text generation, safe fallbacks, and presentation cache keys |
 | `internal/opportunities/opportunity.utils.ts` | Opportunity visibility and radar composition helpers |
-| `internal/opportunities/radar/radar.health.ts` | Radar health metrics computation |
 | `internal/opportunities/opportunity.labels.ts` | Opportunity status and role label constants |
+| `internal/opportunities/negotiation-context.loader.ts` | Read-only negotiation turn log for presentation |
 
 ## Data Model
 
@@ -143,5 +138,5 @@ Core tables the protocol interfaces read/write:
 
 - **Identity**: `users` (name/bio/location), `user_socials`
 - **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`
-- **Opportunities**: `opportunities`, `enrichment_tool_runs`
-- **Agents**: `agents`, `apikey`
+- **Opportunities**: `opportunities`, `negotiations`, `negotiation_turns`
+- **Agents**: `agents`; durable principal records live in intent-tagged `messages`, not runtime checkpoints

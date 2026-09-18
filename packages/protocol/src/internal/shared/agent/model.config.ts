@@ -94,15 +94,6 @@ function getModelConfig(config?: ModelConfig): ReturnType<typeof getBaseModelCon
 export type ModelAgent = keyof ReturnType<typeof getBaseModelConfig>;
 
 /**
- * Returns the model name string for the given agent key.
- * @param agent - Key from MODEL_CONFIG identifying which agent's settings to use.
- * @param config - Optional runtime config overrides.
- */
-export function getModelName(agent: ModelAgent, config?: ModelConfig): string {
-  return getModelConfig(config)[agent].model;
-}
-
-/**
  * Creates a ChatOpenAI instance configured for OpenRouter.
  * @param agent - Key identifying which agent's model settings to use.
  * @param config - Optional runtime config overrides.

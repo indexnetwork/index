@@ -25,7 +25,7 @@ export interface AgentOptions {
    * own array replaces the defaults entirely, so spread `defaultTools()`
    * if you want to keep them.
    */
-  tools?: Tool<never>[];
+  tools?: Tool[];
 
   /** Model capability constructed by the host, shared across this agent's tasks. */
   model: Model;
@@ -60,7 +60,7 @@ export interface RunOptions {
   /** Working transcript for this task. Concurrent tasks use separate stores. */
   history?: MessageStore;
   /** Tools scoped to this task; the agent's identity and model stay shared. */
-  tools?: Tool<never>[];
+  tools?: Tool[];
   /** The conversation so far — pass `messages` from a previous result to
    * continue it, including resuming a run that stopped on a question.
    * Omit it to fall back to the agent's `history` store instead; passing
@@ -82,7 +82,7 @@ export class Agent {
   readonly identity: AgentIdentity;
   readonly systemPrompt: string;
   readonly intent?: Intent;
-  readonly tools: Tool<never>[];
+  readonly tools: Tool[];
 
   private readonly model: Model;
   private readonly maxSteps: number;

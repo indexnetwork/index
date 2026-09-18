@@ -19,7 +19,8 @@ from .transport import get_transport
 
 logger = logging.getLogger(__name__)
 
-WAKE_TYPES = frozenset({"negotiation.opened", "negotiation.changed", "intent.created", "intent.lifecycle"})
+WAKE_TYPES = frozenset({"negotiation.opened", "negotiation.changed", "intent.lifecycle"})
+ACTIVATION_TYPES = frozenset({"intent.created", "intent.broadcast"})
 INPUT_TYPE = "principal.input"
 SETTLE_SECONDS = 2.0
 RECONNECT_SECONDS = 5.0
@@ -41,6 +42,7 @@ class IndexAdapter(BasePlatformAdapter):
         super().__init__(config, Platform(PLATFORM))
         self._sidecar = sidecar
         self._owner = ""
+        self._executor = ""
         self._pending: set[str] = set()
         self._inputs: list[dict] = []
         self._closing = False
@@ -80,11 +82,13 @@ class IndexAdapter(BasePlatformAdapter):
         @returns Whether Index currently names this Hermes agent for negotiations.
         """
         agent = selected_agent()
-        if agent.get("type") != "external" or not agent.get("handleNegotiations"):
+        executor_id = os.environ.get("INDEX_EXECUTOR_ID", "").strip()
+        if not executor_id or agent.get("id") != executor_id or agent.get("type") != "external" or not agent.get("handleNegotiations"):
             self._sidecar.stop()
             return False
         self._owner = agent["ownerId"]
-        self._sidecar.start(self._owner, agent["id"])
+        self._executor = agent["id"]
+        self._sidecar.start(self._owner, self._executor)
         return True
 
     def _read(self) -> None:
@@ -93,7 +97,7 @@ class IndexAdapter(BasePlatformAdapter):
             try:
                 if self._apply():
                     self._reconcile()
-                    for line in get_transport().stream_sse("/events"):
+                    for line in get_transport().stream_sse(f"/events?consumer={self._executor}"):
                         if self._closing:
                             return
                         self._observe(line)
@@ -116,8 +120,19 @@ class IndexAdapter(BasePlatformAdapter):
             return
         data = frame.get("data") or {}
         intent = data.get("intentId")
-        if frame.get("type") == INPUT_TYPE and intent and isinstance(data.get("text"), str):
-            self._loop.call_soon_threadsafe(self._collect_input, data)
+        if frame.get("type") == "agent.configuration":
+            self._apply()
+            return
+        if frame.get("type") == INPUT_TYPE and intent and isinstance(frame.get("id"), str):
+            self._loop.call_soon_threadsafe(self._collect_input, {"intentId": intent, "inputId": frame["id"]})
+            return
+        if intent and frame.get("type") in ACTIVATION_TYPES and isinstance(frame.get("id"), str):
+            activation = {"id": frame["id"], "type": frame["type"]}
+            if frame["type"] == "intent.broadcast":
+                if not isinstance(data.get("networkId"), str):
+                    return
+                activation["networkId"] = data["networkId"]
+            self._loop.call_soon_threadsafe(self._collect_input, {"intentId": intent, "activation": activation})
             return
         if intent and frame.get("type") in WAKE_TYPES:
             self._queue(intent)
@@ -135,13 +150,11 @@ class IndexAdapter(BasePlatformAdapter):
 
     def _deliver(self, data: dict) -> None:
         intent = data["intentId"]
-        text = data["text"]
-        question_id = data.get("questionId")
         try:
-            if question_id:
-                self._sidecar.call("/answer", {"intentId": intent, "questionId": question_id, "text": text})
+            if "activation" in data:
+                self._sidecar.call("/wake", data)
             else:
-                self._sidecar.call("/message", {"intentId": intent, "text": text})
+                self._sidecar.call("/input", data)
         except Exception as error:  # noqa: BLE001
             logger.warning("Index negotiator did not accept owner input for %s: %s", intent, error)
 

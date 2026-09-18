@@ -4,8 +4,9 @@ The negotiator is `@indexnetwork/agent`, the same package the hosted Index
 runtime executes, bundled into `runtime/dist/negotiator.js`. This module starts
 it while this machine is the owner's selected negotiator, keeps that child
 alive for the gateway process, and stops it when the platform disconnects or
-the selection moves elsewhere. It holds no negotiation state: scheduling,
-questions, turns, and checkpoints all live inside the agent package.
+the selection moves elsewhere. Scheduling belongs to the agent package;
+canonical input lives on Index and private domain records in the sidecar's
+record store. No model checkpoints are resumed.
 """
 
 from __future__ import annotations
@@ -100,7 +101,7 @@ class Sidecar:
             logger.info("Index negotiator running for %s on %s", account, self._url)
 
     def stop(self) -> None:
-        """Ask the negotiator to checkpoint and exit, then release the process."""
+        """Cancel native work, finish record writes, and release the process."""
         with self._lock:
             self._wanted = None
             if self._process is None:
