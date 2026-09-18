@@ -2,8 +2,8 @@
 
 Integrate `origin/dev` into `feat/agent-communication` while preserving our
 agent's behavior. Local implementation and bounded workflow verification are
-complete; publication is approved. Live-provider and interactive checks remain
-explicitly unrun below.
+complete. The integration is published in draft PR #1595. Live-provider and
+interactive checks remain explicitly unrun below.
 
 Related discussion: https://github.com/indexnetwork/index/discussions/1612
 
@@ -164,9 +164,10 @@ Refresh this comparison if the target moves before implementation.
   runtime consolidation or duplicated hosted execution.
 - [x] Obtain explicit approval to rewrite the published feature branch and
   update existing draft PR #1595. Approval is bound to the recorded remote SHA.
-- [ ] Push with `--force-with-lease` bound to that SHA, never plain force.
-- [ ] Open or update the PR into `dev`, summarizing breaking contracts,
-  verification, and remaining risks. Do not merge it.
+- [x] Push with `--force-with-lease` bound to that SHA, never plain force.
+- [x] Update draft PR #1595 into `dev`, summarizing breaking contracts,
+  verification, and remaining risks. Verify its remote head/base/body and draft
+  status; inspect CI. Do not merge it.
 
 ## Reconciliation and verification evidence
 
@@ -175,7 +176,14 @@ above pinned dev `eeab34162`. Existing PR:
 https://github.com/indexnetwork/index/pull/1595. The operator approved exact-lease
 publication, then requested behavioral verification of both agents according to
 their own definitions. Those probes and the resulting fixes are recorded below.
-The pre-publication remote feature ref is `78ad2a676`.
+The pre-publication remote feature ref was `78ad2a676`. The approved exact-lease
+push replaced it with implementation head `e589ad1b1ff31251db5d1ba7306df7d1d4382e2d`.
+PR #1595's head, `dev` base, updated body and draft status were verified remotely;
+all four checks on that implementation head passed (lint, typecheck, protocol
+architecture and macOS build). Discussion #1612 now clearly labels its original
+consolidation proposal as superseded and records the accepted preservation plan.
+No merge, deployment, shared migration, worktree removal or branch deletion was
+performed.
 
 Verification scripts and logs are retained outside the source tree under the
 common Git directory's `rebase-safety/agent-communication-20260918T095446Z/verification/`.
