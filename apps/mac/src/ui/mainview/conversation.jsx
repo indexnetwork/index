@@ -37,6 +37,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   const [sending, setSending] = useState(false);
   const inbox = agentMessages != null;
   const questions = inbox ? (agentQuestions || []) : [];
+  const inboxFeed = useMemo(() => buildInboxFeed(agentMessages || []), [agentMessages]);
   const chosen = questions.filter((q) => typeof selections[q.id] === "string" && selections[q.id].trim());
   // Archiving takes the signal off the hub and there's no way back to it from
   // here, so the first click arms the button and the second one commits. It
@@ -68,7 +69,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
     agentQuestionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusQuestion, questions.length]);
   useEffect(() => { setSelections({}); setWriting({}); }, [profile && profile.intentId]);
-  const feedLen = inbox ? agentMessages.length : conversation.length;
+  const feedLen = inbox ? agentMessages.length + questions.length : conversation.length;
 
   const [stuck, setStuck] = useState(true);
   const [unread, setUnread] = useState(0);
@@ -201,22 +202,31 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", lineHeight:1.45,
               }}>Ask about your matches, share a preference, or give your agent direction for this signal.</div>
-            ) : agentMessages.map((it) =>
-              it.kind === "user"
-                ? <UserLine key={it.id}>{it.text}</UserLine>
-                : <AgentLine key={it.id}><AgentMarkdown text={it.text}/></AgentLine>
-            )}
+            ) : inboxFeed.map((it) => {
+              if (it.kind === "user") return <UserLine key={it.id}>{it.text}</UserLine>;
+              if (it.kind === "decisions") return <DecisionGroup key={it.id} items={it.items}/>;
+              if (it.kind === "negotiation-logs") return <NegotiationLogGroup key={it.id} items={it.items}/>;
+              if (it.kind === "answered-question") return <AnsweredQuestion key={it.id} item={it}/>;
+              if (it.kind === "progress") return <ProgressLine key={it.id} text={it.text}/>;
+              return <AgentNote key={it.id} item={it}/>;
+            })}
             {questions.length > 0 && (
               <div ref={agentQuestionRef} style={{ display:"flex", flexDirection:"column", gap:10 }}>
                 {questions.map((question) => {
                   const options = Array.isArray(question.options) ? question.options : [];
                   const answer = selections[question.id] || "";
                   return (
-                    <article key={question.id} style={{
-                      border:"1px solid #000", background:"#fff", padding:"14px 16px", display:"grid", gap:11,
-                    }}>
+                    <article key={question.id} style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                      <MyAgentAvatar size={22} style={{ marginTop:2 }}/>
                       <div style={{
-                        fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500, lineHeight:1.4,
+                        flex:1, minWidth:0, borderLeft:"2px solid #000", padding:"2px 0 2px 12px",
+                        display:"grid", gap:9,
+                      }}>
+                      <div style={{
+                        fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
+                      }}>{questionContext(question)}</div>
+                      <div style={{
+                        fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:500, lineHeight:1.45,
                       }}>{question.question}</div>
                       {options.map((option, i) => (
                         <OptionRow key={option} letter={String.fromCharCode(65 + i)} label={option}
@@ -243,6 +253,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
                             fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
                           }}>write your own</button>
                       )}
+                      </div>
                     </article>
                   );
                 })}
@@ -344,6 +355,207 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
 
     </div>
   );
+}
+
+// Briefs and decisions are one unit of work. Gather them by opportunity and
+// leave one disclosure in the transcript where that run first appeared.
+function buildInboxFeed(messages) {
+  const decisionRuns = new Map();
+  const negotiationLogs = [];
+  let logsAt = -1;
+  const questions = new Map();
+  const answers = new Map();
+  let runId = "before-discovery";
+  messages.forEach((message, index) => {
+    if (message.kind === "progress") runId = message.id;
+    if (message.kind === "brief" || message.kind === "decision") {
+      const run = decisionRuns.get(runId) || { id:runId, at:index, decisions:new Map() };
+      const key = message.opportunityId || message.counterpart || message.id;
+      const current = run.decisions.get(key) || {
+        id:key, counterpart:message.counterpart || "match", brief:"", decision:"",
+      };
+      current[message.kind] = message.text;
+      run.decisions.set(key, current);
+      decisionRuns.set(runId, run);
+    }
+    if (message.kind === "negotiation-log") {
+      if (logsAt < 0) logsAt = index;
+      negotiationLogs.push(message);
+    }
+    if (message.kind === "question-history" && message.questionId) questions.set(message.questionId, { ...message, at:index });
+    if (message.kind === "answer-history" && message.questionId) answers.set(message.questionId, message);
+  });
+  if (!decisionRuns.size && !negotiationLogs.length && !answers.size) return messages;
+
+  const insertions = new Map();
+  decisionRuns.forEach((run) => {
+    const items = Array.from(run.decisions.values());
+    const entry = { kind:"decisions", id:`decisions-${run.id}`, items };
+    insertions.set(run.at, [...(insertions.get(run.at) || []), entry]);
+  });
+  questions.forEach((question, questionId) => {
+    const answer = answers.get(questionId);
+    if (!answer) return;
+    const entry = { ...question, kind:"answered-question", id:`answered-${questionId}`, answer:answer.text };
+    insertions.set(question.at, [...(insertions.get(question.at) || []), entry]);
+  });
+  const feed = [];
+  let logsInserted = false;
+  runId = "before-discovery";
+  messages.forEach((message, index) => {
+    if (message.kind === "progress") runId = message.id;
+    const additions = insertions.get(index) || [];
+    additions.forEach((entry) => feed.push(entry));
+    if (!logsInserted && negotiationLogs.length && index >= logsAt) {
+      feed.push({ kind:"negotiation-logs", id:"negotiation-logs", items:negotiationLogs });
+      logsInserted = true;
+    }
+    if (message.kind === "progress") {
+      feed.push(message);
+      return;
+    }
+    if (message.kind !== "brief" && message.kind !== "decision" && message.kind !== "negotiation-log"
+        && message.kind !== "question-history" && message.kind !== "answer-history") feed.push(message);
+  });
+  return feed;
+}
+
+function DecisionGroup({ items }) {
+  const continued = items.filter((item) => item.decision === "continue" || item.decision === "accept").length;
+  return (
+    <details style={{ border:"1px solid var(--ink-3)", background:"#fff" }}>
+      <summary style={{
+        padding:"9px 12px", cursor:"pointer", listStylePosition:"inside",
+        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:0.25,
+      }}>
+        Discovery decisions · {items.length} reviewed · {continued} reaching out
+      </summary>
+      <div style={{ borderTop:"1px solid var(--ink-4)" }}>
+        {items.map((item, index) => (
+          <div key={item.id} style={{
+            padding:"10px 12px", display:"grid", gap:6,
+            borderTop:index ? "1px solid var(--ink-4)" : "none",
+          }}>
+            <div style={{ display:"flex", alignItems:"baseline", gap:8, minWidth:0 }}>
+              <strong style={{
+                flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                fontFamily:"var(--mac-sans)", fontSize:13,
+              }}>{item.counterpart}</strong>
+              {item.decision && <span style={{
+                fontFamily:"var(--mac-mono)", fontSize:10, textTransform:"uppercase", letterSpacing:0.4,
+              }}>{item.decision}</span>}
+            </div>
+            {item.brief && <div style={{
+              fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.45, color:"var(--ink-2)",
+            }}><AgentMarkdown text={item.brief}/></div>}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function ProgressLine({ text }) {
+  return (
+    <div className="fade-up" role="status" style={{
+      display:"grid", gridTemplateColumns:"8px 1fr", gap:9, alignItems:"start",
+      padding:"2px 0", color:"var(--ink-2)",
+    }}>
+      <span style={{ width:7, height:7, marginTop:5, borderRadius:99, background:"#000" }}/>
+      <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.55 }}>{text}</span>
+    </div>
+  );
+}
+
+function AnsweredQuestion({ item }) {
+  return (
+    <article className="fade-up" style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+      <MyAgentAvatar size={22} style={{ marginTop:2 }}/>
+      <div style={{
+        flex:1, minWidth:0, borderLeft:"2px solid var(--ink-3)", padding:"2px 0 2px 12px",
+        display:"grid", gap:8,
+      }}>
+        <div style={{
+          display:"flex", justifyContent:"space-between", gap:8,
+          fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
+        }}>
+          <span>{questionContext(item)}</span><span>✓ answered</span>
+        </div>
+        <div style={{
+          fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:500, lineHeight:1.45,
+        }}>{item.text}</div>
+        <div style={{
+          display:"flex", alignItems:"center", gap:10, border:"1px solid #000",
+          padding:"7px 9px", background:"#000", color:"#fff",
+        }}>
+          <span style={{
+            flex:"0 0 auto", width:18, height:18, display:"grid", placeItems:"center",
+            border:"1px solid #fff", fontFamily:"var(--mac-mono)", fontSize:10,
+          }}>✓</span>
+          <span style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.35 }}>{item.answer}</span>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function NegotiationLogGroup({ items }) {
+  return (
+    <details style={{ border:"1px solid var(--ink-3)", background:"#fff" }}>
+      <summary style={{
+        padding:"9px 12px", cursor:"pointer", listStylePosition:"inside",
+        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:0.25,
+      }}>
+        Negotiation log · {items.length} {items.length === 1 ? "entry" : "entries"}
+      </summary>
+      <div style={{ borderTop:"1px solid var(--ink-4)" }}>
+        {items.map((item, index) => (
+          <div key={item.id} style={{
+            padding:"10px 12px", display:"grid", gap:5,
+            borderTop:index ? "1px solid var(--ink-4)" : "none",
+          }}>
+            <strong style={{
+              fontFamily:"var(--mac-sans)", fontSize:13,
+            }}>{item.counterpart || "Match"}</strong>
+            <div style={{
+              fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.45, color:"var(--ink-2)",
+            }}><AgentMarkdown text={item.text}/></div>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function AgentNote({ item }) {
+  return (
+    <div className="fade-up" style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+      <MyAgentAvatar size={22} style={{ marginTop:2 }}/>
+      <aside style={{
+        flex:1, minWidth:0, padding:"9px 11px", background:"var(--paper-2, #f4f4f0)",
+        borderLeft:"3px double #000",
+      }}>
+        <div style={{
+          marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:9.5,
+          color:"var(--ink-3)", textTransform:"uppercase", letterSpacing:0.6,
+        }}>agent note</div>
+        <div style={{ fontFamily:"var(--mac-sans)", fontSize:13.5, lineHeight:1.45 }}>
+          <AgentMarkdown text={item.text}/>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function questionContext(question) {
+  const matches = Array.isArray(question.matches) ? question.matches : [];
+  const names = matches.map((match) => match && match.counterparty && match.counterparty.name).filter(Boolean);
+  if (names.length === 1) {
+    const name = names[0];
+    return `From ${name}${/s$/i.test(name) ? "’" : "’s"} agent`;
+  }
+  if (names.length > 1) return `From ${names.join(", ")}’s agents`;
+  return question.scope === "match" ? "From this match’s agent" : "From your agent";
 }
 
 /* =================== CLARIFIER CARD =================== */

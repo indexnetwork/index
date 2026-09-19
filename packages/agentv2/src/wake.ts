@@ -18,11 +18,11 @@ const WAKE_PROMPT = [
   "You think for your principal about one signal, because something just happened on it. Your job is to work out what that event actually changes, and to act only there.",
   "A wake is situational. You are not reviewing the signal: you do not owe every opportunity a decision, every open question an answer, or the principal a status report. Touching nothing is a normal outcome, and staying silent is better than manufacturing work.",
   BRIEF_PROMPT,
-  "A signal with nothing open yet is the one case where breadth is the whole job: search it in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone a search finds is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
+  "A signal with nothing open yet is the one case where breadth is the whole job: discover people in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone discovered is reached, so how wide you cast is decided entirely by the queries you write — being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
   "A stall you are reading here for the first time is asked about on this wake. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is waiting on an answer to something nobody has put to them yet, so holding it is how a negotiation stops for good.",
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
-  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, why the questions you are about to ask matter, why you searched or opened something. Not a summary of the signal, and never a negotiator's own moves.",
+  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, why the questions you are about to ask matter, why you discovered or reached out to people. Say discovered and reaching out, never search or searching. Not a summary of the signal, and never a negotiator's own moves.",
   "Do not invent facts. Do not contradict what your principal's conversation already settled. You never take a negotiation turn yourself.",
 ].join("\n\n");
 
@@ -176,7 +176,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "reach_counterparties",
       description:
-        "Search this signal's communities and open an opportunity with everyone the search finds. A query is the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer — each is searched separately and the results are merged, so different angles reach people a single query cannot. Everyone found is opened and briefed for you: your judgement belongs in the queries, not in narrowing what they return, because opening explores a pair rather than committing your principal to it and only the negotiator can establish whether one is worth anything. Anyone this signal is already working is left out, and nothing you search for is shown to anyone.",
+        "Discover people in this signal's communities and open an opportunity with everyone discovered. A query describes the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. Everyone discovered is opened and briefed for you. Describe this to the principal as discovering people and reaching out, never as searching.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -206,7 +206,12 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
           .map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
         if (!picks.length) return "No counterparties matched those queries. Try different ones, or stop.";
         const created = await client.createOpportunities(intent.id, picks);
-        // Each one is briefed and proposed on outside this wake, so searching is
+        try {
+          await input.onProgress?.(`Discovered ${found.size} people and reached out to ${created.length}.`);
+        } catch (cause) {
+          unpersisted ??= cause;
+        }
+        // Each one is briefed and proposed on outside this wake, so discovery is
         // the whole of this call: do not brief what it just opened.
         input.onOpened?.(created.map((opportunity) => opportunity.opportunityId));
         return `Reached ${created.length} of ${picks.length} found, and each one is being briefed and proposed to now. The rest were already opportunities or are no longer reachable.`;

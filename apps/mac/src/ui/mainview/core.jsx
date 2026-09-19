@@ -273,12 +273,31 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
           const provenance = (m.metadata && m.metadata.principalMessage) || {};
           if (!text) return null;
           if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) return null;
+          const match = Array.isArray(provenance.matches) ? provenance.matches[0] : null;
+          const classified = provenance.kind === "question"
+            ? { kind: "question-history", text }
+            : provenance.kind === "answer"
+              ? { kind: "answer-history", text }
+              : m.role === "user"
+                ? { kind: "user", text }
+            : text.startsWith("Brief: ")
+              ? { kind: "brief", text: text.slice(7) }
+              : text.startsWith("Decision: ")
+                ? { kind: "decision", text: text.slice(10) }
+                : text.startsWith("Progress: ")
+                  ? { kind: "progress", text: text.slice(10) }
+                  : text.startsWith("Stall: ")
+                    ? { kind: "negotiation-log", text: text.slice(7) }
+                    : { kind: "note", text };
           return {
             id: m.id,
-            kind: m.role === "user" ? "user" : "agent",
-            text,
+            ...classified,
             scope: provenance.scope,
             matches: provenance.matches,
+            questionId: provenance.questionId,
+            options: provenance.options,
+            opportunityId: match && match.opportunityId,
+            counterpart: match && match.counterparty && match.counterparty.name,
           };
         }).filter(Boolean));
       })

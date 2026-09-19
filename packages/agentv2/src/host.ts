@@ -19,6 +19,7 @@ export interface Runtime {
 const BRIEF = "Brief: ";
 const DECISION = "Decision: ";
 const STALL = "Stall: ";
+const PROGRESS = "Progress: ";
 const WITHDRAWN = "Withdrawn: ";
 const DECISIONS: readonly string[] = ["continue", "accept", "decline", "stop"];
 
@@ -70,6 +71,9 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
     }
     if (message.role === "agent" && text.startsWith(STALL)) {
       return { kind: "stall", text: text.slice(STALL.length), ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
+    }
+    if (message.role === "agent" && text.startsWith(PROGRESS)) {
+      return { kind: "progress", text: text.slice(PROGRESS.length) };
     }
 
     const kind = principal?.kind ?? (message.role === "user" ? "user" : "message");
@@ -166,6 +170,7 @@ function describe(action: WakeAction): string {
     case "decision": return `decision ${action.opportunityId}: ${action.decision}`;
     case "ask": return `ask (${action.scope}${action.opportunityId ? ` ${action.opportunityId}` : ""}): ${action.question} [${action.options.join(" | ")}]`;
     case "note": return `note: ${action.text}`;
+    case "progress": return `progress: ${action.text}`;
     case "expire": return `expire ${action.questionId}`;
   }
 }
@@ -207,6 +212,9 @@ export async function publishActions(
         break;
       case "note":
         entries.push(entry("message", action.text));
+        break;
+      case "progress":
+        entries.push(entry("message", `${PROGRESS}${action.text}`));
         break;
       case "ask": {
         const question = entry("question", action.question, match ? [match] : []);
@@ -299,13 +307,14 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
       log(`  opened ${opportunityIds.length}`);
       for (const opportunityId of opportunityIds) onNegotiate?.(opportunityId);
     },
+    onProgress: (text) => publishActions(client, intent.id, [{ type: "progress", text }], context),
   });
 
   if (!result.actions.length) log("  silent");
   await publishActions(
     client,
     intent.id,
-    result.actions.filter((action) => action.type !== "brief" && action.type !== "decision"),
+    result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "progress"),
     context,
   );
 

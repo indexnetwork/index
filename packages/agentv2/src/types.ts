@@ -27,7 +27,7 @@ export type Decision = "continue" | "accept" | "decline" | "stop";
  * too: they are how a wake's work persists, and the principal can read them.
  */
 export interface ConversationEntry {
-  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall" | "expire";
+  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall" | "expire" | "progress";
   text: string;
   scope?: "intent" | "opportunity";
   counterpart?: string;
@@ -96,6 +96,8 @@ export interface WakeInput {
    * first turn.
    */
   onOpened?: (opportunityIds: string[]) => void;
+  /** Persist one user-facing boundary for each discovery tool call. */
+  onProgress?: (text: string) => void | Promise<void>;
 }
 
 export type WakeAction =
@@ -103,6 +105,7 @@ export type WakeAction =
   | { type: "decision"; opportunityId: string; decision: Decision }
   | { type: "ask"; scope: "intent" | "opportunity"; opportunityId?: string; question: string; options: string[] }
   | { type: "note"; text: string }
+  | { type: "progress"; text: string }
   | { type: "expire"; questionId: string };
 
 export interface WakeResult {
