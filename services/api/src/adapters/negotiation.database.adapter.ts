@@ -108,7 +108,7 @@ export interface NegotiationState {
   turns: { seatUserId: string; action: NegotiationTurnAction; message: string }[];
 }
 export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'signal_inactive'
-  | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn' | 'propose_not_first'
+  | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn'
   | 'counter_is_first' | 'accept_without_offer';
 export interface NegotiationOpening {
   userA: string;

@@ -1,5 +1,18 @@
 # Changelog
 
+## 60.0.0
+
+### Breaking changes
+
+- A counter is no longer a standing offer. `decideNegotiationTurn` accepts an `accept` only against the other seat's `propose`; an accept whose previous turn is a counter is rejected as `accept_without_offer`. The seat that asked a question is now the one that settles, because answering means proposing again.
+- `propose` is valid at any turn index, not only the opening one. It is how an answer to a counter is put back on the table. The `propose_not_first` rejection is removed from `NegotiationRejection`; `counter_is_first` still blocks a counter at turn 0, and the opening remains a propose or a decline.
+- `observeNegotiation` derives its menu from the same fact. A seat facing a `propose` sees `propose`, `counter`, `accept`, `decline`; a seat facing a `counter` sees `propose`, `counter`, `decline`; an empty log still sees `propose`, `decline`.
+- `NEGOTIATION_GUIDANCE` states the new rule in place of "counter responds with revised terms".
+
+### Preserved behavior
+
+- Settled negotiations, turn limits, seat and eligibility checks, race detection, and the `agreed`/`declined` outcomes and their opportunity statuses are unchanged. No stored enum value changed, so no migration is required. A negotiation mid-flight whose last turn is a counter simply loses `accept` from its menu.
+
 ## 59.0.1
 
 ### Documentation

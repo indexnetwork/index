@@ -54,6 +54,7 @@ function toNegotiationDetail(negotiation: StoredNegotiation): NegotiationDetail 
       message: turn.message,
       createdAt: turn.createdAt.toISOString(),
     })),
+    protocol: negotiation.protocol,
   };
 }
 

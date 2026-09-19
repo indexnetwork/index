@@ -48,6 +48,14 @@ export interface NegotiationDetail extends Negotiation {
     message: string;
     createdAt: string;
   }[];
+  /** What Index says this seat may do now. The only authority on it. */
+  protocol: {
+    guidance: string;
+    availableActions: NegotiationAction[];
+    blockedReason: string | null;
+    maxTurns: number;
+    messageLimit: number;
+  };
 }
 
 export type IntentStatus = "ACTIVE" | "PAUSED" | "FULFILLED" | "EXPIRED" | "ARCHIVED";
