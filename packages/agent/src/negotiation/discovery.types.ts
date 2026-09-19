@@ -1,4 +1,4 @@
-import type { Negotiation } from './negotiation.agent.ts';
+import type { Negotiation } from './negotiation.types.ts';
 
 /**
  * Authorized active assignments, refreshed by the host for a principal activation.
@@ -29,8 +29,9 @@ export interface DiscoveryCandidate {
   recentlyRejected: boolean;
 }
 
+/** Five complementary queries sharing one similarity floor and authorized intent-network scope. */
 export interface CandidateQuery {
-  query: string;
+  queries: string[];
   minSimilarity: number;
   networkIds: string[];
 }
@@ -46,11 +47,25 @@ export interface SearchRecord extends CandidateQuery {
   status: 'complete';
 }
 
-export type OpenNegotiationInput = {
+export type NegotiationSelection = {
   reasoning: string;
   brief: string;
 } & ({ searchId: string; candidateIntentId: string; networkId: string; negotiationId?: never }
   | { negotiationId: string; searchId?: never; candidateIntentId?: never; networkId?: never });
+
+/** A deliberate non-selection, retained in owner-visible activity rather than treated as an opening. */
+export interface SkippedCounterparty {
+  searchId: string;
+  candidateIntentId: string;
+  networkId: string;
+  reason: string;
+}
+
+/** Every candidate in the pending search must be opened or explicitly skipped exactly once. */
+export interface OpenNegotiationsInput {
+  negotiations: NegotiationSelection[];
+  skipped: SkippedCounterparty[];
+}
 
 /** A deliberate selection bound to its source records, authorized scope and observed latest session. */
 export interface NegotiationOpeningRequest {

@@ -1,8 +1,8 @@
 # @indexnetwork/agent
 
-A host-run personal agent: one identity, scopeable to an intent, that can
-stop to ask the party it represents a question. The host owns everything —
-instructions, operations, state. See README.md for the API.
+A host-run personal H2A agent for one principal and intent, with internal
+A2A negotiation subagents. The host owns instructions, operations and durable
+records. See README.md for the API.
 
 ## Working here
 
@@ -31,18 +31,29 @@ loop. It cannot short-circuit, and the failure shows every case at once.
 
 These were each a bug at some point, and the code reads oddly without them.
 
-- **The agent holds no state.** Everything lives with the host and travels:
-  `messages`, `history`. Adding instance state breaks resuming in another
-  process, which is the whole suspend design.
+- **Durable state belongs to the host.** `Agent` restores principal records
+  and holds only ephemeral review and A2A scheduling state. Restoration must
+  not replay model work. The internal `ModelLoop` uses `messages` / `history`
+  for its working transcript, not canonical principal records.
+- **`Agent` is H2A, with two commands.** `receiveInput()` accepts a message or
+  complete answer batch and automatically wakes after an accepted write,
+  without an extra manual-wake receipt. `wake(activation?)` explicitly reviews;
+  no argument means a manual wake. Construction is synchronous; readonly
+  `ready` restores records and ownership without calling a model. The host's
+  required `AbortSignal` cancels work; readonly `closed` resolves after cleanup.
+  A2A notifications arrive only through `AgentHost.subscribe()`, installed at
+  construction with delivery gated on `ready`. `negotiating` is a readonly ID
+  list, not a command. `ModelLoop` and `NegotiationSubagents` are internal, not
+  public package exports.
 - **One clock.** `now` feeds the loop's system message, read as UTC. It's a
   function, not a `Date`, so a long-lived server doesn't freeze on the day
   it booted.
 - **Retries live in `ModelClient` only.**
-- **Index Network operations are host-injected as tools.** This package
-  must not learn Index transport, auth, or vocabulary.
-  `examples/01-ask-user.ts` injects a fixed `find_matches` as a stand-in
-  for the match layer; that seam — a `Tool` in `tools` — is where the host
-  plugs in, not into `Agent`.
+- **Index transport and auth stay host-owned.** Public `Agent` receives host
+  records, a negotiation client and optional discovery capabilities; domain
+  tools stay inside H2A/A2A execution. `examples/01-ask-user.ts` demonstrates
+  only the internal `ModelLoop`, injecting a fixed `find_matches` tool.
+  `ToolContext.loop` names that machinery, not the public `Agent`.
 - **`files` is `dist`.** `examples/` is never published.
 
 ## Bun

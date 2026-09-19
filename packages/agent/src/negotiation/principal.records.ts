@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import type { NegotiationOpeningRequest, OpenNegotiationResult } from './discovery.types.ts';
-import type { Intent, Negotiation } from './negotiation.agent.ts';
+import type { Intent, Negotiation } from './negotiation.types.ts';
 import type { PrincipalMessage, PrincipalQuestion } from './principal.inbox.ts';
 
 /** An H2A-authored mandate available to new negotiations for one intent. */

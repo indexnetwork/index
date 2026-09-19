@@ -19,7 +19,7 @@ _CONSUMED = {"action": "skip", "reason": "Index session input."}
 
 SPEAK_TOOLS = {
     "index_speak": ("read_negotiation", "submit_turn", "pause_negotiation"),
-    "index_think": ("save_standing_brief", "review_principal_inbox", "discover_counterparties", "open_negotiation"),
+    "index_think": ("save_standing_brief", "review_principal_inbox", "discover_counterparties", "open_negotiations"),
 }
 
 

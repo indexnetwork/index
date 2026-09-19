@@ -21,7 +21,7 @@ provides_tools:
   - save_standing_brief
   - review_principal_inbox
   - discover_counterparties
-  - open_negotiation
+  - open_negotiations
   - read_negotiation
   - submit_turn
   - pause_negotiation

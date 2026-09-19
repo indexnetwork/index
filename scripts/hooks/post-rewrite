@@ -1,0 +1,42 @@
+#!/bin/sh
+# >>> prim post-rewrite hook >>>
+if [ "$(git config --get prim.active 2>/dev/null)" = "true" ]; then
+  case "$1" in amend|rebase) prim_rewrite_source="$1" ;; *) prim_rewrite_source= ;; esac
+  if [ -n "$prim_rewrite_source" ]; then
+    prim_rewrite_pairs_file=$(mktemp "${TMPDIR:-/tmp}/prim-post-rewrite-pairs.XXXXXXXX" 2>/dev/null) || prim_rewrite_pairs_file=
+    if [ -n "$prim_rewrite_pairs_file" ] && ! chmod 600 "$prim_rewrite_pairs_file" 2>/dev/null; then
+      rm -f "$prim_rewrite_pairs_file"
+      prim_rewrite_pairs_file=
+    fi
+    if [ -n "$prim_rewrite_pairs_file" ]; then
+      if cat > "$prim_rewrite_pairs_file"; then
+        exec < "$prim_rewrite_pairs_file"
+        prim_rewrite_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || prim_rewrite_branch=
+        prim_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/prim/bin"
+        prim_post_rewrite_ran=0
+        if [ "${PRIM_BIN_CACHE:-1}" != "0" ] && [ -f "$prim_cache_dir/prim-post-rewrite" ] && [ -f "$prim_cache_dir/node" ] && [ -n "$(find "$prim_cache_dir/prim-post-rewrite" -mmin "-${PRIM_BIN_CACHE_TTL_MIN:-1440}" 2>/dev/null)" ]; then
+          prim_node=$(cat "$prim_cache_dir/node")
+          prim_entry=$(cat "$prim_cache_dir/prim-post-rewrite")
+          if [ -x "$prim_node" ] && [ -f "$prim_entry" ]; then
+            ( trap '' HUP; trap 'if [ -n "$prim_rewrite_pairs_file" ]; then rm -f "$prim_rewrite_pairs_file"; fi' 0; export PRIM_REWRITE_SOURCE="$prim_rewrite_source" PRIM_REWRITE_BRANCH="$prim_rewrite_branch" PRIM_REWRITE_PAIRS_FILE="$prim_rewrite_pairs_file"; "$prim_node" "$prim_entry" ) </dev/null >/dev/null 2>&1 &
+            prim_post_rewrite_ran=1
+          fi
+        fi
+        if [ "$prim_post_rewrite_ran" -eq 0 ] && command -v npx >/dev/null 2>&1; then
+          ( trap '' HUP; trap 'if [ -n "$prim_rewrite_pairs_file" ]; then rm -f "$prim_rewrite_pairs_file"; fi' 0; export PRIM_REWRITE_SOURCE="$prim_rewrite_source" PRIM_REWRITE_BRANCH="$prim_rewrite_branch" PRIM_REWRITE_PAIRS_FILE="$prim_rewrite_pairs_file"; npx --yes --ignore-scripts -p @primitive.ai/prim@0.1.0-alpha.91 prim-post-rewrite ) </dev/null >/dev/null 2>&1 &
+          prim_post_rewrite_ran=1
+        fi
+        if [ "$prim_post_rewrite_ran" -eq 0 ]; then
+          rm -f "$prim_rewrite_pairs_file"
+        fi
+        unset prim_cache_dir prim_post_rewrite_ran prim_node prim_entry prim_rewrite_branch
+      else
+        rm -f "$prim_rewrite_pairs_file"
+      fi
+      unset prim_rewrite_pairs_file
+    fi
+  fi
+  unset prim_rewrite_source
+fi
+# <<< prim post-rewrite hook <<<
+# prim-created-post-rewrite-hook

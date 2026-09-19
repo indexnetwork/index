@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { Agent } from "./agent.ts";
+import { ModelLoop } from "./model.loop.ts";
 import { ModelClient } from "./model.ts";
 import { MemoryMessageStore } from "./sessions.ts";
 import { call, mockModel, restoreFetch } from "./test-helpers.ts";
@@ -20,12 +20,12 @@ const TODAY_LINE =
 const TOOL_DISCIPLINE_LINE =
   "Only call a tool from the list you were actually given this turn — what's offered can change as your situation does, so a capability you used before, or one that would make sense here, may not be available right now. If what you need isn't in that list, say so or ask, rather than calling a name you expect to exist.";
 
-function agent(
+function loop(
   tools: Tool[],
   systemPrompt = "You act for Alice.",
   options: { history?: MemoryMessageStore } = {},
 ) {
-  return new Agent({
+  return new ModelLoop({
     identity: { name: "Alice", id: "did:example:alice" },
     systemPrompt,
     model: new ModelClient({ apiKey: "test-key" }),
@@ -50,7 +50,7 @@ describe("run()", () => {
   test("returns the model's text when it calls no tools", async () => {
     const requests = mockModel([{ role: "assistant", content: "Nothing to do." }]);
 
-    const result = await agent([echo]).run("Say hello");
+    const result = await loop([echo]).run("Say hello");
 
     expect(result.output).toBe("Nothing to do.");
     expect(result.end).toBe("done");
@@ -61,7 +61,7 @@ describe("run()", () => {
   test("sends the system prompt first and the task as the user message", async () => {
     const requests = mockModel([{ role: "assistant", content: "ok" }]);
 
-    await agent([echo], "You act for Alice.").run("Sell the bike");
+    await loop([echo], "You act for Alice.").run("Sell the bike");
 
     expect(requests[0]?.messages).toEqual([
       {
@@ -75,7 +75,7 @@ describe("run()", () => {
   test("states the intent in the system message when scoped", async () => {
     const requests = mockModel([{ role: "assistant", content: "ok" }]);
 
-    await agent([echo]).for("Find a used road bike under $450").run("go");
+    await loop([echo]).for("Find a used road bike under $450").run("go");
 
     const system = String(requests[0]?.messages[0]?.content);
     expect(system).toContain("You act for Alice.");
@@ -86,7 +86,7 @@ describe("run()", () => {
   test("advertises its tools to the model as JSON Schema", async () => {
     const requests = mockModel([{ role: "assistant", content: "ok" }]);
 
-    await agent([echo]).run("anything");
+    await loop([echo]).run("anything");
 
     expect(requests[0]?.tools).toEqual([
       {
@@ -110,7 +110,7 @@ describe("run()", () => {
       { role: "assistant", content: "It said hi." },
     ]);
 
-    const result = await agent([echo]).run("Echo hi");
+    const result = await loop([echo]).run("Echo hi");
 
     expect(result.output).toBe("It said hi.");
     expect(result.steps).toEqual([
@@ -139,7 +139,7 @@ describe("run()", () => {
       { role: "assistant", content: "done" },
     ]);
 
-    const result = await agent([echo]).run("Echo twice");
+    const result = await loop([echo]).run("Echo twice");
 
     expect(result.steps.filter((step) => step.kind === "tool")).toHaveLength(2);
   });
@@ -159,7 +159,7 @@ describe("run()", () => {
       { role: "assistant", content: "I'll try something else." },
     ]);
 
-    const result = await agent([boom]).run("Do it");
+    const result = await loop([boom]).run("Do it");
 
     expect(result.end).toBe("done");
     expect(result.output).toBe("I'll try something else.");
@@ -178,7 +178,7 @@ describe("run()", () => {
       { role: "assistant", content: "Understood." },
     ]);
 
-    await agent([echo]).run("Do it");
+    await loop([echo]).run("Do it");
 
     expect(String(requests[1]?.messages.at(-1)?.content)).toContain('No tool named "nope"');
     expect(String(requests[1]?.messages.at(-1)?.content)).toContain("Available: echo");
@@ -194,7 +194,7 @@ describe("run()", () => {
       { role: "assistant", content: "ok" },
     ]);
 
-    const result = await agent([echo]).run("Do it");
+    const result = await loop([echo]).run("Do it");
 
     expect(result.steps[0]).toMatchObject({ kind: "tool", name: "echo" });
     expect(String((result.steps[0] as { error?: string }).error)).toContain("not valid JSON");
@@ -203,7 +203,7 @@ describe("run()", () => {
   test("stops at maxSteps while the model is still calling tools", async () => {
     mockModel([{ role: "assistant", content: null, tool_calls: [call("echo", { value: "x" })] }]);
 
-    const result = await agent([echo]).run("Loop forever", { maxSteps: 3 });
+    const result = await loop([echo]).run("Loop forever", { maxSteps: 3 });
 
     expect(result.end).toBe("max-steps");
     expect(result.steps.filter((step) => step.kind === "tool")).toHaveLength(3);
@@ -216,7 +216,7 @@ describe("run()", () => {
     ]);
 
     const seen: string[] = [];
-    await agent([echo]).run("Echo hi", {
+    await loop([echo]).run("Echo hi", {
       onStep: (step) => seen.push(step.kind === "tool" ? `tool:${step.name}` : "message"),
     });
 
@@ -227,10 +227,10 @@ describe("run()", () => {
 describe("continuing a conversation", () => {
   test("replays prior messages and replaces the stored system prompt", async () => {
     mockModel([{ role: "assistant", content: "first" }]);
-    const first = await agent([echo], "Old instructions.").run("one");
+    const first = await loop([echo], "Old instructions.").run("one");
 
     const requests = mockModel([{ role: "assistant", content: "second" }]);
-    await agent([echo], "New instructions.").run("two", { messages: first.messages });
+    await loop([echo], "New instructions.").run("two", { messages: first.messages });
 
     expect(requests[0]?.messages).toEqual([
       {
@@ -246,11 +246,11 @@ describe("continuing a conversation", () => {
   test("falls back to the history store when messages is omitted", async () => {
     const history = new MemoryMessageStore();
     mockModel([{ role: "assistant", content: "first" }]);
-    await agent([echo], "You act for Alice.", { history }).run("one");
+    await loop([echo], "You act for Alice.", { history }).run("one");
 
     const requests = mockModel([{ role: "assistant", content: "second" }]);
-    // A fresh Agent, over the same store, with no `messages` passed at all.
-    await agent([echo], "You act for Alice.", { history }).run("two");
+    // A fresh ModelLoop, over the same store, with no `messages` passed at all.
+    await loop([echo], "You act for Alice.", { history }).run("two");
 
     expect(requests[0]?.messages).toEqual([
       {
@@ -271,10 +271,10 @@ describe("continuing a conversation", () => {
     ]);
 
     mockModel([{ role: "assistant", content: "first" }]);
-    const first = await agent([echo], "Old instructions.", {}).run("one");
+    const first = await loop([echo], "Old instructions.", {}).run("one");
 
     const requests = mockModel([{ role: "assistant", content: "second" }]);
-    await agent([echo], "New instructions.", { history }).run("two", {
+    await loop([echo], "New instructions.", { history }).run("two", {
       messages: first.messages,
     });
 
@@ -301,7 +301,7 @@ describe("asking the user", () => {
   test("suspends instead of running the tool, and holds nothing open", async () => {
     mockModel([{ role: "assistant", content: null, tool_calls: [ask("What's your budget?")] }]);
 
-    const result = await agent([echo, askUserTool()]).run("Buy a bike");
+    const result = await loop([echo, askUserTool()]).run("Buy a bike");
 
     expect(result.end).toBe("needs-input");
     expect(result.pending).toEqual({ question: "What's your budget?" });
@@ -326,17 +326,17 @@ describe("asking the user", () => {
       },
     ]);
 
-    const result = await agent([askUserTool()]).run("Pick one");
+    const result = await loop([askUserTool()]).run("Pick one");
 
     expect(result.pending).toEqual({ question: "Which?", options: ["road", "commuter"] });
   });
 
   test("resumes from the answer, recording it as the tool's result", async () => {
     mockModel([{ role: "assistant", content: null, tool_calls: [ask("What's your budget?")] }]);
-    const suspended = await agent([askUserTool()]).run("Buy a bike");
+    const suspended = await loop([askUserTool()]).run("Buy a bike");
 
     const requests = mockModel([{ role: "assistant", content: "Understood, $450." }]);
-    const resumed = await agent([askUserTool()]).run("$450 max", {
+    const resumed = await loop([askUserTool()]).run("$450 max", {
       messages: suspended.messages,
     });
 
@@ -364,7 +364,7 @@ describe("asking the user", () => {
       },
     ]);
 
-    const result = await agent([echo, askUserTool()]).run("Do both");
+    const result = await loop([echo, askUserTool()]).run("Do both");
 
     expect(result.end).toBe("needs-input");
     expect(result.steps.map((s) => s.kind)).toEqual(["tool", "ask"]);
@@ -383,7 +383,7 @@ describe("asking the user", () => {
       },
     ]);
 
-    const result = await agent([askUserTool()]).run("Ask two things");
+    const result = await loop([askUserTool()]).run("Ask two things");
 
     expect(result.pending?.question).toBe("First?");
     const second = result.messages.find((m) => m.role === "tool" && m.tool_call_id === "q2");
@@ -400,7 +400,7 @@ describe("injected model", () => {
       { role: "assistant", content: "ok" },
     ]);
     const retries: [number, string][] = [];
-    const agent = new Agent({
+    const loop = new ModelLoop({
       identity: { name: "Alice", id: "did:example:alice" },
       systemPrompt: "You act for Alice.",
       model: new ModelClient({ apiKey: "test-key", timeout: 50, attempts: 2 }),
@@ -408,7 +408,7 @@ describe("injected model", () => {
       onRetry: (attempt, reason) => retries.push([attempt, reason]),
     });
 
-    const result = await agent.run("Say hello");
+    const result = await loop.run("Say hello");
 
     expect({ output: result.output, retries }).toEqual({ output: "ok", retries: [[2, "no answer within 50ms"]] });
   });

@@ -1,4 +1,4 @@
-import type { CandidateSearch, DiscoveryData, EmbeddingGenerator, Profile, RunOptions } from '../core/types.js';
+import type { CandidateSearch, DiscoveryData, EmbeddingGenerator, IntentCandidate, Profile, RunOptions } from '../core/types.js';
 
 import { validateDiscoveryMinSimilarity, REJECTION_COOLDOWN_MS } from './discovery.constants.js';
 
@@ -30,7 +30,7 @@ export interface CounterpartyCandidate {
 export interface CandidateDiscoveryInput {
   userId: string;
   triggerIntentId: string;
-  query: string;
+  queries: string[];
   minSimilarity: number;
   networkIds: string[];
 }
@@ -43,10 +43,10 @@ export interface CandidateDiscoveryResult {
 const DEFAULT_CANDIDATE_LIMIT = 80;
 
 /**
- * Executes an explicit-query vector search for candidate intents across authorized networks.
+ * Retrieves candidate intents with five complementary queries within shared intent registrations.
  *
- * One explicit query, one embedding generation, and one candidate retrieval.
- * The caller (H2A agent) owns all evaluation, query refinement, and opening decisions.
+ * One embedding batch, five parallel searches, and one merged candidate ranking.
+ * The caller (H2A agent) owns query complementarity, evaluation, refinement, and opening decisions.
  */
 export class CandidateDiscovery {
   constructor(
@@ -58,15 +58,15 @@ export class CandidateDiscovery {
   ) {}
 
   /**
-   * Discovers candidate counterparty intents matching an explicit search query.
+   * Discovers candidate counterparty intents matching five complementary search queries.
    *
-   * @param input - Explicit query and owned active intent; requested networks must be a subset of authorized assignments.
+   * @param input - Exactly five distinct nonempty queries and an owned match-ready intent; requested networks must be a subset of its authorized registrations.
    * @param options - Cancellation signal and execution tracing.
-   * @returns Hydrated candidates sorted by similarity descending.
-   * @throws When query is empty, network scope is invalid, or infrastructure reads fail.
+   * @returns At most 80 hydrated candidates sorted by their highest query similarity descending.
+   * @throws When queries or embeddings are invalid, network scope is invalid, or infrastructure reads fail.
    */
   async discover(input: CandidateDiscoveryInput, options: RunOptions = {}): Promise<CandidateDiscoveryResult> {
-    const { query, minScore, networkIds: requestedNetworks } = this.validateInput(input);
+    const { queries, minScore, networkIds: requestedNetworks } = this.validateInput(input);
     const { database, embedder, search } = this.deps;
     const { signal, traceEmitter, logger } = options;
 
@@ -76,10 +76,13 @@ export class CandidateDiscovery {
 
     try {
       // 1. Verify trigger intent is active and resolve authorized network scope
-      const [memberships, userIntents] = await Promise.all([
+      const [memberships, userIntents, triggerIntentNetworkIds] = await Promise.all([
         database.getNetworkMemberships(input.userId),
         database.getActiveIntents(input.userId),
+        database.getNetworkIdsForIntent(input.triggerIntentId),
       ]);
+
+      signal?.throwIfAborted();
 
       const triggerIntent = userIntents.find((intent) => intent.id === input.triggerIntentId);
       if (!triggerIntent) {
@@ -100,7 +103,9 @@ export class CandidateDiscovery {
 
       const isScopeAuthorized =
         scope.networkIds.length === requestedNetworks.length &&
-        requestedNetworks.every((id) => scope.networkIds.includes(id));
+        requestedNetworks.every(
+          (id) => scope.networkIds.includes(id) && userNetworkIds.includes(id) && triggerIntentNetworkIds.includes(id),
+        );
 
       if (!isScopeAuthorized) {
         throw new Error('Requested networks are outside authorized scope.');
@@ -108,31 +113,51 @@ export class CandidateDiscovery {
 
       signal?.throwIfAborted();
 
-      // 2. Generate embedding for explicit query
-      const generated = await embedder.generate(query, undefined, { signal });
-      const embedding = Array.isArray(generated[0]) ? generated[0] : (generated as number[]);
-      if (!embedding?.length) {
-        throw new Error('Query embedding is empty.');
+      // 2. Generate all five query embeddings in one batch
+      const embeddings = await embedder.generate(queries, undefined, { signal });
+      signal?.throwIfAborted();
+
+      if (
+        embeddings.length !== queries.length ||
+        !embeddings.every(
+          (embedding): embedding is number[] =>
+            Array.isArray(embedding) && embedding.length > 0 && embedding.every(Number.isFinite),
+        )
+      ) {
+        throw new Error('Expected five nonempty query embedding vectors.');
       }
+
+      // 3. Search the same authorized scope in parallel and merge before hydration
+      const hitsByQuery = await Promise.all(
+        embeddings.map((embedding) => search.searchIntentCandidates(embedding, {
+          networkScope: scope.networkIds,
+          excludeUserId: input.userId,
+          minScore,
+          limit: DEFAULT_CANDIDATE_LIMIT,
+          signal,
+        })),
+      );
 
       signal?.throwIfAborted();
 
-      // 3. Search candidate intents in vector store
-      const hits = await search.searchIntentCandidates(embedding, {
-        networkScope: scope.networkIds,
-        excludeUserId: input.userId,
-        minScore,
-        limit: DEFAULT_CANDIDATE_LIMIT,
-        signal,
-      });
+      const uniqueHits = new Map<string, IntentCandidate>();
+      for (const hits of hitsByQuery) {
+        for (const hit of hits) {
+          if (
+            hit.userId === input.userId ||
+            !scope.networkIds.includes(hit.networkId) ||
+            !Number.isFinite(hit.score) ||
+            hit.score < minScore
+          ) continue;
 
-      const eligibleHits = hits.filter(
-        (hit) =>
-          hit.userId !== input.userId &&
-          scope.networkIds.includes(hit.networkId) &&
-          Number.isFinite(hit.score) &&
-          hit.score >= minScore,
-      );
+          const dedupeKey = `${hit.id}:${hit.networkId}`;
+          const existing = uniqueHits.get(dedupeKey);
+          if (!existing || existing.score < hit.score) {
+            uniqueHits.set(dedupeKey, hit);
+          }
+        }
+      }
+      const eligibleHits = [...uniqueHits.values()];
 
       if (!eligibleHits.length) {
         return { networkIds: scope.networkIds, candidates: [] };
@@ -156,6 +181,8 @@ export class CandidateDiscovery {
           REJECTION_COOLDOWN_MS,
         ),
       ]);
+
+      signal?.throwIfAborted();
 
       const candidateMap = new Map(candidateProfiles.map((p) => [p.userId, p]));
       const rejectedSet = new Set(recentlyRejectedUserIds);
@@ -185,6 +212,8 @@ export class CandidateDiscovery {
         }),
       );
 
+      signal?.throwIfAborted();
+
       // 5. Final guard: re-verify source intent and live network memberships before returning
       const [currentSourceIntents, sourceAssignments, activeMembershipPairs] = await Promise.all([
         database.getActiveIntents(input.userId),
@@ -212,21 +241,14 @@ export class CandidateDiscovery {
         throw new Error('Source network scope changed during search.');
       }
 
-      // 6. Deduplicate candidates by (candidateIntentId, networkId) taking highest similarity
-      const uniqueCandidates = new Map<string, CounterpartyCandidate>();
-      for (const candidate of hydratedCandidates) {
-        if (!candidate) continue;
-        if (!validNetworks.includes(candidate.networkId)) continue;
-        if (!isMember(candidate.candidateUserId, candidate.networkId)) continue;
-
-        const dedupeKey = `${candidate.candidateIntentId}:${candidate.networkId}`;
-        const existing = uniqueCandidates.get(dedupeKey);
-        if (!existing || existing.similarity < candidate.similarity) {
-          uniqueCandidates.set(dedupeKey, candidate);
-        }
-      }
-
-      const ranked = [...uniqueCandidates.values()]
+      // 6. Apply live membership guards and cap the merged ranking
+      const ranked = hydratedCandidates
+        .filter(
+          (candidate): candidate is CounterpartyCandidate =>
+            candidate !== null &&
+            validNetworks.includes(candidate.networkId) &&
+            isMember(candidate.candidateUserId, candidate.networkId),
+        )
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, DEFAULT_CANDIDATE_LIMIT);
 
@@ -249,13 +271,19 @@ export class CandidateDiscovery {
   }
 
   private validateInput(input: CandidateDiscoveryInput): {
-    query: string;
+    queries: string[];
     minScore: number;
     networkIds: string[];
   } {
-    const query = input.query?.trim();
-    if (!query) {
-      throw new Error('An explicit search query is required.');
+    if (!Array.isArray(input.queries) || input.queries.length !== 5) {
+      throw new Error('Provide exactly five distinct nonempty search queries.');
+    }
+
+    const queries = Array.from(input.queries, (query) =>
+      typeof query === 'string' ? query.replace(/\s+/g, ' ').trim() : '',
+    );
+    if (queries.some((query) => !query) || new Set(queries.map((query) => query.toLowerCase())).size !== 5) {
+      throw new Error('Provide exactly five distinct nonempty search queries.');
     }
 
     const minScore = validateDiscoveryMinSimilarity(input.minSimilarity);
@@ -269,6 +297,6 @@ export class CandidateDiscovery {
       throw new Error('Provide distinct nonempty network IDs.');
     }
 
-    return { query, minScore, networkIds: input.networkIds };
+    return { queries, minScore, networkIds: input.networkIds };
   }
 }

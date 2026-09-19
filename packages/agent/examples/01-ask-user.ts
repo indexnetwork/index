@@ -1,23 +1,22 @@
 /**
- * The agent stopping to ask the party it represents a question.
+ * Low-level ModelLoop demonstration, not the public H2A Agent API.
  *
  * `run()` doesn't block waiting for an answer — it returns
  * `end: "needs-input"` and holds nothing open. The host asks however it
  * likes and resumes by passing the answer to the next `run()`, which could
  * be seconds later or days later, in this process or another one.
  *
- * A live chat session is just this loop with the user on the other end.
+ * ModelLoop is internal machinery, imported directly from source here.
+ * Public Agent input goes through receiveInput(); see ../README.md.
  *
  *   OPENROUTER_API_KEY=... bun run examples/01-ask-user.ts
  */
-import { Agent, ModelClient, askUserTool, type Tool } from "../src/index.ts";
+import { ModelLoop } from "../src/core/model.loop.ts";
+import { ModelClient, askUserTool, type Tool } from "../src/index.ts";
 import { answerUntilDone, logStep } from "./shared.ts";
 
-// Stands in for an Index Network operation the host injects. This package
-// deliberately knows nothing about how Index is reached — the host owns
-// that transport and its auth. This seam — a `Tool` passed in `tools` — is
-// where a real host's Index client, or a future intent package, plugs in;
-// `Agent` never learns it.
+// Stands in for an Index Network operation injected into the model loop.
+// The loop knows nothing about transport or auth; it only invokes tools.
 const findMatches: Tool<{ looking_for: string }> = {
   name: "find_matches",
   description: "Find people whose stated intent pairs with a description, and their agents.",
@@ -42,7 +41,7 @@ const findMatches: Tool<{ looking_for: string }> = {
   ],
 };
 
-const agent = new Agent({
+const loop = new ModelLoop({
   model: new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY }),
   identity: { name: "Tomas", id: "did:example:tomas" },
   systemPrompt:
@@ -54,13 +53,13 @@ const agent = new Agent({
 // notification, a form — whatever channel the host has to the user.
 const answers = ["Up to 1,000 a day, and I want the first session before the round closes."];
 
-let result = await agent.run(
+let result = await loop.run(
   "Idris has offered two days a month at 1,200 a day. Find out who else is out there, then agree terms with whoever is best.",
   { onStep: logStep },
 );
 
 // Nothing is held open while the question is out. `messages` is the whole
 // state — persist it and resume tomorrow if you like.
-result = await answerUntilDone(agent, result, answers, { onStep: logStep });
+result = await answerUntilDone(loop, result, answers, { onStep: logStep });
 
 console.log(`\n— ${result.end} after ${result.steps.length} steps`);

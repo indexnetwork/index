@@ -12,7 +12,7 @@ Connect to Index by opening the **Index** dashboard and choosing **log in with b
 
 Optional overrides: `INDEX_API_URL` (the bare API origin, without `/api`; defaults to `https://protocol.index.network`). Browser login pairs with the configured API environment (`INDEX_APP_BASE_URL` wins, else derived from `INDEX_API_URL`).
 
-Every declared function is one request against a named REST resource
+The general-purpose REST tools call named resources
 (`/intents`, `/networks`, `/opportunities`, `/docs`). Failures remain structured;
 rejected writes are never replayed.
 
@@ -20,11 +20,35 @@ The session authenticates you, not an agent. `GET /agents/me` returns the agent 
 
 ## Personal agent
 
-Hermes runs the same negotiator as hosted Index — `@indexnetwork/agent` —
-rather than a second copy of the state machine. The package still owns
-eligibility, one POST per turn, context freshness, and the principal inbox.
+Hermes runs the same `Agent` as hosted Index — from `@indexnetwork/agent` —
+rather than a second copy of the state machine. `Agent` owns H2A and delegates
+A2A to a negotiation subagent. The package still owns eligibility, one POST
+per turn, context freshness, and the principal inbox.
 Hermes supplies native `AIAgent` think/speaker sessions with the current
 agent's tool schemas; it does not restore model checkpoints.
+
+The think-session model tool is `open_negotiations({ negotiations, skipped })`;
+the singular model tool is removed with no compatibility alias. Both arrays
+are required, with at least one entry across them:
+
+- `negotiations`: each selection is either
+  `{ searchId, candidateIntentId, networkId, reasoning, brief }` or
+  `{ negotiationId, reasoning, brief }`. Each opening needs its own complete
+  private brief. With no discovery pending, visible negotiation IDs can be
+  selected for deliberate reopen with `skipped: []`.
+- `skipped`: each explicit skip is
+  `{ searchId, candidateIntentId, networkId, reason }`.
+
+Every candidate `(candidateIntentId, networkId)` pair from a pending nonempty
+`discover_counterparties` result must appear exactly once as an opening selection
+or an explicit skip. The shared runtime blocks another discovery and final inbox
+review until that result is processed. It executes the existing atomic host
+opening operations sequentially: an individually unavailable selection is
+nonfatal; stale context, lost authorization, or an uncertain write stops the
+remainder without retries, preserving committed openings. Incoming A2A retains
+its standing-brief fallback and does not automatically wake H2A. Schemas, batch
+rules, and plain-English batch details/results for the UI come from the shared
+agent; the plugin does not duplicate them or rename the atomic host REST methods.
 
 Register a Hermes agent under **Settings → Advanced**, then set
 `INDEX_EXECUTOR_ID` in this device's Hermes environment to that agent's UUID
@@ -48,11 +72,19 @@ the owner's agent DM — one conversation per signal, shown on Discover's signal
 detail and on Index web (`IntentNegotiatorChat`), the same DM the hosted
 negotiator uses.
 
+Each runtime constructs its `Agent` with an abort signal and awaits `ready`
+for ownership and hydration, without model work. Its `AgentHost.subscribe()`
+listener handles A2A events; shutdown aborts the signal and awaits `closed`
+for the full drain and records closure, then finishes pending publications.
+
 The plugin follows `GET /events?consumer=<executor UUID>`. Creation and
-broadcast frames retain their activation IDs; lifecycle and negotiation
-frames refresh A2A without starting a principal review. `principal.input`
-names a durable owner message: the sidecar reads canonical input, including
-all answers in a committed batch, before accepting a stable review receipt.
+broadcast frames retain their activation IDs through `agent.wake(activation)`;
+lifecycle and negotiation frames notify the host's A2A subscribers without
+starting a principal review. `principal.input` names a durable owner message:
+the sidecar reads canonical input, including all answers in a committed batch,
+then calls `agent.wake({ id: 'principal.input:<inputId>', type: 'h2a.wake' })`.
+It does not call `receiveInput` for these already-persisted messages or repeat
+their writes.
 Reconnect reconciles against `GET /negotiations`, never unfinished model work.
 Text typed into a think/speaker working session is ignored; send owner input
 through Index instead.

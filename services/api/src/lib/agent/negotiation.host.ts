@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { NegotiationAgent, type Model, type Negotiation, type NegotiationHost } from '@indexnetwork/agent';
+import { Agent, type AgentHost, type Model, type Negotiation, type NegotiationEvent } from '@indexnetwork/agent';
 import { NEGOTIATION_GUIDANCE } from '@indexnetwork/protocol';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
@@ -31,13 +31,15 @@ export interface ObservedNegotiation extends Pick<Negotiation, 'id' | 'pairKey' 
 /** API composition shared by the server and CLI; persistence and protocol operations are injected into independent agents. */
 export class ApiNegotiationHost extends EventEmitter {
   readonly title = 'NEGOTIATION LAB · API database';
-  readonly agents = new Map<string, NegotiationAgent>();
+  readonly agents = new Map<string, Agent>();
   readonly negotiations = new Map<string, ObservedNegotiation>();
   agentStatus = '';
   private subscriber?: ReturnType<typeof createRedisClient>;
   private scanning?: Promise<void>;
   private rescan = false;
   private stopped = false;
+  private readonly controller = new AbortController();
+  private readonly negotiationListeners = new Map<string, (event: NegotiationEvent) => Promise<void>>();
   private readonly versions = new Map<string, string>();
 
   constructor(readonly users: readonly ApiPrincipal[], model: Model) {
@@ -50,7 +52,11 @@ export class ApiNegotiationHost extends EventEmitter {
         this.observe(principal, record);
         return this.record(record);
       };
-      const host: NegotiationHost = {
+      const host: AgentHost = {
+        subscribe: (receive) => {
+          this.negotiationListeners.set(principal.id, receive);
+          return () => { this.negotiationListeners.delete(principal.id); };
+        },
         event: (event) => {
           log.lib.from('agent-events').info(event.type, { userId: principal.userId, intentId: principal.intentId, ...event });
           if (event.type === 'h2a.activated') this.emit('principal.activated', principal.intentId);
@@ -69,7 +75,7 @@ export class ApiNegotiationHost extends EventEmitter {
           this.emit('change');
         },
       };
-      this.agents.set(principal.id, new NegotiationAgent({
+      const agent = new Agent({
         owner: { id: principal.userId, name: principal.name }, intentId: principal.intentId, guidance: NEGOTIATION_GUIDANCE,
         client: { listNegotiations: async () => {
           const matches = await negotiationService.scan(principal.userId, principal.intentId);
@@ -81,7 +87,10 @@ export class ApiNegotiationHost extends EventEmitter {
           void this.scan();
           return this.record(result);
         } },
-      }, host, { model, records, discovery: createDiscoveryClient(records) }));
+      }, host, { model, records, discovery: createDiscoveryClient(records), signal: this.controller.signal });
+      this.agents.set(principal.id, agent);
+      // Hydration starts immediately; start() reports failures after the executor check.
+      void agent.ready.catch(() => {});
     }
   }
 
@@ -95,18 +104,23 @@ export class ApiNegotiationHost extends EventEmitter {
 
   /** Read records and subscribe to background match observations independently of TUI selection. @throws When a selected principal has an external negotiation executor. */
   async start(): Promise<void> {
-    const registry = new AgentDatabaseAdapter();
-    for (const userId of new Set(this.users.map((user) => user.userId))) {
-      if ((await registry.listAgentsForUser(userId)).some((agent) => agent.ownerId === userId && agent.type === 'external' && agent.handleNegotiations)) throw new PrincipalRuntimeIneligibleError('A selected principal already has an external negotiation executor. Disable that binding before running its local agent.');
+    try {
+      const registry = new AgentDatabaseAdapter();
+      for (const userId of new Set(this.users.map((user) => user.userId))) {
+        if ((await registry.listAgentsForUser(userId)).some((agent) => agent.ownerId === userId && agent.type === 'external' && agent.handleNegotiations)) throw new PrincipalRuntimeIneligibleError('A selected principal already has an external negotiation executor. Disable that binding before running its local agent.');
+      }
+      if (this.stopped) return;
+      await Promise.all([...this.agents.values()].map((agent) => agent.ready));
+      if (this.stopped) return;
+      this.subscriber = createRedisClient();
+      void this.follow(this.subscriber);
+      if (this.stopped) return;
+      // Ongoing notifications can keep a scan alive indefinitely; discovery does not gate session readiness.
+      void this.scan();
+    } catch (error) {
+      await this.stop();
+      throw error;
     }
-    if (this.stopped) return;
-    await Promise.all([...this.agents.values()].map((agent) => agent.start()));
-    if (this.stopped) return;
-    this.subscriber = createRedisClient();
-    void this.follow(this.subscriber);
-    if (this.stopped) return;
-    // Ongoing notifications can keep a scan alive indefinitely; discovery does not gate session readiness.
-    void this.scan();
   }
 
   /** Rescan on frames naming this session's signals. The lab is one process, so it holds its own offsets in memory. */
@@ -171,8 +185,8 @@ export class ApiNegotiationHost extends EventEmitter {
             if (!detail) continue;
             this.observe(principal, detail);
             this.versions.set(key, version);
-            void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: record.opportunityId })
-              .catch((error: unknown) => { this.agentStatus = String(error); this.emit('change'); });
+            void this.negotiationListeners.get(principal.id)?.({ kind: 'opportunity.matched', opportunityId: record.opportunityId })
+              .catch((error: unknown) => { if (!this.stopped) { this.agentStatus = String(error); this.emit('change'); } });
           }
         }
       } while (this.rescan && !this.stopped);
@@ -184,7 +198,8 @@ export class ApiNegotiationHost extends EventEmitter {
   /** Stop the local runtime and release its ownership; conversations and matches remain in the database. */
   async stop(): Promise<void> {
     this.stopped = true;
-    await Promise.allSettled([this.scanning, ...[...this.agents.values()].map((agent) => agent.stop())]);
+    this.controller.abort();
     this.subscriber?.disconnect();
+    await Promise.allSettled([this.scanning, ...[...this.agents.values()].map((agent) => agent.closed)]);
   }
 }

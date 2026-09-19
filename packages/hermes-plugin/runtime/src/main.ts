@@ -1,13 +1,15 @@
 import { join } from 'node:path';
 
-import { NegotiationAgent, type IntentActivation, type Model, type NegotiationHost, type NegotiationSpeaker, type RunResult, type Step, type Tool } from '@indexnetwork/agent';
+import { Agent, type AgentHost, type IntentActivation, type Model, type NegotiationEvent, type NegotiationSpeaker, type RunResult, type Step, type Tool } from '@indexnetwork/agent';
 
 import { IndexClient } from './client.ts';
 import { FilePrincipalRecords } from './principal.records.ts';
 
 interface Bridge { url: string; token: string }
 interface IntentRuntime {
-  agent: NegotiationAgent;
+  agent: Agent;
+  controller: AbortController;
+  listeners: Set<(event: NegotiationEvent) => Promise<void>>;
   records: FilePrincipalRecords;
   flushing: Promise<void>;
 }
@@ -133,7 +135,13 @@ class Negotiator {
     const [{ owner }, guidance, intent] = await Promise.all([this.client.principal(), this.client.guidance(), this.client.intent(intentId)]);
     const records = new FilePrincipalRecords(join(this.stateDirectory, `${owner.id}.${intentId}.records.json`), this.client, intentId);
     const title = signalTitle(intent.payload);
-    const host: NegotiationHost = {
+    const controller = new AbortController();
+    const listeners = new Set<(event: NegotiationEvent) => Promise<void>>();
+    const host: AgentHost = {
+      subscribe: (receive) => {
+        listeners.add(receive);
+        return () => { listeners.delete(receive); };
+      },
       event: (event) => log('info', event.type, { intentId, ...event }),
       status: (opportunityId, message) => log('info', 'status', { intentId, opportunityId, message }),
       retry: (_owner, attempt, reason) => log('warn', 'retry', { intentId, attempt, reason }),
@@ -146,7 +154,7 @@ class Negotiator {
       end: (record) => log('info', 'end', { intentId, opportunityId: record.opportunityId, outcome: record.outcome ?? record.protocol.blockedReason }),
       error: (opportunityId, _owner, reason) => log('warn', 'error', { intentId, opportunityId, reason }),
     };
-    const agent = new NegotiationAgent({
+    const agent = new Agent({
       owner, intentId, guidance,
       client: {
         listNegotiations: () => this.client.negotiationsForIntent(intentId),
@@ -157,9 +165,16 @@ class Negotiator {
         },
         submitTurn: (id, turn) => this.client.submitTurn(id, turn),
       },
-    }, host, { model: unusedModel, records, speaker: { run: (input) => this.speak(title, input) } });
-    const runtime: IntentRuntime = { agent, records, flushing: Promise.resolve() };
-    await agent.start();
+    }, host, { model: unusedModel, records, speaker: { run: (input) => this.speak(title, input) }, signal: controller.signal });
+    const runtime: IntentRuntime = { agent, controller, listeners, records, flushing: Promise.resolve() };
+    try {
+      await agent.ready;
+    } catch (error) {
+      // Closing can queue a final publication; drain it before a replacement runtime reads these records.
+      await agent.closed.catch(() => {});
+      await runtime.flushing.catch(() => {});
+      throw error;
+    }
     log('info', 'signal.started', { intentId });
     host.conversation();
     return runtime;
@@ -168,10 +183,12 @@ class Negotiator {
   /** Observe A2A changes without turning stalls or reconnects into H2A activations. */
   async wake(intentId: string, activation?: IntentActivation): Promise<void> {
     const runtime = await this.runtime(intentId);
-    if (activation) await runtime.agent.activate(activation);
+    if (activation) await runtime.agent.wake(activation);
     for (const record of await this.client.negotiationsForIntent(intentId)) {
-      void runtime.agent.receive({ kind: 'opportunity.matched', opportunityId: record.opportunityId })
-        .catch((error: unknown) => log('warn', 'error', { intentId, opportunityId: record.opportunityId, reason: String(error) }));
+      for (const receive of runtime.listeners) {
+        void receive({ kind: 'opportunity.matched', opportunityId: record.opportunityId })
+          .catch((error: unknown) => log('warn', 'error', { intentId, opportunityId: record.opportunityId, reason: String(error) }));
+      }
     }
   }
 
@@ -181,7 +198,7 @@ class Negotiator {
     const current = await runtime.records.read();
     const latest = current.messages.findLast((entry) => entry.kind === 'user' || entry.kind === 'answer');
     if (latest?.id !== inputId) return;
-    await runtime.agent.wake(`principal.input:${inputId}`);
+    await runtime.agent.wake({ id: `principal.input:${inputId}`, type: 'h2a.wake' });
   }
 
   async pending(intentId: string) { return { pending: (await this.runtime(intentId)).agent.pending }; }
@@ -190,7 +207,8 @@ class Negotiator {
     const runtimes = await Promise.allSettled([...this.runtimes.values()]);
     await Promise.allSettled(runtimes.map(async (result) => {
       if (result.status !== 'fulfilled') return;
-      await result.value.agent.stop();
+      result.value.controller.abort();
+      await result.value.agent.closed;
       await result.value.flushing;
     }));
   }

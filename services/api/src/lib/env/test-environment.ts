@@ -64,7 +64,7 @@ export function loadEnvironmentWithTestLock(options: EnvironmentLoadOptions): Lo
   const preservedReservedValues = Object.fromEntries(
     RESERVED_TEST_ENV_KEYS.map((key) => [key, environment[key]]),
   ) as Record<(typeof RESERVED_TEST_ENV_KEYS)[number], string | undefined>;
-  const result = load({ path: envFile, override: testMode });
+  const result = load({ path: envFile, override: true });
 
   if (testMode) {
     // Restore latched test mode and parent-owned orchestration markers before

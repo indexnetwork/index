@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Migrate the runtime to `Agent` and `AgentHost`: immediate initialization with `ready`, subscribed A2A events, and abort-signal shutdown that awaits `closed`.
+- Route lifecycle activations and stable already-persisted input receipts through `wake`; canonical owner messages and answer batches are never written twice.
+- **Breaking:** replace the singular opening model tool with `open_negotiations({ negotiations, skipped })`, with no compatibility alias. Both arrays are required and cannot both be empty; account for every pending discovery candidate exactly once by opening or explicitly skipping it, with a complete private brief per opening. Visible negotiation IDs remain selectable for deliberate reopen.
+- Use the shared agent's batch schemas and plain-English details/results without plugin-side negotiation logic. Existing atomic host REST operations remain sequential: individual unavailability is nonfatal; stale context, lost authorization, or uncertain writes stop the remainder without retries and retain committed openings. Incoming A2A standing-brief fallback and the absence of automatic H2A wakes are unchanged.
+
 ## 0.47.0
 
 ### Changed

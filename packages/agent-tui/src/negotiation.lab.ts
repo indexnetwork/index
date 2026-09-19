@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { MemoryPrincipalRecords, NegotiationAgent, type AgentDomainEvent, type DiscoveryClient, type NegotiationOpeningRequest, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationHost, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
+import { Agent, MemoryPrincipalRecords, type AgentDomainEvent, type AgentHost, type DiscoveryClient, type NegotiationOpeningRequest, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationEvent, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
 import type { EmbeddingGenerator } from '@indexnetwork/discovery';
 
 import { NEGOTIATION_GUIDANCE, Negotiations, decideNegotiationOpening, pairKeyOf, type NegotiationState } from '@indexnetwork/protocol';
@@ -220,9 +220,11 @@ export class NegotiationLab extends EventEmitter {
   readonly title = 'NEGOTIATION LAB · local simulation';
   readonly users: TuiPrincipal[];
   readonly negotiations = new Map<string, NegotiationDemo>();
-  readonly agents = new Map<string, NegotiationAgent>();
+  readonly agents = new Map<string, Agent>();
   readonly events: { userId: string; intentId: string; event: AgentDomainEvent }[] = [];
   private readonly records = new Map<string, MemoryPrincipalRecords>();
+  private readonly negotiationListeners = new Map<string, Set<(event: NegotiationEvent) => Promise<void>>>();
+  private readonly controller = new AbortController();
   agentStatus = '';
 
   constructor(scenario: DemoScenario, options: { model: Model; embedder: EmbeddingGenerator }) {
@@ -247,11 +249,18 @@ export class NegotiationLab extends EventEmitter {
         .filter((demo) => demo.principals.some((principal) => principal.userId === userId))
         .map((demo) => demo.client(userId).readNegotiation(demo.opportunityId))),
       async (intentId) => Boolean((await this.records.get(intentId)!.read()).standingBrief),
+      this.controller.signal,
     );
     for (const user of this.users) {
       const clientFor = (id: string) => this.negotiations.get(id)!.client(user.userId);
       const readNegotiations = () => listNegotiations(user);
-      const host: NegotiationHost = {
+      const listeners = new Set<(event: NegotiationEvent) => Promise<void>>();
+      this.negotiationListeners.set(user.id, listeners);
+      const host: AgentHost = {
+        subscribe: (receive) => {
+          listeners.add(receive);
+          return () => { listeners.delete(receive); };
+        },
         event: (event) => this.events.push({ userId: user.userId, intentId: user.intentId, event: structuredClone(event) }),
         status: (id, message, phase) => this.negotiations.get(id)!.progress(message, phase),
         retry: (owner, attempt, reason) => {
@@ -270,7 +279,7 @@ export class NegotiationLab extends EventEmitter {
             : [this.negotiations.get(id)!];
           for (const demo of affected) {
             demo.error(reason);
-            for (const principal of demo.principals) void this.agents.get(principal.id)!.stop(demo.opportunityId);
+            void this.stop(demo.opportunityId);
           }
           if (id === null) { this.agentStatus = (owner.name ?? owner.id) + ': ' + reason; this.emit('change'); }
         },
@@ -324,7 +333,7 @@ export class NegotiationLab extends EventEmitter {
             });
             demo.on('change', () => this.emit('change'));
             demo.on('negotiation.updated', () => {
-              for (const principal of principals) void this.agents.get(principal.id)!.receive({ kind: 'negotiation.updated', opportunityId });
+              void this.notify(demo, { kind: 'negotiation.updated', opportunityId });
             });
             this.negotiations.set(opportunityId, demo);
             created = true;
@@ -334,16 +343,14 @@ export class NegotiationLab extends EventEmitter {
             const demo = this.negotiations.get(result.opportunityId)!;
             demo.status = `Opened by ${user.name ?? user.userId}`;
             this.emit('change');
-            for (const principal of principals) {
-              void this.agents.get(principal.id)!.receive({ kind: 'opportunity.matched', opportunityId: result.opportunityId });
-            }
+            void this.notify(demo, { kind: 'opportunity.matched', opportunityId: result.opportunityId });
           }
 
           return result;
         },
       };
 
-      this.agents.set(user.id, new NegotiationAgent({
+      this.agents.set(user.id, new Agent({
         owner: { id: user.userId, name: user.name },
         intentId: user.intentId,
         guidance: NEGOTIATION_GUIDANCE,
@@ -356,8 +363,14 @@ export class NegotiationLab extends EventEmitter {
         model: options.model,
         records,
         discovery,
+        signal: this.controller.signal,
       }));
     }
+  }
+
+  private async notify(demo: NegotiationDemo, event: NegotiationEvent): Promise<void> {
+    await Promise.all(demo.principals.flatMap((principal) =>
+      [...this.negotiationListeners.get(principal.id)!].map((receive) => receive(event))));
   }
 
   /**
@@ -366,14 +379,22 @@ export class NegotiationLab extends EventEmitter {
    * @throws When a host cannot accept a creation event. Repeated calls are deduplicated by the records.
    */
   async start(): Promise<void> {
-    await Promise.all(this.users.map((user) => this.agents.get(user.id)!.activate({
+    await Promise.all([...this.agents.values()].map((agent) => agent.ready));
+    await Promise.all(this.users.map((user) => this.agents.get(user.id)!.wake({
       type: 'intent.created', id: `intent.created:${user.intentId}`,
     })));
   }
 
-  /** Cancel model work and stop all match records, retaining conversation history. */
-  async stop(): Promise<void> {
-    await Promise.all([...this.agents.values()].map((agent) => agent.stop()));
+  /** @param opportunityId - Cancel one local match, or omit to drain all agents and close their records. @returns After the selected work stops, retaining conversation history. */
+  async stop(opportunityId?: string): Promise<void> {
+    if (opportunityId !== undefined) {
+      const demo = this.negotiations.get(opportunityId)!;
+      demo.stop();
+      await this.notify(demo, { kind: 'negotiation.stopped', opportunityId });
+      return;
+    }
+    this.controller.abort();
+    await Promise.all([...this.agents.values()].map((agent) => agent.closed));
     for (const demo of this.negotiations.values()) demo.stop();
   }
 

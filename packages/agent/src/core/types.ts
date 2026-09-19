@@ -50,12 +50,10 @@ export interface PendingQuestion {
 }
 
 /**
- * Where this agent's conversation with its party is recorded.
+ * A model loop's working transcript, not the public Agent's principal records.
  *
- * There's one conversation per agent instance, not many keyed by id — the
- * agent holds no state itself, so this is the host's, and defaults to an
- * in-memory store. Swap it for something shared and an agent picks a
- * suspended conversation back up after a restart, or from another process.
+ * The loop defaults to an in-memory store. A shared store lets it pick a
+ * suspended run back up after a restart, or from another process.
  */
 export interface MessageStore {
   /** The conversation so far, including the system message once a run has

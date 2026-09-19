@@ -61,14 +61,39 @@ scenario data and in-memory cosine search instead of Postgres/pgvector. Both hos
 use the shared embedding generator: OpenRouter `openai/text-embedding-3-large`,
 2,000 dimensions, and identical text normalization. The first search embeds the
 fixture intent statements; those vectors are reused in memory for the rest of the
-run. Each H2A query gets its own embedding and similarity threshold.
+run. Each discovery call supplies five distinct, complementary queries, embedded
+in one batch and searched in parallel with one similarity threshold and one shared
+network scope. Results merge by counterparty intent and network, retaining the
+highest similarity and at most 80 candidates overall. Both intents must be registered
+in the returned network; a user's other network memberships never widen the scope.
 
 All fixture intents are active members of one simulated network, but each enters candidate retrieval only after its in-memory standing brief commits. Production scope,
 hydration, membership checks, deduplication and ranking run against these fixture
 ports. Search returns public names and intent text, never another user's private
 `instructions`. Declined local negotiations provide recent-rejection evidence.
-Search alone creates nothing: H2A selects a result through `open_negotiation`, which
-rechecks both intents' standing readiness and saves a new session's opening brief before A2A. Unsettled sessions are reused unchanged; a deliberate selection of a terminal session may create a new session under the same pair.
+Search alone creates nothing, but nonempty discovery when opening is offered makes
+`open_negotiations` the required next substantive operation. Every returned
+`(candidateIntentId, networkId)` must appear exactly once under its `searchId` as an
+opening or an explicit skip with a nonempty, grounded reason. The runtime blocks
+another search or final review while that batch is pending. There is no opening
+quota: poor fits must not be opened merely to fill the batch. An all-skipped batch
+is valid only with reasons for every candidate; ask for materially missing principal
+information in the final review after accounting for the candidates. A zero-result
+search can finish normally or refine the five queries or similarity floor.
+
+H2A generates distinct public reasoning and a complete, candidate-specific private
+brief for each opening after retrieval. “Automatic” means this runtime-enforced
+batch path, not host-fabricated briefs. The [batch contract](../agent/README.md#breaking-api-change)
+requires both `negotiations` and `skipped` arrays and at least one entry total;
+there is no singular-tool alias. The host executes openings sequentially, rechecking
+both intents' standing readiness and existing authorization/context fences, and
+atomically saves each new session with its opening brief before A2A. Unsettled
+sessions are reused without overwriting their briefs; explicitly selecting the
+latest terminal session can create a new session under unchanged authority rules.
+An unavailable item may allow later items to continue; stale authorization/context
+or an uncertain write stops the remainder without a blind retry. Earlier committed
+openings remain valid. Inbound A2A standing-brief fallback is unchanged and never
+wakes H2A.
 This exercises real model and embedding requests, but not database or Redis behavior.
 
 ## Bundled scenarios
@@ -91,8 +116,9 @@ different goals, while different wording can describe a useful connection.
 The respective intent counts per user are `1,1,1,1,1`, `2,2,1,1,1,1`,
 `2,2,1,1,1,1,1`, `2,2,1,1,1,1,1,1`, `2,2,2,1,1,1,1,1,1`, and
 `2,2,2,2,1,1,1,1,1,1`. These are discovery candidates, not preselected opportunities.
-Search excludes the principal's own intents. A negotiation exists only after H2A
-selects a candidate through `open_negotiation`; repeated unsettled selections reuse the session.
+Search excludes the principal's own intents. Negotiations are opened only for
+candidates selected in `open_negotiations`, not explicit skips; repeated unsettled
+selections reuse the session.
 
 Multi-intent personas have separate aims and decisions within their shared private
 instructions, exercising independent H2A conversations. The instructions describe
@@ -155,22 +181,32 @@ see [the API's live testing instructions](../../services/api/README.md#personal-
 | Mouse wheel / PgUp / PgDn | Scroll the selected history |
 | Ctrl+C | Stop the local run |
 
-**Thinking…** appears in an H2A pane while its intent review is in flight. If a
-concurrent negotiation change makes the final H2A effects stale, the pane says the
-review was unfinished and asks for a fresh message; it never retries or wakes H2A
-automatically. The A2A pane identifies the agents currently processing that match,
-such as `Alice Morgan's Agent`. These indicators track
-runtime activity, including model/tool work, rather than the last reported status;
-they clear on completion, pause, failure or shutdown. They do not block editing,
-create history entries or wake agents.
+An H2A pane names its running tool with the shared agent's plain-English action
+label, such as **Opening negotiations…**. While a review is in flight with
+no tool executing, it says **Preparing the next step…** instead. If a concurrent
+negotiation change makes the final H2A effects stale, the pane says the review was
+unfinished and asks for a fresh message; it never retries or wakes H2A automatically.
+The A2A pane still shows **Thinking…** and identifies the agents currently processing
+that match, such as `Alice Morgan's Agent`. These indicators track runtime activity
+rather than the last reported status; they clear on completion, pause, failure or
+shutdown. They do not block editing, create history entries or wake agents.
 
 Each H2A review's tool calls share one bordered box alongside the conversation.
-It starts collapsed, showing only the latest tool name and its `running`,
-`completed`, `error` or `cancelled` status. Click to expand the full sequence or
-collapse it again; expansion is retained when switching intents. These are
-live-session observations, not chat messages, model reasoning or persisted history;
-they are excluded from transcript exports. Completed means the tool call returned,
-not that every later review effect committed.
+New boxes start expanded, showing each call's plain-English label, `running`,
+`completed`, `error` or `cancelled` status, input details and outcome/error summary.
+Details appear while the tool runs and remain visible on failure or cancellation.
+Click to collapse or expand the full sequence; your choice is retained across live
+updates and intent switches. Collapsed headers show the latest action, status and
+call count. Opening batches show each counterpart's public intent, public reasoning
+and the owner's proposed complete private brief, plus explicit skips and reasons.
+Per-item outcomes distinguish saved openings, reuse without brief changes,
+unavailable items, and stopped or unconfirmed openings. Only the pane owner's
+private brief is shown, including the full brief being saved; counterpart information
+is public names and intents, not their private briefs. Activity is owner-only, never
+sent to counterparties. These are ephemeral live-session observations, not chat
+messages, model evidence or persisted history; they are excluded from transcript
+exports. Completed means the tool call returned, not that every opening succeeded
+or every later review effect committed.
 
 A2A action labels use blue for **propose**, amber for **counter**, green for
 **accept** and red for **decline**. Message text stays neutral. Sessions share one
@@ -198,7 +234,7 @@ suggested-answer selection, pending questions, and in-flight sends through inten
 roster, and layout changes. Questions keep their batch membership, ID, wording and
 suggestions while you draft. A selection or custom answer is not sent until every
 question has an answer and you submit the complete batch. New questions have no
-negotiation references. **Wake** calls `NegotiationAgent.wake()` for the selected
+negotiation references. **Wake** calls `Agent.wake()` for the selected
 intent. Its private `h2a.wake` receipt requests review of existing context without
 adding a chat message, answering a question, granting authority or invalidating
 A2A briefs. Pending questions and both answer and message drafts remain intact.
@@ -250,16 +286,35 @@ stored H2A conversation. Neither host invents profile facts from an intent.
 
 `mountNegotiationTui(renderer, host)` takes a `NegotiationTuiHost`: selectable
 principal/intent entries, agent conversation/input handles, observed match records,
-and a change event. It reads `reviewing` and `isNegotiating(opportunityId)` for live
-activity, and `toolCalls` for ephemeral H2A tool cards. It neither selects models nor schedules negotiations.
+and a change event. It reads `reviewing` and `negotiating.includes(opportunityId)`
+for live activity, and `toolCalls` for ephemeral H2A tool cards. The shared agent
+supplies each call's `label`, owner-scoped input `details` and outcome/error `summary`
+for all four H2A tools: inbox review, standing-brief saving, discovery and batch
+negotiation opening. Details can include the owner's full private brief, discovery
+queries, each selected counterpart's public intent, reasoning and proposed private
+brief, and explicit skips with reasons. Batch summaries include per-item outcomes,
+including stopped or unconfirmed openings. The view renders these fields as plain
+text with line breaks, without interpreting domain
+data or feeding activity back as model evidence. Tool completion does not confirm
+later review effects were persisted. Messages and complete answer batches go
+through `Agent.receiveInput()`, which persists accepted input and schedules one H2A
+review. The view neither selects models nor schedules negotiations.
 `NegotiationLab(scenario, { model, embedder })` implements this interface with
 in-memory storage, the shared discovery pipeline, and the protocol capability.
-After mounting the board, `lab.start()` announces its newly created fixture intents
-through `NegotiationAgent.activate()`; the normal backend uses the same agent entry
-point for `IntentService.create()`'s post-commit `intent.created` event.
+Construction initializes each `Agent` immediately; `agent.ready` covers ownership
+and hydration without model work. After mounting the board, `lab.start()` awaits
+readiness and announces its newly created fixture intents through
+`Agent.wake({ type: 'intent.created', id })`; the normal backend uses the same agent
+entry point for `IntentService.create()`'s post-commit `intent.created` event.
 `ApiNegotiationHost` in `services/api` implements the view interface with API services
 and durable agent sessions. The libraries do not import one another; each host
 composes them.
+
+Each `AgentHost.subscribe()` registers an A2A event listener during construction
+and returns a disposer. The lab delivers match and turn notifications to those
+listeners, never to a public agent event method. `lab.stop(opportunityId)` delivers
+`negotiation.stopped` to cancel only that match; `lab.stop()` aborts the injected
+signal and awaits every agent's `closed` promise to drain work and close records.
 
 The protocol advertises available actions, validates submissions against the
 current turn count, enforces 12 total A2A turns, and leaves an exhausted match

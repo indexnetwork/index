@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { IntentActivation, Model, NegotiationAgent, PrincipalQuestion, PrincipalAnswer, PrincipalMessage, PrincipalToolCall } from '@indexnetwork/agent';
+import type { Agent, IntentActivation, Model, PrincipalQuestion, PrincipalAnswer, PrincipalToolCall } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { PrincipalRecordsDatabaseAdapter, PrincipalRuntimeIneligibleError, PrincipalRuntimeConflict } from '../adapters/principal-records.database.adapter';
@@ -199,7 +199,7 @@ export class PersonalAgentService {
       const agent = session.host.agents.get(intentId)!;
       if (!this.running || session.stopping || !session.active || agent.stopped || this.sessions.get(intentId) !== session) return;
       try {
-        await agent.activate(activation);
+        await agent.wake(activation);
         if (agent.stopped) return;
         pending.delete(id);
       } catch (error) {
@@ -236,7 +236,7 @@ export class PersonalAgentService {
       void publishUserInvalidation(principal.userId, 'agent.status', principal.intentId);
     });
     host.on('change', () => {
-      if (this.running && !session.stopping && host.agents.get(principal.id)?.stopped) this.restartSession(session);
+      if (this.running && session.active && !session.stopping && host.agents.get(principal.id)?.stopped) this.restartSession(session);
     });
     session.ready = host.start().then(() => {
       if (!this.running || session.stopping || this.sessions.get(principal.id) !== session) return;
@@ -335,12 +335,9 @@ export class PersonalAgentService {
   async send(input: { userId: string; intentId: string; conversationId: string } & ({ text: string; answers?: never } | { answers: readonly PrincipalAnswer[]; text?: never })) {
     const agent = await this.readyInbox(input);
     if (!agent) return null;
-    let receipts: readonly PrincipalMessage[] | null;
-    if (input.answers) receipts = await agent.answer(input.answers);
-    else {
-      const message = await agent.message(input.text);
-      receipts = message ? [message] : null;
-    }
+    const receipts = await agent.receiveInput(input.answers
+      ? { type: 'answers', answers: input.answers }
+      : { type: 'message', text: input.text });
     if (!receipts) throw new PersonalAgentError('The input was not accepted. For answers, refresh and submit the complete current batch; nothing was sent.', 409);
     return Promise.all(receipts.map((receipt) => PrincipalRecordsDatabaseAdapter.readMessage(receipt.id)));
   }
@@ -352,7 +349,7 @@ export class PersonalAgentService {
     if (!await agent.wake()) throw new PersonalAgentError('The review was not accepted. Refresh and try again.', 409);
   }
 
-  private async readyInbox(input: { userId: string; intentId: string; conversationId: string }): Promise<NegotiationAgent | null> {
+  private async readyInbox(input: { userId: string; intentId: string; conversationId: string }): Promise<Agent | null> {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new PersonalAgentError('Intent not found.', 404);
     if (await this.registry.getSelectedNegotiator(input.userId)) return null;
     if (!this.running) throw new PersonalAgentError('Your personal agent is unavailable.', 503);

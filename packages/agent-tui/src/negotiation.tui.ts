@@ -1,4 +1,4 @@
-import type { Negotiation, NegotiationAgent, PrincipalQuestion, NegotiationAction } from '@indexnetwork/agent';
+import type { Agent, Negotiation, PrincipalQuestion, NegotiationAction } from '@indexnetwork/agent';
 import { BoxRenderable, ScrollBoxRenderable, TextareaRenderable, TextRenderable, fg, t, type CliRenderer, type KeyEvent } from '@opentui/core';
 
 /** An independently selectable principal/intent conversation. */
@@ -21,7 +21,7 @@ export interface TuiNegotiation extends Pick<Negotiation, 'id' | 'pairKey' | 'se
 export interface NegotiationTuiHost {
   title: string;
   users: readonly TuiPrincipal[];
-  agents: ReadonlyMap<string, Pick<NegotiationAgent, 'conversation' | 'pending' | 'toolCalls' | 'reviewing' | 'reviewNotice' | 'isNegotiating' | 'message' | 'answer' | 'wake'>>;
+  agents: ReadonlyMap<string, Pick<Agent, 'conversation' | 'pending' | 'toolCalls' | 'reviewing' | 'reviewNotice' | 'negotiating' | 'receiveInput' | 'wake'>>;
   negotiations: ReadonlyMap<string, TuiNegotiation>;
   agentStatus: string;
   on(event: 'change', listener: () => void): unknown;
@@ -304,7 +304,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
     append(history, 'Intent', principal.intent, COLORS.muted);
     append(history, 'Principal context', principal.principalContext, COLORS.muted);
     const activity = new TextRenderable(renderer, {
-      id: `activity-${id}`, content: 'Thinking…', visible: false, height: 1, flexShrink: 0, fg: COLORS.focus,
+      id: `activity-${id}`, visible: false, flexShrink: 0, fg: COLORS.focus, wrapMode: 'word',
     });
     box.add(activity);
     const reviewNotice = new TextRenderable(renderer, {
@@ -408,7 +408,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
     pane.sending = true;
     pane.sendError = undefined;
     try {
-      const sent = await lab.agents.get(pane.principal.id)!.message(text);
+      const sent = await lab.agents.get(pane.principal.id)!.receiveInput({ type: 'message', text });
       if (!sent) pane.sendError = 'Could not send. Draft kept.';
       return sent !== null && !renderer.isDestroyed;
     } catch (error) {
@@ -440,9 +440,11 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
     pane.sending = true;
     pane.sendError = undefined;
     try {
-      const sent = await agent.answer(answers);
-      if (sent) {
-        for (const answer of answers) if (pane.drafts.get(answer.questionId) === answer.text) pane.drafts.delete(answer.questionId);
+      const sent = await agent.receiveInput({ type: 'answers', answers });
+      if (sent !== null) {
+        if (!renderer.isDestroyed) {
+          for (const answer of answers) if (pane.drafts.get(answer.questionId) === answer.text) pane.drafts.delete(answer.questionId);
+        }
       } else pane.sendError = 'Batch changed; nothing sent. Drafts kept.';
     } catch (error) {
       pane.sendError = 'Could not save batch. Drafts kept: ' + (error instanceof Error ? error.message : String(error));
@@ -455,7 +457,9 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
     for (const [id, pane] of panes) {
       const principal = pane.principal;
       const agent = lab.agents.get(id)!;
+      const runningTool = agent.toolCalls.findLast((call) => call.status === 'running');
       pane.activity.visible = agent.reviewing;
+      pane.activity.content = runningTool ? `${runningTool.label}…` : 'Preparing the next step…';
       pane.reviewNotice.visible = Boolean(agent.reviewNotice);
       pane.reviewNotice.content = agent.reviewNotice ?? '';
       while (pane.displayed < agent.conversation.length) {
@@ -488,7 +492,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
           const before = next && pane.messageCards.get(next.id);
           if (before) pane.history.insertBefore(box, before);
           else pane.history.add(box);
-          group = { box, label, expanded: false, rows: new Map() };
+          group = { box, label, expanded: true, rows: new Map() };
           pane.toolGroups.set(call.reviewId, group);
         }
         let row = group.rows.get(call.id);
@@ -498,12 +502,13 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
           group.rows.set(call.id, row);
         }
         const color = { running: COLORS.focus, completed: COLORS.answer, error: '#f88a8a', cancelled: COLORS.muted }[call.status];
-        row.content = `${call.name} · ${call.status}`;
+        const label = call.label + (call.status === 'running' ? '…' : '');
+        row.content = [`${label} · ${call.status}`, call.details, call.summary].filter(Boolean).join('\n\n');
         row.fg = color;
         row.visible = group.expanded;
         group.box.borderColor = color;
         group.label.fg = color;
-        group.label.content = group.expanded ? '[−] Tool calls' : `[+] ${call.name} · ${call.status}`;
+        group.label.content = `${group.expanded ? '[−]' : '[+]'} ${label} · ${call.status} · ${group.rows.size} ${group.rows.size === 1 ? 'call' : 'calls'}${!group.expanded && call.summary ? '\n' + call.summary.split('\n')[0] : ''}`;
       }
       if (pane.shownQuestions !== agent.pending) {
         if (!pane.shownQuestions.length) pane.messageMode = Boolean(pane.messageDraft);
@@ -589,7 +594,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
       matchIndex = Math.min(matchIndex, Math.max(0, available.length - 1));
       const sessions = available[matchIndex] ?? [];
       demo = sessions.at(-1);
-      const thinking = demo?.principals.filter((principal) => lab.agents.get(principal.id)!.isNegotiating(demo!.opportunityId)) ?? [];
+      const thinking = demo?.principals.filter((principal) => lab.agents.get(principal.id)!.negotiating.includes(demo!.opportunityId)) ?? [];
       sharedActivity.visible = thinking.length > 0;
       sharedActivity.content = 'Thinking… · ' + thinking.map(({ name }) => name + "'s Agent").join(' & ');
       const nextPair = demo?.pairKey ?? pairKey;

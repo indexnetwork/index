@@ -10,8 +10,8 @@ export type PrincipalActivation = IntentActivation | { id: string; type: 'h2a.wa
 /** Observations of committed or locally completed agent transitions, never commands or wake sources. */
 export type AgentDomainEvent =
   | { type: 'h2a.activated'; inputId: string; cause: 'user' | 'answer' | PrincipalActivation['type'] }
-  | { type: 'discovery.searched'; inputId: string; searchId: string; query: string; minSimilarity: number; networkIds: string[]; candidateIntentIds: string[] }
-  | { type: 'candidate.evaluated'; inputId: string; searchId: string; candidateIntentId: string; networkId: string; outcome: 'selected'; similarity: number }
+  | { type: 'discovery.searched'; inputId: string; searchId: string; queries: string[]; minSimilarity: number; networkIds: string[]; candidateIntentIds: string[] }
+  | { type: 'candidate.evaluated'; inputId: string; searchId: string; candidateIntentId: string; networkId: string; outcome: 'selected' | 'skipped'; similarity: number }
   | { type: 'negotiation.opened'; inputId: string; opportunityId: string; candidateIntentId: string; networkId: string }
   | { type: 'question.answered'; inputId: string; questionId: string; batchId: string }
   | { type: 'question.asked'; inputId: string; questionId: string; batchId: string }

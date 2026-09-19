@@ -40,6 +40,7 @@ export default defineConfig(({ mode, command }) => {
     },
     server: {
       port: 3000,
+      strictPort: true,
       proxy: {
         "/api": {
           target: env.VITE_PROTOCOL_URL || "http://localhost:3001",

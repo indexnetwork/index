@@ -8,14 +8,13 @@ import type { AgentIdentity, Intent, MessageStore, RunResult, Step } from "./typ
 
 const DEFAULT_MAX_STEPS = 10;
 
-export interface AgentOptions {
-  /** Who this agent acts for. Constant across every intent scope. */
+export interface ModelLoopOptions {
+  /** Who this loop acts for. Constant across every intent scope. */
   identity: AgentIdentity;
   /** Standing instructions supplied by the host. `instructions()` combines them
    * with identity, date, tool-use guidance, and intent into the system message. */
   systemPrompt: string;
-  /** What the agent is working on. Usually set with `for()` rather than
-   * here; an agent without one is the unscoped agent. */
+  /** What the loop is working on. Usually set with `for()` rather than here. */
   intent?: Intent;
 
   /**
@@ -27,7 +26,7 @@ export interface AgentOptions {
    */
   tools?: Tool[];
 
-  /** Model capability constructed by the host, shared across this agent's tasks. */
+  /** Model capability constructed by the host, shared across this loop's tasks. */
   model: Model;
   /** Step cap for `run()`. Defaults to 10. */
   maxSteps?: number;
@@ -44,13 +43,10 @@ export interface AgentOptions {
   now?: () => Date;
 
   /**
-   * Where this agent's conversation with its party is recorded.
-   *
-   * The agent holds no state of its own; this is the host's, and defaults
-   * to an in-memory store. Swap it for something shared and an agent picks
-   * a suspended conversation back up after a restart, or from another
-   * process, without the host having to thread `messages` through every
-   * `run()` call itself.
+   * Where this loop's working transcript is recorded. Defaults to an
+   * in-memory store. A shared store lets a loop pick a suspended run back
+   * up after a restart, or from another process, without threading
+   * `messages` through every `run()` call.
    */
   history?: MessageStore;
 }
@@ -59,11 +55,11 @@ export interface RunOptions {
   maxSteps?: number;
   /** Working transcript for this task. Concurrent tasks use separate stores. */
   history?: MessageStore;
-  /** Tools scoped to this task; the agent's identity and model stay shared. */
+  /** Tools scoped to this task; the loop's identity and model stay shared. */
   tools?: Tool[];
   /** The conversation so far — pass `messages` from a previous result to
    * continue it, including resuming a run that stopped on a question.
-   * Omit it to fall back to the agent's `history` store instead; passing
+   * Omit it to fall back to the loop's `history` store instead; passing
    * it always wins, so a host mixing both approaches doesn't get a stale
    * transcript silently overriding a fresher one. */
   messages?: ModelMessage[];
@@ -73,12 +69,11 @@ export interface RunOptions {
 }
 
 /**
- * A personal agent a host runs on someone's behalf: one identity, a system
- * prompt the host supplies, the tools the host injects, and a loop that
- * runs until the work is done or the party it represents has to answer
- * something.
+ * Internal model/tool execution machinery, not the public H2A Agent.
+ * Runs with a supplied identity, prompt and tools until the work is done
+ * or the party it represents has to answer something.
  */
-export class Agent {
+export class ModelLoop {
   readonly identity: AgentIdentity;
   readonly systemPrompt: string;
   readonly intent?: Intent;
@@ -86,10 +81,10 @@ export class Agent {
 
   private readonly model: Model;
   private readonly maxSteps: number;
-  /** This agent's conversation with its party. */
+  /** This loop's working transcript. */
   private readonly history: MessageStore;
 
-  constructor(private readonly options: AgentOptions) {
+  constructor(private readonly options: ModelLoopOptions) {
     this.identity = options.identity;
     this.systemPrompt = options.systemPrompt;
     this.intent = options.intent;
@@ -103,17 +98,16 @@ export class Agent {
   // --- intent scoping ------------------------------------------------
 
   /**
-   * The same agent, narrowed to one intent.
+   * The same loop, narrowed to one intent.
    *
-   * This is a lens, not a new agent: the identity object is shared, so
-   * anything the scoped agent says is said by the same party. All that
-   * changes is context — the intent is stated to the model.
+   * The identity and history are shared. All that changes is context —
+   * the intent is stated to the model.
    */
-  for(intent: Intent | string): Agent {
-    return new Agent({
+  for(intent: Intent | string): ModelLoop {
+    return new ModelLoop({
       ...this.options,
       identity: this.identity,
-      // Shared, not copied — an intent scopes what the agent is working
+      // Shared, not copied — an intent scopes what the loop is working
       // on, not what it has already said.
       history: this.history,
       intent: typeof intent === "string" ? { statement: intent } : intent,
@@ -121,7 +115,7 @@ export class Agent {
   }
 
   /** The system message the loop actually runs under: the host's standing
-   * instructions, plus who this agent is, plus the current intent. */
+   * instructions, plus the represented identity and current intent. */
   instructions(): string {
     return buildAgentSystemPrompt({
       systemPrompt: this.systemPrompt,
@@ -131,10 +125,10 @@ export class Agent {
     });
   }
 
-  // --- the agent loop ------------------------------------------------
+  // --- the model loop ------------------------------------------------
 
   /**
-   * Runs the agent: ask the model, run the tools it calls, feed the results
+   * Runs the loop: ask the model, run the tools it calls, feed the results
    * back, until it answers with text, needs the user, or spends `maxSteps`.
    *
    * `input` is normally an instruction. When the previous result ended
@@ -154,7 +148,7 @@ export class Agent {
       messages,
       input,
       maxSteps: options.maxSteps ?? this.maxSteps,
-      context: { agent: this, signal: options.signal },
+      context: { loop: this, signal: options.signal },
       onStep: options.onStep,
       onRetry: this.options.onRetry,
       signal: options.signal,

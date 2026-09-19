@@ -42,8 +42,14 @@ export interface PrincipalToolCall {
   id: string;
   reviewId: string;
   name: string;
+  /** Plain-English action supplied by the agent. */
+  label: string;
+  /** Owner-scoped plain-text inputs, available while running and retained on failure. */
+  details?: string;
   afterMessageId?: string;
   status: 'running' | 'completed' | 'error' | 'cancelled';
+  /** Safe, plain-text outcome or error; may contain multiple lines. */
+  summary?: string;
 }
 
 export interface PersonalAgentState {

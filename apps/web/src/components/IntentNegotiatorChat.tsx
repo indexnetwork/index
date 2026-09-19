@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, BotMessageSquare, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { useConversations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
-import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState } from "@/services/conversation";
+import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type PrincipalToolCall } from "@/services/conversation";
 import { cn } from "@/lib/utils";
 
 type Provenance = { kind?: string; questionId?: string; scope?: string; matches?: { opportunityId: string; counterparty: { name: string | null } }[] };
@@ -21,13 +21,7 @@ function messageText(message: ConversationMessage): string {
 function reviewActivity(agent?: PersonalAgentState): string | null {
   if (!agent?.reviewing) return null;
   const tool = agent.toolCalls?.findLast((call) => call.status === "running");
-  switch (tool?.name) {
-    case "save_standing_brief": return "Updating your brief…";
-    case "discover_counterparties": return "Looking for matches…";
-    case "open_negotiation": return "Exploring a potential match…";
-    case "review_principal_inbox": return "Reviewing what you’ve shared…";
-    default: return "Thinking…";
-  }
+  return tool ? `${tool.label}…` : "Preparing the next step…";
 }
 
 /** One private intent conversation; browser input follows the question actually shown while it was drafted. */
@@ -43,6 +37,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [agent, setAgent] = useState<PersonalAgentState>();
+  const [collapsedToolGroups, setCollapsedToolGroups] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -55,6 +50,19 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const batchComplete = pending.length > 0 && pending.every((question) => draft.answers[question.id]?.trim());
   const canSend = agent?.status === "running" || agent?.status === "external";
   const activity = reviewActivity(agent);
+  const toolCallProgress = (agent?.toolCalls ?? []).map((call) => `${call.id}:${call.status}`).join(",");
+  const messageIds = new Set(messages.map((message) => message.id));
+  const toolGroups = new Map<string, { afterMessageId?: string; calls: PrincipalToolCall[] }>();
+  for (const call of agent?.toolCalls ?? []) {
+    let group = toolGroups.get(call.reviewId);
+    if (!group) {
+      group = { calls: [] };
+      toolGroups.set(call.reviewId, group);
+    }
+    group.calls.push(call);
+    // Lifecycle activations may not be visible in the transcript; use the first available anchor.
+    if (!group.afterMessageId && call.afterMessageId && messageIds.has(call.afterMessageId)) group.afterMessageId = call.afterMessageId;
+  }
 
   const mergeMessages = useCallback((incoming: ConversationMessage[]) => {
     setMessages((previous) => [...new Map([...previous, ...incoming].map((message) => [message.id, message])).values()]
@@ -113,7 +121,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   }), [intentId, refresh, subscribeAgentChange]);
 
   useEffect(() => { sessionStorage.setItem(storageKey, JSON.stringify(draft)); }, [draft, storageKey]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages.length, pendingIds]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages.length, pendingIds, toolCallProgress]);
 
   const send = async () => {
     const text = draft.message.trim();
@@ -183,6 +191,37 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     </div>
   );
 
+  const renderToolGroups = (afterMessageId?: string) => [...toolGroups]
+    .filter(([, group]) => group.afterMessageId === afterMessageId)
+    .map(([reviewId, group]) => (
+      <details key={reviewId} open={!collapsedToolGroups.has(reviewId)}
+        onToggle={(event) => {
+          const open = event.currentTarget.open;
+          setCollapsedToolGroups((current) => {
+            if (current.has(reviewId) === !open) return current;
+            const next = new Set(current);
+            if (open) next.delete(reviewId); else next.add(reviewId);
+            return next;
+          });
+        }}
+        className="max-w-[92%] rounded-xl border border-gray-200 text-xs text-gray-600">
+        <summary className="cursor-pointer break-words rounded-xl px-3 py-2 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-400">
+          {group.calls[group.calls.length - 1].label}{group.calls[group.calls.length - 1].status === "running" ? "…" : ""} · {group.calls.length} {group.calls.length === 1 ? "call" : "calls"}
+        </summary>
+        <div className="space-y-3 border-t border-gray-100 px-3 py-2">
+          <p className="text-gray-500">Temporary activity; tool completion does not confirm saved review changes.</p>
+          {group.calls.map((call) => <div key={call.id}>
+            <div className="flex items-start justify-between gap-2">
+              <span className="min-w-0 break-words font-medium text-gray-700">{call.label}{call.status === "running" ? "…" : ""}</span>
+              <span className={cn("shrink-0 capitalize", call.status === "error" ? "text-red-700" : call.status === "cancelled" ? "text-amber-800" : "text-gray-500")}>{call.status}</span>
+            </div>
+            {call.details && <p className="mt-1 whitespace-pre-wrap break-words">{call.details}</p>}
+            {call.summary && <p className="mt-1 whitespace-pre-wrap break-words">{call.summary}</p>}
+          </div>)}
+        </div>
+      </details>
+    ));
+
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="intent-negotiator-chat">
       <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
@@ -197,22 +236,28 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50">Wake</button>}
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        {loading ? <Loader2 className="mx-auto my-10 h-5 w-5 animate-spin text-gray-400" />
-          : messages.length === 0 ? !activity && <div className="flex items-start gap-2 text-sm text-gray-600">
+        {loading ? <Loader2 className="mx-auto my-10 h-5 w-5 animate-spin text-gray-400" /> : <>
+          {messages.length === 0 && toolGroups.size === 0 && !activity && <div className="flex items-start gap-2 text-sm text-gray-600">
             <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0" />
             <p>Ask about your matches, share a preference, or give your agent direction for this intent.</p>
-          </div> : messages.map((message) => {
+          </div>}
+          {messages.map((message) => {
             const content = messageText(message);
             const provenance = message.metadata?.principalMessage as Provenance | undefined;
-            if (!content || provenance?.kind === "question" && pending.some((question) => question.id === provenance.questionId)) return null;
+            const hidden = !content || provenance?.kind === "question" && pending.some((question) => question.id === provenance.questionId);
             const own = message.role === "user";
-            return <div key={message.id} className={cn("flex", own ? "justify-end" : "justify-start")}>
-              <article className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-sm", own ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900")}>
-                {references(provenance?.scope, provenance?.matches)}
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-              </article>
-            </div>;
+            return <Fragment key={message.id}>
+              {!hidden && <div className={cn("flex", own ? "justify-end" : "justify-start")}>
+                <article className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-sm", own ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900")}>
+                  {references(provenance?.scope, provenance?.matches)}
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                </article>
+              </div>}
+              {renderToolGroups(message.id)}
+            </Fragment>;
           })}
+          {renderToolGroups()}
+        </>}
         <div ref={endRef} />
       </div>
 

@@ -1,10 +1,11 @@
 /**
- * Shared helpers for the examples/ scripts. These make real OpenRouter
- * calls — set OPENROUTER_API_KEY before running them.
+ * Helpers for the low-level ModelLoop examples, not the public Agent API.
+ * These make real OpenRouter calls — set OPENROUTER_API_KEY before running.
  */
-import type { Agent, RunOptions, RunResult, Step } from "../src/index.ts";
+import type { ModelLoop, RunOptions } from "../src/core/model.loop.ts";
+import type { RunResult, Step } from "../src/index.ts";
 
-/** Prints one step of an agent run. */
+/** Prints one step of a model loop run. */
 export function logStep(step: Step): void {
   if (step.kind === "message") {
     console.log(`\n${step.content}`);
@@ -32,7 +33,7 @@ function truncate(text: string, max = 140): string {
  * state — persist it and resume tomorrow if you like.
  */
 export async function answerUntilDone(
-  agent: Agent,
+  loop: ModelLoop,
   result: RunResult,
   answers: string[],
   options: RunOptions = {},
@@ -41,7 +42,7 @@ export async function answerUntilDone(
   while (result.end === "needs-input" && asked < answers.length) {
     const answer = answers[asked++]!;
     console.log(`  > ${answer}\n`);
-    result = await agent.run(answer, { ...options, messages: result.messages });
+    result = await loop.run(answer, { ...options, messages: result.messages });
   }
   return result;
 }

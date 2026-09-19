@@ -43,10 +43,7 @@ select opt in "${CHOICES[@]}"; do
     bun run build
     echo ""
     echo "Starting dev servers at root..."
-    bun run dev:api &
-    bun run dev:web &
-    wait
-    exit 0
+    exec bun "$REPO_ROOT/scripts/dev-servers.ts"
   fi
   # opt is "name  (set up)" or "name  (not set up)" — worktree name is first word
   wt_name="${opt%%  *}"

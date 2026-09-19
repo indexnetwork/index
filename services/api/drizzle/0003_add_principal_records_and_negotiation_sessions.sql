@@ -98,5 +98,6 @@ ALTER TABLE "negotiations" ADD COLUMN "opening_request_id" text;--> statement-br
 ALTER TABLE "intents" ADD CONSTRAINT "intents_standing_brief_id_messages_id_fk" FOREIGN KEY ("standing_brief_id") REFERENCES "public"."messages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "negotiations_pair_session_idx" ON "negotiations" USING btree ("pair_key","session_number");--> statement-breakpoint
 CREATE UNIQUE INDEX "negotiations_opening_request_idx" ON "negotiations" USING btree ("opening_request_id");--> statement-breakpoint
+DROP INDEX IF EXISTS "opportunities_active_pair_idx";--> statement-breakpoint
 CREATE UNIQUE INDEX "opportunities_active_pair_idx" ON "opportunities" USING btree (("context"->>'networkId'),LEAST("actors"->0->>'intent', "actors"->1->>'intent'),GREATEST("actors"->0->>'intent', "actors"->1->>'intent')) WHERE "opportunities"."status" = 'negotiating' AND "opportunities"."actors"->0->>'intent' IS NOT NULL AND "opportunities"."actors"->1->>'intent' IS NOT NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "negotiations_pair_key_idx" ON "negotiations" USING btree ("pair_key") WHERE "negotiations"."settled_at" is null;

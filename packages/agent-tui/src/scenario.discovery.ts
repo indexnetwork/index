@@ -12,6 +12,7 @@ export const SCENARIO_NETWORK_ID = 'local-simulation';
  * @param embedder - The host's real embedding generator, shared by queries and intent indexing.
  * @param negotiations - Current protocol records for recent-rejection evidence.
  * @param isMatchReady - Whether the intent has committed its standing brief.
+ * @param signal - Scenario lifetime; shared fixture indexing must not be cancelled by one principal's review.
  * @returns The same candidate pipeline used by the API, with in-memory data and cosine search ports.
  */
 export function createScenarioDiscovery(
@@ -19,8 +20,9 @@ export function createScenarioDiscovery(
   embedder: EmbeddingGenerator,
   negotiations: (userId: string) => Promise<Negotiation[]>,
   isMatchReady: (intentId: string) => Promise<boolean>,
+  signal: AbortSignal,
 ): CandidateDiscovery {
-  let vectors: number[][] | undefined;
+  let vectors: Promise<number[][]> | undefined;
   const networkIds = [SCENARIO_NETWORK_ID];
   const assignedNetworks = (intentId: string) => users.some((user) => user.intentId === intentId) ? networkIds : [];
   return new CandidateDiscovery({
@@ -53,19 +55,23 @@ export function createScenarioDiscovery(
     search: {
       searchIntentCandidates: async (query, options) => {
         options.signal?.throwIfAborted();
-        if (!vectors) {
-          const generated = await embedder.generate(users.map((user) => user.intent), undefined, { signal: options.signal });
-          options.signal?.throwIfAborted();
+        vectors ??= embedder.generate(users.map((user) => user.intent), undefined, { signal }).then((generated) => {
+          signal.throwIfAborted();
           if (generated.length !== users.length || !generated.every((vector) => Array.isArray(vector) && vector.length === query.length)) {
             throw new Error('Scenario intent embeddings must match the query vector space.');
           }
-          vectors = generated as number[][];
-        }
+          return generated as number[][];
+        }).catch((error) => {
+          vectors = undefined;
+          throw error;
+        });
+        const cachedVectors = await vectors;
+        options.signal?.throwIfAborted();
         const queryNorm = Math.sqrt(query.reduce((sum, value) => sum + value * value, 0));
         const ready = await Promise.all(users.map(async (user) => isMatchReady(user.intentId)));
         return users.flatMap((user, index) => {
           if (!ready[index] || user.userId === options.excludeUserId || !options.networkScope.includes(SCENARIO_NETWORK_ID)) return [];
-          const vector = vectors![index];
+          const vector = cachedVectors[index];
           if (vector.length !== query.length) throw new Error('Query embedding dimensions changed.');
           const dot = vector.reduce((sum, value, index) => sum + value * query[index], 0);
           const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));

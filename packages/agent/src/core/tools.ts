@@ -1,11 +1,10 @@
-import type { Agent } from "./agent.ts";
+import type { ModelLoop } from "./model.loop.ts";
 import type { ToolDefinition } from "./model.ts";
 
-/** What a tool receives besides its own arguments. `agent` is the agent
- * running it, so a tool can reach the agent's own capabilities without a
- * circular construction. */
+/** What a tool receives besides its own arguments. `loop` is the internal
+ * model loop running it, not the public H2A Agent. */
 export interface ToolContext {
-  agent: Agent;
+  loop: ModelLoop;
   signal?: AbortSignal;
 }
 
@@ -71,7 +70,7 @@ export function askUserTool(): Tool<{ question: string; options?: string[] }> {
   };
 }
 
-/** The tools an agent has when you don't give it any: ask the party it
+/** The tools a model loop has when you don't give it any: ask the party it
  * acts for. Index Network operations are injected by the host, which owns
  * that transport and its auth. */
 export function defaultTools(): Tool[] {
