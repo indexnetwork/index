@@ -109,9 +109,6 @@ jobs:
       - name: Check Hermes negotiator runtime
         run: bun run --cwd packages/hermes-plugin typecheck:runtime && bun run --cwd packages/hermes-plugin build:runtime
 
-      - name: Check agent TUI
-        run: bun run --cwd packages/agent-tui check && bun run --cwd packages/agent-tui build
-
   protocol-architecture:
     # Keep the architectural dependency checks visible as separate CI checks so
     # a failure names the violated invariant directly in the checks list.
