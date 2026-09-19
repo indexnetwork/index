@@ -1,3 +1,5 @@
+import type { TimingEvent } from '../core/timing.ts';
+
 /** Explicit lifecycle causes of discovery; never inferred from startup or A2A activity. */
 export type IntentActivation =
   | { id: string; type: 'intent.created' }
@@ -10,6 +12,7 @@ export type PrincipalActivation = IntentActivation | { id: string; type: 'h2a.wa
 
 /** Observations of committed or locally completed agent transitions, never commands or wake sources. */
 export type AgentDomainEvent =
+  | TimingEvent
   | { type: 'h2a.activated'; inputId: string; cause: 'user' | 'answer' | PrincipalActivation['type'] }
   | { type: 'discovery.searched'; inputId: string; matchId: string; networkIds: string[]; candidateIntentIds: string[] }
   | { type: 'negotiation.opened'; inputId: string; opportunityId: string; candidateIntentId: string; networkId: string }

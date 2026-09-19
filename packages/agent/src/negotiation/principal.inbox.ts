@@ -4,6 +4,7 @@ import type { ModelLoop } from '../core/model.loop.ts';
 import { MemoryMessageStore } from '../core/sessions.ts';
 import type { Tool, ToolContext } from '../core/tools.ts';
 import type { PendingQuestion } from '../core/types.ts';
+import { WakeTiming, type TimingOutcome } from '../core/timing.ts';
 
 import type { AgentDomainEvent, PrincipalActivation } from './agent.events.ts';
 import type { DiscoveryClient, NegotiationOpeningRequest, OpenNegotiationResult } from './discovery.types.ts';
@@ -216,15 +217,21 @@ export class PrincipalInbox {
   }
 
   /** @param activation - Explicit manual wake or lifecycle event. @returns Its private receipt with one review queued, or null for duplicate delivery. */
-  async wake(activation: PrincipalActivation): Promise<PrincipalMessage | null> {
-    const accepted = await this.accept([{ kind: 'event', text: activation.type, activation }]);
+  async wake(activation: PrincipalActivation, timing = new WakeTiming(activation.id, (event) => this.host.event?.(event), 'wake')): Promise<PrincipalMessage | null> {
+    const accepted = await this.accept([{ kind: 'event', text: activation.type, activation }], timing);
     return accepted?.[0] ?? null;
   }
 
-  private accept(inputs: Pick<PrincipalMessage, 'kind' | 'text' | 'questionId' | 'activation'>[]): Promise<readonly PrincipalMessage[] | null> {
+  private accept(inputs: Pick<PrincipalMessage, 'kind' | 'text' | 'questionId' | 'activation'>[], timing?: WakeTiming): Promise<readonly PrincipalMessage[] | null> {
+    const acceptance = timing?.start('wake.acceptance');
+    const queue = acceptance?.start('acceptance.queue');
     const accepted = this.accepting.then(async () => {
+      queue?.finish();
       if (this.failure) throw this.failure;
-      if (this.stopped || !inputs.length || inputs.some((input) => !input.text.trim())) return null;
+      if (this.stopped || !inputs.length || inputs.some((input) => !input.text.trim())) {
+        timing?.finish(this.stopped ? 'cancelled' : 'rejected');
+        return null;
+      }
       // accept() validates against canonical records and assigns their ordering
       // inside the host's transaction; an extra pre-read cannot authorize input.
       const entries = inputs.map((input) => {
@@ -232,8 +239,11 @@ export class PrincipalInbox {
         if (input.activation) entry.id = input.activation.id;
         return entry;
       });
-      const messages = await this.records.accept(entries);
-      if (!messages) return null;
+      const messages = await (acceptance?.measure('records.accept', () => this.records.accept(entries)) ?? this.records.accept(entries));
+      if (!messages) {
+        timing?.finish('rejected');
+        return null;
+      }
       const input = messages.at(-1)!;
       this.unfinishedReview = undefined;
       if (input.kind !== 'event') this.host.input();
@@ -242,12 +252,24 @@ export class PrincipalInbox {
       }
       this.host.event?.({ type: 'h2a.activated', inputId: input.id, cause: input.activation?.type ?? (input.kind === 'answer' ? 'answer' : 'user') });
       this.reviewController?.abort();
-      await this.refresh();
+      await (acceptance?.measure('records.refresh', () => this.refresh()) ?? this.refresh());
       this.host.changed();
       // Human input and explicit wakes share one scheduling path. Accepted input
       // is already the review's receipt; it must not create a second manual wake.
-      this.running = this.running.then(() => this.review(messages));
+      const wake = timing ?? new WakeTiming(input.id, (event) => this.host.event?.(event), 'wake');
+      const reviewQueue = wake.start('review.queue');
+      this.running = this.running.then(() => {
+        reviewQueue.finish();
+        return this.review(messages, wake);
+      });
       return messages;
+    }).then((messages) => {
+      acceptance?.finish(messages ? 'completed' : 'rejected');
+      return messages;
+    }, (error) => {
+      acceptance?.finish('error');
+      timing?.finish('error');
+      throw error;
     });
     this.accepting = accepted.catch(() => {});
     return accepted;
@@ -264,7 +286,7 @@ export class PrincipalInbox {
 
   private observeTools(
     tools: InboxTool[], signal: AbortSignal, reviewId: string,
-    negotiations: readonly Negotiation[], pendingQuestions: readonly PrincipalQuestion[],
+    negotiations: readonly Negotiation[], pendingQuestions: readonly PrincipalQuestion[], timing: WakeTiming,
   ): Tool[] {
     return tools.map((tool) => ({
       ...tool,
@@ -283,10 +305,10 @@ export class PrincipalInbox {
         signal.addEventListener('abort', cancelled, { once: true });
         this.host.changed();
         try {
-          const result = await tool.run(input, context, (summary) => {
+          const result = await timing.measure('tool.run', async () => tool.run(input, context, (summary) => {
             call.summary = summary;
             this.host.changed();
-          });
+          }), signal, { tool: tool.name, toolCallId: call.id });
           call.status = signal.aborted ? 'cancelled' : 'completed';
           if (!signal.aborted) call.summary = summarizeToolResponse(tool.name, input, result);
           return result;
@@ -302,19 +324,21 @@ export class PrincipalInbox {
     }));
   }
 
-  private async review(inputs: readonly PrincipalMessage[]): Promise<void> {
-    if (this.stopped) return;
+  private async review(inputs: readonly PrincipalMessage[], wake: WakeTiming): Promise<void> {
+    if (this.stopped) { wake.finish('cancelled'); return; }
+    const timing = wake.start('review.execute');
+    let outcome: TimingOutcome = 'completed';
     const input = inputs.at(-1)!;
     const controller = new AbortController();
     this.reviewController = controller;
     const delegatedIds = new Set<string>();
     try {
       this.host.changed();
-      let records = await this.records.read();
-      if (latestPrincipalInput(records.messages) !== input.id) return;
-      const negotiations = await this.negotiations.listNegotiations();
+      let records = await timing.measure('context.records', () => this.records.read(), controller.signal);
+      if (latestPrincipalInput(records.messages) !== input.id) { outcome = 'superseded'; return; }
+      const negotiations = await timing.measure('context.negotiations', () => this.negotiations.listNegotiations(), controller.signal);
       const visibleNegotiationIds = new Set(negotiations.map((record) => record.id));
-      const discoveryScope = await this.discovery?.scope(controller.signal);
+      const discoveryScope = this.discovery ? await timing.measure('context.discovery_scope', () => this.discovery!.scope(controller.signal), controller.signal) : undefined;
       controller.signal.throwIfAborted();
       const pendingQuestions = pendingPrincipalQuestions(records);
       let reviewFailure: ReviewInterrupted | undefined;
@@ -323,12 +347,12 @@ export class PrincipalInbox {
         && current.intent.id === records.intent.id && current.intent.payload === records.intent.payload;
       const requireCurrent = async () => {
         controller.signal.throwIfAborted();
-        const current = await this.records.read();
+        const current = await timing.measure('records.check_current', () => this.records.read(), controller.signal);
         if (current.version !== records.version || !sourceUnchanged(current)) throw new ReviewInterrupted('Principal context changed; the remaining review and matching were stopped.');
         controller.signal.throwIfAborted();
       };
       const requireScope = async (version: string, networkIds: string[]) => {
-        const scope = await this.discovery!.scope(controller.signal);
+        const scope = await timing.measure('discovery.check_scope', () => this.discovery!.scope(controller.signal), controller.signal);
         if (scope.version !== version || networkIds.some((id) => !scope.networkIds.includes(id))) throw new ReviewInterrupted('Authorized network scope changed; no further openings were attempted.');
         controller.signal.throwIfAborted();
       };
@@ -381,8 +405,8 @@ export class PrincipalInbox {
             createdAt: new Date(Math.max(Date.now(), ...previousTimes) + 1).toISOString(),
           };
           try {
-            if (!await this.records.writeStandingBrief(brief, records.version)) throw new ReviewInterrupted('Principal context changed; the standing brief was not saved.');
-            const current = await this.records.read();
+            if (!await timing.measure('records.write_standing_brief', () => this.records.writeStandingBrief(brief, records.version), controller.signal)) throw new ReviewInterrupted('Principal context changed; the standing brief was not saved.');
+            const current = await timing.measure('records.confirm_standing_brief', () => this.records.read(), controller.signal);
             if (!sourceUnchanged(current) || current.standingBrief?.id !== brief.id) throw new ReviewInterrupted('The current standing brief could not be confirmed; review stopped.');
             records = current;
             standingBriefSaved = true;
@@ -404,9 +428,13 @@ export class PrincipalInbox {
         let result: OpenNegotiationResult;
         item.status = 'unconfirmed';
         try {
-          result = await this.discovery!.openNegotiation({
-            ...request, id: crypto.randomUUID(), sourceMessageId: input.id, contextVersion: records.version,
-          }, controller.signal);
+          result = await timing.measure('negotiation.open', async (opening) => {
+            const result = await this.discovery!.openNegotiation({
+              ...request, id: crypto.randomUUID(), sourceMessageId: input.id, contextVersion: records.version,
+            }, controller.signal);
+            opening.finish(controller.signal.aborted ? 'cancelled' : 'completed', { result: result.status });
+            return result;
+          }, controller.signal, { candidateIntentId: request.target.intentId, networkId: request.target.networkId });
         } catch (error) {
           throw new ReviewInterrupted('Opening result unconfirmed; inspect saved records before another review. ' + (error instanceof Error ? error.message : String(error)));
         }
@@ -423,12 +451,13 @@ export class PrincipalInbox {
         }
         // Publish the acknowledged result before follow-up reads can delay it.
         progress();
-        const current = await this.refresh();
+        const current = await timing.measure('records.refresh_after_open', () => this.refresh(), controller.signal);
         if (current.version !== (result.status === 'opened' ? result.contextVersion : records.version) || !sourceUnchanged(current)
           || current.standingBrief?.id !== records.standingBrief?.id) throw new ReviewInterrupted('Principal context changed during opening; no further openings were attempted.');
         records = current;
         if (result.status === 'opened') {
-          const fresh = await this.negotiations.readNegotiation(result.opportunityId);
+          const opportunityId = result.opportunityId;
+          const fresh = await timing.measure('negotiation.read_opened', () => this.negotiations.readNegotiation(opportunityId), controller.signal);
           if (fresh.opportunityId !== result.opportunityId || fresh.intentId !== records.intent.id) throw new ReviewInterrupted('The opened pair could not be read; inspect its committed records before continuing.');
           const index = negotiations.findIndex((record) => record.id === fresh.id);
           if (index === -1) negotiations.push(fresh);
@@ -492,7 +521,7 @@ export class PrincipalInbox {
       if (this.discovery) availableTools.push(reopenTool);
       try {
         const result = await this.createLoop(records).run(buildPrincipalInboxPrompt({ records, inputs, pendingQuestions, negotiations, pausedNegotiationIds: this.host.paused(), discoveryScope }), {
-          history: new MemoryMessageStore(), tools: this.observeTools(availableTools, controller.signal, input.id, negotiations, pendingQuestions), signal: controller.signal,
+          history: new MemoryMessageStore(), tools: this.observeTools(availableTools, controller.signal, input.id, negotiations, pendingQuestions, timing), signal: controller.signal, timing,
           onStep: (step) => {
             controller.signal.throwIfAborted();
             if (reviewFailure) throw reviewFailure;
@@ -535,8 +564,9 @@ export class PrincipalInbox {
         createdAt: new Date(delegationTime++).toISOString(),
       }));
       const hasEffects = effects.messages.length > 0 || effects.retiredQuestionIds.length > 0 || effects.delegations.length > 0;
-      if (hasEffects && !(await this.records.write(effects, records.version))) {
-        const current = await this.records.read();
+      if (hasEffects && !(await timing.measure('records.write_decision', () => this.records.write(effects, records.version), controller.signal))) {
+        outcome = 'interrupted';
+        const current = await timing.measure('records.check_discarded', () => this.records.read(), controller.signal);
         if (latestPrincipalInput(current.messages) === input.id) {
           this.unfinishedReview = 'Review unfinished because the negotiation changed. Send a new message to reassess.';
           this.host.event?.({ type: 'h2a.review_discarded', inputId: input.id, reason: 'stale_context' });
@@ -557,7 +587,7 @@ export class PrincipalInbox {
       if (!this.stopped && effects.delegations.length) this.host.delegated(effects.delegations.map((entry) => entry.opportunityId));
       // Review writes advance version. Adopt that version only after confirming the
       // principal evidence and standing mandate that authorized this review.
-      const current = await this.refresh();
+      const current = await timing.measure('records.refresh_decision', () => this.refresh(), controller.signal);
       this.host.changed();
       if (!sourceUnchanged(current) || current.standingBrief?.id !== records.standingBrief?.id || !hasEffects && current.version !== records.version) {
         throw new ReviewInterrupted('Principal context changed after review; automatic matching was not started.');
@@ -591,8 +621,10 @@ export class PrincipalInbox {
       this.calls.push(matching);
       controller.signal.addEventListener('abort', cancelled, { once: true });
       this.host.changed();
+      const matchingTiming = timing.start('matching');
+      let matchingOutcome: TimingOutcome = 'completed';
       try {
-        const scope = await this.discovery.scope(controller.signal);
+        const scope = await matchingTiming.measure('discovery.scope', () => this.discovery!.scope(controller.signal), controller.signal);
         await requireCurrent();
         matching.details = `Matching across all ${scope.networkIds.length} authorized networks.\n\nYour private standing brief, copied unchanged to each new negotiation:\n${standingBrief.brief}`;
         this.host.changed();
@@ -602,7 +634,7 @@ export class PrincipalInbox {
           return;
         }
         const discoveryInput = { networkIds: [...scope.networkIds] };
-        const { candidates } = await this.discovery.discoverCounterparties(discoveryInput, scope.version, controller.signal);
+        const { candidates } = await matchingTiming.measure('discovery.counterparties', (discoveryTiming) => this.discovery!.discoverCounterparties(discoveryInput, scope.version, controller.signal, discoveryTiming), controller.signal);
         batch.results = candidates.map((candidate) => ({
           candidateIntentId: candidate.candidateIntentId, networkId: candidate.networkId,
           name: candidate.profile?.identity?.name?.trim() || 'Unnamed person', status: 'pending',
@@ -615,7 +647,7 @@ export class PrincipalInbox {
         this.host.event?.({ type: 'discovery.searched', inputId: input.id, matchId: matching.id, networkIds: discoveryInput.networkIds, candidateIntentIds: candidates.map((candidate) => candidate.candidateIntentId) });
         matching.summary = [summarize(), candidates.length ? 'Preparing automatic openings; no action is needed from you.' : ''].filter(Boolean).join('\n\n');
         this.host.changed();
-        const fresh = await this.negotiations.listNegotiations();
+        const fresh = await matchingTiming.measure('negotiations.refresh', () => this.negotiations.listNegotiations(), controller.signal);
         negotiations.splice(0, negotiations.length, ...fresh);
         let openedCount = 0;
         for (const [index, candidate] of candidates.entries()) {
@@ -644,16 +676,20 @@ export class PrincipalInbox {
         matching.summary = summarize();
         matching.status = 'completed';
       } catch (error) {
+        matchingOutcome = controller.signal.aborted ? 'cancelled' : error instanceof ReviewInterrupted ? 'interrupted' : 'error';
+        outcome = matchingOutcome;
         stopBatch();
         const reason = error instanceof Error ? error.message : String(error);
         matching.status = controller.signal.aborted ? 'cancelled' : 'error';
         matching.summary = `${summarize()}\n\nAutomatic matching stopped: ${reason}`;
         if (!controller.signal.aborted && !this.stopped) this.unfinishedReview = `Automatic matching stopped: ${reason}`;
       } finally {
+        matchingTiming.finish(controller.signal.aborted ? 'cancelled' : matchingOutcome, { candidates: batch.results.length, opened: batch.results.filter((item) => item.status === 'opened').length });
         controller.signal.removeEventListener('abort', cancelled);
         this.host.changed();
       }
     } catch (error) {
+      outcome = controller.signal.aborted ? 'cancelled' : error instanceof ReviewInterrupted ? 'interrupted' : 'error';
       if (!controller.signal.aborted && !this.stopped) {
         if (error instanceof ReviewInterrupted || delegatedIds.size) {
           this.unfinishedReview = error instanceof Error ? error.message : String(error);
@@ -663,6 +699,9 @@ export class PrincipalInbox {
         }
       }
     } finally {
+      const terminal = outcome === 'completed' && (controller.signal.aborted || this.stopped) ? 'cancelled' : outcome;
+      timing.finish(terminal, { delegated: delegatedIds.size });
+      wake.finish(terminal, { delegated: delegatedIds.size });
       if (this.reviewController === controller) this.reviewController = undefined;
       this.host.changed();
     }

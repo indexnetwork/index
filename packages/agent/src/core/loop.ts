@@ -1,4 +1,5 @@
 import type { Model, ModelMessage, ModelRequestOptions, ToolCall } from "./model.ts";
+import type { WakeTiming } from "./timing.ts";
 import { toolDefinition, type Tool, type ToolContext } from "./tools.ts";
 import type { PendingQuestion, RunResult, Step } from "./types.ts";
 
@@ -20,6 +21,7 @@ export interface LoopOptions {
   onStep?: (step: Step) => void;
   onRetry?: ModelRequestOptions['onRetry'];
   signal?: AbortSignal;
+  timing?: WakeTiming;
 }
 
 /**
@@ -62,7 +64,12 @@ export async function runLoop(options: LoopOptions): Promise<RunResult> {
   let lastText = "";
 
   for (let step = 0; step < options.maxSteps; step++) {
-    const assistant = await model.complete(messages, definitions, { signal, onRetry: options.onRetry });
+    const assistant = await (options.timing?.measure(
+      "model.complete",
+      (timing) => model.complete(messages, definitions, { signal, onRetry: options.onRetry, timing }),
+      signal,
+      { step: step + 1 },
+    ) ?? model.complete(messages, definitions, { signal, onRetry: options.onRetry }));
     messages.push(assistant);
 
     if (assistant.content) lastText = assistant.content;

@@ -1,4 +1,4 @@
-import type { DiscoveryClient } from '@indexnetwork/agent';
+import type { DiscoveryClient, WakeTiming } from '@indexnetwork/agent';
 import { INTENT_MATCH_MODEL } from '@indexnetwork/discovery';
 import { decideNegotiationOpening, pairKeyOf } from '@indexnetwork/protocol';
 import { and, eq } from 'drizzle-orm';
@@ -26,20 +26,32 @@ export function createDiscoveryClient(store: PrincipalRecordsDatabaseAdapter): D
       return scope;
     },
 
-    discoverCounterparties: async (input, scopeVersion, signal) => {
-      signal.throwIfAborted();
-      const scope = await store.discoveryScope();
-      if (!scope || scope.version !== scopeVersion || !input.networkIds.length
-        || input.networkIds.some((id) => !scope.networkIds.includes(id))) {
-        throw new Error('Intent or matching scope is no longer available.');
-      }
-      const result = await discovery.discover({ userId, triggerIntentId: intentId, ...input }, { signal });
-      signal.throwIfAborted();
-      const currentScope = await store.discoveryScope();
-      if (!currentScope || currentScope.version !== scope.version) {
-        throw new Error('Intent or assignments changed during matching.');
-      }
-      await store.markSearched(result.networkIds);
+    discoverCounterparties: async (input, scopeVersion, signal, timing) => {
+      const measure = <T>(operation: string, run: (child?: WakeTiming) => Promise<T>) =>
+        timing ? timing.measure(operation, run, signal, { userId, intentId, networkCount: input.networkIds.length }) : run();
+      const scope = await measure('discovery.validation', async () => {
+        signal.throwIfAborted();
+        const scope = await store.discoveryScope();
+        if (!scope || scope.version !== scopeVersion || !input.networkIds.length
+          || input.networkIds.some((id) => !scope.networkIds.includes(id))) {
+          throw new Error('Intent or matching scope is no longer available.');
+        }
+        return scope;
+      });
+      const result = await measure('discovery.matching', async (child) => {
+        const matcher = child ? createIntentDiscovery(child) : discovery;
+        const result = await matcher.discover({ userId, triggerIntentId: intentId, ...input }, { signal });
+        child?.finish(signal.aborted ? 'cancelled' : 'completed', { candidateCount: result.candidates.length });
+        return result;
+      });
+      await measure('discovery.revalidation', async () => {
+        signal.throwIfAborted();
+        const currentScope = await store.discoveryScope();
+        if (!currentScope || currentScope.version !== scope.version) {
+          throw new Error('Intent or assignments changed during matching.');
+        }
+      });
+      await measure('discovery.markSearched', async () => store.markSearched(result.networkIds));
       signal.throwIfAborted();
       return result;
     },

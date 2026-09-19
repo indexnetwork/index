@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { Agent, IntentActivation, Model, PrincipalQuestion, PrincipalAnswer, PrincipalToolCall } from '@indexnetwork/agent';
+import { WakeTiming, type Agent, type IntentActivation, type Model, type PrincipalQuestion, type PrincipalAnswer, type PrincipalToolCall } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { PrincipalRecordsDatabaseAdapter, PrincipalRuntimeIneligibleError, PrincipalRuntimeConflict } from '../adapters/principal-records.database.adapter';
@@ -352,26 +352,39 @@ export class PersonalAgentService {
 
   /** @param input - Authenticated owner and canonical intent conversation. @returns Once the explicit wake receipt is committed, not when reasoning completes. @throws If the hosted inbox cannot accept the wake. */
   async wake(input: { userId: string; intentId: string; conversationId: string }): Promise<void> {
-    const agent = await this.readyInbox(input);
-    if (!agent) throw new PersonalAgentError('Your selected external negotiator owns this inbox.', 409);
-    if (!await agent.wake()) throw new PersonalAgentError('The review was not accepted. Refresh and try again.', 409);
+    const wakeId = crypto.randomUUID();
+    const timing = new WakeTiming(wakeId, (event) => {
+      log.lib.from('agent-events').info(event.type, { userId: input.userId, intentId: input.intentId, ...event });
+    }, 'wake');
+    const acceptance = timing.start('wake.request');
+    try {
+      const agent = await this.readyInbox(input, acceptance);
+      if (!agent) throw new PersonalAgentError('Your selected external negotiator owns this inbox.', 409);
+      if (!await agent.wake({ id: wakeId, type: 'h2a.wake' }, timing)) throw new PersonalAgentError('The review was not accepted. Refresh and try again.', 409);
+      acceptance.finish();
+    } catch (error) {
+      const outcome = error instanceof PersonalAgentError ? 'rejected' : 'error';
+      acceptance.finish(outcome);
+      timing.finish(outcome);
+      throw error;
+    }
   }
 
-  private async readyInbox(input: { userId: string; intentId: string; conversationId: string }): Promise<Agent | null> {
-    if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new PersonalAgentError('Intent not found.', 404);
-    if (await this.registry.getSelectedNegotiator(input.userId)) return null;
+  private async readyInbox(input: { userId: string; intentId: string; conversationId: string }, timing?: WakeTiming): Promise<Agent | null> {
+    if (!await (timing?.measure('request.ownership', () => this.intents.isOwnedByUser(input.intentId, input.userId)) ?? this.intents.isOwnedByUser(input.intentId, input.userId))) throw new PersonalAgentError('Intent not found.', 404);
+    if (await (timing?.measure('request.negotiator', () => this.registry.getSelectedNegotiator(input.userId)) ?? this.registry.getSelectedNegotiator(input.userId))) return null;
     if (!this.running) throw new PersonalAgentError('Your personal agent is unavailable.', 503);
     if (!this.sessions.has(input.intentId) || this.sessions.get(input.intentId)?.host.agents.get(input.intentId)?.stopped) {
       this.cancelRetry(input.intentId);
-      await this.reconcile(input.userId);
+      await (timing?.measure('request.reconcile', () => this.reconcile(input.userId)) ?? this.reconcile(input.userId));
     }
     const session = this.sessions.get(input.intentId);
     if (!session || session.principal.userId !== input.userId) throw new PersonalAgentError('Your personal agent is unavailable. The intent must be active and its session must be free.', 409);
     if (session.stopping) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
-    try { await session.ready; }
+    try { await (timing?.measure('request.session_ready', () => session.ready) ?? session.ready); }
     catch { throw new PersonalAgentError('Your personal agent could not start. Please try again.', 503); }
     if (!this.running || session.stopping || this.sessions.get(input.intentId) !== session) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);
-    const saved = await PrincipalRecordsDatabaseAdapter.readConversation(input.userId, input.intentId);
+    const saved = await (timing?.measure('request.conversation', () => PrincipalRecordsDatabaseAdapter.readConversation(input.userId, input.intentId)) ?? PrincipalRecordsDatabaseAdapter.readConversation(input.userId, input.intentId));
     if (saved?.conversationId !== input.conversationId) throw new PersonalAgentError('Agent conversation not found.', 404);
     const agent = session.host.agents.get(input.intentId)!;
     if (agent.stopped) throw new PersonalAgentError('Your personal agent is restarting. Please try again.', 503);

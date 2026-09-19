@@ -3,6 +3,7 @@ import { buildAgentSystemPrompt } from "../prompts/agent.prompt.ts";
 import { runLoop } from "./loop.ts";
 import { MemoryMessageStore } from "./sessions.ts";
 import type { Model, ModelMessage } from "./model.ts";
+import type { WakeTiming } from "./timing.ts";
 import { defaultTools, type Tool } from "./tools.ts";
 import type { AgentIdentity, Intent, MessageStore, RunResult, Step } from "./types.ts";
 
@@ -66,6 +67,7 @@ export interface RunOptions {
   /** Fires as each step completes. */
   onStep?: (step: Step) => void;
   signal?: AbortSignal;
+  timing?: WakeTiming;
 }
 
 /**
@@ -152,6 +154,7 @@ export class ModelLoop {
       onStep: options.onStep,
       onRetry: this.options.onRetry,
       signal: options.signal,
+      timing: options.timing,
     });
 
     history.save(result.messages);

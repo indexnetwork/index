@@ -1,3 +1,5 @@
+import type { WakeTiming } from '../core/timing.ts';
+
 import type { Negotiation } from './negotiation.types.ts';
 
 /**
@@ -64,6 +66,7 @@ export interface DiscoveryClient {
     input: DiscoveryInput,
     scopeVersion: string,
     signal: AbortSignal,
+    timing?: WakeTiming,
   ): Promise<{ candidates: DiscoveryCandidate[] }>;
   /** Atomically open with an initial brief. Match sources never reopen terminal pairs; existing sessions keep their briefs. */
   openNegotiation(

@@ -227,6 +227,28 @@ review and A2A transitions. Events contain IDs and outcomes, not private briefs,
 answers or counterparty messages. Observation is never a wake source. Question
 issuance is not an authority grant, and a negotiation turn is not verified execution.
 
+### Wake timing logs
+
+Hosted agents emit `agent.timing` through the existing `agent-events` API logger
+at info level. Filter by `intentId`, then group by `wakeId` (the activation receipt
+ID). Every operation emits `phase: started` and `phase: finished`; finished events
+include monotonic `durationMs` and an `outcome`. A started operation with no finish
+identifies work still in progress. `operationId` and `parentOperationId` identify
+nested work; nested and concurrent durations must not be added together.
+
+For the Wake button, `wake` covers request validation through background matching
+and openings. `wake.request` measures acceptance only, `review.queue` measures
+waiting behind earlier work, and `review.execute` measures background execution.
+Model calls separate provider attempts, retry waits and quota waits. Discovery
+separates database reads, profile enrichment and TypeSafe evaluation. Openings are
+measured per candidate. Independent A2A turns are outside the wake total.
+
+Timings report completion, rejection, supersession, interruption, cancellation or
+failure without logging prompts, answers, briefs, tool payloads or error bodies.
+No telemetry service or database storage is added; logs use the host's existing
+logging destinations. A host can pass a `WakeTiming` as the second argument to
+`Agent.wake()` to include its request preparation in the same timing tree.
+
 #### Event changes for hosts and TUI
 
 - `discovery.searched` is now exactly

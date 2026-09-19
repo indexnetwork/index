@@ -1,5 +1,6 @@
 import { ModelLoop, type ModelLoopOptions } from './core/model.loop.ts';
 import type { Step } from './core/types.ts';
+import { WakeTiming } from './core/timing.ts';
 import type { AgentDomainEvent, PrincipalActivation } from './negotiation/agent.events.ts';
 import type { DiscoveryClient } from './negotiation/discovery.types.ts';
 import type { NegotiationSpeaker } from './negotiation/negotiation.speaker.ts';
@@ -128,12 +129,21 @@ export class Agent {
   /**
    * Review existing context without adding human input or granting authority.
    * @param activation - A stable manual/lifecycle receipt; defaults to a new manual wake.
+   * @param timing - Host-started timing covering acceptance through background completion.
    * @returns Its private receipt without waiting for reasoning, or null if stopped/duplicate.
    * @throws The initialization error or original H2A failure.
    */
-  async wake(activation: PrincipalActivation = { id: crypto.randomUUID(), type: 'h2a.wake' }): Promise<PrincipalMessage | null> {
-    await this.ready;
-    return this.inbox.wake(activation);
+  async wake(
+    activation: PrincipalActivation = { id: crypto.randomUUID(), type: 'h2a.wake' },
+    timing = new WakeTiming(activation.id, (event) => this.host.event?.(event), 'wake'),
+  ): Promise<PrincipalMessage | null> {
+    try {
+      await timing.measure('agent.ready', () => this.ready, this.controller.signal);
+      return await this.inbox.wake(activation, timing);
+    } catch (error) {
+      timing.finish(this.stopped ? 'cancelled' : 'error');
+      throw error;
+    }
   }
 
   private createLoop(records: PrincipalRecordsView): Pick<ModelLoop, 'run'> {

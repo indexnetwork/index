@@ -1,3 +1,5 @@
+import type { WakeTiming } from "./timing.ts";
+
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 /** Ordered defaults; OpenRouter handles provider and model failover. */
@@ -33,6 +35,7 @@ export interface ToolDefinition {
 export interface ModelRequestOptions {
   signal?: AbortSignal;
   onRetry?: (attempt: number, reason: string) => void;
+  timing?: WakeTiming;
 }
 
 /** The model capability supplied by the host to the agent loop. */
@@ -163,13 +166,18 @@ export class ModelClient implements Model {
     tools: ToolDefinition[] = [],
     options: ModelRequestOptions = {},
   ): Promise<ModelMessage> {
-    const { signal, onRetry } = options;
+    const { signal, onRetry, timing } = options;
     let failures = 0;
     let rateLimits = 0;
     for (let attempt = 1; ; attempt++) {
       await this.waitForQuota(attempt, options);
       try {
-        return await this.send(messages, tools, signal);
+        return await (timing?.measure(
+          "model.request",
+          () => this.send(messages, tools, signal),
+          signal,
+          { attempt },
+        ) ?? this.send(messages, tools, signal));
       } catch (cause) {
         // The caller pulled the plug. Not ours to retry.
         if (signal?.aborted) throw cause;
@@ -192,13 +200,19 @@ export class ModelClient implements Model {
           throw new Error(`OpenRouter did not answer after ${attempt} attempts: ${cause.message}`, { cause });
         }
         onRetry?.(attempt + 1, cause.message);
-        await this.pause(cause.retryAfter ?? 2 ** (failures - 1) * 1_000, signal);
+        const delay = cause.retryAfter ?? 2 ** (failures - 1) * 1_000;
+        await (timing?.measure(
+          "model.retry_wait",
+          () => this.pause(delay, signal),
+          signal,
+          { attempt },
+        ) ?? this.pause(delay, signal));
       }
     }
   }
 
   /** New calls also wait; one session's 429 must not trigger a retry storm. */
-  private async waitForQuota(attempt: number, { signal, onRetry }: ModelRequestOptions): Promise<void> {
+  private async waitForQuota(attempt: number, { signal, onRetry, timing }: ModelRequestOptions): Promise<void> {
     while (true) {
       signal?.throwIfAborted();
       const remaining = (cooldowns.get(this.cooldownKey) ?? 0) - Date.now();
@@ -207,7 +221,13 @@ export class ModelClient implements Model {
         return;
       }
       onRetry?.(attempt, `OpenRouter rate limited; retrying in ${Math.ceil(remaining / 1_000)}s.`);
-      await this.pause(remaining + Math.random() * RETRY_JITTER, signal);
+      const delay = remaining + Math.random() * RETRY_JITTER;
+      await (timing?.measure(
+        "model.quota_wait",
+        () => this.pause(delay, signal),
+        signal,
+        { attempt },
+      ) ?? this.pause(delay, signal));
     }
   }
 

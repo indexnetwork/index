@@ -24,6 +24,8 @@ export type { Tool, ToolContext } from "./core/tools.ts";
 export { MemoryMessageStore } from "./core/sessions.ts";
 // Client implementation for interacting with a model.
 export { ModelClient } from "./core/model.ts";
+export { WakeTiming } from './core/timing.ts';
+export type { TimingEvent, TimingOutcome, TimingMetadata } from './core/timing.ts';
 // Model interface, client configuration, message format, request options,
 // and tool definitions exposed to the model.
 export type { Model, ModelClientOptions, ModelMessage, ModelRequestOptions, ToolDefinition } from "./core/model.ts";
