@@ -729,13 +729,14 @@ export class IntentDatabaseAdapter {
 
   /**
    * Read discovered candidate signals with the facts an agent needs to judge
-   * them, minus the ones this signal already shares an opportunity with.
+   * them, minus everyone this signal is already working.
    *
-   * Every opportunity carries a negotiation naming both seats, so those rows
-   * are what "already paired" means; without this filter a search would keep
-   * returning counterparties the signal is already working.
+   * People are what a signal needs, so a counterparty already paired through
+   * any of their signals is left out of every later search: pairing on the
+   * signal instead would reach the same person again through their other
+   * signals, and the two threads would decide independently.
    *
-   * @param intentId - The searching signal, whose existing pairs are excluded.
+   * @param intentId - The searching signal, whose counterparties are excluded.
    * @param candidateIntentIds - Candidate signal ids from vector retrieval.
    * @returns One row per still-open candidate, with its statement and owner.
    */
@@ -746,8 +747,8 @@ export class IntentDatabaseAdapter {
     if (candidateIntentIds.length === 0) return [];
 
     const paired = await db.select({
-      initiatorIntentId: schema.negotiations.initiatorIntentId,
-      responderIntentId: schema.negotiations.responderIntentId,
+      initiatorUserId: schema.negotiations.initiatorUserId,
+      responderUserId: schema.negotiations.responderUserId,
     })
       .from(schema.negotiations)
       .where(or(
@@ -755,11 +756,9 @@ export class IntentDatabaseAdapter {
         eq(schema.negotiations.responderIntentId, intentId),
       ));
 
-    const taken = new Set(paired.flatMap((row) => [row.initiatorIntentId, row.responderIntentId]));
-    const unpaired = candidateIntentIds.filter((id) => !taken.has(id));
-    if (unpaired.length === 0) return [];
+    const taken = new Set(paired.flatMap((row) => [row.initiatorUserId, row.responderUserId]));
 
-    return db.select({
+    const rows = await db.select({
       id: schema.intents.id,
       userId: schema.intents.userId,
       name: schema.users.name,
@@ -767,7 +766,9 @@ export class IntentDatabaseAdapter {
     })
       .from(schema.intents)
       .innerJoin(schema.users, eq(schema.users.id, schema.intents.userId))
-      .where(and(inArray(schema.intents.id, unpaired), isNull(schema.users.deletedAt)));
+      .where(and(inArray(schema.intents.id, candidateIntentIds), isNull(schema.users.deletedAt)));
+
+    return rows.filter((row) => !taken.has(row.userId));
   }
 
   /**
