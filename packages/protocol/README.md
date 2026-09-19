@@ -29,22 +29,23 @@ flowchart LR
     Community[Community membership and norms] --> Scope
     AgentScope[Agent permissions] --> Scope
 
-    Scope --> CandidateGeneration[Candidate generation]
-    CandidateGeneration --> Evaluation[Evaluation]
-    Evaluation -->|plausible but uncertain| Opportunity[Draft or negotiating opportunity]
-    Evaluation -->|clear fit| Opportunity[Draft or pending opportunity]
-    Opportunity -->|needs agent clarification| Negotiation[Bounded negotiation]
-    Negotiation -->|fit established| Opportunity
+    Scope --> PairChecks[TypeSafe scores every eligible pair]
+    PairChecks --> Candidates[All still-eligible scores, descending]
+    Candidates --> Rules[Scope, currentness, and session rules]
+    Rules -->|up to 10 new negotiations per intent per run| Opening[Automatic opening with current standing brief]
+    Opening --> Opportunity[Negotiating opportunity]
+    Opportunity --> Negotiation[Bounded A2A negotiation]
+    Negotiation -->|agreement| Review[Pending human review]
     Negotiation -->|human judgment required| Questions[Structured questions]
     Questions --> Participant
     Participant --> Signal
 
-    Opportunity --> Consent{Participant consent?}
+    Review --> Consent{Participant consent?}
     Consent -->|yes| Connection[Connection]
     Consent -->|no| Terminal[Declined or expired]
 ```
 
-The graph is intentionally consent-centered: agents can construct context, discover candidates, evaluate fit, and negotiate constraints, but relationship-forming transitions require participant approval before a connection is opened.
+TypeSafe scores every eligible public intent/network pair without a pass/fail threshold or `0.8` cutoff. The discovery library returns all still-eligible scored pairs sorted descending, without writing opportunities. The host walks that ranking until up to 10 new negotiations per intent per matching run are created or candidates are exhausted, enforcing deterministic scope, currentness, and session rules and copying the current standing brief. Existing/reused, terminal, and unavailable sessions do not consume the new-opening budget. There is no H2A semantic review, selection, or skip stage, and terminal pairs still require deliberate reopening. Automatic negotiation opening and A2A agreement are not human approval: a connection still requires explicit participant consent.
 
 ## Design goals
 
@@ -77,7 +78,7 @@ The protocol does not attempt to be:
 | **Community** | A bounded discovery scope with membership, purpose, norms, and relevance criteria. |
 | **Membership** | The relationship between a participant and a community. Agents receive community authority through separate scoped permissions. |
 | **Candidate** | A possible counterpart or opportunity component identified during discovery but not yet surfaced. |
-| **Opportunity** | A candidate overlap that has passed evaluation and may be shown to one or more participants. |
+| **Opportunity** | A persisted proposal automatically opened with a negotiation for an eligible ranked pair within the per-run new-opening budget, subject to protocol, visibility, and human consent gates. |
 | **Negotiation** | A bounded agent-to-agent exchange used to test fit, constraints, timing, or consent before surfacing or advancing an opportunity. |
 | **Connection** | A participant-approved communication channel or introduction resulting from an accepted opportunity. |
 
@@ -223,7 +224,7 @@ The participant's personal community represents trusted contacts and direct rela
 
 ### Opportunity
 
-An opportunity is an evaluated overlap between participants. It is not merely a candidate returned by retrieval. It must be specific enough to explain and safe enough to surface.
+An opportunity is a persisted proposal between participants. The matching library returns all still-eligible scored pairs in descending score order; the host walks the ranking to create up to 10 new negotiations per intent per matching run, each with an opportunity, under deterministic scope, currentness, and session rules. The runtime copies the current standing brief into each new negotiation without asking H2A to assess, select, skip, or prepare a pair-specific brief. Existing sessions are not duplicated or given replacement briefs, and terminal pairs are not automatically reopened. Existing/reused, terminal, and unavailable sessions do not consume the new-opening budget. Presentation remains grounded in known facts; generic evaluation provenance is not a fabricated pair-specific explanation.
 
 An opportunity SHOULD include:
 
@@ -238,7 +239,7 @@ Opportunity states are participant-facing as follows:
 
 | State | Participant-facing term | Meaning |
 |---|---|---|
-| **Draft** | Draft | The protocol found a plausible opportunity, but it has not been sent to the other side. |
+| **Draft** | Draft | A persisted proposal has not been sent to the other side; this is not an H2A selection queue for scored matches. |
 | **Sent** | Sent | One side has sent or received the opportunity and a response is pending. |
 | **Connected** | Connected | Required participants accepted and a conversation or introduction may proceed. |
 | **Declined** | Declined | A participant rejected the opportunity. |
@@ -248,9 +249,17 @@ A conforming agent MUST NOT present a received opportunity as **Connected** with
 
 ### Opportunity lifecycle
 
+Automatic pair openings start in **Negotiating**, not in an H2A decision queue. A2A agreement moves them to **Pending** human review, never directly to **Connected**. Existing draft records retain their lifecycle paths.
+
 ```mermaid
 stateDiagram-v2
-    [*] --> Draft: candidate promoted
+    [*] --> Negotiating: host commits eligible ranked pair within opening budget
+    Negotiating --> Pending: A2A agreement
+    Negotiating --> Declined: negotiation declined
+    Negotiating --> Expired: TTL or invalidated
+    Pending --> Connected: required participants explicitly approve
+    Pending --> Declined: participant declines
+    Pending --> Expired: TTL or invalidated
     Draft --> Sent: sender approves send
     Draft --> Connected: direct acceptance or connection link
     Draft --> Declined: sender declines
@@ -288,27 +297,33 @@ A conforming discovery flow has seven phases.
 sequenceDiagram
     autonumber
     participant P as Participant
-    participant A as Agent
+    participant A as H2A agent
+    participant H as Host runtime
+    participant D as Matching library
     participant PR as Protocol runtime
-    participant C as Community scope
     participant N as Counterparty agent
 
-    P->>A: Provide context and signal
-    A->>PR: Admit signal and construct context
-    PR->>C: Resolve effective scope
-    C-->>PR: Permitted communities
-    PR->>PR: Generate candidates inside scope
-    PR->>PR: Evaluate role fit and constraints
-    alt Fit is clear
-        PR-->>A: Draft opportunity with explanation
-    else Fit is uncertain
-        PR->>N: Start bounded negotiation
-        N-->>PR: Propose, counter, accept, reject, or question
-        PR-->>A: Draft opportunity or structured question
+    P->>A: Provide signal, context, and standing instructions
+    A->>H: Maintain current signal and standing brief
+    H->>PR: Resolve authorized shared-network scope
+    PR-->>H: Permitted networks
+    H->>D: Score every eligible public intent/network pair
+    D-->>H: All still-eligible scores descending, no threshold or persistence
+    loop Descending ranking until 10 new negotiations per intent per run or exhaustion
+        alt Pair can open a new session under deterministic rules
+            H->>H: Copy current standing brief
+            H->>PR: Atomically commit opportunity, negotiation, and initial brief
+            PR->>N: Open bounded negotiation
+            N-->>PR: Submit an available negotiation action
+        else Existing, terminal, or unavailable session
+            H->>H: Continue without consuming new-opening budget
+        end
     end
-    A->>P: Explain strongest reason and ask for approval
-    P-->>A: Approve, decline, or refine signal
-    A->>PR: Advance lifecycle only if approved
+    Note over H,PR: Preserve existing sessions; terminal reopening must be deliberate
+    PR-->>A: Agreement awaits human review, or more context is needed
+    A->>P: Explain the proposed connection or ask for context
+    P-->>A: Approve, decline, or clarify
+    A->>PR: Advance within negotiation and human consent gates
 ```
 
 ### 1. Context construction
@@ -323,25 +338,31 @@ The protocol evaluates a proposed signal for specificity, sincerity, authority, 
 
 The protocol determines the effective communities in which the signal can operate. Scope resolution MUST intersect participant membership, agent permissions, and request-time constraints. If the intersection is empty, discovery MUST NOT proceed.
 
-### 4. Candidate generation
+### 4. Direct pair checks
 
-The protocol generates candidates by comparing signals and context inside the effective scope. Candidate generation MAY use multiple strategies, including signal-to-signal, context-to-signal, semantic retrieval, and directed target construction.
+In the reference host, the independent `@indexnetwork/discovery` library exhaustively enumerates active, match-ready intent/network pairs inside the requested authorized scope. Both signals must be registered in that network and both participants must be current members. Each deduplicated pair's public intent payloads and permitted network context are scored directly for a concrete, plausible exchange or shared activity advancing both goals, not merely topical similarity. Missing negotiable details are not an automatic failure; explicit incompatible hard constraints count against a match.
 
-Candidate generation is not surfacing. Candidate data MUST remain internal until evaluation and visibility checks pass.
+The host uses TypeSafe evaluation and returns all still-eligible scored pairs sorted by descending `matchProbability`, with no pass/fail threshold or `0.8` cutoff. There are no search queries, embedding retrieval, or model-selected candidates, and the discovery result is not truncated to ten. It checks source and candidate freshness and propagates provider failures rather than treating them as non-matches. Lifecycle embeddings remain internal artifacts, separate from pairing.
 
-### 5. Evaluation
+The matching library only returns scored pairs; it performs no opportunity or negotiation writes. The host walks the full ranking with a bounded new-opening budget, as described below. Candidate data remains subject to visibility rules, and reading persisted opportunities does not trigger a new matching run.
 
-The protocol evaluates candidates for role fit, constraint satisfaction, credibility, reciprocity, timing, and explainability. A candidate SHOULD be rejected or retained as internal evidence if the protocol cannot produce a clear reason for surfacing it.
+### 5. Automatic negotiation opening
+
+The host walks the descending score ranking until **up to 10 new negotiations per intent per matching run** are created or candidates are exhausted, opening an opportunity with each new negotiation. Existing/reused, terminal, and unavailable sessions do not consume the new-opening budget; lower-ranked pairs can still be reached. This limits new openings, not scoring or the first ten candidates. There is no H2A semantic review, selection, or skip stage. The runtime copies the current standing brief into each newly opened negotiation without generating or requesting a pair-specific brief.
+
+The host's atomic opening operation enforces deterministic scope, currentness, readiness, authorization, and session rules, committing each new session with its initial brief. Existing sessions and their briefs are preserved, and terminal pairs require deliberate reopening, never automatic matching. A changed or otherwise ineligible pair cannot bypass those guards. Stale context/scope or uncertain writes stop the remainder without a blind retry; earlier committed openings remain valid.
+
+Generic model/scoring provenance MUST NOT be presented as a pair-specific explanation or used as an additional reason-quality gate. A provider score is not a calibrated probability of agreement, a commitment, or human consent. Automatic opening and subsequent A2A agreement do not authorize a connection without explicit current participant approval.
 
 ### 6. Negotiation
 
-When fit is plausible but uncertain, agents MAY negotiate. Negotiation MUST be bounded. It SHOULD clarify constraints, test mutual relevance, and decide among a small set of actions: propose, counter, accept, reject, or ask a question. Implementations MAY persist an opportunity before negotiation completes and then update its public state from the negotiation outcome.
+Automatically opened sessions proceed through bounded A2A negotiation under the current standing brief and available protocol actions. Negotiation SHOULD clarify constraints and test mutual relevance. Its outcome updates the persisted opportunity; A2A agreement advances only to pending human review, not approval to connect.
 
 If negotiation requires human judgment, the agent SHOULD stop and ask the participant a small number of structured questions rather than fabricating preferences.
 
 ### 7. Surfacing and acceptance
 
-The protocol surfaces the opportunity according to role and lifecycle visibility. Participant-facing presentation SHOULD include the strongest reason for relevance and a clear next action. Sending, accepting, or connecting MUST require participant consent at the relevant boundary.
+The protocol surfaces the opportunity according to role and lifecycle visibility. Participant-facing presentation SHOULD ground relevance and the next action in known facts, without inventing a pair-specific model explanation. Negotiation may proceed under the current standing brief, but a connection MUST require explicit current participant approval. Neither automatic opening nor A2A agreement substitutes for that approval.
 
 ## Agent requirements
 
@@ -399,8 +420,13 @@ flowchart LR
     AgentGate --> ScopedDeps[Scoped protocol dependencies]
     ScopedDeps --> Runtime
 
-    Runtime --> Graphs[Discovery, context, signal graphs]
-    Graphs --> Results[Bounded results]
+    HTTP --> Discovery[Host-owned exhaustive pair scoring]
+    Discovery --> Candidates[All still-eligible scores, descending]
+    Candidates --> Budget[Walk ranking for up to 10 new negotiations per intent per run]
+    Budget --> Opening[Automatic host opening with current standing brief]
+    Opening -->|scope, currentness, and session rules| Runtime
+    Runtime --> Graphs[Signal and context graphs]
+    Graphs --> Results[Protocol results]
     Results --> Runtime
     Runtime --> ParticipantOutput[Participant-facing output rules]
 ```

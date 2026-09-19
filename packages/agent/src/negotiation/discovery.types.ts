@@ -21,57 +21,25 @@ export interface DiscoveryCandidate {
   candidateUserId: string;
   candidateIntentId: string;
   networkId: string;
-  similarity: number;
+  matchProbability: number;
+  reasoning: string;
   candidatePayload: string;
   candidateSummary?: string;
   profile: DiscoveryCandidateProfile | null;
   networkContext?: string;
-  recentlyRejected: boolean;
+
 }
 
-/** Five complementary queries sharing one similarity floor and authorized intent-network scope. */
-export interface CandidateQuery {
-  queries: string[];
-  minSimilarity: number;
+/** All currently authorized intent networks, scanned once after a completed H2A review. */
+export interface DiscoveryInput {
   networkIds: string[];
 }
 
-/**
- * Completed retrieval evidence.
- * Maintained in-memory only and never persisted or reused across activations.
- */
-export interface SearchRecord extends CandidateQuery {
-  id: string;
-  scopeVersion: string;
-  candidates: DiscoveryCandidate[];
-  status: 'complete';
-}
-
-export type NegotiationSelection = {
-  reasoning: string;
-  brief: string;
-} & ({ searchId: string; candidateIntentId: string; networkId: string; negotiationId?: never }
-  | { negotiationId: string; searchId?: never; candidateIntentId?: never; networkId?: never });
-
-/** A deliberate non-selection, retained in owner-visible activity rather than treated as an opening. */
-export interface SkippedCounterparty {
-  searchId: string;
-  candidateIntentId: string;
-  networkId: string;
-  reason: string;
-}
-
-/** Every candidate in the pending search must be opened or explicitly skipped exactly once. */
-export interface OpenNegotiationsInput {
-  negotiations: NegotiationSelection[];
-  skipped: SkippedCounterparty[];
-}
-
-/** A deliberate selection bound to its source records, authorized scope and observed latest session. */
+/** A scored match or deliberate reopening bound to source records, authorized scope and the latest session. */
 export interface NegotiationOpeningRequest {
   id: string;
   target: { userId: string; intentId: string; networkId: string; payload: string };
-  source: { kind: 'search'; searchId: string; similarity: number } | { kind: 'negotiation'; negotiationId: string };
+  source: { kind: 'match'; matchId: string; probability: number } | { kind: 'negotiation'; negotiationId: string };
   expectedLatestNegotiationId: string | null;
   expectedLatestOutcome: Negotiation['outcome'];
   expectedLatestOpportunityStatus: Negotiation['opportunityStatus'] | null;
@@ -91,12 +59,14 @@ export type OpenNegotiationResult =
  */
 export interface DiscoveryClient {
   scope(signal: AbortSignal): Promise<DiscoveryScope>;
+  /** Return every eligible scored intent/network pair in descending matchProbability order, without a score cutoff, with public match reasoning. */
   discoverCounterparties(
-    input: CandidateQuery,
+    input: DiscoveryInput,
     scopeVersion: string,
     signal: AbortSignal,
   ): Promise<{ candidates: DiscoveryCandidate[] }>;
-  openNegotiation?(
+  /** Atomically open with an initial brief. Match sources never reopen terminal pairs; existing sessions keep their briefs. */
+  openNegotiation(
     request: NegotiationOpeningRequest,
     signal: AbortSignal,
   ): Promise<OpenNegotiationResult>;

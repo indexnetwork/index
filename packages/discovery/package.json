@@ -1,7 +1,7 @@
 {
   "name": "@indexnetwork/discovery",
-  "version": "0.2.0",
-  "description": "Standalone intent discovery via query embedding and candidate retrieval.",
+  "version": "0.3.0",
+  "description": "Standalone exhaustive intent pairing via direct TypeSafe evaluation.",
   "license": "MIT",
   "type": "module",
   "private": true,

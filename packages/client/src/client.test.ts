@@ -127,39 +127,53 @@ test("sendPrincipal refuses without executorId and fences the write", async () =
   server.stop(true);
 });
 
-test("discover posts the query and returns the counterparties as ranked", async () => {
-  let seen: { path: string; body: unknown } | undefined;
-  const counterparty = {
-    intentId: "i2", userId: "u2", name: "Ada", statement: "Looking for a co-founder",
-    networkId: "n1", score: 0.42,
-  };
+test("discover opens matches without a search or picks body", async () => {
+  delete process.env.INDEX_EXECUTOR_ID;
+  let seen: { method: string; path: string; body: string } | undefined;
+  const opportunities = [{ opportunityId: "o1" }, { opportunityId: "o2" }];
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
-      seen = { path: new URL(req.url).pathname, body: await req.json() };
-      return Response.json({ counterparties: [counterparty] });
+      const url = new URL(req.url);
+      seen = { method: req.method, path: url.pathname + url.search, body: await req.text() };
+      return Response.json({ opportunities });
     },
   });
-  const client = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" });
-  expect(await client.discover("i1", "biotech founders in Lisbon")).toEqual([counterparty]);
-  expect(seen).toEqual({ path: "/api/intents/i1/discover", body: { query: "biotech founders in Lisbon" } });
-  server.stop(true);
+  try {
+    const client = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" });
+    expect(await client.discover("i1")).toEqual(opportunities);
+    expect(seen).toEqual({ method: "POST", path: "/api/intents/i1/discover", body: "" });
+  } finally {
+    server.stop(true);
+  }
 });
 
-test("createOpportunities posts the picks and returns the opportunities", async () => {
-  let seen: { path: string; body: unknown } | undefined;
+test("discover fences openings and propagates executor conflicts without retry", async () => {
+  let path = "";
+  let hits = 0;
   const server = Bun.serve({
     port: 0,
-    async fetch(req) {
-      seen = { path: new URL(req.url).pathname, body: await req.json() };
-      return Response.json({ opportunities: [{ opportunityId: "o1" }] });
+    fetch(req) {
+      const url = new URL(req.url);
+      path = url.pathname + url.search;
+      hits += 1;
+      return Response.json({ error: "The selected negotiation executor changed; stop this work" }, { status: 409 });
     },
   });
-  const client = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" });
-  const picks = [{ intentId: "i2", networkId: "n1" }];
-  expect(await client.createOpportunities("i1", picks)).toEqual([{ opportunityId: "o1" }]);
-  expect(seen).toEqual({ path: "/api/intents/i1/opportunities", body: { counterparties: picks } });
-  server.stop(true);
+  try {
+    const client = new IndexClient({
+      baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k", executorId: "e1",
+    });
+    await expect(client.discover("i1")).rejects.toMatchObject({
+      name: "ApiError", status: 409, error: "The selected negotiation executor changed; stop this work",
+    });
+    expect(path).toBe("/api/intents/i1/discover?executorId=e1");
+    const cancelled = AbortSignal.abort(new Error("Matching cancelled"));
+    await expect(client.discover("i1", cancelled)).rejects.toThrow("Matching cancelled");
+    expect(hits).toBe(1);
+  } finally {
+    server.stop(true);
+  }
 });
 
 test("wakesHost is true only for opened, turn, and principal.input", () => {
@@ -181,6 +195,8 @@ test("events delivers known types, ignores handshake and unknown types", async (
         `data: ${JSON.stringify({ type: "connected" })}\n\n`,
         `: keepalive\n\n`,
         `data: ${JSON.stringify({ type: "opportunity.new", id: "n1", title: "t", body: "b" })}\n\n`,
+        `data: ${JSON.stringify({ type: "intent.broadcast", id: "b1", title: "", body: "", data: { intentId: "i1", networkId: "n1" } })}\n\n`,
+        `data: ${JSON.stringify({ type: "intent.revised", id: "r1", title: "", body: "", data: { intentId: "i1", revisionVersionMs: 1, fingerprint: "f1" } })}\n\n`,
         `data: ${JSON.stringify({ type: "nope" })}\n\n`,
         `data: not-json\n\n`,
       ]);
@@ -191,7 +207,7 @@ test("events delivers known types, ignores handshake and unknown types", async (
     .events((event) => { got.push(event.type); });
   await Bun.sleep(50);
   stop();
-  expect(got).toEqual(["opportunity.new"]);
+  expect(got).toEqual(["opportunity.new", "intent.broadcast", "intent.revised"]);
   server.stop(true);
 });
 

@@ -5,6 +5,7 @@ import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 import db from '../lib/drizzle/drizzle';
+import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { publishUserEvent, publishUserInvalidation } from '../lib/user-events';
 import { agents, conversations, intents, intentNetworks, networkMembers, networks, negotiations, opportunities, negotiationTurns, users, messages, type Message } from '../schemas/database.schema';
 
@@ -364,7 +365,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
     if (!input) return null;
     const result = await db.transaction(async (tx) => {
       await PrincipalRecordsDatabaseAdapter.assertOwner(tx, this.execution);
-      const [intent] = await tx.select({ status: intents.status, archivedAt: intents.archivedAt, updatedAt: intents.updatedAt, standingBriefId: intents.standingBriefId }).from(intents)
+      const [intent] = await tx.select({ payload: intents.payload, summary: intents.summary, status: intents.status, archivedAt: intents.archivedAt, updatedAt: intents.updatedAt, standingBriefId: intents.standingBriefId }).from(intents)
         .where(and(eq(intents.id, this.execution.intentId), eq(intents.userId, this.execution.userId))).for('share');
       if (!intent || intent.archivedAt || intent.status !== null && intent.status !== 'ACTIVE') throw new PrincipalRuntimeIneligibleError('The principal intent is no longer active.');
       if (input.kind === 'event') {
@@ -377,6 +378,10 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
             .innerJoin(networkMembers, and(eq(networkMembers.networkId, intentNetworks.networkId), eq(networkMembers.userId, this.execution.userId), isNull(networkMembers.deletedAt), sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`))
             .where(and(eq(intentNetworks.intentId, this.execution.intentId), eq(intentNetworks.networkId, activation.networkId))).for('share');
           if (!link || activation.id !== `intent.broadcast:${this.execution.intentId}:${activation.networkId}:${link.version}`) return null;
+        } else if (activation?.type === 'intent.revised') {
+          if (activation.revisionVersionMs !== intent.updatedAt.getTime()
+            || activation.fingerprint !== computeIntentFingerprint(intent.payload, intent.summary)
+            || activation.id !== `intent.revised:${this.execution.intentId}:${activation.revisionVersionMs}:${activation.fingerprint}`) return null;
         } else if (activation?.type === 'intent.resumed') {
           if (activation.lifecycleVersionMs !== intent.updatedAt.getTime()
             || activation.id !== `intent.resumed:${this.execution.intentId}:${activation.lifecycleVersionMs}`) return null;

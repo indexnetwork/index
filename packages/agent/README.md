@@ -56,7 +56,8 @@ wake(activation?: PrincipalActivation): Promise<PrincipalMessage | null>;
   activates H2A once, with **no additional manual-wake receipt**.
 - `wake()` without an argument requests a manual review. Passing a
   `PrincipalActivation` delivers an explicit `h2a.wake`, `intent.created`,
-  `intent.broadcast` (with `networkId`), or `intent.resumed` (with
+  `intent.broadcast` (with `networkId`), `intent.revised` (with
+  `revisionVersionMs` and `fingerprint`), or `intent.resumed` (with
   `lifecycleVersionMs`) activation and stable `id`. It returns a private
   `PrincipalMessage` receipt, or `null` for stopped/duplicate delivery. Receipts
   are not chat messages, answers or consent and create no new authority.
@@ -71,29 +72,37 @@ Read-only observations are `conversation`, `pending`, `toolCalls`, `reviewing`,
 `reviewNotice`, `stopped`, and `negotiating: readonly string[]`. `negotiating`
 contains opportunity IDs with live A2A work, excluding stopped/cancelled tasks.
 `host.conversation()` notifies hosts when history or live activity changes.
-`reviewNotice` explains a stale-discarded review and clears on the next accepted
-activation; it never schedules one. `toolCalls` contains ephemeral H2A tool
-statuses, plain-English `label` values, owner-visible input `details` available
-while running, and response `summary` values, grouped by `reviewId` and anchored
-to the preceding visible message. Standing-brief calls show the owner's full
-private brief. Batch openings use **Opening negotiations…** and list each selected
-person's public intent, distinct match reasoning and the owner's proposed complete
-private brief, plus explicit skips and their reasons. Per-item outcomes distinguish
-saved opening briefs, reuse that preserves existing briefs, unavailable items, and
-stopped or unconfirmed openings. Discovery shows
-all five queries, similarity floor, network count and returned match count. Reviews
-show proposed messages, questions, retirements and named negotiation instructions,
-without claiming they have been saved. Input details remain on errors and cancellations.
+`reviewNotice` explains an interrupted review or automatic matching and clears on
+the next accepted activation; it never schedules one. `toolCalls` contains
+ephemeral H2A tool **and runtime matching** activity: statuses, plain-English
+`label` values, owner-visible `details` and response `summary` values, grouped by
+`reviewId` and anchored to the preceding visible message. Standing-brief calls
+show the owner's full private brief. Automatic activity uses
+`name: 'match_counterparties'`, labelled **Matching counterparties automatically**;
+it is not a model tool. It shows the authorized network count, the standing brief
+copied to new sessions, each scored pair's public intent, match probability and
+public reasoning in descending score order. Per-pair summaries distinguish opened,
+reused without a brief change, unavailable, not attempted after the new-opening
+budget is filled or the run is interrupted, and unconfirmed writes.
+Stale context and stale scope are reported explicitly, separately from unconfirmed
+writes. `status: 'error'` or `'cancelled'` describes a stopped matching run, not a
+rollback of earlier openings. Deliberate terminal reopening uses
+`name: 'reopen_negotiation'`, labelled **Reopening a terminal negotiation**.
+Reviews show proposed messages, questions, retirements and named negotiation
+instructions without claiming they have been saved. Details remain on errors and
+cancellations.
 Hosts must show this activity only to the represented owner, never counterparties.
 It exposes no other principal's private brief and is never persisted as activity,
 added to model context, or treated as authority. Tool completion does not prove
 that every opening succeeded or that later effects were persisted.
 
 An H2A failure stops the runtime and preserves the original error for subsequent
-`receiveInput()` and `wake()` calls. Failed input and model work are not silently
-retried.
+`receiveInput()` and `wake()` calls. Interrupted writes or matching stop the current
+review's remaining work without cancelling committed delegations. A later failure
+also preserves A2A scheduling for earlier committed openings. Failed work is not
+silently retried.
 
-### Breaking API change
+### Breaking API change (1.0.0)
 
 `Agent` now names the H2A runtime, not the low-level model loop. The exported
 `NegotiationAgent`, `NegotiationHost` and `RunOptions` are removed; there are no
@@ -104,23 +113,62 @@ route A2A events through the host subscription instead of `agent.receive()`.
 The old `Agent.run()` / `for()` API is internal `ModelLoop` machinery, not a
 human-facing agent API. `ToolContext.loop` replaces `ToolContext.agent`.
 
-Discovery inputs, search records and `discovery.searched` events now use `queries`
-instead of `query`: exactly five distinct, nonempty complementary search directions.
-All five share one similarity floor and one authorized subset of the source intent's
-registered networks. Counterparty intents must be registered in the same returned
-network; user membership alone never expands the search. Hosts merge results by
-counterparty intent and shared network, retaining the highest similarity and at
-most 80 candidates overall.
+Matching now runs automatically after a completed H2A review, including an empty
+`review_principal_inbox` decision, rather than depending on a model tool call.
+There is no model-authored retrieval or candidate-selection stage.
 
-The H2A tool `open_negotiations` replaces `open_negotiation`, with no alias. Its
-input is `{ negotiations: [...], skipped: [...] }`. Both arrays are required, with
-at least one entry total:
+- `DiscoveryInput = { networkIds: string[] }` replaces `CandidateQuery`.
+  `SearchRecord` and the internal selection/skip input types are removed.
+- `DiscoveryCandidate` retains identity, payload, summary, profile and network
+  context. `matchProbability: number` replaces `similarity`; `reasoning: string`
+  is public match provenance. `recentlyRejected` is removed.
+- `DiscoveryClient.openNegotiation` is required when discovery is supplied.
+  `AgentOptions.discovery` itself remains optional; no-discovery hosts still work.
+- `NegotiationOpeningRequest.source` is
+  `{ kind: 'match'; matchId: string; probability: number }` or
+  `{ kind: 'negotiation'; negotiationId: string }`. All target, context, source
+  message, authorized scope and latest-session fences remain required and unchanged.
+  `openingRequestKey()` fingerprints the new source shape; old request keys are
+  not a replay compatibility path.
+- The model tools `discover_counterparties` and `open_negotiations` are removed.
+  The only explicit opening tool is `reopen_negotiation`, taking exactly
+  `{ negotiationId, reasoning, brief }` for a visible latest terminal session.
 
-- Each `negotiations` entry is either
-  `{ searchId, candidateIntentId, networkId, reasoning, brief }` for a retrieved
-  candidate or `{ negotiationId, reasoning, brief }` for a visible negotiation.
-- Each `skipped` entry is `{ searchId, candidateIntentId, networkId, reason }`, with
-  a nonempty, grounded reason for not pursuing that candidate.
+The host matching port is:
+
+```ts
+interface DiscoveryClient {
+  scope(signal: AbortSignal): Promise<DiscoveryScope>;
+  discoverCounterparties(
+    input: DiscoveryInput,
+    scopeVersion: string,
+    signal: AbortSignal,
+  ): Promise<{ candidates: DiscoveryCandidate[] }>;
+  openNegotiation(
+    request: NegotiationOpeningRequest,
+    signal: AbortSignal,
+  ): Promise<OpenNegotiationResult>;
+}
+```
+
+The runtime supplies **all** authorized networks, once per completed review,
+including broadcast reviews. With no authorized networks it records that no scan
+ran. TypeSafe scores every eligible public intent/network pair; the host returns
+all still-eligible scored pairs in descending `matchProbability` order with
+public-safe reasoning, without a pass/fail threshold or `0.8` cutoff. Both intents
+must be registered in the returned network. There are no search queries, embedding
+retrieval, or model-selected candidates. The runtime walks the full ranking
+sequentially until **up to 10 new negotiations per intent per matching run** are
+created or the candidates are exhausted. Existing/reused, terminal, and unavailable
+sessions do not consume the new-opening budget; this is not a first-ten-candidates
+limit.
+For each new session, `request.brief` is the exact current `standingBrief.brief`
+and `request.reasoning` is the exact `candidate.reasoning`. Hosts must atomically
+save the initial delegation with the session, never rebrief reused sessions, and
+never automatically reopen a terminal pair. A terminal match returns
+`{ status: 'unavailable' }`; only an explicit `source.kind: 'negotiation'` may
+reopen it. An `opened` result with `delegationId` confirms a newly saved opening
+brief; an `opened` result without it means unchanged existing work.
 
 ## Host notifications and activation
 
@@ -144,19 +192,61 @@ notifications only**, never H2A input or activation:
 | `negotiation.stopped` | Cancel the local task for `opportunityId`, without changing questions or durable history. |
 
 Accepted principal input, explicit manual review, and explicit intent
-creation/broadcast/resume are the H2A wake sources. Startup, scans, content
-updates, A2A activity and opening the app remain observational. Lifecycle/manual
-activations are private, deduplicated records; delivery is best-effort and
-restoration never replays accepted events. Hosts must validate lifecycle
-versions transactionally so duplicate or superseded resumes do not wake again.
-Manual and lifecycle reviews use the same context and delegation guards as
-input-triggered reviews and do not invalidate existing briefs by themselves.
+creation/broadcast/material-revision/resume are the H2A wake sources. Startup,
+scans, generic `intent.updated` invalidations (including `markSearched`), A2A
+activity and opening the app remain observational. Lifecycle/manual activations
+are private, deduplicated records; delivery is best-effort and restoration never
+replays accepted events. Hosts validate lifecycle versions transactionally so
+duplicate or superseded activations do not wake again. Manual and lifecycle
+reviews use the same context and delegation guards as input-triggered reviews;
+the receipt itself grants no permission, answers or question retirement.
 
-`AgentHost.event` observes typed activation, discovery, selection/opening, brief,
-question, review and A2A transitions. Events contain stable IDs and outcomes,
-not private briefs, answers or counterparty messages. Observation is never a
-wake source. Question issuance is not an authority grant, and a negotiation turn
-is not verified execution.
+Material edits publish `intent.revised` only after the payload/summary fingerprint
+changes and the update commits. The activation is:
+
+```ts
+{
+  type: 'intent.revised',
+  id: `intent.revised:${intentId}:${revisionVersionMs}:${fingerprint}`,
+  revisionVersionMs, // The committed intent.updatedAt in milliseconds.
+  fingerprint,       // computeIntentFingerprint(payload, summary).
+}
+```
+
+The user-event frame carries `{ intentId, revisionVersionMs, fingerprint }` in
+`data`. Before accepting it, the API locks the owned active intent and compares
+both the revision timestamp and fingerprint to that row, then validates the
+stable receipt ID. Stale revisions are rejected and an existing receipt ID cannot
+activate H2A again. Material writes already clear standing-brief readiness; the
+review establishes the current brief before automatic matching. External runners
+refresh the intent before waking on revisions and broadcasts. Generic update
+invalidations never request matching.
+
+`AgentHost.event` observes typed activation, matching/opening, brief, question,
+review and A2A transitions. Events contain IDs and outcomes, not private briefs,
+answers or counterparty messages. Observation is never a wake source. Question
+issuance is not an authority grant, and a negotiation turn is not verified execution.
+
+#### Event changes for hosts and TUI
+
+- `discovery.searched` is now exactly
+  `{ type: 'discovery.searched', inputId, matchId, networkIds, candidateIntentIds }`.
+  `matchId` is the automatic activity's `PrincipalToolCall.id`, shared by that
+  run's match-source opening requests. The event reports completed matching,
+  not successful openings. No search text or cutoff is emitted.
+- `candidate.evaluated` is removed; there is no semantic selection event.
+- `negotiation.opened` retains
+  `{ type, inputId, opportunityId, candidateIntentId, networkId }` and now fires
+  only for a newly committed opening delegation, not unchanged session reuse.
+- `delegation.brief_saved` keeps its existing fields and `source: 'opening'`
+  for each committed initial brief. `source: 'review'` still means an explicit
+  update to existing work.
+- `h2a.review_completed` keeps its fields and reports saved H2A effects **before**
+  runtime matching begins. Its `delegatedIds` are the review's explicit updates,
+  not later automatic openings. All other event shapes are unchanged.
+- Matching interruption details and per-pair results live in `toolCalls` and
+  `reviewNotice`, not a new event union. Matching can stop while earlier
+  `negotiation.opened` events remain valid and their A2A work is scheduled.
 
 ## Questions and answer batches
 
@@ -272,38 +362,38 @@ approval gates. Counterparty text is untrusted data, not instructions or authori
 - `pairKey` identifies a conversation thread; `id` and `opportunityId` identify a
   numbered session. H2A sees negotiation outcomes and current `opportunityStatus`;
   agreement does not overwrite later user acceptance, rejection or expiry.
-- After nonempty discovery, when opening is offered, `open_negotiations` is the
-  **required next substantive operation**. The runtime requires every returned
-  `(candidateIntentId, networkId)` to appear exactly once under its `searchId`,
-  either as an opening or an explicit skip; omissions, duplicates and opening/skip
-  overlap are invalid. No next search or final `review_principal_inbox` is allowed
-  while that batch is pending. Do not open poor fits to satisfy a quota. All-skipped
-  batches are valid only with grounded reasons for every candidate; missing
-  principal information belongs in questions at the final review after coverage.
-  A zero-result search may finish normally or refine the five queries or floor.
-- The model writes distinct public reasoning (at most 2000 characters) and a
-  complete, candidate-specific private brief for each opening after retrieval.
-  Public reasoning must not expose private instructions. “Automatic” means the
-  runtime-enforced batch path, not host-fabricated briefs or a generic standing
-  brief substituted for candidate-specific instructions.
-- Each opening selects a completed search candidate or visible `negotiationId`.
-  Unsettled, paused and turn-limited work is returned unchanged without overwriting
-  its brief; explicit re-delegation resumes eligible work. Explicitly selecting the
-  latest terminal session may create a new session and opportunity with a complete
-  new brief, under unchanged authority rules, never inheriting old counterpart-specific
-  permission or altering the previous session. `previousSessions` are shared history,
-  not current offers, authority or turn usage. Inbound work still uses its standing-brief
-  fallback, not an old specific delegation, and never wakes H2A.
-- Hosts execute batch openings sequentially under existing authorization and context
-  fences. Each new session and its brief commit atomically, fencing the observed
-  latest ID, outcome and opportunity status; the whole batch is not one transaction.
-  An unavailable item may allow later items to continue. Stale authorization/context
-  or an uncertain write stops the remainder, with stopped/unconfirmed per-item outcomes
-  and no blind retry. Earlier committed openings remain valid and are not rolled back.
-  `NegotiationOpeningRequest` carries `target`, discriminated `source` and those fences.
-  Exact created-request replays reconcile to their original session by immutable
-  request ID; otherwise the next permitted activation reassesses committed evidence.
-  Effect writes also fence status changes, turns and outcomes.
+- H2A establishes a current standing brief, then completes its review, including
+  messages, questions, retirements and explicit existing-session delegations. The
+  runtime reads the post-write context version and validates the original principal
+  source, execution evidence and standing brief before automatic matching. A stale
+  or unconfirmed review must not launch matching against old evidence.
+- Matching scores every eligible pair across all authorized networks once and
+  walks all still-eligible results in descending score order, without a score
+  threshold or model selection, until up to 10 new negotiations per intent per
+  matching run are created. Existing/reused, terminal, and unavailable sessions
+  do not consume that budget. Each new session receives an unchanged copy of the
+  current standing brief; public provenance comes only from host match reasoning.
+  Missing facts or authority remain explicit limits in that brief, so A2A can pause
+  rather than inventing permission.
+- Automatic matches reuse unsettled work without updating or rescheduling its
+  established brief and never reopen terminal pairs. Only `reopen_negotiation` can
+  deliberately create a new session from the latest visible terminal negotiation,
+  with new public reasoning and a complete private brief. It cannot select unseen
+  pairs or unsettled sessions. New sessions never inherit old counterpart-specific
+  authority or change previous settlements. `previousSessions` are shared history,
+  not current offers, authority or turn usage. Inbound work still uses its standing
+  fallback and never wakes H2A.
+- The runtime awaits each opening sequentially, refreshing canonical principal
+  records and negotiations after each response before attempting the next pair.
+  Each new session and initial brief commit atomically under source-message,
+  context, scope and latest-session ID/outcome/opportunity-status fences; the whole
+  batch is not one transaction. Unavailable pairs allow the remaining work to
+  continue. Stale scope/context or uncertain writes stop the remainder distinctly,
+  without a retry or rollback. Earlier confirmed openings and review delegations
+  still schedule eligible A2A, even when later matching stops. An uncertain opening
+  is not treated as confirmed work; a later activation must inspect saved evidence.
+  Exact created-request replays reconcile by immutable request identity. Effect
+  writes also fence status changes, turns and outcomes.
 - Private activation, standing/specific brief and retirement records are excluded
   from chat history, previews and unread counts. `MemoryPrincipalRecords` is
   available for in-memory hosts; persistent hosts must enforce ownership and

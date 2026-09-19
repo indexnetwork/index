@@ -5,7 +5,7 @@ import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
-import { CREATE_OPPORTUNITIES_LIMIT, DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
+import { IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
 
 const logger = log.controller.from('intent');
 
@@ -30,16 +30,7 @@ const UpdateSchema = z.object({
 const LinkSchema = z.object({
   networkId: z.string().uuid('networkId must be a UUID'),
 }).strict();
-const DiscoverSchema = z.object({
-  query: z.string().trim().min(1, 'query is required').max(2_000),
-  limit: z.number().int().min(1).max(DISCOVER_LIMIT_MAX).optional(),
-}).strict();
-const CreateOpportunitiesSchema = z.object({
-  counterparties: z.array(z.object({
-    intentId: z.string().uuid('intentId must be a UUID'),
-    networkId: z.string().uuid('networkId must be a UUID'),
-  }).strict()).min(1, 'counterparties is required').max(CREATE_OPPORTUNITIES_LIMIT),
-}).strict();
+const DiscoverSchema = z.object({}).strict();
 
 @Controller('/intents')
 export class IntentController {
@@ -152,64 +143,22 @@ export class IntentController {
   }
 
   /**
-   * Search an owned signal's communities for counterparties.
+   * Score every eligible intent pair and open up to 10 new negotiations, highest scores first.
    *
-   * Nothing is written and nothing is judged here: the caller reads the ranked
-   * counterparties and decides which are worth an opportunity.
-   *
-   * @param req - Request with body `{ query: string, limit?: number }`, `limit` being the top-N to return.
+   * @param req - No body or `{}`, and an optional executorId query fence.
    * @param user - Authenticated owner.
    * @param params - Intent UUID or short prefix.
-   * @returns The ranked counterparties this query found.
+   * @returns Only the opportunities newly opened by this run.
    */
   @Post('/:id/discover')
   @UseGuards(AuthGuard)
   async discover(req: Request, user: AuthenticatedUser, params: { id: string }) {
-    const raw = await req.json().catch(() => ({}));
-    const parsed = DiscoverSchema.safeParse(raw);
-    if (!parsed.success) {
-      return Response.json(
-        { error: 'Validation failed', details: parsed.error.flatten() },
-        { status: 400 },
-      );
-    }
-
-    const resolved = await intentService.resolveId(params.id, user.id);
-    if ('error' in resolved) {
-      return Response.json({ error: resolved.error }, { status: resolved.status });
-    }
-
-    const result = await intentService.discover(resolved.id, user.id, parsed.data);
-    if (result.kind === 'not_found') {
-      return Response.json({ error: 'Intent not found' }, { status: 404 });
-    }
-    if (result.kind === 'inactive') {
-      return Response.json({ error: 'Only an active signal can be searched' }, { status: 409 });
-    }
-
-    return Response.json({ counterparties: result.counterparties });
-  }
-
-  /**
-   * Create one opportunity per counterparty the caller picked.
-   *
-   * Idempotent on the pair: a counterparty that already shares an opportunity
-   * with this signal reports that one rather than a second.
-   *
-   * @param req - `{ counterparties: { intentId, networkId }[] }` and an optional executorId query fence.
-   * @param user - Authenticated owner.
-   * @param params - Intent UUID or short prefix.
-   * @returns The opportunities that now exist for the picked counterparties.
-   */
-  @Post('/:id/opportunities')
-  @UseGuards(AuthGuard)
-  async createOpportunities(req: Request, user: AuthenticatedUser, params: { id: string }) {
     const executorId = new URL(req.url).searchParams.get('executorId');
     if (executorId !== null && !z.string().uuid().safeParse(executorId).success) {
       return Response.json({ error: 'executorId must be a UUID' }, { status: 400 });
     }
-    const raw = await req.json().catch(() => ({}));
-    const parsed = CreateOpportunitiesSchema.safeParse(raw);
+    const raw = await req.text().then((text) => text.length ? JSON.parse(text) : {}).catch(() => null);
+    const parsed = DiscoverSchema.safeParse(raw);
     if (!parsed.success) {
       return Response.json(
         { error: 'Validation failed', details: parsed.error.flatten() },
@@ -224,7 +173,7 @@ export class IntentController {
 
     let result;
     try {
-      result = await intentService.createOpportunities(resolved.id, user.id, parsed.data.counterparties, executorId ?? undefined);
+      result = await intentService.discover(resolved.id, user.id, executorId ?? undefined, req.signal);
     } catch (error) {
       if (error instanceof RuntimeConflictError) {
         return Response.json({ error: 'The selected negotiation executor changed; stop this work' }, { status: 409 });

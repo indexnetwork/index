@@ -1,9 +1,11 @@
+import { INTENT_MATCH_MODEL } from '@indexnetwork/discovery';
 import { Intents, Networks, decideNegotiationOpening, pairKeyOf, type ClarifyInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { negotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
+import { createIntentDiscovery } from '../lib/intent/discovery';
 import { intentIndexing } from '../lib/intent/indexing';
 import { issuePreparationReceipt, readPreparationReceipt } from '../lib/intent/intent.preparation';
 import { IntentEvents, publishIntentActivation } from '../events/intent.event';
@@ -40,55 +42,8 @@ export interface IntentGraphRunner {
   invoke(input: Record<string, unknown>, options?: { recursionLimit?: number }): Promise<Record<string, unknown>>;
 }
 
-/** How many counterparties one search returns when the caller names no limit. */
-const DISCOVER_LIMIT = 10;
-
-/** The largest top-N a caller may ask one search for. */
-export const DISCOVER_LIMIT_MAX = 30;
-
-/**
- * How deep retrieval reads to fill one search. A signal shared in several of
- * the searched communities takes one row per community, and the counterparties
- * already paired with this signal drop out afterwards, so reading exactly the
- * caller's limit would return fewer than it asked for.
- */
-const DISCOVER_RETRIEVAL_MAX = 90;
-
-/** How many counterparties one call may turn into opportunities. */
-export const CREATE_OPPORTUNITIES_LIMIT = 30;
-
-/**
- * Provenance for an opportunity the owner's agent created after a search. The
- * agent's judgement is which counterparties it picked, so there is no score to
- * carry: the pair exists because the agent chose it.
- */
-const AGENT_PICK_REASONING =
-  'Created by the owner\'s personal agent after an on-demand search, so it carries no compatibility score.';
-
-/** One counterparty a search surfaced, as an agent judging it needs to see it. */
-export interface DiscoveredCounterparty {
-  intentId: string;
-  userId: string;
-  name: string;
-  statement: string;
-  networkId: string;
-  score: number;
-}
-
-/** The outcome of searching an owned signal's communities. */
+/** The outcome of scoring eligible intent pairs and opening up to 10 new negotiations. */
 export type IntentDiscoverOutcome =
-  | { kind: 'ok'; counterparties: DiscoveredCounterparty[] }
-  | { kind: 'not_found' }
-  | { kind: 'inactive' };
-
-/** One counterparty an agent picked to turn into an opportunity. */
-export interface CounterpartyPick {
-  intentId: string;
-  networkId: string;
-}
-
-/** The outcome of creating opportunities for picked counterparties. */
-export type CreateOpportunitiesOutcome =
   | { kind: 'ok'; opportunities: { opportunityId: string }[] }
   | { kind: 'not_found' }
   | { kind: 'inactive' };
@@ -410,143 +365,74 @@ export class IntentService {
   }
 
   /**
-   * Search the communities an owned signal is shared in for counterparties.
+   * Score every eligible pair in an owned signal's communities with TypeSafe
+   * and open up to 10 new negotiations in descending match probability order.
    *
-   * The query is the caller's, embedded as written and matched against stored
-   * signal vectors. Nothing is judged and nothing is written: the caller reads
-   * the ranked counterparties and decides which are worth an opportunity.
-   *
-   * Retrieval has no similarity floor, so what comes back is the strongest N
-   * the caller can still act on rather than however many clear a cutoff. A
-   * counterparty this signal already shares a negotiation with is left out
-   * without spending one of those N.
+   * The adapter opens sequentially, rechecking eligibility, evaluated payloads
+   * and the executor in each transaction. Existing sessions are never reopened.
    *
    * @param intentId - Full intent UUID, owned by the caller.
    * @param userId - Authenticated owner.
-   * @param input - The query in the caller's own words, and how many counterparties to return.
-   * @returns Ranked counterparties, or why the signal cannot be searched.
+   * @param executorId - External executor to fence inside each opening transaction.
+   * @param signal - Request cancellation, forwarded to matching and opening.
+   * @returns Newly opened opportunities, or why the signal cannot be matched.
+   * @throws RuntimeConflictError when the selected external executor changed.
+   * @throws When cancelled, matching or persistence fails; committed openings remain valid.
    */
   async discover(
     intentId: string,
     userId: string,
-    input: { query: string; limit?: number },
+    executorId?: string,
+    signal?: AbortSignal,
   ): Promise<IntentDiscoverOutcome> {
+    signal?.throwIfAborted();
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
     if (intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) return { kind: 'inactive' };
 
-    const networkScope = await chatDatabaseAdapter.getNetworkIdsForIntent(intentId);
-    if (networkScope.length === 0) return { kind: 'ok', counterparties: [] };
+    const [assignedNetworkIds, memberships] = await Promise.all([
+      chatDatabaseAdapter.getNetworkIdsForIntent(intentId),
+      chatDatabaseAdapter.getNetworkMemberships(userId),
+    ]);
+    signal?.throwIfAborted();
+    const activeNetworkIds = new Set(memberships.map(({ networkId }) => networkId));
+    const networkIds = assignedNetworkIds.filter((networkId) => activeNetworkIds.has(networkId));
+    if (networkIds.length === 0) return { kind: 'ok', opportunities: [] };
 
-    const limit = input.limit ?? DISCOVER_LIMIT;
+    logger.verbose('Checking intent pairs', { intentId, userId, networkCount: networkIds.length });
 
-    logger.verbose('Discovering counterparties', { intentId, userId, networkCount: networkScope.length, limit });
+    const { sourcePayload, candidates } = await createIntentDiscovery().discover({
+      userId,
+      triggerIntentId: intentId,
+      networkIds,
+    }, { signal });
+    const pairs = candidates.map((candidate) => ({
+      pairKey: pairKeyOf(candidate.networkId, intentId, candidate.candidateIntentId),
+      networkId: candidate.networkId,
+      intentA: intentId,
+      intentB: candidate.candidateIntentId,
+      userA: userId,
+      userB: candidate.candidateUserId,
+      score: candidate.matchProbability * 100,
+      reasoning: candidate.reasoning,
+      evidence: [{
+        type: 'typesafe',
+        model: INTENT_MATCH_MODEL,
 
-    const embedding = await this.embedder.generate(input.query) as number[];
-    const candidates = await this.embedder.searchIntentCandidates(embedding, {
-      networkScope,
-      excludeUserId: userId,
-      limit: Math.min(limit * 3, DISCOVER_RETRIEVAL_MAX),
-      minScore: 0,
-    });
-
-    // One signal shared in several of the searched communities comes back once
-    // per community; the strongest hit is the one worth reporting.
-    const best = new Map<string, { networkId: string; score: number }>();
-    for (const candidate of candidates) {
-      const seen = best.get(candidate.id);
-      if (!seen || candidate.score > seen.score) {
-        best.set(candidate.id, { networkId: candidate.networkId, score: candidate.score });
-      }
-    }
-
-    const rows = await this.adapter.listCounterpartyCandidates(intentId, [...best.keys()]);
-    const counterparties = rows
-      .map((row) => {
-        const hit = best.get(row.id)!;
-        return {
-          intentId: row.id,
-          userId: row.userId,
-          name: row.name,
-          statement: row.statement,
-          networkId: hit.networkId,
-          score: hit.score,
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+        matchProbability: candidate.matchProbability,
+        reasoning: candidate.reasoning,
+      }],
+      expectedPayloads: { intentA: sourcePayload, intentB: candidate.candidatePayload },
+      detection: { source: 'intent_discovery', createdBy: userId },
+    }));
+    const opened = await negotiationDatabaseAdapter.openCounterparties(pairs, decideNegotiationOpening,
+      executorId ? { userId, agentId: executorId } : undefined, signal);
 
     await chatDatabaseAdapter.markIntentFirstDiscoverySucceeded(intentId);
 
-    return { kind: 'ok', counterparties };
-  }
-
-  /**
-   * Create one opportunity per counterparty the caller picked.
-   *
-   * Opening is idempotent on the pair: a counterparty that already shares an
-   * opportunity with this signal reports that one rather than a second.
-   * Counterparties that are no longer seated in the named community are
-   * skipped, because a membership can end between the search and this call.
-   *
-   * @param intentId - Full intent UUID, owned by the caller.
-   * @param userId - Authenticated owner.
-   * @param picks - Counterparty signals and the community each pair sits in.
-   * @param executorId - External executor to fence inside each opening transaction.
-   * @returns The opportunities that now exist, or why none could be created.
-   * @throws RuntimeConflictError when the selected external executor changed.
-   */
-  async createOpportunities(
-    intentId: string,
-    userId: string,
-    picks: CounterpartyPick[],
-    executorId?: string,
-  ): Promise<CreateOpportunitiesOutcome> {
-    const intent = await this.adapter.getIntentById(intentId, userId);
-    if (!intent) return { kind: 'not_found' };
-    if (intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) return { kind: 'inactive' };
-
-    logger.verbose('Creating opportunities from picked counterparties', { intentId, userId, count: picks.length });
-
-    const pairs = [];
-    for (const pick of picks.slice(0, CREATE_OPPORTUNITIES_LIMIT)) {
-      if (pick.intentId === intentId) continue;
-      const [initiator, responder] = await Promise.all([
-        negotiationDatabaseAdapter.seatedIntent(intentId, pick.networkId),
-        negotiationDatabaseAdapter.seatedIntent(pick.intentId, pick.networkId),
-      ]);
-      if (!initiator || !responder || initiator.userId === responder.userId) continue;
-      pairs.push({
-        pairKey: pairKeyOf(pick.networkId, initiator.intentId, responder.intentId),
-        networkId: pick.networkId,
-        intentA: initiator.intentId,
-        intentB: responder.intentId,
-        userA: initiator.userId,
-        userB: responder.userId,
-        score: 100,
-        reasoning: AGENT_PICK_REASONING,
-        evidence: [],
-        detection: { source: 'personal_agent', createdBy: userId },
-      });
-    }
-
-    if (pairs.length === 0) return { kind: 'ok', opportunities: [] };
-
-    await negotiationDatabaseAdapter.openCounterparties(pairs, decideNegotiationOpening,
-      executorId ? { userId, agentId: executorId } : undefined);
-
-    // `openCounterparties` reports only what it created, and reports "already
-    // an opportunity" and "not eligible" identically. Reading each pair back is
-    // how a pair that was already open still counts as done here.
-    const records = await Promise.all(
-      pairs.map((pair) => negotiationDatabaseAdapter.findByPairKey(pair.pairKey)),
-    );
-
     return {
       kind: 'ok',
-      opportunities: records
-        .filter((record): record is NonNullable<typeof record> => record !== null)
-        .map((record) => ({ opportunityId: record.opportunityId })),
+      opportunities: opened.map(({ opportunityId }) => ({ opportunityId })),
     };
   }
 

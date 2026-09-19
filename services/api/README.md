@@ -17,6 +17,46 @@ bun run db:migrate    # Apply migrations
 bun run db:studio     # Drizzle Studio (DB GUI)
 ```
 
+## Intent matching
+
+Set `TYPESAFE_API_KEY` server-side in the root `.env.development` or the runtime
+secret environment, alongside the existing OpenRouter credentials. API startup
+requires it outside tests. The API sends the two intent payloads and permitted
+shared network context to TypeSafe; it does not send private principal briefs,
+conversation history, or profile data. Review TypeSafe's data-processing and
+retention terms before enabling this on real intents. Every pair check is a paid
+external request.
+
+Both hosted and external agents use exhaustive intent-to-intent scoring with
+TypeSafe `jev-1.13.0`. Every eligible public intent/network pair is scored, with
+at most four concurrent requests per scan and no queries, embedding search, or
+agent-selected subset. Discovery returns all still-eligible scored pairs sorted
+by descending `matchProbability`, with no pass/fail threshold or `0.8` cutoff.
+The Noul score estimates a plausible mutually useful exploratory negotiation;
+it is not a calibrated probability of agreement or permission to act.
+
+Automatic opening walks the full ranking until **up to 10 new negotiations per
+intent per matching run** are created or candidates are exhausted. Existing/reused,
+terminal, and unavailable sessions do not consume the new-opening budget; the
+ranking is not truncated to the first ten candidates.
+
+Hosted H2A reviews automatically match after persisting their decisions and use
+the current standing brief unchanged as each new negotiation's initial mandate.
+The external-agent endpoint `POST /api/intents/:id/discover?executorId=...` accepts
+no body (or `{}`) and uses the same exhaustive scoring and bounded opening policy.
+It returns `{ opportunities: [{ opportunityId }] }` for newly created sessions
+only, at most ten per run.
+The old query/limit body and `POST /api/intents/:id/opportunities` picks endpoint
+are removed. Existing sessions are reused without overwriting their briefs;
+terminal sessions still require deliberate reopening. Provider and persistence
+errors are failures, not non-matches. Readiness, authorization, eligibility,
+evaluated payloads, and executor ownership are rechecked when opening; each hosted
+new session and its initial brief commit atomically. Stale context/scope or an
+uncertain write stops the remainder without a blind retry; earlier committed
+openings remain valid.
+No database migration or match backfill is performed by this change. Intent
+lifecycle embeddings remain stored but no longer select negotiation partners.
+
 ## Personal agents and live web testing
 
 From the repository root, run these in separate terminals:
@@ -41,7 +81,9 @@ competing hosted execution and fence external-executor handover.
 
 The service reconciles active seats at boot and follows Redis Streams for intent
 and executor changes. Only accepted principal input, explicit creation/broadcast/resume
-and trusted manual wakes activate H2A. Resume receipts name the committed lifecycle
+and versioned material revisions plus trusted manual wakes activate H2A. Revision
+receipts bind the committed timestamp and content fingerprint; generic
+`intent.updated` invalidations never wake matching. Resume receipts name the committed lifecycle
 version; stale and duplicate resumes cannot activate another review. Negotiation changes refresh A2A observations;
 stalls and reconnects never create H2A activations. Stable activation IDs make
 retained-event delivery idempotent. Stream acknowledgement means dispatch, not

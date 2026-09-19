@@ -1,5 +1,14 @@
 # Changelog
 
+## 60.0.1
+
+### Fixed
+
+- Align current implementation docs, the protocol overview, and canonical signal/discovery guidance with exhaustive TypeSafe scoring of every eligible public intent/network pair, with no pass/fail threshold or `0.8` cutoff. The pure matching library returns all still-eligible scored pairs sorted descending; the host walks the ranking until up to 10 new negotiations per intent per matching run are created or candidates are exhausted, each with an opportunity and a copy of the current standing brief. There are no queries, embedding retrieval, or H2A semantic review, selection, or skip stage.
+- Existing/reused, terminal, and unavailable sessions do not consume the new-opening budget; terminal sessions still require deliberate reopening. Preserve readiness, authorization, deterministic scope/currentness/session guards, atomic opening briefs, and no blind retries after stale or uncertain writes. Existing sessions keep their briefs, and A2A agreement is not human approval. Lifecycle embeddings are not pairing inputs, and generic evaluation provenance is neither a pair-specific explanation nor an extra opening gate.
+- Update the existing opportunity discovery spec to use the candidate enumeration and evaluator contracts, retaining scope, eligibility, evidence, and deduplication coverage while removing obsolete embedding/vector-search cases. No spec files or test cases were added.
+- Public protocol types, exports, and port contracts are unchanged.
+
 ## 60.0.0
 
 ### Breaking changes

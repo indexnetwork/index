@@ -23,25 +23,26 @@ export interface EmbeddingGenerator {
   generate(text: string | string[], dimensions?: number, options?: { signal?: AbortSignal }): Promise<number[] | number[][]>;
 }
 
-export interface SearchOptions {
-  networkScope: string[];
-  excludeUserId?: string;
-  limit: number;
-  minScore: number;
-  signal?: AbortSignal;
-}
-
 export interface IntentCandidate {
-  type: 'intent';
   id: string;
   userId: string;
   networkId: string;
-  score: number;
+  payload: string;
+  summary?: string | null;
 }
 
-/** Search real, active intent embeddings within authorized networks. */
-export interface CandidateSearch {
-  searchIntentCandidates(embedding: number[], options: SearchOptions): Promise<IntentCandidate[]>;
+/** Directly evaluate whether two intents support a mutually useful interaction. */
+export interface IntentPairEvaluator {
+  /**
+   * @param input - The two intent payloads and their shared network context.
+   * @param options - Cancellation propagated to the provider.
+   * @returns The provider's match probability, a finite number from 0 to 1.
+   * @throws When evaluation fails, is cancelled, or returns an invalid probability.
+   */
+  evaluate(
+    input: { intentA: string; intentB: string; networkContext?: string },
+    options?: { signal?: AbortSignal },
+  ): Promise<number>;
 }
 
 export interface ActiveIntent {
@@ -74,9 +75,16 @@ export interface DiscoveryData {
   }): Promise<{ networkIds: string[]; error?: string }>;
   getActiveNetworkMembershipPairs(pairs: Array<{ userId: string; networkId: string }>): Promise<Array<{ userId: string; networkId: string }>>;
   getNetworkContexts(networkIds: string[]): Promise<Record<string, string>>;
-  getRecentlyRejectedOpportunityCounterparties(
-    userId: string,
-    candidateUserIds: string[],
-    windowMs: number,
-  ): Promise<string[]>;
+  /**
+   * List every other user's active, match-ready intent registered in the requested
+   * networks where that user is an active member. Do not rank or limit the results.
+   * @param input - The source user to exclude and the authorized network subset.
+   * @param options - Cancellation propagated to the host read.
+   * @returns Intent payloads with one entry per intent/network registration.
+   * @throws When the host read fails or is cancelled.
+   */
+  listIntentCandidates(
+    input: { excludeUserId: string; networkIds: string[] },
+    options?: { signal?: AbortSignal },
+  ): Promise<IntentCandidate[]>;
 }

@@ -11,7 +11,7 @@ import { PrincipalRecordsDatabaseAdapter, type PrincipalExecution } from './prin
 import { agentDatabaseAdapter } from './agent.database.adapter';
 
 import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
-import { RuntimeConflictError } from '../lib/agent/runtime-errors';
+
 
 export type NegotiationExecution = (PrincipalExecution & { contextVersion: string }) | { userId: string; agentId: string };
 
@@ -33,6 +33,8 @@ export interface IntentCounterpartyPair {
   score: number;
   reasoning: string;
   evidence: unknown[];
+  /** Exact payloads evaluated by the matcher, rechecked under the opening lock. */
+  expectedPayloads?: { intentA: string; intentB: string };
   /**
    * Provenance for the opportunity. Discovery leaves this unset and gets its
    * own stamp; a pair opened by hand says so, so the two are distinguishable
@@ -223,35 +225,39 @@ export class NegotiationDatabaseAdapter {
   }
 
   /**
-   * Turn every pair discovery scored into an opportunity with a negotiation
-   * beside it, and report the ones newly opened.
+   * Open up to 10 new negotiations from discovery's ranked pairs and report
+   * the ones newly opened. Existing and unavailable sessions do not count.
    *
    * Each pair has its own transaction. A revoked membership or lost race
-   * skips that pair; executor handover stops the remaining batch. Already
-   * committed openings are announced even when the executor changed.
+   * makes that pair unavailable; a stale evaluation, executor handover or write
+   * failure stops the batch. Already committed openings are always announced.
    *
-   * @param pairs - The scored pairs to open.
+   * @param pairs - One intent's pairs in descending score order.
    * @param decide - Protocol opening policy.
    * @param execution - Selected external executor, when an external runtime opens.
+   * @param signal - Stops uncommitted openings when the caller disconnects or cancels.
    * @returns One entry per pair that became a new opportunity.
-   * @throws RuntimeConflictError when the external executor lost its seat.
+   * @throws When the external executor lost its seat, evaluated payloads changed, or persistence failed.
    */
   async openCounterparties(
     pairs: IntentCounterpartyPair[],
     decide: (pair: NegotiationOpening) => NegotiationOpeningDecision,
     execution?: { userId: string; agentId: string },
+    signal?: AbortSignal,
   ): Promise<OpenedNegotiation[]> {
     const opened: OpenedNegotiation[] = [];
     try {
       for (const pair of pairs) {
+        signal?.throwIfAborted();
         const result = await db.transaction(async (tx) => {
           if (execution) await agentDatabaseAdapter.assertSelectedExecutor(tx, execution.userId, execution.agentId);
-          return this.open(tx, pair, decide);
-        }).catch((error: unknown) => {
-          if (error instanceof RuntimeConflictError) throw error;
-          return null;
+          signal?.throwIfAborted();
+          const openedPair = await this.open(tx, pair, decide);
+          signal?.throwIfAborted();
+          return openedPair;
         });
         if (result?.created) opened.push(result.record);
+        if (opened.length === 10) break;
       }
     } finally {
       await announceOpened(opened);
@@ -322,14 +328,14 @@ export class NegotiationDatabaseAdapter {
    * @returns The eligible session and whether it was created, or null if unavailable.
    * @throws For infrastructure failures; the caller decides how to report them.
    */
-  async open(tx: Transaction, pair: IntentCounterpartyPair, decide: (pair: NegotiationOpening) => NegotiationOpeningDecision, selection?: { id: string; expectedLatestNegotiationId: string | null; expectedLatestOutcome: string | null; expectedLatestOpportunityStatus: NegotiationView['opportunityStatus'] | null }): Promise<{ record: OpenedNegotiation; created: boolean } | null> {
+  async open(tx: Transaction, pair: IntentCounterpartyPair, decide: (pair: NegotiationOpening) => NegotiationOpeningDecision, selection?: { id: string; source: { kind: 'match' | 'negotiation' }; expectedLatestNegotiationId: string | null; expectedLatestOutcome: string | null; expectedLatestOpportunityStatus: NegotiationView['opportunityStatus'] | null }): Promise<{ record: OpenedNegotiation; created: boolean } | null> {
     await tx.execute(sql`
       SELECT pg_advisory_xact_lock(
         hashtextextended(${`opportunity-pair:${pair.pairKey}`}, 0)
       )
     `);
 
-    const seats = await tx.select({ id: intents.id, userId: intents.userId }).from(intents)
+    const seats = await tx.select({ id: intents.id, userId: intents.userId, payload: intents.payload }).from(intents)
       .innerJoin(intentNetworks, and(eq(intentNetworks.intentId, intents.id), eq(intentNetworks.networkId, pair.networkId)))
       .innerJoin(networkMembers, and(eq(networkMembers.userId, intents.userId), eq(networkMembers.networkId, pair.networkId)))
       .innerJoin(networks, eq(networks.id, pair.networkId))
@@ -339,6 +345,10 @@ export class NegotiationDatabaseAdapter {
       seats.some((seat) => seat.id === pair.intentA && seat.userId === pair.userA)
       && seats.some((seat) => seat.id === pair.intentB && seat.userId === pair.userB) });
     if (!decision) return null;
+    if (pair.expectedPayloads && (
+      seats.find((seat) => seat.id === pair.intentA)?.payload !== pair.expectedPayloads.intentA
+      || seats.find((seat) => seat.id === pair.intentB)?.payload !== pair.expectedPayloads.intentB
+    )) throw new Error('Intent payload changed after matching; evaluate the pair again before opening.');
 
     const [existing] = await tx.select({ record: negotiations, status: opportunities.status }).from(negotiations)
       .innerJoin(opportunities, eq(opportunities.id, negotiations.opportunityId))
@@ -353,8 +363,8 @@ export class NegotiationDatabaseAdapter {
         return { created: false, record: { opportunityId: record.opportunityId, negotiationId: record.id,
           initiatorUserId: record.initiatorUserId, initiatorIntentId: record.initiatorIntentId } };
       }
-      // Only a context-bound deliberate selection can authorize another session.
-      if (!selection) return null;
+      // A scored match never resurrects a settled session.
+      if (selection?.source.kind !== 'negotiation') return null;
     }
 
     const [row] = await tx.insert(opportunities).values({

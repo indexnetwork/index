@@ -20,16 +20,26 @@ The launcher runs from this package and loads the agent, discovery, and protocol
 source entry points through `tsconfig.json`. It does not rebuild shared `dist`
 directories or depend on them remaining present during another workspace build.
 
-Requires `OPENROUTER_API_KEY` and an interactive terminal. Choose a JSON scenario
-with Up/Down + Enter or a click. The chooser displays filenames in alphabetical
-order, starting with the five-user cofounder scenario. The six bundled scenarios
-have 5–10 users and 5–14 discoverable intents, with **no pre-created negotiations**.
-Loading a scenario emits one `intent.created` event per intent. Each intent's H2A
-first saves its standing brief, making that fixture discoverable, then searches and
-opens only selected counterparties with complete specific briefs. No initial chat message is required.
-Agents and opened negotiations run independently of the visible board. Changing users, intents, or collapsed panes only changes what you see.
+Requires an interactive terminal and two provider keys, supplied through your
+shell or the root gitignored `.env.development`:
 
-Override the shared model client's ordered model list with one to three IDs:
+- `OPENROUTER_API_KEY` for H2A and A2A conversational models.
+- `TYPESAFE_API_KEY` for direct intent-pair matching with TypeSafe `jev-1.13.0`.
+
+Choose a JSON scenario with Up/Down + Enter or a click. The chooser displays
+filenames in alphabetical order, starting with the five-user cofounder scenario.
+The six bundled scenarios have 5–10 users and 5–14 discoverable intents, with
+**no pre-created negotiations**. Loading a scenario emits one `intent.created`
+event per intent. Each intent's H2A first saves its standing brief, making that
+fixture discoverable. After a completed review, the runtime scores all eligible
+pairs and walks the descending ranking to open up to 10 new negotiations per intent
+per matching run using that saved brief, without a model selection/skip step.
+No initial chat message is required. Agents and opened negotiations run independently
+of the visible board. Changing users, intents, or collapsed panes only changes
+what you see.
+
+Override the conversational model client's ordered model list with one to three
+OpenRouter IDs (this does not change the TypeSafe evaluator):
 
 ```bash
 bun --env-file=.env.development run agent:tui google/gemini-3.8-flash anthropic/claude-haiku-4.5
@@ -47,54 +57,59 @@ This is not a restoration wake: loading existing backend records still stays idl
 An H2A failure stops that runtime. Later sends show the original failure and keep
 your draft; they do not silently retry model work. Fix the cause and restart the
 scenario. An OpenRouter `401` / `User not found` is a provider authentication error,
-not a missing fictional user. An exported key can override the project's env file;
-to use the key from `.env.development` without that inherited override, run:
+not a missing fictional user. TypeSafe authentication failures concern the separate
+`TYPESAFE_API_KEY`; there is no embedding fallback. Exported keys can override the project's env file;
+to use both keys from `.env.development` without inherited overrides, run:
 
 ```bash
-env -u OPENROUTER_API_KEY bun --env-file=.env.development run agent:tui
+env -u OPENROUTER_API_KEY -u TYPESAFE_API_KEY bun --env-file=.env.development run agent:tui
 ```
 
 ### Discovery pipeline
 
-The lab runs the same `CandidateDiscovery` implementation as the API, with injected
-scenario data and in-memory cosine search instead of Postgres/pgvector. Both hosts
-use the shared embedding generator: OpenRouter `openai/text-embedding-3-large`,
-2,000 dimensions, and identical text normalization. The first search embeds the
-fixture intent statements; those vectors are reused in memory for the rest of the
-run. Each discovery call supplies five distinct, complementary queries, embedded
-in one batch and searched in parallel with one similarity threshold and one shared
-network scope. Results merge by counterparty intent and network, retaining the
-highest similarity and at most 80 candidates overall. Both intents must be registered
-in the returned network; a user's other network memberships never widen the scope.
+The lab runs the same `CandidateDiscovery({ database, evaluator })` implementation
+as the API, with in-memory scenario data and `TypeSafeIntentEvaluator`. Matching
+accepts only the requested `networkIds`; it directly compares the source intent
+with **every ready peer intent** in the authorized shared scope. There are no
+fixture/query embeddings, cosine search, query generation, or pre-scoring shortlists.
+Scoring is exhaustive; only the subsequent new openings are bounded.
+Both intents must be registered in the returned network; a user's other network
+memberships never widen the scope.
 
-All fixture intents are active members of one simulated network, but each enters candidate retrieval only after its in-memory standing brief commits. Production scope,
-hydration, membership checks, deduplication and ranking run against these fixture
-ports. Search returns public names and intent text, never another user's private
-`instructions`. Declined local negotiations provide recent-rejection evidence.
-Search alone creates nothing, but nonempty discovery when opening is offered makes
-`open_negotiations` the required next substantive operation. Every returned
-`(candidateIntentId, networkId)` must appear exactly once under its `searchId` as an
-opening or an explicit skip with a nonempty, grounded reason. The runtime blocks
-another search or final review while that batch is pending. There is no opening
-quota: poor fits must not be opened merely to fill the batch. An all-skipped batch
-is valid only with reasons for every candidate; ask for materially missing principal
-information in the final review after accounting for the candidates. A zero-result
-search can finish normally or refine the five queries or similarity floor.
+All fixture intents belong to one simulated network, but each becomes eligible
+only after its in-memory standing brief commits. The database port's
+`listIntentCandidates` enumerates all ready intents owned by other users in that
+network. The shared pipeline enforces scope, readiness and membership checks,
+then returns `networkIds`, `sourcePayload` and all still-eligible scored candidates
+in descending `matchProbability` order, with public `reasoning` recording evaluation
+provenance, not a generated pair-specific explanation. TypeSafe `jev-1.13.0`
+evaluates the two public intent payloads and optional shared network context;
+there is no pass/fail threshold or `0.8` cutoff. Private scenario `instructions`, H2A history,
+standing briefs and counterpart private context are never sent to the evaluator.
+Public names can be returned with candidates, but are not evaluator inputs.
+There is no rejection-history lookup or `recentlyRejected` candidate flag.
 
-H2A generates distinct public reasoning and a complete, candidate-specific private
-brief for each opening after retrieval. “Automatic” means this runtime-enforced
-batch path, not host-fabricated briefs. The [batch contract](../agent/README.md#breaking-api-change)
-requires both `negotiations` and `skipped` arrays and at least one entry total;
-there is no singular-tool alias. The host executes openings sequentially, rechecking
-both intents' standing readiness and existing authorization/context fences, and
-atomically saves each new session with its opening brief before A2A. Unsettled
-sessions are reused without overwriting their briefs; explicitly selecting the
-latest terminal session can create a new session under unchanged authority rules.
-An unavailable item may allow later items to continue; stale authorization/context
-or an uncertain write stops the remainder without a blind retry. Earlier committed
-openings remain valid. Inbound A2A standing-brief fallback is unchanged and never
-wakes H2A.
-This exercises real model and embedding requests, but not database or Redis behavior.
+The agent runtime walks the full ranking until up to **10 new negotiations per
+intent per matching run** are created or the candidates are exhausted, using the
+current standing brief. Existing/reused, terminal, and unavailable sessions do not
+consume the new-opening budget; lower-ranked candidates remain available to fill it.
+H2A does not choose or skip individual matching candidates and does not compose
+candidate-specific briefs before these automatic openings. The host executes
+openings sequentially, rechecking both intents' standing readiness and
+existing authorization/context fences, and atomically saves each new session with
+its opening brief before A2A. Unsettled sessions are reused without overwriting
+their briefs. A `source.kind === 'match'` request never reopens a terminal session;
+only `reopen_negotiation` targeting a known latest terminal session by
+`negotiationId` can create a successor. Exact created-request replays reconcile to their original
+session, even after it settles. An unavailable item may allow later items to
+continue; stale authorization/context or an uncertain write stops the remainder
+without a blind retry. Earlier committed openings remain valid. Inbound A2A
+standing-brief fallback is unchanged and never wakes H2A.
+
+Launching a scenario makes real OpenRouter conversation and TypeSafe evaluation
+requests, which can incur provider charges and rate limits. Exhaustive evaluation
+scales with ready peer intents and may repeat on later matching calls. It does not
+exercise database or Redis behavior or change live Index records.
 
 ## Bundled scenarios
 
@@ -116,9 +131,10 @@ different goals, while different wording can describe a useful connection.
 The respective intent counts per user are `1,1,1,1,1`, `2,2,1,1,1,1`,
 `2,2,1,1,1,1,1`, `2,2,1,1,1,1,1,1`, `2,2,2,1,1,1,1,1,1`, and
 `2,2,2,2,1,1,1,1,1,1`. These are discovery candidates, not preselected opportunities.
-Search excludes the principal's own intents. Negotiations are opened only for
-candidates selected in `open_negotiations`, not explicit skips; repeated unsettled
-selections reuse the session.
+Matching excludes the principal's own intents. The runtime walks the descending
+score ranking to open up to 10 new negotiations per intent per matching run under
+the standing brief. Repeated matches reuse unsettled sessions and do not reopen
+terminal ones; neither consumes the new-opening budget.
 
 Multi-intent personas have separate aims and decisions within their shared private
 instructions, exercising independent H2A conversations. The instructions describe
@@ -181,9 +197,11 @@ see [the API's live testing instructions](../../services/api/README.md#personal-
 | Mouse wheel / PgUp / PgDn | Scroll the selected history |
 | Ctrl+C | Stop the local run |
 
-An H2A pane names its running tool with the shared agent's plain-English action
-label, such as **Opening negotiations…**. While a review is in flight with
-no tool executing, it says **Preparing the next step…** instead. If a concurrent
+An H2A pane names its running activity with the shared agent's plain-English label:
+**Matching counterparties automatically…** for runtime matching and automatic
+openings, or **Reopening a terminal negotiation…** for deliberate reopening.
+While a review is in flight with no activity executing, it says
+**Preparing the next step…** instead. If a concurrent
 negotiation change makes the final H2A effects stale, the pane says the review was
 unfinished and asks for a fresh message; it never retries or wakes H2A automatically.
 The A2A pane still shows **Thinking…** and identifies the agents currently processing
@@ -191,17 +209,22 @@ that match, such as `Alice Morgan's Agent`. These indicators track runtime activ
 rather than the last reported status; they clear on completion, pause, failure or
 shutdown. They do not block editing, create history entries or wake agents.
 
-Each H2A review's tool calls share one bordered box alongside the conversation.
-New boxes start expanded, showing each call's plain-English label, `running`,
+Each H2A review's tool calls and automatic matching activity share one bordered
+box alongside the conversation. `match_counterparties` is a runtime activity, not
+a model-callable search or selection tool. New boxes start expanded, showing each call's plain-English label, `running`,
 `completed`, `error` or `cancelled` status, input details and outcome/error summary.
 Details appear while the tool runs and remain visible on failure or cancellation.
 Click to collapse or expand the full sequence; your choice is retained across live
 updates and intent switches. Collapsed headers show the latest action, status and
-call count. Opening batches show each counterpart's public intent, public reasoning
-and the owner's proposed complete private brief, plus explicit skips and reasons.
-Per-item outcomes distinguish saved openings, reuse without brief changes,
-unavailable items, and stopped or unconfirmed openings. Only the pane owner's
-private brief is shown, including the full brief being saved; counterpart information
+call count. Matching activity shows authorized networks, scored counterpart
+intents in descending score order, match probabilities and automatic opening
+outcomes, not generated queries
+or model-selected/skipped candidates. Explicit reopening activity shows the known
+session, public reasoning and the owner's complete private brief. Per-item outcomes
+distinguish saved openings, reuse without brief changes, unavailable items, items
+not attempted after the new-opening budget is filled, and stopped or unconfirmed
+openings. Only the pane owner's private brief is shown,
+including the full brief being saved; counterpart information
 is public names and intents, not their private briefs. Activity is owner-only, never
 sent to counterparties. These are ephemeral live-session observations, not chat
 messages, model evidence or persisted history; they are excluded from transcript
@@ -238,8 +261,9 @@ negotiation references. **Wake** calls `Agent.wake()` for the selected
 intent. Its private `h2a.wake` receipt requests review of existing context without
 adding a chat message, answering a question, granting authority or invalidating
 A2A briefs. Pending questions and both answer and message drafts remain intact.
-H2A decides whether to reply, ask, discover or update selected briefs; Wake does not
-directly resume A2A. Only explicit Wake, fixture-creation events, accepted messages
+H2A decides whether to reply, ask or update briefs; after a completed review, the
+runtime matches ready peers under the standing brief. Wake does not directly
+resume A2A. Only explicit Wake, fixture-creation events, accepted messages
 and answers activate H2A in the scenario host. Selecting users/intents, expanding
 chats, tool observations and negotiation updates do not activate it. A2A continues
 independently under a current brief, ending each local run immediately after its
@@ -289,18 +313,24 @@ principal/intent entries, agent conversation/input handles, observed match recor
 and a change event. It reads `reviewing` and `negotiating.includes(opportunityId)`
 for live activity, and `toolCalls` for ephemeral H2A tool cards. The shared agent
 supplies each call's `label`, owner-scoped input `details` and outcome/error `summary`
-for all four H2A tools: inbox review, standing-brief saving, discovery and batch
-negotiation opening. Details can include the owner's full private brief, discovery
-queries, each selected counterpart's public intent, reasoning and proposed private
-brief, and explicit skips with reasons. Batch summaries include per-item outcomes,
-including stopped or unconfirmed openings. The view renders these fields as plain
-text with line breaks, without interpreting domain
-data or feeding activity back as model evidence. Tool completion does not confirm
+for inbox review, standing-brief saving, matching with automatic opening, and
+explicit terminal-session reopening. Details can include the owner's full private
+brief, authorized networks, public counterpart intents, probabilities and reasoning.
+Opening summaries include per-item outcomes, including stopped or unconfirmed
+openings. The view renders these fields as plain text with line breaks, without
+interpreting domain data or feeding activity back as model evidence. Tool completion does not confirm
 later review effects were persisted. Messages and complete answer batches go
 through `Agent.receiveInput()`, which persists accepted input and schedules one H2A
 review. The view neither selects models nor schedules negotiations.
-`NegotiationLab(scenario, { model, embedder })` implements this interface with
+`NegotiationLab(scenario, { model, evaluator })` implements this interface with
 in-memory storage, the shared discovery pipeline, and the protocol capability.
+Version `0.13.0` replaces the former `embedder` option with a required
+`IntentPairEvaluator`; the CLI constructs `TypeSafeIntentEvaluator(TYPESAFE_API_KEY)`.
+OpenRouter still supplies the conversational `model`.
+The lab retains `discovery.searched` events as `{ inputId, matchId, networkIds,
+candidateIntentIds }` in `lab.events`; there are no `candidate.evaluated`
+selected/skipped events. Labels and activity summaries come directly from the
+agent runtime rather than TUI-specific discovery handlers.
 Construction initializes each `Agent` immediately; `agent.ready` covers ownership
 and hydration without model work. After mounting the board, `lab.start()` awaits
 readiness and announces its newly created fixture intents through

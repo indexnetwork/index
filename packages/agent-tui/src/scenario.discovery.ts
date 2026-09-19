@@ -1,5 +1,4 @@
-import type { Negotiation } from '@indexnetwork/agent';
-import { CandidateDiscovery, type EmbeddingGenerator } from '@indexnetwork/discovery';
+import { CandidateDiscovery, type IntentPairEvaluator } from '@indexnetwork/discovery';
 import { resolveDiscoveryNetworkScope } from '@indexnetwork/protocol';
 
 import type { TuiPrincipal } from './negotiation.tui';
@@ -9,24 +8,19 @@ export const SCENARIO_NETWORK_ID = 'local-simulation';
 /**
  * Run production discovery against fictional, active intents in one local network.
  * @param users - Scenario principals; private context is never exposed through discovery.
- * @param embedder - The host's real embedding generator, shared by queries and intent indexing.
- * @param negotiations - Current protocol records for recent-rejection evidence.
+ * @param evaluator - Scores public intent pairs and network context, never private instructions or briefs.
  * @param isMatchReady - Whether the intent has committed its standing brief.
- * @param signal - Scenario lifetime; shared fixture indexing must not be cancelled by one principal's review.
- * @returns The same candidate pipeline used by the API, with in-memory data and cosine search ports.
+ * @returns The same exhaustive intent-pair pipeline used by the API, with in-memory data.
  */
 export function createScenarioDiscovery(
   users: readonly TuiPrincipal[],
-  embedder: EmbeddingGenerator,
-  negotiations: (userId: string) => Promise<Negotiation[]>,
+  evaluator: IntentPairEvaluator,
   isMatchReady: (intentId: string) => Promise<boolean>,
-  signal: AbortSignal,
 ): CandidateDiscovery {
-  let vectors: Promise<number[][]> | undefined;
   const networkIds = [SCENARIO_NETWORK_ID];
   const assignedNetworks = (intentId: string) => users.some((user) => user.intentId === intentId) ? networkIds : [];
   return new CandidateDiscovery({
-    embedder,
+    evaluator,
     database: {
       getNetworkMemberships: async (userId) => users.some((user) => user.userId === userId) ? [{ networkId: SCENARIO_NETWORK_ID }] : [],
       getActiveIntents: async (userId) => {
@@ -45,39 +39,14 @@ export function createScenarioDiscovery(
       }),
       getNetworkContexts: async (ids) => Object.fromEntries(ids.filter((id) => id === SCENARIO_NETWORK_ID).map((id) => [id, 'Local simulation network'])),
       getActiveNetworkMembershipPairs: async (pairs) => pairs.filter((pair) => pair.networkId === SCENARIO_NETWORK_ID && users.some((user) => user.userId === pair.userId)),
-      getRecentlyRejectedOpportunityCounterparties: async (userId, candidates, windowMs) => {
-        const records = await negotiations(userId);
-        return [...new Set(records.filter((record) => record.outcome === 'declined' && record.settledAt
-          && Date.parse(record.settledAt) >= Date.now() - windowMs && candidates.includes(record.counterparty.userId))
-          .map((record) => record.counterparty.userId))];
-      },
-    },
-    search: {
-      searchIntentCandidates: async (query, options) => {
-        options.signal?.throwIfAborted();
-        vectors ??= embedder.generate(users.map((user) => user.intent), undefined, { signal }).then((generated) => {
-          signal.throwIfAborted();
-          if (generated.length !== users.length || !generated.every((vector) => Array.isArray(vector) && vector.length === query.length)) {
-            throw new Error('Scenario intent embeddings must match the query vector space.');
-          }
-          return generated as number[][];
-        }).catch((error) => {
-          vectors = undefined;
-          throw error;
-        });
-        const cachedVectors = await vectors;
-        options.signal?.throwIfAborted();
-        const queryNorm = Math.sqrt(query.reduce((sum, value) => sum + value * value, 0));
-        const ready = await Promise.all(users.map(async (user) => isMatchReady(user.intentId)));
-        return users.flatMap((user, index) => {
-          if (!ready[index] || user.userId === options.excludeUserId || !options.networkScope.includes(SCENARIO_NETWORK_ID)) return [];
-          const vector = cachedVectors[index];
-          if (vector.length !== query.length) throw new Error('Query embedding dimensions changed.');
-          const dot = vector.reduce((sum, value, index) => sum + value * query[index], 0);
-          const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
-          const score = dot / (queryNorm * norm);
-          return score >= options.minScore ? [{ type: 'intent' as const, id: user.intentId, userId: user.userId, networkId: SCENARIO_NETWORK_ID, score }] : [];
-        }).sort((a, b) => b.score - a.score).slice(0, options.limit);
+      listIntentCandidates: async ({ excludeUserId, networkIds: requestedNetworks }, options) => {
+        options?.signal?.throwIfAborted();
+        const peers = users.filter((user) => user.userId !== excludeUserId && requestedNetworks.includes(SCENARIO_NETWORK_ID));
+        const ready = await Promise.all(peers.map(async (user) => ({ user, ready: await isMatchReady(user.intentId) })));
+        options?.signal?.throwIfAborted();
+        return ready.filter((entry) => entry.ready).map(({ user }) => ({
+          id: user.intentId, userId: user.userId, networkId: SCENARIO_NETWORK_ID, payload: user.intent,
+        }));
       },
     },
   });

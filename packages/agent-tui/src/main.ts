@@ -4,9 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ModelClient } from '@indexnetwork/agent';
-import { generateEmbeddings, OPENROUTER_EMBEDDING_BASE_URL } from '@indexnetwork/discovery';
+import { INTENT_MATCH_MODEL, TypeSafeIntentEvaluator } from '@indexnetwork/discovery';
 import { createCliRenderer } from '@opentui/core';
-import OpenAI from 'openai';
 
 import { NegotiationLab, parseScenario } from './negotiation.lab';
 import { COLORS, mountNegotiationTui } from './negotiation.tui';
@@ -14,9 +13,11 @@ import { chooseScenario } from './scenario.chooser';
 
 const USAGE = `Usage: bun run agent:tui [model-id ...]
 
-Requires OPENROUTER_API_KEY and an interactive terminal. Uses real agents and
-in-memory negotiations; no Index API keys, database, or server are used.
-Optionally supply one to three ordered OpenRouter model IDs to replace the defaults.
+Requires OPENROUTER_API_KEY, TYPESAFE_API_KEY, and an interactive terminal. Uses
+OpenRouter for conversations and TypeSafe ${INTENT_MATCH_MODEL} for exhaustive public intent-pair
+scoring without a cutoff, opening up to 10 new negotiations per intent per run in descending score order. No Index API keys,
+database, or server are used. Private instructions and briefs are not sent to TypeSafe.
+Optionally supply one to three ordered OpenRouter model IDs to replace the conversational defaults.
 Choose a JSON scenario from packages/agent-tui/scenarios with Up/Down + Enter or
 click it. Esc or Ctrl+C exits the chooser. Agents start only after selection.
 
@@ -26,8 +27,9 @@ research and learning peers, creative partners, local friendships, career mentor
 and community projects. Filenames sort alphabetically, with the five-user
 cofounder scenario first. Each user-intent pair has a personal agent. Scenarios
 start with no negotiations. Loading a scenario emits intent.created for each intent,
-so H2A automatically searches the intent list and opens selected pairs with saved
-briefs. Answer any questions in the H2A panes; briefed A2A work runs independently.
+so H2A saves a standing brief. After a completed review, the runtime matches all ready
+peer intents and opens the highest-scoring available pairs with that brief; matching never
+reopens terminal sessions. Answer H2A questions; briefed A2A work runs independently.
 Changing the visible board or receiving A2A activity does not activate H2A.
 Thinking… marks in-flight H2A reviews and names agents working in the A2A pane;
 it clears when work finishes, pauses or fails, without disabling input. A stale
@@ -39,8 +41,8 @@ Click an intent header or press Ctrl+T to switch that user's intent with Up/Down
 and Enter, or a click. Esc cancels. Each user-intent pair retains its own agent,
 H2A history, scroll position, draft, pending questions, choices, and in-flight sends.
 The full-width Wake button above the input reviews existing context without adding
-a chat message, submitting drafts or invalidating A2A briefs. H2A tool calls appear
-in a bordered group per review, collapsed by default to the latest call. Click to
+a chat message, submitting drafts or invalidating A2A briefs. H2A tools and automatic
+matching appear in a bordered group per review, collapsed by default to the latest call. Click to
 expand/collapse running/completed/error/cancelled entries; they are not saved messages.
 Top-border [−]/Ctrl+O collapses a chat; at least one stays expanded. Overflow collapses
 from the end of roster order, preserving focus and targeting 40 columns per chat.
@@ -71,6 +73,7 @@ async function main(): Promise<void> {
   if (models.length === 1 && models[0] === '--help') { console.log(USAGE); return; }
   if (models.length > 3) throw new Error(USAGE);
   if (!process.env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY is required.');
+  if (!process.env.TYPESAFE_API_KEY) throw new Error('TYPESAFE_API_KEY is required.');
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('Run the TUI in an interactive terminal.');
   const scenarioDirectory = join(import.meta.dir, '../scenarios');
   const filenames = readdirSync(scenarioDirectory, { withFileTypes: true })
@@ -89,13 +92,9 @@ async function main(): Promise<void> {
     const filename = await chooseScenario(renderer, filenames);
     if (!filename || renderer.isDestroyed) return;
     const scenario = parseScenario(JSON.parse(readFileSync(join(scenarioDirectory, filename), 'utf8')));
-    const embeddingClient = new OpenAI({
-      apiKey: process.env.OPENROUTER_API_KEY, baseURL: OPENROUTER_EMBEDDING_BASE_URL,
-      defaultHeaders: { 'HTTP-Referer': 'https://index.network', 'X-Title': 'Index Network' },
-    });
     lab = new NegotiationLab(scenario, {
       model: new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY, models: models.length ? models : undefined }),
-      embedder: { generate: (text, dimensions, options) => generateEmbeddings(embeddingClient, text, dimensions, options) },
+      evaluator: new TypeSafeIntentEvaluator(process.env.TYPESAFE_API_KEY),
     });
     mountNegotiationTui(renderer, lab);
     await lab.start();

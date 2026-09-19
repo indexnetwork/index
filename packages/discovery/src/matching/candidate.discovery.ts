@@ -1,8 +1,8 @@
-import type { CandidateSearch, DiscoveryData, EmbeddingGenerator, IntentCandidate, Profile, RunOptions } from '../core/types.js';
+import type { DiscoveryData, IntentCandidate, IntentPairEvaluator, Profile, RunOptions } from '../core/types.js';
 
-import { validateDiscoveryMinSimilarity, REJECTION_COOLDOWN_MS } from './discovery.constants.js';
+import { INTENT_MATCH_REASONING } from './discovery.constants.js';
 
-/** Read ports for explicit-query retrieval, independent of artifact generation and evaluation. */
+/** Read ports for exhaustive intent pairing within authorized network registrations. */
 export type CandidateDiscoveryData = Pick<
   DiscoveryData,
   | 'getNetworkMemberships'
@@ -12,255 +12,231 @@ export type CandidateDiscoveryData = Pick<
   | 'getDiscoveryScope'
   | 'getNetworkContexts'
   | 'getActiveNetworkMembershipPairs'
-  | 'getRecentlyRejectedOpportunityCounterparties'
+  | 'listIntentCandidates'
 >;
 
 export interface CounterpartyCandidate {
   candidateUserId: string;
   candidateIntentId: string;
   networkId: string;
-  similarity: number;
+  matchProbability: number;
+  reasoning: string;
   candidatePayload: string;
   candidateSummary?: string;
   profile: Profile | null;
   networkContext?: string;
-  recentlyRejected: boolean;
 }
 
 export interface CandidateDiscoveryInput {
   userId: string;
   triggerIntentId: string;
-  queries: string[];
-  minSimilarity: number;
   networkIds: string[];
 }
 
 export interface CandidateDiscoveryResult {
   networkIds: string[];
+  sourcePayload: string;
   candidates: CounterpartyCandidate[];
 }
 
-const DEFAULT_CANDIDATE_LIMIT = 80;
+const PAIR_CONCURRENCY = 4;
 
-/**
- * Retrieves candidate intents with five complementary queries within shared intent registrations.
- *
- * One embedding batch, five parallel searches, and one merged candidate ranking.
- * The caller (H2A agent) owns query complementarity, evaluation, refinement, and opening decisions.
- */
+/** Scores every eligible intent/network pair directly and ranks by match probability. */
 export class CandidateDiscovery {
+  /** @param deps - Host-owned read ports and direct intent-pair evaluator. */
   constructor(
     private readonly deps: {
       database: CandidateDiscoveryData;
-      embedder: EmbeddingGenerator;
-      search: CandidateSearch;
+      evaluator: IntentPairEvaluator;
     },
   ) {}
 
   /**
-   * Discovers candidate counterparty intents matching five complementary search queries.
-   *
-   * @param input - Exactly five distinct nonempty queries and an owned match-ready intent; requested networks must be a subset of its authorized registrations.
-   * @param options - Cancellation signal and execution tracing.
-   * @returns At most 80 hydrated candidates sorted by their highest query similarity descending.
-   * @throws When queries or embeddings are invalid, network scope is invalid, or infrastructure reads fail.
+   * Scores all eligible counterparty intents within shared intent registrations.
+   * @param input - An owned active intent and a distinct nonempty subset of its authorized networks.
+   * @param options - Cancellation signal, execution tracing, and logger.
+   * @returns Every still-eligible pair in descending match probability order, plus the evaluated source payload.
+   * @throws When scope or source changes, evaluation fails, a probability is invalid, or host reads fail.
    */
   async discover(input: CandidateDiscoveryInput, options: RunOptions = {}): Promise<CandidateDiscoveryResult> {
-    const { queries, minScore, networkIds: requestedNetworks } = this.validateInput(input);
-    const { database, embedder, search } = this.deps;
-    const { signal, traceEmitter, logger } = options;
-
+    const requestedNetworks = this.validateInput(input);
+    const { database, evaluator } = this.deps;
+    const { traceEmitter, logger } = options;
+    const controller = new AbortController();
+    const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
     const startedAt = Date.now();
-    signal?.throwIfAborted();
+    signal.throwIfAborted();
     traceEmitter?.({ type: 'agent_start', name: 'opportunity-discovery' });
 
     try {
-      // 1. Verify trigger intent is active and resolve authorized network scope
       const [memberships, userIntents, triggerIntentNetworkIds] = await Promise.all([
         database.getNetworkMemberships(input.userId),
         database.getActiveIntents(input.userId),
         database.getNetworkIdsForIntent(input.triggerIntentId),
       ]);
-
-      signal?.throwIfAborted();
+      signal.throwIfAborted();
 
       const triggerIntent = userIntents.find((intent) => intent.id === input.triggerIntentId);
       if (!triggerIntent) {
         throw new Error('Trigger intent is not available for discovery.');
       }
-
-      const userNetworkIds = memberships.map((m) => m.networkId);
+      const sourcePayload = triggerIntent.payload;
+      const userNetworkIds = memberships.map((membership) => membership.networkId);
       const scope = await database.getDiscoveryScope({
         userId: input.userId,
         userNetworks: userNetworkIds,
         networkScope: requestedNetworks,
         triggerIntentId: input.triggerIntentId,
       });
+      signal.throwIfAborted();
 
-      if (scope.error) {
-        throw new Error(scope.error);
-      }
-
+      if (scope.error) throw new Error(scope.error);
       const isScopeAuthorized =
         scope.networkIds.length === requestedNetworks.length &&
         requestedNetworks.every(
           (id) => scope.networkIds.includes(id) && userNetworkIds.includes(id) && triggerIntentNetworkIds.includes(id),
         );
-
       if (!isScopeAuthorized) {
         throw new Error('Requested networks are outside authorized scope.');
       }
 
-      signal?.throwIfAborted();
+      const [listedCandidates, networkContexts] = await Promise.all([
+        database.listIntentCandidates({ excludeUserId: input.userId, networkIds: scope.networkIds }, { signal }),
+        database.getNetworkContexts(scope.networkIds),
+      ]);
+      signal.throwIfAborted();
 
-      // 2. Generate all five query embeddings in one batch
-      const embeddings = await embedder.generate(queries, undefined, { signal });
-      signal?.throwIfAborted();
-
-      if (
-        embeddings.length !== queries.length ||
-        !embeddings.every(
-          (embedding): embedding is number[] =>
-            Array.isArray(embedding) && embedding.length > 0 && embedding.every(Number.isFinite),
-        )
-      ) {
-        throw new Error('Expected five nonempty query embedding vectors.');
+      const uniqueCandidates = new Map<string, IntentCandidate>();
+      for (const candidate of listedCandidates) {
+        if (
+          candidate.userId === input.userId ||
+          candidate.id === input.triggerIntentId ||
+          !scope.networkIds.includes(candidate.networkId)
+        ) continue;
+        const key = JSON.stringify([candidate.id, candidate.networkId]);
+        if (!uniqueCandidates.has(key)) uniqueCandidates.set(key, candidate);
+      }
+      const intentCandidates = [...uniqueCandidates.values()];
+      const initialMemberships = await database.getActiveNetworkMembershipPairs([
+        ...scope.networkIds.map((networkId) => ({ userId: input.userId, networkId })),
+        ...intentCandidates.map((candidate) => ({ userId: candidate.userId, networkId: candidate.networkId })),
+      ]);
+      signal.throwIfAborted();
+      const initialMemberKeys = new Set(initialMemberships.map((pair) => JSON.stringify([pair.userId, pair.networkId])));
+      if (scope.networkIds.some((networkId) => !initialMemberKeys.has(JSON.stringify([input.userId, networkId])))) {
+        throw new Error('Source network scope changed during discovery.');
       }
 
-      // 3. Search the same authorized scope in parallel and merge before hydration
-      const hitsByQuery = await Promise.all(
-        embeddings.map((embedding) => search.searchIntentCandidates(embedding, {
-          networkScope: scope.networkIds,
-          excludeUserId: input.userId,
-          minScore,
-          limit: DEFAULT_CANDIDATE_LIMIT,
-          signal,
-        })),
-      );
+      const profiles = new Map<string, Promise<Profile | null>>();
+      const matches: CounterpartyCandidate[] = [];
+      for (let offset = 0; offset < intentCandidates.length; offset += PAIR_CONCURRENCY) {
+        signal.throwIfAborted();
+        const evaluated = await Promise.all(
+          intentCandidates.slice(offset, offset + PAIR_CONCURRENCY).map(async (candidate): Promise<CounterpartyCandidate | null> => {
+            if (!initialMemberKeys.has(JSON.stringify([candidate.userId, candidate.networkId]))) return null;
+            const [activeIntents, assignments] = await Promise.all([
+              database.getActiveIntents(candidate.userId),
+              database.getNetworkIdsForIntent(candidate.id),
+            ]);
+            signal.throwIfAborted();
+            const activeIntent = activeIntents.find((intent) => intent.id === candidate.id);
+            if (!activeIntent || activeIntent.payload !== candidate.payload || !assignments.includes(candidate.networkId)) {
+              return null;
+            }
 
-      signal?.throwIfAborted();
+            const matchProbability = await evaluator.evaluate({
+              intentA: sourcePayload,
+              intentB: candidate.payload,
+              networkContext: networkContexts[candidate.networkId],
+            }, { signal });
+            signal.throwIfAborted();
+            if (!Number.isFinite(matchProbability) || matchProbability < 0 || matchProbability > 1) {
+              throw new Error('Intent pair evaluator must return a finite probability between 0 and 1.');
+            }
 
-      const uniqueHits = new Map<string, IntentCandidate>();
-      for (const hits of hitsByQuery) {
-        for (const hit of hits) {
-          if (
-            hit.userId === input.userId ||
-            !scope.networkIds.includes(hit.networkId) ||
-            !Number.isFinite(hit.score) ||
-            hit.score < minScore
-          ) continue;
-
-          const dedupeKey = `${hit.id}:${hit.networkId}`;
-          const existing = uniqueHits.get(dedupeKey);
-          if (!existing || existing.score < hit.score) {
-            uniqueHits.set(dedupeKey, hit);
-          }
+            let profile = profiles.get(candidate.userId);
+            if (!profile) {
+              profile = database.getProfile(candidate.userId);
+              profiles.set(candidate.userId, profile);
+            }
+            const candidateProfile = await profile;
+            signal.throwIfAborted();
+            return {
+              candidateUserId: candidate.userId,
+              candidateIntentId: candidate.id,
+              networkId: candidate.networkId,
+              matchProbability,
+              reasoning: INTENT_MATCH_REASONING,
+              candidatePayload: candidate.payload,
+              candidateSummary: activeIntent.summary ?? undefined,
+              profile: candidateProfile,
+              networkContext: networkContexts[candidate.networkId],
+            };
+          }),
+        );
+        for (const candidate of evaluated) {
+          if (candidate) matches.push(candidate);
         }
       }
-      const eligibleHits = [...uniqueHits.values()];
 
-      if (!eligibleHits.length) {
-        return { networkIds: scope.networkIds, candidates: [] };
+      // Provider calls and profile hydration can outlive the eligibility snapshot.
+      const freshMatches: CounterpartyCandidate[] = [];
+      for (let offset = 0; offset < matches.length; offset += PAIR_CONCURRENCY) {
+        signal.throwIfAborted();
+        const refreshed = await Promise.all(
+          matches.slice(offset, offset + PAIR_CONCURRENCY).map(async (candidate): Promise<CounterpartyCandidate | null> => {
+            const [activeIntents, assignments] = await Promise.all([
+              database.getActiveIntents(candidate.candidateUserId),
+              database.getNetworkIdsForIntent(candidate.candidateIntentId),
+            ]);
+            signal.throwIfAborted();
+            const activeIntent = activeIntents.find((intent) => intent.id === candidate.candidateIntentId);
+            if (!activeIntent || activeIntent.payload !== candidate.candidatePayload || !assignments.includes(candidate.networkId)) {
+              return null;
+            }
+            return { ...candidate, candidateSummary: activeIntent.summary ?? undefined };
+          }),
+        );
+        for (const candidate of refreshed) {
+          if (candidate) freshMatches.push(candidate);
+        }
       }
 
-      // 4. Hydrate candidate details (profiles, intents, network contexts, recent rejections)
-      const candidateUserIds = [...new Set(eligibleHits.map((hit) => hit.userId))];
-
-      const [candidateProfiles, networkContexts, recentlyRejectedUserIds] = await Promise.all([
-        Promise.all(
-          candidateUserIds.map(async (userId) => ({
-            userId,
-            intents: await database.getActiveIntents(userId),
-            profile: await database.getProfile(userId),
-          })),
-        ),
-        database.getNetworkContexts(scope.networkIds),
-        database.getRecentlyRejectedOpportunityCounterparties(
-          input.userId,
-          candidateUserIds,
-          REJECTION_COOLDOWN_MS,
-        ),
-      ]);
-
-      signal?.throwIfAborted();
-
-      const candidateMap = new Map(candidateProfiles.map((p) => [p.userId, p]));
-      const rejectedSet = new Set(recentlyRejectedUserIds);
-
-      const hydratedCandidates = await Promise.all(
-        eligibleHits.map(async (hit): Promise<CounterpartyCandidate | null> => {
-          const userDetails = candidateMap.get(hit.userId);
-          if (!userDetails) return null;
-
-          const candidateIntent = userDetails.intents.find((intent) => intent.id === hit.id);
-          if (!candidateIntent) return null;
-
-          const intentNetworks = await database.getNetworkIdsForIntent(hit.id);
-          if (!intentNetworks.includes(hit.networkId)) return null;
-
-          return {
-            candidateUserId: hit.userId,
-            candidateIntentId: hit.id,
-            networkId: hit.networkId,
-            similarity: Math.min(1, Math.max(0, hit.score)),
-            candidatePayload: candidateIntent.payload,
-            candidateSummary: candidateIntent.summary ?? undefined,
-            profile: userDetails.profile,
-            networkContext: networkContexts[hit.networkId],
-            recentlyRejected: rejectedSet.has(hit.userId),
-          };
-        }),
-      );
-
-      signal?.throwIfAborted();
-
-      // 5. Final guard: re-verify source intent and live network memberships before returning
       const [currentSourceIntents, sourceAssignments, activeMembershipPairs] = await Promise.all([
         database.getActiveIntents(input.userId),
         database.getNetworkIdsForIntent(input.triggerIntentId),
         database.getActiveNetworkMembershipPairs([
           ...scope.networkIds.map((networkId) => ({ userId: input.userId, networkId })),
-          ...eligibleHits.map((hit) => ({ userId: hit.userId, networkId: hit.networkId })),
+          ...freshMatches.map((candidate) => ({ userId: candidate.candidateUserId, networkId: candidate.networkId })),
         ]),
       ]);
-
-      signal?.throwIfAborted();
-
-      if (!currentSourceIntents.some((intent) => intent.id === input.triggerIntentId)) {
+      signal.throwIfAborted();
+      const currentSourceIntent = currentSourceIntents.find((intent) => intent.id === input.triggerIntentId);
+      if (!currentSourceIntent) {
         throw new Error('Trigger intent is not available for discovery.');
       }
-
-      const isMember = (userId: string, networkId: string): boolean =>
-        activeMembershipPairs.some((pair) => pair.userId === userId && pair.networkId === networkId);
-
-      const validNetworks = scope.networkIds.filter(
-        (networkId) => sourceAssignments.includes(networkId) && isMember(input.userId, networkId),
-      );
-
-      if (validNetworks.length !== requestedNetworks.length) {
-        throw new Error('Source network scope changed during search.');
+      if (currentSourceIntent.payload !== sourcePayload) {
+        throw new Error('Trigger intent payload changed during discovery.');
       }
 
-      // 6. Apply live membership guards and cap the merged ranking
-      const ranked = hydratedCandidates
-        .filter(
-          (candidate): candidate is CounterpartyCandidate =>
-            candidate !== null &&
-            validNetworks.includes(candidate.networkId) &&
-            isMember(candidate.candidateUserId, candidate.networkId),
-        )
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, DEFAULT_CANDIDATE_LIMIT);
-
-      logger?.info('Candidate search complete', {
-        candidates: ranked.length,
+      const memberKeys = new Set(activeMembershipPairs.map((pair) => JSON.stringify([pair.userId, pair.networkId])));
+      const validNetworks = scope.networkIds.filter(
+        (networkId) => sourceAssignments.includes(networkId) && memberKeys.has(JSON.stringify([input.userId, networkId])),
+      );
+      if (validNetworks.length !== requestedNetworks.length) {
+        throw new Error('Source network scope changed during discovery.');
+      }
+      const candidates = freshMatches.filter(
+        (candidate) => memberKeys.has(JSON.stringify([candidate.candidateUserId, candidate.networkId])),
+      ).sort((a, b) => b.matchProbability - a.matchProbability);
+      logger?.info('Intent pair discovery complete', {
+        candidates: candidates.length,
         networks: validNetworks.length,
       });
-
-      return {
-        networkIds: validNetworks,
-        candidates: ranked,
-      };
+      return { networkIds: validNetworks, sourcePayload, candidates };
+    } catch (error) {
+      controller.abort(error);
+      throw error;
     } finally {
       traceEmitter?.({
         type: 'agent_end',
@@ -270,24 +246,7 @@ export class CandidateDiscovery {
     }
   }
 
-  private validateInput(input: CandidateDiscoveryInput): {
-    queries: string[];
-    minScore: number;
-    networkIds: string[];
-  } {
-    if (!Array.isArray(input.queries) || input.queries.length !== 5) {
-      throw new Error('Provide exactly five distinct nonempty search queries.');
-    }
-
-    const queries = Array.from(input.queries, (query) =>
-      typeof query === 'string' ? query.replace(/\s+/g, ' ').trim() : '',
-    );
-    if (queries.some((query) => !query) || new Set(queries.map((query) => query.toLowerCase())).size !== 5) {
-      throw new Error('Provide exactly five distinct nonempty search queries.');
-    }
-
-    const minScore = validateDiscoveryMinSimilarity(input.minSimilarity);
-
+  private validateInput(input: CandidateDiscoveryInput): string[] {
     if (
       !Array.isArray(input.networkIds) ||
       !input.networkIds.length ||
@@ -296,7 +255,6 @@ export class CandidateDiscovery {
     ) {
       throw new Error('Provide distinct nonempty network IDs.');
     }
-
-    return { queries, minScore, networkIds: input.networkIds };
+    return [...input.networkIds];
   }
 }

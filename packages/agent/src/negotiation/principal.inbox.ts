@@ -6,9 +6,9 @@ import type { Tool, ToolContext } from '../core/tools.ts';
 import type { PendingQuestion } from '../core/types.ts';
 
 import type { AgentDomainEvent, PrincipalActivation } from './agent.events.ts';
-import type { CandidateQuery, DiscoveryClient, NegotiationSelection, OpenNegotiationsInput, OpenNegotiationResult, SearchRecord, SkippedCounterparty } from './discovery.types.ts';
+import type { DiscoveryClient, NegotiationOpeningRequest, OpenNegotiationResult } from './discovery.types.ts';
 import type { Negotiation, User } from './negotiation.types.ts';
-import { latestPrincipalInput, pendingPrincipalQuestions, validPrincipalQuestionRetirements, type PrincipalEffects, type PrincipalRecords, type PrincipalRecordsView, type PrincipalStandingBrief } from './principal.records.ts';
+import { isPrincipalBriefCurrent, latestPrincipalInput, pendingPrincipalQuestions, validPrincipalQuestionRetirements, type PrincipalEffects, type PrincipalRecords, type PrincipalRecordsView, type PrincipalStandingBrief } from './principal.records.ts';
 
 export type QuestionScope = 'intent' | 'match';
 
@@ -42,7 +42,7 @@ export type AgentInput =
   | { type: 'message'; text: string }
   | { type: 'answers'; answers: readonly PrincipalAnswer[] };
 
-/** Ephemeral H2A tool execution, anchored to the preceding visible conversation entry. */
+/** Ephemeral H2A tool or automatic matching activity, anchored to the preceding visible conversation entry. */
 export interface PrincipalToolCall {
   id: string;
   reviewId: string;
@@ -64,18 +64,19 @@ interface Decision {
   delegations?: { opportunityId: string; brief: string }[];
 }
 
-const DISCOVERY_QUERY_COUNT = 5;
+interface ReopeningInput { negotiationId: string; reasoning: string; brief: string }
 
 interface OpeningItemResult {
   candidateIntentId: string;
   networkId: string;
   name: string;
-  status: 'pending' | 'opened' | 'reused' | 'unavailable' | 'skipped' | 'not_attempted' | 'unconfirmed';
+  status: 'pending' | 'opened' | 'reused' | 'unavailable' | 'limit_reached' | 'not_attempted' | 'unconfirmed';
   opportunityId?: string;
-  reason?: string;
 }
 
 interface OpeningBatchResult { results: OpeningItemResult[] }
+
+const MAX_AUTOMATIC_NEGOTIATIONS = 10;
 
 /** Progress stays in the owner's activity snapshot, outside the model transcript. */
 type InboxTool<I = unknown> = Omit<Tool<I>, 'run'> & {
@@ -89,11 +90,12 @@ function summarizeOpeningBatch(batch: OpeningBatchResult): string {
       opened: 'Negotiation opened; your private brief was saved.',
       reused: 'Existing negotiation reused; its private brief was left unchanged.',
       unavailable: 'Unavailable for this negotiation.',
-      skipped: 'Skipped by your agent.',
+      limit_reached: `Not attempted; the ${MAX_AUTOMATIC_NEGOTIATIONS}-new-negotiation limit was reached.`,
+
       not_attempted: 'Not attempted; the batch stopped.',
       unconfirmed: 'Opening result unconfirmed; inspect saved records before retrying.',
     }[item.status];
-    return `${index + 1}. ${item.name}: ${status}${item.reason ? ' ' + item.reason : ''}`;
+    return `${index + 1}. ${item.name}: ${status}`;
   }).join('\n');
 }
 
@@ -101,7 +103,7 @@ function summarizeOpeningBatch(batch: OpeningBatchResult): string {
 function describeToolCall(
   name: string,
   input: unknown,
-  searches: ReadonlyMap<string, SearchRecord>,
+
   negotiations: readonly Negotiation[],
   pendingQuestions: readonly PrincipalQuestion[],
 ): Pick<PrincipalToolCall, 'label' | 'details'> {
@@ -110,37 +112,12 @@ function describeToolCall(
   switch (name) {
     case 'save_standing_brief':
       return { label: 'Saving standing brief', details: text(value.brief) ? `Your private standing brief:\n${text(value.brief)}` : undefined };
-    case 'discover_counterparties': {
-      const queries = Array.isArray(value.queries) ? value.queries.filter((query): query is string => typeof query === 'string') : [];
-      return { label: 'Discovering counterparties', details: [
-        Array.isArray(value.networkIds) ? `Requested search scope: ${value.networkIds.length} networks` : '',
-        typeof value.minSimilarity === 'number' ? `Minimum similarity: ${value.minSimilarity}` : '',
-        queries.length ? `Search queries:\n${queries.map((query, index) => `${index + 1}. ${query.replace(/\s+/g, ' ').trim()}`).join('\n')}` : '',
-      ].filter(Boolean).join('\n\n') };
-    }
-    case 'open_negotiations': {
-      const openings = Array.isArray(value.negotiations) ? value.negotiations : [];
-      const skipped = Array.isArray(value.skipped) ? value.skipped : [];
-      const describe = (entry: unknown, skip: boolean): string => {
-        if (!entry || typeof entry !== 'object') return '';
-        const item = entry as Record<string, unknown>;
-        const selected = negotiations.find((record) => record.id === item.negotiationId);
-        const candidate = searches.get(text(item.searchId))?.candidates.find((record) => record.candidateIntentId === item.candidateIntentId && record.networkId === item.networkId);
-        const name = (selected ? selected.counterparty.name : candidate?.profile?.identity?.name)?.trim() || 'an unnamed person';
-        const intent = selected ? selected.counterparty.statement : candidate?.candidatePayload;
-        return [
-          `${skip ? 'Skipping' : 'Opening negotiation with'} ${name}`,
-          intent ? `Their intent:\n${intent}` : '',
-          text(item.networkId) ? `Network: ${text(item.networkId)}` : '',
-          skip ? `Reason for skipping:\n${text(item.reason)}` : [
-            text(item.reasoning) ? `Why this match:\n${text(item.reasoning)}` : '',
-            text(item.brief) ? `Your proposed private brief for this negotiation:\n${text(item.brief)}` : '',
-          ].filter(Boolean).join('\n\n'),
-        ].filter(Boolean).join('\n\n');
-      };
-      return { label: 'Opening negotiations', details: [
-        ...openings.map((entry) => describe(entry, false)),
-        ...skipped.map((entry) => describe(entry, true)),
+    case 'reopen_negotiation': {
+      const selected = negotiations.find((record) => record.id === value.negotiationId);
+      return { label: 'Reopening a terminal negotiation', details: [
+        selected ? `Counterparty: ${selected.counterparty.name?.trim() || 'an unnamed person'}\nTheir intent:\n${selected.counterparty.statement}\nNetwork: ${selected.networkId}` : '',
+        text(value.reasoning) ? `Public reason for reopening:\n${text(value.reasoning)}` : '',
+        text(value.brief) ? `Your private brief for the new session:\n${text(value.brief)}` : '',
       ].filter(Boolean).join('\n\n') };
     }
     case 'review_principal_inbox': {
@@ -167,11 +144,7 @@ function describeToolCall(
 
 function summarizeToolResponse(name: string, input: unknown, result: unknown): string | undefined {
   switch (name) {
-    case 'discover_counterparties': {
-      const search = result as SearchRecord;
-      return `Found ${search.candidates.length} potential matches across ${search.networkIds.length} searched networks. This search did not open any negotiations.`;
-    }
-    case 'open_negotiations':
+    case 'reopen_negotiation':
       return summarizeOpeningBatch(result as OpeningBatchResult);
     case 'review_principal_inbox': {
       const decision = input as Decision;
@@ -182,46 +155,11 @@ function summarizeToolResponse(name: string, input: unknown, result: unknown): s
   }
 }
 
-function validateCandidateQuery(
-  value: unknown,
-  authorizedNetworkIds: string[],
-): CandidateQuery {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Provide a valid query object with queries, minSimilarity, and networkIds.');
-  }
-
-  const { queries, minSimilarity, networkIds } = value as Record<string, unknown>;
-
-  if (!Array.isArray(queries) || queries.length !== DISCOVERY_QUERY_COUNT || queries.some((query) => typeof query !== 'string' || !query.trim())) {
-    throw new Error('Provide exactly five nonempty complementary search queries.');
-  }
-  const normalizedQueries = queries.map((query: string) => query.replace(/\s+/g, ' ').trim());
-  if (new Set(normalizedQueries.map((query) => query.toLowerCase())).size !== DISCOVERY_QUERY_COUNT) {
-    throw new Error('Provide five distinct complementary search queries, not duplicates.');
-  }
-
-  if (typeof minSimilarity !== 'number' || !Number.isFinite(minSimilarity) || minSimilarity < 0 || minSimilarity > 1) {
-    throw new Error('Provide a finite similarity floor between 0 and 1.');
-  }
-
-  if (
-    !Array.isArray(networkIds) ||
-    networkIds.length === 0 ||
-    new Set(networkIds).size !== networkIds.length ||
-    networkIds.some((id) => typeof id !== 'string' || !authorizedNetworkIds.includes(id))
-  ) {
-    throw new Error('Provide distinct authorized network IDs from current scope.');
-  }
-
-  return {
-    queries: normalizedQueries,
-    minSimilarity,
-    networkIds,
-  };
-}
-
 /** Internal completion signal: apply the decision without another model call. */
 class ReviewComplete extends Error {}
+
+/** Stop this review without retrying writes or shutting down already delegated A2A work. */
+class ReviewInterrupted extends Error {}
 
 /** Reconstructs H2A on accepted input, manual wakes or lifecycle events and persists only explicit outputs. */
 export class PrincipalInbox {
@@ -263,11 +201,11 @@ export class PrincipalInbox {
   get conversation(): readonly PrincipalMessage[] { return this.messages; }
   /** @returns The exact unretired, unanswered batch derived from records. */
   get pending(): readonly PrincipalQuestion[] { return this.currentQuestions; }
-  /** @returns This runtime's H2A tool observations; never part of persisted conversation or model context. */
+  /** @returns This runtime's H2A tool and matching observations; never persisted or added to model context. */
   get toolCalls(): readonly PrincipalToolCall[] { return this.calls; }
   /** @returns Whether an H2A review is in flight, excluding cancelled work. */
   get reviewing(): boolean { return Boolean(this.reviewController && !this.reviewController.signal.aborted); }
-  /** @returns Guidance for an accepted input whose review was discarded by a stale effect fence. */
+  /** @returns Guidance when a review or automatic matching stopped before completing. */
   get reviewNotice(): string | undefined { return this.unfinishedReview; }
 
   /** @param input - Direct human input or a complete answer batch. @returns Committed input with one review queued, or null without a write or wake. */
@@ -326,7 +264,7 @@ export class PrincipalInbox {
 
   private observeTools(
     tools: InboxTool[], signal: AbortSignal, reviewId: string,
-    searches: ReadonlyMap<string, SearchRecord>, negotiations: readonly Negotiation[], pendingQuestions: readonly PrincipalQuestion[],
+    negotiations: readonly Negotiation[], pendingQuestions: readonly PrincipalQuestion[],
   ): Tool[] {
     return tools.map((tool) => ({
       ...tool,
@@ -334,7 +272,7 @@ export class PrincipalInbox {
         signal.throwIfAborted();
         const call: PrincipalToolCall = {
           id: crypto.randomUUID(), reviewId, name: tool.name,
-          ...describeToolCall(tool.name, input, searches, negotiations, pendingQuestions),
+          ...describeToolCall(tool.name, input, negotiations, pendingQuestions),
           afterMessageId: this.messages.at(-1)?.id, status: 'running',
         };
         this.calls.push(call);
@@ -369,27 +307,35 @@ export class PrincipalInbox {
     const input = inputs.at(-1)!;
     const controller = new AbortController();
     this.reviewController = controller;
-    const openedIds = new Set<string>();
+    const delegatedIds = new Set<string>();
     try {
       this.host.changed();
       let records = await this.records.read();
       if (latestPrincipalInput(records.messages) !== input.id) return;
       const negotiations = await this.negotiations();
+      const visibleNegotiationIds = new Set(negotiations.map((record) => record.id));
       const discoveryScope = await this.discovery?.scope(controller.signal);
       controller.signal.throwIfAborted();
       const pendingQuestions = pendingPrincipalQuestions(records);
-      const completedSearches = new Map<string, SearchRecord>();
-      const attemptedOpenings = new Map<string, OpenNegotiationResult | null>();
-      let pendingSearch: SearchRecord | undefined;
-      let openingFailure: Error | undefined;
-      const requireBatchProcessed = () => {
-        if (openingFailure) throw openingFailure;
-        if (pendingSearch) throw new Error(`Call open_negotiations for search ${pendingSearch.id} first: account for all ${pendingSearch.candidates.length} candidates with an opening brief or an explicit skip reason.`);
+      let reviewFailure: ReviewInterrupted | undefined;
+      const sourceUnchanged = (current: PrincipalRecordsView) => latestPrincipalInput(current.messages) === input.id
+        && current.executionVersion === records.executionVersion && current.principalContext === records.principalContext
+        && current.intent.id === records.intent.id && current.intent.payload === records.intent.payload;
+      const requireCurrent = async () => {
+        controller.signal.throwIfAborted();
+        const current = await this.records.read();
+        if (current.version !== records.version || !sourceUnchanged(current)) throw new ReviewInterrupted('Principal context changed; the remaining review and matching were stopped.');
+        controller.signal.throwIfAborted();
+      };
+      const requireScope = async (version: string, networkIds: string[]) => {
+        const scope = await this.discovery!.scope(controller.signal);
+        if (scope.version !== version || networkIds.some((id) => !scope.networkIds.includes(id))) throw new ReviewInterrupted('Authorized network scope changed; no further openings were attempted.');
+        controller.signal.throwIfAborted();
       };
       let decision: Decision | undefined;
       const tool: InboxTool<Decision> = {
         name: 'review_principal_inbox',
-        description: 'Record one review. A useful principal-facing message, exact question retirements, a stable batch of 1–3 independent questions, and selected unsettled delegations may coexist. This cannot accept or reject opportunities; users decide in the application UI, never through H2A questions or messages. A discovered batch must be processed through open_negotiations before this review can end. After that, empty input writes no final effects. Briefs are private; only saved delegations resume A2A.',
+        description: 'Record one review. A useful principal-facing message, exact question retirements, a stable batch of 1–3 independent questions, and selected unsettled delegations may coexist. This cannot accept or reject opportunities; users decide in the application UI, never through H2A questions or messages. After these effects are saved, the runtime automatically scores pairs across all authorized networks and opens up to 10 new negotiations in descending score order using the standing brief. Empty input writes no final effects but still runs matching. Briefs are private; only saved specific delegations resume existing A2A work.',
         parameters: {
           type: 'object', additionalProperties: false,
           properties: {
@@ -407,7 +353,7 @@ export class PrincipalInbox {
         run: (value) => {
           controller.signal.throwIfAborted();
           if (decision) throw new Error('Only one decision per review.');
-          requireBatchProcessed();
+          if (reviewFailure) throw reviewFailure;
           this.validate(value, records, pendingQuestions, negotiations);
           decision = value;
           return 'Decision recorded.';
@@ -416,7 +362,7 @@ export class PrincipalInbox {
       let standingBriefSaved = false;
       const standingBriefTool: InboxTool<{ brief: string }> = {
         name: 'save_standing_brief',
-        description: 'Save the complete private mandate that makes this intent eligible for new negotiations. Use before discovery when none exists; replace it only when this H2A review has a materially better intent-wide mandate. This does not resume existing negotiations.',
+        description: 'Save the complete private mandate that makes this intent eligible for new negotiations. Use before review completion when none exists; replace it only when this H2A review has a materially better intent-wide mandate. This does not resume existing negotiations.',
         parameters: {
           type: 'object', additionalProperties: false,
           properties: { brief: { type: 'string', minLength: 1, description: 'Objective, confirmed facts, conditions, standing authority and limits, and a safe focus for an unseen counterparty. Do not turn a counterpart-specific approval into standing authority; state what still needs permission.' } },
@@ -425,7 +371,7 @@ export class PrincipalInbox {
         run: async (value) => {
           controller.signal.throwIfAborted();
           if (decision) throw new Error('This review already ended.');
-          requireBatchProcessed();
+          if (reviewFailure) throw reviewFailure;
           if (standingBriefSaved) throw new Error('The standing brief was already saved in this review.');
           if (!value || typeof value !== 'object' || typeof value.brief !== 'string' || !value.brief.trim()) throw new Error('Provide a complete nonempty standing brief.');
           const previousTimes = [...records.messages, ...records.delegations, ...(records.standingBrief ? [records.standingBrief] : [])]
@@ -434,296 +380,120 @@ export class PrincipalInbox {
             id: crypto.randomUUID(), brief: value.brief.trim(), sourceMessageId: input.id,
             createdAt: new Date(Math.max(Date.now(), ...previousTimes) + 1).toISOString(),
           };
-          if (!await this.records.writeStandingBrief(brief, records.version)) throw new Error('Principal context changed; discard this standing brief.');
-          const current = await this.records.read();
-          if (current.standingBrief?.id !== brief.id) throw new Error('The standing brief could not be confirmed.');
-          records = current;
-          standingBriefSaved = true;
-          this.host.event?.({ type: 'standing_brief.saved', inputId: input.id, standingBriefId: brief.id });
-          return 'Standing brief saved. The intent is ready for new negotiations.';
-        },
-      };
-      const searchTool: InboxTool<CandidateQuery> = {
-        name: 'discover_counterparties',
-        description: 'Search actual counterparty intents with five complementary queries, all in the same authorized networks where both intents are registered. Results are merged by intent and shared network, keeping the highest similarity. After nonempty results, open_negotiations must account for every candidate with an opening or explicit skip before another search or final review. Results exist only in this review; this search never opens a negotiation itself.',
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            queries: {
-              type: 'array',
-              minItems: DISCOVERY_QUERY_COUNT,
-              maxItems: DISCOVERY_QUERY_COUNT,
-              uniqueItems: true,
-              items: { type: 'string', minLength: 1 },
-              description: 'Five genuinely different, complementary search directions grounded in the intent and confirmed principal context. Describe useful counterpart roles, skills, contributions or approaches, not five paraphrases of the same need.',
-            },
-            minSimilarity: { type: 'number', minimum: 0, maximum: 1 },
-            networkIds: {
-              type: 'array',
-              minItems: 1,
-              uniqueItems: true,
-              items: { type: 'string', minLength: 1 },
-              description: 'One shared subset of discoveryScope.networkIds for all five queries. Both the source and each returned counterparty intent must be registered in the result’s network; user membership alone is insufficient.',
-            },
-          },
-          required: ['queries', 'minSimilarity', 'networkIds'],
-        },
-        run: async (value): Promise<SearchRecord> => {
-          controller.signal.throwIfAborted();
-          if (decision) throw new Error('This review already ended.');
-          requireBatchProcessed();
-          if (!records.standingBrief) throw new Error('Save a standing brief before discovering counterparties.');
-
-          const query = validateCandidateQuery(value, discoveryScope?.networkIds ?? []);
-
-          if ((await this.records.read()).version !== records.version) {
-            throw new Error('Principal context changed; discard this search.');
-          }
-
-          const result = await this.discovery!.discoverCounterparties(
-            query,
-            discoveryScope!.version,
-            controller.signal,
-          );
-
-          controller.signal.throwIfAborted();
-
-          if ((await this.records.read()).version !== records.version) {
-            throw new Error('Principal context changed during search.');
-          }
-
-          const record: SearchRecord = {
-            ...query,
-            id: crypto.randomUUID(),
-            scopeVersion: discoveryScope!.version,
-            candidates: result.candidates,
-            status: 'complete',
-          };
-          completedSearches.set(record.id, record);
-          if (this.discovery?.openNegotiation && record.candidates.length) pendingSearch = record;
-          this.host.event?.({ type: 'discovery.searched', inputId: input.id, searchId: record.id, ...query, candidateIntentIds: record.candidates.map((candidate) => candidate.candidateIntentId) });
-          return record;
-        },
-      };
-      const resolveSelection = (raw: unknown) => {
-        if (!raw || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).some((key) => !['searchId', 'candidateIntentId', 'networkId', 'negotiationId', 'reasoning', 'brief'].includes(key))) {
-          throw new Error('Provide a valid negotiation selection with its own reasoning and brief.');
-        }
-        const value = raw as NegotiationSelection;
-        const { searchId, negotiationId, reasoning, brief } = value;
-        if (negotiationId !== undefined ? typeof negotiationId !== 'string' || !negotiationId.trim()
-          : [searchId, value.candidateIntentId, value.networkId].some((id) => typeof id !== 'string' || !id.trim())) {
-          throw new Error('Select a completed search candidate or a visible negotiationId.');
-        }
-        if (!reasoning || typeof reasoning !== 'string' || !reasoning.trim() || reasoning.length > 2000) {
-          throw new Error('Provide grounded reasoning within 2000 characters.');
-        }
-        if (!brief || typeof brief !== 'string' || !brief.trim()) {
-          throw new Error('Provide a non-empty private brief.');
-        }
-        const search = searchId ? completedSearches.get(searchId) : undefined;
-        const selected = negotiationId !== undefined ? negotiations.find((record) => record.id === negotiationId) : undefined;
-        if (negotiationId !== undefined ? !selected || searchId !== undefined || value.candidateIntentId !== undefined || value.networkId !== undefined : !search) {
-          throw new Error('Select exactly one completed search candidate or a negotiation visible in this review.');
-        }
-        const candidate = search?.candidates.find((c) => c.candidateIntentId === value.candidateIntentId && c.networkId === value.networkId);
-        const target = selected ? {
-          intentId: selected.counterparty.intentId, userId: selected.counterparty.userId,
-          networkId: selected.networkId, payload: selected.counterparty.payload,
-        } : candidate ? {
-          intentId: candidate.candidateIntentId, userId: candidate.candidateUserId,
-          networkId: candidate.networkId, payload: candidate.candidatePayload,
-        } : undefined;
-        if (!target) throw new Error('Candidate not found in the specified search.');
-        if (!discoveryScope?.networkIds.includes(target.networkId)) throw new Error('Selected negotiation is outside the current authorized networks.');
-        return { value, search, selected, candidate, target,
-          key: JSON.stringify([target.intentId, target.networkId]),
-          name: (selected ? selected.counterparty.name : candidate?.profile?.identity?.name)?.trim() || 'Unnamed person' };
-      };
-      const openSelected = async (selection: ReturnType<typeof resolveSelection>): Promise<OpenNegotiationResult> => {
-        const { value: { reasoning, brief }, search, selected, candidate, target, key } = selection;
-        const { intentId: candidateIntentId, networkId } = target;
-        const scopeVersion = search?.scopeVersion ?? discoveryScope!.version;
-        const latest = negotiations.filter((record) => record.networkId === networkId && record.counterparty.intentId === candidateIntentId)
-          .sort((a, b) => b.sessionNumber - a.sessionNumber)[0];
-        const expectedLatestNegotiationId = selected?.id ?? latest?.id ?? null;
-
-        if ((await this.records.read()).version !== records.version) {
-          throw new Error('Principal context changed; discard this opening.');
-        }
-        const scope = await this.discovery!.scope(controller.signal);
-        if (scope.version !== scopeVersion || !scope.networkIds.includes(networkId)) throw new Error('Search scope changed; discard this selection.');
-        controller.signal.throwIfAborted();
-
-        let result = attemptedOpenings.get(key);
-        if (result === null) throw new Error('This pair has an unconfirmed opening attempt. Reassess its committed records at the next user review; do not retry it here.');
-        if (!result) {
-          attemptedOpenings.set(key, null);
-          if (search && candidate) this.host.event?.({
-            type: 'candidate.evaluated', inputId: input.id, searchId: search.id,
-            candidateIntentId: candidate.candidateIntentId, networkId: candidate.networkId,
-            outcome: 'selected', similarity: candidate.similarity,
-          });
-          result = await this.discovery!.openNegotiation!({
-            id: crypto.randomUUID(), target,
-            source: selected ? { kind: 'negotiation', negotiationId: selected.id }
-              : { kind: 'search', searchId: search!.id, similarity: candidate!.similarity },
-            expectedLatestNegotiationId,
-            expectedLatestOutcome: (selected ?? latest)?.outcome ?? null,
-            expectedLatestOpportunityStatus: (selected ?? latest)?.opportunityStatus ?? null,
-            reasoning: reasoning.trim(), brief: brief.trim(),
-            sourceMessageId: input.id, contextVersion: records.version, scopeVersion,
-          }, controller.signal);
-          attemptedOpenings.set(key, result);
-          if (result.status === 'opened') {
-            const delegationId = result.delegationId;
-            if (delegationId) openedIds.add(result.opportunityId);
+          try {
+            if (!await this.records.writeStandingBrief(brief, records.version)) throw new ReviewInterrupted('Principal context changed; the standing brief was not saved.');
             const current = await this.records.read();
-            if (delegationId && current.delegations.some((delegation) => delegation.id === delegationId)) {
-              this.host.event?.({ type: 'delegation.brief_saved', inputId: input.id, delegationId, opportunityId: result.opportunityId, source: 'opening' });
-            }
-            this.host.event?.({ type: 'negotiation.opened', inputId: input.id, opportunityId: result.opportunityId, candidateIntentId, networkId });
-            if (current.version !== result.contextVersion) throw new Error('Principal context changed during opening; discard the remaining review.');
+            if (!sourceUnchanged(current) || current.standingBrief?.id !== brief.id) throw new ReviewInterrupted('The current standing brief could not be confirmed; review stopped.');
             records = current;
+            standingBriefSaved = true;
+            this.host.event?.({ type: 'standing_brief.saved', inputId: input.id, standingBriefId: brief.id });
+            return 'Standing brief saved. The intent is ready for new negotiations.';
+          } catch (error) {
+            reviewFailure = error instanceof ReviewInterrupted ? error : new ReviewInterrupted('Standing-brief write unconfirmed; inspect saved records before another review.');
+            throw reviewFailure;
+          }
+        },
+      };
+      const latestNegotiation = (intentId: string, networkId: string) => negotiations
+        .filter((record) => record.networkId === networkId && record.counterparty.intentId === intentId)
+        .sort((a, b) => b.sessionNumber - a.sessionNumber)[0];
+      const open = async (request: Omit<NegotiationOpeningRequest, 'id' | 'sourceMessageId' | 'contextVersion'>, item: OpeningItemResult) => {
+        await requireScope(request.scopeVersion, [request.target.networkId]);
+        await requireCurrent();
+        controller.signal.throwIfAborted();
+        let result: OpenNegotiationResult;
+        item.status = 'unconfirmed';
+        try {
+          result = await this.discovery!.openNegotiation({
+            ...request, id: crypto.randomUUID(), sourceMessageId: input.id, contextVersion: records.version,
+          }, controller.signal);
+        } catch (error) {
+          throw new ReviewInterrupted('Opening result unconfirmed; inspect saved records before another review. ' + (error instanceof Error ? error.message : String(error)));
+        }
+        item.status = result.status === 'unavailable' ? 'unavailable' : result.delegationId ? 'opened' : 'reused';
+        if (result.status === 'opened') {
+          item.opportunityId = result.opportunityId;
+          if (result.delegationId) {
+            // Record committed work before any subsequent read or fence can fail.
+            delegatedIds.add(result.opportunityId);
+            this.host.event?.({ type: 'delegation.brief_saved', inputId: input.id, delegationId: result.delegationId, opportunityId: result.opportunityId, source: 'opening' });
+            this.host.event?.({ type: 'negotiation.opened', inputId: input.id, opportunityId: result.opportunityId, candidateIntentId: request.target.intentId, networkId: request.target.networkId });
           }
         }
+        const current = await this.refresh();
+        if (current.version !== (result.status === 'opened' ? result.contextVersion : records.version) || !sourceUnchanged(current)
+          || current.standingBrief?.id !== records.standingBrief?.id) throw new ReviewInterrupted('Principal context changed during opening; no further openings were attempted.');
+        records = current;
+        const fresh = await this.negotiations();
+        if (result.status === 'opened' && !fresh.some((record) => record.opportunityId === result.opportunityId)) throw new ReviewInterrupted('The opened pair could not be read; inspect its committed records before continuing.');
+        negotiations.splice(0, negotiations.length, ...fresh);
         controller.signal.throwIfAborted();
-        if (result.status === 'unavailable') return result;
-        const fresh = (await this.negotiations()).find((record) => record.opportunityId === result.opportunityId);
-        if (!fresh) throw new Error('The opened pair could not be read; inspect its committed records before continuing.');
-        const index = negotiations.findIndex((record) => record.opportunityId === fresh.opportunityId);
-        if (index < 0) negotiations.push(fresh);
-        else negotiations[index] = fresh;
-        return result;
       };
-      const openTool: InboxTool<OpenNegotiationsInput> = {
-        name: 'open_negotiations',
-        description: 'Process a batch of selected negotiations and explicit skips. After discovery, account for every returned candidate intent/network exactly once before another search or final review. Each opening needs its own complete private brief and grounded public reasoning. Use skipped with a specific reason for unsuitable candidates, not silent omission. Openings run sequentially; unavailable candidates do not stop the batch, but changed context or an uncertain write stops the remainder. Never retry a stopped batch in this review. Existing unsettled negotiations keep their briefs; deliberate terminal-session selections may create new sessions. No user approval is implied.',
+      const reopenedIds = new Set<string>();
+      const reopenTool: InboxTool<ReopeningInput> = {
+        name: 'reopen_negotiation',
+        description: 'Deliberately reopen the latest terminal negotiation visible in this review as a new session and opportunity. Supply public reasoning and a complete private brief grounded in current principal evidence. Does not alter old sessions or grant user approval. Cannot open new pairs or update unsettled work; those use automatic matching or review delegations respectively.',
         parameters: {
           type: 'object', additionalProperties: false,
           properties: {
-            negotiations: { type: 'array', items: {
-              type: 'object', additionalProperties: false,
-              properties: {
-                negotiationId: { type: 'string', minLength: 1 },
-                searchId: { type: 'string', minLength: 1 },
-                candidateIntentId: { type: 'string', minLength: 1 },
-                networkId: { type: 'string', minLength: 1 },
-                reasoning: { type: 'string', minLength: 1, maxLength: 2000, description: 'Public reasoning justifying this particular match.' },
-                brief: { type: 'string', minLength: 1, description: 'Complete private mandate for this counterpart: objective, confirmed facts, scoped authority, conditions, limits and unresolved terms. Preserve every relevant standing-brief limit. Selecting someone grants no permission to commit the principal.' },
-              },
-              required: ['reasoning', 'brief'],
-              oneOf: [{ required: ['searchId', 'candidateIntentId', 'networkId'] }, { required: ['negotiationId'] }],
-            } },
-            skipped: { type: 'array', items: {
-              type: 'object', additionalProperties: false,
-              properties: {
-                searchId: { type: 'string', minLength: 1 },
-                candidateIntentId: { type: 'string', minLength: 1 },
-                networkId: { type: 'string', minLength: 1 },
-                reason: { type: 'string', minLength: 1, maxLength: 2000, description: 'Specific grounded reason this candidate is not being pursued. Visible to our principal, not the counterparty.' },
-              },
-              required: ['searchId', 'candidateIntentId', 'networkId', 'reason'],
-            } },
+            negotiationId: { type: 'string', minLength: 1 },
+            reasoning: { type: 'string', minLength: 1, maxLength: 2000, description: 'Public reason for deliberately starting a new session; never disclose private instructions.' },
+            brief: { type: 'string', minLength: 1, description: 'Complete private mandate for the new session. Preserve applicable limits; do not inherit old counterpart-specific authority without current evidence.' },
           },
-          required: ['negotiations', 'skipped'],
-          anyOf: [{ properties: { negotiations: { minItems: 1 } } }, { properties: { skipped: { minItems: 1 } } }],
+          required: ['negotiationId', 'reasoning', 'brief'],
         },
         run: async (value, _context, progress): Promise<OpeningBatchResult> => {
           controller.signal.throwIfAborted();
-          if (openingFailure) throw openingFailure;
+          if (reviewFailure) throw reviewFailure;
           if (decision) throw new Error('This review already ended.');
-          if (!records.standingBrief) throw new Error('Save a standing brief before opening negotiations.');
-          if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some((key) => !['negotiations', 'skipped'].includes(key))
-            || !Array.isArray(value.negotiations) || !Array.isArray(value.skipped) || !value.negotiations.length && !value.skipped.length) {
-            throw new Error('Provide negotiations and skipped arrays with at least one opening or explicit skip.');
+          if (!records.standingBrief || !isPrincipalBriefCurrent(records.standingBrief, records.messages)) throw new Error('Save a current standing brief before reopening a negotiation.');
+          if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some((key) => !['negotiationId', 'reasoning', 'brief'].includes(key))
+            || [value.negotiationId, value.reasoning, value.brief].some((field) => typeof field !== 'string' || !field.trim()) || value.reasoning.length > 2000) {
+            throw new Error('Provide a visible terminal negotiationId, public reasoning within 2000 characters and a complete private brief.');
           }
-          // Validate the entire batch before the first write, including later entries.
-          const selections = value.negotiations.map(resolveSelection);
-          const skipped = value.skipped.map((raw) => {
-            if (!raw || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).some((key) => !['searchId', 'candidateIntentId', 'networkId', 'reason'].includes(key))
-              || [raw.searchId, raw.candidateIntentId, raw.networkId, raw.reason].some((field) => typeof field !== 'string' || !field.trim()) || raw.reason.length > 2000) {
-              throw new Error('Each skip needs a searchId, candidateIntentId, networkId and a nonempty reason within 2000 characters.');
-            }
-            const item = raw as SkippedCounterparty;
-            const search = completedSearches.get(item.searchId);
-            const candidate = search?.candidates.find((entry) => entry.candidateIntentId === item.candidateIntentId && entry.networkId === item.networkId);
-            if (!candidate || search !== pendingSearch) throw new Error('Skip only candidates from the pending search.');
-            return { item, candidate, key: JSON.stringify([candidate.candidateIntentId, candidate.networkId]) };
-          });
-          const keys = [...selections, ...skipped].map((item) => item.key);
-          if (new Set(keys).size !== keys.length) throw new Error('Account for each candidate intent/network exactly once, without duplicate or conflicting entries.');
-          if (pendingSearch?.candidates.some((candidate) => !keys.includes(JSON.stringify([candidate.candidateIntentId, candidate.networkId])))) {
-            throw new Error('The batch omits discovered candidates. Include every candidate with its own opening brief or explicit skip reason.');
-          }
-          const batch: OpeningBatchResult = { results: [
-            ...selections.map((selection): OpeningItemResult => ({ candidateIntentId: selection.target.intentId, networkId: selection.target.networkId, name: selection.name, status: 'pending' })),
-            ...skipped.map(({ candidate }): OpeningItemResult => ({ candidateIntentId: candidate.candidateIntentId, networkId: candidate.networkId, name: candidate.profile?.identity?.name?.trim() || 'Unnamed person', status: 'pending' })),
-          ] };
-          const previouslyOpened = new Set(selections.filter(({ key }) => attemptedOpenings.get(key)?.status === 'opened').map(({ key }) => key));
-          const recordResult = (item: OpeningItemResult, result: OpenNegotiationResult) => {
-            item.status = result.status === 'unavailable' ? 'unavailable'
-              : result.delegationId && !previouslyOpened.has(JSON.stringify([item.candidateIntentId, item.networkId])) ? 'opened' : 'reused';
-            if (result.status === 'opened') item.opportunityId = result.opportunityId;
-          };
-          let activeIndex = -1;
+          const selected = negotiations.find((record) => record.id === value.negotiationId);
+          if (!selected || !visibleNegotiationIds.has(selected.id) || !selected.settledAt && !selected.outcome && selected.opportunityStatus === 'negotiating'
+            || latestNegotiation(selected.counterparty.intentId, selected.networkId)?.id !== selected.id) throw new Error('Reopen only the latest visible terminal negotiation.');
+          if (!discoveryScope?.networkIds.includes(selected.networkId)) throw new Error('This negotiation is outside the authorized networks.');
+          if (reopenedIds.has(selected.id)) throw new Error('This negotiation was already attempted in this review; do not retry it.');
+          const item: OpeningItemResult = { candidateIntentId: selected.counterparty.intentId, networkId: selected.networkId, name: selected.counterparty.name?.trim() || 'Unnamed person', status: 'pending' };
+          const batch = { results: [item] };
           const publishStopped = () => {
-            if (activeIndex >= 0) {
-              const result = attemptedOpenings.get(selections[activeIndex]!.key);
-              if (result) recordResult(batch.results[activeIndex]!, result);
-              else if (result === null) batch.results[activeIndex]!.status = 'unconfirmed';
-            }
-            for (const item of batch.results) if (item.status === 'pending') item.status = 'not_attempted';
+            if (item.status === 'pending') item.status = 'not_attempted';
             progress(summarizeOpeningBatch(batch));
           };
           controller.signal.addEventListener('abort', publishStopped, { once: true });
           try {
-            if ((await this.records.read()).version !== records.version) throw new Error('Principal context changed; discard this opening batch.');
-            const scope = await this.discovery!.scope(controller.signal);
-            if (scope.version !== discoveryScope!.version || [...selections.map(({ target }) => target.networkId), ...skipped.map(({ candidate }) => candidate.networkId)].some((id) => !scope.networkIds.includes(id))) {
-              throw new Error('Search scope changed; discard this opening batch.');
-            }
-            controller.signal.throwIfAborted();
-            for (const [index, { item, candidate }] of skipped.entries()) {
-              Object.assign(batch.results[selections.length + index]!, { status: 'skipped', reason: item.reason.trim() });
-              this.host.event?.({ type: 'candidate.evaluated', inputId: input.id, searchId: item.searchId, candidateIntentId: candidate.candidateIntentId, networkId: candidate.networkId, outcome: 'skipped', similarity: candidate.similarity });
-            }
+            reopenedIds.add(selected.id);
+            await open({
+              target: { intentId: selected.counterparty.intentId, userId: selected.counterparty.userId, networkId: selected.networkId, payload: selected.counterparty.payload },
+              source: { kind: 'negotiation', negotiationId: selected.id },
+              expectedLatestNegotiationId: selected.id, expectedLatestOutcome: selected.outcome, expectedLatestOpportunityStatus: selected.opportunityStatus,
+              reasoning: value.reasoning.trim(), brief: value.brief.trim(), scopeVersion: discoveryScope.version,
+            }, item);
             progress(summarizeOpeningBatch(batch));
-            for (const [index, selection] of selections.entries()) {
-              activeIndex = index;
-              controller.signal.throwIfAborted();
-              recordResult(batch.results[index]!, await openSelected(selection));
-              progress(summarizeOpeningBatch(batch));
-            }
-            pendingSearch = undefined;
             return batch;
           } catch (error) {
-            openingFailure = error instanceof Error ? error : new Error(String(error));
+            reviewFailure = error instanceof ReviewInterrupted ? error : new ReviewInterrupted(error instanceof Error ? error.message : String(error));
             publishStopped();
-            throw openingFailure;
+            throw reviewFailure;
           } finally {
             controller.signal.removeEventListener('abort', publishStopped);
           }
         },
       };
       const availableTools: InboxTool[] = [standingBriefTool, tool];
-      if (this.discovery) {
-        availableTools.push(searchTool);
-        if (this.discovery.openNegotiation) {
-          availableTools.push(openTool);
-        }
-      }
+      if (this.discovery) availableTools.push(reopenTool);
       try {
         const result = await this.createLoop(records).run(buildPrincipalInboxPrompt({ records, inputs, pendingQuestions, negotiations, discoveryScope }), {
-          history: new MemoryMessageStore(), tools: this.observeTools(availableTools, controller.signal, input.id, completedSearches, negotiations, pendingQuestions), signal: controller.signal,
+          history: new MemoryMessageStore(), tools: this.observeTools(availableTools, controller.signal, input.id, negotiations, pendingQuestions), signal: controller.signal,
           onStep: (step) => {
             controller.signal.throwIfAborted();
-            if (openingFailure) throw openingFailure;
+            if (reviewFailure) throw reviewFailure;
             if (step.kind === 'tool' && step.name === tool.name && !step.error) throw new ReviewComplete();
           },
         });
-        requireBatchProcessed();
+        if (reviewFailure) throw reviewFailure;
         if (!decision) {
           const failed = result.steps.findLast((step) => step.kind === 'tool' && step.error);
           throw new Error(failed?.kind === 'tool' ? failed.error : 'The personal agent did not record a communication decision.');
@@ -749,7 +519,7 @@ export class PrincipalInbox {
         opportunityId,
         brief: brief.trim(),
         id: crypto.randomUUID(),
-        sourceMessageId: latestPrincipalInput(records.messages)!,
+        sourceMessageId: input.id,
         createdAt: new Date(delegationTime++).toISOString(),
       }));
       const hasEffects = effects.messages.length > 0 || effects.retiredQuestionIds.length > 0 || effects.delegations.length > 0;
@@ -762,6 +532,7 @@ export class PrincipalInbox {
         }
         return;
       }
+      for (const delegation of effects.delegations) delegatedIds.add(delegation.opportunityId);
       for (const questionId of effects.retiredQuestionIds) {
         const question = pendingQuestions.find((entry) => entry.id === questionId)!;
         this.host.event?.({ type: 'question.retired', inputId: input.id, questionId, batchId: question.batchId });
@@ -771,26 +542,114 @@ export class PrincipalInbox {
       for (const delegation of effects.delegations) {
         this.host.event?.({ type: 'delegation.brief_saved', inputId: input.id, delegationId: delegation.id, opportunityId: delegation.opportunityId, source: 'review' });
       }
+      // Review writes advance version. Adopt that version only after confirming the
+      // principal evidence and standing mandate that authorized this review.
+      const current = await this.refresh();
+      this.host.changed();
+      if (!sourceUnchanged(current) || current.standingBrief?.id !== records.standingBrief?.id || !hasEffects && current.version !== records.version) {
+        throw new ReviewInterrupted('Principal context changed after review; automatic matching was not started.');
+      }
+      records = current;
       this.host.event?.({ type: 'h2a.review_completed', inputId: input.id, questionIds, delegatedIds: effects.delegations.map((entry) => entry.opportunityId) });
-      if (hasEffects) {
-        await this.refresh();
+      controller.signal.throwIfAborted();
+      if (!this.discovery) return;
+
+      const standingBrief = records.standingBrief!;
+      const matching: PrincipalToolCall = {
+        id: crypto.randomUUID(), reviewId: input.id, name: 'match_counterparties', label: 'Matching counterparties automatically',
+        afterMessageId: this.messages.at(-1)?.id, status: 'running',
+      };
+      const batch: OpeningBatchResult = { results: [] };
+      let matchingSummary = 'Matching has not completed.';
+      const summarize = () => [matchingSummary, `${batch.results.filter((item) => item.status === 'opened').length} of up to ${MAX_AUTOMATIC_NEGOTIATIONS} new negotiations opened.`, summarizeOpeningBatch(batch)].filter(Boolean).join('\n\n');
+      const stopBatch = () => {
+        for (const item of batch.results) if (item.status === 'pending') item.status = 'not_attempted';
+      };
+      const cancelled = () => {
+        stopBatch();
+        matching.status = 'cancelled';
+        matching.summary = summarize();
+        this.host.changed();
+      };
+      this.calls.push(matching);
+      controller.signal.addEventListener('abort', cancelled, { once: true });
+      this.host.changed();
+      try {
+        const scope = await this.discovery.scope(controller.signal);
+        await requireCurrent();
+        matching.details = `Matching across all ${scope.networkIds.length} authorized networks.\n\nYour private standing brief, copied unchanged to each new negotiation:\n${standingBrief.brief}`;
+        this.host.changed();
+        if (!scope.networkIds.length) {
+          matching.summary = 'No authorized networks; no matching was run.';
+          matching.status = 'completed';
+          return;
+        }
+        const discoveryInput = { networkIds: [...scope.networkIds] };
+        const { candidates } = await this.discovery.discoverCounterparties(discoveryInput, scope.version, controller.signal);
+        batch.results = candidates.map((candidate) => ({
+          candidateIntentId: candidate.candidateIntentId, networkId: candidate.networkId,
+          name: candidate.profile?.identity?.name?.trim() || 'Unnamed person', status: 'pending',
+        }));
+        matchingSummary = `Found ${candidates.length} scored intent pairs across ${discoveryInput.networkIds.length} authorized networks, ranked highest first.`;
+        matching.details += candidates.map((candidate, index) => `\n\n${index + 1}. ${batch.results[index]!.name}\nNetwork: ${candidate.networkId}\nTheir intent:\n${candidate.candidatePayload}\nTypeSafe score: ${candidate.matchProbability}\nPublic match reasoning:\n${candidate.reasoning}`).join('');
+        await requireScope(scope.version, [...discoveryInput.networkIds, ...candidates.map((candidate) => candidate.networkId)]);
+        await requireCurrent();
+        controller.signal.throwIfAborted();
+        this.host.event?.({ type: 'discovery.searched', inputId: input.id, matchId: matching.id, networkIds: discoveryInput.networkIds, candidateIntentIds: candidates.map((candidate) => candidate.candidateIntentId) });
+        matching.summary = summarize();
+        this.host.changed();
+        const fresh = await this.negotiations();
+        negotiations.splice(0, negotiations.length, ...fresh);
+        let openedCount = 0;
+        for (const [index, candidate] of candidates.entries()) {
+          if (openedCount === MAX_AUTOMATIC_NEGOTIATIONS) {
+            for (const item of batch.results.slice(index)) item.status = 'limit_reached';
+            break;
+          }
+          const item = batch.results[index]!;
+          const latest = latestNegotiation(candidate.candidateIntentId, candidate.networkId);
+          await open({
+            target: { userId: candidate.candidateUserId, intentId: candidate.candidateIntentId, networkId: candidate.networkId, payload: candidate.candidatePayload },
+            source: { kind: 'match', matchId: matching.id, probability: candidate.matchProbability },
+            expectedLatestNegotiationId: latest?.id ?? null, expectedLatestOutcome: latest?.outcome ?? null,
+            expectedLatestOpportunityStatus: latest?.opportunityStatus ?? null,
+            reasoning: candidate.reasoning, brief: standingBrief.brief, scopeVersion: scope.version,
+          }, item);
+          if (item.status === 'opened') openedCount++;
+          matching.summary = summarize();
+          this.host.changed();
+        }
+        controller.signal.throwIfAborted();
+        matching.summary = summarize();
+        matching.status = 'completed';
+      } catch (error) {
+        stopBatch();
+        const reason = error instanceof Error ? error.message : String(error);
+        matching.status = controller.signal.aborted ? 'cancelled' : 'error';
+        matching.summary = `${summarize()}\n\nAutomatic matching stopped: ${reason}`;
+        if (!controller.signal.aborted && !this.stopped) this.unfinishedReview = `Automatic matching stopped: ${reason}`;
+      } finally {
+        controller.signal.removeEventListener('abort', cancelled);
         this.host.changed();
       }
-      if (effects.delegations.length) this.host.delegated(effects.delegations.map(({ opportunityId }) => opportunityId));
     } catch (error) {
       if (!controller.signal.aborted && !this.stopped) {
-        this.failure = error instanceof Error ? error : new Error(String(error));
-        this.host.error(this.failure.message);
+        if (error instanceof ReviewInterrupted || delegatedIds.size) {
+          this.unfinishedReview = error instanceof Error ? error.message : String(error);
+        } else {
+          this.failure = error instanceof Error ? error : new Error(String(error));
+          this.host.error(this.failure.message);
+        }
       }
     } finally {
       if (this.reviewController === controller) this.reviewController = undefined;
       this.host.changed();
-      if (!this.stopped && openedIds.size) this.host.delegated([...openedIds]);
+      if (!this.stopped && delegatedIds.size) this.host.delegated([...delegatedIds]);
     }
   }
 
   private validate(value: Decision, records: PrincipalRecordsView, pending: readonly PrincipalQuestion[], negotiations: Negotiation[]): void {
-    if (!records.standingBrief) throw new Error('Save a standing brief before completing this review.');
+    if (!records.standingBrief || !isPrincipalBriefCurrent(records.standingBrief, records.messages)) throw new Error('Save a current standing brief before completing this review.');
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some((key) => !['message', 'questions', 'retireQuestionIds', 'delegations'].includes(key))) throw new Error('Provide a review decision using only the offered fields.');
     if (value.message !== undefined && (typeof value.message !== 'string' || !value.message.trim())) throw new Error('A reply must be nonempty.');
     if (value.retireQuestionIds !== undefined && (!validPrincipalQuestionRetirements(records, value.retireQuestionIds) || !value.retireQuestionIds.length)) {

@@ -1,5 +1,5 @@
 /**
- * Index HTTP as one class: one API key, seven calls, no model or loop.
+ * Index HTTP as one class: one API key, no model or loop.
  */
 
 export class ApiError extends Error {
@@ -58,22 +58,6 @@ export interface IntentSummary {
   id: string;
   statement: string;
   status: IntentStatus;
-}
-
-/** One counterparty a search surfaced, as an agent judging it needs to see it. */
-export interface Counterparty {
-  intentId: string;
-  userId: string;
-  name: string;
-  statement: string;
-  networkId: string;
-  score: number;
-}
-
-/** One counterparty an agent picked to turn into an opportunity. */
-export interface CounterpartyPick {
-  intentId: string;
-  networkId: string;
 }
 
 /** The authenticated owner, with the profile facts an agent may state as theirs. */
@@ -146,6 +130,8 @@ export type UserEvent =
   | { type: "negotiation.settled"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; outcome: string } }
   | { type: "negotiation.changed"; id: string; title: string; body: string; data: { intentId: string; opportunityId?: string } }
   | { type: "intent.created"; id: string; title: string; body: string; data: { intentId: string } }
+  | { type: "intent.broadcast"; id: string; title: string; body: string; data: { intentId: string; networkId: string } }
+  | { type: "intent.revised"; id: string; title: string; body: string; data: { intentId: string; revisionVersionMs: number; fingerprint: string } }
   | { type: "intent.lifecycle"; id: string; title: string; body: string; link?: string; data: { intentId: string; status: IntentLifecycleWireStatus } }
   | { type: "question.pending"; id: string; title: string; body: string; data: { intentId: string; questionId: string; scope: string; opportunityId: string | null } }
   | { type: "principal.input"; id: string; title: string; body: string; data: { intentId: string; questionId: string | null; text: string } }
@@ -171,6 +157,8 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
     case "negotiation.settled":
     case "negotiation.changed":
     case "intent.created":
+    case "intent.broadcast":
+    case "intent.revised":
     case "intent.lifecycle":
     case "question.pending":
     case "principal.input":
@@ -193,18 +181,17 @@ export interface Index {
   /** @param limit - How many signals to read. @returns The owner's signals. */
   listIntents(limit?: number): Promise<IntentSummary[]>;
   /**
-   * @param intentId - The signal to search from.
-   * @param query - What to look for, in the caller's own words.
-   * @param limit - How many counterparties to return, 1..30.
-   * @returns Counterparties, strongest first.
+   * Score every eligible public intent/network pair with TypeSafe, without a
+   * pass/fail threshold. Walk all still-eligible scores in descending order until
+   * up to 10 new negotiations per intent per matching run are created or candidates
+   * are exhausted. Existing/reused, terminal, and unavailable sessions do not
+   * consume the new-opening budget; terminal sessions require deliberate reopening.
+   * No queries, embedding retrieval, or model-selected counterparties.
+   * @param intentId - The owned active signal to match.
+   * @param signal - Cancels the exhaustive scan and any uncommitted openings.
+   * @returns Only the opportunities newly opened by this run, at most 10.
    */
-  discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]>;
-  /**
-   * @param intentId - The signal the opportunities belong to.
-   * @param counterparties - Counterparty signals and the community each pair sits in.
-   * @returns The opportunities that now exist.
-   */
-  createOpportunities(intentId: string, counterparties: CounterpartyPick[]): Promise<{ opportunityId: string }[]>;
+  discover(intentId: string, signal?: AbortSignal): Promise<{ opportunityId: string }[]>;
   /** @returns Open negotiations for this seat. */
   listNegotiations(): Promise<Negotiation[]>;
   /** @param id - Opportunity id. @returns The negotiation as this seat sees it. */
@@ -277,14 +264,17 @@ export class IndexClient implements Index {
    * @param method - HTTP method.
    * @param path - Path under `/api`.
    * @param body - JSON body when the method writes.
+   * @param signal - Optional request cancellation.
    * @returns Parsed JSON.
    * @throws ApiError on non-2xx. Distinct Error when the body is not JSON.
    */
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+    signal?.throwIfAborted();
     const response = await fetch(`${this.baseUrl}/api${path}`, {
       method,
       headers: this.headers(body !== undefined),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal,
     });
     const text = await response.text();
     if (!response.ok) {
@@ -345,41 +335,23 @@ export class IndexClient implements Index {
   }
 
   /**
-   * Search one signal's communities for counterparties.
+   * Score every eligible public intent/network pair in one signal's communities
+   * with TypeSafe, without a pass/fail threshold. Walk all still-eligible scores
+   * in descending order until up to 10 new negotiations per intent per matching run
+   * are created or candidates are exhausted. Existing/reused, terminal, and
+   * unavailable sessions do not consume the budget; terminal sessions still require
+   * deliberate reopening. No queries, embedding retrieval, or model selection.
    *
-   * Nothing is written: the caller reads these and decides which are worth an
-   * opportunity.
-   *
-   * @param intentId - The signal to search from.
-   * @param query - What to look for, in the caller's own words.
-   * @param limit - How many counterparties to return, 1..30. Index decides when omitted.
-   * @returns Counterparties, strongest first.
+   * @param intentId - The owned active signal to match.
+   * @param signal - Cancels the scan and uncommitted openings.
+   * @returns Only the opportunities newly opened by this run, at most 10.
+   * @throws ApiError on a failed request, including an executor-handover conflict.
    */
-  async discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]> {
-    const { counterparties } = await this.request<{ counterparties: Counterparty[] }>(
-      "POST", `/intents/${encodeURIComponent(intentId)}/discover`,
-      { query, ...(limit === undefined ? {} : { limit }) },
+  async discover(intentId: string, signal?: AbortSignal): Promise<{ opportunityId: string }[]> {
+    const { opportunities } = await this.request<{ opportunities: { opportunityId: string }[] }>(
+      "POST", this.fence(`/intents/${encodeURIComponent(intentId)}/discover`), undefined, signal,
     );
-    return counterparties;
-  }
-
-  /**
-   * Create one opportunity per picked counterparty. Idempotent on the pair: a
-   * counterparty already sharing an opportunity with this signal reports that
-   * one rather than a second.
-   *
-   * @param intentId - The signal the opportunities belong to.
-   * @param counterparties - Counterparty signals and the community each pair sits in.
-   * @returns The opportunities that now exist.
-   */
-  async createOpportunities(
-    intentId: string,
-    counterparties: CounterpartyPick[],
-  ): Promise<{ opportunityId: string }[]> {
-    const result = await this.request<{ opportunities: { opportunityId: string }[] }>(
-      "POST", this.fence(`/intents/${encodeURIComponent(intentId)}/opportunities`), { counterparties },
-    );
-    return result.opportunities;
+    return opportunities;
   }
 
   /**

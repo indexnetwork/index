@@ -7,12 +7,12 @@ export type {
   CandidateDiscoveryResult,
   CounterpartyCandidate,
 } from './matching/candidate.discovery.js';
-export { DISCOVERY_MIN_SIMILARITY, validateDiscoveryMinSimilarity, REJECTION_COOLDOWN_MS } from './matching/discovery.constants.js';
+export { TypeSafeIntentEvaluator } from './matching/intent.evaluator.js';
+export { INTENT_MATCH_MODEL, INTENT_MATCH_REASONING } from './matching/discovery.constants.js';
 export type {
   DiscoveryData,
-  CandidateSearch,
   IntentCandidate,
-  SearchOptions,
+  IntentPairEvaluator,
   EmbeddingGenerator,
   Profile,
   RunOptions,

@@ -150,7 +150,7 @@ function classifyRequestSubsystem(pathname: string): string {
 Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors
-  async fetch(req) {
+  async fetch(req, server) {
     const url = new URL(req.url);
     const method = req.method;
 
@@ -290,6 +290,10 @@ Bun.serve({
               guardResult = await guard(req);
               logger.verbose('Guard execution successful');
             }
+
+            // An exhaustive scan has no fixed candidate count. Its provider calls
+            // time out individually, and request cancellation stops further work.
+            if (target === IntentController && route.methodName === 'discover') server.timeout(req, 0);
 
             // Invoke handler: (req, user, params?)
             const handler = instance[route.methodName];

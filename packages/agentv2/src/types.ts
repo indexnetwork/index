@@ -1,5 +1,3 @@
-import type { Index } from "@indexnetwork/client";
-
 import type { Model } from "./model.ts";
 
 export interface User {
@@ -78,8 +76,6 @@ export interface WakeInput {
   principalConversation: ConversationEntry[];
   opportunities: Opportunity[];
   model: Model;
-  /** Index for this owner, for the two operations the model triggers mid-loop. */
-  client: Index;
   now?: () => Date;
   signal?: AbortSignal;
   /**
@@ -89,13 +85,6 @@ export interface WakeInput {
    * once the loop ends; the model is never told the host could not persist.
    */
   onBrief?: (actions: WakeAction[]) => void | Promise<void>;
-  /**
-   * The opportunities this wake just opened, as Index created them. They have
-   * no brief yet and it is this seat's turn on every one, so nothing else will
-   * ever move them: the host starts each one, which briefs it and takes the
-   * first turn.
-   */
-  onOpened?: (opportunityIds: string[]) => void;
 }
 
 export type WakeAction =
@@ -106,7 +95,7 @@ export type WakeAction =
   | { type: "expire"; questionId: string };
 
 export interface WakeResult {
-  /** What the host should persist and run. Empty when staying silent was right. */
+  /** Planning actions to persist before matching. A silent plan does not bypass `runWake` matching. */
   actions: WakeAction[];
 }
 

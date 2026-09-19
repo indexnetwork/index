@@ -110,6 +110,14 @@ export class PersonalAgentService {
       await this.activate(record.userId, data.intentId, type === 'intent.created' ? { id, type } : { id, type, networkId: data.networkId });
       return;
     }
+    if (type === 'intent.revised') {
+      if (typeof id !== 'string' || typeof data?.intentId !== 'string'
+        || !Number.isSafeInteger(data.revisionVersionMs) || typeof data.fingerprint !== 'string' || !data.fingerprint.trim()) return;
+      await this.activate(record.userId, data.intentId, {
+        id, type, revisionVersionMs: data.revisionVersionMs, fingerprint: data.fingerprint,
+      });
+      return;
+    }
     if (type === 'intent.lifecycle' && data?.status === 'ACTIVE'
       && typeof data.intentId === 'string' && Number.isSafeInteger(data.lifecycleVersionMs)) {
       await this.activate(record.userId, data.intentId, {

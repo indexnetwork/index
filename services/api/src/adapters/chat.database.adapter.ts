@@ -94,6 +94,49 @@ export class ChatDatabaseAdapter {
     return result;
   }
 
+  /**
+   * Enumerate every match-ready intent registered in the authorized networks.
+   * @param input - Shared network scope and the source owner to exclude.
+   * @param options - Cancels discovery before or after the database read.
+   * @returns One payload per eligible intent/network pair, without a vector requirement or result cap.
+   * @throws When the database read fails or discovery is cancelled.
+   */
+  async listIntentCandidates(
+    input: { excludeUserId: string; networkIds: string[] },
+    options?: { signal?: AbortSignal },
+  ): Promise<Array<{ id: string; userId: string; networkId: string; payload: string; summary: string | null }>> {
+    options?.signal?.throwIfAborted();
+    if (!input.networkIds.length) return [];
+    const candidates = await db.select({
+      id: intents.id,
+      userId: intents.userId,
+      networkId: intentNetworks.networkId,
+      payload: intents.payload,
+      summary: intents.summary,
+    })
+      .from(intents)
+      .innerJoin(intentNetworks, eq(intentNetworks.intentId, intents.id))
+      .innerJoin(networkMembers, and(
+        eq(networkMembers.userId, intents.userId),
+        eq(networkMembers.networkId, intentNetworks.networkId),
+      ))
+      .innerJoin(networks, eq(networks.id, intentNetworks.networkId))
+      .innerJoin(users, eq(users.id, intents.userId))
+      .where(and(
+        inArray(intentNetworks.networkId, input.networkIds),
+        sql`${intents.userId} <> ${input.excludeUserId}`,
+        isNull(intents.archivedAt),
+        activeIntentLifecycleWhere(),
+        matchReadyIntentWhere(),
+        isNull(networkMembers.deletedAt),
+        isNull(networks.deletedAt),
+        isNull(users.deletedAt),
+      ))
+      .orderBy(intents.id, intentNetworks.networkId);
+    options?.signal?.throwIfAborted();
+    return candidates;
+  }
+
   async searchOwnIntents(
     userId: string,
     q: string,
@@ -318,6 +361,7 @@ export class ChatDatabaseAdapter {
           userId: result.updated.userId,
           oldFingerprint: result.oldFingerprint,
           newFingerprint: result.newFingerprint,
+          revisionVersionMs: result.updated.updatedAt.getTime(),
         });
       }
       return result.updated;
@@ -331,6 +375,7 @@ export class ChatDatabaseAdapter {
     return this.intentAdapter.archiveIntent(intentId);
   }
 
+  /** @param userId - Network member. @returns Current memberships in live networks. @throws On a failed read; failure must not masquerade as an empty matching scope. */
   async getNetworkMemberships(userId: string): Promise<NetworkMembershipRow[]> {
     try {
       const result = await db
@@ -355,7 +400,7 @@ export class ChatDatabaseAdapter {
       return result;
     } catch (error: unknown) {
       logger.error('ChatDatabaseAdapter.getNetworkMemberships error', { error: error instanceof Error ? error.message : String(error) });
-      return [];
+      throw error;
     }
   }
 
@@ -2560,6 +2605,7 @@ export class ChatDatabaseAdapter {
         userId: updated.userId,
         oldFingerprint,
         newFingerprint,
+        revisionVersionMs: updatedAt.getTime(),
       };
     });
     if (result.kind === 'applied' && result.oldFingerprint !== result.newFingerprint) {
@@ -2569,6 +2615,7 @@ export class ChatDatabaseAdapter {
         userId: result.userId,
         oldFingerprint: result.oldFingerprint,
         newFingerprint: result.newFingerprint,
+        revisionVersionMs: result.revisionVersionMs,
       });
     }
     return result.kind;

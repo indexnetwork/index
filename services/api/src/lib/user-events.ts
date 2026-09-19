@@ -17,7 +17,9 @@ import { log } from './log';
  * signal instead: that a signal now exists, whether the agent should be working
  * it at all, and that discovery gave it something to work. Creation has its own
  * frame because an agent that only follows lifecycle changes would never learn
- * about a signal made after it started.
+ * about a signal made after it started. `intent.broadcast` and `intent.revised`
+ * explicitly request matching after a committed assignment or material edit;
+ * generic `intent.updated` invalidations only refresh views.
  * `negotiation.changed` refreshes both seats after a turn or a related intent's
  * lifecycle change. It does not imply that either seat owes the next turn;
  * `negotiation.turn` remains addressed to the seat that does.
@@ -42,6 +44,7 @@ export type UserEventType =
   | 'intent.lifecycle'
   | 'intent.created'
   | 'intent.broadcast'
+  | 'intent.revised'
   | 'intent.updated'
   | 'agent.configuration'
   | 'agent.status'

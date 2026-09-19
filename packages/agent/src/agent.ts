@@ -106,9 +106,9 @@ export class Agent {
   get stopped(): boolean { return this.controller.signal.aborted; }
   /** @returns Whether H2A is reviewing its current context. */
   get reviewing(): boolean { return this.inbox.reviewing; }
-  /** @returns Guidance when a stale context fence discarded the latest review. */
+  /** @returns Guidance when the latest review or automatic matching stopped early. */
   get reviewNotice(): string | undefined { return this.inbox.reviewNotice; }
-  /** @returns Ephemeral H2A tool observations, separate from conversation history. */
+  /** @returns Ephemeral H2A tool and automatic matching observations, separate from conversation history. */
   get toolCalls(): readonly PrincipalToolCall[] { return this.inbox.toolCalls; }
   /** @returns Opportunity IDs with active A2A subagent work, excluding cancelled work. */
   get negotiating(): readonly string[] { return this.subagents.negotiating; }

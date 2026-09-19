@@ -4,26 +4,17 @@
 
 import { generateEmbeddings, OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '@indexnetwork/discovery';
 import OpenAI from 'openai';
-import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm/sql';
 
 import { embeddingConfigurationFingerprint } from '../lib/embedding/embedding.identity';
 import { traceAppOperation } from '../lib/sentry-performance';
 import * as schema from '../schemas/database.schema';
 
-import { matchReadyIntentWhere } from './database.shared';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Local types (structurally aligned with lib/protocol/interfaces/embedder.interface)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface IntentCandidate {
-  type: 'intent'; id: string; userId: string; score: number; networkId: string;
-}
-export interface IntentSearchOptions {
-  networkScope: string[]; excludeUserId?: string; limit: number;
-  /** Similarity cutoff, 0..1. Zero searches without one, for a caller that wants a top-N. */
-  minScore: number;
-  signal?: AbortSignal;
-}
 
 export interface VectorSearchResult<T> {
   item: T;
@@ -140,65 +131,6 @@ export class EmbedderAdapter {
     }
 
     throw new Error(`Unknown collection: ${collection}`);
-  }
-
-  /** Search only real intent embeddings, with current lifecycle, broadcast and membership eligibility. */
-  async searchIntentCandidates(embedding: number[], options: IntentSearchOptions): Promise<IntentCandidate[]> {
-    options.signal?.throwIfAborted();
-    return traceAppOperation({
-      name: 'vector search intent candidates', op: 'db.vector_search',
-      attributes: { subsystem: 'database', 'db.system': 'postgresql', 'search.strategy': 'query', 'search.limit': options.limit },
-    }, () => this.searchIntentCandidatesInner(embedding, options));
-  }
-
-  private async searchIntentCandidatesInner(embedding: number[], options: IntentSearchOptions): Promise<IntentCandidate[]> {
-    const { limit, minScore, ...filter } = options;
-    if (filter.networkScope?.length === 0) return [];
-    const db = await getDb();
-    const vectorStr = `[${embedding.join(',')}]`;
-    const { intents, intentNetworks } = schema;
-
-    const conditions = [
-      inArray(intentNetworks.networkId, filter.networkScope),
-      ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
-      isNull(intents.archivedAt),
-      or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
-      matchReadyIntentWhere(),
-      isNull(schema.users.deletedAt),
-      isNull(schema.networkMembers.deletedAt),
-      isNull(schema.networks.deletedAt),
-      isNotNull(intents.embedding),
-      ...(minScore > 0
-        ? [sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`]
-        : []),
-    ];
-
-    const results = await db
-      .select({
-        id: intents.id,
-        userId: intents.userId,
-        similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
-        networkId: intentNetworks.networkId,
-      })
-      .from(intents)
-      .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
-      .innerJoin(schema.networkMembers, and(
-        eq(schema.networkMembers.userId, intents.userId),
-        eq(schema.networkMembers.networkId, intentNetworks.networkId),
-      ))
-      .innerJoin(schema.networks, eq(schema.networks.id, intentNetworks.networkId))
-      .innerJoin(schema.users, eq(intents.userId, schema.users.id))
-      .where(and(...conditions))
-      .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
-      .limit(limit);
-
-    return results.map((r) => ({
-      type: 'intent' as const,
-      id: r.id,
-      userId: r.userId,
-      score: r.similarity,
-      networkId: r.networkId,
-    }));
   }
 
 

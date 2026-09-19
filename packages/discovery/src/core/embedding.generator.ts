@@ -1,6 +1,6 @@
 import type { EmbeddingGenerator } from './types.js';
 
-/** Shared vector space for stored intents and discovery queries. */
+/** Shared vector space for intent lifecycle artifacts; pairing does not use embeddings. */
 export const OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-large';
 export const OPENROUTER_EMBEDDING_DIMENSIONS = 2000;
 export const OPENROUTER_EMBEDDING_BASE_URL = 'https://openrouter.ai/api/v1';
@@ -13,9 +13,9 @@ export interface EmbeddingClient {
 }
 
 /**
- * Generate intent/query vectors with the same normalization and model in every host.
+ * Generate intent lifecycle vectors with the same normalization and model in every host.
  * @param client - Host-owned OpenRouter transport.
- * @param text - One query/intent or a batch of intents.
+ * @param text - One intent or a batch of intents.
  * @param dimensions - Vector size, defaulting to the production schema's size.
  * @param options - Cancellation propagated to the transport.
  * @returns One vector or the corresponding batch.

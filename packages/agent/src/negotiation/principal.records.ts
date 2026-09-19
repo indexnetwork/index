@@ -88,12 +88,12 @@ export function validStandingBrief(records: Pick<PrincipalRecordsView, 'messages
     && !records.delegations.some((entry) => entry.id === brief.id);
 }
 
-/** @param request - Immutable runtime selection. @returns A private retry fingerprint, without copying source context into delegation history. */
+/** @param request - Immutable runtime opening. @returns A private retry fingerprint, without copying source context into delegation history. */
 export function openingRequestKey(request: NegotiationOpeningRequest): string {
   const binding = [
     request.id, request.expectedLatestNegotiationId, request.expectedLatestOutcome, request.expectedLatestOpportunityStatus,
     request.target.networkId, request.target.intentId, request.target.userId, request.target.payload,
-    request.source.kind === 'search' ? ['search', request.source.searchId, request.source.similarity] : ['negotiation', request.source.negotiationId],
+    request.source.kind === 'match' ? ['match', request.source.matchId, request.source.probability] : ['negotiation', request.source.negotiationId],
     request.reasoning, request.brief, request.sourceMessageId, request.contextVersion, request.scopeVersion,
   ];
   return createHash('sha256').update(JSON.stringify(binding)).digest('hex');
@@ -155,8 +155,10 @@ export function acceptedPrincipalMessages(records: Pick<PrincipalRecordsView, 'm
   } else if (inputs.length !== 1 || inputs[0]!.questionId !== undefined || inputs[0]!.batchId !== undefined) return null;
   for (const input of inputs) {
     if (input.kind === 'event') {
-      if (!input.activation || input.id !== input.activation.id || !['intent.created', 'intent.broadcast', 'intent.resumed', 'h2a.wake'].includes(input.activation.type)
+      if (!input.activation || input.id !== input.activation.id || !['intent.created', 'intent.broadcast', 'intent.revised', 'intent.resumed', 'h2a.wake'].includes(input.activation.type)
         || input.activation.type === 'intent.broadcast' && !input.activation.networkId
+        || input.activation.type === 'intent.revised' && (!Number.isSafeInteger(input.activation.revisionVersionMs)
+          || typeof input.activation.fingerprint !== 'string' || !input.activation.fingerprint.trim())
         || input.activation.type === 'intent.resumed' && !Number.isSafeInteger(input.activation.lifecycleVersionMs)) return null;
     } else if (input.activation) return null;
   }
@@ -241,7 +243,7 @@ export class MemoryPrincipalRecords implements PrincipalRecords {
     return write;
   }
 
-  /** @param request - Exact selected opening and its source context. @param open - Synchronous host pair operation; null means unavailable. @returns Pair and delegation committed together, or unavailable. @throws When source records changed. */
+  /** @param request - Exact opening and its source context. @param open - Synchronous host pair operation; null means unavailable. @returns Pair and delegation committed together, or unavailable. @throws When source records changed. */
   openNegotiation(request: NegotiationOpeningRequest, open: () => { opportunityId: string; created: boolean } | null): Promise<OpenNegotiationResult> {
     const write = this.writing.then(async (): Promise<OpenNegotiationResult> => {
       const records = await this.read();
@@ -251,7 +253,7 @@ export class MemoryPrincipalRecords implements PrincipalRecords {
         return { status: 'opened', opportunityId: replay.opportunityId, delegationId: replay.id, contextVersion: records.version };
       }
       if (records.version !== request.contextVersion || latestPrincipalInput(records.messages) !== request.sourceMessageId) throw new Error('Principal context changed; discard this opening.');
-      if (!request.brief.trim() || !request.reasoning.trim() || request.reasoning.length > 2000) throw new Error('An opening needs reasoning and a complete private brief.');
+      if (!request.brief.trim() || !request.reasoning.trim()) throw new Error('An opening needs reasoning and a complete private brief.');
       const result = open();
       if (!result) return { status: 'unavailable' };
       const { opportunityId } = result;

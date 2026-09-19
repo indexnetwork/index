@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 
 import { Agent, MemoryPrincipalRecords, type AgentDomainEvent, type AgentHost, type DiscoveryClient, type NegotiationOpeningRequest, type Model, type NegotiationAction as Action, type Negotiation, type NegotiationClient, type NegotiationEvent, type NegotiationTurn as TurnInput } from '@indexnetwork/agent';
-import type { EmbeddingGenerator } from '@indexnetwork/discovery';
+import type { IntentPairEvaluator } from '@indexnetwork/discovery';
 
 import { NEGOTIATION_GUIDANCE, Negotiations, decideNegotiationOpening, pairKeyOf, type NegotiationState } from '@indexnetwork/protocol';
 
@@ -215,7 +215,7 @@ export class NegotiationDemo extends EventEmitter {
   }
 }
 
-/** Discoverable user intents with independent H2A conversations; A2A pairs exist only after H2A opens them. */
+/** Discoverable user intents with independent H2A conversations and runtime-opened A2A pairs. */
 export class NegotiationLab extends EventEmitter {
   readonly title = 'NEGOTIATION LAB · local simulation';
   readonly users: TuiPrincipal[];
@@ -227,7 +227,7 @@ export class NegotiationLab extends EventEmitter {
   private readonly controller = new AbortController();
   agentStatus = '';
 
-  constructor(scenario: DemoScenario, options: { model: Model; embedder: EmbeddingGenerator }) {
+  constructor(scenario: DemoScenario, options: { model: Model; evaluator: IntentPairEvaluator }) {
     super();
     this.users = scenario.users.flatMap((user) => user.intents.map((intent) => {
       const id = [user.id, intent.id].map(encodeURIComponent).join(':');
@@ -244,12 +244,8 @@ export class NegotiationLab extends EventEmitter {
     }
     const candidateDiscovery = createScenarioDiscovery(
       this.users,
-      options.embedder,
-      async (userId) => Promise.all([...this.negotiations.values()]
-        .filter((demo) => demo.principals.some((principal) => principal.userId === userId))
-        .map((demo) => demo.client(userId).readNegotiation(demo.opportunityId))),
+      options.evaluator,
       async (intentId) => Boolean((await this.records.get(intentId)!.read()).standingBrief),
-      this.controller.signal,
     );
     for (const user of this.users) {
       const clientFor = (id: string) => this.negotiations.get(id)!.client(user.userId);
@@ -309,7 +305,7 @@ export class NegotiationLab extends EventEmitter {
             if (!records.hasStandingBrief || !targetRecords.hasStandingBrief) return null;
             if (request.scopeVersion !== 'lab-v1' || selection.networkId !== SCENARIO_NETWORK_ID
               || selection.userId !== target.userId || selection.payload !== target.intent) throw new Error('Candidate or discovery scope changed.');
-            // Re-read inside the synchronous commit: both principals can select simultaneously.
+            // Re-read inside the synchronous commit: both principals can open simultaneously.
             const latest = [...this.negotiations.values()].filter((demo) => demo.pairKey === pairKey)
               .sort((a, b) => b.sessionNumber - a.sessionNumber)[0];
             if ([...this.negotiations.values()].some((demo) => demo.openingRequestId === request.id)) throw new Error('Opening request identity was reused.');
@@ -324,9 +320,10 @@ export class NegotiationLab extends EventEmitter {
               return latest.opportunityStatus === 'negotiating' && !latest.outcome
                 ? { opportunityId: latest.opportunityId, created: false } : null;
             }
+            if (latest && source.kind === 'match') return null;
             const previousSessions = [...this.negotiations.values()].filter((demo) => demo.pairKey === pairKey)
               .sort((a, b) => a.sessionNumber - b.sessionNumber).map((demo) => demo.sharedHistory());
-            const confidence = source.kind === 'search' ? source.similarity : latest!.confidence;
+            const confidence = source.kind === 'match' ? source.probability : latest!.confidence;
             const opportunityId = crypto.randomUUID();
             const demo = new NegotiationDemo(principals, opportunityId, {
               number: (latest?.sessionNumber ?? 0) + 1, previousSessions, confidence, source, requestId: request.id,

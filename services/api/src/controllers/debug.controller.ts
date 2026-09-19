@@ -176,9 +176,6 @@ export class DebugController {
     let bottleneck: string | null = null;
     if (!hasActiveIntents) {
       bottleneck = 'No active intents';
-    } else if (!intentsHaveEmbeddings) {
-      const missing = activeIntents.filter((i) => !i.hasEmbedding).length;
-      bottleneck = `${missing} intents missing embeddings`;
     } else if (!intentsAreIndexed) {
       bottleneck = `${orphaned} active intents not assigned to any network`;
     } else if (!hasOpportunities) {

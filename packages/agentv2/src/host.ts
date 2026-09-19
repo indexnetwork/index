@@ -12,7 +12,7 @@ export interface Runtime {
   now?: () => Date;
   signal?: AbortSignal;
   log?: (line: string) => void;
-  /** Open this negotiation now, as soon as its brief and decision are published. */
+  /** Schedule a newly opened negotiation, or one whose brief and decision were published. */
   onNegotiate?: (opportunityId: string, decision?: Decision) => void;
 }
 
@@ -225,12 +225,15 @@ function counterpartsOf(details: NegotiationDetail[]): Map<string, MatchReferenc
 }
 
 /**
- * One wake over one signal: read Index, think, publish what the wake produced.
+ * Read Index, plan and publish all wake actions, then automatically match once
+ * and schedule every newly opened negotiation, including after a silent plan.
  *
  * @param client - Index for this owner.
  * @param intent - The signal to wake over.
- * @param runtime - Model, clock, cancellation, and where to open negotiations.
- * @returns The wake's actions.
+ * @param runtime - Model, clock, cancellation, and where to schedule negotiations.
+ * @returns The wake's published actions.
+ * @throws When planning or publication fails, or the run is cancelled.
+ * @throws Matching failures carry a phase-specific message and the original cause; published actions remain saved.
  */
 export async function runWake(client: Index, intent: Intent, runtime: Runtime): Promise<WakeResult> {
   const { model, now, signal, log = () => {}, onNegotiate } = runtime;
@@ -265,7 +268,6 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
     principalConversation,
     opportunities,
     model,
-    client,
     now,
     signal,
     // One opportunity's brief and decision, published and opened on their own,
@@ -276,14 +278,6 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
         if (action.type === "decision" && action.decision !== "stop") onNegotiate?.(action.opportunityId, action.decision);
       }
     },
-    // A newly opened opportunity is this seat's turn at turn zero with no
-    // brief, so nothing else will ever move it. Each one starts here and is
-    // briefed by its own run rather than by this wake, whose step budget a
-    // batch of them would exhaust.
-    onOpened: (opportunityIds) => {
-      log(`  opened ${opportunityIds.length}`);
-      for (const opportunityId of opportunityIds) onNegotiate?.(opportunityId);
-    },
   });
 
   if (!result.actions.length) log("  silent");
@@ -293,6 +287,19 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
     result.actions.filter((action) => action.type !== "brief" && action.type !== "decision"),
     context,
   );
+
+  signal?.throwIfAborted();
+  log("  matching");
+  let opened;
+  try {
+    opened = await client.discover(intent.id, signal);
+  } catch (cause) {
+    signal?.throwIfAborted();
+    throw new Error(`Intent matching failed after wake actions were published: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+  }
+  log(`  opened ${opened.length}`);
+  // New opportunities need their own briefing run, not another planning pass.
+  for (const { opportunityId } of opened) onNegotiate?.(opportunityId);
 
   return result;
 }

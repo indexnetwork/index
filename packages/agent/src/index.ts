@@ -43,6 +43,5 @@ export { MemoryPrincipalRecords, pendingPrincipalQuestions, validPrincipalEffect
 // standing briefs, and delegations.
 export type { PrincipalRecords, PrincipalRecordsView, PrincipalEffects, PrincipalStandingBrief, PrincipalDelegation } from './negotiation/principal.records.ts';
 
-// Discovery client, search scope, candidates, query and search record types,
-// plus request and result contracts for opening a negotiation.
-export type { DiscoveryClient, DiscoveryScope, DiscoveryCandidate, CandidateQuery, SearchRecord, NegotiationOpeningRequest, OpenNegotiationResult } from './negotiation/discovery.types.ts';
+// Runtime matching scope, ranked candidates and host opening contracts.
+export type { DiscoveryClient, DiscoveryScope, DiscoveryCandidate, DiscoveryInput, NegotiationOpeningRequest, OpenNegotiationResult } from './negotiation/discovery.types.ts';

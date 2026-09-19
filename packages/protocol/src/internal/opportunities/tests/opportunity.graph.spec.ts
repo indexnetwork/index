@@ -1,19 +1,13 @@
 import { describe, test, expect, mock, spyOn } from 'bun:test';
-import { CandidateDiscovery, DISCOVERY_MIN_SIMILARITY } from '@indexnetwork/discovery';
-import type { CandidateDiscoveryData, CandidateSearch } from '@indexnetwork/discovery';
+import { CandidateDiscovery, INTENT_MATCH_REASONING } from '@indexnetwork/discovery';
+import type { CandidateDiscoveryData, IntentPairEvaluator } from '@indexnetwork/discovery';
 
 import { resolveDiscoveryNetworkScope } from '../../../index.js';
 
 const owner = 'a0000000-0000-4000-8000-000000000001';
 const bob = 'b0000000-0000-4000-8000-000000000002';
-const queries = [
-  'Technical co-founder for an early-stage AI startup',
-  'Senior engineer ready to build a startup with a business co-founder',
-  'AI researcher interested in commercializing applied machine learning',
-  'Product-minded builder seeking a complementary founding partner',
-  'Startup CTO looking for a co-founder to lead sales and operations',
-];
-const dummyEmbeddings = queries.map((_, index) => new Array(2000).fill((index + 1) / 10));
+const sourcePayload = 'Looking for a technical co-founder';
+const bobPayload = 'I want to build a startup as a technical co-founder';
 
 function createMockDiscovery(deps: {
   getUserNetworkIds?: () => Promise<string[]>;
@@ -24,12 +18,12 @@ function createMockDiscovery(deps: {
   const mockDb: CandidateDiscoveryData = {
     getNetworkMemberships: async () => (await (deps.getUserNetworkIds?.() ?? Promise.resolve(['idx-1']))).map((networkId) => ({ networkId })),
     getActiveIntents: deps.getActiveIntents ?? (async (id: string) => id === owner
-      ? [{ id: 'intent-1', payload: 'Looking for a technical co-founder' }]
-      : [{ id: 'intent-bob', payload: 'I want to build a startup as a technical co-founder' }, { id: 'intent-alice', payload: 'Looking for a co-founder' }]),
+      ? [{ id: 'intent-1', payload: sourcePayload }]
+      : id === bob ? [{ id: 'intent-bob', payload: bobPayload }] : []),
     getProfile: async () => null,
     getNetworkIdsForIntent: deps.getNetworkIdsForIntent ?? (async () => deps.getUserNetworkIds?.() ?? ['idx-1']),
     getActiveNetworkMembershipPairs: deps.getActiveNetworkMembershipPairs ?? (async (pairs) => pairs),
-    getRecentlyRejectedOpportunityCounterparties: async () => [],
+    listIntentCandidates: async () => [{ id: 'intent-bob', userId: bob, networkId: 'idx-1', payload: bobPayload }],
     getDiscoveryScope: async (input) => resolveDiscoveryNetworkScope({
       userNetworkIds: input.userNetworks,
       networkScope: input.networkScope,
@@ -39,234 +33,177 @@ function createMockDiscovery(deps: {
     getNetworkContexts: async (ids) => Object.fromEntries(ids.map((id) => [id, `## ${id}`])),
   };
 
-  const mockSearch: CandidateSearch = {
-    searchIntentCandidates: async () => [{ type: 'intent', id: 'intent-bob', userId: bob, networkId: 'idx-1', score: 0.9 }],
+  const mockEvaluator: IntentPairEvaluator = {
+    evaluate: async () => 0.9,
   };
-  const mockEmbedder = {
-    generate: async (_text: string | string[]) => dummyEmbeddings,
-  };
-
   const discovery = new CandidateDiscovery({
     database: mockDb,
-    search: mockSearch,
-    embedder: mockEmbedder,
+    evaluator: mockEvaluator,
   });
 
-  return { discovery, mockDb, mockSearch, mockEmbedder };
+  return { discovery, mockDb, mockEvaluator };
 }
 
 describe('CandidateDiscovery', () => {
-  test('when user has no network memberships, returns no candidates', async () => {
-    const { discovery, mockEmbedder, mockSearch } = createMockDiscovery({
+  test('when user has no network memberships, discovery fails closed', async () => {
+    const { discovery, mockDb, mockEvaluator } = createMockDiscovery({
       getUserNetworkIds: () => Promise.resolve([]),
     });
-    const embeddingSpy = spyOn(mockEmbedder, 'generate');
-    const searchSpy = spyOn(mockSearch, 'searchIntentCandidates');
+    const listSpy = spyOn(mockDb, 'listIntentCandidates');
+    const evaluatorSpy = spyOn(mockEvaluator, 'evaluate');
 
     await expect(
       discovery.discover({
         userId: owner,
         triggerIntentId: 'intent-1',
-        queries,
-        minSimilarity: DISCOVERY_MIN_SIMILARITY,
         networkIds: ['idx-1'],
       }),
     ).rejects.toThrow('outside authorized scope');
 
-    expect(embeddingSpy).not.toHaveBeenCalled();
-    expect(searchSpy).not.toHaveBeenCalled();
+    expect(listSpy).not.toHaveBeenCalled();
+    expect(evaluatorSpy).not.toHaveBeenCalled();
   });
 
   test('when user has no active intents, discovery fails closed', async () => {
-    const { discovery, mockSearch } = createMockDiscovery({
+    const { discovery, mockDb, mockEvaluator } = createMockDiscovery({
       getActiveIntents: () => Promise.resolve([]),
     });
-    const searchSpy = spyOn(mockSearch, 'searchIntentCandidates');
+    const listSpy = spyOn(mockDb, 'listIntentCandidates');
+    const evaluatorSpy = spyOn(mockEvaluator, 'evaluate');
 
     await expect(
       discovery.discover({
         userId: owner,
         triggerIntentId: 'intent-1',
-        queries,
-        minSimilarity: DISCOVERY_MIN_SIMILARITY,
         networkIds: ['idx-1'],
       }),
     ).rejects.toThrow('Trigger intent is not available for discovery.');
 
-    expect(searchSpy).not.toHaveBeenCalled();
+    expect(listSpy).not.toHaveBeenCalled();
+    expect(evaluatorSpy).not.toHaveBeenCalled();
   });
 
   test('when trigger intent is not an active intent owned by user, fails closed', async () => {
-    const { discovery, mockSearch } = createMockDiscovery();
-    const searchSpy = spyOn(mockSearch, 'searchIntentCandidates');
+    const { discovery, mockDb, mockEvaluator } = createMockDiscovery();
+    const listSpy = spyOn(mockDb, 'listIntentCandidates');
+    const evaluatorSpy = spyOn(mockEvaluator, 'evaluate');
 
     await expect(
       discovery.discover({
         userId: owner,
         triggerIntentId: 'foreign-intent',
-        queries,
-        minSimilarity: DISCOVERY_MIN_SIMILARITY,
         networkIds: ['idx-1'],
       }),
     ).rejects.toThrow('Trigger intent is not available for discovery.');
 
-    expect(searchSpy).not.toHaveBeenCalled();
+    expect(listSpy).not.toHaveBeenCalled();
+    expect(evaluatorSpy).not.toHaveBeenCalled();
   });
 
   test('when requested network is outside authorized scope, fails closed', async () => {
-    const { discovery, mockSearch } = createMockDiscovery({
+    const { discovery, mockDb, mockEvaluator } = createMockDiscovery({
       getUserNetworkIds: () => Promise.resolve(['idx-1']),
     });
-    const searchSpy = spyOn(mockSearch, 'searchIntentCandidates');
+    const listSpy = spyOn(mockDb, 'listIntentCandidates');
+    const evaluatorSpy = spyOn(mockEvaluator, 'evaluate');
 
     await expect(
       discovery.discover({
         userId: owner,
         triggerIntentId: 'intent-1',
-        queries,
-        minSimilarity: DISCOVERY_MIN_SIMILARITY,
         networkIds: ['idx-unauthorized'],
       }),
     ).rejects.toThrow('outside authorized scope');
 
-    expect(searchSpy).not.toHaveBeenCalled();
-  });
-
-  test('performs five vector searches with the same network scope, minScore and excludeUserId', async () => {
-    const { discovery, mockSearch } = createMockDiscovery();
-    const searchSpy = spyOn(mockSearch, 'searchIntentCandidates').mockResolvedValue([
-      {
-        type: 'intent',
-        id: 'intent-bob',
-        userId: bob,
-        score: 0.92,
-        networkId: 'idx-1',
-      },
-    ]);
-
-    const result = await discovery.discover({
-      userId: owner,
-      triggerIntentId: 'intent-1',
-      queries,
-      minSimilarity: 0.5,
-      networkIds: ['idx-1'],
-    });
-
-    expect(searchSpy).toHaveBeenCalledTimes(5);
-    expect(searchSpy.mock.calls.map(([embedding]) => embedding)).toEqual(dummyEmbeddings);
-    for (const [, options] of searchSpy.mock.calls) {
-      expect(options.networkScope).toEqual(['idx-1']);
-      expect(options.excludeUserId).toBe(owner);
-      expect(options.minScore).toBe(0.5);
-    }
-    expect(result.candidates.length).toBe(1);
-    expect(result.candidates[0]).toMatchObject({
-      candidateUserId: bob,
-      candidateIntentId: 'intent-bob',
-      networkId: 'idx-1',
-      similarity: 0.92,
-    });
+    expect(listSpy).not.toHaveBeenCalled();
+    expect(evaluatorSpy).not.toHaveBeenCalled();
   });
 
   test('removes inactive candidate pairs before returning candidates', async () => {
     const getActiveNetworkMembershipPairs = mock(async (
       pairs: Array<{ userId: string; networkId: string }>,
-    ) => pairs.filter((pair) => pair.userId === owner));
-    const { discovery } = createMockDiscovery({ getActiveNetworkMembershipPairs });
+    ) => pairs.filter((pair) => pair.userId === owner)).mockImplementationOnce(async (pairs) => pairs);
+    const { discovery, mockEvaluator } = createMockDiscovery({ getActiveNetworkMembershipPairs });
+    const evaluatorSpy = spyOn(mockEvaluator, 'evaluate');
 
     const result = await discovery.discover({
       userId: owner,
       triggerIntentId: 'intent-1',
-      queries,
-      minSimilarity: DISCOVERY_MIN_SIMILARITY,
       networkIds: ['idx-1'],
     });
 
-    expect(getActiveNetworkMembershipPairs).toHaveBeenCalled();
+    expect(getActiveNetworkMembershipPairs).toHaveBeenCalledTimes(2);
+    expect(evaluatorSpy).toHaveBeenCalledTimes(1);
     expect(result.candidates).toEqual([]);
   });
 
   test('returns candidate evidence with hydrated context and payload', async () => {
-    const { discovery, mockSearch } = createMockDiscovery();
-    spyOn(mockSearch, 'searchIntentCandidates').mockResolvedValue([
-      {
-        type: 'intent',
-        id: 'intent-bob',
-        userId: bob,
-        score: 0.88,
-        networkId: 'idx-1',
-      },
-    ]);
+    const { discovery, mockDb, mockEvaluator } = createMockDiscovery();
+    const listSpy = spyOn(mockDb, 'listIntentCandidates');
+    const evaluatorSpy = spyOn(mockEvaluator, 'evaluate').mockResolvedValue(0.88);
+    spyOn(mockDb, 'getProfile').mockResolvedValue({ identity: { name: 'Bob' } });
 
     const result = await discovery.discover({
       userId: owner,
       triggerIntentId: 'intent-1',
-      queries,
-      minSimilarity: DISCOVERY_MIN_SIMILARITY,
       networkIds: ['idx-1'],
     });
 
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy).toHaveBeenCalledWith(
+      { excludeUserId: owner, networkIds: ['idx-1'] },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(evaluatorSpy).toHaveBeenCalledTimes(1);
+    expect(evaluatorSpy).toHaveBeenCalledWith(
+      { intentA: sourcePayload, intentB: bobPayload, networkContext: '## idx-1' },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(result).toMatchObject({ networkIds: ['idx-1'], sourcePayload });
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0]).toMatchObject({
       candidateIntentId: 'intent-bob',
       candidateUserId: bob,
       networkId: 'idx-1',
-      similarity: 0.88,
-      candidatePayload: 'I want to build a startup as a technical co-founder',
+      matchProbability: 0.88,
+      reasoning: INTENT_MATCH_REASONING,
+      candidatePayload: bobPayload,
+      profile: { identity: { name: 'Bob' } },
       networkContext: '## idx-1',
     });
   });
 
-  test('sorts candidates by similarity descending and deduplicates per intent and network', async () => {
+  test('deduplicates per intent and network and ranks all scores without a cutoff', async () => {
     const charlie = 'c0000000-0000-4000-8000-000000000003';
-    const { discovery, mockSearch } = createMockDiscovery({
+    const { discovery, mockDb, mockEvaluator } = createMockDiscovery({
       getActiveIntents: async (id: string) => {
-        if (id === owner) return [{ id: 'intent-1', payload: 'Looking for a co-founder' }];
+        if (id === owner) return [{ id: 'intent-1', payload: sourcePayload }];
         if (id === bob) return [{ id: 'intent-bob', payload: 'Building AI startup' }];
         if (id === charlie) return [{ id: 'intent-charlie', payload: 'Senior AI researcher' }];
         return [];
       },
     });
 
-    spyOn(mockSearch, 'searchIntentCandidates')
-      .mockResolvedValueOnce([
-        { type: 'intent', id: 'intent-bob', userId: bob, score: 0.75, networkId: 'idx-1' },
-        { type: 'intent', id: 'intent-charlie', userId: charlie, score: 0.95, networkId: 'idx-1' },
-      ])
-      .mockResolvedValueOnce([
-        { type: 'intent', id: 'intent-bob', userId: bob, score: 0.80, networkId: 'idx-1' },
-      ])
-      .mockResolvedValue([]);
+    spyOn(mockDb, 'listIntentCandidates').mockResolvedValue([
+      { id: 'intent-bob', userId: bob, payload: 'Building AI startup', networkId: 'idx-1' },
+      { id: 'intent-charlie', userId: charlie, payload: 'Senior AI researcher', networkId: 'idx-1' },
+      { id: 'intent-bob', userId: bob, payload: 'Building AI startup', networkId: 'idx-1' },
+    ]);
+    const evaluatorSpy = spyOn(mockEvaluator, 'evaluate').mockImplementation(async ({ intentB }) =>
+      intentB === 'Building AI startup' ? 0 : 0.75,
+    );
 
     const result = await discovery.discover({
       userId: owner,
       triggerIntentId: 'intent-1',
-      queries,
-      minSimilarity: 0.5,
       networkIds: ['idx-1'],
     });
 
+    expect(evaluatorSpy).toHaveBeenCalledTimes(2);
     expect(result.candidates).toHaveLength(2);
     expect(result.candidates[0]!.candidateUserId).toBe(charlie);
-    expect(result.candidates[0]!.similarity).toBe(0.95);
+    expect(result.candidates[0]!.matchProbability).toBe(0.75);
     expect(result.candidates[1]!.candidateUserId).toBe(bob);
-    expect(result.candidates[1]!.similarity).toBe(0.80);
-  });
-
-  test('embeds all five search queries in one batch', async () => {
-    const { discovery, mockEmbedder, mockSearch } = createMockDiscovery();
-    const embeddingSpy = spyOn(mockEmbedder, 'generate');
-    spyOn(mockSearch, 'searchIntentCandidates').mockResolvedValue([]);
-
-    await discovery.discover({
-      userId: owner,
-      triggerIntentId: 'intent-1',
-      queries,
-      minSimilarity: DISCOVERY_MIN_SIMILARITY,
-      networkIds: ['idx-1'],
-    });
-
-    expect(embeddingSpy).toHaveBeenCalledTimes(1);
-    expect(embeddingSpy.mock.calls[0]?.[0]).toEqual(queries);
+    expect(result.candidates[1]!.matchProbability).toBe(0);
   });
 });

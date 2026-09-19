@@ -94,7 +94,7 @@ The package defines interfaces — your application provides the concrete implem
 |---|---|
 | `CompositeDatabase` | Core data access (users, intents, networks, opportunities) |
 | `UserDatabase` / `SystemDatabase` | Context-bound databases built by `createUserDatabase` / `createSystemDatabase` |
-| `Embedder` | Vector embeddings for semantic search |
+| `Embedder` | Intent lifecycle embeddings; not used for intent pairing |
 | `Scraper` | Web content extraction |
 | `Cache` / `OpportunityCache` | Presentation/result caching |
 | `IntentFollowUp` | Lifecycle follow-up (`scoreIntent`, `onIntentSaved`, `onIntentArchived`, `onIntentResumed`) |
@@ -139,18 +139,52 @@ The intent and community graphs are the exceptions: they are reached through the
 
 ## On-demand discovery
 
-Discovery is not a protocol workflow and does not run when a signal is written.
-The host exposes it as a search: the owner's agent sends a query, the host
-embeds it and retrieves candidate signals from the communities that signal is
-shared in, and the agent picks which counterparties are worth an opportunity.
-Nothing is generated ahead of the query and nothing is cached.
+Discovery is host-owned, not a protocol workflow. H2A establishes and maintains
+the principal's signal and standing brief. For an active, match-ready signal,
+the runtime requests direct pair checks within its authorized networks. The host
+composes `CandidateDiscovery` from `@indexnetwork/discovery` with
+`{ database, evaluator }` and calls
+`discover({ userId, triggerIntentId, networkIds })`.
 
-Protocol owns only what the picks are committed with. The host assigns
-`pairKeyOf(...)` and calls `openCounterparties(pairs, decideNegotiationOpening)`,
-which writes the opportunity and its negotiation; opening rules run inside the
-existing host transaction. Network/broadcast scope remains a protocol rule
-exposed through `resolveDiscoveryNetworkScope`, with context permissions handled
-by `renderDiscoveryNetworkContext`.
+The discovery library enumerates every eligible intent/network pair, deduplicates
+by intent and network, and directly scores the two current public payloads and
+permitted network context with TypeSafe `jev-1.13.0`, with at most four evaluations
+in flight. It returns all still-eligible scored pairs sorted by descending
+`matchProbability`, together with the evaluated `sourcePayload`. There is no
+pass/fail threshold or `0.8` cutoff, and the discovery result is not truncated to
+ten. There are no search queries, embedding retrieval, or model-selected
+candidates. Scope, active state, registrations, current memberships, and payload
+freshness are checked; provider errors reject the run, not individual pairs.
+Intent lifecycle embeddings remain independent of this path.
+
+The discovery library is pure with respect to opportunity and negotiation
+persistence: it returns scored pairs and does not commit them. The host walks the
+full ranking until **up to 10 new negotiations per intent per matching run** are
+created or candidates are exhausted, each new negotiation with an opportunity.
+Existing/reused, terminal, and unavailable sessions do not consume that new-opening
+budget, so lower-ranked candidates can still be reached. There is no H2A semantic
+review, selection, or skip stage. The runtime copies the current standing brief
+into each newly opened negotiation; it does not ask H2A for a pair-specific brief
+or approval.
+
+Within the new-opening budget, deterministic scope, currentness, readiness,
+authorization, and session rules still govern opening. The host revalidates the
+source and candidate state when committing, does not duplicate existing sessions
+or replace their briefs, and requires deliberate reopening for terminal pairs.
+Each new session and its initial brief commit atomically. Stale context/scope or
+uncertain writes stop the remainder without a blind retry; earlier committed
+openings remain valid. Candidate `reasoning` is generic model/scoring provenance,
+not a pair-specific explanation or an additional opening gate;
+`matchProbability` is a provider estimate, not a calibrated probability of
+agreement. Automatic opening is not human approval, and A2A agreement advances
+only to pending human review before any connection.
+
+Protocol supplies the atomic opening and negotiation rules. The host assigns
+`pairKeyOf(...)` and calls `openCounterparties(pairs, decideNegotiationOpening)`
+for eligible ranked pairs within the new-opening budget, writing each opportunity and negotiation under
+the opening rules in the existing host transaction. Network/broadcast scope
+remains a protocol rule exposed through `resolveDiscoveryNetworkScope`, with
+context permissions handled by `renderDiscoveryNetworkContext`.
 
 `IntentFollowUp` therefore has no matching work to schedule: `onIntentSaved`,
 `onIntentArchived`, and `onIntentResumed` exist for hosts that want them and may

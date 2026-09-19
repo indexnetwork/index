@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/agent-tui",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "type": "module",
   "description": "A live terminal testing platform for personal agents and parallel negotiations.",
@@ -20,7 +20,6 @@
     "@indexnetwork/agent": "workspace:*",
     "@indexnetwork/discovery": "workspace:*",
     "@opentui/core": "0.5.10",
-    "openai": "4.104.0",
     "@indexnetwork/protocol": "workspace:*"
   },
   "devDependencies": {

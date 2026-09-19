@@ -202,6 +202,8 @@ export function startRunner(options: RunnerOptions): Runner {
           void startUnstarted(event.data.intentId).catch(onError);
           break;
         case "intent.created":
+        case "intent.broadcast":
+        case "intent.revised":
           log(`event ${event.type}: ${event.data.intentId}`);
           void refresh().then(() => startWake(event.data.intentId)).catch(onError);
           break;

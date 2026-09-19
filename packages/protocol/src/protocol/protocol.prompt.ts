@@ -27,21 +27,21 @@ export type CanonicalGuidanceTopic = (typeof CANONICAL_GUIDANCE_TOPICS)[number];
 /** Summary served when GET /api/docs has no topic. */
 export const CANONICAL_GUIDANCE_SUMMARY = `# Index Network Protocol
 
-Index Network is a private, intent-driven discovery protocol. Users express signals (intents), agents find matches within shared networks, and decisions proceed through clear gates.
+Index Network is a private, intent-driven discovery protocol. Users express signals (intents), and TypeSafe scores every eligible public intent/network pair within shared networks, with no pass/fail threshold or 0.8 cutoff. The matching library returns all still-eligible scored pairs in descending score order without opportunity writes. The host walks that ranking until up to 10 new negotiations per intent per matching run are created or candidates are exhausted, each with an opportunity and a copy of the current standing brief under deterministic scope, currentness, and session rules. Existing/reused, terminal, and unavailable sessions do not consume the new-opening budget. There are no search queries, embedding retrieval, or H2A semantic review, selection, or skip stage. Terminal sessions require deliberate reopening, and automatic opening never implies human approval to connect.
 
 ## Core Concepts
 
 **Identity & Context** — Account and presentation metadata plus scoped runtime state (networks, signals, stage).
 
-**Signals** — What users seek (intents, opportunities). Drive semantic matching.
+**Signals** — What users seek or offer. Their current intent payloads are evaluated directly for a plausible exchange or shared activity advancing both goals.
 
 **Communities & Networks** — Private groups where members share signals and discover connections via shared membership.
 
-**Opportunities** — Discovered matches between users. Matches may be draft or negotiating; agreement advances to pending owner review, then accepted/rejected/expired.
+**Opportunities** — The host walks the descending score ranking to create up to 10 new negotiations per intent per matching run, each with a persisted opportunity and a copy of the current standing brief. A2A agreement advances to pending human review, not automatic acceptance or connection.
 
 **Negotiations** — Agents coordinate, users approve. **A2A acceptance is not owner approval.** These are separate gates.
 
-**Workflows** — H2A (users express signals → agents discover) and A2A (agents coordinate) over the REST API. External agents use the Index CLI; the personal-agent runtime stays on the server. Human conversations are available through the conversation routes and commands.
+**Workflows** — H2A maintains signals, principal context, and standing briefs. The runtime scores all eligible pairs and automatically opens negotiations in descending score order within the new-opening budget; A2A agents then coordinate under protocol rules. Human approval remains a separate gate over the REST API. External agents use the Index CLI; the personal-agent runtime stays on the server. Human conversations are available through the conversation routes and commands.
 
 ## Command interface
 
@@ -73,7 +73,7 @@ export const CANONICAL_GUIDANCE_TOPICS_CONTENT: Record<CanonicalGuidanceTopic, s
 **Context** is scoped runtime state: network memberships, approved signals, lifecycle stage, and current opportunity or negotiation state. It determines the user's active scope and available workflow state.
 
 ### Matching Inputs
-Matching uses approved signals, shared network membership, and current opportunity or negotiation state.
+TypeSafe scores every eligible pair using current public intent payloads and permitted network context within shared registrations and current memberships, without queries, embedding retrieval, or a pass/fail threshold. Discovery returns all still-eligible scored intent/network pairs sorted descending. H2A maintains confirmed principal context and the standing brief, not a second semantic filter over counterparties. The runtime walks the ranking until up to 10 new negotiations per intent per matching run are created or candidates are exhausted, applying deterministic scope, currentness, and session rules and copying the current standing brief into each new negotiation. Existing/reused, terminal, and unavailable sessions do not consume that budget; terminal reopening must be deliberate.
 
 ### Context Scoping
 - Users can belong to multiple networks
@@ -92,13 +92,16 @@ Identity is account/presentation metadata. Context is dynamic, scoped runtime st
 - Summary (structured extract: role, domain, stage, geography, duration)
 - Confidence (0-1, how well the inference captured the user's intent)
 - Inference type (explicit = user stated directly; implicit = system inferred)
-- Embedding (semantic vector for matching)
+
+Lifecycle embeddings may be maintained internally, but they are not used for intent pairing.
 
 ### Signal Lifecycle
-1. User creates intent (explicit signal) or system infers from behavior (implicit)
-2. Signal is embedded (converted to semantic vector)
-3. The owner chooses which current network memberships to share the signal with
-4. Signal participates in discovery (matched against other signals)
+1. User creates or confirms an intent
+2. The owner chooses which current network memberships to share the signal with
+3. H2A maintains the principal's standing brief; the runtime requests direct pair checks for the active, match-ready signal within its authorized networks
+4. TypeSafe scores every eligible public intent/network pair with no pass/fail threshold or 0.8 cutoff; the pure matching library returns all still-eligible scores sorted descending, without query or embedding retrieval
+5. The host walks that ranking until up to 10 new negotiations per intent per matching run are created or candidates are exhausted, each with an opportunity and a copy of the current standing brief under deterministic scope, currentness, and session rules; there is no H2A semantic review, selection, or skip stage
+6. Existing/reused, terminal, and unavailable sessions do not consume the new-opening budget. Existing sessions and their briefs are preserved, terminal pairs require deliberate reopening, and A2A agreement still requires separate human approval before connection
 
 ### Signal Best Practices
 - Be specific: "Senior React developer, 3-month contract, Berlin" > "Need a developer"
@@ -120,8 +123,8 @@ Identity is account/presentation metadata. Context is dynamic, scoped runtime st
 - Signal sharing: The owner names networks at creation or links/unlinks the signal later
 
 ### Network Scope for Discovery
-- Opportunities are discovered only between members of shared networks
-- If two users share network A but not B, discovery in A will find them
+- Pair checks require both active intents to be shared in the exact network and both users to be current members
+- Shared membership alone does not guarantee a new opening within the ranked budget or eligibility under the current readiness and session rules
 - GET /api/networks/:id/intents narrows a read to the signals shared in one community
 
 ### Community Membership
@@ -135,49 +138,55 @@ Discovery is networked — it only finds matches within shared networks. This pr
 
   opportunities: `## Opportunities
 
-**Opportunity** is a discovered connection between two or more users based on complementary signals and shared network membership. Each opportunity has:
+**Opportunity** is a persisted connection proposal opened by the host with a negotiation as it walks the descending score ranking, creating up to 10 new negotiations per intent per matching run under deterministic scope, currentness, and session rules. The runtime copies the current standing brief; no H2A counterparty decision is required. Each opportunity has:
 - Parties (the people being connected)
 - Roles (party)
 - Status (draft or negotiating → pending owner review → accepted/rejected/expired)
-- Match reasoning (why they're a good fit)
-- Confidence score (0-1 from evaluation)
+- Public evaluation provenance, without fabricated pair-specific model explanations
+- Internal evaluation score (not consent or a guarantee of agreement)
 
 ### Opportunity Lifecycle
-1. **Draft**: A persisted suggestion awaiting further action.
-2. **Negotiating**: Agents exchange structured turns under the negotiation rules.
+Automatic pair openings start in Negotiating, not in an H2A decision queue.
+1. **Draft**: An existing persisted suggestion awaiting a permitted lifecycle action.
+2. **Negotiating**: The host automatically opens eligible ranked pairs within the new-opening budget with the current standing brief; agents exchange structured turns under the negotiation rules.
 3. **Pending**: Agent agreement recommends a connection for separate owner review.
 4. **Accepted**: The required participant approvals permit the connection.
-5. **Rejected** or **Expired**: The opportunity no longer advances automatically.
+5. **Rejected** or **Expired**: The opportunity no longer advances automatically; matching never automatically reopens terminal pairs.
 
-### Background Matching
-Approved signals are evaluated in the background. GET /api/opportunities only reviews persisted opportunities; it does not start matching.
+### Direct Pair Checks and Automatic Opening
+The runtime requests exhaustive scoring for active, match-ready signals within their authorized networks. The matching library returns all still-eligible scored pairs sorted descending without persistence. The host walks that ranking until up to 10 new negotiations per intent per matching run are created or candidates are exhausted, enforcing deterministic scope, currentness, and session rules and copying the current standing brief into each new negotiation. Existing/reused, terminal, and unavailable sessions do not consume the new-opening budget; terminal sessions still require deliberate reopening. No H2A semantic review, selection, or skip stage intervenes. GET /api/opportunities only reads persisted opportunities; it does not start pair checks.
 
 ### Opportunity Evaluation
-- Candidate retrieval: Embeds a search query to find semantically related signals
-- LLM evaluation: Scores relevance, complementarity, and actionability
-- Reasoning: Each opportunity includes match reasoning for the user
+- Enumeration: Score every eligible public intent/network pair within authorized shared registrations and current memberships, deduplicated by intent and network; no queries, embedding retrieval, or model-selected shortlist
+- Direct evaluation: TypeSafe scores a concrete, plausible exchange or shared activity advancing both goals; topical similarity alone is insufficient, missing negotiable details are not an automatic failure, and explicit incompatible hard constraints count against a match
+- Ranked candidates: Return all still-eligible scored pairs sorted descending after freshness checks, with no pass/fail threshold or 0.8 cutoff and no truncation to ten; provider failures are errors, not non-matches
+- Automatic opening: Walk the full ranking until up to 10 new negotiations per intent per matching run are created or candidates are exhausted. Copy the current standing brief, without H2A semantic review, selection, a skip decision, or a pair-specific briefing step
+- Session rules: Existing/reused, terminal, and unavailable sessions do not consume the new-opening budget. Preserve existing sessions and their briefs; terminal sessions require deliberate reopening, never automatic matching
+- Safety and writes: Readiness, authorization, scope, and currentness fences remain required. Commit each new session and its initial brief atomically. Stale context/scope or uncertain writes stop the remainder without a blind retry; earlier committed openings remain valid
+- Reasoning: The pair-check reasoning is generic evaluation provenance, not a generated explanation of a particular pair or an extra opening gate. Ground participant-facing explanations in known facts; do not present the score as a calibrated probability of agreement
 
 ### Opportunity Acceptance
-Accepting an opportunity expresses interest in the connection. Owner acceptance (explicit user confirmation) is required for any escalation.`,
+Automatic negotiation opening is not human approval. A2A agreement only recommends a connection and moves the opportunity to pending human review. Explicit current owner approval is required before a connection proceeds.`,
 
   negotiations: NEGOTIATION_GUIDANCE,
 
   workflows: `## Common Workflows
 
-### H2A: Human→Agent Discovery
-User expresses signals (intents). Agent discovers matches and presents reasoning.
+### H2A: Signals and Standing Briefs
+Users express signals and standing instructions. H2A maintains that context; it does not semantically review, select, or skip individual scored pairs.
 
-1. User creates intents (signals)
-2. Background matching evaluates approved signals
-3. Agent reads GET /api/opportunities to surface persisted matches
-4. User reviews and approves (owner approval)
-5. Escalation via native surfaces
+1. User creates an intent and chooses its shared networks
+2. H2A maintains the principal's goals, constraints, and authority in the current standing brief, asking when material context is missing
+3. TypeSafe scores every eligible public intent/network pair in the requested authorized networks, with no queries, embedding retrieval, or pass/fail threshold; the matching library returns all still-eligible scores sorted descending without writing opportunities
+4. The host walks that ranking until up to 10 new negotiations per intent per matching run are created or candidates are exhausted, under deterministic scope, currentness, and session rules, copying the current standing brief into each new negotiation. Existing/reused, terminal, and unavailable sessions do not consume that budget; existing sessions are preserved and terminal pairs still require deliberate reopening
+5. A2A agreement recommends a connection for separate human review; GET /api/opportunities reads the persisted opportunities
+6. Users explicitly approve before a connection proceeds
 
 ### A2A: Agent→Agent Coordination
-Two agents coordinate on behalf of users to identify, vet, and propose matches.
+Agents coordinate on behalf of their principals in the negotiations automatically opened for eligible ranked pairs.
 
-1. Approved signals for User A are evaluated in the background
-2. Agent B vets match from User B side (A2A negotiation)
+1. The host walks the descending score ranking to create up to 10 new negotiations per intent per matching run and the runtime copies the current standing brief, without an H2A counterparty decision
+2. Agents negotiate from their respective principals' sides using the standing brief and available protocol actions
 3. Agents reach agreement (A2A acceptance)
 4. Both agents present to users with shared reasoning
 5. Both users approve (owner approval required)
