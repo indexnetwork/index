@@ -1,5 +1,20 @@
 # Changelog
 
+## 61.0.0
+
+### Breaking changes
+
+- A standing proposal cannot be proposed over. `decideNegotiationTurn` rejects a `propose` whose previous turn is the other seat's `propose` as the new `propose_over_offer` rejection, and `observeNegotiation` offers `counter`, `accept`, `decline` to a seat facing a proposal. `propose` keeps its two uses: opening a negotiation, and answering a counter.
+- `NEGOTIATION_GUIDANCE` states the rule alongside the accept rule from 60.0.0.
+
+### Why
+
+60.0.0 made `propose` legal at every turn index so an answer to a counter could be re-offered. With nothing stopping a proposal from answering a proposal, two agents that already agreed volleyed restatements until the turn limit: one live negotiation ran `propose > counter > propose` ten times and never settled, each turn saying what the other had just said.
+
+### Preserved behavior
+
+- Settled negotiations, turn limits, seat and eligibility checks, race detection, outcomes and their opportunity statuses are unchanged. No stored enum value changed, so no migration is required. A negotiation mid-flight facing a proposal simply loses `propose` from its menu.
+
 ## 60.0.0
 
 ### Breaking changes

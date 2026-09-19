@@ -109,7 +109,7 @@ export interface NegotiationState {
 }
 export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'signal_inactive'
   | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn'
-  | 'counter_is_first' | 'accept_without_offer';
+  | 'counter_is_first' | 'accept_without_offer' | 'propose_over_offer';
 export interface NegotiationOpening {
   userA: string;
   userB: string;

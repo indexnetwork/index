@@ -24,14 +24,15 @@ const DECISIONS: readonly string[] = ["continue", "accept", "decline", "stop"];
 
 /**
  * What each standing decision lets a negotiator do, intersected with whatever
- * the seat may do at all. `continue` keeps decline, because the negotiator is
- * briefed to end one whose reason plainly does not hold. `accept` keeps
- * propose, because settling needs a standing propose to accept: when the
- * counterpart's last turn was a counter, carrying out an accept means putting
- * that offer on the table first.
+ * the seat may do at all. A decision stands until a wake writes another, so
+ * `continue` is left unnarrowed: it means keep working this opportunity, not
+ * never settle it, and the protocol already limits accept to a standing
+ * proposal. `accept` keeps propose, because settling needs one to accept:
+ * when the counterpart's last turn was a counter, carrying out an accept
+ * means putting that offer on the table first.
  */
 const PERMITTED: Record<Exclude<Decision, "stop">, NegotiationAction[]> = {
-  continue: ["propose", "counter", "decline"],
+  continue: ["propose", "counter", "accept", "decline"],
   accept: ["accept", "propose"],
   decline: ["decline"],
 };
