@@ -161,7 +161,7 @@ async function main(): Promise<void> {
     const child = Bun.spawn(['railway', ...sshArgs, 'sh', '-c', `exec bun ${worker} resume --confirm`], {
       stdin: 'inherit', stdout: 'inherit', stderr: 'inherit',
     });
-    // SSH's foreground terminal sends Ctrl+C to the remote runner, which drains its scans.
+    // SSH's foreground terminal sends Ctrl+C to the remote runner, which finishes its current transition.
     const keepWaiting = () => {};
     process.on('SIGINT', keepWaiting);
     try { process.exitCode = await child.exited; }

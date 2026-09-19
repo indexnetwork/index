@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { setTimeout as sleep } from 'node:timers/promises';
+
 import postgres from 'postgres';
 
 import type { IntentTransitionOutcome } from '../services/intent.service';
@@ -93,7 +93,7 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
         AND classid = 0 AND objid IN (${RESET_LOCK}, ${REPLAY_LOCK}) AND objsubid = 1`;
     if (locks.held !== 2) throw new Error('Reset lost its operation locks; refusing to clear data.');
     const before = await readResetCounts(tx);
-    await tx`UPDATE intents SET status = 'PAUSED', first_discovery_succeeded_at = NULL, standing_brief_id = NULL,
+    await tx`UPDATE intents SET status = 'PAUSED', first_discovery_succeeded_at = NULL,
       updated_at = greatest(now(), updated_at + interval '1 millisecond')
       WHERE archived_at IS NULL AND (status IS NULL OR status IN ('ACTIVE', 'PAUSED'))
         AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL)`;
@@ -116,61 +116,35 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
 
 export interface ReplayIntent { id: string; userId: string }
 
-/** Select only intents that can discover counterparts in an existing network. */
+/** Select every non-archived paused intent for the normal lifecycle transition. */
 export async function replayCandidates(sql: postgres.Sql): Promise<ReplayIntent[]> {
   const candidates = await sql<ReplayIntent[]>`
     SELECT i.id, i.user_id AS "userId" FROM intents i
-    WHERE i.status = 'PAUSED' AND i.archived_at IS NULL AND EXISTS (
-      SELECT 1 FROM intent_networks a
-      JOIN networks n ON n.id = a.network_id AND n.deleted_at IS NULL
-      JOIN network_members m ON m.network_id = n.id AND m.user_id = i.user_id AND m.deleted_at IS NULL
-      WHERE a.intent_id = i.id
-    ) ORDER BY i.id`;
+    WHERE i.status = 'PAUSED' AND i.archived_at IS NULL
+    ORDER BY i.id`;
   const [counts] = await sql`SELECT count(*)::int AS total,
     count(*) FILTER (WHERE archived_at IS NOT NULL)::int AS archived,
     count(*) FILTER (WHERE status = 'PAUSED' AND archived_at IS NULL)::int AS paused FROM intents`;
-  console.log('[dev-intents] Cohort:', JSON.stringify({ ...counts, eligible: candidates.length, withoutNetwork: counts.paused - candidates.length }));
+  console.log('[dev-intents] Cohort:', JSON.stringify({ ...counts, eligible: candidates.length }));
   return candidates;
 }
 
-/** Fisher–Yates shuffle; timestamps and stored intent order are preserved. */
-export function shuffled<T>(values: readonly T[]): T[] {
-  const result = [...values];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
-
-/** Independently jitter each gap between ten and thirty seconds. */
-export function replayDelayMs(): number {
-  return 10_000 + Math.floor(Math.random() * 20_001);
-}
-
-/** Select at most five intents before staggering transitions; the caller drains discovery. */
+/** Resume the entire paused cohort without staggering, awaiting each lifecycle transition. */
 export async function runReplay(
   candidates: readonly ReplayIntent[],
   activate: (intent: ReplayIntent) => Promise<IntentTransitionOutcome>,
   signal: AbortSignal,
 ): Promise<{ selected: number; resumed: number; skipped: number; failed: string[] }> {
-  const ordered = shuffled(candidates).slice(0, 5);
-  const result = { selected: ordered.length, resumed: 0, skipped: 0, failed: [] as string[] };
-  console.log(`[dev-intents] Selected ${result.selected} of ${candidates.length} eligible paused intents.`);
-  for (const [index, intent] of ordered.entries()) {
+  const result = { selected: candidates.length, resumed: 0, skipped: 0, failed: [] as string[] };
+  console.log(`[dev-intents] Resuming all ${result.selected} non-archived paused intents.`);
+  for (const [index, intent] of candidates.entries()) {
     if (signal.aborted) break;
-    if (index > 0) {
-      const delayMs = replayDelayMs();
-      console.log(`[dev-intents] Next activation in ${(delayMs / 1000).toFixed(1)}s`);
-      try { await sleep(delayMs, undefined, { signal }); }
-      catch (error) { if (signal.aborted) break; throw error; }
-    }
     try {
       const outcome = await activate(intent);
       if (outcome.kind !== 'success') throw new Error(outcome.kind);
       if (outcome.changed) result.resumed++;
       else result.skipped++;
-      console.log(`[dev-intents] ${new Date().toISOString()} ${index + 1}/${ordered.length} ${intent.id} ${outcome.changed ? 'resumed' : 'already active'}`);
+      console.log(`[dev-intents] ${new Date().toISOString()} ${index + 1}/${candidates.length} ${intent.id} ${outcome.changed ? 'resumed' : 'already active'}`);
     } catch (error) {
       result.failed.push(intent.id);
       console.error(`[dev-intents] ${intent.id} transition failed:`, error instanceof Error ? error.message : String(error));

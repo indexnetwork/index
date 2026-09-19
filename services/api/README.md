@@ -146,17 +146,17 @@ bun run db:dev:resume --confirm
 The launcher requires an authenticated Railway CLI. Resume also requires a
 registered SSH key (`railway ssh keys add`). It runs inside the dev API container,
 using that service's Redis and model credentials. Keep the terminal connected;
-Ctrl+C stops new activations and waits for current discovery scans to finish.
+Ctrl+C stops new activations and waits for the current lifecycle transition.
 
-Each resume shuffles eligible paused intents and selects at most five before
-activating any, then activates them through the normal lifecycle graph with
-10–30-second gaps. Discovery scans can overlap; the command waits for them to
-finish and exits. Progress logs include activation times, intent IDs, and scan
-failures, with selected, resumed, and remaining eligible paused counts in the
-final result (`remaining` is unavailable if the control connection is lost).
-Archived intents and intents without a current network assignment/member are
-reported and skipped. Re-running resume selects another batch from the remaining
-eligible paused intents. Use reset to start the experiment from the beginning.
+Each resume activates every non-archived paused intent in one uninterrupted pass
+through the normal lifecycle graph, without a batch limit or deliberate delays.
+The transitions publish the usual lifecycle events; the running API handles
+agent and discovery work asynchronously, which may continue after the command
+exits. Progress logs include activation times, intent IDs, and transition
+failures, with selected, resumed, skipped, failed, and remaining paused counts
+in the final result (`remaining` is unavailable if the control connection is
+lost). Archived and terminal intents remain unchanged. Use reset to start the
+experiment from the beginning.
 
 Reset briefly stops the dev API and any replay in its container, then pauses
 non-archived, non-terminal intents and clears discovery progress, opportunities,
