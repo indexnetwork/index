@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 
-import { ApiError, IndexClient, wakesHost, type ConversationMessage, type UserEvent } from "./client.ts";
+import { ApiError, IndexClient, wakesHost, type ConnectedEvent, type ConversationMessage, type UserEvent } from "./client.ts";
 
 const savedKey = process.env.INDEX_API_KEY;
 const savedUrl = process.env.INDEX_API_URL;
@@ -162,20 +162,18 @@ test("createOpportunities posts the picks and returns the opportunities", async 
   server.stop(true);
 });
 
-test("wakesHost is true only for opened, turn, and principal.input", () => {
-  const opened = { type: "negotiation.opened" as const, id: "1", title: "", body: "", data: { intentId: "i", count: 1 } };
+test("wakesHost is true only for turn and principal.input", () => {
   const turn = { type: "negotiation.turn" as const, id: "2", title: "", body: "", data: { opportunityId: "o", intentId: "i", turnIndex: 1 } };
   const input = { type: "principal.input" as const, id: "3", title: "", body: "", data: { intentId: "i", questionId: null, text: "ok" } };
   const other = { type: "opportunity.new" as const, id: "4", title: "", body: "" };
-  expect([wakesHost(opened), wakesHost(turn), wakesHost(input), wakesHost(other)]).toEqual([true, true, true, false]);
+  expect([wakesHost(turn), wakesHost(input), wakesHost(other)]).toEqual([true, true, false]);
 });
 
-test("events delivers known types, ignores handshake and unknown types", async () => {
+test("events delivers the handshake and known types, ignores unknown types", async () => {
   const server = Bun.serve({
     port: 0,
     fetch(req) {
       const path = new URL(req.url).pathname;
-      if (path === "/api/negotiations") return Response.json({ negotiations: [] });
       if (path === "/api/conversations/agent/messages") return Response.json({ conversationId: "c1", messages: [] });
       return sse([
         `data: ${JSON.stringify({ type: "connected" })}\n\n`,
@@ -186,18 +184,17 @@ test("events delivers known types, ignores handshake and unknown types", async (
       ]);
     },
   });
-  const got: UserEvent["type"][] = [];
+  const got: (UserEvent | ConnectedEvent)["type"][] = [];
   const stop = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" })
     .events((event) => { got.push(event.type); });
   await Bun.sleep(50);
   stop();
-  expect(got).toEqual(["opportunity.new"]);
+  expect(got).toEqual(["connected", "opportunity.new"]);
   server.stop(true);
 });
 
-test("reconnect catch-up lists open seats and replays unseen user messages", async () => {
+test("reconnect announces the handshake and replays unseen user messages", async () => {
   let streams = 0;
-  let listHits = 0;
   const historical = message("old", "user");
   const next = message("new", "user");
   const agentRow = message("agent-1", "agent");
@@ -205,10 +202,6 @@ test("reconnect catch-up lists open seats and replays unseen user messages", asy
     port: 0,
     fetch(req) {
       const path = new URL(req.url).pathname;
-      if (path === "/api/negotiations") {
-        listHits += 1;
-        return Response.json({ negotiations: [{ intentId: "i1" }] });
-      }
       if (path === "/api/conversations/agent/messages") {
         return Response.json({
           conversationId: "c1",
@@ -222,15 +215,14 @@ test("reconnect catch-up lists open seats and replays unseen user messages", asy
       return sse([`data: ${JSON.stringify({ type: "connected" })}\n\n`]);
     },
   });
-  const got: UserEvent[] = [];
+  const got: (UserEvent | ConnectedEvent)[] = [];
   const stop = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" })
     .events((event) => { got.push(event); });
   await Bun.sleep(1600);
   stop();
   server.stop(true);
   const types = got.map((event) => event.type);
-  expect(listHits >= 2).toBe(true);
-  expect(types.includes("negotiation.opened")).toBe(true);
+  expect(types.filter((type) => type === "connected").length >= 2).toBe(true);
   expect(got.some((event) => event.type === "message" && event.message.id === "old")).toBe(false);
   expect(got.some((event) => event.type === "message" && event.message.id === "agent-1")).toBe(false);
   expect(got.some((event) => event.type === "message" && event.message.id === "new")).toBe(true);

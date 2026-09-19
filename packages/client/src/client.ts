@@ -139,7 +139,6 @@ export type ConnectedEvent = { type: "connected" };
 
 export type UserEvent =
   | { type: "opportunity.new"; id: string; title: string; body: string; link?: string; data?: { opportunityId: string } }
-  | { type: "negotiation.opened"; id: string; title: string; body: string; link?: string; data: { intentId: string; count: number } }
   | { type: "negotiation.turn"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; turnIndex: number } }
   | { type: "negotiation.settled"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; outcome: string } }
   | { type: "negotiation.changed"; id: string; title: string; body: string; data: { intentId: string; opportunityId?: string } }
@@ -149,7 +148,7 @@ export type UserEvent =
   | { type: "principal.input"; id: string; title: string; body: string; data: { intentId: string; questionId: string | null; text: string } }
   | { type: "message"; conversationId: string; message: ConversationMessage };
 
-const WAKE_TYPES = ["negotiation.opened", "negotiation.turn", "principal.input"] as const;
+const WAKE_TYPES = ["negotiation.turn", "principal.input"] as const;
 
 /**
  * @param event - A parsed user-event frame.
@@ -164,7 +163,6 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
   const type = (raw as { type?: unknown }).type;
   switch (type) {
     case "opportunity.new":
-    case "negotiation.opened":
     case "negotiation.turn":
     case "negotiation.settled":
     case "negotiation.changed":
@@ -231,10 +229,10 @@ export interface Index {
    */
   sendPrincipal(intentId: string, entries: PrincipalMessage[]): Promise<void>;
   /**
-   * @param onEvent - Frames the caller handles.
+   * @param onEvent - Frames the caller handles, the connect handshake included.
    * @returns Stop handle.
    */
-  events(onEvent: (event: UserEvent) => void): () => void;
+  events(onEvent: (event: UserEvent | ConnectedEvent) => void): () => void;
 }
 
 /**
@@ -440,10 +438,14 @@ export class IndexClient implements Index {
   /**
    * Open the user's SSE channel. Reconnects until stopped, resuming from the
    * last frame it received. JSON calls do not retry.
-   * @param onEvent - Parsed frames the caller handles. Handshake is not delivered.
+   *
+   * The handshake is delivered once the catch-up behind it is done, so a caller
+   * that recovers work it may have missed does that on a stream it can trust.
+   *
+   * @param onEvent - Parsed frames the caller handles.
    * @returns Stop handle. After stop there is no reconnect.
    */
-  events(onEvent: (event: UserEvent) => void): () => void {
+  events(onEvent: (event: UserEvent | ConnectedEvent) => void): () => void {
     const abort = new AbortController();
     let stopped = false;
     let delay = 1000;
@@ -452,16 +454,6 @@ export class IndexClient implements Index {
     const seen = new Set<string>();
 
     const catchUp = async () => {
-      const rows = await this.listNegotiations();
-      if (rows.length) {
-        onEvent({
-          type: "negotiation.opened",
-          id: `${rows[0]!.intentId}:opened:catchup`,
-          title: "",
-          body: "",
-          data: { intentId: rows[0]!.intentId, count: rows.length },
-        });
-      }
       const { conversationId, messages } = await this.request<{
         conversationId: string;
         messages: ConversationMessage[];
@@ -513,6 +505,7 @@ export class IndexClient implements Index {
               if ((parsed as { type?: string })?.type === "connected") {
                 delay = 1000;
                 await catchUp();
+                onEvent({ type: "connected" });
                 continue;
               }
               const event = parseUserEvent(parsed);

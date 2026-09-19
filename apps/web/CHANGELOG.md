@@ -8,6 +8,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- The negotiations inbox refreshes on `negotiation.changed` alone. The API no
+  longer publishes `negotiation.opened`; a pair that opens now sends
+  `negotiation.changed` to both seats, so the list still refreshes when a
+  negotiation appears, and the counterpart's list refreshes too.
 - **The realtime stream resumes where it left off.** Each frame now arrives with
   a stream id, and a reconnect asks for `?after=<id>`, so frames published while
   the tab was disconnected are delivered instead of lost. The reconnect builds a

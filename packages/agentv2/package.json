@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/agentv2",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Brief, wake and negotiate: a stateless personal agent whose negotiators run independently and cannot wake it.",
   "license": "MIT",
   "type": "module",

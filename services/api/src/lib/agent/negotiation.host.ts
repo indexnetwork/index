@@ -112,7 +112,7 @@ export class ApiNegotiationHost extends EventEmitter {
   private wakes(data: string): boolean {
     try {
       const frame = JSON.parse(data);
-      if (!['negotiation.changed', 'negotiation.opened'].includes(frame.type)) return false;
+      if (frame.type !== 'negotiation.changed') return false;
       return this.users.some(({ intentId }) => intentId === frame.data?.intentId);
     } catch { return false; }
   }

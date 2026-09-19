@@ -115,9 +115,9 @@ export class HostedAgent {
 
   /**
    * Route one frame the way the reference runner routes it: a counterpart's
-   * turn and an opening each move one opportunity and reach the principal only
-   * if that negotiator stalls, because neither is something they have to think
-   * about. Their own input, a new signal, and a resumed one are.
+   * turn moves one opportunity and reaches the principal only if that
+   * negotiator stalls, because it is not something they have to think about.
+   * Their own input, a new signal, and a resumed one are.
    *
    * @param record - One entry from an owner's stream.
    */
@@ -129,9 +129,6 @@ export class HostedAgent {
     switch (frame.type) {
       case 'negotiation.turn':
         if (intentId && opportunityId) this.run(this.negotiate(userId, intentId, opportunityId));
-        break;
-      case 'negotiation.opened':
-        if (intentId) this.run(this.startUnstarted(userId, intentId));
         break;
       case 'principal.input':
         // The answer is what every stall on this signal was waiting for, so the
@@ -305,26 +302,5 @@ export class HostedAgent {
     }
     this.stalled.set(opportunityId, intentId);
     this.unread.set(opportunityId, intentId);
-  }
-
-  /**
-   * Start every negotiation on one signal that is waiting on this seat and has
-   * no turn yet.
-   *
-   * Whoever opened it, an opportunity at turn zero waiting on us moves only
-   * because we move it. Each one is briefed by its own run and proposed to,
-   * which is why an opening needs no wake.
-   *
-   * @param userId - The seat owner.
-   * @param intentId - The signal whose negotiations to start.
-   */
-  private async startUnstarted(userId: string, intentId: string): Promise<void> {
-    if (!await this.holdsSeat(userId)) return;
-    const open = await new HostedIndex(userId).listNegotiations();
-    for (const negotiation of open) {
-      if (negotiation.intentId !== intentId) continue;
-      if (negotiation.awaitingUserId !== userId || negotiation.turnCount > 0) continue;
-      this.run(this.negotiate(userId, intentId, negotiation.opportunityId));
-    }
   }
 }

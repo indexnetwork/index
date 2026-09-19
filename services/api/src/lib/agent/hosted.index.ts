@@ -7,7 +7,7 @@
  * have called. The owner is fixed at construction, where the key's identity
  * would otherwise stand.
  */
-import type { ConversationMessage, Counterparty, CounterpartyPick, Index, IntentStatus, IntentSummary, Me, Negotiation, NegotiationAction, NegotiationDetail, PrincipalMessage, UserEvent } from '@indexnetwork/client';
+import type { ConnectedEvent, ConversationMessage, Counterparty, CounterpartyPick, Index, IntentStatus, IntentSummary, Me, Negotiation, NegotiationAction, NegotiationDetail, PrincipalMessage, UserEvent } from '@indexnetwork/client';
 
 import { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 import { UserDatabaseAdapter } from '../../adapters/user.database.adapter';
@@ -186,7 +186,7 @@ export class HostedIndex implements Index {
    *
    * @throws Always.
    */
-  events(_onEvent: (event: UserEvent) => void): () => void {
+  events(_onEvent: (event: UserEvent | ConnectedEvent) => void): () => void {
     throw new Error('The hosted agent reads user events directly, not through Index.');
   }
 }

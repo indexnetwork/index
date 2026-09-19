@@ -24,10 +24,10 @@ export interface Runner {
  * happens because something changed on the signal, or because the host asked
  * for one.
  *
- * A counterpart's turn and an opening are the passive triggers: each briefs
- * that one opportunity if it needs briefing and takes its turn. No sibling is
- * decided, and the principal is addressed only once those negotiators are done
- * and one of them stalled.
+ * A counterpart's turn is the passive trigger: it briefs that one opportunity
+ * if it needs briefing and takes its turn. No sibling is decided, and the
+ * principal is addressed only once those negotiators are done and one of them
+ * stalled.
  *
  * @param options - Index, the model, and where to report.
  * @returns A handle that wakes a signal on demand and stops everything.
@@ -139,23 +139,20 @@ export function startRunner(options: RunnerOptions): Runner {
   }
 
   /**
-   * Start every negotiation on one signal that is waiting on this seat and has
-   * no turn yet.
+   * Start every negotiation this seat owes a first turn on, across every
+   * signal.
    *
-   * Whoever opened it, an opportunity at turn zero waiting on us moves only
-   * because we move it. Each one is briefed by its own run and proposed to,
-   * which is why an opening needs no wake: the wake that opened them already
-   * started them, and this covers the ones a counterpart opened and anything
-   * left unstarted when this process reconnects.
-   *
-   * @param intentId - The signal whose negotiations to start.
+   * An opportunity at turn zero waiting on us moves only because we move it,
+   * and the wake that opened it starts its negotiator there and then. This is
+   * the recovery for the ones that never got that far: whatever was opened
+   * while this process was gone, or was in flight when it died.
    */
-  async function startUnstarted(intentId: string): Promise<void> {
+  async function startUnstarted(): Promise<void> {
     const [user, open] = await Promise.all([client.me(), client.listNegotiations()]);
     for (const negotiation of open) {
-      if (negotiation.intentId !== intentId) continue;
+      if (!intents.has(negotiation.intentId)) continue;
       if (negotiation.awaitingUserId !== user.id || negotiation.turnCount > 0) continue;
-      startNegotiate(intentId, negotiation.opportunityId);
+      startNegotiate(negotiation.intentId, negotiation.opportunityId);
     }
   }
 
@@ -201,9 +198,12 @@ export function startRunner(options: RunnerOptions): Runner {
         log(`event ${event.type} on ${event.data.intentId}`);
         startWake(event.data.intentId);
         break;
-      case "negotiation.opened":
-        log(`event ${event.type} on ${event.data.intentId}`);
-        void startUnstarted(event.data.intentId).catch(onError);
+      // The stream is trustworthy from here on, so this is the one moment to
+      // recover what happened while it was not. Signals are read first: a
+      // negotiation on one this process has never heard of cannot be started.
+      case "connected":
+        log(`event ${event.type}`);
+        void refresh().then(startUnstarted).catch(onError);
         break;
       case "intent.created":
         log(`event ${event.type}: ${event.data.intentId}`);
@@ -218,8 +218,6 @@ export function startRunner(options: RunnerOptions): Runner {
         break;
     }
   });
-
-  void refresh().catch(onError);
 
   return {
     wake: startWake,

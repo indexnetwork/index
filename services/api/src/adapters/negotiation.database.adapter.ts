@@ -9,7 +9,7 @@ import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, int
 
 import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-session.database.adapter';
 
-import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
+import { publishNegotiationChange } from '../lib/user-events';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
 export type NegotiationExecution = AgentExecution | { userId: string; agentId: string };
@@ -153,48 +153,6 @@ function liveIntentWhere() {
 }
 
 /**
- * Tell each initiator that discovery gave one of its signals something to work.
- *
- * One frame per signal rather than per negotiation: an agent woken by this
- * re-reads its open negotiations anyway, so a frame per pair would be a burst
- * that buys nothing.
- *
- * Runs after each pair's transaction has committed, and swallows delivery
- * failures: an unannounced negotiation is still an opened one.
- *
- * @param opened - The negotiations this run newly opened.
- */
-async function announceOpened(opened: OpenedNegotiation[]): Promise<void> {
-  const counts = new Map<string, { userId: string; intentId: string; count: number }>();
-  for (const item of opened) {
-    const key = `${item.initiatorUserId}\u0000${item.initiatorIntentId}`;
-    const group = counts.get(key);
-    if (group) group.count += 1;
-    else counts.set(key, { userId: item.initiatorUserId, intentId: item.initiatorIntentId, count: 1 });
-  }
-
-  for (const { userId, intentId, count: opportunityCount } of counts.values()) {
-    try {
-      await publishUserEvent(userId, {
-        type: 'negotiation.opened',
-        id: `${intentId}:opened:${Date.now()}`,
-        title: 'Your turn',
-        body: opportunityCount === 1
-          ? 'A negotiation opened for your signal and is waiting on you.'
-          : `${opportunityCount} negotiations opened for your signal and are waiting on you.`,
-        data: { intentId, count: opportunityCount },
-      });
-    } catch (error: unknown) {
-      logger.error('Failed to publish opened negotiations event', {
-        intentId,
-        count: opportunityCount,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-}
-
-/**
  * Persistence for negotiation records and their turn logs.
  */
 export class NegotiationDatabaseAdapter {
@@ -228,11 +186,16 @@ export class NegotiationDatabaseAdapter {
    */
   async openCounterparties(pairs: IntentCounterpartyPair[], decide: (pair: NegotiationOpening) => NegotiationOpeningDecision): Promise<OpenedNegotiation[]> {
     const opened: OpenedNegotiation[] = [];
+    const seats: { userId: string; intentId: string }[] = [];
     for (const pair of pairs) {
       const result = await this.open(pair, decide);
-      if (result) opened.push(result);
+      if (!result) continue;
+      opened.push(result);
+      // Both seats, not just the one that owes the first turn: the other side
+      // is in this negotiation too, and their views list it from now on.
+      seats.push({ userId: pair.userA, intentId: pair.intentA }, { userId: pair.userB, intentId: pair.intentB });
     }
-    await announceOpened(opened);
+    await publishNegotiationChange(seats);
     return opened;
   }
 

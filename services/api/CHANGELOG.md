@@ -9,6 +9,18 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- **BREAKING: the `negotiation.opened` user event is gone.** It was published
+  only to `initiatorUserId`, which is always whoever called
+  `createOpportunities`, so it reached the seat that had just opened those
+  negotiations and started their negotiators in-process a moment earlier — it
+  never told anybody anything they did not already know, and never reached the
+  counterpart at all. Opening a pair now publishes `negotiation.changed` to
+  both seats instead, which is what the web inbox and the A2A negotiation host
+  already refresh on. `HostedAgent` no longer routes the frame and its
+  `startUnstarted` sweep is deleted with it; consumers that filtered on the
+  type must drop it.
+
 ### Changed
 - **A burst of stalls reaches the owner as one wake.** `HostedAgent` woke the
   signal on the first negotiator that stalled, so that wake read the transcript

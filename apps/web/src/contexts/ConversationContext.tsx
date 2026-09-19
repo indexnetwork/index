@@ -332,7 +332,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               void refreshNegotiationsRef.current();
               break;
             case 'negotiation.changed':
-            case 'negotiation.opened':
               if (negotiationsRefreshTimeoutRef.current) clearTimeout(negotiationsRefreshTimeoutRef.current);
               negotiationsRefreshTimeoutRef.current = setTimeout(() => {
                 negotiationsRefreshTimeoutRef.current = null;

@@ -13,14 +13,14 @@ import { log } from './log';
  * The agent types come in two scopes. `negotiation.turn` and
  * `negotiation.settled` point at one negotiation and carry a pointer rather
  * than the turn — the agent reads `GET /opportunities/:id/negotiation` to act.
- * `intent.created`, `intent.lifecycle` and `negotiation.opened` are scoped to a
- * signal instead: that a signal now exists, whether the agent should be working
- * it at all, and that discovery gave it something to work. Creation has its own
- * frame because an agent that only follows lifecycle changes would never learn
- * about a signal made after it started.
- * `negotiation.changed` refreshes both seats after a turn or a related intent's
- * lifecycle change. It does not imply that either seat owes the next turn;
- * `negotiation.turn` remains addressed to the seat that does.
+ * `intent.created` and `intent.lifecycle` are scoped to a signal instead: that
+ * a signal now exists, and whether the agent should be working it at all.
+ * Creation has its own frame because an agent that only follows lifecycle
+ * changes would never learn about a signal made after it started.
+ * `negotiation.changed` refreshes both seats after a negotiation is opened,
+ * after a turn, or after a related intent's lifecycle change. It does not imply
+ * that either seat owes the next turn; `negotiation.turn` remains addressed to
+ * the seat that does.
  *
  * `question.pending` is scoped to a signal too, but the other way round: the
  * personal agent stopped and cannot continue until its owner answers, so the
@@ -37,7 +37,6 @@ export type UserEventType =
   | 'principal.input'
   | 'negotiation.turn'
   | 'negotiation.settled'
-  | 'negotiation.opened'
   | 'negotiation.changed'
   | 'intent.lifecycle'
   | 'intent.created'
@@ -296,7 +295,7 @@ export async function publishUserInvalidation(
 
 /**
  * Refresh each affected seat without announcing that its owner owes a turn.
- * @param seats - Negotiation seats affected by a committed change.
+ * @param seats - Negotiation seats affected by a committed change; duplicates are collapsed.
  * @param opportunityId - Changed negotiation, or all negotiations for these seats after a lifecycle change.
  */
 export async function publishNegotiationChange(
