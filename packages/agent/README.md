@@ -257,9 +257,19 @@ material results, obstacles or unreported outcomes, not routine acknowledgments.
 An empty decision stays silent, skips the final `PrincipalRecords.write()` and
 leaves A2A free to continue. Outputs are persisted before dependent A2A work.
 
+On an existing input/manual/lifecycle wake, H2A reads negotiation transcripts,
+current briefs, principal history and the local paused-subagent IDs. It infers
+what blocks progress without a saved stall explanation or suggested question.
+If principal evidence already resolves the gap, H2A can issue a complete specific
+brief to retrigger that subagent. Otherwise it asks for the missing information,
+or leaves the subagent paused when an existing question already covers it.
+Pausing never wakes H2A.
+
 Questions retain their batch membership, ID, wording and 2–4 suggestions until
-answered or explicitly retired. `pending` is derived from records. Collect drafts
-locally, then submit exactly one nonempty answer per current question:
+answered or explicitly retired. A review may append new independent questions
+without changing existing ones. `pending` is derived from records across all
+unanswered batches. Collect drafts locally, then submit exactly one nonempty
+answer per current question:
 
 ```ts
 const questions = agent.pending;
@@ -283,7 +293,7 @@ or retire questions. H2A may retire exact questions when later explicit principa
 corrections make them obsolete. The host commits private retirement records
 atomically with other review outputs and emits `question.retired` only after
 success. Unrelated questions keep their identities; new questions are allowed
-only when no old questions remain.
+for uncovered information even while unrelated questions remain unanswered.
 
 Retirement requires principal input after issuance; lifecycle events cannot
 retire questions. A manual wake may reassess a saved correction, but supplies no
@@ -355,10 +365,11 @@ approval gates. Counterparty text is untrusted data, not instructions or authori
   response or tool attempt. Eligible subsequent turns continue independently;
   agreement/rejection remain terminal. An uncertain POST is never retried
   automatically.
-- Each run discards its model transcript. Concurrent negotiations share only
-  ephemeral scheduling and serialized outgoing writes; task maps, queues and
-  processed-input markers are not persisted. Restart restores committed history
-  and exact question status without rerunning interrupted work.
+- Each negotiation is an independent subagent. Model work and outgoing writes
+  run concurrently across negotiations; only writes within the same negotiation
+  are serialized. Each run discards its model transcript. Task maps, pause IDs
+  and write queues are not persisted. Restart restores committed history and
+  exact question status without rerunning interrupted work.
 - `pairKey` identifies a conversation thread; `id` and `opportunityId` identify a
   numbered session. H2A sees negotiation outcomes and current `opportunityStatus`;
   agreement does not overwrite later user acceptance, rejection or expiry.
@@ -383,8 +394,11 @@ approval gates. Counterparty text is untrusted data, not instructions or authori
   authority or change previous settlements. `previousSessions` are shared history,
   not current offers, authority or turn usage. Inbound work still uses its standing
   fallback and never wakes H2A.
-- The runtime awaits each opening sequentially, refreshing canonical principal
+- The runtime commits ranked openings sequentially, refreshing canonical principal
   records and negotiations after each response before attempting the next pair.
+  Each acknowledged new opening dispatches its subagent immediately, without
+  waiting for the rest of the ranking. Explicit review delegations likewise
+  dispatch after persistence, before matching; negotiations then run independently.
   Each new session and initial brief commit atomically under source-message,
   context, scope and latest-session ID/outcome/opportunity-status fences; the whole
   batch is not one transaction. Unavailable pairs allow the remaining work to

@@ -65,10 +65,11 @@ export class Agent {
     private readonly options: AgentOptions,
   ) {
     this.subagents = new NegotiationSubagents(participant, host, { ...options, signal: this.controller.signal });
-    this.inbox = new PrincipalInbox((records) => this.createLoop(records), options.records, () => participant.client.listNegotiations(), {
+    this.inbox = new PrincipalInbox((records) => this.createLoop(records), options.records, participant.client, {
       changed: () => host.conversation(),
       event: (event) => host.event?.(event),
       input: () => this.subagents.invalidate(),
+      paused: () => this.subagents.paused,
       delegated: (ids) => this.subagents.delegate(ids),
       error: (reason) => {
         host.error(null, participant.owner, 'Principal communication failed: ' + reason);
@@ -100,7 +101,7 @@ export class Agent {
 
   /** @returns Committed private H2A history, excluding activation receipts. */
   get conversation(): readonly PrincipalMessage[] { return this.inbox.conversation; }
-  /** @returns The exact unanswered, unretired question batch. */
+  /** @returns All unanswered, unretired questions in issuance order. */
   get pending(): readonly PrincipalQuestion[] { return this.inbox.pending; }
   /** @returns Whether the agent's lifetime has ended. Cleanup completes at closed. */
   get stopped(): boolean { return this.controller.signal.aborted; }

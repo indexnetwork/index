@@ -219,7 +219,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
             )}
             {questions.length > 0 && (
               <div ref={agentQuestionRef}>
-                <AgentQuestionBatch key={questions[0].batchId} questions={questions} onAnswer={onSendAnswers} disabled={!canSend}/>
+                <AgentQuestionBatch key={profile.intentId} intentId={profile.intentId} questions={questions} onAnswer={onSendAnswers} disabled={!canSend}/>
               </div>
             )}
           </div>
@@ -299,9 +299,9 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   );
 }
 
-/* Suggestions and custom text stay local until the entire batch is submitted. */
-function AgentQuestionBatch({ questions, onAnswer, disabled }) {
-  const storageKey = "principal-batch-draft:" + questions[0].batchId;
+/* Suggestions and custom text stay local until all pending questions are submitted. */
+function AgentQuestionBatch({ intentId, questions, onAnswer, disabled }) {
+  const storageKey = "principal-question-drafts:" + intentId;
   const [drafts, setDrafts] = useState(() => {
     try { return JSON.parse(sessionStorage.getItem(storageKey) || "null") || {}; }
     catch { return {}; }
@@ -315,9 +315,14 @@ function AgentQuestionBatch({ questions, onAnswer, disabled }) {
     if (sending || disabled || !complete) return;
     setSending(true);
     setError("");
+    const answers = questions.map(question => ({ questionId: question.id, text: drafts[question.id] }));
     try {
-      await onAnswer(questions.map(question => ({ questionId: question.id, text: drafts[question.id] })));
-      sessionStorage.removeItem(storageKey);
+      await onAnswer(answers);
+      // The pending set or mounted intent can change while submission finishes.
+      const remaining = JSON.parse(sessionStorage.getItem(storageKey) || "null") || {};
+      for (const answer of answers) if (remaining[answer.questionId] === answer.text) delete remaining[answer.questionId];
+      sessionStorage.setItem(storageKey, JSON.stringify(remaining));
+      setDrafts(remaining);
     } catch (failure) {
       setError(failure.message || "Could not save answers. Drafts are kept; refresh before retrying.");
     } finally { setSending(false); }

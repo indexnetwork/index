@@ -337,8 +337,8 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
     return conversation.id;
   }
 
-  /** @param tx - Effect transaction holding the runtime fence. @param execution - Owner. @param expectedVersion - Context used by the model. @throws If principal evidence or execution eligibility changed. */
-  static async assertContext(tx: Transaction, execution: PrincipalExecution, expectedVersion: string): Promise<void> {
+  /** @param tx - Effect transaction holding the runtime fence. @param execution - Owner. @param expectedVersion - Context used by the model. @returns The validated principal records for use within this transaction. @throws If principal evidence or execution eligibility changed. */
+  static async assertContext(tx: Transaction, execution: PrincipalExecution, expectedVersion: string): Promise<PrincipalRecordsView> {
     const [intent] = await tx.select().from(intents).where(and(eq(intents.id, execution.intentId), eq(intents.userId, execution.userId))).for('share');
     if (!intent || intent.archivedAt || intent.status !== null && intent.status !== 'ACTIVE') throw new PrincipalRuntimeIneligibleError('The principal intent is no longer active.');
     await tx.select({ id: users.id }).from(users).where(eq(users.id, execution.userId)).for('share');
@@ -347,6 +347,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
     await tx.select().from(networkMembers).where(eq(networkMembers.userId, execution.userId)).for('share');
     const current = await this.readView(tx, execution.userId, execution.intentId, await this.conversationId(tx, execution.userId));
     if (current.version !== expectedVersion) throw new PrincipalContextChanged();
+    return current;
   }
 
   /** @param tx - Turn transaction. @param execution - Hosted owner. @param opportunityId - Negotiation using the brief. @param expectedVersion - Brief-relevant context used by A2A. @throws If authority or execution eligibility changed. */
@@ -427,8 +428,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
     try {
       await db.transaction(async (tx) => {
         await PrincipalRecordsDatabaseAdapter.assertOwner(tx, this.execution);
-        await PrincipalRecordsDatabaseAdapter.assertContext(tx, this.execution, expectedVersion);
-        const current = await PrincipalRecordsDatabaseAdapter.readView(tx, this.execution.userId, this.execution.intentId, this.conversationId);
+        const current = await PrincipalRecordsDatabaseAdapter.assertContext(tx, this.execution, expectedVersion);
         if (!validStandingBrief(current, brief)) throw new PrincipalContextChanged();
         const { id, createdAt, ...principalStandingBrief } = brief;
         await tx.insert(messages).values({ id, createdAt: new Date(createdAt), conversationId: this.conversationId, senderId: SYSTEM_AGENT_ID,
@@ -453,8 +453,7 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
     try {
       persisted = await db.transaction(async (tx) => {
         await PrincipalRecordsDatabaseAdapter.assertOwner(tx, this.execution);
-        await PrincipalRecordsDatabaseAdapter.assertContext(tx, this.execution, expectedVersion);
-        const current = await PrincipalRecordsDatabaseAdapter.readView(tx, this.execution.userId, this.execution.intentId, this.conversationId);
+        const current = await PrincipalRecordsDatabaseAdapter.assertContext(tx, this.execution, expectedVersion);
         if (!validPrincipalEffects(current, effects)) throw new PrincipalContextChanged();
         for (const expected of [...effects.negotiations].sort((a, b) => a.opportunityId.localeCompare(b.opportunityId))) {
           const [record] = await tx.select().from(negotiations).where(eq(negotiations.opportunityId, expected.opportunityId)).for('update');
@@ -582,10 +581,9 @@ export class PrincipalRecordsDatabaseAdapter implements PrincipalRecords {
         await PrincipalRecordsDatabaseAdapter.assertOwner(tx, this.execution);
         const replay = await this.readOpeningReplay(tx, request);
         if (replay) return replay;
-        await PrincipalRecordsDatabaseAdapter.assertContext(tx, this.execution, request.contextVersion);
+        const records = await PrincipalRecordsDatabaseAdapter.assertContext(tx, this.execution, request.contextVersion);
         const scope = await this.readDiscoveryScope(tx);
         if (!scope || scope.version !== request.scopeVersion || !scope.networkIds.includes(request.target.networkId)) throw new Error('Intent or search scope changed; discard this opening.');
-        const records = await PrincipalRecordsDatabaseAdapter.readView(tx, this.execution.userId, this.execution.intentId, this.conversationId);
         if (latestPrincipalInput(records.messages) !== request.sourceMessageId || !request.brief.trim() || !request.reasoning.trim() || request.reasoning.length > 2000) throw new Error('An opening needs current principal input, reasoning and a private brief.');
         signal.throwIfAborted();
         const result = await open(tx);

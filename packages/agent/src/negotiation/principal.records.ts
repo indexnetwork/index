@@ -127,7 +127,6 @@ export function validPrincipalQuestionRetirements(records: Pick<PrincipalRecords
 /** @param records - Current records. @param effects - Atomic outputs. @returns Whether input and question identities remain valid. */
 export function validPrincipalEffects(records: Pick<PrincipalRecordsView, 'messages' | 'retiredQuestionIds' | 'standingBrief' | 'delegations'>, effects: PrincipalEffects): boolean {
   if (!validPrincipalQuestionRetirements(records, effects.retiredQuestionIds)) return false;
-  const pending = pendingPrincipalQuestions(records).filter((question) => !effects.retiredQuestionIds.includes(question.id));
   const questions = effects.messages.filter((message) => message.kind === 'question');
   const ids = [...effects.messages, ...effects.delegations].map((entry) => entry.id);
   const existingIds = new Set([...records.messages, ...records.delegations, ...(records.standingBrief ? [records.standingBrief] : [])].map((entry) => entry.id));
@@ -136,7 +135,7 @@ export function validPrincipalEffects(records: Pick<PrincipalRecordsView, 'messa
   if (questions.length > 3 || new Set(questions.map((question) => question.questionId)).size !== questions.length) return false;
   if (questions.some((question) => !question.questionId || !question.batchId || question.matches.length > 0 || question.scope !== undefined
     || records.messages.some((message) => message.questionId === question.questionId || message.batchId === question.batchId))) return false;
-  if (questions.length && (pending.length > 0 || new Set(questions.map((question) => question.batchId)).size !== 1)) return false;
+  if (questions.length && new Set(questions.map((question) => question.batchId)).size !== 1) return false;
   const source = latestPrincipalInput(records.messages);
   if (new Set(effects.delegations.map((entry) => entry.opportunityId)).size !== effects.delegations.length) return false;
   return effects.delegations.every((delegation) => Boolean(source) && delegation.sourceMessageId === source && Boolean(delegation.brief.trim()));

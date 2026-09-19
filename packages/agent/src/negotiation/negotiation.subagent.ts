@@ -12,9 +12,11 @@ interface MatchTask {
   controller: AbortController;
   notified: boolean;
   stopped: boolean;
+  paused: boolean;
   inbound: boolean;
   observed?: string;
   running?: Promise<void>;
+  writes: Promise<void>;
 }
 
 interface TurnState {
@@ -42,7 +44,6 @@ type PrincipalBrief = PrincipalStandingBrief | PrincipalDelegation;
 export class NegotiationSubagents {
   private readonly tasks = new Map<string, MatchTask>();
   private contextVersion = 0;
-  private writes: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly participant: AgentParticipant,
@@ -73,7 +74,7 @@ export class NegotiationSubagents {
   private task(opportunityId: string): MatchTask {
     let task = this.tasks.get(opportunityId);
     if (!task) {
-      task = { opportunityId, controller: new AbortController(), notified: false, stopped: false, inbound: false };
+      task = { opportunityId, controller: new AbortController(), notified: false, stopped: false, paused: false, inbound: false, writes: Promise.resolve() };
       this.tasks.set(opportunityId, task);
     }
     return task;
@@ -91,6 +92,11 @@ export class NegotiationSubagents {
   /** @returns The IDs of currently executing, uncancelled subagents. */
   get negotiating(): readonly string[] {
     return this.stopped ? [] : [...this.tasks.values()].filter((task) => task.running && !task.stopped).map((task) => task.opportunityId);
+  }
+
+  /** @returns Active subagent IDs waiting for a current brief, principal facts or authority; never wakes H2A. */
+  get paused(): readonly string[] {
+    return this.stopped ? [] : [...this.tasks.values()].filter((task) => task.paused && !task.stopped).map((task) => task.opportunityId);
   }
 
   /** Invalidate in-flight decisions after accepted human input, never from a manual wake. */
@@ -152,7 +158,7 @@ export class NegotiationSubagents {
         message: { type: 'string', minLength: 1, maxLength: initial.protocol.messageLimit },
       }, required: ['action', 'message'] },
       run: (input) => {
-        const write = this.writes.then(async () => {
+        const write = task.writes.then(async () => {
           current();
           if (turn.attempted) throw new Error('This run already ended or used its POST attempt.');
           if (!input || !initial.protocol.availableActions.includes(input.action) || typeof input.message !== 'string' || !input.message.trim() || input.message.length > initial.protocol.messageLimit) throw new Error('Choose an available action and a message within the protocol limit.');
@@ -168,12 +174,12 @@ export class NegotiationSubagents {
             return record;
           } catch (error) { turn.writeError = true; throw error; }
         });
-        this.writes = write.then(() => {}, () => {});
+        task.writes = write.then(() => {}, () => {});
         return write;
       },
     };
     const pauseTool: Tool = {
-      name: 'pause_negotiation', description: 'Successfully end this local run when the next useful turn needs a principal fact, preference or permission absent from the brief. Prefer this to a holding counteroffer or a generic introduction that evades the unresolved decision. Creates no question, turn or H2A activation.',
+      name: 'pause_negotiation', description: 'Successfully end this local run when the next useful turn needs a principal fact, preference or permission absent from the brief. Prefer this to a holding counteroffer or a generic introduction that evades the unresolved decision. Creates no turn or question and does not wake H2A. H2A reviews this pause when next woken and may rebrief and resume this subagent.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
       run: () => {
         current();
@@ -213,6 +219,7 @@ export class NegotiationSubagents {
         }
         const signature = this.signature(record, brief);
         if (task.observed === signature) return;
+        task.paused = false;
         if (record.settledAt || record.protocol.blockedReason && record.protocol.blockedReason !== 'not_your_turn') {
           if (record.settledAt) this.host.event?.({ type: 'negotiation.settled', opportunityId: record.opportunityId, outcome: record.outcome, turnCount: record.turnCount });
           else this.host.event?.({ type: 'negotiation.paused', opportunityId: record.opportunityId, turnCount: record.turnCount, ...(delegation ? { delegationId: delegation.id } : {}), reason: 'protocol_blocked', blockedReason: record.protocol.blockedReason! });
@@ -223,6 +230,7 @@ export class NegotiationSubagents {
         task.observed = signature;
         if (record.awaitingUserId !== owner.id) return;
         if (!brief || !isPrincipalBriefCurrent(brief, records.messages)) {
+          task.paused = true;
           this.host.event?.({ type: 'negotiation.paused', opportunityId: record.opportunityId, turnCount: record.turnCount, ...(delegation ? { delegationId: delegation.id } : {}), reason: 'awaiting_principal_review' });
           this.host.status(task.opportunityId, 'Waiting for a principal review', 'paused');
           return;
@@ -250,6 +258,7 @@ export class NegotiationSubagents {
         if (!turn.submitted) throw new Error('Agent finished without recording a turn or explicitly pausing.');
         const fresh = await client.readNegotiation(task.opportunityId);
         if (fresh.settledAt || fresh.protocol.blockedReason && fresh.protocol.blockedReason !== 'not_your_turn') {
+          task.paused = false;
           task.observed = this.signature(fresh, brief);
           if (fresh.settledAt) this.host.event?.({ type: 'negotiation.settled', opportunityId: fresh.opportunityId, outcome: fresh.outcome, turnCount: fresh.turnCount });
           else this.host.event?.({ type: 'negotiation.paused', opportunityId: fresh.opportunityId, turnCount: fresh.turnCount, ...(delegation ? { delegationId: delegation.id } : {}), reason: 'protocol_blocked', blockedReason: fresh.protocol.blockedReason! });
@@ -258,11 +267,14 @@ export class NegotiationSubagents {
       } catch (error) {
         if (error instanceof ContextChanged) return;
         if (error instanceof NegotiationPaused) {
+          if (task.stopped || signal.aborted) return;
+          task.paused = true;
           this.host.event?.({ type: 'negotiation.paused', opportunityId: task.opportunityId, turnCount: error.turnCount, ...(error.delegationId ? { delegationId: error.delegationId } : {}), reason: 'missing_facts_or_authority' });
           this.host.status(task.opportunityId, 'Paused pending principal review', 'paused');
           return;
         }
         task.stopped = true;
+        task.paused = false;
         if (!signal.aborted) this.host.error(task.opportunityId, owner, error instanceof Error ? error.message : String(error));
       }
     }
@@ -271,8 +283,8 @@ export class NegotiationSubagents {
   /** @param opportunityId - One subagent, or omit for shutdown. @returns Completion of its model work and outgoing writes. */
   async stop(opportunityId?: string): Promise<void> {
     const tasks = [...this.tasks.values()].filter((task) => opportunityId === undefined || task.opportunityId === opportunityId);
-    for (const task of tasks) { task.stopped = true; task.controller.abort(); }
+    for (const task of tasks) { task.stopped = true; task.paused = false; task.controller.abort(); }
     await Promise.all(tasks.map((task) => task.running));
-    if (opportunityId === undefined) await this.writes;
+    await Promise.all(tasks.map((task) => task.writes));
   }
 }

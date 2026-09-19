@@ -7,7 +7,7 @@ import type { PendingQuestion } from '../core/types.ts';
 
 import type { AgentDomainEvent, PrincipalActivation } from './agent.events.ts';
 import type { DiscoveryClient, NegotiationOpeningRequest, OpenNegotiationResult } from './discovery.types.ts';
-import type { Negotiation, User } from './negotiation.types.ts';
+import type { Negotiation, NegotiationClient, User } from './negotiation.types.ts';
 import { isPrincipalBriefCurrent, latestPrincipalInput, pendingPrincipalQuestions, validPrincipalQuestionRetirements, type PrincipalEffects, type PrincipalRecords, type PrincipalRecordsView, type PrincipalStandingBrief } from './principal.records.ts';
 
 export type QuestionScope = 'intent' | 'match';
@@ -86,7 +86,7 @@ type InboxTool<I = unknown> = Omit<Tool<I>, 'run'> & {
 function summarizeOpeningBatch(batch: OpeningBatchResult): string {
   return batch.results.map((item, index) => {
     const status = {
-      pending: 'Waiting to open.',
+      pending: 'Queued for automatic opening in score order.',
       opened: 'Negotiation opened; your private brief was saved.',
       reused: 'Existing negotiation reused; its private brief was left unchanged.',
       unavailable: 'Unavailable for this negotiation.',
@@ -176,8 +176,8 @@ export class PrincipalInbox {
   constructor(
     private readonly createLoop: (records: PrincipalRecordsView) => Pick<ModelLoop, 'run'>,
     private readonly records: PrincipalRecords,
-    private readonly negotiations: () => Promise<Negotiation[]>,
-    private readonly host: { changed(): void; input(): void; delegated(ids: string[]): void; error(reason: string): void; event?(event: AgentDomainEvent): void },
+    private readonly negotiations: Pick<NegotiationClient, 'listNegotiations' | 'readNegotiation'>,
+    private readonly host: { changed(): void; input(): void; paused(): readonly string[]; delegated(ids: string[]): void; error(reason: string): void; event?(event: AgentDomainEvent): void },
     private readonly discovery?: DiscoveryClient,
   ) {}
 
@@ -199,7 +199,7 @@ export class PrincipalInbox {
 
   /** @returns The latest committed H2A history observed by this runtime. */
   get conversation(): readonly PrincipalMessage[] { return this.messages; }
-  /** @returns The exact unretired, unanswered batch derived from records. */
+  /** @returns All unretired, unanswered questions derived from records. */
   get pending(): readonly PrincipalQuestion[] { return this.currentQuestions; }
   /** @returns This runtime's H2A tool and matching observations; never persisted or added to model context. */
   get toolCalls(): readonly PrincipalToolCall[] { return this.calls; }
@@ -312,7 +312,7 @@ export class PrincipalInbox {
       this.host.changed();
       let records = await this.records.read();
       if (latestPrincipalInput(records.messages) !== input.id) return;
-      const negotiations = await this.negotiations();
+      const negotiations = await this.negotiations.listNegotiations();
       const visibleNegotiationIds = new Set(negotiations.map((record) => record.id));
       const discoveryScope = await this.discovery?.scope(controller.signal);
       controller.signal.throwIfAborted();
@@ -335,7 +335,7 @@ export class PrincipalInbox {
       let decision: Decision | undefined;
       const tool: InboxTool<Decision> = {
         name: 'review_principal_inbox',
-        description: 'Record one review. A useful principal-facing message, exact question retirements, a stable batch of 1–3 independent questions, and selected unsettled delegations may coexist. This cannot accept or reject opportunities; users decide in the application UI, never through H2A questions or messages. After these effects are saved, the runtime automatically scores pairs across all authorized networks and opens up to 10 new negotiations in descending score order using the standing brief. Empty input writes no final effects but still runs matching. Briefs are private; only saved specific delegations resume existing A2A work.',
+        description: 'Record one review. A useful principal-facing message, exact question retirements, 1–3 new independent questions without altering pending questions, and selected unsettled delegations may coexist. This cannot accept or reject opportunities; users decide in the application UI, never through H2A questions or messages. After these effects are saved, the runtime automatically scores pairs across all authorized networks and opens up to 10 new negotiations in descending score order using the standing brief. Empty input writes no final effects but still runs matching. Briefs are private; only saved specific delegations resume existing A2A work.',
         parameters: {
           type: 'object', additionalProperties: false,
           properties: {
@@ -344,7 +344,7 @@ export class PrincipalInbox {
               question: { type: 'string', minLength: 1, description: 'One independent question about missing facts, preferences or authority for negotiation. Never ask to approve, accept or reject an opportunity; users do that in the application UI. For negotiation permission, name the counterpart, terms and limits. Defer questions that depend on another answer.' },
               options: { type: 'array', minItems: 2, maxItems: 4, uniqueItems: true, items: { type: 'string', minLength: 1 } },
             }, required: ['question', 'options'] } },
-            retireQuestionIds: { type: 'array', minItems: 1, uniqueItems: true, items: { type: 'string', minLength: 1 }, description: 'Exact pending question IDs made obsolete by explicit principal corrections after issuance. Not answers or consent. Retain unrelated questions; ask a new batch only if none remain. Lifecycle events and counterparty activity cannot retire questions.' },
+            retireQuestionIds: { type: 'array', minItems: 1, uniqueItems: true, items: { type: 'string', minLength: 1 }, description: 'Exact pending question IDs made obsolete by explicit principal corrections after issuance. Not answers or consent. Retain unrelated questions; new questions must address facts not already covered by pending or answered questions. Lifecycle events and counterparty activity cannot retire questions.' },
             delegations: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
               opportunityId: { type: 'string' }, brief: { type: 'string', minLength: 1, description: 'Complete private mandate for this counterpart: objective, confirmed facts, scoped permission, conditions, revocations, unresolved terms and next focus. Prior briefs are not included; retain every applicable limit.' },
             }, required: ['opportunityId', 'brief'] } },
@@ -354,7 +354,7 @@ export class PrincipalInbox {
           controller.signal.throwIfAborted();
           if (decision) throw new Error('Only one decision per review.');
           if (reviewFailure) throw reviewFailure;
-          this.validate(value, records, pendingQuestions, negotiations);
+          this.validate(value, records, negotiations);
           decision = value;
           return 'Decision recorded.';
         },
@@ -397,7 +397,7 @@ export class PrincipalInbox {
       const latestNegotiation = (intentId: string, networkId: string) => negotiations
         .filter((record) => record.networkId === networkId && record.counterparty.intentId === intentId)
         .sort((a, b) => b.sessionNumber - a.sessionNumber)[0];
-      const open = async (request: Omit<NegotiationOpeningRequest, 'id' | 'sourceMessageId' | 'contextVersion'>, item: OpeningItemResult) => {
+      const open = async (request: Omit<NegotiationOpeningRequest, 'id' | 'sourceMessageId' | 'contextVersion'>, item: OpeningItemResult, progress: () => void) => {
         await requireScope(request.scopeVersion, [request.target.networkId]);
         await requireCurrent();
         controller.signal.throwIfAborted();
@@ -418,15 +418,22 @@ export class PrincipalInbox {
             delegatedIds.add(result.opportunityId);
             this.host.event?.({ type: 'delegation.brief_saved', inputId: input.id, delegationId: result.delegationId, opportunityId: result.opportunityId, source: 'opening' });
             this.host.event?.({ type: 'negotiation.opened', inputId: input.id, opportunityId: result.opportunityId, candidateIntentId: request.target.intentId, networkId: request.target.networkId });
+            if (!this.stopped) this.host.delegated([result.opportunityId]);
           }
         }
+        // Publish the acknowledged result before follow-up reads can delay it.
+        progress();
         const current = await this.refresh();
         if (current.version !== (result.status === 'opened' ? result.contextVersion : records.version) || !sourceUnchanged(current)
           || current.standingBrief?.id !== records.standingBrief?.id) throw new ReviewInterrupted('Principal context changed during opening; no further openings were attempted.');
         records = current;
-        const fresh = await this.negotiations();
-        if (result.status === 'opened' && !fresh.some((record) => record.opportunityId === result.opportunityId)) throw new ReviewInterrupted('The opened pair could not be read; inspect its committed records before continuing.');
-        negotiations.splice(0, negotiations.length, ...fresh);
+        if (result.status === 'opened') {
+          const fresh = await this.negotiations.readNegotiation(result.opportunityId);
+          if (fresh.opportunityId !== result.opportunityId || fresh.intentId !== records.intent.id) throw new ReviewInterrupted('The opened pair could not be read; inspect its committed records before continuing.');
+          const index = negotiations.findIndex((record) => record.id === fresh.id);
+          if (index === -1) negotiations.push(fresh);
+          else negotiations[index] = fresh;
+        }
         controller.signal.throwIfAborted();
       };
       const reopenedIds = new Set<string>();
@@ -470,8 +477,7 @@ export class PrincipalInbox {
               source: { kind: 'negotiation', negotiationId: selected.id },
               expectedLatestNegotiationId: selected.id, expectedLatestOutcome: selected.outcome, expectedLatestOpportunityStatus: selected.opportunityStatus,
               reasoning: value.reasoning.trim(), brief: value.brief.trim(), scopeVersion: discoveryScope.version,
-            }, item);
-            progress(summarizeOpeningBatch(batch));
+            }, item, () => progress(summarizeOpeningBatch(batch)));
             return batch;
           } catch (error) {
             reviewFailure = error instanceof ReviewInterrupted ? error : new ReviewInterrupted(error instanceof Error ? error.message : String(error));
@@ -485,7 +491,7 @@ export class PrincipalInbox {
       const availableTools: InboxTool[] = [standingBriefTool, tool];
       if (this.discovery) availableTools.push(reopenTool);
       try {
-        const result = await this.createLoop(records).run(buildPrincipalInboxPrompt({ records, inputs, pendingQuestions, negotiations, discoveryScope }), {
+        const result = await this.createLoop(records).run(buildPrincipalInboxPrompt({ records, inputs, pendingQuestions, negotiations, pausedNegotiationIds: this.host.paused(), discoveryScope }), {
           history: new MemoryMessageStore(), tools: this.observeTools(availableTools, controller.signal, input.id, negotiations, pendingQuestions), signal: controller.signal,
           onStep: (step) => {
             controller.signal.throwIfAborted();
@@ -502,7 +508,13 @@ export class PrincipalInbox {
         if (!(error instanceof ReviewComplete)) throw error;
       }
       if (controller.signal.aborted || this.stopped || !decision) return;
-      const effects: PrincipalEffects = { negotiations, messages: [], retiredQuestionIds: decision.retireQuestionIds ?? [], delegations: [] };
+      const delegations = decision.delegations ?? [];
+      // Newly opened sessions run independently; fence them only if this decision also rebriefs them.
+      const effects: PrincipalEffects = {
+        negotiations: negotiations.filter((record) => visibleNegotiationIds.has(record.id)
+          || delegations.some((delegation) => delegation.opportunityId === record.opportunityId)),
+        messages: [], retiredQuestionIds: decision.retireQuestionIds ?? [], delegations: [],
+      };
       if (decision.message) effects.messages.push(this.entry(records, { kind: 'message', text: decision.message.trim() }));
       const batchId = crypto.randomUUID();
       for (const question of decision.questions ?? []) {
@@ -515,7 +527,7 @@ export class PrincipalInbox {
         ...[...records.messages, ...records.delegations, ...(records.standingBrief ? [records.standingBrief] : [])].map((entry) => Date.parse(entry.createdAt)),
       ) + 1;
 
-      effects.delegations = (decision.delegations ?? []).map(({ opportunityId, brief }) => ({
+      effects.delegations = delegations.map(({ opportunityId, brief }) => ({
         opportunityId,
         brief: brief.trim(),
         id: crypto.randomUUID(),
@@ -542,6 +554,7 @@ export class PrincipalInbox {
       for (const delegation of effects.delegations) {
         this.host.event?.({ type: 'delegation.brief_saved', inputId: input.id, delegationId: delegation.id, opportunityId: delegation.opportunityId, source: 'review' });
       }
+      if (!this.stopped && effects.delegations.length) this.host.delegated(effects.delegations.map((entry) => entry.opportunityId));
       // Review writes advance version. Adopt that version only after confirming the
       // principal evidence and standing mandate that authorized this review.
       const current = await this.refresh();
@@ -562,6 +575,10 @@ export class PrincipalInbox {
       const batch: OpeningBatchResult = { results: [] };
       let matchingSummary = 'Matching has not completed.';
       const summarize = () => [matchingSummary, `${batch.results.filter((item) => item.status === 'opened').length} of up to ${MAX_AUTOMATIC_NEGOTIATIONS} new negotiations opened.`, summarizeOpeningBatch(batch)].filter(Boolean).join('\n\n');
+      const progress = () => {
+        matching.summary = summarize();
+        this.host.changed();
+      };
       const stopBatch = () => {
         for (const item of batch.results) if (item.status === 'pending') item.status = 'not_attempted';
       };
@@ -596,28 +613,32 @@ export class PrincipalInbox {
         await requireCurrent();
         controller.signal.throwIfAborted();
         this.host.event?.({ type: 'discovery.searched', inputId: input.id, matchId: matching.id, networkIds: discoveryInput.networkIds, candidateIntentIds: candidates.map((candidate) => candidate.candidateIntentId) });
-        matching.summary = summarize();
+        matching.summary = [summarize(), candidates.length ? 'Preparing automatic openings; no action is needed from you.' : ''].filter(Boolean).join('\n\n');
         this.host.changed();
-        const fresh = await this.negotiations();
+        const fresh = await this.negotiations.listNegotiations();
         negotiations.splice(0, negotiations.length, ...fresh);
         let openedCount = 0;
         for (const [index, candidate] of candidates.entries()) {
+          controller.signal.throwIfAborted();
           if (openedCount === MAX_AUTOMATIC_NEGOTIATIONS) {
             for (const item of batch.results.slice(index)) item.status = 'limit_reached';
             break;
           }
           const item = batch.results[index]!;
           const latest = latestNegotiation(candidate.candidateIntentId, candidate.networkId);
+          if (latest) {
+            item.status = !latest.settledAt && !latest.outcome && latest.opportunityStatus === 'negotiating' ? 'reused' : 'unavailable';
+            progress();
+            continue;
+          }
           await open({
             target: { userId: candidate.candidateUserId, intentId: candidate.candidateIntentId, networkId: candidate.networkId, payload: candidate.candidatePayload },
             source: { kind: 'match', matchId: matching.id, probability: candidate.matchProbability },
-            expectedLatestNegotiationId: latest?.id ?? null, expectedLatestOutcome: latest?.outcome ?? null,
-            expectedLatestOpportunityStatus: latest?.opportunityStatus ?? null,
+            expectedLatestNegotiationId: null, expectedLatestOutcome: null,
+            expectedLatestOpportunityStatus: null,
             reasoning: candidate.reasoning, brief: standingBrief.brief, scopeVersion: scope.version,
-          }, item);
+          }, item, progress);
           if (item.status === 'opened') openedCount++;
-          matching.summary = summarize();
-          this.host.changed();
         }
         controller.signal.throwIfAborted();
         matching.summary = summarize();
@@ -644,11 +665,10 @@ export class PrincipalInbox {
     } finally {
       if (this.reviewController === controller) this.reviewController = undefined;
       this.host.changed();
-      if (!this.stopped && delegatedIds.size) this.host.delegated([...delegatedIds]);
     }
   }
 
-  private validate(value: Decision, records: PrincipalRecordsView, pending: readonly PrincipalQuestion[], negotiations: Negotiation[]): void {
+  private validate(value: Decision, records: PrincipalRecordsView, negotiations: Negotiation[]): void {
     if (!records.standingBrief || !isPrincipalBriefCurrent(records.standingBrief, records.messages)) throw new Error('Save a current standing brief before completing this review.');
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some((key) => !['message', 'questions', 'retireQuestionIds', 'delegations'].includes(key))) throw new Error('Provide a review decision using only the offered fields.');
     if (value.message !== undefined && (typeof value.message !== 'string' || !value.message.trim())) throw new Error('A reply must be nonempty.');
@@ -657,7 +677,6 @@ export class PrincipalInbox {
     }
     if (value.questions !== undefined) {
       if (!Array.isArray(value.questions) || value.questions.length < 1 || value.questions.length > 3) throw new Error('Ask 1–3 independent questions.');
-      if (pending.some((question) => !value.retireQuestionIds?.includes(question.id))) throw new Error('Keep remaining questions stable until answered or explicitly retired; do not append or replace them.');
       for (const item of value.questions) {
         if (!item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some((key) => !['question', 'options'].includes(key))) throw new Error('Provide a question and suggested answers.');
         const { question, options } = item;
