@@ -3,7 +3,7 @@ import type { ConversationMessage, Index, MatchReference, NegotiationDetail, Pri
 import { briefIfMissing } from "./brief.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
-import type { ConversationEntry, Decision, Intent, NegotiateResult, Opportunity, Stall, WakeAction, WakeResult } from "./types.ts";
+import type { ConversationEntry, Decision, Intent, NegotiateResult, NegotiationAction, Opportunity, Stall, WakeAction, WakeResult } from "./types.ts";
 import { wake } from "./wake.ts";
 
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
@@ -21,6 +21,20 @@ const DECISION = "Decision: ";
 const STALL = "Stall: ";
 const WITHDRAWN = "Withdrawn: ";
 const DECISIONS: readonly string[] = ["continue", "accept", "decline", "stop"];
+
+/**
+ * What each standing decision lets a negotiator do, intersected with whatever
+ * the seat may do at all. `continue` keeps decline, because the negotiator is
+ * briefed to end one whose reason plainly does not hold. `accept` keeps
+ * propose, because settling needs a standing propose to accept: when the
+ * counterpart's last turn was a counter, carrying out an accept means putting
+ * that offer on the table first.
+ */
+const PERMITTED: Record<Exclude<Decision, "stop">, NegotiationAction[]> = {
+  continue: ["propose", "counter", "decline"],
+  accept: ["accept", "propose"],
+  decline: ["decline"],
+};
 
 function textOf(message: ConversationMessage): string {
   const parts = Array.isArray(message.parts) ? message.parts : [];
@@ -82,7 +96,7 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
     status: negotiation.outcome ?? "negotiating",
     awaiting: negotiation.awaitingUserId === userId ? "you" : "them",
     turns: String(negotiation.turnCount),
-    actions: negotiation.turns.length ? ["counter", "accept", "decline"] : ["propose", "decline"],
+    actions: negotiation.protocol.availableActions,
     intent: { statement: negotiation.counterparty.statement },
     ...(negotiation.turns.length ? { terms: negotiation.turns.at(-1)!.message } : {}),
   };
@@ -341,11 +355,17 @@ export async function runNegotiate(
     }
   }
 
-  if (!opportunity.brief) return { stall: { reason: "No brief for this opportunity yet." } };
-  if (opportunity.decision === "stop") return { stall: { reason: "This negotiation was stopped." } };
+  const { brief, decision } = opportunity;
+  if (!brief) return { stall: { reason: "No brief for this opportunity yet." } };
+  if (!decision || decision === "stop") return { stall: { reason: "This negotiation was stopped." } };
+
+  opportunity.actions = (opportunity.actions ?? []).filter((action) => PERMITTED[decision].includes(action));
+  if (!opportunity.actions.length) {
+    return { stall: { reason: `Nothing this seat may do now carries out the standing decision to ${decision}.` } };
+  }
 
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
-  const result = await negotiate({ user, intent, brief: opportunity.brief, opportunity, model, now, signal });
+  const result = await negotiate({ user, intent, brief, opportunity, model, now, signal });
   if ("turn" in result) {
     await client.submitTurn(opportunityId, { ...result.turn, expectedTurnCount: detail.turnCount });
     return result;
