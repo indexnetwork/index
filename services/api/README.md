@@ -111,7 +111,6 @@ in the owner's existing DM. A2A agreement remains pending human approval. The
 API server does not take these session leases. Do not run two TUIs for the same
 intents.
 
-See [agent-tui controls and behavior](../../packages/agent-tui/README.md).
 
 ## Tests
 
