@@ -449,6 +449,10 @@ export function createIndexApiClient(options = {}) {
         `/opportunities/${encodeURIComponent(opportunityId)}/invite-message`,
         options,
       ),
+      negotiation: (opportunityId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/negotiation`,
+        options,
+      ),
       updateStatus: (opportunityId, status, options = {}) => request(
         `/opportunities/${encodeURIComponent(opportunityId)}/status`,
         { ...options, method: 'PATCH', body: { status } },

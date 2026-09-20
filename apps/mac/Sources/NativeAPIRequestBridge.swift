@@ -265,7 +265,7 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
         ("GET", #"^/opportunities(?:\?.*)?$"#),
         ("GET", #"^/opportunities/(?:radar|chat-context)(?:\?.*)?$"#),
-        ("GET", #"^/opportunities/[^/?]+(?:/invite-message)?$"#),
+        ("GET", #"^/opportunities/[^/?]+(?:/invite-message|/negotiation)?$"#),
         ("PATCH", #"^/opportunities/[^/?]+/status$"#),
         ("POST", #"^/opportunities/[^/?]+/start-chat$"#),
         ("POST", #"^/enrichment/enrich$"#),

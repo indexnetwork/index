@@ -91,7 +91,7 @@ function DeepLinkChatWindow({ person, conversationId, onClose }) {
    name or avatar on the radar. `actions` off drops the stage CTA, for a
    profile opened outside a signal (see DeepLinkWindow) where accepting or
    passing has no scope to act in. */
-function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions = true }) {
+function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNegotiation, actions = true }) {
   const status = person.status;
   const isReady = status === "ready";
   const isAccepted = status === "accepted";
@@ -146,8 +146,9 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
         {/* body: their intro, then the presenter mainText (why surfaced), then
             where else to find them. */}
         <div className="mac-scroll" style={{
-          overflowY:"auto", padding:"16px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:15,
-          alignContent:"start", background:"#fff",
+          overflowY:"auto", overflowX:"hidden", padding:"16px",
+          display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:15,
+          alignContent:"start", background:"#fff", wordBreak:"break-word",
         }}>
           {bio && (
             <SummarySection label="bio">
@@ -216,6 +217,16 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
               answer their question in your feed to move forward.
             </span>
           )}
+          <button className="amiga-gadget"
+            title={`see what your agent and ${person.name}'s agent said`}
+            onClick={() => onOpenNegotiation && onOpenNegotiation(person.id)}
+            style={{
+              marginLeft:"auto", display:"flex", alignItems:"center", gap:5,
+              fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 12px",
+            }}>
+            <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
+            negotiation ›
+          </button>
         </div>
         )}
       </div>
@@ -239,6 +250,16 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose }) {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages.length]);
+  // Same composer as the signal thread: grows with what you type, stops at
+  // three lines and scrolls from there.
+  const draftRef = useRef(null);
+  const draftMax = Math.round(13 * 1.4 * 3) + 8;
+  React.useLayoutEffect(() => {
+    const el = draftRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, draftMax)}px`;
+  }, [draft, draftMax]);
   return (
     <MacWindow title="chat" onClose={onClose} dismiss style={{ minHeight:0 }}>
         <div style={{
@@ -276,20 +297,125 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose }) {
 
           {/* input */}
           <div style={{ borderTop:"1px solid #000", background:"#fff" }}>
-            <div style={{ padding:"7px 12px 8px", display:"flex", gap:10, alignItems:"center" }}>
-              <span style={{ fontFamily:"var(--mac-mono)", color:"#000" }}>›</span>
-              <input
+            <div style={{ padding:"7px 12px 8px", display:"flex", gap:10, alignItems:"flex-end" }}>
+              <textarea
+                ref={draftRef}
+                rows={1}
                 value={draft}
                 onChange={e => setDraft(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") onSend(); }}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); }
+                }}
                 placeholder={`message ${person.name}…`}
+                aria-label={`message ${person.name}`}
                 style={{
-                  flex:1, background:"transparent", border:"none", outline:"none",
-                  color:"#000", fontFamily:"var(--mac-sans)", fontSize:13, padding:"4px 0",
+                  flex:1, minWidth:0, display:"block",
+                  maxHeight:draftMax, overflowY:"auto", resize:"none",
+                  background:"transparent", border:"none", outline:"none",
+                  color:"#000", fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
+                  padding:"4px 0",
                 }}
               />
-              <button className="amiga-gadget" onClick={onSend} style={{ padding:"3px 12px" }}>send</button>
+              <button
+                type="button"
+                onClick={onSend}
+                disabled={!draft.trim()}
+                aria-label="Send"
+                title="send"
+                style={{
+                  display:"grid", placeItems:"center", width:22, height:22, flex:"0 0 auto",
+                  background:"none", border:"none", padding:0, lineHeight:0, marginBottom:2,
+                  color: draft.trim() ? "#111" : "#b9b3a4",
+                  cursor: draft.trim() ? "pointer" : "default",
+                }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth={2} strokeLinecap="square" strokeLinejoin="miter">
+                  <line x1="12" y1="20" x2="12" y2="5"/>
+                  <polyline points="5,12 12,5 19,12"/>
+                </svg>
+              </button>
             </div>
+          </div>
+        </div>
+    </MacWindow>
+  );
+}
+
+/* The negotiation the two agents are having over a match, opened in the 3rd
+   window when you click a negotiating card on the radar. Read-only: the agents
+   take the turns, this only shows them. Fetched once on open from
+   GET /opportunities/:id/negotiation. */
+function NegotiationWindow({ person, onClose }) {
+  const [negotiation, setNegotiation] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
+  // Named as the agent, never as the person: this is two agents talking on
+  // their owners' behalf, not a conversation with them.
+  const theirAgent = `${(person.name || "their").split(/\s+/)[0]}'s agent`;
+
+  useEffect(() => {
+    setNegotiation(null);
+    setFailed(false);
+    if (!window.IndexApp || !window.IndexApp.isAuthed()) { setFailed(true); return; }
+    const client = window.IndexApp.getClient();
+    if (!client) { setFailed(true); return; }
+    let cancelled = false;
+    client.opportunities.negotiation(person.id)
+      .then((res) => { if (!cancelled) setNegotiation((res && res.negotiation) || null); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [person.id]);
+
+  const turns = (negotiation && negotiation.turns) || [];
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [turns.length]);
+
+  return (
+    <MacWindow title="negotiation" onClose={onClose} dismiss style={{ minHeight:0 }}>
+        <div style={{
+          display:"grid",
+          gridTemplateRows: "auto 1fr",
+          gridTemplateColumns: "minmax(0, 1fr)",
+          flex:1, minHeight:0, minWidth:0,
+        }}>
+          <div style={{
+            padding:"12px 16px", borderBottom:"1px solid #000",
+            display:"flex", gap:12, alignItems:"center", background:"#fff",
+          }}>
+            <TheirAgentAvatar owner={{ id: person.userId || person.id, name: person.name, photo: person.photo }} size={34}/>
+            <div style={{ display:"grid", gap:2, minWidth:0 }}>
+              <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
+                your agent ⇄ {theirAgent}
+              </div>
+              <div style={{ fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.4, color:"var(--ink-2)" }}>
+                The two agents are working out whether you and {person.name} should meet.
+                This isn't a chat with {person.name}.
+              </div>
+            </div>
+          </div>
+
+          <div ref={scrollRef} className="mac-scroll" style={{
+            overflowY:"auto", padding:"14px 16px",
+            display:"flex", flexDirection:"column", gap:10, background:"#fff",
+          }}>
+            {turns.map((t) => {
+              const you = !!myId && t.seatUserId === myId;
+              return (
+                <div key={t.turnIndex} style={{ display:"grid", gap:4, justifyItems: you ? "end" : "start" }}>
+                  <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)", letterSpacing:0.5 }}>
+                    {you ? "your agent" : theirAgent} · {t.action}
+                  </span>
+                  <ChatBubble m={{ id: t.turnIndex, who: you ? "you" : "them", text: t.message, at: t.createdAt }}/>
+                </div>
+              );
+            })}
+            {!turns.length && (
+              <div style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)", textAlign:"center", padding:"24px 0" }}>
+                {failed ? "couldn't load this negotiation." : negotiation ? "no turns yet." : "loading…"}
+              </div>
+            )}
           </div>
         </div>
     </MacWindow>

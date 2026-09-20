@@ -185,18 +185,24 @@ function NewIntent({ onDone, onBack }) {
             </div>
 
             {/* progress, pinstripe segments */}
-            <div style={{ display:"flex", gap:3, marginBottom:24 }}>
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} style={{
-                  flex:1, height:8,
-                  border:"1px solid #000",
-                  background: i < stepIdx
-                    ? "#000"
-                    : i === stepIdx
-                      ? "repeating-linear-gradient(45deg, #000 0, #000 2px, #fff 2px, #fff 4px)"
-                      : "#fff",
-                }}/>
-              ))}
+            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:24 }}>
+              <span style={{
+                fontFamily:"var(--mac-mono)", fontSize:11, color:"#8f8f88",
+                letterSpacing:"0.05em", flex:"0 0 auto",
+              }}>step {Math.min(stepIdx + 1, 3)} of 3</span>
+              <div style={{ flex:1, display:"flex", gap:3 }}>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} style={{
+                    flex:1, height:8,
+                    border:"1px solid #000",
+                    background: i < stepIdx
+                      ? "#000"
+                      : i === stepIdx
+                        ? "repeating-linear-gradient(45deg, #000 0, #000 2px, #fff 2px, #fff 4px)"
+                        : "#fff",
+                  }}/>
+                ))}
+              </div>
             </div>
 
             <div className="mac-scroll" style={{
@@ -241,56 +247,61 @@ function NewIntent({ onDone, onBack }) {
               </div>
               ) : (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:10 }}>
-                <AgentBubble>{step.prompt}</AgentBubble>
-                {step.note && <p style={{ marginLeft:36, fontSize:13, color:"var(--ink-2)" }}>{step.note}</p>}
+                <AgentBubble label={<TurnLabel tag={`question ${stepIdx + 1}/3`}/>}>
+                  {step.prompt}
+                  {step.note && (
+                    <div style={{
+                      marginTop:6, fontSize:12.5, fontWeight:400, fontStyle:"italic",
+                      lineHeight:1.5, color:"#8f8f88",
+                    }}>{step.note}</div>
+                  )}
+                </AgentBubble>
 
-                <div style={{ marginLeft:36, marginTop:10, display:"grid", gap:16 }}>
-                  {/* type your own answer first, the suggestions are the
-                      "or pick one" fallback, so they come after */}
+                <div style={{ marginLeft:42, display:"grid", gap:10 }}>
                   <form onSubmit={(e) => { e.preventDefault(); submit(); }}
-                    style={{ display:"flex", gap:12, alignItems:"center", maxWidth:560 }}>
-                    <span style={{
-                      fontFamily:"var(--mac-mono)",
-                      fontSize: 17, color:"#000",
-                    }}>›</span>
+                    style={{ display:"flex", gap:10, alignItems:"stretch", maxWidth:620 }}>
                     <input
                       ref={inputRef}
                       value={draft}
                       maxLength={65_536}
                       onChange={e => setDraft(e.target.value)}
-                      placeholder={step.placeholder}
+                      placeholder="Type your answer…"
                       style={{
-                        flex:1,
-                        background:"#fff",
-                        border:"none",
-                        borderBottom:"1px solid #000",
+                        flex:1, minWidth:0,
+                        background:"#fff", border:"1.5px solid #b9b3a4", borderRadius:4,
                         outline:"none",
-                        color:"#000",
-                        fontFamily:"var(--mac-sans)",
-                        fontSize: 16,
-                        padding:"7px 0",
+                        color:"#111", fontFamily:"var(--mac-sans)", fontSize:14,
+                        padding:"11px 14px",
                       }}
                     />
-                    <Btn primary disabled={!draft.trim()} onClick={() => submit()}>send ↵</Btn>
+                    <button
+                      type="submit"
+                      disabled={!draft.trim()}
+                      style={{
+                        flex:"0 0 auto", padding:"11px 22px", borderRadius:4,
+                        background:"#fff", border:"1.5px solid #b9b3a4",
+                        fontFamily:"var(--mac-sans)", fontSize:14,
+                        color: draft.trim() ? "#111" : "#b9b3a4",
+                        cursor: draft.trim() ? "pointer" : "default",
+                      }}>send</button>
                   </form>
                   {step.examples && step.examples.length > 0 && (
                     <React.Fragment>
                       <div style={{
-                        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
-                        textTransform:"uppercase", color:"var(--ink-3)",
-                      }}>or pick one</div>
-                      <div style={{
-                        display:"grid", gap:7, maxWidth:560,
-                      }}>
+                        marginTop:4,
+                        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:"0.05em",
+                        textTransform:"uppercase", color:"#8f8f88",
+                      }}>or pick a suggestion</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:8, maxWidth:620 }}>
                         {step.examples.map(ex => (
-                          <SuggestChip key={ex} onClick={() => submit(ex)}>{ex}</SuggestChip>
+                          <OptionChip key={ex} label={ex} onClick={() => submit(ex)}/>
                         ))}
                       </div>
                     </React.Fragment>
                   )}
                 </div>
               </div>
-              )}
+                            )}
             </div>
           </div>
         </MacWindow>
@@ -308,15 +319,40 @@ function NewIntent({ onDone, onBack }) {
 // same mark. The "h" tile this replaced named the runtime (hermes) at the one
 // moment you have no idea what that is, and made your first conversation with
 // index look like it came from something else.
-function AgentBubble({ children }) {
+function AgentBubble({ children, label = null, muted = false }) {
   return (
     <div style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
-      <MyAgentAvatar size={26} style={{ marginTop:3 }}/>
-      <div style={{
-        fontFamily:"var(--mac-sans)", fontSize:21,
-        color:"#000", fontWeight:500, lineHeight:1.35, letterSpacing:-0.2,
-        maxWidth:620,
-      }}>{children}</div>
+      <MyAgentAvatar size={30} style={{ marginTop:2 }}/>
+      <div style={{ flex:1, minWidth:0 }}>
+        {label}
+        <div style={{
+          maxWidth:"92%", padding: muted ? "11px 14px" : "13px 16px", background:"#fff",
+          border:`${muted ? 1 : 1.5}px solid ${muted ? "#e2e2dc" : "#b9b3a4"}`,
+          borderRadius:"2px 4px 4px 4px",
+          boxShadow: muted ? "none" : "0 2px 0 rgba(17,17,17,0.07)",
+          fontFamily:"var(--mac-sans)",
+          fontSize: muted ? 14 : 15.5, fontWeight: muted ? 400 : 600,
+          lineHeight: muted ? 1.55 : 1.5, color: muted ? "#2a2a2a" : "#111",
+        }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* The label above a bubble: an outlined tag for the question being asked, a
+   plain green line for one already answered. */
+function TurnLabel({ tag, answered = false, who = "your agent" }) {
+  return (
+    <div style={{
+      display:"flex", gap:8, alignItems:"center", marginBottom:6,
+      fontFamily:"var(--mac-mono)", fontSize:11,
+      textTransform:"uppercase", letterSpacing:"0.05em",
+    }}>
+      <span style={answered ? { color:"#2f7d4f", fontWeight:600 } : {
+        background:"#fff", color:"#111", border:"1px solid #b9b3a4",
+        padding:"2px 7px", borderRadius:4, fontSize:10, fontWeight:600,
+      }}>{tag}</span>
+      <span style={{ color:"#8f8f88" }}>{who}</span>
     </div>
   );
 }
@@ -342,11 +378,16 @@ function WorkingDots({ size = 8 }) {
 
 function UserBubble({ children }) {
   return (
-    <div style={{ display:"flex", gap:12, marginLeft:38 }}>
-      <span style={{ color:"var(--ink-2)", fontFamily:"var(--mac-mono)", fontSize:14 }}>›</span>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end" }}>
       <div style={{
-        fontFamily:"var(--mac-sans)", fontSize:15,
-        color:"#000", maxWidth:520, fontStyle:"italic",
+        marginBottom:6, fontFamily:"var(--mac-mono)", fontSize:11,
+        color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
+      }}>you</div>
+      <div style={{
+        maxWidth:"92%", padding:"11px 14px",
+        background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
+        fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
+        wordBreak:"break-word",
       }}>{children}</div>
     </div>
   );
@@ -354,10 +395,8 @@ function UserBubble({ children }) {
 
 function PastTurn({ step, answer }) {
   return (
-    <div style={{ display:"grid", gap:6, opacity:0.55 }}>
-      <AgentBubble>
-        <span style={{ fontSize:16, color:"var(--ink-2)" }}>{step.prompt}</span>
-      </AgentBubble>
+    <div style={{ display:"grid", gap:10 }}>
+      <AgentBubble muted label={<TurnLabel tag="✓ answered" answered/>}>{step.prompt}</AgentBubble>
       <UserBubble>{answer}</UserBubble>
     </div>
   );
@@ -404,31 +443,6 @@ function SignalSummaryCard({ description, onChange, note, onCreate }) {
 
 // Suggested answer, Workbench gadget sized up to match the question's altitude.
 // Mirrors the bevel of the shared Chip/Btn primitives, but legible at a glance.
-function SuggestChip({ children, onClick }) {
-  const [down, setDown] = useState(false);
-  return (
-    <button
-      onClick={onClick}
-      onMouseDown={() => setDown(true)}
-      onMouseUp={() => setDown(false)}
-      onMouseLeave={() => setDown(false)}
-      style={{
-        textAlign:"left",
-        padding:"9px 14px",
-        fontFamily:"var(--mac-sans)", fontSize:14,
-        textTransform:"lowercase", letterSpacing:0.2,
-        border:"1px solid #000",
-        background: down ? "#000" : "#fff",
-        color:      down ? "#fff" : "#000",
-        borderRadius:0,
-        boxShadow: down
-          ? "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff"
-          : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3), 1px 1px 0 rgba(0,0,0,0.2)",
-        transform: down ? "translate(1px,1px)" : "none",
-        cursor:"pointer",
-      }}>{children}</button>
-  );
-}
 
 // Right column during signal creation
 function NewIntentFieldPreview({ turns, stepIdx }) {

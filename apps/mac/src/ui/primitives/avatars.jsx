@@ -346,8 +346,20 @@ function AgentMark({ size, agent, title }) {
     carries who it speaks for and the mark says it is the agent speaking. One
     component, so a change on the agents page lands everywhere at once. */
 function MyAgentAvatar({ size = 22, style, title }) {
-  const me = myAgent();
-  const owner = currentMe();
+  return <OwnedAgentAvatar owner={currentMe()} agent={myAgent()} size={size} style={style} title={title}/>;
+}
+
+/** Anyone's negotiator, drawn the same way as yours: their photo with their
+    agent's face in the corner. `owner` is { id, name, photo }. */
+function TheirAgentAvatar({ owner, size = 22, style, title }) {
+  const agent = { name: agentLabel(owner.name), seed: owner.id || owner.name || "someone", photo: null };
+  // Radar photos are stored paths; Avatar resolves them the same way.
+  const photo = owner.photo && window.IndexApp && window.IndexApp.avatarUrl
+    ? window.IndexApp.avatarUrl(owner.photo) : owner.photo;
+  return <OwnedAgentAvatar owner={{ ...owner, photo }} agent={agent} size={size} style={style} title={title}/>;
+}
+
+function OwnedAgentAvatar({ owner, agent, size, style, title }) {
   // The mark keeps a floor, since below about 8px the faces stop being marks
   // and become specks. The ring scales too: a fixed 1.5px halo is invisible at
   // 54px and swallows the mark at 16px.
@@ -355,7 +367,7 @@ function MyAgentAvatar({ size = 22, style, title }) {
   const ring = Math.max(1, Math.round(size * 0.055 * 10) / 10);
   return (
     <div
-      title={title || me.name}
+      title={title || agent.name}
       style={{ position:"relative", width:size, height:size, flex:"0 0 auto", ...style }}>
       {owner.photo ? (
         <img src={owner.photo} alt="" style={{
@@ -370,7 +382,7 @@ function MyAgentAvatar({ size = 22, style, title }) {
         position:"absolute", right:0, bottom:0, display:"block", lineHeight:0,
         boxShadow:`0 0 0 ${ring}px ${A.paper}`,
       }}>
-        <AgentMark size={badge} agent={me}/>
+        <AgentMark size={badge} agent={agent}/>
       </span>
     </div>
   );

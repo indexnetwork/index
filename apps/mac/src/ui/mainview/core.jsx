@@ -369,6 +369,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const [responses, setResponses] = useState({});      // your typed answer to each person's question
   const [summaryId, setSummaryId] = useState(null);    // expired person whose summary is open
   const [profileId, setProfileId] = useState(null);    // person whose profile is open
+  const [negotiationId, setNegotiationId] = useState(null);    // negotiating person whose agents' exchange is open
 
   const toChatMsg = (m) => apiChatMessage(m, myId);
 
@@ -376,6 +377,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setChatId(personId);
     setSummaryId(null);
     setProfileId(null);
+    setNegotiationId(null);
     setUnread(prev => (prev[personId] ? { ...prev, [personId]: 0 } : prev));
 
     if (live && client) {
@@ -400,9 +402,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       return person ? { ...prev, [personId]: seedChat(person, responses[personId]) } : prev;
     });
   };
-  const openSummary = (personId) => { setSummaryId(personId); setChatId(null); setProfileId(null); };
-  const openProfile = (personId) => { setProfileId(personId); setChatId(null); setSummaryId(null); };
-  const closeChats = () => { setChatId(null); setSummaryId(null); setProfileId(null); };
+  const openSummary = (personId) => { setSummaryId(personId); setChatId(null); setProfileId(null); setNegotiationId(null); };
+  const openProfile = (personId) => { setProfileId(personId); setChatId(null); setSummaryId(null); setNegotiationId(null); };
+  const openNegotiation = (personId) => { setNegotiationId(personId); setChatId(null); setSummaryId(null); setProfileId(null); };
+  const closeChats = () => { setChatId(null); setSummaryId(null); setProfileId(null); setNegotiationId(null); };
 
   // Negotiating people are waiting on a response to their question. Responding
   // clears the negotiation and makes them ready, that's when the opportunity
@@ -572,7 +575,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const chatPerson = chatId ? people.find(p => p.id === chatId) : null;
   const summaryPerson = summaryId ? people.find(p => p.id === summaryId) : null;
   const profilePerson = profileId ? people.find(p => p.id === profileId) : null;
-  const thirdOpen = !!(chatPerson || summaryPerson || profilePerson);
+  const negotiationPerson = negotiationId ? people.find(p => p.id === negotiationId) : null;
+  const thirdOpen = !!(chatPerson || summaryPerson || profilePerson || negotiationPerson);
   const showRadar = !(thirdOpen && narrow);
   const chatIds = Object.keys(chats);
   const unreadTotal = chatIds.reduce((a, id) => a + (unread[id] || 0), 0);
@@ -682,6 +686,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             onPass={passPerson}
             onSummary={openSummary}
             onProfile={openProfile}
+            onNegotiation={openNegotiation}
             unread={unread}
             chatIds={chatIds}
             discovering={discovering}
@@ -709,7 +714,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
               onAccept={acceptPerson}
               onPass={passPerson}
               onOpenChat={openChat}
+              onOpenNegotiation={openNegotiation}
             />
+          ) : negotiationPerson ? (
+            <NegotiationWindow person={negotiationPerson} onClose={closeChats}/>
           ) : null
         )}
       </div>

@@ -4,6 +4,12 @@
 // delete-account gadget in settings): warn-red outline at rest so archiving
 // never looks like the pause next to it, a red wash on hover, and a solid red
 // fill once it's armed, the point of no return is the only thing that fills.
+/* The gap the feed keeps above the composer, and the distance within which it
+   still counts as "at the bottom". The threshold has to clear the spacer:
+   resting on it is resting at the end of the thread, not scrolling up. */
+const FEED_BOTTOM_SPACER = 28;
+const FEED_BOTTOM_PIN = FEED_BOTTOM_SPACER + 20;
+
 function SignalAction({ label, active = false, onClick, danger = false }) {
   const [hover, setHover] = useState(false);
   const on = active || hover;
@@ -83,7 +89,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
     const el = scrollRef.current;
     if (!el) return;
     const grew = feedLen > lastLen.current;
-    if (bottomGap.current <= 24) {
+    if (bottomGap.current <= FEED_BOTTOM_PIN) {
       // pinned to the bottom, stay pinned, following new content
       el.scrollTop = el.scrollHeight;
       setUnread(0);
@@ -95,11 +101,30 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
     lastLen.current = feedLen;
   }, [feedLen, negotiatingPeople, questions.length]);
 
+  // The composer grows with what you type and stops at three lines, after
+  // which it scrolls: 13px text at 1.4 plus the field's own padding.
+  const draftRef = useRef(null);
+  const COMPOSER_MAX = Math.round(13 * 1.4 * 3) + 16;
+  React.useLayoutEffect(() => {
+    const el = draftRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX)}px`;
+  }, [draft, COMPOSER_MAX]);
+
+  const send = () => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setDraft("");
+    setSending(true);
+    onSendAgent(text, () => setSending(false));
+  };
+
   const onScroll = (e) => {
     const el = e.currentTarget;
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     bottomGap.current = gap;
-    const atBottom = gap < 24;
+    const atBottom = gap < FEED_BOTTOM_PIN;
     setStuck(atBottom);
     if (atBottom) setUnread(0);
   };
@@ -193,11 +218,11 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
 
       {/* feed body */}
       <div ref={scrollRef} onScroll={onScroll} className="mac-scroll" style={{
-        overflowY:"auto", padding:"16px 18px 8px",
+        overflowY:"auto", padding:"20px",
         display:"flex", flexDirection:"column",
       }}>
         {inbox ? (
-          <div style={{ display:"flex", flexDirection:"column", gap:14, minHeight:0 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:22, minHeight:0 }}>
             {agentMessages.length === 0 ? (
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", lineHeight:1.45,
@@ -211,65 +236,68 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               return <AgentNote key={it.id} item={it}/>;
             })}
             {questions.length > 0 && (
-              <div ref={agentQuestionRef} style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              <div ref={agentQuestionRef} style={{ display:"flex", flexDirection:"column", gap:22 }}>
                 {questions.map((question) => {
                   const options = Array.isArray(question.options) ? question.options : [];
                   const answer = selections[question.id] || "";
+                  const asker = questionAsker(question);
+                  const own = options.indexOf(answer) < 0 && answer;
+                  const write = writing[question.id] || !options.length;
                   return (
-                    <article key={question.id} style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
-                      <MyAgentAvatar size={22} style={{ marginTop:2 }}/>
-                      <div style={{
-                        flex:1, minWidth:0, borderLeft:"2px solid #000", padding:"2px 0 2px 12px",
-                        display:"grid", gap:9,
-                      }}>
-                      <div style={{
-                        fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
-                      }}>{questionContext(question)}</div>
-                      <div style={{
-                        fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:500, lineHeight:1.45,
-                      }}>{question.question}</div>
-                      {options.map((option, i) => (
-                        <OptionRow key={option} letter={String.fromCharCode(65 + i)} label={option}
-                          onClick={() => {
-                            setSelections((cur) => ({ ...cur, [question.id]: cur[question.id] === option ? "" : option }));
-                            setWriting((cur) => ({ ...cur, [question.id]: false }));
-                          }}/>
-                      ))}
-                      {writing[question.id] || !options.length ? (
-                        <input
-                          value={options.indexOf(answer) >= 0 ? "" : answer}
-                          onChange={(e) => setSelections((cur) => ({ ...cur, [question.id]: e.target.value }))}
-                          placeholder="Write your answer…"
-                          aria-label="Write your own answer"
-                          style={{
-                            border:"1px solid #000", padding:"7px 9px",
-                            fontFamily:"var(--mac-sans)", fontSize:13, outline:"none",
-                          }}
-                        />
-                      ) : (
-                        <button type="button" onClick={() => setWriting((cur) => ({ ...cur, [question.id]: true }))}
-                          style={{
-                            background:"none", border:"none", padding:0, textAlign:"left", cursor:"pointer",
-                            fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-                          }}>write your own</button>
-                      )}
+                    <article key={question.id} style={{ display:"flex", gap:12 }}>
+                      {asker.owner
+                        ? <TheirAgentAvatar owner={asker.owner} size={30} style={{ marginTop:2 }}/>
+                        : <MyAgentAvatar size={30} style={{ marginTop:2 }}/>}
+                      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:10 }}>
+                        <div>
+                          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:5 }}>
+                            <span style={{
+                              background:"#111", color:"#fff", padding:"2px 6px", borderRadius:3,
+                              fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:600, letterSpacing:"0.05em",
+                            }}>QUESTION</span>
+                            <span style={{
+                              fontFamily:"var(--mac-mono)", fontSize:11, color:"#8f8f88",
+                              textTransform:"uppercase", letterSpacing:"0.05em",
+                            }}>{asker.label}</span>
+                          </div>
+                          <div style={{
+                            maxWidth:"92%", padding:"13px 16px", background:"#fff",
+                            border:"1.5px solid #b9b3a4", borderRadius:"2px 4px 4px 4px",
+                            boxShadow:"0 2px 0 rgba(17,17,17,0.07)",
+                            fontFamily:"var(--mac-sans)", fontSize:15.5, fontWeight:600, lineHeight:1.5, color:"#111",
+                          }}>{question.question}</div>
+                        </div>
+                        {write ? (
+                          <input
+                            autoFocus={!!options.length}
+                            value={own ? answer : ""}
+                            onChange={(e) => setSelections((cur) => ({ ...cur, [question.id]: e.target.value }))}
+                            placeholder="Write your answer…"
+                            aria-label="Write your own answer"
+                            style={{
+                              border:"1.5px solid #b9b3a4", borderRadius:6, padding:"8px 14px",
+                              fontFamily:"var(--mac-sans)", fontSize:13.5, color:"#111", outline:"none",
+                            }}
+                          />
+                        ) : (
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                            {options.map((option) => (
+                              <OptionChip key={option} label={option} selected={answer === option}
+                                onClick={() => setSelections((cur) => ({
+                                  ...cur, [question.id]: cur[question.id] === option ? "" : option,
+                                }))}/>
+                            ))}
+                            <OptionChip write label="write your own"
+                              onClick={() => {
+                                setSelections((cur) => ({ ...cur, [question.id]: "" }));
+                                setWriting((cur) => ({ ...cur, [question.id]: true }));
+                              }}/>
+                          </div>
+                        )}
                       </div>
                     </article>
                   );
                 })}
-                <SignalAction
-                  label={chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}
-                  active={chosen.length > 0 && !sending}
-                  onClick={() => {
-                    if (!chosen.length || sending || !onSendAnswers) return;
-                    setSending(true);
-                    onSendAnswers(chosen.map((q) => ({ questionId: q.id, text: selections[q.id].trim() })), () => {
-                      setSelections({});
-                      setWriting({});
-                      setSending(false);
-                    });
-                  }}
-                />
               </div>
             )}
           </div>
@@ -298,6 +326,9 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
             )}
         </div>
         )}
+        {/* A scrolling flex column drops its own bottom padding once the
+            content overflows, so the gap above the composer is a spacer. */}
+        <div style={{ height:FEED_BOTTOM_SPACER, flex:"0 0 auto" }}/>
       </div>
 
       {!stuck && unread > 0 && (
@@ -313,43 +344,90 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
         }}>↓ {unread} new</button>
       )}
 
-      {onSendAgent && (
+      {questions.length > 0 && (
+        <div style={{
+          borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
+          display:"flex", alignItems:"center", gap:12,
+        }}>
+          <button
+            type="button"
+            disabled={!chosen.length || sending}
+            style={{
+              fontFamily:"var(--mac-mono)", fontSize:12, padding:"8px 18px", borderRadius:6,
+              background: chosen.length && !sending ? "#111" : "#fff",
+              color: chosen.length && !sending ? "#fff" : "#999",
+              border:`1.5px solid ${chosen.length && !sending ? "#111" : "#ddd"}`,
+              cursor: chosen.length && !sending ? "pointer" : "default",
+            }}
+            onClick={() => {
+              if (!chosen.length || sending || !onSendAnswers) return;
+              setSending(true);
+              onSendAnswers(chosen.map((q) => ({ questionId: q.id, text: selections[q.id].trim() })), () => {
+                setSelections({});
+                setWriting({});
+                setSending(false);
+              });
+            }}
+          >{sending ? "sending…" : chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}</button>
+          <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"#8f8f88" }}>
+            {questions.length - chosen.length > 0
+              ? `${questions.length - chosen.length} of ${questions.length} unanswered`
+              : "all answered · ready to send"}
+          </span>
+        </div>
+      )}
+
+      {onSendAgent && questions.length === 0 && (
         <div style={{
           padding:"10px 12px",
           borderTop:"1px solid #000",
-          display:"flex", gap:8, alignItems:"center",
           background:"#fff",
         }}>
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                const text = draft.trim();
-                if (!text || sending) return;
-                setDraft("");
-                setSending(true);
-                onSendAgent(text, () => setSending(false));
-              }
-            }}
-            placeholder="Message your personal agent…"
-            aria-label="Message your personal agent"
-            style={{
-              flex:1, minWidth:0,
-              border:"1px solid #000",
-              padding:"7px 9px",
-              fontFamily:"var(--mac-sans)", fontSize:13,
-              outline:"none", background:"#fff", color:"#000",
-            }}
-          />
-          <SignalAction label={sending ? "sending…" : "send"} onClick={() => {
-            const text = draft.trim();
-            if (!text || sending) return;
-            setDraft("");
-            setSending(true);
-            onSendAgent(text, () => setSending(false));
-          }}/>
+          {/* The send control lives inside the field: one box, and the arrow
+              only lights up when there is something to send. */}
+          <div style={{ position:"relative", display:"flex" }}>
+            <textarea
+              ref={draftRef}
+              rows={1}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              placeholder="Message your personal agent…"
+              aria-label="Message your personal agent"
+              style={{
+                flex:1, minWidth:0, display:"block",
+                maxHeight:COMPOSER_MAX, overflowY:"auto", resize:"none",
+                border:"1px solid #000",
+                padding:"7px 34px 7px 9px",
+                fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
+                outline:"none", background:"#fff", color:"#000",
+              }}
+            />
+            <button
+              type="button"
+              onClick={send}
+              disabled={!draft.trim() || sending}
+              aria-label="Send"
+              title="send"
+              style={{
+                position:"absolute", right:6, bottom:6,
+                display:"grid", placeItems:"center", width:22, height:22,
+                background:"none", border:"none", padding:0, lineHeight:0,
+                color: draft.trim() && !sending ? "#111" : "#b9b3a4",
+                cursor: draft.trim() && !sending ? "pointer" : "default",
+              }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth={2} strokeLinecap="square" strokeLinejoin="miter">
+                <line x1="12" y1="20" x2="12" y2="5"/>
+                <polyline points="5,12 12,5 19,12"/>
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 
@@ -468,31 +546,35 @@ function ProgressLine({ text }) {
 }
 
 function AnsweredQuestion({ item }) {
+  const asker = questionAsker(item);
   return (
-    <article className="fade-up" style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
-      <MyAgentAvatar size={22} style={{ marginTop:2 }}/>
-      <div style={{
-        flex:1, minWidth:0, borderLeft:"2px solid var(--ink-3)", padding:"2px 0 2px 12px",
-        display:"grid", gap:8,
-      }}>
-        <div style={{
-          display:"flex", justifyContent:"space-between", gap:8,
-          fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
-        }}>
-          <span>{questionContext(item)}</span><span>✓ answered</span>
+    <article className="fade-up" style={{ display:"flex", gap:12 }}>
+      {asker.owner
+        ? <TheirAgentAvatar owner={asker.owner} size={30} style={{ marginTop:2 }}/>
+        : <MyAgentAvatar size={30} style={{ marginTop:2 }}/>}
+      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:10 }}>
+        <div>
+          <div style={{
+            display:"flex", gap:8, alignItems:"center", marginBottom:5,
+            fontFamily:"var(--mac-mono)", fontSize:11,
+            textTransform:"uppercase", letterSpacing:"0.05em",
+          }}>
+            <span style={{ color:"#2f7d4f", fontWeight:600 }}>✓ answered</span>
+            <span style={{ color:"#8f8f88" }}>{asker.label}</span>
+          </div>
+          <div style={{
+            maxWidth:"92%", padding:"11px 14px", background:"#fff",
+            border:"1px solid #e2e2dc", borderRadius:"2px 4px 4px 4px",
+            fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55, color:"#2a2a2a",
+          }}>{item.text}</div>
         </div>
-        <div style={{
-          fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:500, lineHeight:1.45,
-        }}>{item.text}</div>
-        <div style={{
-          display:"flex", alignItems:"center", gap:10, border:"1px solid #000",
-          padding:"7px 9px", background:"#000", color:"#fff",
-        }}>
-          <span style={{
-            flex:"0 0 auto", width:18, height:18, display:"grid", placeItems:"center",
-            border:"1px solid #fff", fontFamily:"var(--mac-mono)", fontSize:10,
-          }}>✓</span>
-          <span style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.35 }}>{item.answer}</span>
+        <div style={{ display:"flex", justifyContent:"flex-end" }}>
+          <div style={{
+            maxWidth:"92%", padding:"11px 14px",
+            background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
+            fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
+            wordBreak:"break-word",
+          }}>{item.answer}</div>
         </div>
       </div>
     </article>
@@ -529,33 +611,37 @@ function NegotiationLogGroup({ items }) {
 
 function AgentNote({ item }) {
   return (
-    <div className="fade-up" style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
-      <MyAgentAvatar size={22} style={{ marginTop:2 }}/>
-      <aside style={{
-        flex:1, minWidth:0, padding:"9px 11px", background:"var(--paper-2, #f4f4f0)",
-        borderLeft:"3px double #000",
-      }}>
-        <div style={{
-          marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:9.5,
-          color:"var(--ink-3)", textTransform:"uppercase", letterSpacing:0.6,
-        }}>agent note</div>
-        <div style={{ fontFamily:"var(--mac-sans)", fontSize:13.5, lineHeight:1.45 }}>
-          <AgentMarkdown text={item.text}/>
+    <div className="fade-up" style={{ display:"flex", gap:12 }}>
+      <MyAgentAvatar size={30} style={{ marginTop:2 }}/>
+      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:10 }}>
+        <div>
+          <div style={{
+            marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:11,
+            color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
+          }}>your agent</div>
+          <aside style={{
+            maxWidth:"92%", padding:"11px 14px",
+            background:"#fff", border:"1px solid #e2e2dc", borderRadius:"2px 4px 4px 4px",
+            fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55, color:"#2a2a2a",
+          }}>
+            <AgentMarkdown text={item.text}/>
+          </aside>
         </div>
-      </aside>
+      </div>
     </div>
   );
 }
 
-function questionContext(question) {
+function questionAsker(question) {
   const matches = Array.isArray(question.matches) ? question.matches : [];
-  const names = matches.map((match) => match && match.counterparty && match.counterparty.name).filter(Boolean);
-  if (names.length === 1) {
-    const name = names[0];
-    return `From ${name}${/s$/i.test(name) ? "’" : "’s"} agent`;
+  const people = matches.map((match) => match && match.counterparty).filter((c) => c && c.name);
+  if (people.length === 1) {
+    return { label: agentLabel(people[0].name), owner: { id: people[0].id, name: people[0].name, photo: null } };
   }
-  if (names.length > 1) return `From ${names.join(", ")}’s agents`;
-  return question.scope === "match" ? "From this match’s agent" : "From your agent";
+  if (people.length > 1) {
+    return { label: `${people.map((p) => p.name).join(", ")}’s agents`, owner: null };
+  }
+  return { label: question.scope === "match" ? "this match’s agent" : "your agent", owner: null };
 }
 
 /* =================== CLARIFIER CARD =================== */
@@ -595,11 +681,11 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
         fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
         lineHeight:1.4, color:"#000", letterSpacing:-0.1,
       }}>{question}</div>
-      {/* suggested options as a lettered list, then a write-your-own row that
-          shares the exact same framing, answer however you like */}
-      <div style={{ display:"grid", gap:6 }}>
-        {chips.map((c, i) => (
-          <OptionRow key={c} letter={String.fromCharCode(65 + i)} label={c} onClick={() => onChip && onChip(c)}/>
+      {/* suggested options as chips, then a write-your-own row, answer however
+          you like */}
+      <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+        {chips.map((c) => (
+          <OptionChip key={c} label={c} onClick={() => onChip && onChip(c)}/>
         ))}
         <div style={{
           display:"flex", alignItems:"center", gap:10,
@@ -631,26 +717,26 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
 
 // A single stacked option, letter badge + full-width label, in the same frame
 // as the write-your-own row so every answer choice reads consistently.
-function OptionRow({ letter, label, onClick }) {
+function OptionChip({ label, selected = false, write = false, onClick }) {
   const [hover, setHover] = useState(false);
   return (
     <button onClick={onClick}
+      aria-pressed={write ? undefined : selected}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
-        display:"flex", alignItems:"center", gap:10, textAlign:"left",
-        width:"100%", padding:"7px 9px", cursor:"pointer",
-        border:"1px solid #000",
-        background: hover ? "#000" : "#fff",
-        color: hover ? "#fff" : "#000",
-      }}>
-      <span style={{
-        flex:"0 0 auto", width:18, height:18,
-        display:"grid", placeItems:"center",
-        border:`1px solid ${hover ? "#fff" : "#000"}`,
-        fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
-      }}>{letter}</span>
-      <span style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.35 }}>{label}</span>
-    </button>
+        padding:"8px 14px", borderRadius:6, cursor:"pointer", textAlign:"left",
+        ...(write ? {
+          background:"transparent",
+          border:`1.5px dashed ${hover ? "#111" : "#b9b3a4"}`,
+          color: hover ? "#111" : "#8a8577",
+          fontFamily:"var(--mac-mono)", fontSize:12,
+        } : {
+          background: selected ? "#111" : "#fff",
+          border:`1.5px solid ${selected || hover ? "#111" : "#b9b3a4"}`,
+          color: selected ? "#fff" : "#111",
+          fontFamily:"var(--mac-sans)", fontSize:13.5,
+        }),
+      }}>{label}</button>
   );
 }
 
@@ -866,12 +952,9 @@ function UserLine({ children }) {
   return (
     <div className="fade-up own-md" style={{ display:"flex", justifyContent:"flex-end" }}>
       <div style={{
-        maxWidth:"78%",
-        background:"#000", color:"#fff",
-        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
-        padding:"8px 12px",
-        border:"1px solid #000",
-        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+        maxWidth:"92%", padding:"11px 14px",
+        background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
+        fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
         wordBreak:"break-word",
       }}><AgentMarkdown text={children}/></div>
     </div>
