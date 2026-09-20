@@ -73,7 +73,7 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 999px;
+  border-radius: 3px;
   overflow: hidden;
 }
 
@@ -209,10 +209,124 @@
 /* Medium footprint for the SDK action buttons (no native `md` size). Used by
    the opportunity actions. Two-class selector outranks the SDK's single
    utility classes. */
+/* Row actions, not page actions: the host's button floor makes them stand as
+   tall as the card they sit in. */
 .index-dashboard .index-dashboard__btn-md {
-  padding: 0.5rem 1rem;
+  min-height: 1.9rem;
+  padding: 0.35rem 0.85rem;
   font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
   letter-spacing: 0.12em;
+  border: 1px solid var(--color-foreground, #f8fafc);
+}
+
+/* Accept is the one filled thing on a radar row; pass is the same box, empty.
+   Ink, not the host accent: the accent is whatever colour the current Hermes
+   theme happens to be, and this row is black and white like the rest. */
+.index-dashboard .index-dashboard__opp-btns > button:first-child {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+
+.index-dashboard[data-scheme="dark"] .index-dashboard__opp-btns > button:first-child {
+  background: #f4f4f5;
+  border-color: #f4f4f5;
+  color: #111;
+}
+
+.index-dashboard .index-dashboard__opp-btns > button:last-child {
+  background: transparent;
+  color: var(--color-foreground, #f8fafc);
+}
+
+/* The status you can open: same box as the actions beside it, with the state
+   in front of the word and the way in after it. */
+.index-dashboard__opp-negotiating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 1.9rem;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--color-foreground, #f8fafc);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-foreground, #f8fafc);
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.index-dashboard__opp-negotiating:hover {
+  background: color-mix(in srgb, var(--color-foreground, #f8fafc) 8%, transparent);
+}
+
+/* The one warm mark on the row: something is live on this match. */
+.index-dashboard__opp-negotiating-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--ui-yellow, #d97706);
+}
+
+.index-dashboard__opp-negotiating-chev {
+  opacity: 0.6;
+}
+
+/* The A2A transcript: one turn per block, the owner's agent on the right. */
+.index-dashboard__nego-modal {
+  max-width: 38rem;
+}
+
+.index-dashboard__nego-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  max-height: 60vh;
+  padding: 1.25rem 1.75rem;
+  overflow-y: auto;
+}
+
+.index-dashboard__nego-turn--mine {
+  align-self: flex-end;
+  max-width: 85%;
+  text-align: right;
+}
+
+.index-dashboard__nego-who {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.3rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__nego-turn--mine .index-dashboard__nego-who {
+  justify-content: flex-end;
+}
+
+.index-dashboard__nego-action {
+  padding: 0.05rem 0.3rem;
+  background: #111;
+  color: #fff;
+}
+
+.index-dashboard[data-scheme="dark"] .index-dashboard__nego-action {
+  background: #f4f4f5;
+  color: #111;
+}
+
+.index-dashboard__nego-text {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
 }
 
 .index-dashboard__opp-openchat {
@@ -1088,7 +1202,7 @@
   flex-shrink: 0;
   width: 1.75rem;
   height: 1.75rem;
-  border-radius: 999px;
+  border-radius: 3px;
   object-fit: cover;
 }
 
@@ -1183,7 +1297,7 @@
   display: block;
   width: 4.5rem;
   height: 4.5rem;
-  border-radius: 999px;
+  border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
   border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
@@ -1412,7 +1526,7 @@
   width: 40px;
   height: 40px;
   flex-shrink: 0;
-  border-radius: 999px;
+  border-radius: 3px;
   overflow: hidden;
 }
 
@@ -1508,7 +1622,7 @@
 /* An intent something is waiting on carries a green edge and a lit dot; the
    rest stay quiet. */
 .index-dashboard__intent-row--matched {
-  border-color: color-mix(in srgb, var(--color-success, #3d9a5b) 35%, transparent);
+  border-color: color-mix(in srgb, var(--color-success, #3d9a5b) 55%, transparent);
 }
 
 .index-dashboard__intent-row:hover {
@@ -1539,8 +1653,22 @@
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
-.index-dashboard__intent-row--matched .index-dashboard__intent-matches {
-  color: var(--color-success, #3d9a5b);
+/* What is waiting on you is the loudest thing on the row: a filled count, not
+   a tinted word that reads as another line of meta. */
+.index-dashboard__intent-count {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.375rem;
+  padding: 0.15rem 0.35rem;
+  background: var(--color-success, #3d9a5b);
+  color: #fff;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .index-dashboard__intent-chevron {
@@ -3064,7 +3192,7 @@
   align-items: center;
   gap: 0.625rem;
   margin: 0.875rem 1.5rem;
-  padding: 0.5625rem 0.5625rem 0.5625rem 0.875rem;
+  padding: 0.375rem 0.375rem 0.375rem 0.875rem;
   border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
   border-radius: 2px;
   background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
@@ -3079,6 +3207,21 @@
   border-radius: 0;
   background: transparent;
   font-size: 0.84rem;
+}
+
+/* The signal's own composer runs the width of the feed above it, which has no
+   side padding of its own. */
+.index-dashboard__agent-composer {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* The send key is the field's own height, so the composer is one row rather
+   than a button with a field beside it. */
+.index-dashboard .index-dashboard__msg-composer > button {
+  min-height: 2rem;
+  padding: 0.35rem 0.9rem;
+  line-height: 1.2;
 }
 
 .index-dashboard__msg-send {
@@ -3131,71 +3274,249 @@
 /* The intent's H2A chat: the transcript grows and scrolls, the question cards
    and the composer below it stay put. */
 .index-dashboard__agent-thread {
-  max-height: 18rem;
+  max-height: 30rem;
   min-height: 6rem;
+  gap: 1.75rem;
   padding-left: 0;
   padding-right: 0;
 }
 
-.index-dashboard__agent-questions {
+/* The agent's working notes — briefs, decisions, stalls — folded into one box,
+   so the thread carries what it is telling you and the reasoning is a click
+   down. */
+.index-dashboard__agent-log {
+  border: 1px solid color-mix(in srgb, var(--color-foreground, #f8fafc) 35%, transparent);
+  background: transparent;
+}
+
+/* A thing you open, so it carries the page's ink and answers the pointer. */
+.index-dashboard__agent-log-head {
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  list-style-position: inside;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--color-foreground, var(--color-card-foreground, inherit));
+}
+
+.index-dashboard__agent-log-head:hover {
+  background: color-mix(in srgb, var(--color-foreground, #f8fafc) 6%, transparent);
+}
+
+.index-dashboard__agent-log-row {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.6rem 0.75rem;
+  border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  color: var(--color-card-foreground, inherit);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.index-dashboard__agent-log-who {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+/* The answer action sits over the feed, right above the composer, so it stays
+   reachable however far the thread has scrolled. */
+.index-dashboard__agent-send {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.625rem 0;
+  border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  background: var(--color-card, var(--background-base, #041c1c));
+}
+
+/* Its own metric, tighter than an option: this is the action, not an answer. */
+.index-dashboard .index-dashboard__agent-send > button {
+  min-height: 2.25rem;
+  padding: 0.45rem 1rem;
+}
+
+/* An agent turn: its face, then who spoke over what they said. Questions and
+   plain notes share the shape, so a question reads as part of the conversation
+   rather than a card dropped into it. */
+.index-dashboard__agent-line {
+  display: flex;
+  align-items: flex-start;
+}
+
+.index-dashboard__agent-line-body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 0.75rem;
+  flex: 1;
+  min-width: 0;
+  color: var(--color-foreground, var(--color-card-foreground, inherit));
+  font-size: 0.9rem;
+  line-height: 1.55;
+  word-break: break-word;
 }
 
-.index-dashboard__agent-q {
+/* The host's theme foreground can be a mid tone (a tinted theme puts one
+   there). What the agent says is body text, so it takes the page's own ink:
+   black by default, flipped only where the dashboard resolved a dark scheme.
+   The markdown blocks are named too, so nothing inside re-colours itself. */
+.index-dashboard .index-dashboard__agent-line-body,
+.index-dashboard .index-dashboard__agent-line-body .index-dashboard__md,
+.index-dashboard .index-dashboard__agent-line-body p,
+.index-dashboard .index-dashboard__agent-line-body li {
+  color: #111;
+}
+
+.index-dashboard[data-scheme="dark"] .index-dashboard__agent-line-body,
+.index-dashboard[data-scheme="dark"] .index-dashboard__agent-line-body .index-dashboard__md,
+.index-dashboard[data-scheme="dark"] .index-dashboard__agent-line-body p,
+.index-dashboard[data-scheme="dark"] .index-dashboard__agent-line-body li {
+  color: #f4f4f5;
+}
+
+.index-dashboard__agent-line-head {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  border: 1px solid color-mix(in srgb, var(--color-primary, #4fd1c5) 45%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 8%, transparent);
+  align-items: center;
+  gap: 0.45rem;
 }
 
-.index-dashboard__agent-q-text {
-  margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.35;
-  white-space: pre-wrap;
+/* The one filled mark in the thread: a question is the only turn that waits
+   on the owner. */
+.index-dashboard__agent-tag {
+  padding: 0.1rem 0.35rem;
+  background: var(--color-foreground, #f8fafc);
+  color: var(--color-background, #041c1c);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.index-dashboard__agent-q-write {
-  align-self: flex-start;
+.index-dashboard__agent-who {
   padding: 0;
   border: none;
   background: none;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font: inherit;
-  font-size: 0.75rem;
-  text-decoration: underline;
-  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.index-dashboard__agent-refs {
+.index-dashboard__agent-who--link {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* The owner's own words keep the thread's bubble, on their side of it. */
+.index-dashboard__agent-mine {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.index-dashboard__agent-mine .index-dashboard__msg-bubble {
+  max-width: 85%;
+}
+
+/* Your own words wear ink, not the success green the messages panel uses: in
+   this thread green means a match, not a sender. Black bubble, white text, in
+   either scheme — a dark page gets a lighter edge so the bubble still has a
+   shape. */
+.index-dashboard .index-dashboard__agent-mine .index-dashboard__msg-bubble--mine,
+.index-dashboard .index-dashboard__agent-mine .index-dashboard__msg-bubble--mine * {
+  color: #fff;
+}
+
+.index-dashboard .index-dashboard__agent-mine .index-dashboard__msg-bubble--mine {
+  border-color: #111;
+  background: #111;
+}
+
+.index-dashboard[data-scheme="dark"] .index-dashboard__agent-mine .index-dashboard__msg-bubble--mine {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+/* What the agent says, in the weight of something waiting on an answer, and in
+   the page's full-strength ink rather than the thread's inherited tone. */
+.index-dashboard__agent-q-text {
+  margin: 0;
+  font-weight: 600;
+  white-space: pre-wrap;
+}
+
+.index-dashboard__agent-q-options {
   display: flex;
   flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+/* An answer reads in the face of the question it answers, not in the button
+   face the rest of the page uses for actions. */
+.index-dashboard .index-dashboard__agent-q-options > button {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* Chip and field are one box: opening the field must not move the row. Both
+   wear the option buttons' edge and ink, so writing your own never reads as
+   the disabled choice next to them. */
+.index-dashboard .index-dashboard__agent-q-options > button,
+.index-dashboard__agent-q-write,
+.index-dashboard .index-dashboard__agent-q-input {
+  box-sizing: border-box;
+  display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.7rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0;
+  line-height: 1.3;
 }
 
-.index-dashboard__agent-scope {
-  opacity: 0.7;
+.index-dashboard__agent-q-write,
+.index-dashboard .index-dashboard__agent-q-input {
+  border: 1px solid var(--color-foreground, var(--color-border, rgba(148, 163, 184, 0.24)));
+  background: transparent;
+  color: var(--color-foreground, var(--color-card-foreground, inherit));
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
 }
 
-.index-dashboard__agent-ref {
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-size: 0.7rem;
-}
-
-.index-dashboard__agent-ref--link {
-  text-decoration: underline;
+/* The chip carries the options' edge but says its own thing in a quieter ink,
+   the way the field it opens will read. */
+.index-dashboard__agent-q-write {
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
   cursor: pointer;
+}
+
+.index-dashboard__agent-q-write:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-foreground, #f8fafc) 8%, transparent);
+}
+
+/* Its own line under the options: the chip sits at the start of it, and the
+   field it opens takes the whole line. */
+.index-dashboard__agent-q-write-row {
+  display: flex;
+}
+
+.index-dashboard .index-dashboard__agent-q-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  outline: none;
+}
+
+.index-dashboard .index-dashboard__agent-q-input::placeholder {
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
 /* Private-network invite join (hermes://l/<code> / #invite=). */

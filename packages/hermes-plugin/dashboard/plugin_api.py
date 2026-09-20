@@ -2017,6 +2017,51 @@ def opportunity_counterpart(opportunity_id: str) -> dict[str, Any]:
     return {"success": True, "userId": counterpart_id}
 
 
+@full_router.get("/opportunities/{opportunity_id}/negotiation")
+def opportunity_negotiation(opportunity_id: str) -> dict[str, Any]:
+    """The A2A transcript behind a match: each turn, its action, and who took it.
+
+    A negotiating row says only that two agents are talking; this is what they
+    said, so the owner can read it before accepting or passing.
+    """
+    opportunity_id = _text(opportunity_id)
+    if not opportunity_id:
+        return {"success": False, "error": "An opportunity id is required."}
+    current_user_id = _resolve_user_id()
+    payload = tools._api_request(
+        "GET",
+        f"/opportunities/{quote(opportunity_id, safe='')}/negotiation",
+    )
+    if payload.get("success") is False:
+        return payload
+    negotiation = payload.get("negotiation") if isinstance(payload.get("negotiation"), dict) else {}
+    counterparty = negotiation.get("counterparty")
+    counterparty = counterparty if isinstance(counterparty, dict) else {}
+    name = _text(counterparty.get("name"), "Match")
+    turns: list[dict[str, Any]] = []
+    for turn in _list(negotiation.get("turns")):
+        if not isinstance(turn, dict):
+            continue
+        seat = _text(turn.get("seatUserId"))
+        mine = bool(current_user_id) and seat == current_user_id
+        turns.append({
+            "id": _text(turn.get("id")),
+            "mine": mine,
+            "name": "your agent" if mine else f"{name}'s agent",
+            "action": _text(turn.get("action")),
+            "text": _text(turn.get("message")),
+            "createdAt": _text(turn.get("createdAt")),
+        })
+    return {
+        "success": True,
+        "negotiation": {
+            "name": name,
+            "status": _text(negotiation.get("status")),
+            "turns": turns,
+        },
+    }
+
+
 @full_router.get("/agent/conversation")
 def agent_conversation(intentId: str = "") -> dict[str, Any]:
     """Return this signal's H2A transcript and the questions still waiting on the owner."""

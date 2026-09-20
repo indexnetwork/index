@@ -7,7 +7,10 @@
   --background-base: var(--ui-bg-editor);
   --color-card: var(--ui-bg-elevated);
   --color-card-foreground: var(--ui-text-primary);
-  --color-foreground: var(--ui-text-primary);
+  /* The host's text tokens are its ink at 94/74/54% alpha. Full-strength
+     foreground is the ink itself, so a message reads as solid as the page it
+     sits on instead of washed into it. */
+  --color-foreground: var(--ui-base, var(--ui-text-primary));
   --color-muted-foreground: var(--ui-text-tertiary);
   --color-border: var(--ui-stroke-secondary);
   --color-primary: var(--ui-accent);

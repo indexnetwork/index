@@ -1114,9 +1114,21 @@
         // the card is actionable, otherwise the status label — never both.
         actionButtons
           ? React.createElement("div", { className: "index-dashboard__opp-btns" }, actionButtons)
-          : resolved
-            ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
-            : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
+          // A negotiating row is the only status you can open: the two agents
+          // are mid-conversation and it is readable.
+          : props.onOpenNegotiation && bucketForStatus(status) === "negotiating"
+            ? React.createElement("button", {
+              type: "button",
+              className: "index-dashboard__opp-negotiating",
+              onClick: function () { props.onOpenNegotiation(opportunity); },
+            },
+              React.createElement("span", { className: "index-dashboard__opp-negotiating-dot", "aria-hidden": "true" }),
+              "negotiating",
+              React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"),
+            )
+            : resolved
+              ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
+              : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
       ),
       opportunity.mainText ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText) : null,
     );
@@ -1136,6 +1148,7 @@
           key: opportunity.opportunityId || String(index),
           opportunity: opportunity,
           onOpenUser: props.onOpenUser,
+          onOpenNegotiation: props.onOpenNegotiation,
           onAccept: props.onAccept,
           onSkip: props.onSkip,
           onStartChat: props.onStartChat,
@@ -1158,15 +1171,20 @@
       React.createElement("span", { className: "index-dashboard__intent-dot", "aria-hidden": "true" }),
       React.createElement("div", { className: "index-dashboard__intent-main" },
         React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
-        React.createElement("div", { className: "index-dashboard__intent-meta" },
-          React.createElement("span", { className: "index-dashboard__intent-matches" },
-            matches ? (matches === 1 ? "1 match" : matches + " matches") : "no matches yet",
-          ),
-          intent.status === "paused"
-            ? React.createElement("span", { className: "index-dashboard__intent-meta-item" }, "paused")
-            : null,
-        ),
+        // Quiet states only: what is waiting rides the count tag instead.
+        !matches || intent.status === "paused"
+          ? React.createElement("div", { className: "index-dashboard__intent-meta" },
+            matches ? null : React.createElement("span", null, "no matches yet"),
+            intent.status === "paused" ? React.createElement("span", null, "paused") : null,
+          )
+          : null,
       ),
+      matches
+        ? React.createElement("span", {
+          className: "index-dashboard__intent-count",
+          "aria-label": matches === 1 ? "1 match waiting" : matches + " matches waiting",
+        }, String(matches))
+        : null,
       React.createElement("span", { className: "index-dashboard__intent-chevron", "aria-hidden": "true" }, "\u203A"),
     );
   }
@@ -2393,28 +2411,89 @@
     );
   }
 
-  /** The chips naming what an entry applies to: this intent, or particular matches. */
-  function AgentRefs(props) {
-    const matches = Array.isArray(props.matches) ? props.matches : [];
-    if (!props.scope && !matches.length) return null;
-    return React.createElement("div", { className: "index-dashboard__agent-refs" },
-      props.scope
-        ? React.createElement("span", { className: "index-dashboard__agent-scope" },
-          props.scope === "match" ? "For this match" : "For this intent")
-        : null,
-      matches.map(function (match) {
-        const counterparty = match.counterparty || {};
-        const name = counterparty.name || "View match";
-        if (!props.onOpenUser || !counterparty.id) {
-          return React.createElement("span", { key: match.opportunityId || name, className: "index-dashboard__agent-ref" }, name);
-        }
-        return React.createElement("button", {
-          key: match.opportunityId || name,
-          type: "button",
-          className: "index-dashboard__agent-ref index-dashboard__agent-ref--link",
-          onClick: function () { props.onOpenUser(counterparty.id); },
-        }, name);
+  /**
+   * Whose agent is speaking. One named counterparty puts their name on the
+   * turn, several share one line, and anything else is the owner's own agent.
+   */
+  function agentSpeaker(source) {
+    const matches = Array.isArray(source.matches) ? source.matches : [];
+    const people = matches
+      .map(function (match) { return match && match.counterparty; })
+      .filter(function (person) { return person && person.name; });
+    if (people.length === 1) {
+      return { label: people[0].name + "\u2019s agent", id: people[0].id || "" };
+    }
+    if (people.length > 1) {
+      return {
+        label: people.map(function (person) { return person.name; }).join(", ") + "\u2019s agents",
+        id: "",
+      };
+    }
+    return { label: source.scope === "match" ? "this match\u2019s agent" : "your agent", id: "" };
+  }
+
+  // What the agent writes down as it works, rather than something it is telling
+  // the owner. The API marks each one with its own opening word.
+  const AGENT_LOG_PREFIXES = ["Brief: ", "Decision: ", "Progress: ", "Stall: "];
+
+  /** A working note and its kind, or null when the agent is speaking to you. */
+  function agentLogEntry(text) {
+    for (let i = 0; i < AGENT_LOG_PREFIXES.length; i++) {
+      const prefix = AGENT_LOG_PREFIXES[i];
+      if (text.indexOf(prefix) === 0) {
+        return { kind: prefix.slice(0, -2).toLowerCase(), text: text.slice(prefix.length) };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The working notes of one stretch of the conversation, folded away: the
+   * thread carries what the agent is telling you, and the reasoning behind it
+   * is one click down.
+   */
+  function AgentLog(props) {
+    const items = props.items;
+    return React.createElement("details", { className: "index-dashboard__agent-log" },
+      React.createElement("summary", { className: "index-dashboard__agent-log-head" },
+        "negotiation log \u00b7 " + items.length + (items.length === 1 ? " entry" : " entries"),
+      ),
+      items.map(function (item) {
+        return React.createElement("div", { key: item.id, className: "index-dashboard__agent-log-row" },
+          React.createElement("span", { className: "index-dashboard__agent-log-who" },
+            item.who ? item.who + " \u00b7 " + item.kind : item.kind),
+          React.createElement(Markdown, { text: item.text }),
+        );
       }),
+    );
+  }
+
+  /**
+   * One agent turn: who spoke, then what they said. Questions and plain notes
+   * share it, so a question reads as the same conversation rather than a card
+   * dropped into it.
+   */
+  function AgentLine(props) {
+    const speaker = props.speaker;
+    const openUser = props.onOpenUser && speaker.id
+      ? function () { props.onOpenUser(speaker.id); }
+      : null;
+    return React.createElement("div", { className: "index-dashboard__agent-line" },
+      React.createElement("div", { className: "index-dashboard__agent-line-body" },
+        React.createElement("div", { className: "index-dashboard__agent-line-head" },
+          props.tag
+            ? React.createElement("span", { className: "index-dashboard__agent-tag" }, props.tag)
+            : null,
+          openUser
+            ? React.createElement("button", {
+              type: "button",
+              className: "index-dashboard__agent-who index-dashboard__agent-who--link",
+              onClick: openUser,
+            }, speaker.label)
+            : React.createElement("span", { className: "index-dashboard__agent-who" }, speaker.label),
+        ),
+        props.children,
+      ),
     );
   }
 
@@ -2524,6 +2603,78 @@
   }
 
   /**
+   * What the two agents said to each other about one match.
+   *
+   * The radar row says they are negotiating; this is the negotiation. Read
+   * only — turns are the agents' to take, not the owner's.
+   */
+  function NegotiationModal(props) {
+    const dataState = React.useState(null);
+    const data = dataState[0];
+    const setData = dataState[1];
+    const errState = React.useState(null);
+    const err = errState[0];
+    const setErr = errState[1];
+    const opportunityId = props.opportunity.opportunityId;
+
+    React.useEffect(function () {
+      let alive = true;
+      setData(null);
+      setErr(null);
+      fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(opportunityId) + "/negotiation")
+        .then(function (payload) {
+          if (!alive) return;
+          if (!payload || payload.success === false) {
+            setErr((payload && payload.error) || "Could not read this negotiation.");
+            return;
+          }
+          setData(payload.negotiation || { turns: [] });
+        })
+        .catch(function () { if (alive) setErr("Could not read this negotiation."); });
+      return function () { alive = false; };
+    }, [opportunityId]);
+
+    const turns = (data && Array.isArray(data.turns)) ? data.turns : [];
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", {
+        className: "index-dashboard__profile-panel index-dashboard__nego-modal",
+        onClick: function (e) { e.stopPropagation(); },
+      },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" },
+            "your agent \u2194 " + ((data && data.name) || props.opportunity.name || "match") + "\u2019s agent"),
+          React.createElement("button", {
+            type: "button",
+            className: "index-dashboard__profile-close",
+            "aria-label": "Close",
+            onClick: props.onClose,
+          }, "\u00d7"),
+        ),
+        React.createElement("div", { className: "index-dashboard__nego-body" },
+          err
+            ? React.createElement("div", { className: "index-dashboard__error" }, err)
+            : !data
+              ? React.createElement(EmptyState, null, "Reading the negotiation\u2026")
+              : turns.length
+                ? turns.map(function (turn) {
+                  return React.createElement("div", {
+                    key: turn.id,
+                    className: "index-dashboard__nego-turn" + (turn.mine ? " index-dashboard__nego-turn--mine" : ""),
+                  },
+                    React.createElement("div", { className: "index-dashboard__nego-who" },
+                      React.createElement("span", { className: "index-dashboard__nego-name" }, turn.name),
+                      React.createElement("span", { className: "index-dashboard__nego-action" }, turn.action),
+                    ),
+                    React.createElement("p", { className: "index-dashboard__nego-text" }, turn.text),
+                  );
+                })
+                : React.createElement(EmptyState, null, "No turns yet \u2014 the agents have not spoken."),
+        ),
+      ),
+    );
+  }
+
+  /**
    * This intent's H2A conversation with the owner's personal agent.
    *
    * Lives in the signal pane, next to the radar. Transcript, questions still
@@ -2590,8 +2741,10 @@
     }, [intentId]);
 
     const questions = (agent && Array.isArray(agent.questions)) ? agent.questions : [];
+    // Keyed by id so the transcript can render each pending question where it
+    // was asked rather than dropping the message and stacking the cards last.
     const carded = {};
-    for (let i = 0; i < questions.length; i++) carded[questions[i].id] = true;
+    for (let i = 0; i < questions.length; i++) carded[questions[i].id] = questions[i];
     const chosen = questions.filter(function (question) {
       const answer = selections[question.id];
       return typeof answer === "string" && answer.trim();
@@ -2653,93 +2806,162 @@
       });
     }
 
+    // A question is a turn like any other, rendered where the agent asked it,
+    // so anything you said afterwards still reads as the reply it was.
+    function questionCard(question) {
+      const options = Array.isArray(question.options) ? question.options : [];
+      const answer = selections[question.id] || "";
+      const own = options.indexOf(answer) < 0 && answer;
+      const write = writing[question.id] || !options.length;
+      function stopWriting() {
+        setWriting(function (current) {
+          const next = Object.assign({}, current);
+          next[question.id] = false;
+          return next;
+        });
+      }
+      return React.createElement(AgentLine, {
+        key: question.id,
+        tag: "question",
+        speaker: agentSpeaker(question),
+        onOpenUser: props.onOpenUser,
+      },
+        React.createElement("p", { className: "index-dashboard__agent-q-text" }, question.question),
+        options.length
+          ? React.createElement("div", { className: "index-dashboard__agent-q-options" },
+            options.map(function (option) {
+              return React.createElement(Button, {
+                key: option,
+                type: "button",
+                outlined: answer !== option,
+                disabled: sending,
+                "aria-pressed": answer === option ? "true" : "false",
+                onClick: function () { choose(question.id, option); },
+              }, option);
+            }),
+          )
+          : null,
+        // Writing your own is its own line under the options, and the field
+        // takes the chip's place there, wearing the same box.
+        React.createElement("div", { className: "index-dashboard__agent-q-write-row" },
+          write
+            ? React.createElement("input", {
+              className: "index-dashboard__agent-q-input",
+              autoFocus: !!options.length,
+              value: own ? answer : "",
+              placeholder: "write your own",
+              "aria-label": "Write your own answer",
+              disabled: sending,
+              onChange: function (e) {
+                const text = e.target.value;
+                setSelections(function (current) {
+                  const next = Object.assign({}, current);
+                  next[question.id] = text;
+                  return next;
+                });
+              },
+              onBlur: function (e) { if (options.length && !e.target.value.trim()) stopWriting(); },
+              onKeyDown: function (e) {
+                if (e.key === "Escape" && options.length && !e.target.value.trim()) stopWriting();
+              },
+            })
+            : React.createElement("button", {
+              type: "button",
+              className: "index-dashboard__agent-q-write",
+              disabled: sending,
+              onClick: function () {
+                setSelections(function (current) {
+                  const next = Object.assign({}, current);
+                  next[question.id] = "";
+                  return next;
+                });
+                setWriting(function (current) {
+                  const next = Object.assign({}, current);
+                  next[question.id] = true;
+                  return next;
+                });
+              },
+            }, "write your own"),
+        ),
+      );
+    }
+
     const bubbles = [];
+    // Questions the transcript carries are drawn in place; the rest close the
+    // feed.
+    const placed = {};
+    // Working notes fold into the log that runs with them, so a stretch of
+    // reasoning stays one box in the thread instead of a dozen turns.
+    let log = null;
+    function closeLog() {
+      if (!log) return;
+      bubbles.push(React.createElement(AgentLog, { key: "log-" + log[0].id, items: log }));
+      log = null;
+    }
     for (let i = 0; i < messages.length; i++) {
       const raw = messages[i];
       const content = extractContent(raw.parts);
       const provenance = (raw.metadata && raw.metadata.principalMessage) || {};
       if (!content.text) continue;
-      if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) continue;
-      const mine = raw.role === "user";
-      bubbles.push(React.createElement("div", {
+      if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) {
+        closeLog();
+        placed[provenance.questionId] = true;
+        bubbles.push(questionCard(carded[provenance.questionId]));
+        continue;
+      }
+      if (raw.role === "user") {
+        closeLog();
+        bubbles.push(React.createElement("div", { key: raw.id, className: "index-dashboard__agent-mine" },
+          React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" },
+            React.createElement(Markdown, { text: content.text }),
+          ),
+        ));
+        continue;
+      }
+      const entry = agentLogEntry(content.text);
+      if (entry) {
+        const match = Array.isArray(provenance.matches) ? provenance.matches[0] : null;
+        log = log || [];
+        log.push({
+          id: raw.id,
+          kind: entry.kind,
+          text: entry.text,
+          who: (match && match.counterparty && match.counterparty.name) || "",
+        });
+        continue;
+      }
+      closeLog();
+      bubbles.push(React.createElement(AgentLine, {
         key: raw.id,
-        className: "index-dashboard__msg-bubble" + (mine ? " index-dashboard__msg-bubble--mine" : ""),
-      },
-        React.createElement(AgentRefs, { scope: provenance.scope, matches: provenance.matches, onOpenUser: props.onOpenUser }),
-        React.createElement(Markdown, { text: content.text }),
-      ));
+        speaker: agentSpeaker(provenance),
+        onOpenUser: props.onOpenUser,
+      }, React.createElement(Markdown, { text: content.text })));
     }
+    closeLog();
+
+    const feed = bubbles.concat(questions.filter(function (question) {
+      return !placed[question.id];
+    }).map(questionCard));
 
     return React.createElement("div", { ref: rootRef, className: "index-dashboard__agent-chat" },
-      React.createElement("p", { className: "index-dashboard__card-description" },
-        agent ? "Your inbox for this signal." : "Loading your agent conversation…",
-      ),
       React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef },
-        bubbles.length
-          ? bubbles
+        feed.length
+          ? feed
           : React.createElement(EmptyState, null, "Ask about your matches, share a preference, or give your agent direction for this signal."),
       ),
-      questions.length
-        ? React.createElement("div", { className: "index-dashboard__agent-questions" },
-          questions.map(function (question) {
-            const options = Array.isArray(question.options) ? question.options : [];
-            const answer = selections[question.id] || "";
-            return React.createElement("article", { key: question.id, className: "index-dashboard__agent-q" },
-              React.createElement(AgentRefs, { scope: question.scope, matches: question.matches, onOpenUser: props.onOpenUser }),
-              React.createElement("p", { className: "index-dashboard__agent-q-text" }, question.question),
-              options.length
-                ? React.createElement("div", { className: "index-dashboard__action-group" },
-                  options.map(function (option) {
-                    return React.createElement(Button, {
-                      key: option,
-                      type: "button",
-                      outlined: answer !== option,
-                      disabled: sending,
-                      "aria-pressed": answer === option ? "true" : "false",
-                      onClick: function () { choose(question.id, option); },
-                    }, option);
-                  }),
-                )
-                : null,
-              writing[question.id] || !options.length
-                ? React.createElement("textarea", {
-                  className: "index-dashboard__textarea index-dashboard__msg-input",
-                  rows: 1,
-                  value: options.indexOf(answer) >= 0 ? "" : answer,
-                  placeholder: "Write your answer…",
-                  "aria-label": "Write your own answer",
-                  disabled: sending,
-                  onChange: function (e) {
-                    const text = e.target.value;
-                    setSelections(function (current) {
-                      const next = Object.assign({}, current);
-                      next[question.id] = text;
-                      return next;
-                    });
-                  },
-                })
-                : React.createElement("button", {
-                  type: "button",
-                  className: "index-dashboard__agent-q-write",
-                  disabled: sending,
-                  onClick: function () {
-                    setWriting(function (current) {
-                      const next = Object.assign({}, current);
-                      next[question.id] = true;
-                      return next;
-                    });
-                  },
-                }, "write your own"),
-            );
-          }),
+      // The answer action rides above the composer rather than scrolling away
+      // with the question it belongs to, and only once there is an answer to
+      // send: a dead button is one more thing to read past.
+      chosen.length
+        ? React.createElement("div", { className: "index-dashboard__agent-send" },
           React.createElement(Button, {
             type: "button",
-            disabled: !chosen.length || sending,
+            disabled: sending,
             onClick: sendAnswers,
-          }, chosen.length > 1 ? "Send " + chosen.length + " answers" : "Send answer"),
+          }, chosen.length > 1 ? "send " + chosen.length + " answers" : "send answer"),
         )
         : null,
-      React.createElement("div", { className: "index-dashboard__msg-composer" },
+      React.createElement("div", { className: "index-dashboard__msg-composer index-dashboard__agent-composer" },
         React.createElement("textarea", {
           className: "index-dashboard__textarea index-dashboard__msg-input",
           rows: 1,
@@ -2836,7 +3058,7 @@
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
           radarLoading && !allOpps.length
             ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
-            : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
+            : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onOpenNegotiation: props.onOpenNegotiation, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -4284,6 +4506,10 @@
     const profileOpenState = useState(!!initial.profileOpen);
     const profileOpen = profileOpenState[0];
     const setProfileOpen = profileOpenState[1];
+    // The radar row whose negotiation is open, if any.
+    const negotiationState = useState(null);
+    const negotiation = negotiationState[0];
+    const setNegotiation = negotiationState[1];
     const viewUserState = useState(initial.viewUserId || null);
     const viewUserId = viewUserState[0];
     const setViewUserId = viewUserState[1];
@@ -4896,7 +5122,7 @@
       : null;
 
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
@@ -4951,6 +5177,12 @@
           onRefresh: function () { if (loadRef.current) loadRef.current(); },
           onMessages: function () { if (openMessagesRef.current) openMessagesRef.current(null); },
           onAccount: function () { if (toggleProfileRef.current) toggleProfileRef.current(); },
+        })
+        : null,
+      negotiation
+        ? React.createElement(NegotiationModal, {
+          opportunity: negotiation,
+          onClose: function () { setNegotiation(null); },
         })
         : null,
       viewUserId
