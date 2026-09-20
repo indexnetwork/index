@@ -19,6 +19,14 @@ export interface Intent {
 
 export type NegotiationAction = "propose" | "counter" | "accept" | "decline";
 
+export interface NegotiationTurn {
+  turnIndex: number;
+  actor: "you" | "counterpart";
+  action: NegotiationAction;
+  message: string;
+  createdAt: string;
+}
+
 /** A one-shot instruction the next negotiator run must carry out. */
 export type Decision = "continue" | "accept" | "decline" | "stop";
 
@@ -42,12 +50,14 @@ export interface Opportunity {
   counterpart: string;
   status: string;
   awaiting?: string;
-  turns?: string;
+  turnCount?: number;
+  turns?: NegotiationTurn[];
+  maxTurns?: number;
+  remainingTurns?: number;
   /** What this seat may do right now. Constrains `submit_turn`. */
   actions?: NegotiationAction[];
   intent?: { statement: string };
   why?: string;
-  terms?: string;
   brief?: string;
   decision?: Decision;
   /** Why the last negotiator run stopped without a turn. */
