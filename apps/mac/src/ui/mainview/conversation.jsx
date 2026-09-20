@@ -260,12 +260,11 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
                               textTransform:"uppercase", letterSpacing:"0.05em",
                             }}>{asker.label}</span>
                           </div>
+                          {/* The question reads as the agent speaking, so it wears
+                              the AgentNote type — only heavier, to carry the ask. */}
                           <div style={{
-                            maxWidth:"92%", padding:"13px 16px", background:"#fff",
-                            border:"1.5px solid #b9b3a4", borderRadius:"2px 4px 4px 4px",
-                            boxShadow:"0 2px 0 rgba(17,17,17,0.07)",
-                            fontFamily:"var(--mac-sans)", fontSize:15.5, fontWeight:600, lineHeight:1.5, color:"#111",
-
+                            maxWidth:"92%",
+                            fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:600, lineHeight:1.55, color:"#2a2a2a",
                           }}>{question.question}</div>
                         </div>
                         <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
@@ -295,8 +294,10 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
                               }}
                               placeholder="write your own"
                               aria-label="Write your own answer"
+                              // Same box as the chip it replaces, so opening the
+                              // field never moves the row it sits in.
                               style={{
-                                flex:"1 1 220px", minWidth:180,
+                                flex:"1 1 220px", minWidth:180, minHeight:36,
                                 border:"1px solid #000", padding:"8px 14px",
                                 fontFamily:"var(--mac-mono)", fontSize:12, color:"#111", outline:"none",
                               }}
