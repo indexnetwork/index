@@ -334,8 +334,8 @@ function AgentBubble({ children, label = null, muted = false }) {
           borderRadius:"2px 4px 4px 4px",
           boxShadow: muted ? "none" : "0 2px 0 rgba(17,17,17,0.07)",
           fontFamily:"var(--mac-sans)",
-          fontSize: muted ? 14 : 15.5, fontWeight: muted ? 400 : 600,
-          lineHeight: muted ? 1.55 : 1.5, color: muted ? "#2a2a2a" : "#111",
+          fontSize:14, fontWeight: muted ? 400 : 700,
+          lineHeight:1.55, color: muted ? "#2a2a2a" : "#111",
         }}>{children}</div>
       </div>
     </div>

@@ -264,7 +264,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
                             maxWidth:"92%", padding:"13px 16px", background:"#fff",
                             border:"1.5px solid #b9b3a4", borderRadius:"2px 4px 4px 4px",
                             boxShadow:"0 2px 0 rgba(17,17,17,0.07)",
-                            fontFamily:"var(--mac-sans)", fontSize:15.5, fontWeight:600, lineHeight:1.5, color:"#111",
+                            fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:700, lineHeight:1.55, color:"#111",
                           }}>{question.question}</div>
                         </div>
                         {write ? (
