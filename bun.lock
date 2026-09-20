@@ -87,7 +87,7 @@
     },
     "packages/agentv2": {
       "name": "@indexnetwork/agentv2",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "dependencies": {
         "@indexnetwork/client": "workspace:*",
       },
