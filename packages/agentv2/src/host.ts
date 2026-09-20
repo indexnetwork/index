@@ -100,10 +100,18 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
     counterpart: negotiation.counterparty.name ?? negotiation.counterparty.userId,
     status: negotiation.outcome ?? "negotiating",
     awaiting: negotiation.awaitingUserId === userId ? "you" : "them",
-    turns: String(negotiation.turnCount),
+    turnCount: negotiation.turnCount,
+    turns: negotiation.turns.map((turn) => ({
+      turnIndex: turn.turnIndex,
+      actor: turn.seatUserId === userId ? "you" : "counterpart",
+      action: turn.action,
+      message: turn.message,
+      createdAt: turn.createdAt,
+    })),
+    maxTurns: negotiation.protocol.maxTurns,
+    remainingTurns: Math.max(0, negotiation.protocol.maxTurns - negotiation.turnCount),
     actions: negotiation.protocol.availableActions,
     intent: { statement: negotiation.counterparty.statement },
-    ...(negotiation.turns.length ? { terms: negotiation.turns.at(-1)!.message } : {}),
   };
 }
 
@@ -278,7 +286,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
 
   log(`  read ${opportunities.length} opportunities, ${principalConversation.length} conversation entries`);
   for (const opportunity of opportunities) {
-    log(`    ${opportunity.id} ${opportunity.counterpart}: ${opportunity.status}, awaiting ${opportunity.awaiting}, ${opportunity.turns} turns${opportunity.brief ? ", briefed" : ""}${opportunity.decision ? `, ${opportunity.decision}` : ""}`);
+    log(`    ${opportunity.id} ${opportunity.counterpart}: ${opportunity.status}, awaiting ${opportunity.awaiting}, ${opportunity.turnCount} turns${opportunity.brief ? ", briefed" : ""}${opportunity.decision ? `, ${opportunity.decision}` : ""}`);
   }
 
   log("  thinking");
