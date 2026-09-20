@@ -19,6 +19,7 @@
   --midground: var(--ui-text-secondary);
   --midground-base: var(--ui-bg-tertiary);
   --radius: 6px;
+  --index-radius: 2px;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   box-sizing: border-box;
@@ -96,7 +97,7 @@
   padding: 0.1rem 0.5rem;
   border: 1px solid var(--color-border, #d4d4d8);
   /* Square, like the rows and buttons around it. */
-  border-radius: 0;
+  border-radius: var(--index-radius, 2px);
   font-family: var(--font-mono);
   font-size: 0.68rem;
   line-height: 1.5;
@@ -146,7 +147,7 @@
   padding: 0.55rem 1.15rem;
   min-height: 2.35rem;
   border: 1px solid #000;
-  border-radius: 0;
+  border-radius: var(--index-radius, 2px);
   font-family: var(--font-mono);
   font-size: 0.88rem;
   line-height: 1.2;
@@ -212,10 +213,12 @@
    actions on the rows below, one step down, so it sits quieter than the list
    it introduces. */
 .index-network-desktop-page .index-dashboard__net-create-btn.idx-btn {
-  min-height: 1.9rem;
-  padding: 0.25rem 0.7rem;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.65rem;
   font-size: 0.72rem;
-  letter-spacing: 0.06em;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 /* The desktop app keeps the header pause/archive pill a step larger than the
@@ -233,7 +236,7 @@
 /* Gadget-style actions on opportunity cards: square mono buttons in ink color
    (Mac-app flavored), primary inverted to an ink fill. */
 .index-network-desktop-page .index-dashboard__opp-btns .idx-btn {
-  border-radius: 0;
+  border-radius: var(--index-radius, 2px);
   border: 1px solid var(--ui-text-primary, #000);
   background: transparent;
   color: var(--ui-text-primary, #000);

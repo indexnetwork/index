@@ -585,6 +585,13 @@
     ]);
   }
 
+  function ICON_ARROW_UP() {
+    return svgIcon("", [
+      svgPath("M12 19V5"),
+      svgPath("m5 12 7-7 7 7"),
+    ]);
+  }
+
   // The blinking eye, sized to sit inline next to the "Radar" title.
   function RADAR_EYE() {
     const src = RADAR_IMAGE();
@@ -2637,7 +2644,7 @@
     const turns = (data && Array.isArray(data.turns)) ? data.turns : [];
     return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
       React.createElement("div", {
-        className: "index-dashboard__profile-panel index-dashboard__nego-modal",
+        className: "index-dashboard__profile-panel index-dashboard__a2a-modal",
         onClick: function (e) { e.stopPropagation(); },
       },
         React.createElement("div", { className: "index-dashboard__profile-header" },
@@ -2650,7 +2657,7 @@
             onClick: props.onClose,
           }, "\u00d7"),
         ),
-        React.createElement("div", { className: "index-dashboard__nego-body" },
+        React.createElement("div", { className: "index-dashboard__a2a-body" },
           err
             ? React.createElement("div", { className: "index-dashboard__error" }, err)
             : !data
@@ -2659,13 +2666,17 @@
                 ? turns.map(function (turn) {
                   return React.createElement("div", {
                     key: turn.id,
-                    className: "index-dashboard__nego-turn" + (turn.mine ? " index-dashboard__nego-turn--mine" : ""),
+                    className: "index-dashboard__a2a-turn" + (turn.mine ? " index-dashboard__a2a-turn--mine" : ""),
                   },
-                    React.createElement("div", { className: "index-dashboard__nego-who" },
-                      React.createElement("span", { className: "index-dashboard__nego-name" }, turn.name),
-                      React.createElement("span", { className: "index-dashboard__nego-action" }, turn.action),
+                    React.createElement("div", { className: "index-dashboard__a2a-who" },
+                      React.createElement("span", { className: "index-dashboard__a2a-name" }, turn.name),
+                      React.createElement("span", {
+                        className: "index-dashboard__a2a-action index-dashboard__a2a-action--" + (turn.action || "turn"),
+                      }, turn.action),
+                      React.createElement("span", { className: "index-dashboard__a2a-time" },
+                        timeStamp(turn.createdAt, true)),
                     ),
-                    React.createElement("p", { className: "index-dashboard__nego-text" }, turn.text),
+                    React.createElement("p", { className: "index-dashboard__a2a-text" }, turn.text),
                   );
                 })
                 : React.createElement(EmptyState, null, "No turns yet \u2014 the agents have not spoken."),
@@ -2973,11 +2984,16 @@
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
           },
         }),
-        React.createElement(Button, {
+        // The arrow is the send key: Enter sends, and this is the same thing
+        // for a pointer.
+        React.createElement("button", {
           type: "button",
+          className: "index-dashboard__agent-send-key",
+          "aria-label": "Send message",
+          title: "Send",
           disabled: !draft.trim() || sending,
           onClick: send,
-        }, sending ? "Sending…" : "Send"),
+        }, ICON_ARROW_UP()),
       ),
     );
   }
