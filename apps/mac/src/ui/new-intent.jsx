@@ -14,10 +14,13 @@ const INTENT_STEP = {
   prompt: "who are you trying to meet right now?",
   placeholder: "type what you're looking for…",
   examples: [
-    "want to meet cool ai people in nyc",
-    "have a new business idea, want honest feedback from others",
-    "looking for a cool open-source project to contribute to",
-    "want to find a co-founder who's actually shipped something",
+    "traveling soon, want to meet cool people in ai",
+    "building something, want honest feedback on it",
+    "just launched, want cool people to try it",
+    "new in town, want to find my people",
+    "raising soon, want to meet investors who get it",
+    "hiring soon, want to meet great people early",
+    "have an idea, want someone to build it with",
   ],
 };
 
@@ -378,11 +381,7 @@ function WorkingDots({ size = 8 }) {
 
 function UserBubble({ children }) {
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end" }}>
-      <div style={{
-        marginBottom:6, fontFamily:"var(--mac-mono)", fontSize:11,
-        color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
-      }}>you</div>
+    <div style={{ display:"flex", justifyContent:"flex-end" }}>
       <div style={{
         maxWidth:"92%", padding:"11px 14px",
         background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
