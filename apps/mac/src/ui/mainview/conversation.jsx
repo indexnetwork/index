@@ -261,39 +261,51 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
                             }}>{asker.label}</span>
                           </div>
                           <div style={{
-                            maxWidth:"92%", padding:"13px 16px", background:"#fff",
-                            border:"1.5px solid #b9b3a4", borderRadius:"2px 4px 4px 4px",
-                            boxShadow:"0 2px 0 rgba(17,17,17,0.07)",
+                            maxWidth:"92%",
                             fontFamily:"var(--mac-sans)", fontSize:15.5, fontWeight:600, lineHeight:1.5, color:"#111",
                           }}>{question.question}</div>
                         </div>
-                        {write ? (
-                          <input
-                            autoFocus={!!options.length}
-                            value={own ? answer : ""}
-                            onChange={(e) => setSelections((cur) => ({ ...cur, [question.id]: e.target.value }))}
-                            placeholder="Write your answer…"
-                            aria-label="Write your own answer"
-                            style={{
-                              border:"1.5px solid #b9b3a4", borderRadius:6, padding:"8px 14px",
-                              fontFamily:"var(--mac-sans)", fontSize:13.5, color:"#111", outline:"none",
-                            }}
-                          />
-                        ) : (
-                          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                            {options.map((option) => (
-                              <OptionChip key={option} label={option} selected={answer === option}
-                                onClick={() => setSelections((cur) => ({
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                          {options.map((option) => (
+                            <OptionChip key={option} label={option} selected={answer === option}
+                              onClick={() => {
+                                setSelections((cur) => ({
                                   ...cur, [question.id]: cur[question.id] === option ? "" : option,
-                                }))}/>
-                            ))}
+                                }));
+                                setWriting((cur) => ({ ...cur, [question.id]: false }));
+                              }}/>
+                          ))}
+                          {write ? (
+                            <input
+                              autoFocus={!!options.length}
+                              value={own ? answer : ""}
+                              onChange={(e) => setSelections((cur) => ({ ...cur, [question.id]: e.target.value }))}
+                              onBlur={(e) => {
+                                if (!e.currentTarget.value.trim()) {
+                                  setWriting((cur) => ({ ...cur, [question.id]: false }));
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape" && !e.currentTarget.value.trim()) {
+                                  setWriting((cur) => ({ ...cur, [question.id]: false }));
+                                }
+                              }}
+                              placeholder="write your own"
+                              aria-label="Write your own answer"
+                              style={{
+                                flex:"1 1 220px", minWidth:180,
+                                border:"1px solid #000", padding:"8px 14px",
+                                fontFamily:"var(--mac-mono)", fontSize:12, color:"#111", outline:"none",
+                              }}
+                            />
+                          ) : (
                             <OptionChip write label="write your own"
                               onClick={() => {
                                 setSelections((cur) => ({ ...cur, [question.id]: "" }));
                                 setWriting((cur) => ({ ...cur, [question.id]: true }));
                               }}/>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </article>
                   );
@@ -344,19 +356,19 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
         }}>↓ {unread} new</button>
       )}
 
-      {questions.length > 0 && (
+      {chosen.length > 0 && (
         <div style={{
           borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
-          display:"flex", alignItems:"center", gap:12,
+          display:"flex", flexDirection:"row-reverse", justifyContent:"flex-start", alignItems:"center", gap:12,
         }}>
           <button
             type="button"
             disabled={!chosen.length || sending}
             style={{
-              fontFamily:"var(--mac-mono)", fontSize:12, padding:"8px 18px", borderRadius:6,
+              fontFamily:"var(--mac-mono)", fontSize:12, padding:"8px 18px",
               background: chosen.length && !sending ? "#111" : "#fff",
               color: chosen.length && !sending ? "#fff" : "#999",
-              border:`1.5px solid ${chosen.length && !sending ? "#111" : "#ddd"}`,
+              border:"1px solid #000",
               cursor: chosen.length && !sending ? "pointer" : "default",
             }}
             onClick={() => {
@@ -377,7 +389,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
         </div>
       )}
 
-      {onSendAgent && questions.length === 0 && (
+      {onSendAgent && (
         <div style={{
           padding:"10px 12px",
           borderTop:"1px solid #000",
@@ -563,8 +575,7 @@ function AnsweredQuestion({ item }) {
             <span style={{ color:"#8f8f88" }}>{asker.label}</span>
           </div>
           <div style={{
-            maxWidth:"92%", padding:"11px 14px", background:"#fff",
-            border:"1px solid #e2e2dc", borderRadius:"2px 4px 4px 4px",
+            maxWidth:"92%", background:"#fff",
             fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55, color:"#2a2a2a",
           }}>{item.text}</div>
         </div>
@@ -620,8 +631,8 @@ function AgentNote({ item }) {
             color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
           }}>your agent</div>
           <aside style={{
-            maxWidth:"92%", padding:"11px 14px",
-            background:"#fff", border:"1px solid #e2e2dc", borderRadius:"2px 4px 4px 4px",
+            maxWidth:"92%",
+            background:"#fff",
             fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55, color:"#2a2a2a",
           }}>
             <AgentMarkdown text={item.text}/>
@@ -720,19 +731,20 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
 function OptionChip({ label, selected = false, write = false, onClick }) {
   const [hover, setHover] = useState(false);
   return (
-    <button onClick={onClick}
+    <button type="button" onClick={onClick}
       aria-pressed={write ? undefined : selected}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
-        padding:"8px 14px", borderRadius:6, cursor:"pointer", textAlign:"left",
+        display:"inline-flex", alignItems:"center", minHeight:36,
+        padding:"8px 14px", cursor:"pointer", textAlign:"left",
         ...(write ? {
           background:"transparent",
-          border:`1.5px dashed ${hover ? "#111" : "#b9b3a4"}`,
+          border:"1px solid #000",
           color: hover ? "#111" : "#8a8577",
           fontFamily:"var(--mac-mono)", fontSize:12,
         } : {
           background: selected ? "#111" : "#fff",
-          border:`1.5px solid ${selected || hover ? "#111" : "#b9b3a4"}`,
+          border:"1px solid #000",
           color: selected ? "#fff" : "#111",
           fontFamily:"var(--mac-sans)", fontSize:13.5,
         }),

@@ -263,17 +263,19 @@ function NewIntent({ onDone, onBack }) {
                 <div style={{ marginLeft:42, display:"grid", gap:10 }}>
                   <form onSubmit={(e) => { e.preventDefault(); submit(); }}
                     style={{ display:"flex", gap:10, alignItems:"stretch", maxWidth:620 }}>
-                    <input
+                    <textarea
                       ref={inputRef}
                       value={draft}
                       maxLength={65_536}
+                      rows={3}
                       onChange={e => setDraft(e.target.value)}
                       placeholder="Type your answer…"
                       style={{
                         flex:1, minWidth:0,
-                        background:"#fff", border:"1.5px solid #b9b3a4", borderRadius:4,
+                        background:"#fff", border:"1px solid #000",
                         outline:"none",
-                        color:"#111", fontFamily:"var(--mac-sans)", fontSize:14,
+                        color:"#111", fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.45,
+                        resize:"vertical",
                         padding:"11px 14px",
                       }}
                     />
@@ -329,10 +331,7 @@ function AgentBubble({ children, label = null, muted = false }) {
       <div style={{ flex:1, minWidth:0 }}>
         {label}
         <div style={{
-          maxWidth:"92%", padding: muted ? "11px 14px" : "13px 16px", background:"#fff",
-          border:`${muted ? 1 : 1.5}px solid ${muted ? "#e2e2dc" : "#b9b3a4"}`,
-          borderRadius:"2px 4px 4px 4px",
-          boxShadow: muted ? "none" : "0 2px 0 rgba(17,17,17,0.07)",
+          maxWidth:"92%", background:"#fff",
           fontFamily:"var(--mac-sans)",
           fontSize: muted ? 14 : 15.5, fontWeight: muted ? 400 : 600,
           lineHeight: muted ? 1.55 : 1.5, color: muted ? "#2a2a2a" : "#111",
