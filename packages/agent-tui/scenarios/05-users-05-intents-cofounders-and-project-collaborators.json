@@ -1,0 +1,54 @@
+{
+  "users": [
+    {
+      "id": "alice",
+      "name": "Alice Morgan",
+      "intents": [
+        {
+          "id": "accessible-team-tool",
+          "intent": "Find a product design collaborator and possible cofounder to explore an accessible task-planning tool for volunteer teams, starting with a small prototype alongside our day jobs."
+        }
+      ]
+    },
+    {
+      "id": "bob",
+      "name": "Bob Okafor",
+      "intents": [
+        {
+          "id": "small-team-product",
+          "intent": "Meet an engineer who wants to turn small teams' confusing workflows into a clear, keyboard-friendly product; explore the problem together before deciding whether to become cofounders."
+        }
+      ]
+    },
+    {
+      "id": "carla",
+      "name": "Carla Mendes",
+      "intents": [
+        {
+          "id": "paid-discovery-research",
+          "intent": "Find an early product team that needs paid user research to identify barriers in an accessibility-focused collaboration prototype."
+        }
+      ]
+    },
+    {
+      "id": "diego",
+      "name": "Diego Salas",
+      "intents": [
+        {
+          "id": "offline-journal",
+          "intent": "Find a designer to make a private mobile journal easy to navigate without looking at the screen, as a modest weekend side project."
+        }
+      ]
+    },
+    {
+      "id": "gabriel",
+      "name": "Gabriel Weber",
+      "intents": [
+        {
+          "id": "collective-chore-planner",
+          "intent": "Find someone who can turn a collective's messy chore spreadsheet into a simple shared planner; I can build the data layer and want to explore a small, privacy-conscious experiment."
+        }
+      ]
+    }
+  ]
+}

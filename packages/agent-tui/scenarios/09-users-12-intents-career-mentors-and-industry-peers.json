@@ -1,0 +1,106 @@
+{
+  "users": [
+    {
+      "id": "asha",
+      "name": "Asha Raman",
+      "intents": [
+        {
+          "id": "learning-design-mentor",
+          "intent": "Find a learning-experience designer willing to mentor a teacher through an initial portfolio and help distinguish transferable skills from things I still need to learn."
+        },
+        {
+          "id": "career-change-practice-peers",
+          "intent": "Meet other career changers for reciprocal interview practice and encouragement on Saturday mornings, focusing on how to explain experience from a different industry."
+        }
+      ]
+    },
+    {
+      "id": "ben",
+      "name": "Ben Ortiz",
+      "intents": [
+        {
+          "id": "mentor-education-transition",
+          "intent": "Meet an educator moving into learning design who would value a bounded monthly mentoring conversation about portfolio choices and working on software training teams."
+        },
+        {
+          "id": "accessible-learning-peers",
+          "intent": "Find accessibility and learning-design peers to exchange practical ways of making workplace training easier to use, with each person bringing a different professional perspective."
+        }
+      ]
+    },
+    {
+      "id": "kai",
+      "name": "Kai Williams",
+      "intents": [
+        {
+          "id": "accessibility-career-mentor",
+          "intent": "Find an experienced accessibility testing practitioner to discuss moving from general QA into paid accessibility work and identify a realistic first learning project."
+        },
+        {
+          "id": "testing-talk-peer-circle",
+          "intent": "Meet software quality peers who want to rehearse short technical talks and exchange supportive feedback before presenting to a wider professional community."
+        }
+      ]
+    },
+    {
+      "id": "emma",
+      "name": "Emma Brooks",
+      "intents": [
+        {
+          "id": "mentor-new-accessibility-practitioner",
+          "intent": "Meet a tester entering accessibility practice for a bounded mentoring exchange about learning through real interfaces, describing limitations, and defining a useful review scope."
+        }
+      ]
+    },
+    {
+      "id": "luis",
+      "name": "Luis Torres",
+      "intents": [
+        {
+          "id": "transferable-experience-practice",
+          "intent": "Find fellow career changers to practice turning experience from earlier jobs into clear interview examples and keep each other company during a first job search in a new field."
+        }
+      ]
+    },
+    {
+      "id": "fatima",
+      "name": "Fatima Noor",
+      "intents": [
+        {
+          "id": "inclusive-training-community",
+          "intent": "Meet industry peers who help people learn software when dense instructions get in the way; exchange plain-language learning design and practical accessibility testing approaches."
+        }
+      ]
+    },
+    {
+      "id": "noah",
+      "name": "Noah Sinclair",
+      "intents": [
+        {
+          "id": "senior-frontend-hiring-network",
+          "intent": "Expand my frontend career network by meeting experienced engineers considering a full-time on-site senior role in London."
+        }
+      ]
+    },
+    {
+      "id": "grace",
+      "name": "Grace Liu",
+      "intents": [
+        {
+          "id": "industry-transition-peers",
+          "intent": "Find experienced professionals moving into climate-related work to compare learning plans, practice explaining a sector change, and exchange what we know from our previous industries."
+        }
+      ]
+    },
+    {
+      "id": "pavel",
+      "name": "Pavel Novak",
+      "intents": [
+        {
+          "id": "technical-storytelling-peer",
+          "intent": "Meet a software practitioner who wants a friendly rehearsal audience for a short professional talk; exchange feedback on making technical stories understandable."
+        }
+      ]
+    }
+  ]
+}

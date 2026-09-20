@@ -1,0 +1,17 @@
+export { NegotiatorAgent } from "./agents/negotiator.agent.js";
+export type { NegotiateContext, NegotiateResult, NegotiationRole, NegotiatorAgentOptions, Turn } from "./agents/negotiator.agent.js";
+export { PrincipalAgent } from "./agents/principal/principal.agent.js";
+export type { PrincipalAgentOptions } from "./agents/principal/principal.agent.js";
+export type { BriefContext, ConversationEntry, WakeAction, WakeContext, WakeResult } from "./agents/principal/principal.context.js";
+export type { Counterparty, CounterpartyPick, PrincipalOperations } from "./agents/principal/principal.discovery.js";
+export type { Decision, Intent, IntentStatus, NegotiationAction, Opportunity, Profile, Stall } from "./agents/shared/agent.context.js";
+export { OpenRouterClient } from "./agents/shared/openrouter.client.js";
+export type { OpenRouterClientOptions } from "./agents/shared/openrouter.client.js";
+export type { Execute, ExecutionInput } from "./agents/shared/reasoning/reasoning.execution.js";
+export { createExecute } from "./agents/shared/reasoning/reasoning.loop.js";
+export type { Model, ModelMessage, ToolCall, ToolDefinition } from "./agents/shared/reasoning/reasoning.loop.js";
+export { defineTool } from "./agents/shared/reasoning/reasoning.tool.js";
+export type { Tool } from "./agents/shared/reasoning/reasoning.tool.js";
+export { AgentRunner } from "./runner/agent.runner.js";
+export type { AgentEvent, AgentRunnerOptions } from "./runner/agent.runner.js";
+export type { AgentHost, ConversationMessage, MatchReference, Negotiation, NegotiationDetail, NegotiationOutcome, PrincipalMessage, QuestionScope } from "./runner/agent.host.js";

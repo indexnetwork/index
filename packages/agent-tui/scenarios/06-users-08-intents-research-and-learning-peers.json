@@ -1,0 +1,72 @@
+{
+  "users": [
+    {
+      "id": "mira",
+      "name": "Mira Patel",
+      "intents": [
+        {
+          "id": "heat-route-choice",
+          "intent": "Find a research peer exploring how shade and perceived heat change the routes people choose to walk, combining street data with accounts of everyday journeys."
+        },
+        {
+          "id": "causal-inference-study",
+          "intent": "Find a study partner to learn causal inference through weekly exercises and discuss when an observed transport pattern supports a causal claim."
+        }
+      ]
+    },
+    {
+      "id": "jonas",
+      "name": "Jonas Berg",
+      "intents": [
+        {
+          "id": "pedestrian-comfort",
+          "intent": "Find someone studying pedestrians' heat perception to compare their questions with street-level temperature measurements and explore a joint analysis."
+        },
+        {
+          "id": "methods-exchange",
+          "intent": "Exchange beginner R and plotting help for practice designing and conducting qualitative interviews with a patient learning peer."
+        }
+      ]
+    },
+    {
+      "id": "salma",
+      "name": "Salma Idrissi",
+      "intents": [
+        {
+          "id": "stories-and-street-data",
+          "intent": "Find a quantitative learning peer to connect stories about everyday walks with simple visualizations; I can exchange qualitative interviewing practice for help making sense of street data."
+        }
+      ]
+    },
+    {
+      "id": "theo",
+      "name": "Theo Park",
+      "intents": [
+        {
+          "id": "intro-probability",
+          "intent": "Find a beginner probability study partner for weekly practice on conditional probability and Bayes' rule, with time to explain mistakes to each other."
+        }
+      ]
+    },
+    {
+      "id": "lin",
+      "name": "Lin Chen",
+      "intents": [
+        {
+          "id": "heat-prediction-benchmark",
+          "intent": "Find an urban heat research peer to compare satellite-based temperature prediction models and improve a public benchmark's held-out accuracy."
+        }
+      ]
+    },
+    {
+      "id": "rosa",
+      "name": "Rosa Alvarez",
+      "intents": [
+        {
+          "id": "summer-walk-map-learning",
+          "intent": "Meet a patient data-minded peer who can help a neighborhood learning circle turn 'this street feels cooler' observations into understandable maps; exchange public-workshop experience for visualization skills."
+        }
+      ]
+    }
+  ]
+}

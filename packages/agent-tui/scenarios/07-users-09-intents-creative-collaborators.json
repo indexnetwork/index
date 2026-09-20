@@ -1,0 +1,82 @@
+{
+  "users": [
+    {
+      "id": "nadia",
+      "name": "Nadia El-Amin",
+      "intents": [
+        {
+          "id": "harbor-audio-story",
+          "intent": "Find a musician or sound artist to turn a short fictional harbor story into an intimate spoken-word audio piece, developing the sound and writing together."
+        },
+        {
+          "id": "neighborhood-zine",
+          "intent": "Find an illustrator or print designer to make a small zine of invented neighborhood stories and street sketches for a local arts table."
+        }
+      ]
+    },
+    {
+      "id": "owen",
+      "name": "Owen Price",
+      "intents": [
+        {
+          "id": "music-with-narrative",
+          "intent": "Meet a writer or filmmaker whose quiet, place-based narrative could develop alongside acoustic loops and found sounds in a short collaborative piece."
+        },
+        {
+          "id": "live-visual-partner",
+          "intent": "Find a visual artist to explore a small live performance in Bristol where projected images respond to improvised music."
+        }
+      ]
+    },
+    {
+      "id": "cleo",
+      "name": "Cleo Duarte",
+      "intents": [
+        {
+          "id": "illustrated-local-folklore",
+          "intent": "Find a writer to invent little legends around ordinary streets and pair them with two-color drawings in a collaboratively edited printed booklet."
+        }
+      ]
+    },
+    {
+      "id": "mateo",
+      "name": "Mateo Ruiz",
+      "intents": [
+        {
+          "id": "dockside-film-score",
+          "intent": "Find a composer interested in shaping a reflective documentary about dockside spaces, with room for music to influence the edit rather than just fill the background."
+        }
+      ]
+    },
+    {
+      "id": "priya",
+      "name": "Priya Shah",
+      "intents": [
+        {
+          "id": "paid-concert-visuals",
+          "intent": "Find a musician or producer commissioning animated projection loops and visual storytelling for a confirmed live performance."
+        }
+      ]
+    },
+    {
+      "id": "ezra",
+      "name": "Ezra Blake",
+      "intents": [
+        {
+          "id": "harbor-brand-story",
+          "intent": "Find a writer and sound collaborator for a harbor-inspired storytelling campaign: a concise branded film with a clear product message."
+        }
+      ]
+    },
+    {
+      "id": "yuki",
+      "name": "Yuki Tanaka",
+      "intents": [
+        {
+          "id": "responsive-silhouettes",
+          "intent": "Find someone who improvises with instruments or voice to experiment with moving silhouettes that follow the sound, starting with a studio session rather than a booked show."
+        }
+      ]
+    }
+  ]
+}

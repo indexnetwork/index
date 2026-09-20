@@ -1,0 +1,120 @@
+{
+  "users": [
+    {
+      "id": "farah",
+      "name": "Farah Ahmed",
+      "intents": [
+        {
+          "id": "repair-cafe-team",
+          "intent": "Find local repair volunteers and a space coordinator to explore a monthly Leeds repair cafe that helps neighbors keep useful belongings in use."
+        },
+        {
+          "id": "hot-weather-neighbor-support",
+          "intent": "Meet Leeds organizers who want to plan practical neighbor support during hot weather, linking a simple check-in rota with clear information about cool public places."
+        }
+      ]
+    },
+    {
+      "id": "leila",
+      "name": "Leila Haddad",
+      "intents": [
+        {
+          "id": "cool-places-directory",
+          "intent": "Find neighbors who can help make a clear, multilingual guide to shaded routes and cool public places in Leeds, grounded in what people can actually reach and use."
+        },
+        {
+          "id": "repair-event-information-exchange",
+          "intent": "Exchange plain-language editing with local repair organizers: I can simplify visitor instructions and want to learn how to make a welcoming community event work."
+        }
+      ]
+    },
+    {
+      "id": "ivan",
+      "name": "Ivan Petrov",
+      "intents": [
+        {
+          "id": "community-energy-comparison",
+          "intent": "Find a community energy organizer who needs help making public, aggregated energy data understandable before deciding which local efficiency ideas deserve further investigation."
+        },
+        {
+          "id": "energy-chart-workshop",
+          "intent": "Find a community educator to co-design a beginner session on reading energy charts, combining my data skills with their experience helping people learn together."
+        }
+      ]
+    },
+    {
+      "id": "hana",
+      "name": "Hana Sato",
+      "intents": [
+        {
+          "id": "paid-community-information-design",
+          "intent": "Find a community or climate project with a budget for plain-language resource information, including testing whether residents can understand the next step."
+        },
+        {
+          "id": "neighbor-mending-circle",
+          "intent": "Meet Leeds neighbors who want to repair clothes together at a small volunteer mending circle, sharing simple hand-sewing skills and conversation."
+        }
+      ]
+    },
+    {
+      "id": "musa",
+      "name": "Musa Diallo",
+      "intents": [
+        {
+          "id": "neighbor-bike-repair",
+          "intent": "Find a local organizer who can bring neighbors and a suitable space together for a small bicycle repair session; I can share practical skills that keep bikes in everyday use."
+        }
+      ]
+    },
+    {
+      "id": "elena",
+      "name": "Elena Kovacs",
+      "intents": [
+        {
+          "id": "everyday-cooling-knowledge",
+          "intent": "Meet neighbors and data-minded volunteers to make everyday knowledge about summer comfort useful: notice places to rest, compare observations, and explain findings in plain language."
+        }
+      ]
+    },
+    {
+      "id": "tariq",
+      "name": "Tariq Khan",
+      "intents": [
+        {
+          "id": "understand-neighborhood-energy",
+          "intent": "Find an analyst who can help our community group turn area-level energy figures into questions residents can discuss before choosing a local efficiency project."
+        }
+      ]
+    },
+    {
+      "id": "petra",
+      "name": "Petra Lind",
+      "intents": [
+        {
+          "id": "commercial-community-carbon-project",
+          "intent": "Find community climate project organizers interested in exploring a commercial carbon-credit program with formal emissions measurement and a multi-year commitment."
+        }
+      ]
+    },
+    {
+      "id": "soren",
+      "name": "Soren Hansen",
+      "intents": [
+        {
+          "id": "shared-growing-and-compost",
+          "intent": "Find neighbors interested in practical climate resilience through a shared growing and compost project, starting by finding a site and a team willing to look after it over time."
+        }
+      ]
+    },
+    {
+      "id": "dev",
+      "name": "Dev Shah",
+      "intents": [
+        {
+          "id": "community-skill-sharing-space",
+          "intent": "Meet local organizers and practical skill-sharers to explore a small Sunday repair or mending event at a Leeds makerspace, subject to agreeing a workable scope with its committee."
+        }
+      ]
+    }
+  ]
+}
