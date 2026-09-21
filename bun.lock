@@ -147,7 +147,7 @@
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",
         "@better-auth/api-key": "1.6.11",
-        "@indexnetwork/agentv2": "workspace:*",
+        "@indexnetwork/agent": "workspace:*",
         "@indexnetwork/client": "workspace:*",
         "@indexnetwork/protocol": "workspace:*",
         "@langchain/core": "^1.1.17",

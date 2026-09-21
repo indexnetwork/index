@@ -2,7 +2,7 @@ import './startup.env';
 
 import * as Sentry from '@sentry/bun';
 
-import { ModelClient } from '@indexnetwork/agentv2';
+import { createExecute, OpenRouterClient } from '@indexnetwork/agent';
 
 import { DebugController } from './controllers/debug.controller';
 import { DocsController } from './controllers/docs.controller';
@@ -401,7 +401,7 @@ Bun.serve({
 logger.info('Server running', { port: PORT });
 
 // The default seat for owners without an external negotiator.
-const hostedAgent = new HostedAgent(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
+const hostedAgent = new HostedAgent(createExecute(new OpenRouterClient({ apiKey: process.env.OPENROUTER_API_KEY! })));
 void hostedAgent.start();
 
 // Graceful shutdown

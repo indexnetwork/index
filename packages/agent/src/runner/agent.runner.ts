@@ -3,6 +3,7 @@ import type { Execute } from "../agents/shared/reasoning/reasoning.execution.js"
 
 import { AgentExecution, type NegotiationRunResult } from "./agent.execution.js";
 import type { AgentHost } from "./agent.host.js";
+import { readConversation, readStandingContext } from "./conversation.codec.js";
 import type { IntentMembership } from "./runner.context.js";
 
 /** Dependencies for one principal's runner, without transport ownership. */
@@ -52,6 +53,7 @@ export class AgentRunner {
 
   /**
    * Adopts active intents and recovers outstanding first turns using the normal schedulers.
+   * Persisted unresolved stalls remain held until the principal answers them.
    * The first refresh does not wake existing intents; later refreshes wake newly active ones.
    * @returns After serialized host reads, membership refresh, and scheduling, not reasoning completion.
    * @throws If a reconciliation read fails or cancellation is observed; scheduled work is not undone.
@@ -79,8 +81,22 @@ export class AgentRunner {
 
       const [profile, negotiations] = await Promise.all([this.options.host.getProfile(), this.options.host.listNegotiations()]);
       abortSignal.throwIfAborted();
-      for (const negotiation of negotiations) {
-        if (!this.membership.active.has(negotiation.intentId) || negotiation.awaitingUserId !== profile.id || negotiation.turnCount !== 0) continue;
+      const activeNegotiations = negotiations.filter((negotiation) => this.membership.active.has(negotiation.intentId));
+      const standingByIntent = new Map(await Promise.all([...new Set(activeNegotiations.map((negotiation) => negotiation.intentId))]
+        .map(async (intentId) => {
+          const { messages } = await this.options.host.getConversation(intentId);
+          return [intentId, readStandingContext(readConversation(messages))] as const;
+        })));
+      abortSignal.throwIfAborted();
+      for (const negotiation of activeNegotiations) {
+        if (negotiation.awaitingUserId !== profile.id) continue;
+        const standing = standingByIntent.get(negotiation.intentId)?.get(negotiation.opportunityId);
+        if (standing?.stall && !standing.answered) {
+          this.heldNegotiations.set(negotiation.opportunityId, negotiation.intentId);
+          continue;
+        }
+        this.heldNegotiations.delete(negotiation.opportunityId);
+        if (negotiation.turnCount !== 0) continue;
         abortSignal.throwIfAborted();
         this.scheduleNegotiation(negotiation.intentId, negotiation.opportunityId);
       }

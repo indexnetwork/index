@@ -1,24 +1,17 @@
 /**
- * Index's own personal agent: the seat that works a signal whose owner has
- * bound no external negotiator.
- *
- * It is not a session. Nothing runs on a clock — a wake happens because
- * something changed on the signal, and a negotiator runs because a decision
- * authorised it. The reasoning is `@indexnetwork/agentv2`, reached through
- * {@link HostedIndex}, so a hosted seat runs exactly the code an external
- * runner would without a request leaving this process.
+ * Index's hosted personal agents, driven by the same user events as external agents.
+ * Each owner has one AgentRunner; it owns principal and negotiation scheduling.
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { runNegotiate, runWake, type Decision, type Intent, type Model } from '@indexnetwork/agentv2';
+import { AgentRunner, type AgentEvent, type Execute } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
-import { intentService } from '../../services/intent.service';
 import { log } from '../log';
 import { ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, type UserEventRecord } from '../user-events';
 
-import { HostedIndex } from './hosted.index';
+import { HostedIndex, HostedOwnerNotFoundError } from './hosted.index';
 
 const logger = log.agent.from('HostedAgent');
 
@@ -30,32 +23,30 @@ const WAKE_BLOCK_MS = 2000;
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
   type?: string;
-  data?: { intentId?: string; opportunityId?: string; status?: string };
+  data?: { intentId?: string; opportunityId?: string };
 }
 
-/** Runs brief, wake and negotiate for owners who left the seat to Index. */
+/** Hosts one principal-scoped runner for every owner without an external negotiator. */
 export class HostedAgent {
   private readonly registry = new AgentDatabaseAdapter();
-  /** Signals with a wake in flight, and those that asked for one while it ran. */
-  private readonly waking = new Set<string>();
-  private readonly again = new Set<string>();
-  /** Opportunities with a negotiator in flight, by the signal they stand on. */
-  private readonly working = new Map<string, string>();
-  /** Opportunities whose stall is waiting on the principal, by the signal they stand on. */
-  private readonly stalled = new Map<string, string>();
-  /** Stalls no wake has read yet, by signal: the only ones worth waking for. */
-  private readonly unread = new Map<string, string>();
+  private readonly runners = new Map<string, AgentRunner>();
   private readonly joined = new Set<string>();
-  private abort = new AbortController();
+  /** Owners whose current executor binding and outstanding first turns were recovered. */
+  private readonly reconciled = new Set<string>();
+  /** Event-stream owners without a user profile, such as the system discovery worker. */
+  private readonly unavailableOwners = new Set<string>();
   private reader?: ReturnType<typeof createRedisClient>;
   private running = false;
 
-  constructor(private readonly model: Model) {}
+  /** @param execute - The reasoning/tool executor shared by hosted runners. */
+  constructor(private readonly execute: Execute) {}
 
   /** Start reading every owner's event stream. */
   async start(): Promise<void> {
+    this.joined.clear();
+    this.reconciled.clear();
+    this.unavailableOwners.clear();
     this.running = true;
-    this.abort = new AbortController();
     this.reader = createRedisClient();
     void this.follow(this.reader);
   }
@@ -63,17 +54,15 @@ export class HostedAgent {
   /** Stop answering, cancel the runs in flight, and drop the reader. */
   async stop(): Promise<void> {
     this.running = false;
-    this.abort.abort();
+    for (const runner of this.runners.values()) runner.stop();
+    this.runners.clear();
     this.reader?.disconnect();
     this.reader = undefined;
   }
 
   /**
-   * Streams are per owner, so each pass discovers them by scan — there is no
-   * pattern to read — joins the group on any new one, then takes one blocking
-   * batch. The group's offset lives in Redis, so a wake reaches exactly one
-   * process, and the first pass claims wakes an earlier process read but never
-   * acknowledged.
+   * Discover owner streams, join their consumer groups, and route each batch.
+   * The first pass also recovers events read but not acknowledged by this consumer.
    */
   private async follow(reader: ReturnType<typeof createRedisClient>): Promise<void> {
     let from: '>' | '0' = '0';
@@ -87,6 +76,14 @@ export class HostedAgent {
           this.joined.add(userId);
         }
 
+        await Promise.all(userIds.filter((userId) => !this.reconciled.has(userId)).map(async (userId) => {
+          try {
+            await this.reconcileOwner(userId);
+          } catch (error: unknown) {
+            logger.error('Hosted runner reconciliation failed', { userId, error: error instanceof Error ? error.message : String(error) });
+          }
+        }));
+
         if (!userIds.length) {
           await sleep(WAKE_BLOCK_MS);
           continue;
@@ -97,16 +94,34 @@ export class HostedAgent {
         });
         from = '>';
 
+        const byOwner = new Map<string, UserEventRecord[]>();
         for (const record of records) {
-          this.dispatch(record);
-          await ackUserEvent(WAKE_GROUP, record);
+          const ownerRecords = byOwner.get(record.userId) ?? [];
+          ownerRecords.push(record);
+          byOwner.set(record.userId, ownerRecords);
+        }
+        let retryPending = false;
+        await Promise.all([...byOwner.entries()].map(async ([userId, ownerRecords]) => {
+          try {
+            await this.dispatch(ownerRecords);
+            await Promise.all(ownerRecords.map((record) => ackUserEvent(WAKE_GROUP, record)));
+          } catch (error: unknown) {
+            retryPending = true;
+            logger.error('Hosted wake dispatch failed', { userId, error: error instanceof Error ? error.message : String(error) });
+          }
+        }));
+        if (retryPending) {
+          // Successful owner batches were acknowledged. Reading our pending
+          // entries again retries only the batch that failed, after siblings
+          // have finished their own dispatches.
+          from = '0';
+          await sleep(WAKE_BLOCK_MS);
         }
       } catch (error: unknown) {
         if (!this.running) return;
         logger.error('Hosted wake read failed', { error: error instanceof Error ? error.message : String(error) });
-        // A restarted Redis has no groups, so the next pass rejoins every stream
-        // and picks up whatever this group never acknowledged.
         this.joined.clear();
+        this.reconciled.clear();
         from = '0';
         await sleep(WAKE_BLOCK_MS);
       }
@@ -114,193 +129,99 @@ export class HostedAgent {
   }
 
   /**
-   * Route one frame the way the reference runner routes it: a counterpart's
-   * turn moves one opportunity and reaches the principal only if that
-   * negotiator stalls, because it is not something they have to think about.
-   * Their own input, a new signal, and a resumed one are.
-   *
-   * @param record - One entry from an owner's stream.
+   * Route one owner's persisted changes in stream order. The current executor
+   * binding applies to the whole batch because each event only points to records
+   * the runner rereads before acting.
+   * @param records - Consecutive entries from one owner's stream.
    */
-  private dispatch({ userId, data }: UserEventRecord): void {
-    let frame: WakeFrame;
-    try { frame = JSON.parse(data) as WakeFrame; } catch { return; }
-    const { intentId, opportunityId, status } = frame.data ?? {};
-
-    switch (frame.type) {
-      case 'negotiation.turn':
-        if (intentId && opportunityId) this.run(this.negotiate(userId, intentId, opportunityId));
-        break;
-      case 'principal.input':
-        // The answer is what every stall on this signal was waiting for, so the
-        // negotiators it held back can run again once the wake re-decides them.
-        if (!intentId) break;
-        for (const [opportunityId, signal] of this.stalled) {
-          if (signal === intentId) this.stalled.delete(opportunityId);
-        }
-        this.run(this.wake(userId, intentId));
-        break;
-      case 'intent.created':
-        if (intentId) this.run(this.wake(userId, intentId));
-        break;
-      case 'intent.lifecycle':
-        // A resumed signal is worth a think pass; pausing and removing are not.
-        if (intentId && status === 'ACTIVE') this.run(this.wake(userId, intentId));
-        break;
-      default:
-        break;
-    }
-  }
-
-  /**
-   * A run is its own unit of work: a failure is reported and dropped rather
-   * than taken out on the stream reader or a sibling run.
-   *
-   * @param work - One run already started.
-   */
-  private run(work: Promise<void>): void {
-    void work.catch((error: unknown) => {
-      logger.error('Hosted run failed', { error: error instanceof Error ? error.message : String(error) });
-    });
-  }
-
-  /** @param userId - The owner in question. @returns Whether Index still holds their seat. */
-  private async holdsSeat(userId: string): Promise<boolean> {
-    return this.running && await this.registry.getSelectedNegotiator(userId) === null;
-  }
-
-  /**
-   * @param userId - The signal's owner.
-   * @param intentId - The signal a frame named.
-   * @returns The signal as a run reads it, or null when it cannot be worked now.
-   */
-  private async activeIntent(userId: string, intentId: string): Promise<Intent | null> {
-    const intent = await intentService.getById(intentId, userId);
-    if (!intent || intent.archivedAt || intent.status !== 'ACTIVE') return null;
-    return { id: intent.id, statement: intent.payload };
-  }
-
-  /** @returns What every run needs beyond Index: the model, cancellation, and somewhere to report. */
-  private runtime() {
-    return {
-      model: this.model,
-      signal: this.abort.signal,
-      log: (line: string) => { logger.verbose(line.trim()); },
-    };
-  }
-
-  /**
-   * One wake over one signal, coalescing a request that arrives while one is
-   * running into a single follow-up.
-   *
-   * @param userId - The signal's owner.
-   * @param intentId - The signal to think about.
-   */
-  private async wake(userId: string, intentId: string): Promise<void> {
-    if (!this.running) return;
-    // Claimed before the first await: two frames for one signal must not both
-    // become a wake.
-    if (this.waking.has(intentId)) {
-      this.again.add(intentId);
-      return;
-    }
-    this.waking.add(intentId);
-    // This wake reads every stall standing on the signal, so none of them is a
-    // reason to wake again.
-    for (const [opportunityId, signal] of this.unread) if (signal === intentId) this.unread.delete(opportunityId);
-
-    try {
-      if (!await this.holdsSeat(userId)) return;
-      const intent = await this.activeIntent(userId, intentId);
-      if (!intent) return;
-      // Each opportunity opens the moment its own decision is published, so the
-      // first turns go out while the wake is still thinking.
-      await runWake(new HostedIndex(userId), intent, {
-        ...this.runtime(),
-        onNegotiate: (opportunityId, decision) => this.run(this.negotiate(userId, intentId, opportunityId, decision)),
-      });
-    } finally {
-      this.waking.delete(intentId);
-      if (this.again.delete(intentId) && this.running) this.run(this.wake(userId, intentId));
-    }
-  }
-
-  /**
-   * Work one negotiation. A stall stands on the conversation and is recorded
-   * here; waking on it is {@link finish}'s call, not this run's.
-   *
-   * A continue is held out of the wake's own negotiators while an opportunity
-   * is stalled — without that, asking and stalling would trade places without
-   * end. Accept and decline still run: that turn is what the stall was waiting
-   * for.
-   *
-   * @param userId - The seat owner.
-   * @param intentId - The signal this negotiation belongs to.
-   * @param opportunityId - The negotiation to work.
-   * @param decision - The wake's decision, when this start came from one.
-   */
-  private async negotiate(userId: string, intentId: string, opportunityId: string, decision?: Decision): Promise<void> {
-    if (!this.running || this.working.has(opportunityId)) return;
-    if (decision === 'accept' || decision === 'decline') this.stalled.delete(opportunityId);
-    if (this.stalled.has(opportunityId)) return;
-    this.working.set(opportunityId, intentId);
-    // The wake waits for this negotiator to be out of flight: it re-decides the
-    // opportunity, and a decision starts a negotiator for it again.
-    try {
-      await this.takeTurn(userId, intentId, opportunityId);
-    } finally {
-      await this.finish(userId, intentId, opportunityId);
-    }
-  }
-
-  /**
-   * One negotiator is done. Wake the signal only once nothing else of it is in
-   * flight and a stall no wake has read is waiting, so every stall of a burst
-   * is put to the principal by one wake rather than one wake, one question at a
-   * time — whether a wake or a counterpart's turn started these negotiators.
-   *
-   * A stall the principal already has stays standing until they answer, and is
-   * not a reason to wake over every turn that lands meanwhile.
-   *
-   * @param userId - The seat owner.
-   * @param intentId - The signal that negotiator belonged to.
-   * @param opportunityId - The negotiation it worked.
-   */
-  private async finish(userId: string, intentId: string, opportunityId: string): Promise<void> {
-    this.working.delete(opportunityId);
-    if (!this.running) return;
-    for (const signal of this.working.values()) if (signal === intentId) return;
-    for (const signal of this.unread.values()) {
-      if (signal === intentId) {
-        await this.wake(userId, intentId);
-        return;
+  private async dispatch(records: readonly UserEventRecord[]): Promise<void> {
+    const userId = records[0]?.userId;
+    if (!userId) return;
+    const events: AgentEvent[] = [];
+    let configurationChanged = false;
+    for (const { data } of records) {
+      let frame: WakeFrame;
+      try { frame = JSON.parse(data) as WakeFrame; } catch { continue; }
+      const { intentId, opportunityId } = frame.data ?? {};
+      switch (frame.type) {
+        case 'negotiation.turn':
+          if (intentId && opportunityId) events.push({ type: frame.type, intentId, opportunityId });
+          break;
+        case 'principal.input':
+        case 'intent.created':
+        case 'intent.updated':
+        case 'intent.lifecycle':
+          if (intentId) events.push({ type: frame.type, intentId });
+          break;
+        case 'agent.configuration':
+          configurationChanged = true;
+          break;
+        default:
+          break;
       }
     }
+
+    if (configurationChanged) this.reconciled.delete(userId);
+    const runner = await this.runnerFor(userId);
+    if (!runner) {
+      if (this.running) this.reconciled.add(userId);
+      return;
+    }
+    if (!this.reconciled.has(userId)) await this.reconcileOwner(userId, runner);
+    if (!events.length || this.runners.get(userId) !== runner) return;
+    for (const event of events) runner.handle(event);
   }
 
   /**
-   * @param userId - The seat owner.
-   * @param intentId - The signal this negotiation belongs to.
-   * @param opportunityId - The negotiation to work.
+   * Rebuild one hosted runner's durable state after process start or a binding change.
+   * @param userId - The owner whose selected executor and first turns are recovered.
+   * @param existing - A runner already resolved for this owner, when dispatch has one.
    */
-  private async takeTurn(userId: string, intentId: string, opportunityId: string): Promise<void> {
-    if (!await this.holdsSeat(userId)) return;
-    const intent = await this.activeIntent(userId, intentId);
-    if (!intent) return;
-
-    const index = new HostedIndex(userId);
-    // A turn that hit the limit without settling is still a `negotiation.turn`
-    // frame with nobody awaiting. Reading first is what keeps that from reaching
-    // the negotiator, which would stall and ask for a wake over nothing.
-    const record = await index.getNegotiation(opportunityId).catch(() => null);
-    if (!record || record.settledAt || record.awaitingUserId !== userId) return;
-
-    const result = await runNegotiate(index, opportunityId, intent, this.runtime());
-    if ('turn' in result) {
-      this.stalled.delete(opportunityId);
-      this.unread.delete(opportunityId);
+  private async reconcileOwner(userId: string, existing?: AgentRunner): Promise<void> {
+    const runner = existing ?? await this.runnerFor(userId);
+    if (!runner) {
+      if (this.running) this.reconciled.add(userId);
       return;
     }
-    this.stalled.set(opportunityId, intentId);
-    this.unread.set(opportunityId, intentId);
+    try {
+      await runner.reconcile();
+    } catch (error: unknown) {
+      if (!(error instanceof HostedOwnerNotFoundError)) throw error;
+      runner.stop();
+      this.runners.delete(userId);
+      this.unavailableOwners.add(userId);
+    }
+    if (this.running && this.runners.get(userId) === runner) this.reconciled.add(userId);
+    if (this.running && this.unavailableOwners.has(userId)) this.reconciled.add(userId);
+  }
+
+  /**
+   * Resolve the owner’s current executor and create a hosted runner only when Index holds the seat.
+   * @param userId - The owner whose executor binding is read.
+   * @returns Their hosted runner, or undefined when an external executor is selected or the host stopped.
+   */
+  private async runnerFor(userId: string): Promise<AgentRunner | undefined> {
+    if (this.unavailableOwners.has(userId)) return undefined;
+    const selected = await this.registry.getSelectedNegotiator(userId);
+    if (!this.running) return undefined;
+    if (selected !== null) {
+      this.runners.get(userId)?.stop();
+      this.runners.delete(userId);
+      return undefined;
+    }
+
+    let runner = this.runners.get(userId);
+    if (!runner) {
+      runner = new AgentRunner({
+        host: new HostedIndex(userId),
+        execute: this.execute,
+        log: (line) => { logger.verbose(line.trim(), { userId }); },
+        onError: (error) => {
+          logger.error('Hosted run failed', { userId, error: error instanceof Error ? error.message : String(error) });
+        },
+      });
+      this.runners.set(userId, runner);
+    }
+    return runner;
   }
 }

@@ -17,7 +17,7 @@ export function createWakeTools(input: {
   const tools: Tool[] = [
     defineTool({
       name: "set_brief",
-      description: "Decide one opportunity and brief its negotiator. Its negotiator starts as soon as you call this. The brief text is required when that opportunity has none yet, and otherwise replaces the standing one. Check every counterpart eligibility requirement against explicit principal facts. Put each missing qualification or preference first as unresolved and require asking the principal before advancing. After an answer, repeat that check and preserve all other missing facts, even if the previous brief omitted them. Fit claims must be supported within the brief limit.",
+      description: "Brief an unbriefed opportunity, or update one whose stall or new principal input needs a changed instruction. Leave unchanged opportunities alone. A useful unresolved stall needs ask_principal, not a replacement decline. Preserve explicit requirements and ask-before boundaries without inventing qualifications or commitments. The brief is required if missing; its negotiator starts as soon as this instruction is published.",
       parameters: {
         type: "object", additionalProperties: false,
         properties: {
@@ -30,10 +30,15 @@ export function createWakeTools(input: {
       run: async ({ opportunityId, decision, brief }: { opportunityId: string; decision: Decision; brief?: string }) => {
         const opportunity = byId.get(opportunityId);
         if (!opportunity) throw new Error(`No opportunity ${opportunityId}. Use one of: ${[...byId.keys()].join(", ") || "none"}.`);
+        if (opportunity.brief && opportunity.decision && !opportunity.stall && !opportunity.answered) {
+          throw new Error("This opportunity already has a standing brief and decision, with no stall or new principal input. Leave it unchanged and address the opportunities that need input.");
+        }
         const decided = recordBrief(opportunity, decision, brief);
         input.actions.push(...decided);
         if (brief) opportunity.brief = brief;
         opportunity.decision = decision;
+        delete opportunity.stall;
+        delete opportunity.answered;
         try {
           await input.onBrief?.(decided);
         } catch (cause) {
@@ -94,7 +99,7 @@ export function createWakeTools(input: {
 export function createBriefTool(opportunity: Opportunity, actions: WakeAction[]): Tool {
   return defineTool({
     name: "set_brief",
-    description: "Decide this opportunity and brief its negotiator. The brief is the only thing the negotiator carries into its turn. Check every counterpart eligibility requirement against explicit principal facts. Put each missing qualification or preference first as unresolved and require asking the principal before advancing, even before the counterpart asks about it. Fit claims must be supported within the brief limit.",
+    description: "Decide this opportunity and brief its negotiator, which also receives the source evidence. Identify a concrete reason to connect or a supported mismatch. Preserve the stated criteria for people sought, without inventing qualifications from broad interests. Carry missing material principal facts and ask-before boundaries as unresolved; the negotiator must stall for them before advancing.",
     parameters: {
       type: "object", additionalProperties: false,
       properties: {
@@ -111,6 +116,6 @@ export function createBriefTool(opportunity: Opportunity, actions: WakeAction[])
 }
 
 function recordBrief(opportunity: Opportunity, decision: Decision, brief?: string): WakeAction[] {
-  if (!brief && !opportunity.brief) throw new Error("This opportunity has no brief yet, so this decision needs one: the negotiator carries it out from the brief alone.");
+  if (!brief && !opportunity.brief) throw new Error("This opportunity has no brief yet, so this decision needs one to guide its negotiator.");
   return [...(brief ? [{ type: "brief" as const, opportunityId: opportunity.id, brief }] : []), { type: "decision", opportunityId: opportunity.id, decision }];
 }

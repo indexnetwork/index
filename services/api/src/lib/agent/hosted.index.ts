@@ -1,13 +1,8 @@
 /**
- * Index for one owner, answered from this process.
- *
- * `@indexnetwork/agentv2` is written against `Index` and knows nothing else:
- * an external runner reaches it over HTTP with an agent-bound key, and the
- * hosted seat reaches the same protocol through the services that key would
- * have called. The owner is fixed at construction, where the key's identity
- * would otherwise stand.
+ * Authoritative host records and operations for one principal's AgentRunner.
+ * All calls use the same services as the HTTP API, scoped to that owner.
  */
-import type { ConnectedEvent, ConversationMessage, Counterparty, CounterpartyPick, Index, IntentStatus, IntentSummary, Me, Negotiation, NegotiationAction, NegotiationDetail, PrincipalMessage, UserEvent } from '@indexnetwork/client';
+import type { AgentHost, ConversationMessage, Counterparty, CounterpartyPick, Intent, IntentStatus, Negotiation, NegotiationAction, NegotiationDetail, PrincipalMessage, Profile } from '@indexnetwork/agent';
 
 import { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 import { UserDatabaseAdapter } from '../../adapters/user.database.adapter';
@@ -17,6 +12,14 @@ import { negotiationService, type NegotiationDetail as StoredNegotiation, type N
 
 /** How many of the owner's signals one read covers, matching the HTTP default. */
 const INTENT_LIMIT = 100;
+
+/** Signals that a Redis event stream has no corresponding hosted principal. */
+export class HostedOwnerNotFoundError extends Error {
+  /** @param userId - The stream owner that no longer has a user profile. */
+  constructor(userId: string) {
+    super(`No user ${userId}.`);
+  }
+}
 
 /** One agent DM row as the database holds it. */
 type StoredMessage = Awaited<ReturnType<ConversationDatabaseAdapter['getMessages']>>[number];
@@ -77,22 +80,20 @@ function toConversationMessage(message: StoredMessage): ConversationMessage {
   };
 }
 
-/** Index for one owner, served by this process rather than over HTTP. */
-export class HostedIndex implements Index {
+/** Host for one principal, served by this process rather than over HTTP. */
+export class HostedIndex implements AgentHost {
   private readonly users = new UserDatabaseAdapter();
   private readonly conversations = new ConversationDatabaseAdapter();
   private readonly h2a = new ConversationService();
-  private identity?: Me;
 
   /** @param userId - The owner every call acts for. */
   constructor(private readonly userId: string) {}
 
   /** @returns The owner, with the profile facts an agent may state as theirs. @throws When the owner no longer exists. */
-  async me(): Promise<Me> {
-    if (this.identity) return this.identity;
+  async getProfile(): Promise<Profile> {
     const user = await this.users.findById(this.userId);
-    if (!user) throw new Error(`No user ${this.userId}.`);
-    this.identity = {
+    if (!user) throw new HostedOwnerNotFoundError(this.userId);
+    return {
       id: user.id,
       name: user.name,
       intro: user.intro,
@@ -100,15 +101,24 @@ export class HostedIndex implements Index {
       timezone: user.timezone,
       profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt),
     };
-    return this.identity;
+  }
+
+  /** @param intentId - The owner's signal. @returns Its current statement and lifecycle. @throws When not owned. */
+  async getIntent(intentId: string): Promise<Intent> {
+    const intent = await intentService.getById(intentId, this.userId);
+    if (!intent) throw new Error(`No intent ${intentId}.`);
+    return {
+      id: intent.id,
+      statement: intent.payload,
+      status: (intent.archivedAt ? 'ARCHIVED' : intent.status ?? 'ACTIVE') as IntentStatus,
+    };
   }
 
   /**
-   * @param limit - How many signals to read.
    * @returns The owner's signals. `ARCHIVED` is derived from `archivedAt`, which is how removal is recorded.
    */
-  async listIntents(limit = INTENT_LIMIT): Promise<IntentSummary[]> {
-    const { intents } = await intentService.listIntents(this.userId, { limit });
+  async listIntents(): Promise<Intent[]> {
+    const { intents } = await intentService.listIntents(this.userId, { limit: INTENT_LIMIT });
     return intents.map((intent) => ({
       id: intent.id,
       statement: intent.payload,
@@ -123,8 +133,8 @@ export class HostedIndex implements Index {
    * @returns Counterparties, strongest first.
    * @throws When the signal is not the owner's, or is no longer active.
    */
-  async discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]> {
-    const result = await intentService.discover(intentId, this.userId, { query, ...(limit === undefined ? {} : { limit }) });
+  async findCounterparties(intentId: string, query: string, limit: number): Promise<Counterparty[]> {
+    const result = await intentService.discover(intentId, this.userId, { query, limit });
     if (result.kind !== 'ok') throw new Error(`Signal ${intentId} is ${result.kind}.`);
     return result.counterparties;
   }
@@ -170,24 +180,15 @@ export class HostedIndex implements Index {
   }
 
   /** @param intentId - Signal whose principal conversation to read. @returns The agent DM slice for that signal. */
-  async principalInbox(intentId: string): Promise<{ conversationId: string; messages: ConversationMessage[] }> {
+  async getConversation(intentId: string): Promise<{ conversationId: string; messages: ConversationMessage[] }> {
     const conversation = await this.conversations.getOrCreateAgentDm(this.userId);
     const messages = await this.conversations.getMessages(conversation.id, { intentId, userId: this.userId });
     return { conversationId: conversation.id, messages: messages.map(toConversationMessage) };
   }
 
   /** @param intentId - Signal. @param entries - `question` and `message` entries. @throws When the signal is not the owner's. */
-  async sendPrincipal(intentId: string, entries: PrincipalMessage[]): Promise<void> {
+  async appendMessages(intentId: string, entries: PrincipalMessage[]): Promise<void> {
     await this.h2a.publishH2A({ userId: this.userId, intentId, entries });
   }
 
-  /**
-   * The hosted seat is woken by the event stream directly, so nothing in this
-   * process subscribes through Index.
-   *
-   * @throws Always.
-   */
-  events(_onEvent: (event: UserEvent | ConnectedEvent) => void): () => void {
-    throw new Error('The hosted agent reads user events directly, not through Index.');
-  }
 }
