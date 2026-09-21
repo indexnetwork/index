@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createExecute, OpenRouterClient, TypeSafeClient } from '@indexnetwork/agent';
+import { createExecute, OpenRouterClient } from '@indexnetwork/agent';
 import { createCliRenderer } from '@opentui/core';
 
 import { NegotiationLab, parseScenario } from './negotiation.lab.js';
@@ -12,7 +12,7 @@ import { chooseScenario } from './scenario.chooser.js';
 
 const USAGE = `Usage: bun run agent:tui [model-id ...]
 
-Requires OPENROUTER_API_KEY, TYPESAFE_API_KEY, and an interactive terminal. Uses real agents and
+Requires OPENROUTER_API_KEY and an interactive terminal. Uses real agents and
 in-memory negotiations; no Index API keys, database, or server are used.
 Optionally supply one to three ordered OpenRouter model IDs to replace the defaults.
 Choose a JSON scenario from packages/agent-tui/scenarios with Up/Down + Enter or
@@ -71,7 +71,6 @@ async function main(): Promise<void> {
   if (models.length === 1 && models[0] === '--help') { console.log(USAGE); return; }
   if (models.length > 3) throw new Error(USAGE);
   if (!process.env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY is required.');
-  if (!process.env.TYPESAFE_API_KEY) throw new Error('TYPESAFE_API_KEY is required.');
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('Run the TUI in an interactive terminal.');
   const scenarioDirectory = join(import.meta.dir, '../scenarios');
   const filenames = readdirSync(scenarioDirectory, { withFileTypes: true })
@@ -92,7 +91,6 @@ async function main(): Promise<void> {
     const scenario = parseScenario(JSON.parse(readFileSync(join(scenarioDirectory, filename), 'utf8')));
     lab = new NegotiationLab(scenario, {
       execute: createExecute(new OpenRouterClient({ apiKey: process.env.OPENROUTER_API_KEY, models: models.length ? models : undefined })),
-      decisions: new TypeSafeClient({ apiKey: process.env.TYPESAFE_API_KEY }),
     });
     mountNegotiationTui(renderer, lab);
     await lab.start();

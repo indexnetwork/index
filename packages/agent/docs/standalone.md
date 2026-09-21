@@ -1,6 +1,6 @@
 # Standalone usage
 
-- `@indexnetwork/agent` supplies one principal-scoped `AgentRunner`, both reasoning layers, direct OpenRouter execution, and TypeSafe negotiation evidence evaluation. Host integrations supply authenticated domain access, events, process startup, and persistence.
+- `@indexnetwork/agent` supplies one principal-scoped `AgentRunner`, both reasoning layers, and direct OpenRouter execution. Host integrations supply authenticated domain access, events, process startup, and persistence.
 
 This guide is launcher wiring, not a second scheduler or a turnkey CLI. Supply an `AgentHost` and event transport from your integration. `Subscribe` and `runAgent` below are example-local declarations, not package exports. API, Hermes, and macOS integration remains Seref's work.
 
@@ -12,24 +12,23 @@ Use Bun or a Node runtime with global `fetch`, `crypto.randomUUID`, and `AbortSi
 
 ## Choose reasoning execution
 
-- Supply both provider credentials from the host's configuration or secret manager:
+- Supply the provider credential from the host's configuration or secret manager:
 
 ```ts
-import { createExecute, OpenRouterClient, TypeSafeClient } from "@indexnetwork/agent";
+import { createExecute, OpenRouterClient } from "@indexnetwork/agent";
 
 const execute = createExecute(new OpenRouterClient({ apiKey }));
-const decisions = new TypeSafeClient({ apiKey: typeSafeApiKey });
 ```
 
 Construction performs no I/O. Each actual reasoning request sends agent-prepared context to OpenRouter and its selected providers, using the host's billed API credential. Do not embed that credential in a browser bundle or source control.
 
 The client preserves v2's ordered defaults: `google/gemini-3.7-flash`, `google/gemini-3.8-flash`, and `anthropic/claude-haiku-4.5`. Optional `models` replaces them with one to three nonblank IDs. Optional `timeout` replaces the 120,000-millisecond deadline for **one request**, including its response body; it is not a deadline for the entire wake. No client-side retries are added. OpenRouter owns model/provider failover.
 
-- `decisions` is required by `AgentRunner` and `NegotiatorAgent`. One TypeSafe request evaluates principal facts, requirement contradictions, and ask-before boundaries before each negotiation reasoning run. The negotiator enforces the result through its tools; the generative model writes the message or stall explanation.
-- Both providers receive the current intent, confirmed profile, scoped H2A conversation, brief, counterpart intent, and complete negotiation turns with agent authorship. Explicit principal evidence can supply facts omitted from the brief; agent summaries cannot establish facts or permission. Entries scoped to other opportunities and unconfirmed profile fields are excluded.
+- One bounded `Execute` run checks principal facts, requirement contradictions, and ask-before boundaries, then writes the turn or stall explanation. Tools enforce protocol actions, the standing decision, responder-only acceptance, and one output; evidence judgments are model reasoning, not deterministic guarantees.
+- The negotiator receives the current intent, confirmed profile, scoped H2A conversation, brief, counterpart intent, and complete negotiation turns with agent authorship. Explicit principal evidence can supply facts omitted from the brief; agent summaries cannot establish facts or permission. Entries scoped to other opportunities and unconfirmed profile fields are excluded.
 - Standalone `negotiate()` callers supply `conversation` in oldest-first order and complete `turns` with `speaker: "our_agent" | "counterparty_agent"`, `action`, and `message`. `AgentRunner` assembles these from its existing host reads.
-- `TypeSafeClient` defaults to `jev-latest` and accepts optional `model` and `timeout` settings. It does not retry or read environment variables. Evaluation failures reject the run before reasoning or publication.
-- For Hermes, supply an external implementation of `Execute` and the same `decisions` dependency. Native execution must use the supplied permitted tools. See [Native execution](#native-execution) below; the package does not implement Hermes sessions or transport.
+- `TypeSafeClient` remains available for explicit comparisons; it is not a runner dependency. It defaults to `jev-latest`, accepts optional `model` and `timeout` settings, and neither retries nor reads environment variables. Normal agent execution needs no TypeSafe credential.
+- For Hermes, supply an external implementation of `Execute`. Native execution must use the supplied permitted tools. See [Native execution](#native-execution) below; the package does not implement Hermes sessions or transport.
 
 ## Connect, reconcile, and stop
 
@@ -40,7 +39,6 @@ import {
   AgentRunner,
   type AgentEvent,
   type AgentHost,
-  type AgentRunnerOptions,
   type Execute,
 } from "@indexnetwork/agent";
 
@@ -55,7 +53,6 @@ type Subscribe = (
 export async function runAgent(
   host: AgentHost,
   execute: Execute,
-  decisions: AgentRunnerOptions["decisions"],
   subscribe: Subscribe,
   shutdown: AbortSignal,
 ): Promise<void> {
@@ -63,7 +60,6 @@ export async function runAgent(
   const runner = new AgentRunner({
     host,
     execute,
-    decisions,
     log: (line) => console.log(line),
     onError: (error) => console.error("Agent work failed", error),
   });
@@ -91,7 +87,7 @@ export async function runAgent(
 }
 ```
 
-- Call `runAgent(host, execute, decisions, subscribe, shutdown)` from your process entry point. Supply `shutdown` from a process-owned `AbortController`; abort it on shutdown. The host owns subscriptions, credentials, domain I/O, and process termination.
+- Call `runAgent(host, execute, subscribe, shutdown)` from your process entry point. Supply `shutdown` from a process-owned `AbortController`; abort it on shutdown. The host owns subscriptions, credentials, domain I/O, and process termination.
 
 Connect event delivery before the initial reconciliation so notifications can arrive during its reads. The runner supports that overlap, but connection alone does not guarantee gap-free delivery: your transport must still account for events missed while disconnected.
 

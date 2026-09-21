@@ -1,4 +1,3 @@
-import type { NegotiatorAgentOptions } from "../agents/negotiator.agent.js";
 import type { Decision, Intent } from "../agents/shared/agent.context.js";
 import type { Execute } from "../agents/shared/reasoning/reasoning.execution.js";
 
@@ -12,8 +11,6 @@ export interface AgentRunnerOptions {
   host: AgentHost;
   /** Runs a complete reasoning/tool loop, directly or through a native executor. */
   execute: Execute;
-  /** Host-configured TypeSafe access for negotiation evidence checks. */
-  decisions: NegotiatorAgentOptions["decisions"];
   /** Optional prompt-preparation clock, not the clock for persistence timestamps. */
   now?: () => Date;
   /** Reports agent work as individual log lines. */
@@ -45,7 +42,6 @@ export class AgentRunner {
     this.execution = new AgentExecution({
       host: options.host,
       execute: options.execute,
-      decisions: options.decisions,
       abortSignal: this.abortController.signal,
       membership: this.membership,
       now: options.now,

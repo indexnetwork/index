@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { AgentRunner, type AgentHost, type AgentRunnerOptions, type Intent, type NegotiationAction as Action, type NegotiationDetail } from '@indexnetwork/agent';
+import { AgentRunner, type AgentHost, type Execute, type Intent, type NegotiationAction as Action, type NegotiationDetail } from '@indexnetwork/agent';
 import { decideNegotiationOpening, decideNegotiationTurn, observeNegotiation, type NegotiationState } from '@indexnetwork/protocol';
 
 import { ConversationStore } from './conversation.store.js';
@@ -203,7 +203,7 @@ export class NegotiationLab extends EventEmitter implements NegotiationTuiHost {
   private announcedIntents = false;
   private stopped = false;
 
-  constructor(scenario: DemoScenario, options: Pick<AgentRunnerOptions, 'execute' | 'decisions'>) {
+  constructor(scenario: DemoScenario, options: { execute: Execute }) {
     super();
     this.users = scenario.users.flatMap((user) => user.intents.map((intent) => {
       const id = [user.id, intent.id].map(encodeURIComponent).join(':');
@@ -294,7 +294,6 @@ export class NegotiationLab extends EventEmitter implements NegotiationTuiHost {
       };
       this.runners.set(user.id, new AgentRunner({
         host,
-        decisions: options.decisions,
         execute: async (input) => {
           const demo = input.operation === 'wake' ? undefined : negotiationFor(input.opportunityId);
           demo?.progress((input.operation === 'brief' ? 'Briefing for ' : 'Negotiating for ') + user.name, 'running');

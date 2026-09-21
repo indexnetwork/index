@@ -1,4 +1,4 @@
-import { NegotiatorAgent, type NegotiateResult, type NegotiatorAgentOptions } from "../agents/negotiator.agent.js";
+import { NegotiatorAgent, type NegotiateResult } from "../agents/negotiator.agent.js";
 import { PrincipalAgent } from "../agents/principal/principal.agent.js";
 import type { PrincipalAgentOptions } from "../agents/principal/principal.agent.js";
 import type { WakeResult } from "../agents/principal/principal.context.js";
@@ -14,7 +14,6 @@ export type NegotiationRunResult = NegotiateResult | { unbriefed: true } | undef
 interface AgentExecutionOptions {
   host: AgentHost;
   execute: Execute;
-  decisions: NegotiatorAgentOptions["decisions"];
   abortSignal: AbortSignal;
   membership: IntentMembership;
   now?: () => Date;
@@ -110,7 +109,7 @@ export class AgentExecution {
 
     const context = prepareNegotiationContext(briefing, negotiation);
     if (!context) return undefined;
-    const negotiator = new NegotiatorAgent({ principalId: profile.id, intentId: intent.id, execute: this.options.execute, decisions: this.options.decisions, abortSignal, now: this.options.now });
+    const negotiator = new NegotiatorAgent({ principalId: profile.id, intentId: intent.id, execute: this.options.execute, abortSignal, now: this.options.now });
     this.options.log?.(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${negotiation.turnCount}`);
     const result = await negotiator.negotiate(context);
     abortSignal.throwIfAborted();
