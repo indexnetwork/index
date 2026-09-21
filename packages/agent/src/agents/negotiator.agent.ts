@@ -1,6 +1,6 @@
 import { NEGOTIATION_INSTRUCTIONS, ROLE_INSTRUCTIONS } from "./negotiator.instructions.js";
 import { profileFacts, type ConversationEntry } from "./principal/principal.context.js";
-import type { Intent, NegotiationAction, Opportunity, Profile, Stall } from "./shared/agent.context.js";
+import type { Intent, NegotiationAction, NegotiationTurn, Opportunity, Profile, Stall } from "./shared/agent.context.js";
 import type { Execute } from "./shared/reasoning/reasoning.execution.js";
 import { prepareInstructions } from "./shared/reasoning/reasoning.instructions.js";
 import { defineTool, type Tool } from "./shared/reasoning/reasoning.tool.js";
@@ -114,6 +114,9 @@ export class NegotiatorAgent {
           counterpart: opportunity.counterpart,
           status: opportunity.status,
           awaiting: opportunity.awaiting,
+          turnCount: opportunity.turnCount,
+          maxTurns: opportunity.maxTurns,
+          remainingTurns: opportunity.remainingTurns,
           why: opportunity.why,
           decision: opportunity.decision,
           stall: opportunity.stall,
@@ -145,11 +148,11 @@ export interface NegotiateContext {
   conversation: ConversationEntry[];
   brief: string;
   /** Complete negotiation history, oldest first, with agent authorship preserved. */
-  turns: (Turn & { speaker: "our_agent" | "counterparty_agent" })[];
+  turns: NegotiationTurn[];
   /** This principal's original seat role, fixed for the entire negotiation. */
   role: NegotiationRole;
-  /** The runner intersects protocol actions with the standing decision before invoking reasoning. */
-  opportunity: Opportunity;
+  /** Metadata and turn budget; history is supplied once in turns. The runner narrows actions by the standing decision. */
+  opportunity: Omit<Opportunity, "turns">;
 }
 
 /** One A2A turn; submission and final protocol validation belong to the host. */

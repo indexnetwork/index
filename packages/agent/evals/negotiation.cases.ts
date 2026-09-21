@@ -32,7 +32,7 @@ function context(
     opportunity: {
       id: "connection", counterpart: "Blair", status: "NEGOTIATING",
       actions: ["propose", "decline"], intent: { statement: counterpart },
-      turns: turns.map((turn) => `${turn.speaker} ${turn.action}: ${turn.message}`).join("\n"),
+      turnCount: turns.length, maxTurns: 12, remainingTurns: 12 - turns.length,
     },
   };
 }
@@ -57,7 +57,7 @@ const locationContext: NegotiateContext = {
   opportunity: {
     id: "connection", counterpart: "Blair", status: "NEGOTIATING",
     actions: ["counter", "accept", "decline"], intent: { statement: "Find a cofounder." },
-    turns: "counterparty_agent propose: My principal is looking for a cofounder. Is there a reason for our principals to connect?",
+    turnCount: 1, maxTurns: 12, remainingTurns: 11,
   },
 };
 

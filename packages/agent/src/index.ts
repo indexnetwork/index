@@ -4,7 +4,7 @@ export { PrincipalAgent } from "./agents/principal/principal.agent.js";
 export type { PrincipalAgentOptions } from "./agents/principal/principal.agent.js";
 export type { BriefContext, ConversationEntry, WakeAction, WakeContext, WakeResult } from "./agents/principal/principal.context.js";
 export type { Counterparty, CounterpartyPick, PrincipalOperations } from "./agents/principal/principal.discovery.js";
-export type { Decision, Intent, IntentStatus, NegotiationAction, Opportunity, Profile, Stall } from "./agents/shared/agent.context.js";
+export type { Decision, Intent, IntentStatus, NegotiationAction, NegotiationTurn, Opportunity, Profile, Stall } from "./agents/shared/agent.context.js";
 export { OpenRouterClient } from "./agents/shared/openrouter.client.js";
 export type { OpenRouterClientOptions } from "./agents/shared/openrouter.client.js";
 export { TypeSafeClient } from "./agents/shared/typesafe.client.js";

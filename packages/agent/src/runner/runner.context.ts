@@ -68,7 +68,8 @@ export async function readNegotiationContext(host: AgentHost, intentId: string, 
 }
 
 export function prepareNegotiationContext(briefing: BriefContext, negotiation: NegotiationDetail): NegotiateContext | undefined {
-  const { profile, intent, conversation, opportunity } = briefing;
+  const { profile, intent, conversation } = briefing;
+  const { turns, ...opportunity } = briefing.opportunity;
   const { brief, decision } = opportunity;
   if (!brief || !decision) return undefined;
   const initiatorId = negotiation.turns[0]?.seatUserId ?? negotiation.awaitingUserId;
@@ -77,9 +78,7 @@ export function prepareNegotiationContext(briefing: BriefContext, negotiation: N
   if (!actions.length) return undefined;
   return {
     profile, intent, conversation, brief, role, opportunity: { ...opportunity, actions },
-    turns: negotiation.turns.map(({ seatUserId, action, message }) => ({
-      speaker: seatUserId === profile.id ? "our_agent" : "counterparty_agent", action, message,
-    })),
+    turns,
   };
 }
 

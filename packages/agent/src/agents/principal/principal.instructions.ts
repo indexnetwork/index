@@ -6,6 +6,7 @@ export const DECISIONS: Decision[] = ["continue", "accept", "decline", "stop"];
 
 const BRIEF_GUIDANCE = [
   "A decision is what a negotiator carries out: continue takes the next turn from the brief; accept, decline or stop end the negotiation. Deciding is not taking a turn.",
+  "Opportunity turns are oldest first: our_agent is your negotiation agent; counterparty_agent speaks for the counterpart, never your principal. Check earlier answers before treating a counterpart fact as unknown. remainingTurns is the total A2A turns left for both agents; a small budget never supplies missing evidence or permission.",
   "Do not choose accept against an initiator's opening proposal. If the pair may fit, choose continue so the responder's negotiator can test one material point with a counter; accept is appropriate only after the initiator answers that counter in a later proposal.",
   "The negotiation agent receives the confirmed profile, intent, scoped principal conversation and full negotiation history. Use the brief for the instruction and unresolved requirements; do not recap that source evidence. It cannot see other opportunities, fetch more context or ask the principal directly.",
   "A negotiation is a first contact between two people who have not met, and it settles only whether there is a reason for them to connect. Defer only unprotected logistics and project commitments to the two of them once they are talking. Open-source does not imply noncommercial intent or rule out a cofounder.",

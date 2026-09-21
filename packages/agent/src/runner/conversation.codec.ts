@@ -101,10 +101,14 @@ export function toOpportunity(negotiation: NegotiationDetail, principalId: strin
     counterpart: negotiation.counterparty.name ?? negotiation.counterparty.userId,
     status: negotiation.outcome ?? "negotiating",
     awaiting: negotiation.awaitingUserId === principalId ? "you" : "them",
-    turns: String(negotiation.turnCount),
+    turns: negotiation.turns.map(({ seatUserId, action, message }) => ({
+      speaker: seatUserId === principalId ? "our_agent" : "counterparty_agent", action, message,
+    })),
+    turnCount: negotiation.turnCount,
+    maxTurns: negotiation.protocol.maxTurns,
+    remainingTurns: Math.max(0, negotiation.protocol.maxTurns - negotiation.turnCount),
     actions: negotiation.protocol.availableActions,
     intent: { statement: negotiation.counterparty.statement },
-    ...(negotiation.turns.length ? { terms: negotiation.turns.at(-1)!.message } : {}),
   };
 }
 

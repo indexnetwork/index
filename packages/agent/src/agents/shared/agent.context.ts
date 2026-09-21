@@ -19,6 +19,13 @@ export interface Intent {
 
 export type NegotiationAction = "propose" | "counter" | "accept" | "decline";
 
+/** One A2A turn, with authorship relative to the principal receiving the context. */
+export interface NegotiationTurn {
+  speaker: "our_agent" | "counterparty_agent";
+  action: NegotiationAction;
+  message: string;
+}
+
 /** Standing instruction that remains in force until replaced, not consumed after a turn. */
 export type Decision = "continue" | "accept" | "decline" | "stop";
 
@@ -28,12 +35,16 @@ export interface Opportunity {
   counterpart: string;
   status: string;
   awaiting?: string;
-  turns?: string;
+  /** Complete negotiation history, oldest first. */
+  turns: NegotiationTurn[];
+  turnCount: number;
+  maxTurns: number;
+  /** Total A2A turns left for both agents, derived from the host's limit and count. */
+  remainingTurns: number;
   /** Authoritative actions currently permitted for this principal's seat. */
   actions?: NegotiationAction[];
   intent?: { statement: string };
   why?: string;
-  terms?: string;
   brief?: string;
   decision?: Decision;
   stall?: Stall;
