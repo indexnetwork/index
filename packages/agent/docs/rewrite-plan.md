@@ -190,6 +190,7 @@ packages/agent/
     │   └── runner.context.ts
     └── agents/
         ├── negotiator.agent.ts
+        ├── negotiator.instructions.ts
         ├── principal/
         │   ├── principal.agent.ts
         │   ├── principal.context.ts
@@ -213,6 +214,7 @@ packages/agent/
 | `runner/` | Receive events, schedule both agent layers, assemble fresh context, persist or submit results, and decide what runs next. No H2A/A2A reasoning policy or infrastructure implementation. |
 | `agents/principal/` | H2A reasoning: face the principal, clarify the intent, ask questions, discover/open opportunities, and produce negotiation instructions. |
 | `agents/negotiator.agent.ts` | A2A reasoning: face the other agent, work one negotiation under its instruction, and return a turn or stall. |
+| `agents/negotiator.instructions.ts` | Negotiation policy, fixed-role guidance, and the authority preflight supplied to A2A reasoning. |
 | `agents/shared/` | Contracts and mechanics genuinely shared by the two reasoning layers. Keep domain contracts distinct from model utilities, including configured OpenRouter access. No runner policy, persistence, or host event subscriptions. |
 
 ### Inputs are not automatically state
