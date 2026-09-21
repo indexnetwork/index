@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/agent-tui",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "A terminal scenario host for AgentRunner, H2A conversations, and A2A negotiations.",
