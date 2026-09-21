@@ -17,7 +17,7 @@ export function createWakeTools(input: {
   const tools: Tool[] = [
     defineTool({
       name: "set_brief",
-      description: "Decide one opportunity and brief its negotiator. Its negotiator starts as soon as you call this. The brief text is required when that opportunity has none yet, and otherwise replaces the standing one. Carry supported principal facts and mark missing material facts as unresolved, with an instruction to ask the principal before advancing. Prioritize these unknowns within the brief limit. After an answer, replace the brief with the established facts and any remaining unknowns.",
+      description: "Decide one opportunity and brief its negotiator. Its negotiator starts as soon as you call this. The brief text is required when that opportunity has none yet, and otherwise replaces the standing one. Check every counterpart eligibility requirement against explicit principal facts. Put each missing qualification or preference first as unresolved and require asking the principal before advancing. After an answer, repeat that check and preserve all other missing facts, even if the previous brief omitted them. Fit claims must be supported within the brief limit.",
       parameters: {
         type: "object", additionalProperties: false,
         properties: {
@@ -94,7 +94,7 @@ export function createWakeTools(input: {
 export function createBriefTool(opportunity: Opportunity, actions: WakeAction[]): Tool {
   return defineTool({
     name: "set_brief",
-    description: "Decide this opportunity and brief its negotiator. The brief is the only thing the negotiator carries into its turn. Carry supported principal facts and mark missing material facts as unresolved, with an instruction to ask the principal before advancing. Prioritize these unknowns within the brief limit.",
+    description: "Decide this opportunity and brief its negotiator. The brief is the only thing the negotiator carries into its turn. Check every counterpart eligibility requirement against explicit principal facts. Put each missing qualification or preference first as unresolved and require asking the principal before advancing, even before the counterpart asks about it. Fit claims must be supported within the brief limit.",
     parameters: {
       type: "object", additionalProperties: false,
       properties: {
