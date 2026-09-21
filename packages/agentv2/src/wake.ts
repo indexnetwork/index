@@ -207,7 +207,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         if (!picks.length) return "No counterparties matched those queries. Try different ones, or stop.";
         const created = await client.createOpportunities(intent.id, picks);
         try {
-          await input.onProgress?.(`Discovered ${found.size} people and reached out to ${created.length}.`);
+          await input.onProgress?.({ queries, found: found.size, created: created.length });
         } catch (cause) {
           unpersisted ??= cause;
         }

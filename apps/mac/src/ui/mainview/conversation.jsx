@@ -234,7 +234,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               if (it.kind === "decisions") return <DecisionGroup key={it.id} items={it.items}/>;
               if (it.kind === "negotiation-logs") return <NegotiationLogGroup key={it.id} items={it.items}/>;
               if (it.kind === "answered-question") return <AnsweredQuestion key={it.id} item={it}/>;
-              if (it.kind === "progress") return <ProgressLine key={it.id} text={it.text}/>;
+              if (it.kind === "discovery-progress") return <DiscoveryLog key={it.id} item={it}/>;
               return <AgentNote key={it.id} item={it}/>;
             })}
             {questions.length > 0 && (
@@ -463,7 +463,7 @@ function buildInboxFeed(messages) {
   const answers = new Map();
   let runId = "before-discovery";
   messages.forEach((message, index) => {
-    if (message.kind === "progress") runId = message.id;
+    if (message.kind === "discovery-progress") runId = message.id;
     if (message.kind === "brief" || message.kind === "decision") {
       const run = decisionRuns.get(runId) || { id:runId, at:index, decisions:new Map() };
       const key = message.opportunityId || message.counterpart || message.id;
@@ -486,8 +486,10 @@ function buildInboxFeed(messages) {
   const insertions = new Map();
   decisionRuns.forEach((run) => {
     const items = Array.from(run.decisions.values());
-    const entry = { kind:"decisions", id:`decisions-${run.id}`, items };
-    insertions.set(run.at, [...(insertions.get(run.at) || []), entry]);
+    if (run.id === "before-discovery") {
+      const entry = { kind:"decisions", id:`decisions-${run.id}`, items };
+      insertions.set(run.at, [...(insertions.get(run.at) || []), entry]);
+    }
   });
   questions.forEach((question, questionId) => {
     const answer = answers.get(questionId);
@@ -497,23 +499,39 @@ function buildInboxFeed(messages) {
   });
   const feed = [];
   let logsInserted = false;
+  let activeDiscovery = false;
   runId = "before-discovery";
   messages.forEach((message, index) => {
-    if (message.kind === "progress") runId = message.id;
+    if (message.kind === "discovery-progress") {
+      runId = message.id;
+      activeDiscovery = true;
+    }
     const additions = insertions.get(index) || [];
     additions.forEach((entry) => feed.push(entry));
     if (!logsInserted && negotiationLogs.length && index >= logsAt) {
       feed.push({ kind:"negotiation-logs", id:"negotiation-logs", items:negotiationLogs });
       logsInserted = true;
     }
-    if (message.kind === "progress") {
-      feed.push(message);
+    if (message.kind === "discovery-progress") {
+      const run = decisionRuns.get(message.id);
+      feed.push({ ...message, items:run ? Array.from(run.decisions.values()) : [] });
       return;
+    }
+    if (message.kind === "note" && activeDiscovery && isDiscoveryRestatement(message.text)) return;
+    if (message.kind !== "brief" && message.kind !== "decision" && message.kind !== "negotiation-log") {
+      activeDiscovery = false;
     }
     if (message.kind !== "brief" && message.kind !== "decision" && message.kind !== "negotiation-log"
         && message.kind !== "question-history" && message.kind !== "answer-history") feed.push(message);
   });
   return feed;
+}
+
+function isDiscoveryRestatement(text) {
+  const sentences = text.split(/[.!?]+/).filter((sentence) => sentence.trim());
+  return sentences.length === 1
+    && /\b(discover(?:ed|ing)?|found)\b/i.test(text)
+    && /\b(reach(?:ed|ing)? out|outreach)\b/i.test(text);
 }
 
 function DecisionGroup({ items }) {
@@ -526,39 +544,59 @@ function DecisionGroup({ items }) {
       }}>
         Discovery decisions · {items.length} reviewed · {continued} reaching out
       </summary>
-      <div style={{ borderTop:"1px solid var(--ink-4)" }}>
-        {items.map((item, index) => (
-          <div key={item.id} style={{
-            padding:"10px 12px", display:"grid", gap:6,
-            borderTop:index ? "1px solid var(--ink-4)" : "none",
-          }}>
-            <div style={{ display:"flex", alignItems:"baseline", gap:8, minWidth:0 }}>
-              <strong style={{
-                flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                fontFamily:"var(--mac-sans)", fontSize:13,
-              }}>{item.counterpart}</strong>
-              {item.decision && <span style={{
-                fontFamily:"var(--mac-mono)", fontSize:10, textTransform:"uppercase", letterSpacing:0.4,
-              }}>{item.decision}</span>}
-            </div>
-            {item.brief && <div style={{
-              fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.45, color:"var(--ink-2)",
-            }}><AgentMarkdown text={item.brief}/></div>}
-          </div>
-        ))}
-      </div>
+      <DecisionDetails items={items}/>
     </details>
   );
 }
 
-function ProgressLine({ text }) {
+function DecisionDetails({ items }) {
   return (
-    <div className="fade-up" role="status" style={{
-      display:"grid", gridTemplateColumns:"8px 1fr", gap:9, alignItems:"start",
-      padding:"2px 0", color:"var(--ink-2)",
-    }}>
-      <span style={{ width:7, height:7, marginTop:5, borderRadius:99, background:"#000" }}/>
-      <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.55 }}>{text}</span>
+    <div style={{ marginTop:7, border:"1px solid var(--ink-4)", background:"#fff" }}>
+      {items.map((item, index) => (
+        <div key={item.id} style={{
+          padding:"10px 12px", display:"grid", gap:6,
+          borderTop:index ? "1px solid var(--ink-4)" : "none",
+        }}>
+          <div style={{ display:"flex", alignItems:"baseline", gap:8, minWidth:0 }}>
+            <strong style={{
+              flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+              fontFamily:"var(--mac-sans)", fontSize:13,
+            }}>{item.counterpart}</strong>
+            {item.decision && <span style={{
+              fontFamily:"var(--mac-mono)", fontSize:10, textTransform:"uppercase", letterSpacing:0.4,
+            }}>{item.decision}</span>}
+          </div>
+          {item.brief && <div style={{
+            fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.45, color:"var(--ink-2)",
+          }}><AgentMarkdown text={item.brief}/></div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DiscoveryLog({ item }) {
+  return (
+    <div className="fade-up" role="status" style={{ display:"grid", gap:7, color:"var(--ink-2)" }}>
+      {item.queries.map((query, index) => (
+        <div key={`${item.id}-query-${index}`} style={{
+          display:"grid", gridTemplateColumns:"8px 1fr", gap:9, alignItems:"start",
+          fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.55,
+        }}>
+          <span style={{ width:7, height:7, marginTop:5, borderRadius:99, background:"#000" }}/>
+          <span>{index ? "I’m also looking for" : "I’m looking for"} {query}</span>
+        </div>
+      ))}
+      <details style={{ margin:0 }}>
+        <summary style={{
+          display:"grid", gridTemplateColumns:"8px 1fr", gap:9, alignItems:"start",
+          cursor:"pointer", listStyle:"none", fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.55,
+        }}>
+          <span style={{ width:7, height:7, marginTop:5, borderRadius:99, background:"#000" }}/>
+          <span>Discovered {item.found} people with compatible intentions and started outreach to {item.created} promising ones ▸</span>
+        </summary>
+        {item.items.length > 0 && <DecisionDetails items={item.items}/>}
+      </details>
     </div>
   );
 }

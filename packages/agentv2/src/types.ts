@@ -107,7 +107,13 @@ export interface WakeInput {
    */
   onOpened?: (opportunityIds: string[]) => void;
   /** Persist one user-facing boundary for each discovery tool call. */
-  onProgress?: (text: string) => void | Promise<void>;
+  onProgress?: (progress: DiscoveryProgress) => void | Promise<void>;
+}
+
+export interface DiscoveryProgress {
+  queries: string[];
+  found: number;
+  created: number;
 }
 
 export type WakeAction =
@@ -115,7 +121,7 @@ export type WakeAction =
   | { type: "decision"; opportunityId: string; decision: Decision }
   | { type: "ask"; scope: "intent" | "opportunity"; opportunityId?: string; question: string; options: string[] }
   | { type: "note"; text: string }
-  | { type: "progress"; text: string }
+  | ({ type: "progress" } & DiscoveryProgress)
   | { type: "expire"; questionId: string };
 
 export interface WakeResult {

@@ -10,6 +10,16 @@ const THREE_COLUMN_MIN = 1020;
 // enough that an empty radar stops pretending to be busy.
 const DISCOVERY_GIVE_UP_MS = 120000;
 
+function parseDiscoveryProgress(text) {
+  try {
+    const progress = JSON.parse(text);
+    if (!Array.isArray(progress.queries) || !Number.isInteger(progress.found) || !Number.isInteger(progress.created)) return null;
+    return { kind:"discovery-progress", queries:progress.queries, found:progress.found, created:progress.created };
+  } catch {
+    return null;
+  }
+}
+
 function MainView({ profile, people, setPeople, conversation, setConversation,
                     field, setField, stats, simRate, setSimRate, tweaks = {},
                     onOpenRoom, onBack, registerChats, pendingFocus, onPendingHandled,
@@ -285,10 +295,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
               : text.startsWith("Decision: ")
                 ? { kind: "decision", text: text.slice(10) }
                 : text.startsWith("Progress: ")
-                  ? { kind: "progress", text: text.slice(10) }
+                  ? parseDiscoveryProgress(text.slice(10))
                   : text.startsWith("Stall: ")
                     ? { kind: "negotiation-log", text: text.slice(7) }
                     : { kind: "note", text };
+          if (!classified) return null;
           return {
             id: m.id,
             ...classified,

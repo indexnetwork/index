@@ -178,7 +178,7 @@ function describe(action: WakeAction): string {
     case "decision": return `decision ${action.opportunityId}: ${action.decision}`;
     case "ask": return `ask (${action.scope}${action.opportunityId ? ` ${action.opportunityId}` : ""}): ${action.question} [${action.options.join(" | ")}]`;
     case "note": return `note: ${action.text}`;
-    case "progress": return `progress: ${action.text}`;
+    case "progress": return `progress: ${action.queries.length} queries, ${action.found} found, ${action.created} opened`;
     case "expire": return `expire ${action.questionId}`;
   }
 }
@@ -222,7 +222,7 @@ export async function publishActions(
         entries.push(entry("message", action.text));
         break;
       case "progress":
-        entries.push(entry("message", `${PROGRESS}${action.text}`));
+        entries.push(entry("message", `${PROGRESS}${JSON.stringify({ queries: action.queries, found: action.found, created: action.created })}`));
         break;
       case "ask": {
         const question = entry("question", action.question, match ? [match] : []);
@@ -315,7 +315,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
       log(`  opened ${opportunityIds.length}`);
       for (const opportunityId of opportunityIds) onNegotiate?.(opportunityId);
     },
-    onProgress: (text) => publishActions(client, intent.id, [{ type: "progress", text }], context),
+    onProgress: (progress) => publishActions(client, intent.id, [{ type: "progress", ...progress }], context),
   });
 
   if (!result.actions.length) log("  silent");
