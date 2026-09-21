@@ -193,12 +193,16 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
 
         {/* footer CTA, matches the radar stage */}
         {actions && (
+        // The third window is the narrow column, so this row wraps rather than
+        // squeezing: the stage CTA keeps its own line and the negotiation
+        // gadget drops beneath it, instead of the gadget shrinking until its
+        // label breaks mid-button.
         <div style={{
           borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
-          display:"flex", alignItems:"center", gap:10,
+          display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", rowGap:8,
         }}>
           {isReady ? (
-            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <div style={{ display:"flex", gap:8, alignItems:"center", flex:"0 0 auto" }}>
               <button className="amiga-gadget primary"
                 onClick={() => onAccept && onAccept(person.id)}
                 style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px" }}>accept</button>
@@ -209,11 +213,11 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
           ) : isAccepted ? (
             <button className="amiga-gadget primary"
               onClick={() => onOpenChat && onOpenChat(person.id)}
-              style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px" }}>send message</button>
+              style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap" }}>send message</button>
           ) : isExpired ? (
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)" }}>this signal closed.</span>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)", flex:"1 1 120px", minWidth:0 }}>this signal closed.</span>
           ) : (
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)" }}>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)", flex:"1 1 120px", minWidth:0 }}>
               answer their question in your feed to move forward.
             </span>
           )}
@@ -223,6 +227,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
             style={{
               marginLeft:"auto", display:"flex", alignItems:"center", gap:5,
               fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 12px",
+              flex:"0 0 auto", whiteSpace:"nowrap",
             }}>
             <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
             negotiation ›
