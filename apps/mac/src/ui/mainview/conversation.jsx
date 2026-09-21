@@ -395,7 +395,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
 
       {onSendAgent && (
         <div style={{
-          padding:"10px 12px",
+          padding:"10px 12px 18px",
           borderTop:"1px solid #000",
           background:"#fff",
         }}>
