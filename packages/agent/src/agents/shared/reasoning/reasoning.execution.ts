@@ -6,7 +6,7 @@ import type { Tool } from "./reasoning.tool.js";
  * must keep principal briefing history separate from A2A negotiation history.
  */
 export type ExecutionInput = {
-  /** Prepared role/rules, human-principal relationship, current intent, and UTC date. */
+  /** Prepared role/rules, human-principal relationship, intent guidance, and UTC date. */
   instructions: string;
   /** The current task and its relevant context, prepared by the agent. */
   prompt: string;
@@ -28,7 +28,9 @@ export type ExecutionInput = {
  * Executes a whole reasoning/tool run, not a single model completion.
  *
  * Implementations await each response's tool calls sequentially in their returned
- * order. Execution ends when a response requests no tools or maxSteps is spent.
+ * order. A successful terminal tool ends execution immediately, skipping any
+ * remaining calls in that response and the next model request. Execution also
+ * ends when a response requests no tools or maxSteps is spent.
  * Unknown tools, invalid JSON arguments, and ordinary handler errors become tool
  * feedback within the remaining budget, without automatic retries or extra steps.
  * Observed cancellation takes precedence over ordinary tool-error feedback.

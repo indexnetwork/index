@@ -44,6 +44,9 @@ general accuracy estimate. This compares two workflows, not isolated model skill
 
 ## Results — 2026-09-21
 
+This initial comparison used the single negotiator later committed as `91999e803`,
+before the prompt and execution optimizations described below.
+
 The user confirmed all eight expected outcomes before the run. Each case ran three
 times per workflow. All evidence hashes matched across workflows and repetitions;
 the TypeSafe responses all identified `jev-1.13.0`.
@@ -74,7 +77,7 @@ overlapped the TUI smoke test; repetitions 2 and 3 ran after it reached idle and
 also had lower median latency with the gate. Costs were not measured.
 
 **Recommendation:** retain Jev for now. This comparison contradicts the earlier
-recommendation to remove its mandatory gate; the uncommitted removal should not
+recommendation to remove its mandatory gate; the removal experiment should not
 be shipped on these results. The eight cases do not resolve the earlier broader
 context-scoping, question relevance, or duplicate-question findings.
 
@@ -87,3 +90,43 @@ not a quality improvement across the six full scenarios.
 Local artifacts: [raw comparison results](/var/folders/zv/4gh061xd33xf_fkc24y6ddjw0000gn/T/index-negotiation-compare-ATUyeY/results.jsonl),
 [comparison summary](/var/folders/zv/4gh061xd33xf_fkc24y6ddjw0000gn/T/index-negotiation-compare-ATUyeY/summary.json),
 and [TUI smoke report](/private/tmp/index-agent-grounded-m1WZH8/smoke.report.md).
+
+## Prompt and execution optimization — 2026-09-21
+
+Compared the single negotiator at `91999e803` with the optimized working tree,
+using the same eight approved cases once each, alternating execution order.
+Both requested `google/gemini-3.7-flash`; all responses reported Google as provider
+and no cached tokens. This follow-up did not call Jev.
+
+| Metric | Before | After |
+|---|---:|---:|
+| Expected action | 7/8 | 8/8 |
+| Writer completions | 16 | 8 |
+| Median first-request input tokens | 1,977.5 | 1,194.5 |
+| Total input tokens, including follow-up completions | 32,189 | 9,696 |
+| Median complete negotiation | 6.291 s | 4.663 s |
+| Provider-reported total cost for eight cases | $0.0400605 | $0.02442075 |
+| Execution errors | 0 | 0 |
+
+Every optimized run recorded its turn or stall on its first completion. The budget
+case correctly asked for missing information in this pass. Reviewing the generated
+turns and suggested questions found no substantive grounding error in these eight
+outputs. One repetition is a functionality and performance smoke check; it does
+not settle the earlier grounding finding or replace the Jev comparison.
+
+Offline checks compared the eight fixtures plus 337 captured negotiation contexts
+with the committed implementation. Source evidence was identical in all 345 cases.
+Removed `terms` text matched the last retained turn; the other negotiation metadata
+was preserved. Serialized first-request size, including tool definitions, fell by
+38.3% on average. The principal agent retains its facts and pending question text,
+with open questions referenced by ID instead of copied into a second list.
+
+Control-flow checks covered successful turn/stall termination, correction after
+unknown tools, invalid JSON and rejected actions, the existing step cap,
+cancellation, skipping calls after a terminal success, and continued multi-step
+principal-agent execution. Agent checks/build, focused lint, and agent-tui checks
+passed. No new repository specs were added.
+
+Local artifacts: [live results and provider usage](/private/tmp/index-agent-prompt-VQts7x/live.jsonl),
+[live summary](/private/tmp/index-agent-prompt-VQts7x/live-summary.json),
+and [request-size comparisons](/private/tmp/index-agent-prompt-VQts7x/prompt-sizes.json).

@@ -57,12 +57,13 @@ export class PrincipalAgent {
     const tools = [...wakeTools.tools, discoveryTool];
 
     await this.options.execute({
-      instructions: prepareInstructions({ instructions: WAKE_INSTRUCTIONS, profile, intent, now: this.options.now }),
+      instructions: prepareInstructions({ instructions: WAKE_INSTRUCTIONS, now: this.options.now }),
       prompt: "Read the H2A conversation. Reply to any unaddressed principal input using note_principal, then act only on what actually needs to change.\n" + JSON.stringify({
+        principalIntent: intent.statement,
         profile: profileFacts(profile),
         conversation: principalConversation(context.conversation),
         opportunities,
-        openQuestions: [...open].map(([questionId, question]) => ({ questionId, question })),
+        openQuestionIds: [...open.keys()],
       }),
       tools,
       maxSteps: WAKE_STEPS,
@@ -90,8 +91,9 @@ export class PrincipalAgent {
 
     const actions: WakeAction[] = [];
     await this.options.execute({
-      instructions: prepareInstructions({ instructions: BRIEF_INSTRUCTIONS, profile, intent, now: this.options.now }),
+      instructions: prepareInstructions({ instructions: BRIEF_INSTRUCTIONS, now: this.options.now }),
       prompt: "Brief this one opportunity now.\n" + JSON.stringify({
+        principalIntent: intent.statement,
         profile: profileFacts(profile),
         conversation: principalConversation(context.conversation),
         opportunity,

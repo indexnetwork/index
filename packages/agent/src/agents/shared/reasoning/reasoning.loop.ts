@@ -42,7 +42,7 @@ export interface Model {
  * domain outputs. Prepared instructions and prompts pass through unchanged.
  *
  * @param model - Configured model access, with credentials and transport owned by its implementation.
- * @returns An executor that awaits tools in order and stops on no calls or the supplied step cap.
+ * @returns An executor that stops after a successful terminal tool, no calls, or the supplied step cap.
  */
 export function createExecute(model: Model): Execute {
   return async (input) => {
@@ -70,33 +70,34 @@ export function createExecute(model: Model): Execute {
 
       for (const call of calls) {
         abortSignal.throwIfAborted();
-        const content = await toolResult(call, tools, abortSignal);
+        const result = await toolResult(call, tools, abortSignal);
         abortSignal.throwIfAborted();
-        messages.push({ role: "tool", tool_call_id: call.id, content });
+        if (result.terminal) return;
+        messages.push({ role: "tool", tool_call_id: call.id, content: result.content });
       }
     }
   };
 }
 
-async function toolResult(call: ToolCall, tools: Map<string, Tool>, abortSignal: AbortSignal): Promise<string> {
+async function toolResult(call: ToolCall, tools: Map<string, Tool>, abortSignal: AbortSignal): Promise<{ content: string; terminal?: true }> {
   const tool = tools.get(call.function.name);
   if (!tool) {
-    return `No tool named "${call.function.name}". Available: ${[...tools.keys()].join(", ") || "none"}.`;
+    return { content: `No tool named "${call.function.name}". Available: ${[...tools.keys()].join(", ") || "none"}.` };
   }
 
   let argument: unknown;
   try {
     argument = call.function.arguments ? JSON.parse(call.function.arguments) : {};
   } catch {
-    return `Arguments for "${call.function.name}" were not valid JSON: ${call.function.arguments}`;
+    return { content: `Arguments for "${call.function.name}" were not valid JSON: ${call.function.arguments}` };
   }
 
   try {
     const output = await tool.run(argument);
     abortSignal.throwIfAborted();
-    return typeof output === "string" ? output : JSON.stringify(output ?? null);
+    return { content: typeof output === "string" ? output : JSON.stringify(output ?? null), terminal: tool.terminal };
   } catch (cause) {
     abortSignal.throwIfAborted();
-    return `Error: ${cause instanceof Error ? cause.message : String(cause)}`;
+    return { content: `Error: ${cause instanceof Error ? cause.message : String(cause)}` };
   }
 }

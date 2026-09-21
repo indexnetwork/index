@@ -56,8 +56,9 @@ export class NegotiatorAgent {
     const tools: Tool[] = [
       defineTool({
         name: "submit_turn",
+        terminal: true,
         description:
-          "Write one protocol-permitted turn after checking the source evidence for required principal facts, explicit contradictions, and unresolved ask-before boundaries. Stall when required principal input is missing. Propose puts the reason on the table or renews it with an answer, counter asks the one thing the offer leaves unsaid, accept records only that the responder sees enough potential fit for the principals to connect, and decline ends it. A decline must use supported reasons. An accept message must not say the principal accepted the proposal or any project terms within it. One turn only.",
+          "Record one A2A turn using source evidence and the action meanings in your instructions. Choose only a permitted action; use stall when required principal input is missing.",
         parameters: {
           type: "object",
           additionalProperties: false,
@@ -78,8 +79,9 @@ export class NegotiatorAgent {
       }),
       defineTool({
         name: "stall",
+        terminal: true,
         description:
-          "End this run without a turn because the source evidence lacks a principal fact, preference or permission required for the next useful turn. Use this rather than exceeding the principal's authority, inventing an answer, or deferring a material question to a later conversation; do not use it for logistics this stage genuinely leaves open.",
+          "Return the missing principal fact, preference or permission and a suggested question to the principal agent, without taking a negotiation turn.",
         parameters: {
           type: "object",
           additionalProperties: false,
@@ -100,17 +102,25 @@ export class NegotiatorAgent {
     await this.options.execute({
       instructions: prepareInstructions({
         instructions: [NEGOTIATION_INSTRUCTIONS, ROLE_INSTRUCTIONS[role]].join("\n\n"),
-        profile,
-        intent,
         now: this.options.now,
       }),
       prompt:
-        "Take this negotiation's next turn, or stall.\nYour brief:\n" +
-        brief +
+        "Take this negotiation's next turn, or stall." +
         "\n\nPrincipal and negotiation source evidence:\n" +
         JSON.stringify(evidence) +
         "\n\nThis negotiation:\n" +
-        JSON.stringify({ ...opportunity, role, actions }),
+        JSON.stringify({
+          id: opportunity.id,
+          counterpart: opportunity.counterpart,
+          status: opportunity.status,
+          awaiting: opportunity.awaiting,
+          why: opportunity.why,
+          decision: opportunity.decision,
+          stall: opportunity.stall,
+          answered: opportunity.answered,
+          role,
+          actions,
+        }),
       tools: tools.filter((tool) => tool.name !== "submit_turn" || actions.length > 0),
       maxSteps: 3,
       abortSignal: this.options.abortSignal,

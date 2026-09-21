@@ -4,6 +4,8 @@ export interface Tool<Input = unknown> {
   description: string;
   /** JSON Schema supplied to the model, not a runtime validator. */
   parameters: Record<string, unknown>;
+  /** End execution after this handler succeeds; failures still produce model feedback. */
+  terminal?: true;
   /**
    * @param input - Parsed JSON arguments; domain-specific validation belongs to the handler.
    * @returns Model feedback: strings pass through, other values are JSON-serialized, and no value becomes null.
