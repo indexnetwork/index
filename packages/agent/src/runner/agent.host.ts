@@ -94,8 +94,13 @@ export interface PrincipalMessage {
   id: string;
   createdAt: string;
   questionId?: string;
-  /** `expire` retires a question without treating it as answered. */
-  kind: "question" | "answer" | "user" | "message" | "expire";
+  /**
+   * `expire` retires a question without treating it as answered. `brief`,
+   * `decision`, `stall` and `progress` are the agent's own bookkeeping: they are
+   * persisted so a surface can show them, but they are never addressed to the
+   * principal and never read as a reply to them.
+   */
+  kind: "question" | "answer" | "user" | "message" | "expire" | "brief" | "decision" | "stall" | "progress";
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;

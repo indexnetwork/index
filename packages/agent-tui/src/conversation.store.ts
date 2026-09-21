@@ -2,6 +2,9 @@ import type { ConversationMessage } from '@indexnetwork/agent';
 
 import type { TuiConversation, TuiMessage, TuiQuestion } from './negotiation.tui.js';
 
+/** Negotiator bookkeeping: stored on the conversation, never shown in it. */
+const BOOKKEEPING = new Set<string>(['brief', 'decision', 'stall']);
+
 /** In-memory host storage and H2A view for one principal's intent conversation. */
 export class ConversationStore implements TuiConversation {
   private readonly conversationId = crypto.randomUUID();
@@ -43,7 +46,7 @@ export class ConversationStore implements TuiConversation {
         createdAt: entry.createdAt,
         metadata: { intentId: this.principal.intentId, principalMessage: entry },
       });
-      if (entry.kind !== 'message' || !['Brief: ', 'Decision: ', 'Stall: '].some((prefix) => entry.text.startsWith(prefix))) {
+      if (!BOOKKEEPING.has(entry.kind)) {
         this.visible.push(entry);
       }
       if (entry.kind === 'question' && entry.questionId && !this.questions.has(entry.questionId)) {

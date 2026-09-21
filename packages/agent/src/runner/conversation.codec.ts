@@ -3,12 +3,6 @@ import type { Decision, Opportunity, Stall } from "../agents/shared/agent.contex
 
 import type { AgentHost, ConversationMessage, MatchReference, Negotiation, NegotiationDetail, PrincipalMessage } from "./agent.host.js";
 
-const BRIEF = "Brief: ";
-const DECISION = "Decision: ";
-const STALL = "Stall: ";
-const PROGRESS = "Progress: ";
-const WITHDRAWN = "Withdrawn: ";
-
 export interface PublicationContext {
   counterparts: Map<string, MatchReference>;
   questions: Map<string, string>;
@@ -20,17 +14,17 @@ export async function publishActions(host: AgentHost, log: ((line: string) => vo
     log?.(`  ${describeAction(action)}`);
     const match = "opportunityId" in action && action.opportunityId ? context.counterparts.get(action.opportunityId) : undefined;
     switch (action.type) {
-      case "brief": messages.push(createMessage("message", `${BRIEF}${action.brief}`, match ? [match] : [])); break;
-      case "decision": messages.push(createMessage("message", `${DECISION}${action.decision}`, match ? [match] : [])); break;
+      case "brief": messages.push(createMessage("brief", action.brief, match ? [match] : [])); break;
+      case "decision": messages.push(createMessage("decision", action.decision, match ? [match] : [])); break;
       case "note": messages.push(createMessage("message", action.text)); break;
-      case "progress": messages.push(createMessage("message", `${PROGRESS}${action.text}`)); break;
+      case "progress": messages.push(createMessage("progress", action.text)); break;
       case "ask": {
         const question = createMessage("question", action.question, match ? [match] : []);
         messages.push({ ...question, questionId: question.id, scope: action.scope === "opportunity" ? "match" : "intent", options: action.options });
         break;
       }
       case "expire":
-        messages.push({ ...createMessage("expire", `${WITHDRAWN}${context.questions.get(action.questionId) ?? "a question that no longer matters."}`), questionId: action.questionId });
+        messages.push({ ...createMessage("expire", context.questions.get(action.questionId) ?? "a question that no longer matters."), questionId: action.questionId });
         break;
     }
   }
@@ -39,7 +33,7 @@ export async function publishActions(host: AgentHost, log: ((line: string) => vo
 
 export async function publishStall(host: AgentHost, negotiation: Negotiation, stall: Stall): Promise<void> {
   const text = stall.suggestedAsk ? `${stall.reason}\n\nTo ask: ${stall.suggestedAsk}` : stall.reason;
-  await host.appendMessages(negotiation.intentId, [createMessage("message", `${STALL}${text}`, [toMatchReference(negotiation)])]);
+  await host.appendMessages(negotiation.intentId, [createMessage("stall", text, [toMatchReference(negotiation)])]);
 }
 
 export function createPublicationContext(conversation: ConversationEntry[], negotiations: Negotiation[]): PublicationContext {
@@ -60,10 +54,6 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
     const counterpart = principal?.matches?.[0]?.counterparty.name ?? undefined;
     const text = textOf(message);
 
-    if (message.role === "agent" && text.startsWith(BRIEF)) return bookkeeping("brief", text.slice(BRIEF.length), opportunity, counterpart);
-    if (message.role === "agent" && text.startsWith(DECISION)) return bookkeeping("decision", text.slice(DECISION.length), opportunity, counterpart);
-    if (message.role === "agent" && text.startsWith(STALL)) return bookkeeping("stall", text.slice(STALL.length), opportunity, counterpart);
-    if (message.role === "agent" && text.startsWith(PROGRESS)) return bookkeeping("progress", text.slice(PROGRESS.length), opportunity, counterpart);
     return {
       kind: principal?.kind ?? (message.role === "user" ? "user" : "message"), text,
       ...(principal?.scope ? { scope: principal.scope === "match" ? "opportunity" as const : "intent" as const } : {}),
@@ -110,10 +100,6 @@ export function toOpportunity(negotiation: NegotiationDetail, principalId: strin
     actions: negotiation.protocol.availableActions,
     intent: { statement: negotiation.counterparty.statement },
   };
-}
-
-function bookkeeping(kind: "brief" | "decision" | "stall" | "progress", text: string, opportunity?: string, counterpart?: string): ConversationEntry {
-  return { kind, text, ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
 }
 
 function textOf(message: ConversationMessage): string {

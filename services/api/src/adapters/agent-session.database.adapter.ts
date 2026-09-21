@@ -98,7 +98,7 @@ export class AgentSessionDatabaseAdapter {
       }
       const inserted: Message[] = [];
       for (const entry of input.entries) {
-        if (entry.kind !== 'question' && entry.kind !== 'message' && entry.kind !== 'expire') continue;
+        if (entry.kind === 'user' || entry.kind === 'answer') continue;
         const { id, createdAt, text, ...principalMessage } = entry;
         inserted.push(await conversations.insertMessageWithConversationSession(tx, {
           id, createdAt: new Date(createdAt), conversationId: conversation.id,

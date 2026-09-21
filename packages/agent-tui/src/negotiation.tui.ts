@@ -81,12 +81,16 @@ const TOOL_COLORS: Record<TuiToolCall['status'], string> = {
 };
 const RUN_COLORS: Record<TuiToolCall['operation'], string> = { wake: COLORS.focus, brief: '#c6a1ef' };
 const OUTCOME_COLORS: Record<NegotiationOutcome, string> = { agreed: COLORS.answer, declined: '#f88a8a', closed: COLORS.muted };
-const MESSAGE_STYLES: Record<PrincipalMessage['kind'], { label: string; color: string; background: string }> = {
+/** Bookkeeping kinds are filtered out of the transcript before it reaches the view. */
+type ShownKind = Exclude<PrincipalMessage['kind'], 'brief' | 'decision' | 'stall'>;
+
+const MESSAGE_STYLES: Record<ShownKind, { label: string; color: string; background: string }> = {
   user: { label: 'YOU · MESSAGE', color: '#bca6ee', background: '#201c2e' },
   answer: { label: 'YOU · ANSWER', color: COLORS.answer, background: '#162b26' },
   message: { label: 'YOUR AGENT', color: COLORS.focus, background: '#172536' },
   question: { label: 'QUESTION · YOUR AGENT', color: COLORS.question, background: '#30291b' },
   expire: { label: 'QUESTION CLOSED', color: COLORS.muted, background: '#1c222b' },
+  progress: { label: 'YOUR AGENT', color: COLORS.focus, background: '#172536' },
 };
 
 // Reserve a blank column and a scrollbar column even before the history overflows.
@@ -287,7 +291,7 @@ export function mountNegotiationTui(renderer: CliRenderer, lab: NegotiationTuiHo
   }
 
   function appendMessage(pane: SessionPane, entry: PrincipalMessage): void {
-    const style = MESSAGE_STYLES[entry.kind];
+    const style = MESSAGE_STYLES[entry.kind as ShownKind];
     const about = entry.scope === 'intent' ? 'This intent' : entry.matches.map(({ counterparty }) => counterparty.name ?? counterparty.id).join(', ');
     const card = new BoxRenderable(renderer, {
       id: `entry-${pane.principal.id}-${entry.id}`, width: '100%', flexDirection: 'column', flexShrink: 0, marginBottom: 1,

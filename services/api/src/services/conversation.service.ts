@@ -370,7 +370,7 @@ export class ConversationService {
     const { messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     const known = new Set(messages.map((message) => message.id));
     const entries = input.entries.filter(
-      (entry) => (entry.kind === 'question' || entry.kind === 'message' || entry.kind === 'expire') && !known.has(entry.id),
+      (entry) => entry.kind !== 'user' && entry.kind !== 'answer' && !known.has(entry.id),
     );
     if (!entries.length) return;
     const asked = unanswered(messages).at(-1) ?? null;

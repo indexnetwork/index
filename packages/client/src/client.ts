@@ -106,8 +106,12 @@ export interface PrincipalMessage {
   id: string;
   createdAt: string;
   questionId?: string;
-  /** `expire` is the agent retiring its own question: it leaves the queue unanswered. */
-  kind: "question" | "answer" | "user" | "message" | "expire";
+  /**
+   * `expire` is the agent retiring its own question: it leaves the queue unanswered.
+   * `brief`, `decision`, `stall` and `progress` are agent bookkeeping, persisted
+   * for inspection but never addressed to the principal.
+   */
+  kind: "question" | "answer" | "user" | "message" | "expire" | "brief" | "decision" | "stall" | "progress";
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;
