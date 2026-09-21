@@ -56,6 +56,11 @@ export class AgentExecution {
           }
         }
       },
+      onProgress: async (text) => {
+        abortSignal.throwIfAborted();
+        await publishActions(this.options.host, this.options.log, wake.intent.id, [{ type: "progress", text }], publication);
+        abortSignal.throwIfAborted();
+      },
       onOpened: (opportunityIds) => {
         abortSignal.throwIfAborted();
         this.options.log?.(`  opened ${opportunityIds.length}`);
@@ -67,7 +72,7 @@ export class AgentExecution {
     });
     abortSignal.throwIfAborted();
     if (!result.actions.length) this.options.log?.("  silent");
-    await publishActions(this.options.host, this.options.log, wake.intent.id, result.actions.filter((action) => action.type !== "brief" && action.type !== "decision"), publication);
+    await publishActions(this.options.host, this.options.log, wake.intent.id, result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "progress"), publication);
     abortSignal.throwIfAborted();
     return result;
   }

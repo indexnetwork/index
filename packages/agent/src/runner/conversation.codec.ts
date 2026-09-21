@@ -6,6 +6,7 @@ import type { AgentHost, ConversationMessage, MatchReference, Negotiation, Negot
 const BRIEF = "Brief: ";
 const DECISION = "Decision: ";
 const STALL = "Stall: ";
+const PROGRESS = "Progress: ";
 const WITHDRAWN = "Withdrawn: ";
 
 export interface PublicationContext {
@@ -22,6 +23,7 @@ export async function publishActions(host: AgentHost, log: ((line: string) => vo
       case "brief": messages.push(createMessage("message", `${BRIEF}${action.brief}`, match ? [match] : [])); break;
       case "decision": messages.push(createMessage("message", `${DECISION}${action.decision}`, match ? [match] : [])); break;
       case "note": messages.push(createMessage("message", action.text)); break;
+      case "progress": messages.push(createMessage("message", `${PROGRESS}${action.text}`)); break;
       case "ask": {
         const question = createMessage("question", action.question, match ? [match] : []);
         messages.push({ ...question, questionId: question.id, scope: action.scope === "opportunity" ? "match" : "intent", options: action.options });
@@ -61,6 +63,7 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
     if (message.role === "agent" && text.startsWith(BRIEF)) return bookkeeping("brief", text.slice(BRIEF.length), opportunity, counterpart);
     if (message.role === "agent" && text.startsWith(DECISION)) return bookkeeping("decision", text.slice(DECISION.length), opportunity, counterpart);
     if (message.role === "agent" && text.startsWith(STALL)) return bookkeeping("stall", text.slice(STALL.length), opportunity, counterpart);
+    if (message.role === "agent" && text.startsWith(PROGRESS)) return bookkeeping("progress", text.slice(PROGRESS.length), opportunity, counterpart);
     return {
       kind: principal?.kind ?? (message.role === "user" ? "user" : "message"), text,
       ...(principal?.scope ? { scope: principal.scope === "match" ? "opportunity" as const : "intent" as const } : {}),
@@ -105,7 +108,7 @@ export function toOpportunity(negotiation: NegotiationDetail, principalId: strin
   };
 }
 
-function bookkeeping(kind: "brief" | "decision" | "stall", text: string, opportunity?: string, counterpart?: string): ConversationEntry {
+function bookkeeping(kind: "brief" | "decision" | "stall" | "progress", text: string, opportunity?: string, counterpart?: string): ConversationEntry {
   return { kind, text, ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
 }
 
@@ -127,6 +130,7 @@ function describeAction(action: WakeAction): string {
     case "brief": return `brief ${action.opportunityId}: ${action.brief}`;
     case "decision": return `decision ${action.opportunityId}: ${action.decision}`;
     case "note": return `note: ${action.text}`;
+    case "progress": return `progress: ${action.text}`;
     case "ask": return `ask (${action.scope}${action.opportunityId ? ` ${action.opportunityId}` : ""}): ${action.question} [${action.options.join(" | ")}]`;
     case "expire": return `expire ${action.questionId}`;
   }

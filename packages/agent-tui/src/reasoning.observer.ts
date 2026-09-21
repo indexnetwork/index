@@ -7,7 +7,7 @@ const TOOL_LABELS: Record<string, string> = {
   note_principal: 'Updating the principal',
   ask_principal: 'Asking a question',
   expire_question: 'Retiring a question',
-  reach_counterparties: 'Finding counterparties and opening opportunities',
+  reach_counterparties: 'Discovering counterparties and opening opportunities',
 };
 
 /** Ephemeral, owner-only execution observations; never conversation records or agent inputs. */

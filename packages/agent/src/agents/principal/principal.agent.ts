@@ -40,8 +40,21 @@ export class PrincipalAgent {
     const { profile, intent, opportunities } = context;
     const actions: WakeAction[] = [];
     const open = openQuestions(context.conversation);
+    let progressFailure: { cause: unknown } | undefined;
     const wakeTools = createWakeTools({ opportunities, openQuestions: open, actions, onBrief: context.onBrief });
-    const tools = [...wakeTools.tools, createDiscoveryTool({ intentId: this.options.intentId, operations: this.options.operations, onOpened: context.onOpened })];
+    const discoveryTool = createDiscoveryTool({
+      intentId: this.options.intentId,
+      operations: this.options.operations,
+      onOpened: context.onOpened,
+      onProgress: async (text) => {
+        try {
+          await context.onProgress?.(text);
+        } catch (cause) {
+          progressFailure ??= { cause };
+        }
+      },
+    });
+    const tools = [...wakeTools.tools, discoveryTool];
 
     await this.options.execute({
       instructions: prepareInstructions({ instructions: WAKE_INSTRUCTIONS, profile, intent, now: this.options.now }),
@@ -61,6 +74,7 @@ export class PrincipalAgent {
 
     const publicationFailure = wakeTools.publicationFailure();
     if (publicationFailure) throw publicationFailure.cause;
+    if (progressFailure) throw progressFailure.cause;
     return { actions };
   }
 

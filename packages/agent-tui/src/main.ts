@@ -23,8 +23,8 @@ The six bundled scenarios have 5–10 users and 5–14 intents, covering collabo
 research and learning peers, creative partners, local friendships, career mentors,
 and community projects. Filenames sort alphabetically, with the five-user
 cofounder scenario first. Each user has a runner and each intent an H2A conversation.
-Startup activates each new intent's H2A agent once. The agent searches the other
-scenario intents and opens opportunities through the host; negotiations do not exist
+Startup activates each new intent's H2A agent once. The agent discovers people from
+other scenario intents and opens opportunities through the host; negotiations do not exist
 until an agent opens them. A wake may remain silent and does not guarantee questions.
 Each user starts on the board with their first intent. Users/Ctrl+U opens the
 roster: Space/click toggles users, Enter applies, Esc cancels. Keep at least two.

@@ -27,7 +27,7 @@ with Up/Down + Enter or a click. The chooser displays filenames in alphabetical
 order, starting with the five-user cofounder scenario. The six bundled scenarios
 have 5–10 users and 5–14 intents. Every user–intent pair has its own H2A conversation
 and intent-bound `PrincipalAgent`, managed by one `AgentRunner` per user. Agents
-search and open opportunities after startup; no matches are pre-seeded. All work
+discover people and open opportunities after startup; no matches are pre-seeded. All work
 runs independently of the visible board.
 Changing users, intents, or collapsed panes only changes what you see.
 
@@ -68,8 +68,8 @@ different goals, while different wording can describe a useful connection.
 
 The respective intent counts per user are `1,1,1,1,1`, `2,2,1,1,1,1`,
 `2,2,1,1,1,1,1`, `2,2,1,1,1,1,1,1`, `2,2,2,1,1,1,1,1,1`, and
-`2,2,2,2,1,1,1,1,1,1`. All intents share one local simulated network. Searches
-rank other users' intent statements against the H2A agent's private query, and an
+`2,2,2,2,1,1,1,1,1,1`. All intents share one local simulated network. Discovery
+ranks other users' intent statements against the H2A agent's private query, and an
 opportunity exists only after the agent asks the host to create it.
 
 Multi-intent personas have separate intent statements, exercising independent H2A

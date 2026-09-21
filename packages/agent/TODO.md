@@ -165,3 +165,11 @@
   - [x] Document host obligations for durable records, authoritative authorization, reconciliation, and cross-process delivery, distinguishing them from in-memory scheduling and event acceptance.
   - [x] Add `docs/standalone.md` using public exports to supply host operations and reasoning execution, forward events, and stop/unsubscribe without another scheduler or a drain guarantee.
   - [x] Typecheck the guide's snippets against built exports with NodeNext and bundler resolution; verify its launcher offline for subscription/reconciliation ordering, event delivery, reconnect failures, startup cleanup, cancellation, and non-draining shutdown.
+
+## Live-model findings — 2026-09-21
+
+Observed with OpenRouter in `agent-tui` using `05-users-05-intents-cofounders-and-project-collaborators.json` after synchronizing requirement enforcement and discovery progress from `agentv2`.
+
+- [ ] Prevent a principal's agent from inferring missing eligibility facts from the role they seek or from adjacent intent language. Bob's agent asked whether Alice had an engineering background and supported keyboard-first work. Alice's profile and intent established neither, but her negotiator claimed both and Bob accepted the connection on those invented facts. A requested collaborator role does not establish the principal's own role, and a general accessibility goal does not establish a keyboard-first preference. The principal layer must preserve such facts as unresolved in the brief so the negotiator stalls and the H2A agent asks the principal.
+- [ ] Use singular grammar in deterministic discovery progress: `Discovered 1 person`, not `Discovered 1 people`.
+- [ ] Keep principal-facing discovery language consistent in generated notes. Despite the discovery instructions, one H2A note said `I am starting our search`. Strengthen the `note_principal` guidance to require `discover`/`reach out` and reject `search`/`searching` for user-facing activity descriptions.

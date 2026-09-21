@@ -9,6 +9,8 @@ export interface WakeContext {
   opportunities: Opportunity[];
   /** Awaited so an instruction is persisted before its negotiation starts. */
   onBrief?: (actions: WakeAction[]) => void | Promise<void>;
+  /** Persists one user-facing boundary for each discovery tool call. */
+  onProgress?: (text: string) => void | Promise<void>;
   /** Reports newly opened opportunities for scheduling outside principal reasoning. */
   onOpened?: (opportunityIds: string[]) => void;
 }
@@ -23,7 +25,7 @@ export interface BriefContext {
 
 /** Reconstructed conversation entry; wire scope `match` becomes `opportunity` here. */
 export interface ConversationEntry {
-  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall" | "expire";
+  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall" | "expire" | "progress";
   text: string;
   scope?: "intent" | "opportunity";
   counterpart?: string;
@@ -37,6 +39,7 @@ export type WakeAction =
   | { type: "decision"; opportunityId: string; decision: Decision }
   | { type: "ask"; scope: "intent" | "opportunity"; opportunityId?: string; question: string; options: string[] }
   | { type: "note"; text: string }
+  | { type: "progress"; text: string }
   | { type: "expire"; questionId: string };
 
 export interface WakeResult {
