@@ -281,12 +281,12 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
       });
       const explicitStatuses = (state.statuses?.length ?? 0) > 0;
       if (explicitStatuses) {
-        // Lifecycle view (e.g. intent radar): newest-first so counterpart
-        // dedup keeps each person's most recent state (an accepted
-        // opportunity supersedes an older pending one), no composition
-        // capping — the caller wants the full pipeline up to `limit`.
+        // Lifecycle view (e.g. intent radar): newest-created first so status
+        // transitions do not reorder cards merely by touching updatedAt.
+        // Counterpart dedup still keeps each person's newest opportunity; no
+        // composition capping because the caller wants the full pipeline.
         const newestFirst = [...visibleForRadar].sort(
-          (a, b) => safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt)
+          (a, b) => safeParseDate(b.createdAt) - safeParseDate(a.createdAt)
         );
         const seenIds = new Set<string>();
         const dedupedByCounterpart = newestFirst.filter((opp) => {
@@ -636,9 +636,12 @@ export async function cachePresenterResultsNode(state: RadarState, deps: RadarGr
 export async function normalizeItemsNode(state: RadarState) {
   return timed("RadarGraph.normalizeItems", async () => {
     normalizeItemsLog.verbose('entry', { cardsLength: state.cards.length });
+    const createdAtById = new Map(
+      state.opportunities.map((opportunity) => [opportunity.id, opportunity.createdAt.toISOString()]),
+    );
     const items: RadarResponseItem[] = state.cards.map((card) => {
       const { _cardIndex, _presentationFallback, ...rest } = card;
-      return rest;
+      return { ...rest, createdAt: createdAtById.get(card.opportunityId) };
     });
     const meta = { totalOpportunities: state.opportunities.length };
     normalizeItemsLog.verbose('exit', { totalOpportunities: meta.totalOpportunities, totalItems: items.length });

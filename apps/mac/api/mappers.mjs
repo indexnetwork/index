@@ -119,6 +119,7 @@ export function mapPeopleFromRadarItems(items = []) {
 export function mapPersonFromRadarCard(card) {
   return {
     id: card.opportunityId || card.userId,
+    createdAt: card.createdAt || null,
     // kept separate from `id` (which is the opportunity) so the profile window
     // can fetch this person's own intro and links
     userId: card.userId || null,

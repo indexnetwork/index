@@ -166,7 +166,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // most rejections are agent-side filtering, not user decisions, so
     // showing them implies choices the user never made.
     const radarStatuses = "pending,negotiating,accepted,expired";
-    const applyRadar = (radarR) => {
+    const applyRadar = (radarR, skeleton = false) => {
       if (!radarR) return;
       const items = window.IndexApp.normalizeList(radarR, "items");
       const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
@@ -176,7 +176,14 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         score: typeof p.score === "number" ? p.score : 0.7,
       }));
       const apply = window.IndexApi.applyRadarPeople || ((prev, next) => next);
-      setPeople((prev) => apply(prev, mapped));
+      setPeople((prev) => {
+        // Skeleton presentation is only useful for the first paint. Applying
+        // it during every poll temporarily blanks headline/mainText on cards,
+        // so copy such as "Negotiation in progress" disappears until the
+        // full response lands a moment later.
+        if (skeleton && prev.length > 0) return prev;
+        return apply(prev, mapped);
+      });
       setDiscoveryMetrics((prev) => ({
         ...prev,
         found: items.length,
@@ -189,7 +196,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       .radarForIntent(forIntent, { statuses: radarStatuses, presentation: "skeleton" })
       .catch(() => null);
     if (radarSeqRef.current !== seq || intentIdRef.current !== forIntent) return;
-    applyRadar(skeletonR);
+    applyRadar(skeletonR, true);
 
     const radarR = await client.opportunities
       .radarForIntent(forIntent, { statuses: radarStatuses })
@@ -205,7 +212,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     () => visiblePeople.filter(p => opportunityBucket(p) !== null),
     [visiblePeople]
   );
-  const filtered = useMemo(() => [...visiblePeople].sort((a, b) => b.score - a.score), [visiblePeople]);
+  const filtered = useMemo(
+    () => [...visiblePeople].sort(
+      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+    ),
+    [visiblePeople]
+  );
 
   // People you're still in negotiation with, anyone not yet ready/accepted/gone.
   const negotiatingPeople = useMemo(

@@ -48,6 +48,7 @@ export type OpportunityLifecycleStatus =
 /** Radar card item (from GET /opportunities/radar). Presenter-driven display contract. */
 export interface RadarCardItem {
   opportunityId: string;
+  createdAt?: string;
   /** Lifecycle status of the underlying opportunity (present for client bucketing, e.g. intent radar). */
   status?: OpportunityLifecycleStatus;
   userId: string;

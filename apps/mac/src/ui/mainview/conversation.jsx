@@ -104,14 +104,12 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   // The composer grows with what you type and stops at three lines, after
   // which it scrolls: 13px text at 1.4 plus the field's own padding.
   const draftRef = useRef(null);
-  const COMPOSER_MAX = Math.round(13 * 1.4 * 3) + 16;
+  const COMPOSER_MAX = Math.round(13 * 1.4 * 3) + 8;
   React.useLayoutEffect(() => {
     const el = draftRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const scrollHeight = el.scrollHeight;
-    el.style.height = `${Math.min(scrollHeight, COMPOSER_MAX)}px`;
-    el.style.overflowY = scrollHeight > COMPOSER_MAX ? "auto" : "hidden";
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX)}px`;
   }, [draft, COMPOSER_MAX]);
 
   const send = () => {
@@ -397,13 +395,10 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
 
       {onSendAgent && (
         <div style={{
-          padding:"10px 12px",
           borderTop:"1px solid #000",
           background:"#fff",
         }}>
-          {/* The send control lives inside the field: one box, and the arrow
-              only lights up when there is something to send. */}
-          <div style={{ position:"relative", display:"flex" }}>
+          <div style={{ padding:"7px 12px 8px", display:"flex", gap:10, alignItems:"flex-end" }}>
             <textarea
               ref={draftRef}
               rows={1}
@@ -419,11 +414,10 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               aria-label="Message your personal agent"
               style={{
                 flex:1, minWidth:0, display:"block",
-                maxHeight:COMPOSER_MAX, overflowY:"hidden", resize:"none",
-                border:"1px solid #000",
-                padding:"7px 34px 7px 9px",
-                fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
-                outline:"none", background:"#fff", color:"#000",
+                maxHeight:COMPOSER_MAX, overflowY:"auto", resize:"none",
+                background:"transparent", border:"none", outline:"none",
+                color:"#000", fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
+                padding:"4px 0",
               }}
             />
             <button
@@ -433,9 +427,8 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               aria-label="Send"
               title="send"
               style={{
-                position:"absolute", right:6, bottom:6,
-                display:"grid", placeItems:"center", width:22, height:22,
-                background:"none", border:"none", padding:0, lineHeight:0,
+                display:"grid", placeItems:"center", width:22, height:22, flex:"0 0 auto",
+                background:"none", border:"none", padding:0, lineHeight:0, marginBottom:2,
                 color: draft.trim() && !sending ? "#111" : "#b9b3a4",
                 cursor: draft.trim() && !sending ? "pointer" : "default",
               }}>
