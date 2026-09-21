@@ -109,7 +109,9 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
     const el = draftRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX)}px`;
+    const scrollHeight = el.scrollHeight;
+    el.style.height = `${Math.min(scrollHeight, COMPOSER_MAX)}px`;
+    el.style.overflowY = scrollHeight > COMPOSER_MAX ? "auto" : "hidden";
   }, [draft, COMPOSER_MAX]);
 
   const send = () => {
@@ -222,7 +224,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
         display:"flex", flexDirection:"column",
       }}>
         {inbox ? (
-          <div style={{ display:"flex", flexDirection:"column", gap:22, minHeight:0 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:22, minHeight:0, flex:"0 0 auto" }}>
             {agentMessages.length === 0 ? (
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", lineHeight:1.45,
@@ -344,7 +346,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
         )}
         {/* A scrolling flex column drops its own bottom padding once the
             content overflows, so the gap above the composer is a spacer. */}
-        <div style={{ height:FEED_BOTTOM_SPACER, flex:"0 0 auto" }}/>
+        <div style={{ height:onSendAgent ? 20 : FEED_BOTTOM_SPACER, flex:"0 0 auto" }}/>
       </div>
 
       {!stuck && unread > 0 && (
@@ -395,7 +397,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
 
       {onSendAgent && (
         <div style={{
-          padding:"10px 12px 18px",
+          padding:"10px 12px",
           borderTop:"1px solid #000",
           background:"#fff",
         }}>
@@ -417,7 +419,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               aria-label="Message your personal agent"
               style={{
                 flex:1, minWidth:0, display:"block",
-                maxHeight:COMPOSER_MAX, overflowY:"auto", resize:"none",
+                maxHeight:COMPOSER_MAX, overflowY:"hidden", resize:"none",
                 border:"1px solid #000",
                 padding:"7px 34px 7px 9px",
                 fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
