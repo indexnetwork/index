@@ -1,6 +1,6 @@
 # Standalone usage
 
-`@indexnetwork/agent` supplies one principal-scoped `AgentRunner`, both reasoning layers, and direct OpenRouter execution. It does **not** supply an authenticated Index client, an event subscription, a process supervisor, or a persistence implementation.
+- `@indexnetwork/agent` supplies one principal-scoped `AgentRunner`, both reasoning layers, direct OpenRouter execution, and TypeSafe negotiation evidence evaluation. Host integrations supply authenticated domain access, events, process startup, and persistence.
 
 This guide is launcher wiring, not a second scheduler or a turnkey CLI. Supply an `AgentHost` and event transport from your integration. `Subscribe` and `runAgent` below are example-local declarations, not package exports. API, Hermes, and macOS integration remains Seref's work.
 
@@ -12,19 +12,24 @@ Use Bun or a Node runtime with global `fetch`, `crypto.randomUUID`, and `AbortSi
 
 ## Choose reasoning execution
 
-For direct execution, import the public factory and client. Here `apiKey` is a string supplied by your host's configuration or secret manager:
+- Supply both provider credentials from the host's configuration or secret manager:
 
 ```ts
-import { createExecute, OpenRouterClient } from "@indexnetwork/agent";
+import { createExecute, OpenRouterClient, TypeSafeClient } from "@indexnetwork/agent";
 
 const execute = createExecute(new OpenRouterClient({ apiKey }));
+const decisions = new TypeSafeClient({ apiKey: typeSafeApiKey });
 ```
 
 Construction performs no I/O. Each actual reasoning request sends agent-prepared context to OpenRouter and its selected providers, using the host's billed API credential. Do not embed that credential in a browser bundle or source control.
 
 The client preserves v2's ordered defaults: `google/gemini-3.7-flash`, `google/gemini-3.8-flash`, and `anthropic/claude-haiku-4.5`. Optional `models` replaces them with one to three nonblank IDs. Optional `timeout` replaces the 120,000-millisecond deadline for **one request**, including its response body; it is not a deadline for the entire wake. No client-side retries are added. OpenRouter owns model/provider failover.
 
-For Hermes, supply an external implementation of `Execute` instead of this direct executor. It must execute a whole bounded reasoning/tool run—not emulate a single model completion. See [Native execution](#native-execution) below; the package does not implement Hermes sessions or transport.
+- `decisions` is required by `AgentRunner` and `NegotiatorAgent`. One TypeSafe request evaluates principal facts, requirement contradictions, and ask-before boundaries before each negotiation reasoning run. The negotiator enforces the result through its tools; the generative model writes the message or stall explanation.
+- Both providers receive the current intent, confirmed profile, scoped H2A conversation, brief, counterpart intent, and complete negotiation turns with agent authorship. Explicit principal evidence can supply facts omitted from the brief; agent summaries cannot establish facts or permission. Entries scoped to other opportunities and unconfirmed profile fields are excluded.
+- Standalone `negotiate()` callers supply `conversation` in oldest-first order and complete `turns` with `speaker: "our_agent" | "counterparty_agent"`, `action`, and `message`. `AgentRunner` assembles these from its existing host reads.
+- `TypeSafeClient` defaults to `jev-latest` and accepts optional `model` and `timeout` settings. It does not retry or read environment variables. Evaluation failures reject the run before reasoning or publication.
+- For Hermes, supply an external implementation of `Execute` and the same `decisions` dependency. Native execution must use the supplied permitted tools. See [Native execution](#native-execution) below; the package does not implement Hermes sessions or transport.
 
 ## Connect, reconcile, and stop
 
@@ -35,6 +40,7 @@ import {
   AgentRunner,
   type AgentEvent,
   type AgentHost,
+  type AgentRunnerOptions,
   type Execute,
 } from "@indexnetwork/agent";
 
@@ -49,6 +55,7 @@ type Subscribe = (
 export async function runAgent(
   host: AgentHost,
   execute: Execute,
+  decisions: AgentRunnerOptions["decisions"],
   subscribe: Subscribe,
   shutdown: AbortSignal,
 ): Promise<void> {
@@ -56,6 +63,7 @@ export async function runAgent(
   const runner = new AgentRunner({
     host,
     execute,
+    decisions,
     log: (line) => console.log(line),
     onError: (error) => console.error("Agent work failed", error),
   });
@@ -83,7 +91,7 @@ export async function runAgent(
 }
 ```
 
-Call `runAgent(host, execute, subscribe, shutdown)` from your process entry point. Supply `shutdown` from an `AbortController` owned by that process; abort it on your shutdown request. The subscription, credentials, domain I/O, and process termination handlers are host-owned, not additional package APIs.
+- Call `runAgent(host, execute, decisions, subscribe, shutdown)` from your process entry point. Supply `shutdown` from a process-owned `AbortController`; abort it on shutdown. The host owns subscriptions, credentials, domain I/O, and process termination.
 
 Connect event delivery before the initial reconciliation so notifications can arrive during its reads. The runner supports that overlap, but connection alone does not guarantee gap-free delivery: your transport must still account for events missed while disconnected.
 
@@ -178,7 +186,7 @@ An external `Execute` implementation must:
 - Await each response's tools sequentially. Send string results unchanged; JSON-serialize other values, using null for no value. Unknown tools, invalid JSON, and ordinary handler errors become tool feedback inside the remaining budget. JSON Schema is not a generic runtime validator.
 - Reject on model failure or observed `abortSignal` cancellation; do not turn cancellation into tool feedback or retry automatically. Already-started effects need not be interruptible or reversible.
 - Return `Promise<void>`; the agents own domain results collected through their handlers.
-- Use `principalId`, `intentId`, `operation`, and the briefing/negotiation `opportunityId` as work metadata. Keep H2A briefing history separate from A2A sessions, and do not leak the principal conversation into negotiation reasoning. Native session/checkpoint management remains outside this package.
+- Use `principalId`, `intentId`, `operation`, and the briefing/negotiation `opportunityId` as work metadata. Keep H2A and A2A sessions separate; use the scoped source evidence supplied in the negotiation prompt. Do not expose private conversation or brief text in counterpart messages. Native session/checkpoint management remains outside this package.
 
 ## Integration boundary
 

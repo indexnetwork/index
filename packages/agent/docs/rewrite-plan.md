@@ -84,7 +84,7 @@ The rewrite separates owner-facing H2A work from counterpart-facing A2A work. `P
 | **turn** | One A2A protocol action: `propose`, `counter`, `accept`, or `decline`. | `Turn` |
 | **stall** | A negotiator result stating that the instruction lacks a necessary fact or authority to take a turn. It may suggest a principal question. | `Stall` |
 
-The negotiator must remain isolated from H2A state: it does not read the principal conversation, inspect sibling opportunities, discover counterparties, or directly schedule an intent run.
+- The runner supplies the negotiator with this intent's principal conversation and this negotiation's complete turns. Evaluation excludes entries scoped to other opportunities and internal bookkeeping. The negotiator cannot fetch host state, inspect sibling opportunities, discover counterparties, or schedule an intent run.
 
 Initiator and responder are fixed roles within one `NegotiatorAgent` implementation, not separate agent classes. `NegotiateContext.role` is required; replying, countering, or proposing in a later round does not swap it. The runner supplies the original role from the authoritative opening record: before the first turn the awaiting seat is the initiator; afterward the first turn's author identifies it. Never infer the role from the latest turn.
 
@@ -126,7 +126,7 @@ The diagram shows logical ordering, not a requirement to wait for an entire prin
 2. **Runner:** `src/runner/` owns normalized-event routing, coalescing, in-flight work, holds, reconciliation, fresh context loading, and read → reason → persist ordering. `agent.runner.ts` retains scheduling while focused peer modules handle execution, context assembly, conversation encoding, and the host contract.
 3. **Host boundary:** `AgentHost` supplies only the consumed domain operations, including authoritative reads, conversation publication, discovery/opportunity opening, and optimistic turn submission. Host implementations do not reproduce the runner's orchestration.
 4. **Principal reasoning:** `PrincipalAgent.wake()` handles one intent with fresh context; `brief()` supplies one missing opportunity instruction. Empty results are valid. Intra-run instruction updates use local opportunity copies so publication failure does not leave unpersisted instructions on caller-owned snapshots.
-5. **Negotiation reasoning:** `NegotiatorAgent.negotiate()` works one opportunity under its instruction and fixed role, returning a turn or stall without H2A history. Only the original responder may accept.
+5. **Negotiation reasoning:** `NegotiatorAgent.negotiate()` evaluates scoped principal evidence and negotiation history through TypeSafe, then generates a permitted turn or stall from the same evidence under its instruction and fixed role. Only the original responder may accept.
 6. **Shared execution:** the whole-run `Execute` boundary accepts agent-prepared instructions, prompts, and tools. `createExecute(model)` implements the direct loop; `OpenRouterClient` supplies configured model access. Native Hermes execution must implement the same boundary externally, not a single-completion imitation.
 7. **Package delivery:** build/typecheck scripts emit ESM JavaScript and NodeNext-compatible declarations. [standalone.md](standalone.md) demonstrates lifecycle wiring through public exports without another scheduler or a bundled host implementation.
 
@@ -152,13 +152,13 @@ The diagram shows logical ordering, not a requirement to wait for an entire prin
 
 | Boundary | Contract |
 |---|---|
-| Runner lifetime | `new AgentRunner({ host, execute, now?, log?, onError? })`, scoped to one principal and performing no construction-time I/O. |
+| Runner lifetime | `new AgentRunner({ host, execute, decisions, now?, log?, onError? })`, scoped to one principal and performing no construction-time I/O. |
 | Notifications | `handle(event): void` schedules/coalesces notifications referencing persisted records; it does not promise work completion or durable queuing. |
 | Manual reasoning | `wake(intentId): void` requests a normal coalesced H2A wake without saving input, answering questions, or releasing holds. |
 | Recovery | `reconcile(): Promise<void>` adopts/refreshes active membership and schedules eligible turn-zero work; its promise does not drain reasoning. |
 | Shutdown | `stop(): void` permanently requests cooperative cancellation and drops pending work; no restart, drain, or rollback. |
 | Principal reasoning | One `PrincipalAgent` instance per intent; fresh `profile`, `intent`, `conversation`, and `opportunities` on each `wake`, or one `opportunity` for `brief`. |
-| Negotiation reasoning | `NegotiatorAgent.negotiate()` receives `profile`, `intent`, `brief`, fixed `role`, and one `opportunity`; returns a turn or stall. |
+| Negotiation reasoning | `NegotiatorAgent.negotiate()` receives `profile`, `intent`, `conversation`, `brief`, ordered `turns`, fixed `role`, and one `opportunity`; uses the required `decisions` dependency to restrict the generated turn or stall. |
 | Execution | `Execute` runs one bounded reasoning/tool loop and returns `Promise<void>`; tools collect domain outputs. Limits are 8/1/3 for wake/brief/negotiate. |
 | Persistence | Durable host-owned conversations and negotiations, with v2's instruction/stall encoding. Memory is scheduling state, never a storage fallback. |
 
@@ -190,6 +190,7 @@ packages/agent/
     │   └── runner.context.ts
     └── agents/
         ├── negotiator.agent.ts
+        ├── negotiator.evaluator.ts
         ├── negotiator.instructions.ts
         ├── principal/
         │   ├── principal.agent.ts
@@ -200,6 +201,7 @@ packages/agent/
         └── shared/
             ├── agent.context.ts
             ├── openrouter.client.ts
+            ├── typesafe.client.ts
             └── reasoning/
                 ├── reasoning.execution.ts
                 ├── reasoning.instructions.ts
@@ -214,7 +216,8 @@ packages/agent/
 | `runner/` | Receive events, schedule both agent layers, assemble fresh context, persist or submit results, and decide what runs next. No H2A/A2A reasoning policy or infrastructure implementation. |
 | `agents/principal/` | H2A reasoning: face the principal, clarify the intent, ask questions, discover/open opportunities, and produce negotiation instructions. |
 | `agents/negotiator.agent.ts` | A2A reasoning: face the other agent, work one negotiation under its instruction, and return a turn or stall. |
-| `agents/negotiator.instructions.ts` | Negotiation policy, fixed-role guidance, and the authority preflight supplied to A2A reasoning. |
+| `agents/negotiator.evaluator.ts` | Three independent TypeSafe evidence questions and their code-owned continue/decline/stall decision. |
+| `agents/negotiator.instructions.ts` | Negotiation writing policy and fixed-role guidance within the evaluated permissions. |
 | `agents/shared/` | Contracts and mechanics genuinely shared by the two reasoning layers. Keep domain contracts distinct from model utilities, including configured OpenRouter access. No runner policy, persistence, or host event subscriptions. |
 
 ### Inputs are not automatically state
@@ -223,7 +226,9 @@ Principal, intent, opportunity, and negotiation snapshots are inputs read from t
 
 ### Direct reasoning execution
 
-`createExecute(model)` in `agents/shared/reasoning/reasoning.loop.ts` implements the whole-run `Execute` contract. The host supplies configured model access; the agents and runner still depend only on `Execute`, not individual model completions. The direct loop and its consumed `Model`, `ModelMessage`, `ToolCall`, and `ToolDefinition` contracts are exported through `src/index.ts`. Hermes integration must supply the whole-run contract outside this package.
+- Generative execution uses `Execute`; negotiation evidence evaluation uses the required `decisions: Pick<TypeSafeClient, "evaluate">` dependency. Both are configured by the host and receive runner cancellation.
+
+- `createExecute(model)` in `agents/shared/reasoning/reasoning.loop.ts` implements the whole-run `Execute` contract. The host supplies configured model access; agents and runner use `Execute` for generative runs. The direct loop and its `Model`, `ModelMessage`, `ToolCall`, and `ToolDefinition` contracts are exported through `src/index.ts`. Hermes supplies the whole-run contract outside this package.
 
 `OpenRouterClient` in `agents/shared/openrouter.client.ts` implements `Model` and is exported alongside `OpenRouterClientOptions`. The host composes direct execution with `createExecute(new OpenRouterClient({ apiKey }))`. The API key is required explicitly; the client neither reads environment variables nor performs I/O during construction. Optional `models` replaces v2's ordered defaults (`google/gemini-3.7-flash`, `google/gemini-3.8-flash`, `anthropic/claude-haiku-4.5`) with one to three nonblank IDs. Optional `timeout` replaces the default 120,000-millisecond per-request deadline, which covers reading the response body and is combined with runner cancellation.
 
@@ -235,6 +240,46 @@ One step is a model response plus all its requested tool calls. The loop honors 
 
 Cancellation is checked before and after model/tool calls, and the model receives the same `abortSignal`. Observed cancellation rejects instead of becoming tool-error feedback, even when an awaited operation finishes without honoring cancellation. Model failures reject unchanged. Already-started effects are not rolled back, and execution does not promise interruption of a handler that is still running.
 
+### Negotiation evidence evaluation
+
+- **Implemented owner:** `agents/negotiator.evaluator.ts` asks three independent Choice questions in one `TypeSafeClient.evaluate()` request: principal facts supported by source evidence, explicit requirement contradictions, and unresolved applicable ask-before boundaries.
+- **Inputs:** current intent, confirmed profile fields, intent-scoped H2A conversation, brief, counterparty intent, and all negotiation turns labeled `our_agent` or `counterparty_agent`. H2A entries retain their kinds, chronological order, and explicit `principal` or `principal_agent` speakers; entries scoped to other opportunities and brief/decision/stall/progress bookkeeping are excluded. Unconfirmed profile fields are omitted.
+- **Source authority:** explicit principal words and confirmed profile facts can support an answer omitted from the brief. Later principal answers supersede stale summaries or profile details. Agent questions, summaries, earlier A2A claims, and counterpart assertions cannot establish principal facts or grant permission. Applicable boundaries remain in force when omitted from the brief; explicit principal answers can resolve them without a refreshed brief.
+- **Decision:** use each Choice's selected label; retain its probabilities and confidence in the generation prompt. A known mismatch can be declined despite other missing input. Passing the checks does not establish counterpart fit.
+- **Authority:** intersect the evaluated permission with the host's protocol actions, the standing decision, and responder-only acceptance. A required decline forbidden by the standing instruction rejects the run. Both the exposed tools and their handlers enforce the restriction.
+- **Generation:** the existing `Execute` run receives the same scoped evidence as Jev and writes the required decline or stall explanation; after a continue result it chooses among the remaining protocol actions and may still identify a reason to stall. Private conversation and brief text are not disclosed to the counterpart. The 3-step generative budget is unchanged; evaluation is one preceding request.
+- **Failure and persistence:** evaluation failure or cancellation rejects before generation. It is never persisted as a domain stall. Existing conversation and turn writes remain authoritative; no schema or stored metadata changes.
+- **Breaking inputs:** hosts must supply `decisions` to `AgentRunner` and standalone `NegotiatorAgent`; direct `negotiate()` callers also supply `conversation` and speaker-labeled `turns`. The runner uses its existing reads. The TUI supplies `TypeSafeClient` from `TYPESAFE_API_KEY`; native executors use the same evidence and permitted tools.
+
+```mermaid
+flowchart TD
+    Principal[Intent, confirmed profile, scoped H2A] --> Context[Source evidence]
+    Negotiation[Brief, counterpart intent, ordered A2A] --> Context
+    Context --> Jev[Three parallel judgments]
+    Jev --> Conflict{Explicit contradiction?}
+    Conflict -->|Yes| Decline[Require decline]
+    Conflict -->|No| Missing{Missing fact or ask-before answer?}
+    Missing -->|Yes| Stall[Require stall]
+    Missing -->|No| Continue[Keep protocol actions]
+    Decline --> Generate[Generate permitted output]
+    Stall --> Generate
+    Continue --> Generate
+    Context --> Generate
+    Generate --> Host[Host validates and persists]
+```
+
+| Scenario | Required behavior |
+|---|---|
+| Principal role or preference omitted from brief but explicit in source evidence | Retain protocol actions; the writer can answer from the same evidence. |
+| Principal role or preference absent, partially answered, or only claimed by an agent | Offer only `stall`; generate the specific missing question. |
+| Applicable ask-before instruction unresolved | Offer only `stall`; exploratory language cannot bypass it. |
+| Boundary omitted from brief or supposedly resolved only by an agent | Offer only `stall` until explicit principal evidence resolves it. |
+| Principal explicitly answers an applicable boundary; brief remains stale | Treat that boundary as resolved. |
+| Explicit mismatch, including alongside another unknown | Offer only `submit_turn` with `decline`, subject to existing authority. |
+| Counterpart mismatch in an earlier turn | Retain it unless a later explicit correction supersedes it. |
+| No contradiction and principal facts/authority sufficient | Retain protocol-permitted actions; never expose `accept` to the initiator. |
+| TypeSafe failure or observed cancellation | Reject without calling generative execution or publishing a stall. |
+
 ### Context reconstruction
 
 The read path stays private to the runner subsystem in `runner/runner.context.ts`; it does not add public context-loading APIs.
@@ -242,7 +287,7 @@ The read path stays private to the runner subsystem in `runner/runner.context.ts
 - Shared intent reads load the current profile, intent, and conversation. Message text comes from text parts, while `metadata.principalMessage` supplies kinds, question fields, and the first opportunity reference.
 - Agent-authored `Brief: `, `Decision: `, and `Stall: ` prefixes retain their exact meaning. The latest brief or stall replaces that field; a valid decision clears the old stall and answered marker. Principal input marks the applicable existing opportunity contexts answered but does not clear a stall. The stored `\n\nTo ask: ` suffix stays in the reconstructed stall reason.
 - Wake context includes this intent's current opportunity records and standing context. A single-negotiation read instead retains one `BriefContext` and its authoritative `NegotiationDetail`, so orchestration can brief missing instructions and submit against the observed turn count without loading sibling opportunities. Both reads retain a separate private publication context containing authoritative match references and historical question text; these maps are not part of either agent's reasoning inputs.
-- Preparing `NegotiateContext` selects only profile, intent, brief, fixed role, and one opportunity. It intersects host actions with the standing decision and responder-only acceptance rule; raw H2A history and submission records do not reach the negotiator.
+- Preparing `NegotiateContext` carries profile, intent, conversation, brief, fixed role, one opportunity, and all A2A turns with agent authorship. It intersects host actions with the standing decision and responder-only acceptance rule. Evaluation filters the conversation before sending the same source evidence to Jev and generative execution; raw host records remain private to the runner.
 
 Known inactive or ineligible work yields no executable context; rejected host reads still reject. Missing instructions or an empty permission intersection do not become fabricated stalls. These loaders do not invoke agents, schedule work, or persist anything. Public event routing, reconciliation, principal-wake and single-negotiation orchestration, and their connected scheduling loops are implemented below. Reconciliation retains active intent IDs, never context snapshots or cached authorization.
 

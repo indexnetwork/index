@@ -1,8 +1,11 @@
-import { AUTHORITY_PREFLIGHT, NEGOTIATION_INSTRUCTIONS, ROLE_INSTRUCTIONS } from "./negotiator.instructions.js";
+import { evaluateNegotiation } from "./negotiator.evaluator.js";
+import { NEGOTIATION_INSTRUCTIONS, ROLE_INSTRUCTIONS } from "./negotiator.instructions.js";
+import type { ConversationEntry } from "./principal/principal.context.js";
 import type { Intent, NegotiationAction, Opportunity, Profile, Stall } from "./shared/agent.context.js";
 import type { Execute } from "./shared/reasoning/reasoning.execution.js";
 import { prepareInstructions } from "./shared/reasoning/reasoning.instructions.js";
 import { defineTool, type Tool } from "./shared/reasoning/reasoning.tool.js";
+import type { TypeSafeClient } from "./shared/typesafe.client.js";
 
 const ACTIONS: NegotiationAction[] = ["propose", "counter", "accept", "decline"];
 
@@ -11,6 +14,8 @@ export interface NegotiatorAgentOptions {
   principalId: string;
   intentId: string;
   execute: Execute;
+  /** Evaluates negotiation evidence before the reasoning run. */
+  decisions: Pick<TypeSafeClient, "evaluate">;
   /** Runner-owned cancellation shared by this intent's reasoning runs. */
   abortSignal: AbortSignal;
   /** Optional clock for preparing the current UTC date in instructions. */
@@ -23,28 +28,34 @@ export class NegotiatorAgent {
 
   /**
    * Binds identity and execution dependencies without reading host state or starting work.
-   * @param options - Principal and intent identity, execution, cancellation, and clock.
+   * @param options - Principal and intent identity, execution, decision evaluation, cancellation, and clock.
    */
   constructor(options: NegotiatorAgentOptions) {
     this.options = { ...options };
   }
 
   /**
-   * Takes one negotiation turn from fresh context, or explains what the instruction lacks.
-   * @param context - Current profile, intent, brief, fixed seat role, and this opportunity's negotiation context.
+   * Takes one negotiation turn from fresh evidence, or explains what principal input is missing.
+   * @param context - Current profile, intent, conversation, brief, fixed seat role, and ordered negotiation turns.
    * @returns A turn for the runner to submit, or a stall for it to persist; no output becomes a no-result stall.
-   * @throws If reasoning execution fails or is cancelled; execution failures are not stalls.
+   * @throws If evaluation or execution fails, is cancelled, or requires a turn the standing instruction forbids.
    */
   async negotiate(context: NegotiateContext): Promise<NegotiateResult> {
     const { profile, intent, brief, opportunity, role } = context;
-    const actions = (opportunity.actions ?? ACTIONS).filter((action) => action !== "accept" || role === "responder");
+    const evaluation = await evaluateNegotiation(this.options.decisions, context, this.options.abortSignal);
+    const actions = (opportunity.actions ?? ACTIONS).filter((action) =>
+      (action !== "accept" || role === "responder") &&
+      evaluation.decision !== "stall" && (evaluation.decision !== "decline" || action === "decline"));
+    if (evaluation.decision === "decline" && !actions.length) {
+      throw new Error("The evidence requires declining, but the standing instruction does not permit a decline.");
+    }
     let result: NegotiateResult | undefined;
 
     const tools: Tool[] = [
       defineTool({
         name: "submit_turn",
         description:
-          "Take this negotiation's next turn only after the mandatory authority preflight finds the principal facts needed for this turn explicitly supported in the brief, with no relevant ask-before, unresolved, unknown or unset principal input. An omitted fact is unknown; stall when it is needed. Propose puts the reason on the table or renews it with an answer, counter asks the one thing the offer leaves unsaid, accept records only that the responder sees enough potential fit for the principals to connect, and decline ends it. An accept message must not say the principal accepted the proposal or any project terms within it. The original initiator can never accept. Only a proposal can be accepted. One turn only.",
+          "Write one turn using an action permitted by the evidence evaluation and protocol. Propose puts the reason on the table or renews it with an answer, counter asks the one thing the offer leaves unsaid, accept records only that the responder sees enough potential fit for the principals to connect, and decline ends it. A required decline must name the explicit mismatch. An accept message must not say the principal accepted the proposal or any project terms within it. One turn only.",
         parameters: {
           type: "object",
           additionalProperties: false,
@@ -66,18 +77,19 @@ export class NegotiatorAgent {
       defineTool({
         name: "stall",
         description:
-          "End this run without a turn because the brief lacks a principal fact, preference or permission required for the next useful turn. Use this rather than committing your principal further than the brief allows, inventing an answer, or deferring a material question to a later conversation; do not use it for logistics this stage genuinely leaves open.",
+          "End this run without a turn because the source evidence lacks a principal fact, preference or permission required for the next useful turn. Use this rather than exceeding the principal's authority, inventing an answer, or deferring a material question to a later conversation; do not use it for logistics this stage genuinely leaves open.",
         parameters: {
           type: "object",
           additionalProperties: false,
           properties: {
-            reason: { type: "string", minLength: 1, description: "The fact the brief does not state, and what the counterpart is waiting on." },
+            reason: { type: "string", minLength: 1, description: "The fact or permission missing from principal evidence, and what the counterpart is waiting on." },
             suggestedAsk: { type: "string", description: "The question to put to the principal, in the words they would answer." },
           },
           required: ["reason", "suggestedAsk"],
         },
         run: ({ reason, suggestedAsk }: Stall) => {
           if (result) throw new Error("This run already decided. Stop.");
+          if (evaluation.decision === "decline") throw new Error("The evidence requires declining this mismatch, not asking for missing principal input.");
           result = { stall: { reason, ...(suggestedAsk ? { suggestedAsk } : {}) } };
           return "Stall recorded.";
         },
@@ -86,7 +98,7 @@ export class NegotiatorAgent {
 
     await this.options.execute({
       instructions: prepareInstructions({
-        instructions: [NEGOTIATION_INSTRUCTIONS, ROLE_INSTRUCTIONS[role], AUTHORITY_PREFLIGHT].join("\n\n"),
+        instructions: [NEGOTIATION_INSTRUCTIONS, ROLE_INSTRUCTIONS[role]].join("\n\n"),
         profile,
         intent,
         now: this.options.now,
@@ -94,9 +106,11 @@ export class NegotiatorAgent {
       prompt:
         "Take this negotiation's next turn, or stall.\nYour brief:\n" +
         brief +
+        "\n\nEvidence evaluation and its source context (the decision is enforced by the available tools; use the source evidence to explain the specific fact, boundary, or mismatch):\n" +
+        JSON.stringify(evaluation) +
         "\n\nThis negotiation:\n" +
         JSON.stringify({ ...opportunity, role, actions }),
-      tools,
+      tools: tools.filter((tool) => tool.name === "submit_turn" ? actions.length > 0 : evaluation.decision !== "decline"),
       maxSteps: 3,
       abortSignal: this.options.abortSignal,
       principalId: this.options.principalId,
@@ -112,11 +126,15 @@ export class NegotiatorAgent {
 /** Original seat role, independent of turn ownership or who most recently proposed. */
 export type NegotiationRole = "initiator" | "responder";
 
-/** Fresh context for one negotiation, without H2A conversation or sibling opportunities. */
+/** Fresh principal evidence and one negotiation; sibling opportunities are excluded from evaluation. */
 export interface NegotiateContext {
   profile: Profile;
   intent: Intent;
+  /** This intent's H2A entries, oldest first; evaluation scopes them to this opportunity. */
+  conversation: ConversationEntry[];
   brief: string;
+  /** Complete negotiation history, oldest first, with agent authorship preserved. */
+  turns: (Turn & { speaker: "our_agent" | "counterparty_agent" })[];
   /** This principal's original seat role, fixed for the entire negotiation. */
   role: NegotiationRole;
   /** The runner intersects protocol actions with the standing decision before invoking reasoning. */

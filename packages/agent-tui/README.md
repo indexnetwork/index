@@ -22,7 +22,7 @@ depend on them remaining present during another workspace build. The library
 build keeps workspace packages external and emits declarations against their
 normal public exports.
 
-Requires `OPENROUTER_API_KEY` and an interactive terminal. Choose a JSON scenario
+Requires `OPENROUTER_API_KEY`, `TYPESAFE_API_KEY`, and an interactive terminal. Choose a JSON scenario
 with Up/Down + Enter or a click. The chooser displays filenames in alphabetical
 order, starting with the five-user cofounder scenario. The six bundled scenarios
 have 5–10 users and 5–14 intents. Every user–intent pair has its own H2A conversation
@@ -37,17 +37,15 @@ Override the shared model client's ordered model list with one to three IDs:
 bun --env-file=.env.development run agent:tui google/gemini-3.8-flash anthropic/claude-haiku-4.5
 ```
 
-`createExecute(new OpenRouterClient(...))` runs each bounded reasoning/tool loop.
-OpenRouter handles ordered model/provider failover; the client does not retry or
-wait out rate limits. Failures appear on the board and in the exported transcript.
+- `TypeSafeClient` evaluates negotiation evidence before each negotiation run; the agent enforces required stalls and declines through its tools.
+- `createExecute(new OpenRouterClient(...))` runs each bounded generative reasoning/tool loop. OpenRouter handles ordered model/provider failover; neither client retries or waits out rate limits. Failures appear on the board and in the exported transcript.
+
 No HTTP server, Redis, or
 database is required for the scenario host. Ctrl+C requests cancellation, prevents
 further host writes, and saves a private Markdown transcript in a temporary
 directory without draining model requests. Each scenario launch starts fresh.
 
-The bundled scenarios can start many concurrent reasoning runs. Running them sends
-fictional scenario context and any text you enter to OpenRouter and its selected
-model providers, and incurs normal model usage costs.
+- Running a scenario sends fictional context and entered text to OpenRouter's selected model providers. TypeSafe receives the current intent, confirmed profile, scoped principal conversation, brief, counterpart intent, and full negotiation history. Concurrent runs incur normal model usage costs.
 
 ## Bundled scenarios
 
@@ -229,7 +227,8 @@ User IDs must be unique, and intent IDs must be unique within each user. All sho
 fields are required, with at least two users and at least one intent per user. Each
 intent conversation starts empty. The fictional user's supplied name is the only
 confirmed profile data; principal input enters only through TUI user actions.
-Negotiators receive the principal layer's brief, never the raw H2A conversation.
+
+- Negotiators evaluate and write from the principal layer's brief, confirmed profile, scoped H2A conversation, and complete negotiation history. Principal answers provide evidence; previous agent claims do not. Entries for other opportunities are excluded.
 
 ## Host injection
 
@@ -269,11 +268,12 @@ initiator can never accept**, even in later rounds. Only the original responder
 can accept an outstanding proposal. An A2A agreement is not human consent.
 
 ```ts
-import { createExecute, OpenRouterClient } from '@indexnetwork/agent';
+import { createExecute, OpenRouterClient, TypeSafeClient } from '@indexnetwork/agent';
 import { mountNegotiationTui, NegotiationLab } from '@indexnetwork/agent-tui';
 
 const lab = new NegotiationLab(scenario, {
   execute: createExecute(new OpenRouterClient({ apiKey })),
+  decisions: new TypeSafeClient({ apiKey: typeSafeApiKey }),
 });
 // Mount the board before startup so it observes all changes.
 mountNegotiationTui(renderer, lab);
@@ -282,8 +282,7 @@ await lab.start();
 lab.stop();
 ```
 
-Here `scenario`, `apiKey`, and `renderer` are supplied by the caller; `src/main.ts`
-is the executable launcher.
+- The caller supplies `scenario`, `apiKey`, `typeSafeApiKey`, and `renderer`; `src/main.ts` is the executable launcher.
 
 ```bash
 bun run --cwd packages/agent check

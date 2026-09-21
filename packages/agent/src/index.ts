@@ -7,6 +7,8 @@ export type { Counterparty, CounterpartyPick, PrincipalOperations } from "./agen
 export type { Decision, Intent, IntentStatus, NegotiationAction, Opportunity, Profile, Stall } from "./agents/shared/agent.context.js";
 export { OpenRouterClient } from "./agents/shared/openrouter.client.js";
 export type { OpenRouterClientOptions } from "./agents/shared/openrouter.client.js";
+export { TypeSafeClient } from "./agents/shared/typesafe.client.js";
+export type { TypeSafeAnswer, TypeSafeClientOptions, TypeSafeContent, TypeSafeQuestion, TypeSafeResponse } from "./agents/shared/typesafe.client.js";
 export type { Execute, ExecutionInput } from "./agents/shared/reasoning/reasoning.execution.js";
 export { createExecute } from "./agents/shared/reasoning/reasoning.loop.js";
 export type { Model, ModelMessage, ToolCall, ToolDefinition } from "./agents/shared/reasoning/reasoning.loop.js";
