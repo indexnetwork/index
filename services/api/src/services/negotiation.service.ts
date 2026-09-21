@@ -75,7 +75,7 @@ export class NegotiationService {
    * @param opportunityId - The negotiation's opportunity.
    * @param callerUserId - The seat submitting.
    * @param turn - The decision and its message.
-   * @param execution - Hosted lease or external executor binding checked in the write transaction.
+   * @param execution - External executor binding checked in the write transaction.
    * @returns The negotiation as the caller now sees it, or the refusal reason.
    */
   async submitTurn(

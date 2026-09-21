@@ -42,6 +42,10 @@ over HTTP. Nothing runs on a clock. A counterpart's turn and an opening each mov
 one opportunity; the owner's own input, a new signal and a resumed one are what
 cause a wake. So a hosted seat searches, opens opportunities and asks its owner
 questions, where the former `HostedNegotiator` only took A2A turns.
+
+- Conversation messages and pending questions use `@indexnetwork/client` contracts. Their source of truth is the intent-tagged H2A transcript.
+- The runtime no longer reads or writes old principal checkpoints or session leases. The historical `agent_sessions` table remains available to maintenance commands; this cleanup requires no database migration.
+
 `GET /api/conversations/:id/messages` with `intentId` returns that intent's H2A
 history and `agent` state (`external` or `hosted`, plus `questions` — now
 populated for both). Send text to `POST /api/conversations/:id/messages`
@@ -92,24 +96,10 @@ These commands replace `db:playground:resume` and `db:clear-negotiations`.
 From the repository root:
 
 ```bash
-bun run --cwd services/api agent:tui
-# Optional ordered OpenRouter model IDs:
-bun run --cwd services/api agent:tui google/gemini-3.8-flash anthropic/claude-haiku-4.5
+bun run agent:tui
 ```
 
-Uses the root `.env.development`, existing database principals/intents, and the
-API's negotiation services. Space selects principal/intent sessions; Enter starts
-all selected agents. No HTTP server or login is needed for this trusted local
-command. HTTP guards are unchanged. Models, the session store, protocol guidance,
-and protocol-backed reads/writes are injected into `@indexnetwork/agent`.
-
-`packages/protocol` owns participation rules and consent/transition gates;
-`packages/agent` owns reasoning, parallel matches, and the shared H2A inbox.
-The TUI composes both against the API database. It persists domain
-tables, `agent_sessions` checkpoints/leases, and intent-tagged H2A `messages`
-in the owner's existing DM. A2A agreement remains pending human approval. The
-API server does not take these session leases. Do not run two TUIs for the same
-intents.
+- The supported TUI runs local in-memory scenarios through `@indexnetwork/agent` and protocol participation rules. See [agent-tui](../../packages/agent-tui/README.md) for scenarios, controls, and model configuration.
 
 
 ## Tests

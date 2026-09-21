@@ -4,9 +4,9 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "predev": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agentv2 build",
+    "predev": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agentv2 build",
     "dev": "NODE_ENV=development bun --watch --preload ./src/instrument.ts src/main.ts",
-    "build": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agentv2 build && tsc",
+    "build": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agentv2 build && tsc",
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
@@ -44,7 +44,6 @@
     "resend": "^4.0.1",
     "uuid": "^11.1.0",
     "zod": "^3.22.4",
-    "@indexnetwork/agent": "workspace:*",
     "@indexnetwork/agentv2": "workspace:*",
     "@indexnetwork/client": "workspace:*"
   },

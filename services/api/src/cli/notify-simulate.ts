@@ -107,10 +107,9 @@ async function main(): Promise<void> {
 
   const { and, desc, eq, isNull, ne } = await import('drizzle-orm/sql');
   const { default: db, closeDb } = await import('../lib/drizzle/drizzle');
-  const { agentSessions, intents, users } = await import('../schemas/database.schema');
+  const { intents, users } = await import('../schemas/database.schema');
   const { OpportunityDatabaseAdapter } = await import('../adapters/opportunity.database.adapter');
   const { ConversationDatabaseAdapter } = await import('../adapters/conversation.database.adapter');
-  const { publishPendingQuestionEvent } = await import('../adapters/agent-session.database.adapter');
   const { buildProfileFromUser } = await import('../adapters/database.shared');
   const { closeRedisConnection } = await import('../adapters/cache.adapter');
   const {
@@ -118,6 +117,7 @@ async function main(): Promise<void> {
     publishUserEvent,
   } = await import('../lib/user-events');
   const { OpportunityEventService } = await import('../services/opportunity-event.service');
+  const { ConversationService } = await import('../services/conversation.service');
 
   async function resolveUserByEmail(email: string): Promise<{ id: string; email: string; name: string | null }> {
     const [row] = await db
@@ -173,8 +173,6 @@ async function main(): Promise<void> {
     if (args.command === 'question') {
       const intent = await newestActiveIntent(recipient.email, recipient.id);
 
-      const conversations = new ConversationDatabaseAdapter();
-      const conversation = await conversations.getOrCreateAgentDm(recipient.id);
       const question = {
         id: crypto.randomUUID(),
         question: args.text
@@ -183,22 +181,18 @@ async function main(): Promise<void> {
         scope: 'intent' as const,
         matches: [],
       };
-      await db
-        .insert(agentSessions)
-        .values({
-          userId: recipient.id,
-          intentId: intent.id,
-          conversationId: conversation.id,
-          state: { inbox: { incomingMessageIds: [], requests: [], outcomes: [], question }, matches: [] },
-        })
-        .onConflictDoUpdate({
-          target: [agentSessions.userId, agentSessions.intentId],
-          set: { state: { inbox: { incomingMessageIds: [], requests: [], outcomes: [], question }, matches: [] } },
-        });
-      await publishPendingQuestionEvent(recipient.id, intent.id, question);
+      await new ConversationService().publishH2A({
+        userId: recipient.id,
+        intentId: intent.id,
+        entries: [{
+          id: question.id, questionId: question.id, createdAt: new Date().toISOString(),
+          kind: 'question', text: question.question, options: question.options,
+          scope: question.scope, matches: question.matches,
+        }],
+      });
 
-      console.log('Parked pending question', question.id);
-      console.log('Published question.pending via publishPendingQuestionEvent');
+      console.log('Persisted pending question', question.id);
+      console.log('Published question.pending via ConversationService.publishH2A');
       console.log('  stream:', userEventStream(recipient.id));
       console.log('  recipient:', recipient.email, `(${recipient.id})`);
       console.log('  signal:', intent.id, `(${intent.payload.slice(0, 60)})`);

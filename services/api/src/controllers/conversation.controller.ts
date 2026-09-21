@@ -1,4 +1,4 @@
-import type { PrincipalMessage } from '@indexnetwork/agent';
+import type { PrincipalMessage } from '@indexnetwork/client';
 import { z } from 'zod';
 
 import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';

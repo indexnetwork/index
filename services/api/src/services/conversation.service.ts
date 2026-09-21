@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { PrincipalMessage, PrincipalQuestion } from '@indexnetwork/agent';
+import type { PrincipalMessage, PrincipalQuestion } from '@indexnetwork/client';
 
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { AgentSessionDatabaseAdapter, publishPendingQuestionEvent } from '../adapters/agent-session.database.adapter';
