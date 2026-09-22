@@ -102,11 +102,6 @@ export type OpportunityDatabase = Pick<Database,
   | 'getNetwork' | 'getUser' | 'isNetworkMember' | 'isNetworkOwner'
   | 'getOrCreateDM' | 'stampOpportunityActorAction' | 'updateOpportunityStatus'
 >;
-export interface OutcomeOutbox {
-  event: unknown;
-  actorResolution: 'selected_intent' | 'unique_owned_scope';
-  result: { inserted: boolean };
-}
 
 export type OpportunityControllerDatabase = Pick<
   Database,

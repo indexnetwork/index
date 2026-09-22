@@ -5,12 +5,6 @@ export function normalizeIntentText(text: string): string {
   return text.normalize('NFKC').trim().replace(/\s+/g, ' ');
 }
 
-/** Build the canonical full payload + summary text used by pool discovery. */
-export function buildFullIntentText(payload: string, summary?: string | null): string {
-  const normalizedPayload = normalizeIntentText(payload);
-  const normalizedSummary = summary ? normalizeIntentText(summary) : '';
-  return normalizedSummary ? `${normalizedPayload} (${normalizedSummary})` : normalizedPayload;
-}
 
 /**
  * Hash only normalized payload + summary, deliberately excluding lifecycle

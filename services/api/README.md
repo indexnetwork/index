@@ -76,7 +76,7 @@ eligible paused intents. Use reset to start the experiment from the beginning.
 
 Reset briefly stops the dev API and any replay in its container, then pauses
 non-archived, non-terminal intents and clears discovery progress, opportunities,
-negotiations/turns, outcome feedback, agent checkpoints and agent conversations.
+negotiations/turns, agent checkpoints and agent conversations.
 Human conversations keep their messages but lose old match provenance. Users,
 API keys/sessions, profiles, intents, networks, memberships, assignments and
 embeddings/HyDE remain. The exact API deployment is restarted and health-checked,

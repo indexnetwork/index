@@ -86,7 +86,7 @@ npm install @indexnetwork/protocol
 
 The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. No startup call is needed.
 
-Environment variables are the supported way to configure models. `CHAT_MODEL` and `CHAT_REASONING_EFFORT` (`minimal | low | medium | high | xhigh`) drive the default model; every protocol agent — evaluators, generators, miners — reads `OPENROUTER_API_KEY` from the environment.
+Environment variables are the supported way to configure models. `CHAT_MODEL` and `CHAT_REASONING_EFFORT` (`minimal | low | medium | high | xhigh`) drive the default model; every protocol agent reads `OPENROUTER_API_KEY` from the environment.
 
 Programmatic model override is not part of the public contract — use the environment variables. If you need a typed override path, open an issue rather than reaching through a deep import.
 
@@ -119,7 +119,13 @@ All interfaces are exported from the package root — import them with `import t
 ### 3. Compile the graphs
 
 Intent/network graph factories take the adapters above and return compiled LangGraphs.
-Opportunity read and lifecycle operations are plain async functions. Optional capabilities default to a
+Opportunity read and lifecycle operations are plain async functions. The database ports
+`updateOpportunityStatus(id, status, acceptedBy?)` and
+`stampOpportunityActorAction(id, actorUserId, status, acceptedBy?)` do not capture
+outcome feedback or accept an outbox. Negotiation outcomes remain part of the
+negotiation state and presentation contracts.
+
+Optional capabilities default to a
 degraded-but-functional mode when omitted.
 
 ## Graphs

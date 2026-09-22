@@ -1,5 +1,17 @@
 # Changelog
 
+## 62.0.0
+
+### Breaking changes
+
+- Remove outcome-feedback capture and mining from the protocol. Remove the `OutcomeOutbox` export and the optional outbox arguments from the database ports `updateOpportunityStatus` and `stampOpportunityActorAction`; hosts must stop supplying these arguments and remove their feedback capture/mining wiring.
+- Remove `PoolDiscriminatorMiner`, `DiscriminatorMiningInput`, `MinedDiscriminator`, `PoolCandidate`, `isOutcomeQuestionsActivated`, `OUTCOME_MAX_CANDIDATES`, `OUTCOME_MAX_PUBLIC_CONTEXT_CHARS`, `OUTCOME_MIN_INDEPENDENT_EXAMPLES`, `runOutcomeShadow`, `OutcomeExample`, `OutcomeLabel`, and `OutcomeShadowResult` from the public entry point. Delete the internal outcome pipeline and its discriminator miner, types, and evidence-verification helpers without compatibility exports.
+- Remove the `poolDiscriminatorMiner`, `poolDiscriminatorAssigner`, and `negotiationEvidenceMiner` model keys. They are no longer accepted by `getModelName` or `EVAL_MODEL_OVERRIDES`.
+
+### Preserved behavior
+
+- Negotiation outcomes and presentation, opportunity lifecycle and shared claim-safety guards, and intent preparation, clarification, and scoring are unchanged.
+
 ## 61.0.0
 
 ### Breaking changes

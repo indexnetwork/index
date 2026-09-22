@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { opportunityService } from '../services/opportunity.service';
 import { negotiationService, negotiationTurnSchema as submitTurnSchema, type SubmitTurnRejection } from '../services/negotiation.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
+import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
@@ -129,9 +129,7 @@ export class OpportunityController {
       return Response.json({ error: 'Invalid status; use one of: ' + allowed.join(', ') }, { status: 400 });
     }
 
-    const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id, {
-      actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
-    });
+    const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id);
 
     if (result && 'error' in result) {
       return Response.json(
@@ -149,7 +147,7 @@ export class OpportunityController {
    */
   @Post('/:id/start-chat')
   @UseGuards(AuthGuard)
-  async startChat(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async startChat(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
       return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
@@ -160,9 +158,7 @@ export class OpportunityController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const result = await opportunityService.startChat(resolved.id, user.id, {
-      actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
-    });
+    const result = await opportunityService.startChat(resolved.id, user.id);
     if ('error' in result) {
       return Response.json(
         'advisory' in result ? { error: result.error, advisory: result.advisory } : { error: result.error },

@@ -72,7 +72,7 @@ export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSq
       (SELECT count(*)::int FROM opportunities) AS opportunities,
       (SELECT count(*)::int FROM negotiations) AS negotiations,
       (SELECT count(*)::int FROM negotiation_turns) AS turns,
-      (SELECT count(*)::int FROM opportunity_outcome_events) AS feedback,
+
       (SELECT count(*)::int FROM agent_sessions) AS agent_sessions,
       (SELECT count(*)::int FROM conversations c WHERE EXISTS (
         SELECT 1 FROM conversation_participants p WHERE p.conversation_id = c.id AND p.participant_type = 'agent'
@@ -104,11 +104,11 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
     )`;
     await tx`UPDATE conversation_metadata SET metadata = metadata - 'matchProvenance', updated_at = now()
       WHERE metadata ? 'matchProvenance'`;
-    await tx`DELETE FROM opportunity_outcome_events`;
+
     // Negotiations and their turns cascade from their opportunity.
     await tx`DELETE FROM opportunities`;
     const after = await readResetCounts(tx);
-    const cleared = new Set(['opportunities', 'negotiations', 'turns', 'feedback', 'agent_sessions', 'agent_conversations', 'match_provenance', 'intents_to_reset']);
+    const cleared = new Set(['opportunities', 'negotiations', 'turns', 'agent_sessions', 'agent_conversations', 'match_provenance', 'intents_to_reset']);
     for (const [name, count] of Object.entries(after)) {
       if (count !== (cleared.has(name) ? 0 : before[name])) throw new Error(`Reset invariant failed: ${name}`);
     }
