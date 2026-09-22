@@ -158,9 +158,10 @@ export type UserEvent =
   | { type: "intent.lifecycle"; id: string; title: string; body: string; link?: string; data: { intentId: string; status: IntentLifecycleWireStatus } }
   | { type: "question.pending"; id: string; title: string; body: string; data: { intentId: string; questionId: string; scope: string; opportunityId: string | null } }
   | { type: "principal.input"; id: string; title: string; body: string; data: { intentId: string; questionId: string | null; text: string } }
+  | { type: "agent.wake"; id: string; title: string; body: string; data: { intentId: string } }
   | { type: "message"; conversationId: string; message: ConversationMessage };
 
-const WAKE_TYPES = ["negotiation.turn", "principal.input"] as const;
+const WAKE_TYPES = ["negotiation.turn", "principal.input", "agent.wake"] as const;
 
 /**
  * @param event - A parsed user-event frame.
@@ -182,6 +183,7 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
     case "intent.lifecycle":
     case "question.pending":
     case "principal.input":
+    case "agent.wake":
     case "message":
       return raw as UserEvent;
     default:

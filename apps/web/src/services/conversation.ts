@@ -117,6 +117,12 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
     await api.post(`/conversations/${conversationId}/read`);
   },
 
+  /**
+   * Request fresh reasoning on the agent DM for an intent without human input.
+   */
+  wake: async (intentId: string): Promise<void> => {
+    await api.post('/conversations/agent/wake', { intentId });
+  },
   /** Hide (soft-delete) a conversation. */
   hideConversation: async (conversationId: string): Promise<void> => {
     await api.delete(`/conversations/${conversationId}`);

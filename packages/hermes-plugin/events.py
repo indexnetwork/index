@@ -25,6 +25,7 @@ INTENT_EVENT_TYPES = frozenset({
     "intent.created",
     "intent.updated",
     "intent.lifecycle",
+    "agent.wake",
 })
 NEGOTIATION_EVENT_TYPE = "negotiation.turn"
 RECONNECT_SECONDS = 5.0

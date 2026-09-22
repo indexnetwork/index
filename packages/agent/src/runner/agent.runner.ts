@@ -123,6 +123,7 @@ export class AgentRunner {
       case "intent.created":
       case "intent.updated":
       case "intent.lifecycle":
+      case "agent.wake":
         this.scheduleWake(event.intentId);
         return;
       case "negotiation.turn":
@@ -208,4 +209,5 @@ export type AgentEvent =
   | { type: "intent.created"; intentId: string }
   | { type: "intent.updated"; intentId: string }
   | { type: "intent.lifecycle"; intentId: string }
+  | { type: "agent.wake"; intentId: string }
   | { type: "negotiation.turn"; intentId: string; opportunityId: string };

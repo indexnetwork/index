@@ -243,6 +243,7 @@ export async function runAgent(
 | `intent.created` | Request a wake using the new persisted intent. |
 | `intent.updated` | Request a wake after a content edit; filter internal bookkeeping updates. |
 | `intent.lifecycle` | Request the normal wake path, which rereads status and skips inactive intents. |
+| `agent.wake` | Request fresh reasoning without human input or releasing negotiation holds. |
 | `negotiation.turn` | Request only the affected negotiation using fresh permissions and its standing instruction. |
 
 - `handle()` returns after scheduling or coalescing, before reasoning or persistence completes.

@@ -361,6 +361,23 @@ export class ConversationService {
   }
 
   /**
+   * Requests fresh reasoning on the agent inbox for an intent without human input.
+   * @param userId - Authenticated owner.
+   * @param intentId - Intent to wake.
+   * @throws AgentConversationError when the intent is not owned.
+   */
+  async wakeAgent(userId: string, intentId: string): Promise<void> {
+    if (!await this.intents.isOwnedByUser(intentId, userId)) throw new AgentConversationError('Intent not found.', 404);
+    await publishUserEvent(userId, {
+      type: 'agent.wake',
+      id: crypto.randomUUID(),
+      title: '',
+      body: '',
+      data: { intentId },
+    });
+  }
+
+  /**
    * Persist an agent's question or message on the owner's agent DM.
    * @param input - Owner, signal, the selected executor when one is speaking, and agent-authored H2A entries.
    * @throws AgentConversationError when the intent is not owned.

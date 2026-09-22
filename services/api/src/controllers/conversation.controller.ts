@@ -379,6 +379,37 @@ export class ConversationController {
   }
 
   /**
+   * POST /conversations/agent/wake — request fresh reasoning on the agent DM for an intent.
+   * Session- or key-authenticated owner.
+   *
+   * @param req - Request containing `{ intentId: string }` in JSON body.
+   * @param user - Authenticated owner from AuthGuard.
+   * @returns JSON confirmation.
+   */
+  @Post('/agent/wake')
+  @UseGuards(AuthGuard)
+  async wakeAgent(req: Request, user: AuthenticatedUser) {
+    let body: { intentId?: string };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    if (typeof body?.intentId !== 'string' || !body.intentId.trim()) {
+      return Response.json({ error: 'intentId is required' }, { status: 400 });
+    }
+    try {
+      await this.conversationService.wakeAgent(user.id, body.intentId.trim());
+      return Response.json({ ok: true });
+    } catch (err: unknown) {
+      if (err instanceof AgentConversationError) return Response.json({ error: err.message }, { status: err.status });
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('wakeAgent failed', { userId: user.id, intentId: body.intentId, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
    * PATCH /conversations/:id/metadata — update metadata for a conversation.
    * Accepts full UUID or short ID prefix.
    *

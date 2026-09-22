@@ -75,6 +75,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const requests = useRef({ generation: 0, mounted: false });
+  const wokenRef = useRef<string | null>(null);
   const streamRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -124,6 +125,12 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
       setConversationId(loaded.conversationId);
       mergeMessages(loaded.messages);
       setAgent(loaded.agent);
+      if (wokenRef.current !== intentId) {
+        wokenRef.current = intentId;
+        void conversations.wake(intentId).catch(() => {
+          // Harmless: subsequent polls and interactions reconcile state.
+        });
+      }
     } catch {
       // Keep the last good transcript; the stream or the next read reconciles it.
     } finally {

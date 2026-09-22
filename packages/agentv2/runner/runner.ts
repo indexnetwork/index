@@ -198,6 +198,10 @@ export function startRunner(options: RunnerOptions): Runner {
         log(`event ${event.type} on ${event.data.intentId}`);
         startWake(event.data.intentId);
         break;
+      case "agent.wake":
+        log(`event ${event.type} on ${event.data.intentId}`);
+        startWake(event.data.intentId);
+        break;
       // The stream is trustworthy from here on, so this is the one moment to
       // recover what happened while it was not. Signals are read first: a
       // negotiation on one this process has never heard of cannot be started.

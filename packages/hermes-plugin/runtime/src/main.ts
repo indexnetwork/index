@@ -126,7 +126,7 @@ function parseEvent(body: Record<string, unknown>): AgentEvent {
     if (typeof body.opportunityId !== 'string') throw new Error('opportunityId is required.');
     return { type, intentId, opportunityId: body.opportunityId };
   }
-  if (type === 'principal.input' || type === 'intent.created' || type === 'intent.updated' || type === 'intent.lifecycle') {
+  if (type === 'principal.input' || type === 'intent.created' || type === 'intent.updated' || type === 'intent.lifecycle' || type === 'agent.wake') {
     return { type, intentId };
   }
   throw new Error(`Unsupported agent event: ${String(type)}.`);

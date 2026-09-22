@@ -162,11 +162,12 @@ test("createOpportunities posts the picks and returns the opportunities", async 
   server.stop(true);
 });
 
-test("wakesHost is true only for turn and principal.input", () => {
+test("wakesHost is true only for turn, principal.input, and agent.wake", () => {
   const turn = { type: "negotiation.turn" as const, id: "2", title: "", body: "", data: { opportunityId: "o", intentId: "i", turnIndex: 1 } };
   const input = { type: "principal.input" as const, id: "3", title: "", body: "", data: { intentId: "i", questionId: null, text: "ok" } };
-  const other = { type: "opportunity.new" as const, id: "4", title: "", body: "" };
-  expect([wakesHost(turn), wakesHost(input), wakesHost(other)]).toEqual([true, true, false]);
+  const wake = { type: "agent.wake" as const, id: "4", title: "", body: "", data: { intentId: "i" } };
+  const other = { type: "opportunity.new" as const, id: "5", title: "", body: "" };
+  expect([wakesHost(turn), wakesHost(input), wakesHost(wake), wakesHost(other)]).toEqual([true, true, true, false]);
 });
 
 test("events delivers the handshake and known types, ignores unknown types", async () => {

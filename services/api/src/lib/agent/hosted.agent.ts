@@ -158,6 +158,7 @@ export class HostedAgent {
         case 'intent.created':
         case 'intent.updated':
         case 'intent.lifecycle':
+        case 'agent.wake':
           if (intentId) events.push({ type: frame.type, intentId });
           break;
         case 'agent.configuration':

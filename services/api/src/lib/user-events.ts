@@ -43,6 +43,7 @@ export type UserEventType =
   | 'intent.updated'
   | 'agent.configuration'
   | 'agent.status'
+  | 'agent.wake'
   | 'message';
 
 /**

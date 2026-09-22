@@ -40,6 +40,6 @@ const stop = client.events((event) => {
 
 `discover` writes nothing; `createOpportunities` is idempotent on the pair, so a counterparty that already shares an opportunity reports that one. Both need an active signal the key's owner owns.
 
-`wakesHost` is true only for `negotiation.turn` and `principal.input`.
+`wakesHost` is true only for `negotiation.turn`, `principal.input`, and `agent.wake`.
 
 Non-2xx throws `ApiError` (`status`, `error`). A 2xx body that is not JSON throws a distinct `Error`. JSON methods do not retry. The stream reconnects until stopped.
