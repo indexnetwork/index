@@ -631,9 +631,9 @@ final class NativeAPIRequestBridge {
         case let value where value.range(of: #"^/opportunities/[^/?]+/status$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["accepted", "rejected"]) }
         case let value where value.range(of: #"^/intents/[^/?]+/opportunities/[^/?]+/start-chat$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, optional: [])
+            return keysAllowed(body, allowed: [])
         case let value where value.range(of: #"^/opportunities/[^/?]+/start-chat$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, optional: [])
+            return keysAllowed(body, allowed: [])
         case "/enrichment/enrich":
             return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "websites"])
         case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
