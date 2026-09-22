@@ -432,16 +432,16 @@ export function createIndexApiClient(options = {}) {
     opportunities: {
       list: (query = {}, options = {}) => request(`/opportunities${toQueryString(query)}`, options),
       listForIntent: (intentId, query = {}, options = {}) => request(
-        `/opportunities${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+        `/intents/${encodeURIComponent(intentId)}/opportunities${toQueryString(query)}`,
         options,
       ),
-      radar: (query = {}, options = {}) => request(`/opportunities/radar${toQueryString(query)}`, options),
+      radar: (query = {}, options = {}) => request(`/opportunities${toQueryString(query)}`, options),
       radarForIntent: (intentId, query = {}, options = {}) => request(
-        `/opportunities/radar${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+        `/intents/${encodeURIComponent(intentId)}/opportunities${toQueryString(query)}`,
         options,
       ),
       chatContext: (peerUserId, options = {}) => request(
-        `/opportunities/chat-context${toQueryString({ peerUserId })}`,
+        `/opportunities${toQueryString({ peerUserId })}`,
         options,
       ),
       get: (opportunityId, options = {}) => request(`/opportunities/${encodeURIComponent(opportunityId)}`, options),
@@ -458,16 +458,16 @@ export function createIndexApiClient(options = {}) {
         { ...options, method: 'PATCH', body: { status } },
       ),
       updateStatusForIntent: (opportunityId, status, intentId, options = {}) => request(
-        `/opportunities/${encodeURIComponent(opportunityId)}/status`,
-        { ...options, method: 'PATCH', body: { status, scopeType: 'intent', scopeId: intentId } },
+        `/intents/${encodeURIComponent(intentId)}/opportunities/${encodeURIComponent(opportunityId)}/status`,
+        { ...options, method: 'PATCH', body: { status } },
       ),
       startChat: (opportunityId, options = {}) => request(
         `/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
         { ...options, method: 'POST', body: {} },
       ),
       startChatForIntent: (opportunityId, intentId, options = {}) => request(
-        `/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
-        { ...options, method: 'POST', body: { scopeType: 'intent', scopeId: intentId } },
+        `/intents/${encodeURIComponent(intentId)}/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
+        { ...options, method: 'POST', body: {} },
       ),
     },
 

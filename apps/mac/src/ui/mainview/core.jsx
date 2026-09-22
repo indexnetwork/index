@@ -168,7 +168,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const radarStatuses = "pending,negotiating,accepted,expired";
     const applyRadar = (radarR, skeleton = false) => {
       if (!radarR) return;
-      const items = window.IndexApp.normalizeList(radarR, "items");
+      const items = window.IndexApp.normalizeList(radarR, "opportunities");
       const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
         // The radar is intent-scoped, so stamping the signal onto each person
         // lets a deep link know which signal already owns the one it names.

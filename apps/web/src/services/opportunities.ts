@@ -45,32 +45,57 @@ export type OpportunityLifecycleStatus =
   | 'rejected'
   | 'expired';
 
-/** Radar card item (from GET /opportunities/radar). Presenter-driven display contract. */
-export interface RadarCardItem {
+/** Presented opportunity card from GET /opportunities and write responses. */
+export interface PresentedOpportunity {
   opportunityId: string;
+  status: OpportunityLifecycleStatus;
   createdAt?: string;
-  /** Lifecycle status of the underlying opportunity (present for client bucketing, e.g. intent radar). */
-  status?: OpportunityLifecycleStatus;
-  userId: string;
-  name: string;
-  avatar: string | null;
+  updatedAt?: string;
+  peer: {
+    userId: string;
+    name: string;
+    avatar: string | null;
+  };
+  viewerRole?: string;
+  headline?: string;
   mainText: string;
   cta: string;
-  headline?: string;
-  /** Presenter-generated; primary (accept) and secondary (dismiss) button labels. */
   primaryActionLabel: string;
   secondaryActionLabel: string;
-  /** Presenter-generated subtitle under the other party name (e.g. "1 mutual signal"). */
   mutualIntentsLabel: string;
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
-  /** Viewer's role in this opportunity (e.g. 'party', 'agent', 'patient', 'peer'). */
-  viewerRole?: string;
-  /**
-   * True when this card came from a skeleton-presentation fetch: identity
-   * fields are real but mainText/cta are empty (presenter LLM skipped).
-   * Render a shimmer body and wait for the full fetch to replace the card.
-   */
   presentationPending?: boolean;
+  personalizedSummary?: string;
+  narratorRemark?: string;
+  acceptedAt?: string | null;
+}
+
+/** Radar card item — alias of the unified presenter card for UI components. */
+export type RadarCardItem = PresentedOpportunity & {
+  userId?: string;
+  name?: string;
+  avatar?: string | null;
+};
+
+function toRadarCardItem(card: PresentedOpportunity): RadarCardItem {
+  return {
+    ...card,
+    userId: card.peer.userId,
+    name: card.peer.name,
+    avatar: card.peer.avatar,
+  };
+}
+
+function toChatContextOpportunity(card: PresentedOpportunity): ChatContextOpportunity {
+  return {
+    opportunityId: card.opportunityId,
+    headline: card.headline ?? card.cta,
+    personalizedSummary: card.personalizedSummary ?? card.mainText,
+    narratorRemark: card.narratorRemark ?? card.narratorChip?.text ?? '',
+    peerName: card.peer.name,
+    peerAvatar: card.peer.avatar,
+    acceptedAt: card.acceptedAt ?? card.updatedAt ?? null,
+  };
 }
 
 export interface RadarViewResponse {
@@ -79,9 +104,8 @@ export interface RadarViewResponse {
 }
 
 export interface GetRadarViewOptions {
+  intentId?: string;
   networkId?: string;
-  scopeType?: 'intent';
-  scopeId?: string;
   limit?: number;
   noCache?: boolean;
   /** Explicit lifecycle filter — switches the radar view into lifecycle mode (intent radar). */
@@ -93,7 +117,7 @@ export interface GetRadarViewOptions {
 export type OpportunityStatus = 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
 
 export interface OpportunityStatusUpdateResponse {
-  opportunity: OpportunityListItem | null;
+  opportunity: PresentedOpportunity | null;
   counterpartUserId?: string;
 }
 
@@ -135,7 +159,7 @@ export const createOpportunitiesService = (
 ) => ({
   getOpportunities: async (
     options?: GetOpportunitiesOptions
-  ): Promise<OpportunityListItem[]> => {
+  ): Promise<PresentedOpportunity[]> => {
     const params = new URLSearchParams();
     if (options?.status) params.set('status', options.status);
     if (options?.networkId) params.set('networkId', options.networkId);
@@ -143,7 +167,7 @@ export const createOpportunitiesService = (
     if (options?.offset != null) params.set('offset', String(options.offset));
     const qs = params.toString();
     const url = qs ? `/opportunities?${qs}` : '/opportunities';
-    const res = await api.get<{ opportunities: OpportunityListItem[] }>(url);
+    const res = await api.get<{ opportunities: PresentedOpportunity[] }>(url);
     return res.opportunities ?? [];
   },
 
@@ -152,18 +176,27 @@ export const createOpportunitiesService = (
   ): Promise<RadarViewResponse> => {
     const params = new URLSearchParams();
     if (options?.networkId) params.set('networkId', options.networkId);
-    if (options?.scopeType) params.set('scopeType', options.scopeType);
-    if (options?.scopeId) params.set('scopeId', options.scopeId);
     if (options?.statuses?.length) params.set('statuses', options.statuses.join(','));
     if (options?.limit != null) params.set('limit', String(options.limit));
     if (options?.noCache) params.set('noCache', '1');
     if (options?.presentation) params.set('presentation', options.presentation);
     const qs = params.toString();
-    const url = qs ? `/opportunities/radar?${qs}` : '/opportunities/radar';
+    const basePath = options?.intentId
+      ? `/intents/${encodeURIComponent(options.intentId)}/opportunities`
+      : '/opportunities';
+    const url = qs ? `${basePath}?${qs}` : basePath;
+
+    const fetchRadar = async () => {
+      const res = await api.get<{ opportunities: PresentedOpportunity[]; meta: RadarViewResponse['meta'] }>(url);
+      return {
+        items: (res.opportunities ?? []).map(toRadarCardItem),
+        meta: res.meta ?? { totalOpportunities: res.opportunities?.length ?? 0 },
+      };
+    };
 
     // When noCache is set, skip the in-memory dedup cache entirely
     if (options?.noCache) {
-      return api.get<RadarViewResponse>(url);
+      return fetchRadar();
     }
 
     const cacheKey = url;
@@ -178,8 +211,7 @@ export const createOpportunitiesService = (
       return inFlight;
     }
 
-    const request = api
-      .get<RadarViewResponse>(url)
+    const request = fetchRadar()
       .then((res) => {
         radarViewRecent.set(cacheKey, { data: res, timestamp: Date.now() });
         return res;
@@ -195,12 +227,12 @@ export const createOpportunitiesService = (
   updateStatus: async (
     opportunityId: string,
     status: OpportunityStatus,
-    scope?: { scopeType: 'intent'; scopeId: string },
+    scope?: { intentId: string },
   ): Promise<OpportunityStatusUpdateResponse> => {
-    return api.patch<OpportunityStatusUpdateResponse>(
-      `/opportunities/${opportunityId}/status`,
-      { status, ...(scope ?? {}) }
-    );
+    const path = scope?.intentId
+      ? `/intents/${encodeURIComponent(scope.intentId)}/opportunities/${encodeURIComponent(opportunityId)}/status`
+      : `/opportunities/${opportunityId}/status`;
+    return api.patch<OpportunityStatusUpdateResponse>(path, { status });
   },
 
   getOpportunity: async (opportunityId: string): Promise<OpportunityDetailResponse> => {
@@ -217,34 +249,34 @@ export const createOpportunitiesService = (
    */
   startChat: async (
     opportunityId: string,
-    scope?: { scopeType: 'intent'; scopeId: string },
+    scope?: { intentId: string },
   ): Promise<{
     conversationId: string;
     counterpartUserId: string;
-    opportunity: { id: string; status: OpportunityStatus };
+    opportunity: PresentedOpportunity;
   }> => {
+    const path = scope?.intentId
+      ? `/intents/${encodeURIComponent(scope.intentId)}/opportunities/${encodeURIComponent(opportunityId)}/start-chat`
+      : `/opportunities/${opportunityId}/start-chat`;
     return api.post<{
       conversationId: string;
       counterpartUserId: string;
-      opportunity: { id: string; status: OpportunityStatus };
-    }>(`/opportunities/${opportunityId}/start-chat`, {
-      ...(scope ?? {}),
-    });
+      opportunity: PresentedOpportunity;
+    }>(path, {});
   },
 
   /**
    * Fetch accepted opportunities shared between the authenticated user and
    * a peer. Used as inline context inside the h2h chat window.
-   * Wraps GET /opportunities/chat-context?peerUserId=:id.
    */
   getChatContext: async (
     peerUserId: string,
     options?: { signal?: AbortSignal },
   ): Promise<ChatContextOpportunity[]> => {
-    const res = await api.get<{ opportunities: ChatContextOpportunity[] }>(
-      `/opportunities/chat-context?peerUserId=${encodeURIComponent(peerUserId)}`,
+    const res = await api.get<{ opportunities: PresentedOpportunity[] }>(
+      `/opportunities?peerUserId=${encodeURIComponent(peerUserId)}`,
       options,
     );
-    return res.opportunities ?? [];
+    return (res.opportunities ?? []).map(toChatContextOpportunity);
   },
 });

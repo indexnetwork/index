@@ -262,9 +262,11 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/agents$"#),
         ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
         ("POST", #"^/intents(?:/(?:list|clarify))?$"#),
+        ("GET", #"^/intents/[^/?]+/opportunities(?:\?.*)?$"#),
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
+        ("PATCH", #"^/intents/[^/?]+/opportunities/[^/?]+/status$"#),
+        ("POST", #"^/intents/[^/?]+/opportunities/[^/?]+/start-chat$"#),
         ("GET", #"^/opportunities(?:\?.*)?$"#),
-        ("GET", #"^/opportunities/(?:radar|chat-context)(?:\?.*)?$"#),
         ("GET", #"^/opportunities/[^/?]+(?:/invite-message|/negotiation)?$"#),
         ("PATCH", #"^/opportunities/[^/?]+/status$"#),
         ("POST", #"^/opportunities/[^/?]+/start-chat$"#),
@@ -624,19 +626,14 @@ final class NativeAPIRequestBridge {
             }
         case let value where value.range(of: #"^/intents/[^/?]+/status$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["ACTIVE", "PAUSED"]) }
+        case let value where value.range(of: #"^/intents/[^/?]+/opportunities/[^/?]+/status$"#, options: .regularExpression) != nil:
+            return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["accepted", "rejected"]) }
         case let value where value.range(of: #"^/opportunities/[^/?]+/status$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["status"], optional: ["scopeType", "scopeId"]) { item in
-                enumString(item["status"], ["accepted", "rejected"])
-                    && (item["scopeType"] == nil || enumString(item["scopeType"], ["intent"]))
-                    && (item["scopeId"] == nil || uuidIdentifier(item["scopeId"]))
-                    && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
-            }
+            return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["accepted", "rejected"]) }
+        case let value where value.range(of: #"^/intents/[^/?]+/opportunities/[^/?]+/start-chat$"#, options: .regularExpression) != nil:
+            return keysAllowed(body, allowed: [])
         case let value where value.range(of: #"^/opportunities/[^/?]+/start-chat$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, optional: ["scopeType", "scopeId"]) { item in
-                (item["scopeType"] == nil || enumString(item["scopeType"], ["intent"]))
-                    && (item["scopeId"] == nil || uuidIdentifier(item["scopeId"]))
-                    && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
-            }
+            return keysAllowed(body, allowed: [])
         case "/enrichment/enrich":
             return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "websites"])
         case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
@@ -706,10 +703,9 @@ final class NativeAPIRequestBridge {
         // radar call the app actually makes, so they are spelled out separately
         // and each mirrors what its own handler reads.
         case "/opportunities":
-            allowed = ["status", "limit", "offset", "scopeType", "scopeId", "noCache"]
-        case "/opportunities/radar":
-            allowed = ["statuses", "presentation", "limit", "offset", "scopeType", "scopeId", "noCache"]
-        case "/opportunities/chat-context": allowed = ["peerUserId"]
+            allowed = ["status", "statuses", "presentation", "peerUserId", "networkId", "limit", "offset", "noCache"]
+        case let value where value.range(of: #"^/intents/[^/?]+/opportunities$"#, options: .regularExpression) != nil:
+            allowed = ["statuses", "presentation", "limit", "offset", "noCache"]
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
             allowed = ["limit", "before", "after", "intentId"]
         default: return false

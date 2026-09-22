@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { RadarGraphFactory, presentOpportunity, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import { RadarGraphFactory, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache } from '@indexnetwork/protocol';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
@@ -8,6 +8,14 @@ import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
+import {
+  chatCardToPresentedOpportunity,
+  radarItemToPresentedOpportunity,
+  type PresentedOpportunity,
+  type PresentedOpportunityList,
+  type RadarCardInput,
+} from '../lib/opportunity/presented-opportunity';
+import { scheduleOpportunityPresentationPreload } from '../lib/opportunity/preload-opportunity-presentation';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
@@ -40,13 +48,12 @@ function sanitizeOpportunityForResponse<T extends Opportunity>(
 }
 
 interface OpportunityStatusUpdateResult {
-  opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
+  opportunity: PresentedOpportunity;
   counterpartUserId?: string;
 }
 
 interface IntentScopeOptions {
-  scopeType?: 'intent';
-  scopeId?: string;
+  intentId?: string;
   /**
    * Verified provenance of the owner action, set ONLY by controller entry
    * points that represent a genuine explicit human owner action (REST session
@@ -93,11 +100,11 @@ async function buildOutcomeOutbox(
 function matchesSelectedIntentScope(
   opportunity: Pick<Opportunity, 'detection' | 'actors'>,
   userId: string,
-  scope?: IntentScopeOptions,
+  intentId?: string,
 ): boolean {
-  if (scope?.scopeType !== 'intent' || !scope.scopeId) return true;
-  if (opportunity.detection?.triggeredBy === scope.scopeId) return true;
-  return opportunity.actors.some((actor) => actor.userId === userId && actor.intent === scope.scopeId);
+  if (!intentId) return true;
+  if (opportunity.detection?.triggeredBy === intentId) return true;
+  return opportunity.actors.some((actor) => actor.userId === userId && actor.intent === intentId);
 }
 
 interface MatchProvenanceInput {
@@ -221,6 +228,142 @@ export class OpportunityService {
   }
 
 
+  private getPreloadDeps() {
+    return {
+      db: this.presenterDb as PresenterDatabase & {
+        getUser(userId: string): Promise<{ name?: string | null; avatar?: string | null } | null>;
+      },
+      cache: this.cache,
+      presenter: this.getPresenter(),
+      gatherContext: this.gatherPresentationContext,
+    };
+  }
+
+  private schedulePresentationPreload(
+    opportunity: Opportunity,
+    viewerIds: string[],
+    intentId?: string,
+  ): void {
+    scheduleOpportunityPresentationPreload(this.getPreloadDeps(), opportunity, viewerIds, intentId);
+  }
+
+  /** Non-blocking cache warm after writes; safe to call from controllers. */
+  warmPresentationCache(opportunity: Opportunity, viewerIds: string[], intentId?: string): void {
+    this.schedulePresentationPreload(opportunity, viewerIds, intentId);
+  }
+
+  async getStoredOpportunity(opportunityId: string): Promise<Opportunity | null> {
+    return this.db.getOpportunity(opportunityId);
+  }
+
+  /**
+   * List opportunities with presenter output for the viewer. Replaces separate
+   * radar and chat-context reads — peerUserId switches to accepted pair scope.
+   */
+  async presentOpportunitiesForViewer(
+    userId: string,
+    options?: {
+      peerUserId?: string;
+      status?: 'pending' | 'accepted' | 'rejected' | 'expired';
+      statuses?: OpportunityStatus[];
+      networkId?: string;
+      intentId?: string;
+      limit?: number;
+      offset?: number;
+      noCache?: boolean;
+      presentation?: 'full' | 'skeleton';
+    },
+  ): Promise<PresentedOpportunityList | { error: string }> {
+    if (options?.peerUserId) {
+      const chat = await this.getChatContext(userId, options.peerUserId);
+      return {
+        opportunities: chat.opportunities.map((card) => chatCardToPresentedOpportunity({
+          ...card,
+          peerUserId: options.peerUserId,
+        })),
+        meta: { totalOpportunities: chat.opportunities.length },
+      };
+    }
+
+    const statuses = options?.statuses
+      ?? (options?.status ? [options.status] : DEFAULT_LIST_STATUSES);
+    const radar = await this.getRadarView(userId, {
+      networkId: options?.networkId,
+      intentId: options?.intentId,
+      limit: options?.limit ?? 50,
+      noCache: options?.noCache,
+      statuses,
+      presentation: options?.presentation,
+    });
+    if ('error' in radar) {
+      return { error: radar.error };
+    }
+
+    return {
+      opportunities: (radar.items as RadarCardInput[]).map(radarItemToPresentedOpportunity),
+      meta: radar.meta,
+    };
+  }
+
+  /**
+   * Present one stored opportunity for a viewer using the radar presenter path.
+   */
+  async presentOpportunityForViewer(
+    opportunity: Opportunity,
+    viewerId: string,
+    intentId?: string,
+  ): Promise<PresentedOpportunity> {
+    const radar = await this.getRadarView(viewerId, {
+      intentId,
+      statuses: [opportunity.status],
+      limit: 50,
+    });
+    if (!('error' in radar)) {
+      const match = (radar.items as RadarCardInput[]).find((item) => item.opportunityId === opportunity.id);
+      if (match) {
+        return radarItemToPresentedOpportunity(match);
+      }
+    }
+
+    const counterpart = resolveCounterpart(opportunity.actors, viewerId);
+    const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);
+    const counterpartUser = counterpart ? await this.db.getUser(counterpart.userId) : null;
+    return {
+      opportunityId: opportunity.id,
+      status: opportunity.status,
+      createdAt: opportunity.createdAt instanceof Date
+        ? opportunity.createdAt.toISOString()
+        : String(opportunity.createdAt),
+      updatedAt: opportunity.updatedAt instanceof Date
+        ? opportunity.updatedAt.toISOString()
+        : (opportunity.updatedAt ? String(opportunity.updatedAt) : undefined),
+      peer: {
+        userId: counterpart?.userId ?? '',
+        name: counterpartUser?.name ?? 'Unknown',
+        avatar: counterpartUser?.avatar ?? null,
+      },
+      viewerRole: viewerActor?.role,
+      mainText: safeFallbackSummary(opportunity.interpretation?.reasoning, {
+        counterpartName: counterpartUser?.name ?? undefined,
+        emptyText: 'Connection opportunity',
+      }),
+      cta: 'Take a look',
+      headline: 'Connection opportunity',
+      primaryActionLabel: getPrimaryActionLabel(viewerActor?.role ?? 'party'),
+      secondaryActionLabel: 'Skip',
+      mutualIntentsLabel: '',
+      personalizedSummary: safeFallbackSummary(opportunity.interpretation?.reasoning, {
+        counterpartName: counterpartUser?.name ?? undefined,
+        emptyText: 'Connection opportunity',
+      }),
+      acceptedAt: opportunity.status === 'accepted'
+        ? (opportunity.updatedAt instanceof Date
+          ? opportunity.updatedAt.toISOString()
+          : (opportunity.updatedAt ?? null))
+        : undefined,
+    };
+  }
+
   private getRadarGraph(): ReturnType<RadarGraphFactory['createGraph']> {
     this.radarGraph ??= new RadarGraphFactory(
       this.db as unknown as RadarGraphDatabase,
@@ -246,7 +389,7 @@ export class OpportunityService {
    */
   async getRadarView(
     userId: string,
-    options?: { networkId?: string; scopeType?: 'intent'; scopeId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[]; presentation?: 'full' | 'skeleton' }
+    options?: { networkId?: string; intentId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[]; presentation?: 'full' | 'skeleton' }
   ): Promise<{ items: unknown[]; meta: { totalOpportunities: number } } | { error: string }> {
     logger.verbose('Getting radar view', { userId, options });
     try {
@@ -254,8 +397,8 @@ export class OpportunityService {
       const radarInput = {
         userId,
         networkId: options?.networkId,
-        scopeType: options?.scopeType,
-        scopeId: options?.scopeId,
+        scopeType: options?.intentId ? 'intent' as const : undefined,
+        scopeId: options?.intentId,
         limit: options?.limit ?? 50,
         noCache: options?.noCache,
         statuses: options?.statuses,
@@ -303,8 +446,7 @@ export class OpportunityService {
       status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       statuses?: OpportunityStatus[];
       networkId?: string;
-      scopeType?: 'intent';
-      scopeId?: string;
+      intentId?: string;
       limit?: number;
       offset?: number;
     }
@@ -446,9 +588,6 @@ export class OpportunityService {
       userMap.set(uid, u ? { id: u.id, name: u.name ?? 'Unknown', avatar: u.avatar ?? null } : { id: uid, name: 'Unknown', avatar: null });
     });
 
-    const otherPartyInfo = otherPartyIds[0] ? userMap.get(otherPartyIds[0])! : { id: '', name: 'Unknown', avatar: null as string | null };
-    const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, 'card');
-
     const otherParties = otherActors.map((a) => {
       const info = userMap.get(a.userId) ?? { id: a.userId, name: 'Unknown', avatar: null as string | null };
       return { id: info.id, name: info.name, avatar: info.avatar, role: a.role };
@@ -458,21 +597,17 @@ export class OpportunityService {
       ? opp.interpretation.confidence
       : parseFloat(opp.confidence ?? opp.interpretation.confidence as unknown as string) || 0;
 
+    const presented = await this.presentOpportunityForViewer(opp, viewerId);
+
     return {
       id: opp.id,
-      presentation,
+      ...presented,
       myRole: myActor.role,
-      // The viewer's own signal, so a client holding only an opportunity id can
-      // open the signal that owns it rather than a detached card.
       intentId: myActor.intent ?? null,
       otherParties,
       category: opp.interpretation.category,
       confidence: confidenceNum,
       network: networkRecord ? { id: networkRecord.id, title: networkRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
-      status: opp.status,
-      primaryActionLabel: getPrimaryActionLabel(myActor.role),
-      createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
-      expiresAt: opp.expiresAt ? (opp.expiresAt instanceof Date ? opp.expiresAt.toISOString() : opp.expiresAt) : undefined,
       ...(replacementResolution.resolvedFromOpportunityId
         ? { resolvedFromOpportunityId: replacementResolution.resolvedFromOpportunityId }
         : {}),
@@ -497,8 +632,7 @@ export class OpportunityService {
       opportunityId,
       status,
       userId,
-      scopeType: options?.scopeType,
-      scopeId: options?.scopeId,
+      intentId: options?.intentId,
     });
 
     const opp = await this.db.getOpportunity(opportunityId);
@@ -510,7 +644,7 @@ export class OpportunityService {
     if (!callerActor) {
       return { error: 'Not authorized to update this opportunity', status: 403 };
     }
-    if (!matchesSelectedIntentScope(opp, userId, options)) {
+    if (!matchesSelectedIntentScope(opp, userId, options?.intentId)) {
       return { error: 'Opportunity not found', status: 404 };
     }
 
@@ -550,7 +684,7 @@ export class OpportunityService {
           userId,
           captureAction,
           options?.actionProvenance,
-          options?.scopeType === 'intent' ? options.scopeId : undefined,
+          options?.intentId,
         )
       : { outbox: undefined, prepared: null };
 
@@ -584,12 +718,22 @@ export class OpportunityService {
     }
 
     if (!counterpart) {
-      return { opportunity: sanitizeOpportunityForResponse(updated) };
+      const presented = await this.presentOpportunityForViewer(
+        updated,
+        userId,
+        options?.intentId,
+      );
+      this.schedulePresentationPreload(
+        updated,
+        updated.actors.map((actor) => actor.userId),
+        options?.intentId,
+      );
+      return { opportunity: presented };
     }
 
     const counterpartUserId = counterpart.userId;
 
-    if (options?.scopeType !== 'intent') {
+    if (!options?.intentId) {
       await this.db.acceptSiblingOpportunities(userId, counterpartUserId, opportunityId).catch((err) => {
         updateStatusLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
           opportunityId,
@@ -600,8 +744,19 @@ export class OpportunityService {
       });
     }
 
+    const presented = await this.presentOpportunityForViewer(
+      updated,
+      userId,
+      options?.intentId,
+    );
+    this.schedulePresentationPreload(
+      updated,
+      updated.actors.map((actor) => actor.userId),
+      options?.intentId,
+    );
+
     return {
-      opportunity: sanitizeOpportunityForResponse(updated),
+      opportunity: presented,
       counterpartUserId,
     };
   }
@@ -643,7 +798,7 @@ export class OpportunityService {
     userId: string,
     options?: IntentScopeOptions,
   ): Promise<
-    | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
+    | { conversationId: string; counterpartUserId: string; opportunity: PresentedOpportunity }
     | { error: string; status: number }
   > {
     const opp = await this.db.getOpportunity(opportunityId);
@@ -655,7 +810,7 @@ export class OpportunityService {
       if (!isActor) {
         return { error: 'Not authorized to start chat for this opportunity', status: 403 };
       }
-      if (!matchesSelectedIntentScope(opp, userId, options)) {
+      if (!matchesSelectedIntentScope(opp, userId, options?.intentId)) {
         return { error: 'Opportunity not found', status: 404 };
       }
       const counterpart = resolveCounterpart(opp.actors, userId);
@@ -684,7 +839,11 @@ export class OpportunityService {
       return {
         conversationId: conversation.id,
         counterpartUserId: counterpart.userId,
-        opportunity: sanitizeOpportunityForResponse(opp),
+        opportunity: await this.presentOpportunityForViewer(
+          opp,
+          userId,
+          options?.intentId,
+        ),
       };
     }
     if (opp.status !== 'pending') {
@@ -697,7 +856,7 @@ export class OpportunityService {
     if (!callerActor) {
       return { error: 'Not authorized to start chat for this opportunity', status: 403 };
     }
-    if (!matchesSelectedIntentScope(opp, userId, options)) {
+    if (!matchesSelectedIntentScope(opp, userId, options?.intentId)) {
       return { error: 'Opportunity not found', status: 404 };
     }
 
@@ -756,7 +915,7 @@ export class OpportunityService {
       userId,
       'accepted',
       options?.actionProvenance,
-      options?.scopeType === 'intent' ? options.scopeId : undefined,
+      options?.intentId,
     );
 
     // Only flip status once we know the chat destination exists.
@@ -782,7 +941,7 @@ export class OpportunityService {
         error: err,
       });
     });
-    if (options?.scopeType !== 'intent') {
+    if (!options?.intentId) {
       await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
         startChatLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
           opportunityId,
@@ -792,10 +951,19 @@ export class OpportunityService {
         });
       });
     }
+    this.schedulePresentationPreload(
+      updated,
+      updated.actors.map((actor) => actor.userId),
+      options?.intentId,
+    );
     return {
       conversationId: conversation.id,
       counterpartUserId: counterpart.userId,
-      opportunity: sanitizeOpportunityForResponse(updated),
+      opportunity: await this.presentOpportunityForViewer(
+        updated,
+        userId,
+        options?.intentId,
+      ),
     };
   }
 
