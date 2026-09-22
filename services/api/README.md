@@ -34,14 +34,14 @@ drafts stay attached to the displayed question. Radar keeps its Needs you, Waiti
 Connected, and Closed categories, with an expandable A2A conversation inside
 each match. Pending matches retain Start Chat and Skip.
 
-The API runs no personal-agent session. Its hosted agent is `HostedAgent`, the
-default seat for owners without a selected external negotiator: it runs
-`@indexnetwork/agentv2` — brief, wake and negotiate — against `HostedIndex`, an
-in-process implementation of the same `Index` protocol an external runner reaches
-over HTTP. Nothing runs on a clock. A counterpart's turn and an opening each move
-one opportunity; the owner's own input, a new signal and a resumed one are what
-cause a wake. So a hosted seat searches, opens opportunities and asks its owner
-questions, where the former `HostedNegotiator` only took A2A turns.
+The hosted seat is `HostedAgent`, the default for owners without a selected
+external negotiator. It routes each owner's persisted events into one
+`@indexnetwork/agent` `AgentRunner` backed by `HostedIndex`, an in-process
+`AgentHost` using the same services as the HTTP API. Nothing runs on a clock.
+The runner owns principal wakes, negotiation scheduling, stalls and recovery;
+the API owns Redis delivery, principal routing, persistence and authorization.
+See the [macOS and Hermes migration guide](../../packages/agent/docs/mac-hermes-migration.md)
+for the equivalent external-host and client boundaries.
 
 - Conversation messages and pending questions use `@indexnetwork/client` contracts. Their source of truth is the intent-tagged H2A transcript.
 - The runtime no longer reads or writes old principal checkpoints or session leases. The historical `agent_sessions` table remains available to maintenance commands; this cleanup requires no database migration.
