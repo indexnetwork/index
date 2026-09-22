@@ -59,30 +59,32 @@ function NetworksRow({ count, pending, onClick }) {
   );
 }
 
-// Handing out a link is its own errand, so it gets its own shelf row rather
-// than living inside one network's access tab. Chain-link mark, same 34px
-// block as the rows around it.
-function InviteRow({ onClick }) {
+// Handing out a link is its own errand, so it gets its own button rather than
+// living inside one network's access tab. It sits under the pitch, not on the
+// shelf: inviting someone is the next thing the copy asks of you, while the
+// shelf rows are places to go. Pale green with green ink and a gem mark so it
+// reads as an action without competing with the orange "new signal".
+function InviteButton({ onClick }) {
+  const [hover, setHover] = useState(false);
   return (
     <button
       onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
-        display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"5px 13px", cursor:"pointer", textAlign:"left",
-        border:"none", background:"#F2F0EC",
+        alignSelf:"flex-start", marginTop:24,
+        display:"inline-flex", alignItems:"center", gap:14,
+        padding:"10px 16px 10px 10px", cursor:"pointer", textAlign:"left",
+        border:"none", background: hover ? "#D3EDDB" : "#E6F4EA",
       }}>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+        stroke="#24583A" strokeWidth="2" strokeLinejoin="round" style={{ flex:"0 0 auto" }}>
+        <path d="M6 3h12l4 6-10 12L2 9z"/>
+        <path d="M2 9h20M12 21 8 9l4-6 4 6-4 12"/>
+      </svg>
       <span style={{
-        flex:"0 0 auto", width:34, height:34,
-        display:"flex", alignItems:"center", justifyContent:"center",
-      }}>
-        <span style={{ width:9, height:9, border:"2px solid #000" }}/>
-        <span style={{ width:7, height:2, background:"#000" }}/>
-        <span style={{ width:9, height:9, border:"2px solid #000" }}/>
-      </span>
-      <span style={{
-        flex:1, minWidth:0,
-        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
-      }}>invite</span>
+        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#24583A",
+      }}>invite friends</span>
     </button>
   );
 }
@@ -361,12 +363,12 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
                   start a signal. your agent takes it to other agents. when both
                   sides want it, you get the intro.
                 </p>
+                <InviteButton onClick={() => setShowInvite(true)}/>
               </div>
 
               {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
                 <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
-                <InviteRow onClick={() => setShowInvite(true)}/>
                 <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
                 <UserMenu me={ME} onSelect={onAccountSelect}/>
               </div>
