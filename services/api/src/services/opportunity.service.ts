@@ -3,7 +3,7 @@ import { log } from '../lib/log';
 import { RadarGraphFactory, presentOpportunity, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache } from '@indexnetwork/protocol';
 
-import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
@@ -183,7 +183,6 @@ function resolveCounterpart<A extends { userId: string; role: string }>(
 
 interface OpportunityPresentationDeps {
   presenter?: OpportunityPresenter;
-  presenterDatabase?: PresenterDatabase;
   gatherContext?: typeof gatherPresenterContext;
 }
 
@@ -191,7 +190,6 @@ export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private cache: OpportunityCache;
   private presenter: OpportunityPresenter | null = null;
-  private readonly presenterDb: PresenterDatabase;
   private readonly gatherPresentationContext: typeof gatherPresenterContext;
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
@@ -209,8 +207,6 @@ export class OpportunityService {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
     this.presenter = presentation.presenter ?? null;
-    this.presenterDb = presentation.presenterDatabase
-      ?? chatDatabaseAdapter as unknown as PresenterDatabase;
     this.gatherPresentationContext = presentation.gatherContext ?? gatherPresenterContext;
     this.outcomeRecorder = outcomeRecorder;
   }
@@ -890,32 +886,6 @@ export class OpportunityService {
     return { opportunities: opportunityCards };
   }
 
-
-
-  /**
-   * Check if user has permission to create opportunities in a network.
-   *
-   * @param creatorId - User creating the opportunity
-   * @param parties - Parties involved
-   * @param networkId - The network ID
-   * @returns Permission result
-   */
-  private async checkCreatePermission(
-    creatorId: string,
-    parties: Array<{ userId: string }>,
-    networkId: string
-  ): Promise<{ allowed: boolean }> {
-    const isOwner = await this.db.isNetworkOwner(networkId, creatorId);
-    const isSelfIncluded = parties.some((p) => p.userId === creatorId);
-
-    if (isOwner) return { allowed: true };
-
-    const isMember = await this.db.isNetworkMember(networkId, creatorId);
-    if (!isMember) return { allowed: false };
-    if (isSelfIncluded) return { allowed: true };
-
-    return { allowed: true };
-  }
 }
 
 export const opportunityService = new OpportunityService();

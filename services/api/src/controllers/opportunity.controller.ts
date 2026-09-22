@@ -209,7 +209,7 @@ export class OpportunityController {
    */
   @Get('/:id')
   @UseGuards(AuthGuard)
-  async getOpportunity(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async getOpportunity(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
       logger.warn('Get opportunity missing id', { userId: user.id });
