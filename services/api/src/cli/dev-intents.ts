@@ -4,54 +4,39 @@ import postgres from 'postgres';
 
 import type { IntentTransitionOutcome } from '../services/intent.service';
 
-export const DEV = {
-  project: '5a1f986c-e0fb-4e5f-a78b-0c58ed1b0e10',
-  environment: '455d1280-79d1-4a8d-b2ff-0f4bbecdc9ca',
-  service: '6697e7c7-b627-499b-876d-e040a47b5779',
-  hostname: 'ep-divine-hall-ahr3jr7p.c-3.us-east-1.aws.neon.tech',
-  database: 'protocol_prod',
-  health: 'https://protocol.dev.index.network/health',
-} as const;
 
-// Separate locks let reset stop a running replay while serializing reset itself.
+// Separate locks serialize resets and prevent reset/replay overlap.
 export const RESET_LOCK = 741_901;
 export const REPLAY_LOCK = 741_902;
 
-/** Validate the only supported database and remove routing overrides from its URL. */
-export function devDatabaseUrl(value: string | undefined): string {
-  if (!value) throw new Error('Railway dev DATABASE_URL is required.');
+/** Validate a configured Postgres connection without changing its target or options. */
+export function databaseUrl(value: string | undefined): string {
+  if (!value) throw new Error('DATABASE_URL is required.');
   let url: URL;
   try { url = new URL(value); }
-  catch { throw new Error('Railway dev DATABASE_URL is not a valid Postgres URL.'); }
-  if (!['postgres:', 'postgresql:'].includes(url.protocol)
-    || ![DEV.hostname, DEV.hostname.replace('.c-3.', '-pooler.c-3.')].includes(url.hostname)
-    || url.pathname !== `/${DEV.database}` || (url.port && url.port !== '5432')) {
-    throw new Error('Refusing database: expected Railway dev protocol_prod. Production and protocol_sandbox are not supported.');
+  catch { throw new Error('DATABASE_URL is not a valid URL.'); }
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
+    throw new Error('DATABASE_URL is not a Postgres URL.');
   }
-  // Do not allow connection-string query parameters to override the checked route.
-  url.search = '';
-  url.searchParams.set('sslmode', 'verify-full');
-  return url.toString();
+  return value;
 }
 
-/** A dedicated direct connection keeps advisory locks for the whole command. */
-export function openDevControl(value: string | undefined, onclose: () => void) {
-  const url = new URL(devDatabaseUrl(value));
-  url.hostname = DEV.hostname;
-  return postgres(url.toString(), {
+/** A dedicated connection holds transaction-scoped coordination locks. */
+export function openControl(value: string | undefined, onclose: () => void) {
+  return postgres(databaseUrl(value), {
     max: 1, prepare: false, idle_timeout: 0, max_lifetime: 0, connect_timeout: 10, onclose,
   });
 }
 
-/** Fail rather than overlap another operation holding this session lock. */
-export async function acquireLock(sql: postgres.Sql, key: number): Promise<void> {
-  const [row] = await sql`SELECT pg_try_advisory_lock(${key}) AS acquired`;
+/** Fail rather than overlap another operation holding this transaction lock. */
+export async function acquireLock(sql: postgres.Sql | postgres.TransactionSql, key: number): Promise<void> {
+  const [row] = await sql`SELECT pg_try_advisory_xact_lock(${key}) AS acquired`;
   if (!row.acquired) throw new Error(key === RESET_LOCK ? 'A dev reset is already running.' : 'A dev replay is already running.');
 }
 
 type Counts = Record<string, number>;
 
-/** Counts checked inside the reset transaction, while the API is stopped. */
+/** Counts checked inside the reset transaction. */
 export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSql): Promise<Counts> {
   const [row] = await sql`
     SELECT
@@ -86,13 +71,11 @@ export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSq
   return row as Counts;
 }
 
-/** Clear replay results atomically; the caller must have stopped the dev API first. */
+/** Clear replay results atomically while excluding another reset or replay. */
 export async function resetReplay(sql: postgres.Sql): Promise<void> {
   await sql.begin(async tx => {
-    const [locks] = await tx`SELECT count(*)::int AS held FROM pg_locks
-      WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND granted
-        AND classid = 0 AND objid IN (${RESET_LOCK}, ${REPLAY_LOCK}) AND objsubid = 1`;
-    if (locks.held !== 2) throw new Error('Reset lost its operation locks; refusing to clear data.');
+    await acquireLock(tx, RESET_LOCK);
+    await acquireLock(tx, REPLAY_LOCK);
     const before = await readResetCounts(tx);
     await tx`UPDATE intents SET status = 'PAUSED', first_discovery_succeeded_at = NULL,
       updated_at = greatest(now(), updated_at + interval '1 millisecond')
@@ -119,7 +102,7 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
 export interface ReplayIntent { id: string; userId: string }
 
 /** Select only intents that can discover counterparts in an existing network. */
-export async function replayCandidates(sql: postgres.Sql): Promise<ReplayIntent[]> {
+export async function replayCandidates(sql: postgres.Sql | postgres.TransactionSql): Promise<ReplayIntent[]> {
   const candidates = await sql<ReplayIntent[]>`
     SELECT i.id, i.user_id AS "userId" FROM intents i
     WHERE i.status = 'PAUSED' AND i.archived_at IS NULL AND EXISTS (
@@ -181,19 +164,15 @@ export async function runReplay(
   return result;
 }
 
-async function resume(): Promise<void> {
-  if (process.env.RAILWAY_PROJECT_ID !== DEV.project || process.env.RAILWAY_ENVIRONMENT_ID !== DEV.environment
-    || process.env.RAILWAY_SERVICE_ID !== DEV.service || !process.env.RAILWAY_DEPLOYMENT_ID) {
-    throw new Error('Run resume inside the Railway dev API service using bun run db:dev:resume --confirm.');
-  }
-  process.env.DATABASE_URL = devDatabaseUrl(process.env.DATABASE_URL);
+export async function resumeReplay(): Promise<void> {
+  process.env.DATABASE_URL = databaseUrl(process.env.DATABASE_URL);
   if (!process.env.REDIS_URL || !process.env.OPENROUTER_API_KEY || process.env.NODE_ENV === 'test') {
-    throw new Error('Railway dev Redis and model credentials are required; test mode is not supported.');
+    throw new Error('Development Redis and model credentials are required; test mode is not supported.');
   }
   const stop = new AbortController();
   let closing = false;
   let connectionLost = false;
-  const pool = openDevControl(process.env.DATABASE_URL, () => {
+  const pool = openControl(process.env.DATABASE_URL, () => {
     if (!closing) { connectionLost = true; stop.abort(); }
   });
   const interrupt = () => { stop.abort(); console.log('[dev-intents] Stopping activations.'); };
@@ -201,32 +180,29 @@ async function resume(): Promise<void> {
   process.on('SIGTERM', interrupt);
   process.on('SIGHUP', interrupt);
   let closeRuntime: (() => Promise<void>) | undefined;
-  let control: postgres.ReservedSql | undefined;
   try {
-    control = await pool.reserve();
-    await acquireLock(control, RESET_LOCK);
-    await acquireLock(control, REPLAY_LOCK);
-    await control`SELECT pg_advisory_unlock(${RESET_LOCK})`;
-    const candidates = await replayCandidates(control);
-    const [{ closeDb }, { getRedisClient }] = await Promise.all([import('../lib/drizzle/drizzle'), import('../adapters/cache.adapter')]);
-    closeRuntime = async () => { try { await getRedisClient().quit(); } finally { await closeDb(); } };
-    const [{ Intents }, { IntentService }, { intentDatabaseAdapter }, { intentIndexing }] = await Promise.all([
-      import('@indexnetwork/protocol'), import('../services/intent.service'), import('../adapters/database.adapter'),
-      import('../lib/intent/indexing'),
-    ]);
-    const graph = new Intents({ database: intentDatabaseAdapter, followUp: intentIndexing }).createGraph();
-    const service = new IntentService({ intentGraph: graph });
-    const result = await runReplay(candidates, ({ id, userId }) => service.transitionStatus(id, userId, 'ACTIVE'), stop.signal);
-    const remaining = connectionLost ? null : (await replayCandidates(control)).length;
-    console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, remaining, interrupted: stop.signal.aborted }));
-    if (connectionLost) throw new Error('Replay lost its control connection; remaining intents were not activated.');
-    if (result.failed.length) throw new Error('Replay completed with failures; see intent IDs above.');
-    if (stop.signal.aborted) process.exitCode = 130;
+    await pool.begin(async control => {
+      await acquireLock(control, REPLAY_LOCK);
+      const candidates = await replayCandidates(control);
+      const [{ closeDb }, { getRedisClient }] = await Promise.all([import('../lib/drizzle/drizzle'), import('../adapters/cache.adapter')]);
+      closeRuntime = async () => { try { await getRedisClient().quit(); } finally { await closeDb(); } };
+      const [{ Intents }, { IntentService }, { intentDatabaseAdapter }, { intentIndexing }] = await Promise.all([
+        import('@indexnetwork/protocol'), import('../services/intent.service'), import('../adapters/database.adapter'),
+        import('../lib/intent/indexing'),
+      ]);
+      const graph = new Intents({ database: intentDatabaseAdapter, followUp: intentIndexing }).createGraph();
+      const service = new IntentService({ intentGraph: graph });
+      const result = await runReplay(candidates, ({ id, userId }) => service.transitionStatus(id, userId, 'ACTIVE'), stop.signal);
+      const remaining = connectionLost ? null : (await replayCandidates(control)).length;
+      console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, remaining, interrupted: stop.signal.aborted }));
+      if (connectionLost) throw new Error('Replay lost its control connection; remaining intents were not activated.');
+      if (result.failed.length) throw new Error('Replay completed with failures; see intent IDs above.');
+      if (stop.signal.aborted) process.exitCode = 130;
+    });
   } finally {
     try { await closeRuntime?.(); }
     finally {
       closing = true;
-      if (!connectionLost) control?.release();
       await pool.end({ timeout: 5 });
       process.off('SIGINT', interrupt);
       process.off('SIGTERM', interrupt);
@@ -241,7 +217,7 @@ if (import.meta.main) {
     console.error('Use bun run db:dev:resume --confirm from the repository root.');
     process.exitCode = 1;
   } else {
-    await resume().catch((error: unknown) => {
+    await resumeReplay().catch((error: unknown) => {
       console.error('[dev-intents]', error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
     });
