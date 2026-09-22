@@ -45,8 +45,6 @@ export default function Download() {
               >
                 INSTALL →
               </a>
-
-              <p className="download-card__note">Index.dmg</p>
             </div>
           </section>
 
