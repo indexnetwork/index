@@ -28,6 +28,11 @@ import { log } from './log';
  * `principal.input` is the owner's answer or message on that same conversation
  * when an external executor is selected.
  *
+ * `agent.activity` is the human's, and points at nothing: it says only that the
+ * hosted seat started or finished reasoning about a signal, in `data.active`. A
+ * wake is allowed to end without writing anything, so it is the one account of
+ * that work an owner's inbox can show while it runs.
+ *
  * `message` is the exception to the pointer shape: it is human-addressed and
  * carries its text inline, so a desktop toast needs no follow-up read.
  */
@@ -44,6 +49,7 @@ export type UserEventType =
   | 'agent.configuration'
   | 'agent.status'
   | 'agent.wake'
+  | 'agent.activity'
   | 'message';
 
 /**

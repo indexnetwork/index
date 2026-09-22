@@ -65,15 +65,21 @@ function readEntry(message: ConversationMessage): Entry {
 /** One private intent conversation; every open question is answered in a single submit. */
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
   const conversations = useConversations();
-  const { subscribeConversationMessage, isConnected } = useConversation();
+  const { subscribeConversationMessage, subscribeAgentActivity, isConnected } = useConversation();
   const [draft, setDraft] = useState("");
   const [selections, setSelections] = useState<Record<string, string>>({});
   const [writing, setWriting] = useState<Record<string, boolean>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  // What the principal just submitted, shown in their own transcript until the
+  // write that carries it comes back. The persisted row arrives on the stream
+  // at the same moment the request resolves, so this only ever covers the work
+  // the server does before the insert.
+  const [pending, setPending] = useState<Entry[]>([]);
   const [agent, setAgent] = useState<PersonalAgentState>();
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [working, setWorking] = useState(false);
   const requests = useRef({ generation: 0, mounted: false });
   const wokenRef = useRef<string | null>(null);
   const streamRef = useRef<HTMLDivElement>(null);
@@ -105,11 +111,17 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
       groups.set(key, group);
     }
     const open = new Map(questions.map((question) => [question.id, question]));
+    for (const entry of pending) conversation.push(entry);
+    // An answered question is settled on screen the moment its answer exists,
+    // pending or persisted. The queue is a read behind and still lists it.
+    for (const entry of conversation) {
+      if (entry.kind === "answer" && entry.questionId) open.delete(entry.questionId);
+    }
     for (const group of groups.values()) {
       group.waiting = questions.some((question) => question.matches[0]?.opportunityId === group.key);
     }
     return { conversation, activity: [...groups.values()], asked, open };
-  }, [messages, questions]);
+  }, [messages, pending, questions]);
 
   const mergeMessages = useCallback((incoming: ConversationMessage[]) => {
     setMessages((previous) => [...new Map([...previous, ...incoming].map((message) => [message.id, message])).values()]
@@ -152,18 +164,42 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     void refresh();
   }), [conversationId, intentId, mergeMessages, refresh, subscribeConversationMessage]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [conversation.length, questions.length]);
+  useEffect(() => subscribeAgentActivity((event) => {
+    if (event.intentId === intentId) setWorking(event.active);
+  }), [intentId, subscribeAgentActivity]);
+
+  // Off the stream nothing can report the finish, so the claim is not made. A
+  // resumed connection replays whatever was missed and settles it either way.
+  const thinking = working && isConnected;
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [conversation.length, questions.length, thinking]);
+
+  /** @param entries - What was just submitted. @returns Drops them again once the write has landed. */
+  const holdPending = (entries: Entry[]) => {
+    setPending((current) => [...current, ...entries]);
+    // Only Index's own seat reports its work, so only Index's own seat is
+    // claimed to be doing any. An external negotiator would never say it had
+    // finished, and the claim would stand forever.
+    if (agent?.status === "hosted") setWorking(true);
+    return () => setPending((current) => current.filter((entry) => !entries.includes(entry)));
+  };
 
   const send = async () => {
     const text = draft.trim();
     if (!text || sending) return;
     setDraft("");
+    const settled = holdPending([{ id: `pending:${crypto.randomUUID()}`, kind: "user", text }]);
     setSending(true);
     try {
       mergeMessages([await conversations.sendMessage(AGENT_DM_ID, [{ kind: "text", text }], { metadata: { intentId } })]);
     } catch {
-      // Nothing to say: the refresh below is the transcript's only truth.
+      // Their words are theirs: hand them back rather than lose them.
+      setDraft(text);
+      setWorking(false);
     } finally {
+      // The persisted row is already here, so the stand-in goes at once rather
+      // than sitting beside it for the length of a read.
+      settled();
       await refresh();
       setSending(false);
       inputRef.current?.focus();
@@ -174,14 +210,21 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const sendAnswers = async () => {
     if (!chosen.length || sending) return;
     const answers = chosen.map((question) => ({ questionId: question.id, text: selections[question.id]!.trim() }));
+    const settled = holdPending(chosen.map((question) => ({
+      id: `pending:${question.id}`, kind: "answer", text: selections[question.id]!.trim(),
+      questionId: question.id, match: question.matches[0],
+    })));
     setSelections({});
     setWriting({});
     setSending(true);
     try {
       mergeMessages(await conversations.sendAnswers(intentId, answers));
     } catch {
-      // Nothing to say: the refresh below is the transcript's only truth.
+      // The questions are still open, so put the answers back on their cards.
+      setSelections(Object.fromEntries(answers.map(({ questionId, text }) => [questionId, text])));
+      setWorking(false);
     } finally {
+      settled();
       await refresh();
       setSending(false);
     }
@@ -243,6 +286,12 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
               </article>
             </div>;
           })}
+        {thinking && <div className="flex justify-start" data-testid="agent-working">
+          <p className="flex items-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-xs text-gray-500" aria-live="polite">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" aria-hidden />
+            Your agent is thinking…
+          </p>
+        </div>}
         <div ref={endRef} />
       </div>
 

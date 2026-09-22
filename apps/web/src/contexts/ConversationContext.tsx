@@ -24,6 +24,12 @@ export interface ConversationMessageEvent {
   message: ConversationMessage;
 }
 
+/** The owner's agent started or finished reasoning about one intent. */
+export interface AgentActivityEvent {
+  intentId: string;
+  active: boolean;
+}
+
 interface ConversationContextType {
   conversations: ConversationSummary[];
   negotiations: NegotiationSummary[];
@@ -42,6 +48,8 @@ interface ConversationContextType {
   getOrCreateDm: (peerUserId: string) => Promise<ConversationSummary>;
   /** Subscribe to persisted conversation messages from the SSE stream. */
   subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
+  /** Subscribe to the agent's reasoning activity from the SSE stream. */
+  subscribeAgentActivity: (handler: (event: AgentActivityEvent) => void) => () => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
@@ -73,6 +81,14 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     (handler: (event: ConversationMessageEvent) => void) => {
       conversationMessageHandlersRef.current.add(handler);
       return () => { conversationMessageHandlersRef.current.delete(handler); };
+    },
+    [],
+  );
+  const agentActivityHandlersRef = useRef(new Set<(event: AgentActivityEvent) => void>());
+  const subscribeAgentActivity = useCallback(
+    (handler: (event: AgentActivityEvent) => void) => {
+      agentActivityHandlersRef.current.add(handler);
+      return () => { agentActivityHandlersRef.current.delete(handler); };
     },
     [],
   );
@@ -331,6 +347,13 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               setIsConnected(true);
               void refreshNegotiationsRef.current();
               break;
+            case 'agent.activity': {
+              const { intentId, active } = (data.data ?? {}) as { intentId?: string; active?: boolean };
+              if (typeof intentId === 'string' && typeof active === 'boolean') {
+                agentActivityHandlersRef.current.forEach((handler) => handler({ intentId, active }));
+              }
+              break;
+            }
             case 'negotiation.changed':
               if (negotiationsRefreshTimeoutRef.current) clearTimeout(negotiationsRefreshTimeoutRef.current);
               negotiationsRefreshTimeoutRef.current = setTimeout(() => {
@@ -477,6 +500,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         hideConversation,
         getOrCreateDm,
         subscribeConversationMessage,
+        subscribeAgentActivity,
       }}
     >
       {children}

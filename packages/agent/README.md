@@ -251,6 +251,7 @@ export async function runAgent(
 - Duplicate notifications for an in-flight opportunity are dropped.
 - Different intents and opportunities may run concurrently.
 - Event acknowledgment must not treat `handle()` as a durable queue or completed job.
+- `onWake(intentId, active)` reports when an intent starts and stops being reasoned about, so a host can show work that ends silently. A coalesced follow-up stays active rather than reporting idle between the two runs.
 
 ## H2A replies and manual wakes
 

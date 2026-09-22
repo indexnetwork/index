@@ -9,7 +9,7 @@ import { AgentRunner, type AgentEvent, type Execute } from '@indexnetwork/agent'
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
 import { log } from '../log';
-import { ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, type UserEventRecord } from '../user-events';
+import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, scanUserEventStreams, type UserEventRecord } from '../user-events';
 
 import { HostedIndex, HostedOwnerNotFoundError } from './hosted.index';
 
@@ -204,6 +204,24 @@ export class HostedAgent {
   }
 
   /**
+   * Tell the owner's surfaces that their seat started or finished thinking about
+   * a signal. A failure here costs a progress indicator, never a run.
+   *
+   * @param userId - The owner whose runner moved.
+   * @param intentId - The signal being reasoned about.
+   * @param active - Whether reasoning is now running.
+   */
+  private async announce(userId: string, intentId: string, active: boolean): Promise<void> {
+    try {
+      await publishUserEvent(userId, {
+        type: 'agent.activity', id: crypto.randomUUID(), title: '', body: '', data: { intentId, active },
+      });
+    } catch (error: unknown) {
+      logger.error('Hosted activity publish failed', { userId, intentId, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /**
    * Resolve the owner’s current executor and create a hosted runner only when Index holds the seat.
    * @param userId - The owner whose executor binding is read.
    * @returns Their hosted runner, or undefined when an external executor is selected or the host stopped.
@@ -227,6 +245,7 @@ export class HostedAgent {
         onError: (error) => {
           logger.error('Hosted run failed', { userId, error: error instanceof Error ? error.message : String(error) });
         },
+        onWake: (intentId, active) => { void this.announce(userId, intentId, active); },
       });
       this.runners.set(userId, runner);
     }

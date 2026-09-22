@@ -18,6 +18,13 @@ export interface AgentRunnerOptions {
   log?: (line: string) => void;
   /** Reports background failures; reconciliation failures reject its own promise. */
   onError?: (error: unknown) => void;
+  /**
+   * Reports whether this runner is reasoning about an intent. A silent wake is
+   * still a wake, so this is the only account of that work a principal can be
+   * shown. Coalesced wakes stay active throughout rather than reporting idle
+   * between them.
+   */
+  onWake?: (intentId: string, active: boolean) => void;
 }
 
 /** Principal-scoped runner with in-memory scheduling for both agent layers and one-way cancellation. */
@@ -158,6 +165,7 @@ export class AgentRunner {
       return;
     }
     this.activeWakes.add(intentId);
+    this.options.onWake?.(intentId, true);
     for (const [opportunityId, pendingIntentId] of this.pendingPrincipalWork) {
       if (pendingIntentId === intentId) this.pendingPrincipalWork.delete(opportunityId);
     }
@@ -165,7 +173,10 @@ export class AgentRunner {
       .catch((error) => this.options.onError?.(error))
       .finally(() => {
         this.activeWakes.delete(intentId);
+        // The follow-up is the same stretch of work from the principal's side,
+        // so idle is reported only once nothing is left to run.
         if (this.pendingWakes.delete(intentId)) this.scheduleWake(intentId);
+        else this.options.onWake?.(intentId, false);
       });
   }
 
