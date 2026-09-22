@@ -43,6 +43,9 @@ export interface IntentGraphRunner {
 /** How many counterparties one search returns when the caller names no limit. */
 const DISCOVER_LIMIT = 10;
 
+/** Default similarity cutoff (0..1) when filtering counterparties in vector search. */
+export const DEFAULT_DISCOVER_MIN_SCORE = 0.25;
+
 /** The largest top-N a caller may ask one search for. */
 export const DISCOVER_LIMIT_MAX = 30;
 
@@ -423,7 +426,7 @@ export class IntentService {
   async discover(
     intentId: string,
     userId: string,
-    input: { query: string; limit?: number },
+    input: { query: string; limit?: number; minScore?: number },
   ): Promise<IntentDiscoverOutcome> {
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
@@ -433,15 +436,16 @@ export class IntentService {
     if (networkScope.length === 0) return { kind: 'ok', counterparties: [] };
 
     const limit = input.limit ?? DISCOVER_LIMIT;
+    const minScore = input.minScore ?? DEFAULT_DISCOVER_MIN_SCORE;
 
-    logger.verbose('Discovering counterparties', { intentId, userId, networkCount: networkScope.length, limit });
+    logger.verbose('Discovering counterparties', { intentId, userId, networkCount: networkScope.length, limit, minScore });
 
     const embedding = await this.embedder.generate(input.query) as number[];
     const candidates = await this.embedder.searchIntentCandidates(embedding, {
       networkScope,
       excludeUserId: userId,
       limit: Math.min(limit * 3, DISCOVER_RETRIEVAL_MAX),
-      minScore: 0,
+      minScore,
     });
 
     // One signal shared in several of the searched communities comes back once

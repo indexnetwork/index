@@ -80,14 +80,21 @@ function toConversationMessage(message: StoredMessage): ConversationMessage {
   };
 }
 
+export interface HostedIndexOptions {
+  discoveryMinScore?: number;
+}
+
 /** Host for one principal, served by this process rather than over HTTP. */
 export class HostedIndex implements AgentHost {
   private readonly users = new UserDatabaseAdapter();
   private readonly conversations = new ConversationDatabaseAdapter();
   private readonly h2a = new ConversationService();
+  private readonly discoveryMinScore?: number;
 
   /** @param userId - The owner every call acts for. */
-  constructor(private readonly userId: string) {}
+  constructor(private readonly userId: string, options?: HostedIndexOptions) {
+    this.discoveryMinScore = options?.discoveryMinScore;
+  }
 
   /** @returns The owner, with the profile facts an agent may state as theirs. @throws When the owner no longer exists. */
   async getProfile(): Promise<Profile> {
@@ -136,7 +143,11 @@ export class HostedIndex implements AgentHost {
    * @throws When the signal is not the owner's, or is no longer active.
    */
   async findCounterparties(intentId: string, query: string, limit: number): Promise<Counterparty[]> {
-    const result = await intentService.discover(intentId, this.userId, { query, limit });
+    const result = await intentService.discover(intentId, this.userId, {
+      query,
+      limit,
+      minScore: this.discoveryMinScore,
+    });
     if (result.kind !== 'ok') throw new Error(`Signal ${intentId} is ${result.kind}.`);
     return result.counterparties;
   }

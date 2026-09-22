@@ -401,7 +401,14 @@ Bun.serve({
 logger.info('Server running', { port: PORT });
 
 // The default seat for owners without an external negotiator.
-const hostedAgent = new HostedAgent(createExecute(new OpenRouterClient({ apiKey: process.env.OPENROUTER_API_KEY! })));
+const discoveryMinScore = process.env.DISCOVERY_MIN_SCORE != null
+  ? Number(process.env.DISCOVERY_MIN_SCORE)
+  : 0.25;
+
+const hostedAgent = new HostedAgent(
+  createExecute(new OpenRouterClient({ apiKey: process.env.OPENROUTER_API_KEY! })),
+  { discoveryMinScore },
+);
 void hostedAgent.start();
 
 // Graceful shutdown

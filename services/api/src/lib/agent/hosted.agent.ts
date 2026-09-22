@@ -26,6 +26,10 @@ interface WakeFrame {
   data?: { intentId?: string; opportunityId?: string };
 }
 
+export interface HostedAgentOptions {
+  discoveryMinScore?: number;
+}
+
 /** Hosts one principal-scoped runner for every owner without an external negotiator. */
 export class HostedAgent {
   private readonly registry = new AgentDatabaseAdapter();
@@ -37,9 +41,12 @@ export class HostedAgent {
   private readonly unavailableOwners = new Set<string>();
   private reader?: ReturnType<typeof createRedisClient>;
   private running = false;
+  private readonly discoveryMinScore?: number;
 
   /** @param execute - The reasoning/tool executor shared by hosted runners. */
-  constructor(private readonly execute: Execute) {}
+  constructor(private readonly execute: Execute, options?: HostedAgentOptions) {
+    this.discoveryMinScore = options?.discoveryMinScore;
+  }
 
   /** Start reading every owner's event stream. */
   async start(): Promise<void> {
@@ -213,7 +220,7 @@ export class HostedAgent {
     let runner = this.runners.get(userId);
     if (!runner) {
       runner = new AgentRunner({
-        host: new HostedIndex(userId),
+        host: new HostedIndex(userId, { discoveryMinScore: this.discoveryMinScore }),
         execute: this.execute,
         log: (line) => { logger.verbose(line.trim(), { userId }); },
         onError: (error) => {

@@ -32,6 +32,7 @@ const LinkSchema = z.object({
 const DiscoverSchema = z.object({
   query: z.string().trim().min(1, 'query is required').max(2_000),
   limit: z.number().int().min(1).max(DISCOVER_LIMIT_MAX).optional(),
+  minScore: z.number().min(0).max(1).optional(),
 }).strict();
 const CreateOpportunitiesSchema = z.object({
   counterparties: z.array(z.object({
