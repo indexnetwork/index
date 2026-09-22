@@ -1,13 +1,7 @@
 import type { Opportunity, OpportunityStatus } from '@indexnetwork/protocol';
-import {
-  buildApiChatCardPresentationCacheKey,
-  buildRadarCardPresentationCacheKey,
-  gatherPresenterContext,
-  getPrimaryActionLabel,
-  type PresenterDatabase,
-} from '@indexnetwork/protocol';
+import { buildApiChatCardPresentationCacheKey, buildRadarCardPresentationCacheKey, gatherPresenterContext, getPrimaryActionLabel, type PresenterDatabase } from '@indexnetwork/protocol';
 
-import { log } from '../lib/log';
+import { log } from '../log';
 import { isOpportunityPresentationCacheable } from './opportunity.presentation';
 
 const logger = log.service.from('OpportunityService.preload');

@@ -9,6 +9,11 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Fixed
+- Restore API architecture lint by keeping opportunity presentation and preload
+  helpers in `lib/opportunity`, outside the service layer. Runtime behavior is
+  unchanged.
+
 ### Removed
 - **BREAKING: the `negotiation.opened` user event is gone.** It was published
   only to `initiatorUserId`, which is always whoever called

@@ -8,14 +8,8 @@ import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
-import {
-  chatCardToPresentedOpportunity,
-  radarItemToPresentedOpportunity,
-  type PresentedOpportunity,
-  type PresentedOpportunityList,
-  type RadarCardInput,
-} from './opportunity.presentation';
-import { scheduleOpportunityPresentationPreload } from './opportunity.preload';
+import { chatCardToPresentedOpportunity, radarItemToPresentedOpportunity, type PresentedOpportunity, type PresentedOpportunityList, type RadarCardInput } from '../lib/opportunity/opportunity.presentation';
+import { scheduleOpportunityPresentationPreload } from '../lib/opportunity/opportunity.preload';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
