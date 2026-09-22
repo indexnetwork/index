@@ -18,7 +18,7 @@ Optionally supply one to three ordered OpenRouter model IDs to replace the defau
 Choose a JSON scenario from packages/agent-tui/scenarios with Up/Down + Enter or
 click it. Esc or Ctrl+C exits the chooser. Agents start only after selection.
 
-Scenario users have id, name, and intents: [{ id, intent }, ...].
+Scenario users have id, name, optional intro/location/timezone, and intents: [{ id, intent }, ...].
 The six bundled scenarios have 5–10 users and 5–14 intents, covering collaborators,
 research and learning peers, creative partners, local friendships, career mentors,
 and community projects. Filenames sort alphabetically, with the five-user

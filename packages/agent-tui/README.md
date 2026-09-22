@@ -44,11 +44,11 @@ database is required for the scenario host. Ctrl+C requests cancellation, preven
 further host writes, and saves a private Markdown transcript in a temporary
 directory without draining model requests. Each scenario launch starts fresh.
 
-- Running a scenario sends fictional context and entered text to OpenRouter's selected model providers, including the current intent, confirmed profile, scoped principal conversation, brief, counterpart intent, and full negotiation history. Concurrent runs incur normal model usage costs.
+- Running a scenario sends its context and entered text to OpenRouter's selected model providers, including the current intent, confirmed profile, scoped principal conversation, brief, counterpart intent, and full negotiation history. Concurrent runs incur normal model usage costs.
 
 ## Bundled scenarios
 
-All personas are fictional. The scenarios explore social discovery through
+All bundled personas are fictional. The scenarios explore social discovery through
 complementary needs, shared interests, and useful next steps. They include promising
 overlaps, adjacent interests that need clarification, and plausible mismatches in
 goals, availability, experience, location, or commitment. Similar wording can hide
@@ -206,6 +206,8 @@ Add a JSON file under `scenarios/`:
   "users": [
     {
       "id": "alice", "name": "Alice",
+      "intro": "Product designer working on accessible collaboration tools",
+      "location": "London, UK", "timezone": "Europe/London",
       "intents": [
         { "id": "prototype", "intent": "Find a design partner" },
         { "id": "research", "intent": "Find a researcher for an accessibility prototype" }
@@ -222,10 +224,11 @@ Add a JSON file under `scenarios/`:
 }
 ```
 
-User IDs must be unique, and intent IDs must be unique within each user. All shown
-fields are required, with at least two users and at least one intent per user. Each
-intent conversation starts empty. The fictional user's supplied name is the only
-confirmed profile data; principal input enters only through TUI user actions.
+User IDs must be unique, and intent IDs must be unique within each user. `id`,
+`name`, and `intents` are required, with at least two users and at least one intent
+per user. Optional `intro`, `location`, and `timezone` values join the name as
+confirmed profile evidence. Each intent conversation starts empty; principal input
+enters only through TUI user actions.
 
 - Negotiators evaluate and write from the principal layer's brief, confirmed profile, scoped H2A conversation, and complete negotiation history. Principal answers provide evidence; previous agent claims do not. Entries for other opportunities are excluded.
 

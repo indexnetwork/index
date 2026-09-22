@@ -10,6 +10,9 @@ import { ReasoningObserver } from './reasoning.observer.js';
 export interface DemoPrincipal {
   id: string;
   name: string;
+  intro?: string | null;
+  location?: string | null;
+  timezone?: string | null;
   intents: { id: string; intent: string }[];
 }
 
@@ -26,7 +29,7 @@ export interface TranscriptEntry {
 /**
  * Validate a user-editable local scenario before starting model work.
  * @param value - Parsed JSON containing the selectable user roster.
- * @returns Users with stable IDs, names, and intents.
+ * @returns Users with stable IDs, confirmed profile fields, and intents.
  * @throws When fewer than two users are supplied, a user has no intents, a field is empty, or IDs repeat within a roster.
  */
 export function parseScenario(value: unknown): DemoScenario {
@@ -40,6 +43,12 @@ export function parseScenario(value: unknown): DemoScenario {
       const text = (raw as Record<string, unknown>)[field];
       if (typeof text !== 'string' || !text.trim()) throw new Error(`Scenario.users[${index}].${field} must be a nonempty string.`);
       principal[field] = text.trim();
+    }
+    for (const field of ['intro', 'location', 'timezone'] as const) {
+      const value = (raw as Record<string, unknown>)[field];
+      if (value === undefined) continue;
+      if (value !== null && typeof value !== 'string') throw new Error(`Scenario.users[${index}].${field} must be a string or null.`);
+      principal[field] = typeof value === 'string' ? value.trim() || null : null;
     }
     if (ids.has(principal.id)) throw new Error(`Duplicate user ID: ${principal.id}`);
     ids.add(principal.id);
@@ -232,7 +241,10 @@ export class NegotiationLab extends EventEmitter implements NegotiationTuiHost {
         this.activities.set(principal.id, new ReasoningObserver(() => this.emit('change')));
       }
       const host: AgentHost = {
-        getProfile: async () => ({ id: user.id, name: user.name, intro: null, location: null, timezone: null, profileConfirmed: true }),
+        getProfile: async () => ({
+          id: user.id, name: user.name, intro: user.intro ?? null,
+          location: user.location ?? null, timezone: user.timezone ?? null, profileConfirmed: true,
+        }),
         getIntent: async (intentId) => intentOf(principalFor(intentId)),
         listIntents: async () => principals.map(intentOf),
         getConversation: async (intentId) => conversationFor(intentId).read(),

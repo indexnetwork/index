@@ -66,6 +66,9 @@ apps/mac/Resources/index.html
 # Local-only agent/LLM configuration, kept out of the repo.
 /ignored/
 
+# Local real-data agent scenarios.
+/packages/agent-tui/scenarios/10-users-10-intents-frankfurt-edge-city-real-data.json
+
 # Archived local-only agent implementation.
 /packages/.agent/
 # Archived local-only agent TUI implementation.
