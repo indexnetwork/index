@@ -9,6 +9,11 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Fixed
+- Restore API architecture lint by keeping opportunity presentation and preload
+  helpers in `lib/opportunity`, outside the service layer. Runtime behavior is
+  unchanged.
+
 ### Removed
 - Removed opportunity outcome-feedback capture, storage, shadow mining, and telemetry.
   Applying the migration that drops `opportunity_outcome_events` permanently deletes

@@ -6,14 +6,8 @@ import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, Op
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import {
-  chatCardToPresentedOpportunity,
-  radarItemToPresentedOpportunity,
-  type PresentedOpportunity,
-  type PresentedOpportunityList,
-  type RadarCardInput,
-} from './opportunity.presentation';
-import { scheduleOpportunityPresentationPreload } from './opportunity.preload';
+import { chatCardToPresentedOpportunity, radarItemToPresentedOpportunity, type PresentedOpportunity, type PresentedOpportunityList, type RadarCardInput } from '../lib/opportunity/opportunity.presentation';
+import { scheduleOpportunityPresentationPreload } from '../lib/opportunity/opportunity.preload';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
