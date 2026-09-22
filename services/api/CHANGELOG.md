@@ -15,6 +15,10 @@ section before promoting to `main`).
   unchanged.
 
 ### Removed
+- Removed opportunity outcome-feedback capture, storage, shadow mining, and telemetry.
+  Applying the migration that drops `opportunity_outcome_events` permanently deletes
+  all recorded feedback history. Opportunity actions, actor stamps, chat creation,
+  and negotiation outcomes remain unchanged.
 - **BREAKING: the `negotiation.opened` user event is gone.** It was published
   only to `initiatorUserId`, which is always whoever called
   `createOpportunities`, so it reached the seat that had just opened those

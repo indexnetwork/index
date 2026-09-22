@@ -437,7 +437,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           resolvedOpportunity.id,
           accepted ? 'accepted' : 'rejected',
           principal.userId,
-          { intentId: resolvedIntentId, actionProvenance: 'api_key' },
+          { intentId: resolvedIntentId },
         );
         if ('error' in result) {
           const code = result.status === 404

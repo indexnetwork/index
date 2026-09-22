@@ -1,42 +1,20 @@
 {
   "mcpServers": {
-    "linear-index": {
+    "context7": {
       "type": "http",
-      "url": "https://mcp.linear.app/mcp",
-      "auth": "oauth",
-      "oauth": {
-        "clientName": "Pi Linear Index Network"
-      }
-    },
-    "linear-edge-city": {
-      "type": "http",
-      "url": "https://mcp.linear.app/mcp",
-      "auth": "oauth",
-      "oauth": {
-        "clientName": "Pi Linear Edge City"
-      }
-    },
-    "railway": {
-      "command": "railway",
-      "args": [
-        "mcp"
-      ]
+      "url": "https://mcp.context7.com/mcp"
     },
     "neon": {
       "type": "http",
       "url": "https://mcp.neon.tech/mcp"
     },
-    "context7": {
-      "type": "http",
-      "url": "https://mcp.context7.com/mcp"
+    "railway": {
+      "command": "railway",
+      "args": ["mcp"]
     },
-    "sentry": {
-      "type": "http",
-      "url": "https://mcp.sentry.dev/mcp",
-      "auth": "oauth",
-      "oauth": {
-        "clientName": "Pi Sentry"
-      }
+    "linear": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.linear.app/mcp"]
     }
   }
 }
