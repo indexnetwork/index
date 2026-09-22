@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
@@ -310,7 +310,6 @@ export class IntentController {
       user.id,
       {
         intentId: resolvedIntent.id,
-        actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
       },
     );
 
@@ -342,7 +341,6 @@ export class IntentController {
 
     const result = await opportunityService.startChat(resolvedOpportunity.id, user.id, {
       intentId: resolvedIntent.id,
-      actionProvenance: isSessionAuthenticated(_req) ? 'user_session' : 'api_key',
     });
     if ('error' in result) {
       return Response.json(

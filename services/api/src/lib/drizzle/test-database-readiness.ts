@@ -16,7 +16,6 @@ export const REQUIRED_TEST_DATABASE_OBJECTS = [
   'public.negotiation_turns',
   'public.agents',
   'public.apikey',
-  'public.opportunity_outcome_events',
 ] as const;
 
 export const REQUIRED_TEST_DATABASE_COLUMNS = [
