@@ -60,3 +60,6 @@ def register(ctx):
         ("index_open_app", schemas.INDEX_OPEN_APP, tools.index_open_app),
     ):
         ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
+    from .mcp import sync_index_mcp
+
+    sync_index_mcp()
