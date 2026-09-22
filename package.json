@@ -19,6 +19,7 @@
     "agent:tui": "bun run --cwd packages/agent-tui start",
     "dev:web": "cd apps/web && bun run dev",
     "dev:api": "cd services/api && bun run dev",
+    "dev:kill": "pids=$(lsof -tiTCP:3000 -iTCP:3001 -sTCP:LISTEN); if [ -n \"$pids\" ]; then kill $pids; fi",
     "dev:frontend": "bun run dev:web",
     "dev:backend": "bun run dev:api",
     "build": "bun run build:package:protocol && bun run build:api && bun run build:web",
