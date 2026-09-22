@@ -22,35 +22,6 @@ const order: Record<LogLevel, number> = { verbose: 5, debug: 10, info: 20, warn:
 
 const RESET = '\x1b[0m';
 
-/** Valid logger context names. */
-const LOG_CONTEXT_NAMES = new Set<string>([
-  'controller', 'service', 'agent', 'cli', 'graph', 'job',
-  'protocol', 'route', 'router', 'server', 'lib',
-]);
-
-/** Parse a comma-separated list of context names into a Set, or null if none are valid. */
-function parseContextFilter(raw: string | null | undefined): Set<LogContext> | null {
-  const names = (raw || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const allowed = new Set<LogContext>();
-  for (const name of names) {
-    if (LOG_CONTEXT_NAMES.has(name)) allowed.add(name as LogContext);
-  }
-  return allowed.size > 0 ? allowed : null;
-}
-
-/** No filter by default: every context emits. Narrow it with setContextFilter. */
-let contextFilter: Set<LogContext> | null = null;
-
-export function setContextFilter(filter: string | null) {
-  contextFilter = parseContextFilter(filter);
-}
-
-function shouldLogByContext(context: LogContext | undefined): boolean {
-  if (contextFilter === null) return true;
-  if (context === undefined) return false;
-  return contextFilter.has(context);
-}
-
 /** Whether to use ANSI color (TTY or FORCE_COLOR). */
 function useColor(): boolean {
   if (process.env.FORCE_COLOR === '1' || process.env.FORCE_COLOR === 'true') return true;
@@ -292,7 +263,6 @@ const ERROR_COLOR = '#dc3545';
 function wrapWithContext(
   context: LogContext | undefined,
   source: string | undefined,
-  line: string,
   level?: LogLevel
 ): { start: string; end: string } {
   if (!context || !CONTEXT_STYLES[context])
@@ -347,10 +317,10 @@ function createLogger(
       process.env.NODE_ENV === 'test'
       && process.env.API_TEST_HERMES_ASSURANCE_QUIET === '1'
     ) return;
-    if (!shouldLogByContext(context) || !shouldLog(level)) return;
+    if (!shouldLog(level)) return;
     emitSentryLog(level, message, context, source, meta);
     const line = fmt(message, meta);
-    const { start, end } = wrapWithContext(context, source, line, level === 'error' ? 'error' : undefined);
+    const { start, end } = wrapWithContext(context, source, level === 'error' ? 'error' : undefined);
     LEVEL_CONSOLE[level](start + line + end);
   }
   return {
@@ -473,4 +443,3 @@ function sanitizeForLogInternal(value: unknown, depth = 0): unknown {
 }
 
 export type { LogLevel };
-

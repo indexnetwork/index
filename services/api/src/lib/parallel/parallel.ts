@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import Parallel from 'parallel-web';
 import OpenAI from 'openai';
 import { z } from 'zod';
@@ -277,83 +276,6 @@ export async function extractUrlContent(url: string, options?: ExtractUrlContent
     logger.error('Failed to extract URL content', { url, error: errorDetails });
     return null;
   }
-}
-
-/**
- * Represents a file produced by crawling or extracting an external source.
- */
-export interface IntegrationFile {
-  id: string;
-  name: string;
-  content: string;
-  lastModified: Date;
-  type: string;
-  size: number;
-  sourceId?: string;
-  metadata?: unknown;
-}
-
-type CrawlResult = {
-  files: IntegrationFile[];
-  urlMap: Record<string, { url: string; contentHash: string; lastModified: Date }>;
-  pagesVisited: number;
-};
-
-function sha1(s: string | Buffer) {
-  return crypto.createHash('sha1').update(s).digest('hex');
-}
-
-function sanitizeName(s: string): string {
-  return s.replace(/[\\/:*?"<>|\n\r\t]/g, '-').slice(0, 120);
-}
-
-/**
- * Crawls a list of URLs and returns their content as markdown files.
- * @param urls - The URLs to crawl and extract content from.
- * @returns A {@link CrawlResult} containing extracted files, a URL-to-hash map, and the number of pages visited.
- */
-export async function crawlLinksForIndex(urls: string[]): Promise<CrawlResult> {
-  const now = new Date();
-  const files: IntegrationFile[] = [];
-  const urlMap: Record<string, { url: string; contentHash: string; lastModified: Date }> = {};
-
-  const contentPromises = urls.map(async (url) => {
-    try {
-      const content = await extractUrlContent(url);
-      return { url, content };
-    } catch (error) {
-      logger.warn('Failed to extract URL content', { url, error: (error as Error).message });
-      return { url, content: null };
-    }
-  });
-
-  const results = await Promise.all(contentPromises);
-
-  for (const { url, content } of results) {
-    if (!url || !content || content.length < 10) {
-      logger.warn('Skipping result: URL or content missing', { url, contentLength: content?.length || 0 });
-      continue;
-    }
-
-    try {
-      const id = sha1(url);
-      const parsed = new URL(url);
-      const name = sanitizeName(parsed.hostname + parsed.pathname) || id;
-      files.push({
-        id,
-        name: `${name}.md`,
-        content,
-        lastModified: now,
-        type: 'text/markdown',
-        size: content.length,
-      });
-      urlMap[id] = { url, contentHash: sha1(content), lastModified: now };
-    } catch (e) {
-      logger.warn('Extract result skipped', { url, error: (e as Error).message });
-    }
-  }
-
-  return { files, urlMap, pagesVisited: files.length };
 }
 
 // Export the parallel client for direct access if needed

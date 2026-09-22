@@ -7,8 +7,6 @@ export const API_URL =
 
 export const JWT_AUDIENCE = API_URL;
 
-export const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
-
 /** Contract for the auth database adapter injected into createAuth. */
 export interface AuthDbContract {
   /** Returns a configured adapter object for Better Auth's `database` option. */

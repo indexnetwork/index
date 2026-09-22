@@ -188,10 +188,3 @@ export function validateFileByMetadata(
 
   return { isValid: true };
 }
-
-/**
- * Extensions that can be read as plain text when Unstructured API fails
- */
-export const FALLBACK_TEXT_EXTENSIONS = [
-  '.txt', '.md', '.json', '.csv', '.js', '.ts', '.py', '.html', '.css', '.xml', '.yml', '.yaml', '.eml', '.msg'
-] as const;

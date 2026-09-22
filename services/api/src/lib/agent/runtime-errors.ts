@@ -12,12 +12,6 @@ export abstract class RuntimeDomainError extends Error {
   }
 }
 
-export class RuntimeValidationError extends RuntimeDomainError {
-  constructor() {
-    super('runtime_invalid', 400, 'The runtime request is invalid');
-  }
-}
-
 export class RuntimeNotFoundError extends RuntimeDomainError {
   constructor() {
     super('runtime_not_found', 404, 'The requested runtime installation was not found');

@@ -52,8 +52,3 @@ export function canApplyExpectedIntentUpdate(
     && (intent.status === null || intent.status === 'ACTIVE')
     && computeIntentFingerprint(intent.payload, intent.summary) === expectedIntentFingerprint;
 }
-
-/** Build the bounded display-only snippet stored with pool questions. */
-export function buildIntentSnippet(intentText: string): string {
-  return normalizeIntentText(intentText).slice(0, 160);
-}

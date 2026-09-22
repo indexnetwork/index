@@ -28,25 +28,6 @@ const RESERVED_TEST_ENV_KEYS = [
 ] as const;
 
 /**
- * Latches test mode for an entry point that is intrinsically test-only.
- *
- * Bare `bun test` may start without NODE_ENV, while an explicitly conflicting
- * inherited value must fail instead of selecting a non-test environment.
- *
- * @param nodeEnv - NODE_ENV inherited before the test preload runs.
- * @returns The locked `test` mode.
- * @throws When an explicit non-test value was inherited.
- */
-export function latchTestInvocationNodeEnv(nodeEnv: string | undefined): 'test' {
-  if (nodeEnv?.trim() && nodeEnv !== 'test') {
-    throw new Error(
-      `[test-env] Refusing to start tests with inherited NODE_ENV=${nodeEnv}. Remove it or set NODE_ENV=test.`,
-    );
-  }
-  return 'test';
-}
-
-/**
  * Loads the selected environment file while preserving fail-closed test mode.
  *
  * Test mode is latched before dotenv runs. A test file may omit `NODE_ENV` or
@@ -92,18 +73,6 @@ export function loadEnvironmentWithTestLock(options: EnvironmentLoadOptions): Lo
   }
 
   return { envFile, testMode };
-}
-
-/**
- * Requires a caller such as the Bun preload to have latched test mode.
- *
- * @param loaded - Result from the locked environment loader.
- * @throws When a test-only entry point was launched outside test mode.
- */
-export function requireTestMode(loaded: LoadedEnvironment): void {
-  if (!loaded.testMode) {
-    throw new Error('[test-env] Test entry point must be launched with NODE_ENV=test.');
-  }
 }
 
 /**
