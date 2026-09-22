@@ -921,7 +921,7 @@ class IndexClient {
       intro: user.intro,
       location: user.location,
       timezone: user.timezone,
-      profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt)
+      profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt || user.onboarding?.completedAt)
     };
   }
   async getIntent(intentId) {

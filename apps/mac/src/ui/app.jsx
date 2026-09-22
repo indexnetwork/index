@@ -344,10 +344,10 @@ function App() {
       if (loaded) {
         applyLoaded(loaded);
         setFreshUser((loaded.snapshot.INTENTS || []).length === 0);
-        // Durable gate: a user who hasn't confirmed their profile yet reviews it
-        // now, whether this is a fresh sign-in or a relaunch mid-onboarding.
+        // New onboarding requires durable profile confirmation. Users who
+        // completed the legacy flow are already past this gate.
         const ob = loaded.raw && loaded.raw.user && loaded.raw.user.onboarding;
-        needsProfile = !(ob && ob.profileConfirmedAt);
+        needsProfile = !(ob && (ob.profileConfirmedAt || ob.completedAt));
         // Networks load in parallel with the loader animation; no cancelled guard
         // here — the building effect cleanup would discard the update otherwise.
         refreshNetworks();

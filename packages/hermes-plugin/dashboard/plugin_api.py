@@ -123,6 +123,12 @@ _DESKTOP_ASSETS = {
 }
 
 
+@full_router.get("/mode")
+def dashboard_mode() -> dict[str, Any]:
+    """Confirm that the full Index dashboard API is mounted."""
+    return {"success": True, "mode": "full"}
+
+
 @full_router.get("/assets/{name}")
 async def desktop_asset(name: str) -> dict[str, Any]:
     mime = _DESKTOP_ASSETS.get(name)
@@ -243,13 +249,14 @@ def _fetch_me() -> dict[str, Any]:
 
 
 def _onboarding_gate(me: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Mac-parity first-run gate: missing `profileConfirmedAt` means review is required."""
+    """Require profile review only when neither current nor legacy onboarding completed."""
     row = me if isinstance(me, dict) else _fetch_me()
     onboarding = row.get("onboarding") if isinstance(row.get("onboarding"), dict) else {}
     confirmed_at = _text(onboarding.get("profileConfirmedAt"))
+    completed_at = _text(onboarding.get("completedAt"))
     return {
         "profileConfirmedAt": confirmed_at or None,
-        "needsProfileConfirm": bool(row.get("id")) and not bool(confirmed_at),
+        "needsProfileConfirm": bool(row.get("id")) and not bool(confirmed_at or completed_at),
     }
 
 

@@ -13,6 +13,18 @@
   authoritative across restarts.
 - Legacy files under `$HERMES_HOME/index-network/negotiator/` are ignored and
   left untouched.
+- Read the signal thread from each entry's persisted `kind` instead of the
+  text prefixes the package no longer writes. Briefs, decisions, stalls,
+  progress notes and withdrawn questions leave the thread for one activity
+  strip above it, grouped by match with where each one stands; an answer
+  carries the question it settled; and a note points at a counterparty with a
+  trailing link rather than being attributed to their agent.
+
+### Fixed
+- Restore the dashboard mode probe so Discover registers in Hermes after the
+  old negotiator-only plugin mode was removed.
+- Treat legacy accounts with completed onboarding as profile-confirmed instead
+  of sending them through onboarding again.
 
 ## 0.46.1
 

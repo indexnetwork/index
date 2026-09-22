@@ -232,7 +232,7 @@ flowchart LR
 
 | `AgentHost` operation | REST operation | Conversion and authority |
 |---|---|---|
-| `getProfile()` | `GET /api/auth/me` | Map profile fields and `onboarding.profileConfirmedAt` to `profileConfirmed`. |
+| `getProfile()` | `GET /api/auth/me` | Map profile fields and treat either `onboarding.profileConfirmedAt` or the legacy `onboarding.completedAt` marker as `profileConfirmed`. |
 | `getIntent(intentId)` | `GET /api/intents/:id` | Map `payload` to `statement`; derive `ARCHIVED` from `archivedAt`; reject foreign or missing records. |
 | `listIntents()` | `POST /api/intents/list` with `{ limit: 100 }` | Map every lifecycle state; runner selects active intents. |
 | `findCounterparties(intentId, query, limit)` | `POST /api/intents/:id/discover` | Pass the package-supplied limit; preserve score and network IDs. |

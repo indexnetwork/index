@@ -6,7 +6,10 @@ interface ApiUser {
   intro: string | null;
   location: string | null;
   timezone: string | null;
-  onboarding?: { profileConfirmedAt?: string | null } | null;
+  onboarding?: {
+    profileConfirmedAt?: string | null;
+    completedAt?: string | null;
+  } | null;
 }
 
 interface ApiIntent {
@@ -38,7 +41,9 @@ export class IndexClient implements AgentHost {
       intro: user.intro,
       location: user.location,
       timezone: user.timezone,
-      profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt),
+      profileConfirmed: Boolean(
+        user.onboarding?.profileConfirmedAt || user.onboarding?.completedAt,
+      ),
     };
   }
 

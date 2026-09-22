@@ -323,7 +323,10 @@ export class IndexClient implements Index {
         intro: string | null;
         location: string | null;
         timezone: string | null;
-        onboarding: { profileConfirmedAt: string | null } | null;
+        onboarding: {
+          profileConfirmedAt: string | null;
+          completedAt?: string | null;
+        } | null;
       };
     }>("GET", "/auth/me");
     this.identity = {
@@ -332,7 +335,9 @@ export class IndexClient implements Index {
       intro: user.intro ?? null,
       location: user.location ?? null,
       timezone: user.timezone ?? null,
-      profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt),
+      profileConfirmed: Boolean(
+        user.onboarding?.profileConfirmedAt || user.onboarding?.completedAt,
+      ),
     };
     return this.identity;
   }

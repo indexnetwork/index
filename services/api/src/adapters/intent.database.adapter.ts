@@ -58,7 +58,9 @@ export class IntentDatabaseAdapter {
       .where(and(isNull(schema.intents.archivedAt), activeIntentLifecycleWhere(), userId ? eq(schema.intents.userId, userId) : undefined))
       .orderBy(schema.users.name, schema.intents.createdAt);
     return rows.map((row) => ({ userId: row.userId, name: row.name, intentId: row.intentId, intent: row.intent,
-      confirmedProfile: row.onboarding?.profileConfirmedAt ? { name: row.name, intro: row.intro, location: row.location } : null }));
+      confirmedProfile: row.onboarding?.profileConfirmedAt || row.onboarding?.completedAt
+        ? { name: row.name, intro: row.intro, location: row.location }
+        : null }));
   }
 
   /**

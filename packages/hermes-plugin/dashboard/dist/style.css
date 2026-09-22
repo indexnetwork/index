@@ -3454,10 +3454,16 @@
   scrollbar-gutter: stable;
 }
 
-/* The agent's working notes — briefs, decisions, stalls — folded into one box,
-   so the thread carries what it is telling you and the reasoning is a click
-   down. */
+/* The agent's own record-keeping — briefs, decisions, stalls, progress, and
+   the questions it withdrew — gathered by match into one box above the thread,
+   so the thread carries what it is telling you and the reasoning behind it is
+   a click down rather than a turn in the way. */
 .index-dashboard__agent-log {
+  /* The desktop host makes the chat a flex column whose thread takes the rest;
+     the strip keeps its own height there instead of being squeezed to its
+     borders. */
+  flex: none;
+  margin-bottom: 1.25rem;
   border: 1px solid color-mix(in srgb, var(--color-foreground, #f8fafc) 35%, transparent);
   background: transparent;
 }
@@ -3478,22 +3484,72 @@
   background: color-mix(in srgb, var(--color-foreground, #f8fafc) 6%, transparent);
 }
 
+/* One match is its own fold, so the strip opens to a list of names and where
+   each one stands, not to every note at once. */
+.index-dashboard__agent-log-group {
+  border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+}
+
+.index-dashboard__agent-log-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.index-dashboard__agent-log-group-head::-webkit-details-marker {
+  display: none;
+}
+
+/* A flex summary drops its own marker, so the fold draws one back. */
+.index-dashboard__agent-log-group-head::before {
+  content: "\25b8";
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__agent-log-group[open] > .index-dashboard__agent-log-group-head::before {
+  content: "\25be";
+}
+
+.index-dashboard__agent-log-group-head:hover {
+  background: color-mix(in srgb, var(--color-foreground, #f8fafc) 6%, transparent);
+}
+
+/* The name is what the head is about, so it reads in the page's own ink while
+   the notes under it stay quiet. */
+.index-dashboard .index-dashboard__agent-log-group-head .index-dashboard__agent-log-who {
+  color: var(--color-foreground, var(--color-card-foreground, inherit));
+}
+
 .index-dashboard__agent-log-row {
   display: grid;
   gap: 0.25rem;
-  padding: 0.6rem 0.75rem;
-  border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  padding: 0.6rem 0.75rem 0.6rem 1.5rem;
+  border-top: 1px dashed var(--color-border, rgba(148, 163, 184, 0.24));
   color: var(--color-card-foreground, inherit);
   font-size: 0.82rem;
   line-height: 1.5;
 }
 
-.index-dashboard__agent-log-who {
+.index-dashboard__agent-log-who,
+.index-dashboard__agent-log-kind {
+  padding: 0;
+  border: none;
+  background: none;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.62rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__agent-log-who--link {
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 /* The answer action sits over the feed, right above the composer, so it stays
@@ -3572,22 +3628,6 @@
   text-transform: uppercase;
 }
 
-.index-dashboard__agent-who {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 0.65rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.index-dashboard__agent-who--link {
-  cursor: pointer;
-  text-decoration: underline;
-}
-
 /* The owner's own words keep the thread's bubble, on their side of it. */
 .index-dashboard__agent-mine {
   display: flex;
@@ -3614,6 +3654,52 @@
 
 .index-dashboard[data-scheme="dark"] .index-dashboard__agent-mine .index-dashboard__msg-bubble--mine {
   border-color: rgba(255, 255, 255, 0.28);
+}
+
+/* Where a turn points, under what it says: a quiet trailing mark, so a note
+   about a match never reads as that match talking. */
+.index-dashboard__agent-points {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+}
+
+.index-dashboard__agent-points--link {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* A question and the reply that settled it, as one box on the owner's side:
+   what was asked in the quiet half, the reply in the bubble under it. */
+.index-dashboard__agent-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-width: 85%;
+}
+
+.index-dashboard__agent-answer-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.index-dashboard__agent-answer-q {
+  margin: 0;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* The bubble is the reply alone; the pair around it already holds the width. */
+.index-dashboard__agent-answer .index-dashboard__msg-bubble {
+  max-width: 100%;
 }
 
 /* What the agent says, in the weight of something waiting on an answer, and in

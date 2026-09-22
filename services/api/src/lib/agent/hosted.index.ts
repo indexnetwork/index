@@ -99,7 +99,9 @@ export class HostedIndex implements AgentHost {
       intro: user.intro,
       location: user.location,
       timezone: user.timezone,
-      profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt),
+      profileConfirmed: Boolean(
+        user.onboarding?.profileConfirmedAt || user.onboarding?.completedAt,
+      ),
     };
   }
 

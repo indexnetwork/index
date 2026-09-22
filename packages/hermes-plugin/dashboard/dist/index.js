@@ -2418,88 +2418,116 @@
     );
   }
 
-  /**
-   * Whose agent is speaking. One named counterparty puts their name on the
-   * turn, several share one line, and anything else is the owner's own agent.
-   */
-  function agentSpeaker(source) {
-    const matches = Array.isArray(source.matches) ? source.matches : [];
-    const people = matches
-      .map(function (match) { return match && match.counterparty; })
-      .filter(function (person) { return person && person.name; });
-    if (people.length === 1) {
-      return { label: people[0].name + "\u2019s agent", id: people[0].id || "" };
-    }
-    if (people.length > 1) {
-      return {
-        label: people.map(function (person) { return person.name; }).join(", ") + "\u2019s agents",
-        id: "",
-      };
-    }
-    return { label: source.scope === "match" ? "this match\u2019s agent" : "your agent", id: "" };
-  }
+  // The agent's own record-keeping, kept under its own kind on every entry. It
+  // is addressed to a negotiator rather than to the owner, so it never appears
+  // between messages: it collects in the activity strip above the thread.
+  const AGENT_BOOKKEEPING = ["brief", "decision", "stall", "progress", "expire"];
 
-  // What the agent writes down as it works, rather than something it is telling
-  // the owner. The API marks each one with its own opening word.
-  const AGENT_LOG_PREFIXES = ["Brief: ", "Decision: ", "Progress: ", "Stall: "];
-
-  /** A working note and its kind, or null when the agent is speaking to you. */
-  function agentLogEntry(text) {
-    for (let i = 0; i < AGENT_LOG_PREFIXES.length; i++) {
-      const prefix = AGENT_LOG_PREFIXES[i];
-      if (text.indexOf(prefix) === 0) {
-        return { kind: prefix.slice(0, -2).toLowerCase(), text: text.slice(prefix.length) };
-      }
-    }
-    return null;
+  /** How a decision reads: the two that close a match are the loud ones. */
+  function decisionTone(decision) {
+    if (decision === "accept") return "success";
+    if (decision === "decline" || decision === "stop") return "destructive";
+    return "";
   }
 
   /**
-   * The working notes of one stretch of the conversation, folded away: the
-   * thread carries what the agent is telling you, and the reasoning behind it
-   * is one click down.
+   * Where a turn points, never who wrote it: the owner's own agent wrote every
+   * turn in this thread, including the ones about a counterparty.
    */
-  function AgentLog(props) {
-    const items = props.items;
+  function matchLink(match, onOpenUser) {
+    const person = match && match.counterparty;
+    if (!person || !person.name) return null;
+    return onOpenUser && person.id
+      ? React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__agent-points index-dashboard__agent-points--link",
+        onClick: function () { onOpenUser(person.id); },
+      }, "\u2197 " + person.name)
+      : React.createElement("span", { className: "index-dashboard__agent-points" }, "\u2197 " + person.name);
+  }
+
+  /**
+   * Everything the agent recorded rather than said, gathered by the match it
+   * belongs to and folded away above the thread. Its headline is all the owner
+   * reads unless they go looking.
+   */
+  function ActivityStrip(props) {
+    const groups = props.groups;
+    const matches = groups.filter(function (group) { return group.key !== "discovery"; }).length;
+    const waiting = groups.filter(function (group) { return group.waiting; }).length;
     return React.createElement("details", { className: "index-dashboard__agent-log" },
       React.createElement("summary", { className: "index-dashboard__agent-log-head" },
-        "negotiation log \u00b7 " + items.length + (items.length === 1 ? " entry" : " entries"),
+        "agent activity \u00b7 " + matches + (matches === 1 ? " match" : " matches")
+        + (waiting ? " \u00b7 " + waiting + " waiting on you" : ""),
       ),
-      items.map(function (item) {
-        return React.createElement("div", { key: item.id, className: "index-dashboard__agent-log-row" },
-          React.createElement("span", { className: "index-dashboard__agent-log-who" },
-            item.who ? item.who + " \u00b7 " + item.kind : item.kind),
-          React.createElement(Markdown, { text: item.text }),
+      groups.map(function (group) {
+        // The name opens the counterparty rather than the fold it sits in.
+        const openUser = props.onOpenUser && group.userId
+          ? function (e) { e.preventDefault(); props.onOpenUser(group.userId); }
+          : null;
+        return React.createElement("details", { key: group.key, className: "index-dashboard__agent-log-group" },
+          React.createElement("summary", { className: "index-dashboard__agent-log-group-head" },
+            openUser
+              ? React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__agent-log-who index-dashboard__agent-log-who--link",
+                onClick: openUser,
+              }, group.name)
+              : React.createElement("span", { className: "index-dashboard__agent-log-who" }, group.name),
+            group.decision
+              ? React.createElement(BadgeText, { tone: decisionTone(group.decision) }, group.decision)
+              : null,
+            group.waiting
+              ? React.createElement(BadgeText, { tone: "warning" }, "waiting on you")
+              : null,
+          ),
+          group.entries.map(function (entry) {
+            return React.createElement("div", { key: entry.id, className: "index-dashboard__agent-log-row" },
+              React.createElement("span", { className: "index-dashboard__agent-log-kind" }, entry.kind),
+              React.createElement(Markdown, { text: entry.text }),
+            );
+          }),
         );
       }),
     );
   }
 
   /**
-   * One agent turn: who spoke, then what they said. Questions and plain notes
-   * share it, so a question reads as the same conversation rather than a card
-   * dropped into it.
+   * One agent turn: what it is and where it points, then what it says.
+   * Questions and plain notes share it, so a question reads as the same
+   * conversation rather than a card dropped into it.
    */
   function AgentLine(props) {
-    const speaker = props.speaker;
-    const openUser = props.onOpenUser && speaker.id
-      ? function () { props.onOpenUser(speaker.id); }
-      : null;
     return React.createElement("div", { className: "index-dashboard__agent-line" },
       React.createElement("div", { className: "index-dashboard__agent-line-body" },
-        React.createElement("div", { className: "index-dashboard__agent-line-head" },
-          props.tag
-            ? React.createElement("span", { className: "index-dashboard__agent-tag" }, props.tag)
-            : null,
-          openUser
-            ? React.createElement("button", {
-              type: "button",
-              className: "index-dashboard__agent-who index-dashboard__agent-who--link",
-              onClick: openUser,
-            }, speaker.label)
-            : React.createElement("span", { className: "index-dashboard__agent-who" }, speaker.label),
-        ),
+        props.tag || props.points
+          ? React.createElement("div", { className: "index-dashboard__agent-line-head" },
+            props.tag
+              ? React.createElement("span", { className: "index-dashboard__agent-tag" }, props.tag)
+              : null,
+            props.points,
+          )
+          : null,
         props.children,
+      ),
+    );
+  }
+
+  /**
+   * A question and the answer that settled it, as one turn rather than two: the
+   * reply keeps the owner's bubble, with what it answered written above it.
+   */
+  function AnswerPair(props) {
+    return React.createElement("div", { className: "index-dashboard__agent-mine" },
+      React.createElement("div", { className: "index-dashboard__agent-answer" },
+        React.createElement("div", { className: "index-dashboard__agent-answer-head" },
+          React.createElement("span", { className: "index-dashboard__agent-log-who" }, "you answered"),
+          matchLink(props.match, props.onOpenUser),
+        ),
+        React.createElement("p", { className: "index-dashboard__agent-answer-q" }, props.question),
+        React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" },
+          React.createElement(Markdown, { text: props.answer }),
+        ),
       ),
     );
   }
@@ -2834,8 +2862,7 @@
       return React.createElement(AgentLine, {
         key: question.id,
         tag: "question",
-        speaker: agentSpeaker(question),
-        onOpenUser: props.onOpenUser,
+        points: matchLink(Array.isArray(question.matches) ? question.matches[0] : null, props.onOpenUser),
       },
         React.createElement("p", { className: "index-dashboard__agent-q-text" }, question.question),
         options.length
@@ -2901,27 +2928,59 @@
     // Questions the transcript carries are drawn in place; the rest close the
     // feed.
     const placed = {};
-    // Working notes fold into the log that runs with them, so a stretch of
-    // reasoning stays one box in the thread instead of a dozen turns.
-    let log = null;
-    function closeLog() {
-      if (!log) return;
-      bubbles.push(React.createElement(AgentLog, { key: "log-" + log[0].id, items: log }));
-      log = null;
-    }
+    // What each question asked, so the answer to it can carry it.
+    const asked = {};
+    // Bookkeeping gathers by the match it belongs to and leaves the thread
+    // entirely, in the order the agent first wrote about that match.
+    const groups = [];
+    const groupBy = {};
     for (let i = 0; i < messages.length; i++) {
       const raw = messages[i];
       const content = extractContent(raw.parts);
-      const provenance = (raw.metadata && raw.metadata.principalMessage) || {};
       if (!content.text) continue;
-      if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) {
-        closeLog();
+      const provenance = (raw.metadata && raw.metadata.principalMessage) || {};
+      const kind = provenance.kind || (raw.role === "user" ? "user" : "message");
+      const match = Array.isArray(provenance.matches) ? provenance.matches[0] : null;
+      if (kind === "question" && provenance.questionId) asked[provenance.questionId] = content.text;
+      if (AGENT_BOOKKEEPING.indexOf(kind) >= 0) {
+        const person = (match && match.counterparty) || null;
+        const key = (match && match.opportunityId) || "discovery";
+        let group = groupBy[key];
+        if (!group) {
+          group = {
+            key: key,
+            name: (person && person.name) || "discovery",
+            userId: (person && person.id) || "",
+            decision: "",
+            waiting: false,
+            entries: [],
+          };
+          groupBy[key] = group;
+          groups.push(group);
+        }
+        if (kind === "decision") group.decision = content.text;
+        group.entries.push({ id: raw.id, kind: kind, text: content.text });
+        continue;
+      }
+      if (kind === "question") {
+        // Only while it is still open: a question that was answered or retired
+        // is carried by whatever resolved it, not by a card nobody can answer.
+        if (!provenance.questionId || !carded[provenance.questionId]) continue;
         placed[provenance.questionId] = true;
         bubbles.push(questionCard(carded[provenance.questionId]));
         continue;
       }
+      if (kind === "answer" && provenance.questionId && asked[provenance.questionId]) {
+        bubbles.push(React.createElement(AnswerPair, {
+          key: raw.id,
+          question: asked[provenance.questionId],
+          answer: content.text,
+          match: match,
+          onOpenUser: props.onOpenUser,
+        }));
+        continue;
+      }
       if (raw.role === "user") {
-        closeLog();
         bubbles.push(React.createElement("div", { key: raw.id, className: "index-dashboard__agent-mine" },
           React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" },
             React.createElement(Markdown, { text: content.text }),
@@ -2929,32 +2988,29 @@
         ));
         continue;
       }
-      const entry = agentLogEntry(content.text);
-      if (entry) {
-        const match = Array.isArray(provenance.matches) ? provenance.matches[0] : null;
-        log = log || [];
-        log.push({
-          id: raw.id,
-          kind: entry.kind,
-          text: entry.text,
-          who: (match && match.counterparty && match.counterparty.name) || "",
-        });
-        continue;
-      }
-      closeLog();
-      bubbles.push(React.createElement(AgentLine, {
-        key: raw.id,
-        speaker: agentSpeaker(provenance),
-        onOpenUser: props.onOpenUser,
-      }, React.createElement(Markdown, { text: content.text })));
+      bubbles.push(React.createElement(AgentLine, { key: raw.id },
+        React.createElement(Markdown, { text: content.text }),
+        matchLink(match, props.onOpenUser),
+      ));
     }
-    closeLog();
+    // A match with a question still open is the one thing in the strip worth
+    // saying out loud, so the headline can count them.
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      group.waiting = questions.some(function (question) {
+        const first = Array.isArray(question.matches) ? question.matches[0] : null;
+        return !!first && first.opportunityId === group.key;
+      });
+    }
 
     const feed = bubbles.concat(questions.filter(function (question) {
       return !placed[question.id];
     }).map(questionCard));
 
     return React.createElement("div", { ref: rootRef, className: "index-dashboard__agent-chat" },
+      groups.length
+        ? React.createElement(ActivityStrip, { groups: groups, onOpenUser: props.onOpenUser })
+        : null,
       React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef },
         feed.length
           ? feed
