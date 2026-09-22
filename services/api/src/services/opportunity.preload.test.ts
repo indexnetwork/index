@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { Opportunity } from '@indexnetwork/protocol';
 
-import { scheduleOpportunityPresentationPreload } from './preload-opportunity-presentation';
+import { scheduleOpportunityPresentationPreload } from './opportunity.preload';
 
 describe('scheduleOpportunityPresentationPreload', () => {
   test('does not block the caller while presenter work runs', async () => {

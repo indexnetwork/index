@@ -4,7 +4,7 @@ import {
   chatCardToPresentedOpportunity,
   isOpportunityPresentationCacheable,
   radarItemToPresentedOpportunity,
-} from './presented-opportunity';
+} from './opportunity.presentation';
 
 describe('presented-opportunity mappers', () => {
   test('radarItemToPresentedOpportunity maps peer identity and copy fields', () => {

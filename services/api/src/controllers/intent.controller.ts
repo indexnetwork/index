@@ -6,7 +6,7 @@ import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/r
 import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
 import { CREATE_OPPORTUNITIES_LIMIT, DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
 import { opportunityService } from '../services/opportunity.service';
-import { parseListOpportunitiesQuery } from '../lib/opportunity/list-opportunities-query';
+import { parseListOpportunitiesQuery } from '../services/opportunity.list-query';
 
 const logger = log.controller.from('intent');
 

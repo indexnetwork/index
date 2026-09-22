@@ -14,8 +14,8 @@ import {
   type PresentedOpportunity,
   type PresentedOpportunityList,
   type RadarCardInput,
-} from '../lib/opportunity/presented-opportunity';
-import { scheduleOpportunityPresentationPreload } from '../lib/opportunity/preload-opportunity-presentation';
+} from './opportunity.presentation';
+import { scheduleOpportunityPresentationPreload } from './opportunity.preload';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
