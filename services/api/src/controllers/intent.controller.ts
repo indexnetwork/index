@@ -5,6 +5,7 @@ import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
 import { CREATE_OPPORTUNITIES_LIMIT, DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
+import { opportunityService } from '../services/opportunity.service';
 
 const logger = log.controller.from('intent');
 
@@ -225,7 +226,19 @@ export class IntentController {
       return Response.json({ error: 'Only an active signal can open opportunities' }, { status: 409 });
     }
 
-    return Response.json({ opportunities: result.opportunities });
+    const opportunities = await Promise.all(
+      result.opportunities.map(async ({ opportunityId }) => {
+        const opp = await opportunityService.getStoredOpportunity(opportunityId);
+        if (!opp) return null;
+        opportunityService.warmPresentationCache(
+          opp,
+          opp.actors.map((actor) => actor.userId),
+        );
+        return opportunityService.presentOpportunityForViewer(opp, user.id);
+      }),
+    );
+
+    return Response.json({ opportunities: opportunities.filter((row) => row !== null) });
   }
 
   /**

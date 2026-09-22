@@ -435,13 +435,13 @@ export function createIndexApiClient(options = {}) {
         `/opportunities${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
-      radar: (query = {}, options = {}) => request(`/opportunities/radar${toQueryString(query)}`, options),
+      radar: (query = {}, options = {}) => request(`/opportunities${toQueryString(query)}`, options),
       radarForIntent: (intentId, query = {}, options = {}) => request(
-        `/opportunities/radar${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+        `/opportunities${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
       chatContext: (peerUserId, options = {}) => request(
-        `/opportunities/chat-context${toQueryString({ peerUserId })}`,
+        `/opportunities${toQueryString({ peerUserId })}`,
         options,
       ),
       get: (opportunityId, options = {}) => request(`/opportunities/${encodeURIComponent(opportunityId)}`, options),

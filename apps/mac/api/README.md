@@ -6,7 +6,7 @@ It is now **wired into the mac app**: `scripts/assemble.py` inlines `client.mjs`
 
 ## Role
 
-- Own calls to `services/api` (`/api/auth/me`, `/api/intents/list`, `/api/opportunities/radar`, conversations, etc.).
+- Own calls to `services/api` (`/api/auth/me`, `/api/intents/list`, `/api/opportunities` (presented list + radar/chat filters), conversations, etc.).
 - Keep endpoint paths aligned with the decorated controllers in `services/api/src/controllers` and the `/api` global prefix in `services/api/src/main.ts`.
 - Convert backend DTOs into the existing prototype shapes (`INTENTS`, people/opportunity cards).
 - Keep auth/token handling isolated from UI components.

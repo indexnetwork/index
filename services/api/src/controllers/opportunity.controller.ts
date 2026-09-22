@@ -93,6 +93,7 @@ type RouteParams = Record<string, string>;
 export class OpportunityController {
   /**
    * GET /opportunities — list opportunities for the authenticated user.
+   * Always returns presenter-built cards. Use peerUserId for accepted chat context.
    */
   @Get('')
   @UseGuards(AuthGuard)
@@ -102,6 +103,9 @@ export class OpportunityController {
     const networkId = url.searchParams.get('networkId') ?? undefined;
     const limit = url.searchParams.get('limit');
     const offset = url.searchParams.get('offset');
+    const peerUserId = url.searchParams.get('peerUserId') ?? undefined;
+    const noCacheParam = url.searchParams.get('noCache');
+    const noCache = noCacheParam === '1' || noCacheParam === 'true';
 
     if (rawStatus) {
       const parsed = listStatusSchema.safeParse(rawStatus);
@@ -116,61 +120,6 @@ export class OpportunityController {
     const scope = parseIntentScopeFromUrl(url);
     if (scope instanceof Response) return scope;
 
-    const options = {
-      status: rawStatus ? (rawStatus as z.infer<typeof listStatusSchema>) : undefined,
-      networkId,
-      ...scope,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
-    };
-    const list = await opportunityService.getOpportunitiesForUser(user.id, options);
-    logger.verbose('Opportunities listed', { userId: user.id, count: list.length });
-    return Response.json({ opportunities: list });
-  }
-
-  /**
-   * GET /opportunities/chat-context — get shared accepted opportunities between the
-   * authenticated user and a peer, used as context for chat conversations.
-   *
-   * @param req - Must include `peerUserId` query parameter
-   * @param user - Authenticated user from AuthGuard
-   * @returns JSON with opportunity cards for the chat context
-   */
-  @Get('/chat-context')
-  @UseGuards(AuthGuard)
-  async getChatContext(req: Request, user: AuthenticatedUser) {
-    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
-    const peerUserId = url.searchParams.get('peerUserId');
-    if (!peerUserId) {
-      return Response.json({ error: 'peerUserId query param is required' }, { status: 400 });
-    }
-
-    try {
-      const result = await opportunityService.getChatContext(user.id, peerUserId);
-      return Response.json(result);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error('getChatContext failed', { userId: user.id, error: message });
-      return Response.json({ error: 'Internal server error' }, { status: 500 });
-    }
-  }
-
-  /**
-   * GET /opportunities/radar — radar view: flat presenter-card list, optionally intent-scoped.
-   */
-  @Get('/radar')
-  @UseGuards(AuthGuard)
-  async getRadar(req: Request, user: AuthenticatedUser) {
-    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
-    const networkId = url.searchParams.get('networkId') ?? undefined;
-    const limitParam = url.searchParams.get('limit');
-    const noCacheParam = url.searchParams.get('noCache');
-    const noCache = noCacheParam === '1' || noCacheParam === 'true';
-    const scope = parseIntentScopeFromUrl(url);
-    if (scope instanceof Response) return scope;
-
-    // Optional explicit lifecycle filter (comma-separated). Switches the radar
-    // graph into lifecycle-view mode (see RadarGraphInvokeInput.statuses).
     const statusesParam = url.searchParams.get('statuses');
     let statuses: z.infer<typeof radarStatusSchema>[] | undefined;
     if (statusesParam) {
@@ -181,25 +130,30 @@ export class OpportunityController {
       statuses = [...new Set(parsed.data)];
     }
 
-    // Optional fast mode: skip the presenter LLM for cache misses and
-    // return identity-only cards flagged presentationPending (two-phase fetch).
     const presentationParam = url.searchParams.get('presentation');
     if (presentationParam && presentationParam !== 'skeleton' && presentationParam !== 'full') {
       return Response.json({ error: "Invalid presentation; allowed: 'skeleton', 'full'" }, { status: 400 });
     }
     const presentation = presentationParam === 'skeleton' ? 'skeleton' as const : undefined;
 
-    const result = await opportunityService.getRadarView(user.id, {
+    const result = await opportunityService.presentOpportunitiesForViewer(user.id, {
+      peerUserId,
+      status: rawStatus ? (rawStatus as z.infer<typeof listStatusSchema>) : undefined,
+      statuses,
       networkId,
       ...scope,
-      limit: limitParam ? parseInt(limitParam, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
       noCache,
-      statuses,
       presentation,
     });
+
     if ('error' in result) {
+      logger.error('listOpportunities failed', { userId: user.id, error: result.error });
       return Response.json({ error: result.error }, { status: 500 });
     }
+
+    logger.verbose('Opportunities listed', { userId: user.id, count: result.opportunities.length });
     return Response.json(result);
   }
 

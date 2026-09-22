@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { RadarGraphFactory, presentOpportunity, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import { RadarGraphFactory, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache } from '@indexnetwork/protocol';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
@@ -8,6 +8,14 @@ import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
+import {
+  chatCardToPresentedOpportunity,
+  radarItemToPresentedOpportunity,
+  type PresentedOpportunity,
+  type PresentedOpportunityList,
+  type RadarCardInput,
+} from '../lib/opportunity/presented-opportunity';
+import { scheduleOpportunityPresentationPreload } from '../lib/opportunity/preload-opportunity-presentation';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
@@ -40,7 +48,7 @@ function sanitizeOpportunityForResponse<T extends Opportunity>(
 }
 
 interface OpportunityStatusUpdateResult {
-  opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
+  opportunity: PresentedOpportunity;
   counterpartUserId?: string;
 }
 
@@ -220,6 +228,145 @@ export class OpportunityService {
     return this.presenter;
   }
 
+
+  private getPreloadDeps() {
+    return {
+      db: this.presenterDb as PresenterDatabase & {
+        getUser(userId: string): Promise<{ name?: string | null; avatar?: string | null } | null>;
+      },
+      cache: this.cache,
+      presenter: this.getPresenter(),
+      gatherContext: this.gatherPresentationContext,
+    };
+  }
+
+  private schedulePresentationPreload(
+    opportunity: Opportunity,
+    viewerIds: string[],
+    scopeId?: string,
+  ): void {
+    scheduleOpportunityPresentationPreload(this.getPreloadDeps(), opportunity, viewerIds, scopeId);
+  }
+
+  /** Non-blocking cache warm after writes; safe to call from controllers. */
+  warmPresentationCache(opportunity: Opportunity, viewerIds: string[], scopeId?: string): void {
+    this.schedulePresentationPreload(opportunity, viewerIds, scopeId);
+  }
+
+  async getStoredOpportunity(opportunityId: string): Promise<Opportunity | null> {
+    return this.db.getOpportunity(opportunityId);
+  }
+
+  /**
+   * List opportunities with presenter output for the viewer. Replaces separate
+   * radar and chat-context reads — peerUserId switches to accepted pair scope.
+   */
+  async presentOpportunitiesForViewer(
+    userId: string,
+    options?: {
+      peerUserId?: string;
+      status?: 'pending' | 'accepted' | 'rejected' | 'expired';
+      statuses?: OpportunityStatus[];
+      networkId?: string;
+      scopeType?: 'intent';
+      scopeId?: string;
+      limit?: number;
+      offset?: number;
+      noCache?: boolean;
+      presentation?: 'full' | 'skeleton';
+    },
+  ): Promise<PresentedOpportunityList | { error: string }> {
+    if (options?.peerUserId) {
+      const chat = await this.getChatContext(userId, options.peerUserId);
+      return {
+        opportunities: chat.opportunities.map((card) => chatCardToPresentedOpportunity({
+          ...card,
+          peerUserId: options.peerUserId,
+        })),
+        meta: { totalOpportunities: chat.opportunities.length },
+      };
+    }
+
+    const statuses = options?.statuses
+      ?? (options?.status ? [options.status] : DEFAULT_LIST_STATUSES);
+    const radar = await this.getRadarView(userId, {
+      networkId: options?.networkId,
+      scopeType: options?.scopeType,
+      scopeId: options?.scopeId,
+      limit: options?.limit ?? 50,
+      noCache: options?.noCache,
+      statuses,
+      presentation: options?.presentation,
+    });
+    if ('error' in radar) {
+      return { error: radar.error };
+    }
+
+    return {
+      opportunities: (radar.items as RadarCardInput[]).map(radarItemToPresentedOpportunity),
+      meta: radar.meta,
+    };
+  }
+
+  /**
+   * Present one stored opportunity for a viewer using the radar presenter path.
+   */
+  async presentOpportunityForViewer(
+    opportunity: Opportunity,
+    viewerId: string,
+    scopeId?: string,
+  ): Promise<PresentedOpportunity> {
+    const radar = await this.getRadarView(viewerId, {
+      scopeType: scopeId ? 'intent' : undefined,
+      scopeId,
+      statuses: [opportunity.status],
+      limit: 50,
+    });
+    if (!('error' in radar)) {
+      const match = (radar.items as RadarCardInput[]).find((item) => item.opportunityId === opportunity.id);
+      if (match) {
+        return radarItemToPresentedOpportunity(match);
+      }
+    }
+
+    const counterpart = resolveCounterpart(opportunity.actors, viewerId);
+    const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);
+    const counterpartUser = counterpart ? await this.db.getUser(counterpart.userId) : null;
+    return {
+      opportunityId: opportunity.id,
+      status: opportunity.status,
+      createdAt: opportunity.createdAt instanceof Date
+        ? opportunity.createdAt.toISOString()
+        : String(opportunity.createdAt),
+      updatedAt: opportunity.updatedAt instanceof Date
+        ? opportunity.updatedAt.toISOString()
+        : (opportunity.updatedAt ? String(opportunity.updatedAt) : undefined),
+      peer: {
+        userId: counterpart?.userId ?? '',
+        name: counterpartUser?.name ?? 'Unknown',
+        avatar: counterpartUser?.avatar ?? null,
+      },
+      viewerRole: viewerActor?.role,
+      mainText: safeFallbackSummary(opportunity.interpretation?.reasoning, {
+        counterpartName: counterpartUser?.name ?? undefined,
+        emptyText: 'Connection opportunity',
+      }),
+      cta: 'Take a look',
+      headline: 'Connection opportunity',
+      primaryActionLabel: getPrimaryActionLabel(viewerActor?.role ?? 'party'),
+      secondaryActionLabel: 'Skip',
+      mutualIntentsLabel: '',
+      personalizedSummary: safeFallbackSummary(opportunity.interpretation?.reasoning, {
+        counterpartName: counterpartUser?.name ?? undefined,
+        emptyText: 'Connection opportunity',
+      }),
+      acceptedAt: opportunity.status === 'accepted'
+        ? (opportunity.updatedAt instanceof Date
+          ? opportunity.updatedAt.toISOString()
+          : (opportunity.updatedAt ?? null))
+        : undefined,
+    };
+  }
 
   private getRadarGraph(): ReturnType<RadarGraphFactory['createGraph']> {
     this.radarGraph ??= new RadarGraphFactory(
@@ -446,9 +593,6 @@ export class OpportunityService {
       userMap.set(uid, u ? { id: u.id, name: u.name ?? 'Unknown', avatar: u.avatar ?? null } : { id: uid, name: 'Unknown', avatar: null });
     });
 
-    const otherPartyInfo = otherPartyIds[0] ? userMap.get(otherPartyIds[0])! : { id: '', name: 'Unknown', avatar: null as string | null };
-    const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, 'card');
-
     const otherParties = otherActors.map((a) => {
       const info = userMap.get(a.userId) ?? { id: a.userId, name: 'Unknown', avatar: null as string | null };
       return { id: info.id, name: info.name, avatar: info.avatar, role: a.role };
@@ -458,21 +602,17 @@ export class OpportunityService {
       ? opp.interpretation.confidence
       : parseFloat(opp.confidence ?? opp.interpretation.confidence as unknown as string) || 0;
 
+    const presented = await this.presentOpportunityForViewer(opp, viewerId);
+
     return {
       id: opp.id,
-      presentation,
+      ...presented,
       myRole: myActor.role,
-      // The viewer's own signal, so a client holding only an opportunity id can
-      // open the signal that owns it rather than a detached card.
       intentId: myActor.intent ?? null,
       otherParties,
       category: opp.interpretation.category,
       confidence: confidenceNum,
       network: networkRecord ? { id: networkRecord.id, title: networkRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
-      status: opp.status,
-      primaryActionLabel: getPrimaryActionLabel(myActor.role),
-      createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
-      expiresAt: opp.expiresAt ? (opp.expiresAt instanceof Date ? opp.expiresAt.toISOString() : opp.expiresAt) : undefined,
       ...(replacementResolution.resolvedFromOpportunityId
         ? { resolvedFromOpportunityId: replacementResolution.resolvedFromOpportunityId }
         : {}),
@@ -584,7 +724,17 @@ export class OpportunityService {
     }
 
     if (!counterpart) {
-      return { opportunity: sanitizeOpportunityForResponse(updated) };
+      const presented = await this.presentOpportunityForViewer(
+        updated,
+        userId,
+        options?.scopeType === 'intent' ? options.scopeId : undefined,
+      );
+      this.schedulePresentationPreload(
+        updated,
+        updated.actors.map((actor) => actor.userId),
+        options?.scopeType === 'intent' ? options.scopeId : undefined,
+      );
+      return { opportunity: presented };
     }
 
     const counterpartUserId = counterpart.userId;
@@ -600,8 +750,19 @@ export class OpportunityService {
       });
     }
 
+    const presented = await this.presentOpportunityForViewer(
+      updated,
+      userId,
+      options?.scopeType === 'intent' ? options.scopeId : undefined,
+    );
+    this.schedulePresentationPreload(
+      updated,
+      updated.actors.map((actor) => actor.userId),
+      options?.scopeType === 'intent' ? options.scopeId : undefined,
+    );
+
     return {
-      opportunity: sanitizeOpportunityForResponse(updated),
+      opportunity: presented,
       counterpartUserId,
     };
   }
@@ -643,7 +804,7 @@ export class OpportunityService {
     userId: string,
     options?: IntentScopeOptions,
   ): Promise<
-    | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
+    | { conversationId: string; counterpartUserId: string; opportunity: PresentedOpportunity }
     | { error: string; status: number }
   > {
     const opp = await this.db.getOpportunity(opportunityId);
@@ -684,7 +845,11 @@ export class OpportunityService {
       return {
         conversationId: conversation.id,
         counterpartUserId: counterpart.userId,
-        opportunity: sanitizeOpportunityForResponse(opp),
+        opportunity: await this.presentOpportunityForViewer(
+          opp,
+          userId,
+          options?.scopeType === 'intent' ? options.scopeId : undefined,
+        ),
       };
     }
     if (opp.status !== 'pending') {
@@ -792,10 +957,19 @@ export class OpportunityService {
         });
       });
     }
+    this.schedulePresentationPreload(
+      updated,
+      updated.actors.map((actor) => actor.userId),
+      options?.scopeType === 'intent' ? options.scopeId : undefined,
+    );
     return {
       conversationId: conversation.id,
       counterpartUserId: counterpart.userId,
-      opportunity: sanitizeOpportunityForResponse(updated),
+      opportunity: await this.presentOpportunityForViewer(
+        updated,
+        userId,
+        options?.scopeType === 'intent' ? options.scopeId : undefined,
+      ),
     };
   }
 

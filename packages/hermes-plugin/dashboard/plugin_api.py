@@ -664,21 +664,22 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
 
 def _radar_item(card: dict[str, Any], intent_id: str | None = None) -> dict[str, Any]:
     """Map a presenter radar card to the Hermes opportunity card shape."""
+    peer = card.get("peer") if isinstance(card.get("peer"), dict) else {}
     item: dict[str, Any] = {
         "opportunityId": _text(card.get("opportunityId")),
-        "name": _text(card.get("name"), "New match"),
+        "name": _text(card.get("name") or peer.get("name"), "New match"),
         # One line per card, the mac app's `blurb`: the headline is what the
         # presenter wrote for this pairing, and the long form only stands in
         # when there is no headline.
         "mainText": _truncate(card.get("headline") or card.get("mainText")),
     }
-    avatar = _avatar_url(card.get("avatar"))
+    avatar = _avatar_url(card.get("avatar") or peer.get("avatar"))
     if avatar:
         item["avatar"] = avatar
     status = _text(card.get("status"))
     if status:
         item["status"] = status
-    user_id = _text(card.get("userId"))
+    user_id = _text(card.get("userId") or peer.get("userId"))
     if user_id:
         item["counterpartUserId"] = user_id
     if intent_id:
@@ -1039,12 +1040,12 @@ def summary() -> dict[str, Any]:
 
 @full_router.get("/intents/{intent_id}/radar")
 def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
-    """Intent-scoped radar cards via GET /opportunities/radar (web intent page parity)."""
+    """Intent-scoped radar cards via GET /opportunities (web intent page parity)."""
     intent_id = _text(intent_id)
     if not intent_id:
         return {"success": False, "error": "An intent id is required."}
     query = (
-        f"/opportunities/radar?scopeType=intent&scopeId={quote(intent_id, safe='')}"
+        f"/opportunities?scopeType=intent&scopeId={quote(intent_id, safe='')}"
         f"&statuses={_RADAR_STATUSES}"
     )
     if _text(presentation) == "skeleton":
@@ -1054,7 +1055,7 @@ def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
         return payload
     items = [
         _radar_item(card, intent_id)
-        for card in _list(payload.get("items"))
+        for card in _list(payload.get("opportunities"))
         if isinstance(card, dict) and _text(card.get("opportunityId"))
     ]
     meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}

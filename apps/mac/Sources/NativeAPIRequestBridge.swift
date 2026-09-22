@@ -264,7 +264,6 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/intents(?:/(?:list|clarify))?$"#),
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
         ("GET", #"^/opportunities(?:\?.*)?$"#),
-        ("GET", #"^/opportunities/(?:radar|chat-context)(?:\?.*)?$"#),
         ("GET", #"^/opportunities/[^/?]+(?:/invite-message|/negotiation)?$"#),
         ("PATCH", #"^/opportunities/[^/?]+/status$"#),
         ("POST", #"^/opportunities/[^/?]+/start-chat$"#),
@@ -706,10 +705,7 @@ final class NativeAPIRequestBridge {
         // radar call the app actually makes, so they are spelled out separately
         // and each mirrors what its own handler reads.
         case "/opportunities":
-            allowed = ["status", "limit", "offset", "scopeType", "scopeId", "noCache"]
-        case "/opportunities/radar":
-            allowed = ["statuses", "presentation", "limit", "offset", "scopeType", "scopeId", "noCache"]
-        case "/opportunities/chat-context": allowed = ["peerUserId"]
+            allowed = ["status", "statuses", "presentation", "peerUserId", "networkId", "limit", "offset", "scopeType", "scopeId", "noCache"]
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
             allowed = ["limit", "before", "after", "intentId"]
         default: return false
