@@ -1,27 +1,15 @@
-import { join } from 'node:path';
-
-import { NegotiationAgent, type Model, type NegotiationHost, type PrincipalMessage, type RunResult, type Speaker, type Tool } from '@indexnetwork/agent';
+import { AgentRunner, type AgentEvent, type Execute, type ExecutionInput, type Tool } from '@indexnetwork/agent';
 
 import { IndexClient } from './client.ts';
-import { FilePrincipalStore } from './store.ts';
 
 interface Bridge {
   url: string;
   token: string;
 }
 
-interface IntentRuntime {
-  agent: NegotiationAgent;
-  store: FilePrincipalStore;
-  title: string;
-  flushing: Promise<void>;
+interface ActiveCall {
+  tools: Map<string, Tool>;
 }
-
-const unusedModel: Model = {
-  complete: async () => {
-    throw new Error('This host uses a Hermes speaker.');
-  },
-};
 
 function log(level: 'info' | 'warn', event: string, detail: Record<string, unknown> = {}): void {
   process.stderr.write(`${JSON.stringify({ level, event, ...detail })}\n`);
@@ -33,203 +21,121 @@ function required(name: string): string {
   return value;
 }
 
-function signalTitle(payload: string): string {
-  const line = payload.trim().replace(/\s+/g, ' ');
-  return line.length > 80 ? `${line.slice(0, 79)}…` : line || 'Index signal';
-}
-
-/** @indexnetwork/agent with Hermes as the speaker: one think session, one session per match. */
+/** One principal-scoped agent runner using Hermes for complete reasoning runs. */
 class Negotiator {
-  private readonly runtimes = new Map<string, Promise<IntentRuntime>>();
-  private readonly calls = new Map<string, Map<string, Tool<never>>>();
-  private principal?: Promise<{ owner: { id: string; name: string | null }; principalContext: string; guidance: string }>;
+  private readonly calls = new Map<string, ActiveCall>();
+  private readonly runner: AgentRunner;
 
-  constructor(
-    private readonly client: IndexClient,
-    private readonly bridge: Bridge,
-    private readonly stateDirectory: string,
-  ) {}
-
-  private context() {
-    return this.principal ??= (async () => {
-      const [principal, guidance] = await Promise.all([this.client.principal(), this.client.guidance()]);
-      return { ...principal, guidance };
-    })().catch((error: unknown) => {
-      this.principal = undefined;
-      throw error;
+  /** @param client - Authoritative Index REST host. @param bridge - Loopback Hermes bridge. */
+  constructor(client: IndexClient, private readonly bridge: Bridge) {
+    const execute: Execute = (input) => this.execute(input);
+    this.runner = new AgentRunner({
+      host: client,
+      execute,
+      log: (line) => log('info', 'agent', { line: line.trim() }),
+      onError: (error) => log('warn', 'agent.failed', { reason: error instanceof Error ? error.message : String(error) }),
     });
   }
 
-  private runtime(intentId: string): Promise<IntentRuntime> {
-    let pending = this.runtimes.get(intentId);
-    if (!pending) {
-      pending = this.create(intentId);
-      this.runtimes.set(intentId, pending);
-      pending.catch(() => this.runtimes.delete(intentId));
+  /** @returns After authoritative state has been adopted and recovery work scheduled. */
+  reconcile(): Promise<void> {
+    return this.runner.reconcile();
+  }
+
+  /** @param event - Notification for a change already persisted by Index. */
+  event(event: AgentEvent): void {
+    this.runner.handle(event);
+  }
+
+  /** @param intentId - Intent explicitly requested by the dashboard. */
+  wake(intentId: string): void {
+    this.runner.wake(intentId);
+  }
+
+  /** Permanently cancel this runner and its active reasoning calls. */
+  stop(): void {
+    this.runner.stop();
+  }
+
+  /**
+   * Invoke one package-owned tool for an active Hermes execution.
+   * @param callId - Execution invocation ID.
+   * @param name - Permitted tool name.
+   * @param args - Model-produced arguments.
+   * @returns Explicit success, feedback, and terminal status for the bridge.
+   */
+  async tool(callId: string, name: string, args: unknown): Promise<
+    { ok: true; result: unknown; terminal: boolean } | { ok: false; error: string }
+  > {
+    const tool = this.calls.get(callId)?.tools.get(name);
+    if (!tool) return { ok: false, error: `No permitted tool named "${name}".` };
+    try {
+      return { ok: true, result: (await tool.run(args)) ?? null, terminal: tool.terminal === true };
+    } catch (error: unknown) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
-    return pending;
   }
 
-  private speaker(intentId: string, title: string): Speaker {
-    return {
-      turn: (input) => this.speak(intentId, title, {
-        kind: 'turn', opportunityId: input.opportunityId, counterparty: input.counterparty,
-        systemPrompt: input.systemPrompt, prompt: input.prompt, tools: input.tools, signal: input.signal,
-      }),
-      inbox: (input) => this.speak(intentId, title, {
-        kind: 'inbox', systemPrompt: input.systemPrompt, prompt: input.prompt, tools: input.tools, signal: input.signal,
-      }),
-    };
-  }
-
-  private async speak(
-    intentId: string,
-    title: string,
-    input: { kind: 'turn' | 'inbox'; opportunityId?: string; counterparty?: string; systemPrompt: string; prompt: string; tools: Tool<never>[]; signal: AbortSignal },
-  ): Promise<RunResult> {
+  private async execute(input: ExecutionInput): Promise<void> {
+    input.abortSignal.throwIfAborted();
     const callId = crypto.randomUUID();
-    this.calls.set(callId, new Map(input.tools.map((tool) => [tool.name, tool])));
+    this.calls.set(callId, { tools: new Map(input.tools.map((tool) => [tool.name, tool])) });
+    const cancel = () => {
+      void fetch(`${this.bridge.url}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.bridge.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId }),
+      }).catch(() => {});
+    };
+    input.abortSignal.addEventListener('abort', cancel, { once: true });
     try {
       const response = await fetch(`${this.bridge.url}/speak`, {
         method: 'POST',
-        signal: input.signal,
+        signal: input.abortSignal,
         headers: { Authorization: `Bearer ${this.bridge.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          callId, kind: input.kind, intentId, title, systemPrompt: input.systemPrompt, prompt: input.prompt,
-          opportunityId: input.opportunityId, counterparty: input.counterparty,
+          callId,
+          operation: input.operation,
+          principalId: input.principalId,
+          intentId: input.intentId,
+          opportunityId: input.opportunityId,
+          instructions: input.instructions,
+          prompt: input.prompt,
+          maxSteps: input.maxSteps,
+          tools: input.tools.map(({ name, description, parameters, terminal }) => ({
+            name, description, parameters, terminal: terminal === true,
+          })),
         }),
       });
-      const body = await response.json() as { end?: RunResult['end']; output?: string; error?: string };
-      if (!response.ok) throw new Error(body.error ?? `Hermes speaker failed (${response.status}).`);
-      return { end: body.end ?? 'done', output: body.output ?? '', steps: [], messages: [] };
+      const body = await response.json() as { error?: string };
+      if (!response.ok || body.error) {
+        throw new Error(body.error ?? `Hermes execution failed (${response.status}).`);
+      }
     } finally {
+      input.abortSignal.removeEventListener('abort', cancel);
       this.calls.delete(callId);
     }
   }
+}
 
-  async tool(callId: string, name: string, args: unknown): Promise<unknown> {
-    const tool = this.calls.get(callId)?.get(name);
-    if (!tool?.run) throw new Error(`No tool named "${name}".`);
-    try {
-      return await tool.run(args as never, { agent: undefined as never });
-    } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'ContextChanged') return { waiting: true };
-      return { error: error instanceof Error ? error.message : String(error) };
-    }
+function parseEvent(body: Record<string, unknown>): AgentEvent {
+  const type = body.type;
+  const intentId = body.intentId;
+  if (typeof intentId !== 'string') throw new Error('intentId is required.');
+  if (type === 'negotiation.turn') {
+    if (typeof body.opportunityId !== 'string') throw new Error('opportunityId is required.');
+    return { type, intentId, opportunityId: body.opportunityId };
   }
-
-  private async create(intentId: string): Promise<IntentRuntime> {
-    const { owner, principalContext, guidance } = await this.context();
-    const intent = await this.client.intent(intentId);
-    const store = new FilePrincipalStore(join(this.stateDirectory, `${owner.id}.${intentId}.json`));
-    const title = signalTitle(intent.payload);
-    const runtime = { store, title, flushing: Promise.resolve() } as IntentRuntime;
-    const host: NegotiationHost = {
-      status: (opportunityId, message) => log('info', 'status', { intentId, opportunityId, message }),
-      retry: (_owner, attempt, reason) => log('warn', 'retry', { intentId, attempt, reason }),
-      step: () => {},
-      conversation: () => { runtime.flushing = runtime.flushing.then(() => this.publishH2A(runtime, intentId), () => {}); },
-      end: (record) => log('info', 'end', {
-        intentId, opportunityId: record.opportunityId,
-        outcome: record.outcome ?? record.protocol.blockedReason,
-      }),
-      error: (opportunityId, _owner, reason) => log('warn', 'error', { intentId, opportunityId, reason }),
-    };
-    runtime.agent = new NegotiationAgent({
-      owner, intent, principalContext, guidance,
-      client: {
-        readNegotiation: async (id) => {
-          const record = await this.client.readNegotiation(id);
-          if (record.intentId !== intentId) throw new Error('Negotiation is outside this principal/intent session.');
-          return record;
-        },
-        submitTurn: (id, turn) => this.client.submitTurn(id, turn),
-      },
-    }, host, { model: unusedModel, store, speaker: this.speaker(intentId, title) });
-    await runtime.agent.start();
-    log('info', 'signal.started', { intentId });
-    host.conversation();
-    return runtime;
+  if (type === 'principal.input' || type === 'intent.created' || type === 'intent.updated' || type === 'intent.lifecycle') {
+    return { type, intentId };
   }
-
-  async wake(intentId: string): Promise<void> {
-    const runtime = await this.runtime(intentId);
-    await this.catchUp(runtime, intentId);
-    const summaries = await this.client.listNegotiations();
-    for (const { opportunityId, intentId: owning } of summaries) {
-      if (owning !== intentId) continue;
-      void runtime.agent.receive({ kind: 'opportunity.matched', opportunityId })
-        .catch((error: unknown) => log('warn', 'error', { intentId, opportunityId, reason: String(error) }));
-    }
-  }
-
-  async message(intentId: string, text: string): Promise<boolean> {
-    return Boolean(await (await this.runtime(intentId)).agent.message(text));
-  }
-
-  async answer(intentId: string, questionId: string, text: string): Promise<boolean> {
-    return Boolean(await (await this.runtime(intentId)).agent.answer(questionId, text));
-  }
-
-  async pending(intentId: string) {
-    const runtime = await this.runtime(intentId);
-    return { pending: runtime.agent.pending, queuedQuestions: runtime.agent.queuedQuestions };
-  }
-
-  async stop(): Promise<void> {
-    const runtimes = await Promise.allSettled([...this.runtimes.values()]);
-    await Promise.allSettled(runtimes.map((result) => result.status === 'fulfilled' ? result.value.agent.stop() : undefined));
-  }
-
-  private async catchUp(runtime: IntentRuntime, intentId: string): Promise<void> {
-    const remote = await this.client.agentMessages(intentId);
-    const pending = runtime.agent.pending;
-    if (pending) {
-      for (let i = remote.length - 1; i >= 0; i--) {
-        const message = remote[i]!;
-        if (message.kind === 'answer' && message.questionId === pending.id) {
-          await runtime.agent.answer(pending.id, message.text);
-          return;
-        }
-        if (message.kind === 'question' && (message.questionId === pending.id || message.id === pending.id)) return;
-      }
-      return;
-    }
-    const seen = new Set(runtime.agent.conversation.map((message) => message.text));
-    for (const message of remote) {
-      if (message.kind === 'user' && !seen.has(message.text)) await runtime.agent.message(message.text);
-    }
-  }
-
-  private async publishH2A(runtime: IntentRuntime, intentId: string): Promise<void> {
-    const displayed = runtime.agent.pending?.id;
-    const entries: PrincipalMessage[] = [];
-    const retired: string[] = [];
-    for (const message of runtime.agent.conversation) {
-      if (runtime.store.delivered(message.id)) continue;
-      if (message.kind === 'question' ? message.questionId === displayed : message.kind === 'message') {
-        entries.push(message);
-      } else {
-        retired.push(message.id);
-      }
-    }
-    if (retired.length) await runtime.store.markDelivered(retired);
-    if (!entries.length) return;
-    try {
-      await this.client.publishH2A(intentId, entries);
-    } catch (error: unknown) {
-      log('warn', 'h2a.failed', { intentId, reason: error instanceof Error ? error.message : String(error) });
-      return;
-    }
-    await runtime.store.markDelivered(entries.map(({ id }) => id));
-  }
+  throw new Error(`Unsupported agent event: ${String(type)}.`);
 }
 
 const bridge: Bridge = { url: required('INDEX_BRIDGE_URL'), token: required('INDEX_BRIDGE_TOKEN') };
 const negotiator = new Negotiator(
   new IndexClient(required('INDEX_API_ORIGIN'), required('INDEX_SESSION_TOKEN'), required('INDEX_EXECUTOR_ID')),
   bridge,
-  required('INDEX_STATE_DIR'),
 );
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
@@ -251,19 +157,17 @@ const server = Bun.serve({
     }
     try {
       switch (pathname) {
-        case '/wake':
-          await negotiator.wake(String(body.intentId));
+        case '/reconcile':
+          await negotiator.reconcile();
           return json({ ok: true });
-        case '/message':
-          return json({ accepted: await negotiator.message(String(body.intentId), String(body.text)) });
-        case '/answer':
-          return json({ accepted: await negotiator.answer(String(body.intentId), String(body.questionId), String(body.text)) });
-        case '/pending':
-          return json(await negotiator.pending(String(body.intentId)));
+        case '/event':
+          negotiator.event(parseEvent(body));
+          return json({ ok: true });
+        case '/wake':
+          negotiator.wake(String(body.intentId));
+          return json({ ok: true });
         case '/tool':
-          return json({
-            result: await negotiator.tool(String(body.callId), String(body.name), body.args),
-          });
+          return json(await negotiator.tool(String(body.callId), String(body.name), body.args));
         case '/shutdown':
           queueMicrotask(() => void shutdown());
           return json({ ok: true });
@@ -271,13 +175,13 @@ const server = Bun.serve({
           return json({ error: 'Unknown negotiator route.' }, 404);
       }
     } catch (error: unknown) {
-      return json({ error: String(error) }, 502);
+      return json({ error: error instanceof Error ? error.message : String(error) }, 502);
     }
   },
 });
 
 async function shutdown(): Promise<void> {
-  await negotiator.stop();
+  negotiator.stop();
   await server.stop();
   process.exit(0);
 }

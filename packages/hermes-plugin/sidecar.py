@@ -5,7 +5,7 @@ runtime executes, bundled into `runtime/dist/negotiator.js`. This module starts
 it while this machine is the owner's selected negotiator, keeps that child
 alive for the gateway process, and stops it when the platform disconnects or
 the selection moves elsewhere. It holds no negotiation state: scheduling,
-questions, turns, and checkpoints all live inside the agent package.
+questions, and turns live in Index and the agent package runner.
 """
 
 from __future__ import annotations
@@ -41,9 +41,8 @@ def _bun() -> str:
 class Sidecar:
     """Own one negotiator process and the loopback calls into it."""
 
-    def __init__(self, bridge, home: Path):
+    def __init__(self, bridge):
         self.bridge = bridge
-        self._state = home / "index-network" / "negotiator"
         self._lock = threading.Lock()
         self._process: subprocess.Popen | None = None
         self._wanted: tuple[str, str] | None = None
@@ -70,7 +69,6 @@ class Sidecar:
             if not BUNDLE.exists():
                 raise RuntimeError(f"The Index negotiator bundle is missing at {BUNDLE}.")
             self.bridge.start()
-            self._state.mkdir(parents=True, exist_ok=True, mode=0o700)
             from .env_transport import api_origin
 
             # Same process group as the gateway: a group signal reaches Bun too.
@@ -82,7 +80,6 @@ class Sidecar:
                      "INDEX_BRIDGE_TOKEN": self.bridge.token,
                      "INDEX_API_ORIGIN": api_origin(),
                      "INDEX_EXECUTOR_ID": executor_id,
-                     "INDEX_STATE_DIR": str(self._state),
                      "INDEX_SUPERVISOR_PID": str(os.getpid())},
             )
             threading.Thread(target=self._relay, args=(process,), name="index-negotiator-log", daemon=True).start()
@@ -100,7 +97,7 @@ class Sidecar:
             logger.info("Index negotiator running for %s on %s", account, self._url)
 
     def stop(self) -> None:
-        """Ask the negotiator to checkpoint and exit, then release the process."""
+        """Ask the negotiator to cancel active work and exit, then release the process."""
         with self._lock:
             self._wanted = None
             if self._process is None:
@@ -128,6 +125,14 @@ class Sidecar:
             self.call("/wake", {"intentId": intent_id})
         except Exception as error:  # noqa: BLE001
             logger.warning("Index negotiator could not work signal %s: %s", intent_id, error)
+
+    def event(self, event: dict) -> None:
+        """Forward one persisted Index event to the package runner in stream order."""
+        self.call("/event", event)
+
+    def reconcile(self) -> None:
+        """Recover active membership, unresolved stalls, and eligible first turns."""
+        self.call("/reconcile", {})
 
     def call(self, path: str, payload: dict) -> dict:
         """@param path - A negotiator control route. @param payload - Its arguments.

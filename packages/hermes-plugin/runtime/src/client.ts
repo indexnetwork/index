@@ -1,21 +1,11 @@
-import type { Negotiation, NegotiationTurn, NegotiationUser, PrincipalMessage } from '@indexnetwork/agent';
-
-export interface NegotiationSummary {
-  opportunityId: string;
-  intentId: string;
-  settledAt: string | null;
-}
-
-export interface Principal {
-  owner: NegotiationUser;
-  principalContext: string;
-}
+import type { AgentHost, ConversationMessage, Counterparty, CounterpartyPick, Intent, IntentStatus, Negotiation, NegotiationAction, NegotiationDetail, PrincipalMessage, Profile } from '@indexnetwork/agent';
 
 interface ApiUser {
   id: string;
   name: string | null;
-  intro?: string | null;
-  location?: string | null;
+  intro: string | null;
+  location: string | null;
+  timezone: string | null;
   onboarding?: { profileConfirmedAt?: string | null } | null;
 }
 
@@ -26,18 +16,132 @@ interface ApiIntent {
   archivedAt?: string | null;
 }
 
-/**
- * The Index protocol over REST, as the owner's selected external negotiator.
- *
- * Turns carry `executorId` so the API fences them: a turn is refused unless
- * this agent is still the selected negotiator at the moment it is applied.
- */
-export class IndexClient {
+/** Session-authenticated REST implementation of the agent package's authoritative host. */
+export class IndexClient implements AgentHost {
+  /**
+   * @param origin - Index API origin without `/api`.
+   * @param token - This device's Index session token.
+   * @param executorId - Selected external agent ID used to fence writes.
+   */
   constructor(
     private readonly origin: string,
     private readonly token: string,
     private readonly executorId: string,
   ) {}
+
+  /** @returns The authenticated principal and the profile confirmation boundary. */
+  async getProfile(): Promise<Profile> {
+    const { user } = await this.request<{ user: ApiUser }>('GET', '/auth/me');
+    return {
+      id: user.id,
+      name: user.name,
+      intro: user.intro,
+      location: user.location,
+      timezone: user.timezone,
+      profileConfirmed: Boolean(user.onboarding?.profileConfirmedAt),
+    };
+  }
+
+  /** @param intentId - Owned intent ID. @returns Its current statement and lifecycle. */
+  async getIntent(intentId: string): Promise<Intent> {
+    const { intent } = await this.request<{ intent: ApiIntent }>(
+      'GET', `/intents/${encodeURIComponent(intentId)}`,
+    );
+    return this.toIntent(intent);
+  }
+
+  /** @returns The principal's current intents. */
+  async listIntents(): Promise<Intent[]> {
+    const { intents } = await this.request<{ intents: ApiIntent[] }>('POST', '/intents/list', { limit: 100 });
+    return intents.map((intent) => this.toIntent(intent));
+  }
+
+  /**
+   * @param intentId - Intent to discover from.
+   * @param query - Agent-authored counterparty query.
+   * @param limit - Maximum results.
+   * @returns Ranked counterparties.
+   */
+  async findCounterparties(intentId: string, query: string, limit: number): Promise<Counterparty[]> {
+    const { counterparties } = await this.request<{ counterparties: Counterparty[] }>(
+      'POST', `/intents/${encodeURIComponent(intentId)}/discover`, { query, limit },
+    );
+    return counterparties;
+  }
+
+  /**
+   * @param intentId - Principal intent.
+   * @param counterparties - Counterparty intents and shared network IDs.
+   * @returns Authoritative opportunity IDs.
+   */
+  async createOpportunities(
+    intentId: string,
+    counterparties: CounterpartyPick[],
+  ): Promise<{ opportunityId: string }[]> {
+    const { opportunities } = await this.request<{ opportunities: { opportunityId: string }[] }>(
+      'POST', `/intents/${encodeURIComponent(intentId)}/opportunities`, { counterparties },
+    );
+    return opportunities;
+  }
+
+  /** @param intentId - Intent-scoped principal conversation. @returns Raw persisted API messages. */
+  async getConversation(intentId: string): Promise<{ conversationId: string; messages: ConversationMessage[] }> {
+    return this.request<{ conversationId: string; messages: ConversationMessage[] }>(
+      'GET', `/conversations/agent/messages?intentId=${encodeURIComponent(intentId)}`,
+    );
+  }
+
+  /**
+   * @param intentId - Intent-scoped principal conversation.
+   * @param entries - Structured agent messages.
+   * @returns After the executor-fenced write succeeds.
+   */
+  async appendMessages(intentId: string, entries: PrincipalMessage[]): Promise<void> {
+    await this.request(
+      'POST',
+      `/conversations/agent/h2a?executorId=${encodeURIComponent(this.executorId)}`,
+      { intentId, entries },
+    );
+  }
+
+  /** @returns Complete open negotiation summaries for this principal. */
+  async listNegotiations(): Promise<Negotiation[]> {
+    const { negotiations } = await this.request<{ negotiations: Negotiation[] }>('GET', '/negotiations?state=open');
+    return negotiations;
+  }
+
+  /** @param opportunityId - Opportunity whose negotiation is read. @returns Current detail and protocol. */
+  async getNegotiation(opportunityId: string): Promise<NegotiationDetail> {
+    const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
+      'GET', `/opportunities/${encodeURIComponent(opportunityId)}/negotiation`,
+    );
+    return negotiation;
+  }
+
+  /**
+   * @param opportunityId - Opportunity whose negotiation advances.
+   * @param turn - Agent decision made against the observed turn count.
+   * @returns The authoritative post-write negotiation.
+   */
+  async submitTurn(
+    opportunityId: string,
+    turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
+  ): Promise<NegotiationDetail> {
+    const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
+      'POST',
+      `/opportunities/${encodeURIComponent(opportunityId)}/negotiation/turns?executorId=${encodeURIComponent(this.executorId)}`,
+      turn,
+    );
+    return negotiation;
+  }
+
+  private toIntent(intent: ApiIntent): Intent {
+    return {
+      id: intent.id,
+      statement: intent.payload,
+      status: (intent.archivedAt ? 'ARCHIVED' : intent.status ?? 'ACTIVE') as IntentStatus,
+    };
+  }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await fetch(`${this.origin}/api${path}`, {
@@ -50,103 +154,12 @@ export class IndexClient {
     try {
       payload = JSON.parse(text) as Record<string, unknown>;
     } catch {
-      // Reported through the checks below, which include the raw body.
+      // The error below includes the raw response body.
     }
     if (!response.ok || payload.success === false || typeof payload.error === 'string') {
       const reason = typeof payload.error === 'string' ? payload.error : text.slice(0, 500);
       throw new Error(`Index ${method} ${path} failed (${response.status}): ${reason}`);
     }
     return payload as T;
-  }
-
-  /** @param id - The match. @returns The negotiation as this owner's seat sees it. */
-  async readNegotiation(id: string): Promise<Negotiation> {
-    const { negotiation } = await this.request<{ negotiation: Negotiation }>(
-      'GET', `/opportunities/${encodeURIComponent(id)}/negotiation`,
-    );
-    return negotiation;
-  }
-
-  /**
-   * @param id - The match. @param turn - The decision and the turn count it was made against.
-   * @returns The negotiation after the turn.
-   * @throws When the protocol refuses the turn or this agent is no longer selected.
-   */
-  async submitTurn(id: string, turn: NegotiationTurn): Promise<Negotiation> {
-    const { negotiation } = await this.request<{ negotiation: Negotiation }>(
-      'POST',
-      `/opportunities/${encodeURIComponent(id)}/negotiation/turns?executorId=${encodeURIComponent(this.executorId)}`,
-      turn,
-    );
-    return negotiation;
-  }
-
-  /** @returns Every negotiation this owner has a seat in. */
-  async listNegotiations(): Promise<NegotiationSummary[]> {
-    const { negotiations } = await this.request<{ negotiations: NegotiationSummary[] }>('GET', '/negotiations');
-    return negotiations;
-  }
-
-  /** @returns The protocol's canonical negotiation guidance, from the API being negotiated against. */
-  async guidance(): Promise<string> {
-    const { content } = await this.request<{ content: string }>('GET', '/docs?topic=negotiations');
-    return content;
-  }
-
-  /** @returns The authenticated owner and the confirmed context the negotiator may state as fact. */
-  async principal(): Promise<Principal> {
-    const { user } = await this.request<{ user: ApiUser }>('GET', '/auth/me');
-    const confirmedProfile = user.onboarding?.profileConfirmedAt
-      ? { name: user.name, intro: user.intro, location: user.location }
-      : null;
-    return {
-      owner: { id: user.id, name: user.name },
-      principalContext: confirmedProfile
-        ? JSON.stringify({ confirmedProfile })
-        : 'No confirmed profile is available. Ask for missing personal facts.',
-    };
-  }
-
-  /**
-   * @param id - The signal.
-   * @returns The signal's statement.
-   * @throws When the signal is paused, archived, or not this owner's (the API 404s).
-   */
-  async intent(id: string): Promise<{ id: string; payload: string }> {
-    const { intent } = await this.request<{ intent: ApiIntent }>('GET', `/intents/${encodeURIComponent(id)}`);
-    if (intent.archivedAt || (intent.status ?? 'ACTIVE') !== 'ACTIVE') {
-      throw new Error('This signal is inactive or belongs to another owner.');
-    }
-    return { id: intent.id, payload: intent.payload };
-  }
-
-  /**
-   * @param intentId - The signal.
-   * @param entries - Agent-authored questions and messages not yet on Index.
-   */
-  async publishH2A(intentId: string, entries: PrincipalMessage[]): Promise<void> {
-    await this.request(
-      'POST',
-      `/conversations/agent/h2a?executorId=${encodeURIComponent(this.executorId)}`,
-      { intentId, entries },
-    );
-  }
-
-  /**
-   * @param intentId - The signal.
-   * @returns That signal's H2A transcript on the owner's agent DM.
-   */
-  async agentMessages(intentId: string): Promise<PrincipalMessage[]> {
-    const { messages } = await this.request<{
-      messages: { id: string; createdAt: string; role: string; parts: { kind?: string; text?: string }[]; metadata?: { principalMessage?: Omit<PrincipalMessage, 'id' | 'createdAt' | 'text'> } }[];
-    }>('GET', `/conversations/agent/messages?intentId=${encodeURIComponent(intentId)}`);
-    return messages.map((message) => {
-      const stored = message.metadata?.principalMessage;
-      return {
-        ...stored, id: message.id, createdAt: message.createdAt,
-        kind: stored?.kind ?? (message.role === 'user' ? 'user' : 'message'), matches: stored?.matches ?? [],
-        text: (message.parts ?? []).filter((part) => part?.kind === 'text' && typeof part.text === 'string').map((part) => part.text).join('\n'),
-      };
-    });
   }
 }

@@ -31,12 +31,10 @@ _sidecar: Sidecar | None = None
 def register(ctx):
     global _sidecar
     _install_desktop_plugin()
-    from hermes_constants import get_hermes_home
     from . import events
 
-    home = get_hermes_home()
     bridge = HermesBridge()
-    sidecar = Sidecar(bridge, home)
+    sidecar = Sidecar(bridge)
     _sidecar = sidecar
     bridge.sidecar = sidecar
     events.register_platform(ctx, sidecar)

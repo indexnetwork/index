@@ -180,15 +180,14 @@ cd apps/mac
 
 ## Hermes migration
 
-### Current failure
+### Replaced Hermes behavior
 
-- `bun run typecheck:runtime` fails because the rebuilt package removed `NegotiationAgent`, `NegotiationHost`, `NegotiationUser`, `RunResult`, `Speaker`, `PrincipalState`, and `PrincipalStore`.
-- `runtime/src/main.ts` owns one old `NegotiationAgent` and checkpoint store per intent.
-- `events.py` debounces intents and sends owner input through `/message` or `/answer` instead of forwarding persisted events.
-- `speaker.py` exposes the old fixed tool set and uses step limits that differ from the package-supplied `maxSteps`.
-- `runtime/src/store.ts` treats local JSON as agent state even though the new runner reconstructs state from Index.
+- The old runtime imported `NegotiationAgent`, `NegotiationHost`, `NegotiationUser`, `RunResult`, `Speaker`, `PrincipalState`, and `PrincipalStore`, which the rebuilt package removed.
+- It owned one agent and checkpoint store per intent, debounced intent events, and replayed owner input through `/message` or `/answer`.
+- Its speaker exposed a fixed tool set and step limits instead of the package-supplied tools and `maxSteps`.
+- Local JSON acted as agent state even though the current runner reconstructs state from Index.
 
-### Target flow
+### Implemented Hermes flow
 
 ```mermaid
 flowchart LR

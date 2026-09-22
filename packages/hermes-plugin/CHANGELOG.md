@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.47.0
+
+### Changed
+- **BREAKING (personal-agent runtime):** replace the removed per-intent
+  `NegotiationAgent` and JSON checkpoints with one principal-scoped
+  `AgentRunner`. The plugin now implements `AgentHost` over Index REST,
+  forwards persisted SSE events to the runner, and uses native Hermes sessions
+  for the package's whole-run `Execute` contract.
+- Use package-supplied prompts, tool schemas, and step budgets. Successful
+  terminal tools stop immediately, and executor-fenced Index records remain
+  authoritative across restarts.
+- Legacy files under `$HERMES_HOME/index-network/negotiator/` are ignored and
+  left untouched.
 
 ## 0.46.1
 

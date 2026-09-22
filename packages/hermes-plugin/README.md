@@ -21,10 +21,10 @@ The session authenticates you, not an agent. `GET /agents/me` returns the agent 
 ## Personal agent
 
 Hermes runs the same negotiator as hosted Index — `@indexnetwork/agent` —
-rather than a second copy of the state machine. The package still owns
-eligibility, one POST per turn, `contextVersion`, the principal inbox, and
-checkpoints. Hermes is only the speaker: it runs constrained `AIAgent` loops
-on Index-platform sessions.
+rather than a second copy of its policy. One principal-scoped `AgentRunner`
+owns scheduling, stalls, questions, discovery, briefs, and negotiations. Index
+REST records are authoritative. Hermes implements the package's bounded
+`Execute` calls through native `AIAgent` sessions.
 
 Choosing Hermes as your negotiator — in the dashboard under **Settings →
 Advanced**, or in the Index web app — starts a Bun sidecar
@@ -45,22 +45,20 @@ the owner's agent DM — one conversation per signal, shown on Discover's signal
 detail and on Index web (`IntentNegotiatorChat`), the same DM the hosted
 negotiator uses.
 
-The plugin follows `GET /events`. A frame that names a signal wakes the
-sidecar; frames close together collapse into one wake. `principal.input` is
-an owner answer or message from that chat and is applied instead of a wake.
-The sidecar reads authoritative state over REST before deciding, and each
-reconnection reconciles against `GET /negotiations`. Type on a think or
-speaker session is ignored.
+The plugin follows `GET /events?consumer=<agent UUID>` and forwards persisted
+principal, intent, and negotiation changes to the runner in order. On every
+connection the runner reconciles active intents, unresolved stalls, and
+eligible first turns from Index. Type on a think or negotiation session is
+ignored.
 
-Negotiation checkpoints stay in one JSON file per signal under
-`$HERMES_HOME/index-network/negotiator/`. Every restored match reads current
-Index state before deciding, and a turn is attempted at most once. Turns
-include `?executorId=<agent UUID>` so Index refuses work from an agent that
-is no longer selected.
+The runtime has no private negotiation checkpoints. Existing JSON files under
+`$HERMES_HOME/index-network/negotiator/` are ignored and left untouched. H2A
+writes and negotiation turns include `?executorId=<agent UUID>` so Index
+refuses work from an agent that is no longer selected. A successful terminal
+tool ends the Hermes run immediately.
 
 Disable the `index` platform in Hermes to stop listening, or change the
-selected executor in Index. The sidecar stops with it. A failed H2A publish
-stays undelivered and is offered again.
+selected executor in Index. The sidecar stops with it.
 
 ## Development
 

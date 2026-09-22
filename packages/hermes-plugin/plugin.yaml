@@ -1,5 +1,5 @@
 name: index-network
-version: 0.43.0
+version: 0.47.0
 description: Index Network Hermes plugin with native tools backed by the Index REST API.
 provides_tools:
   - index_read_intents
@@ -18,6 +18,13 @@ provides_tools:
   - index_read_docs
   - index_agent_me
   - index_open_app
+  - reach_counterparties
+  - set_brief
+  - note_principal
+  - ask_principal
+  - expire_question
+  - submit_turn
+  - stall
 provides_hooks:
   - pre_gateway_dispatch
 # The plugin authenticates with the INDEX_SESSION_TOKEN environment variable
