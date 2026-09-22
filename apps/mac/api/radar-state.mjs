@@ -17,6 +17,7 @@ export function sameRadarPeople(prev = [], next = []) {
     const older = byId.get(person.id);
     if (
       older.status !== person.status
+      || older.createdAt !== person.createdAt
       || Number(older.score) !== Number(person.score)
       || older.name !== person.name
       || older.blurb !== person.blurb

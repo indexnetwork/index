@@ -1,5 +1,45 @@
 # Changelog
 
+## 62.0.0
+
+### Breaking changes
+
+- Remove outcome-feedback capture and mining from the protocol. Remove the `OutcomeOutbox` export and the optional outbox arguments from the database ports `updateOpportunityStatus` and `stampOpportunityActorAction`; hosts must stop supplying these arguments and remove their feedback capture/mining wiring.
+- Remove `PoolDiscriminatorMiner`, `DiscriminatorMiningInput`, `MinedDiscriminator`, `PoolCandidate`, `isOutcomeQuestionsActivated`, `OUTCOME_MAX_CANDIDATES`, `OUTCOME_MAX_PUBLIC_CONTEXT_CHARS`, `OUTCOME_MIN_INDEPENDENT_EXAMPLES`, `runOutcomeShadow`, `OutcomeExample`, `OutcomeLabel`, and `OutcomeShadowResult` from the public entry point. Delete the internal outcome pipeline and its discriminator miner, types, and evidence-verification helpers without compatibility exports.
+- Remove the `poolDiscriminatorMiner`, `poolDiscriminatorAssigner`, and `negotiationEvidenceMiner` model keys. They are no longer accepted by `getModelName` or `EVAL_MODEL_OVERRIDES`.
+
+### Preserved behavior
+
+- Negotiation outcomes and presentation, opportunity lifecycle and shared claim-safety guards, and intent preparation, clarification, and scoring are unchanged.
+
+## 61.0.0
+
+### Breaking changes
+
+- A standing proposal cannot be proposed over. `decideNegotiationTurn` rejects a `propose` whose previous turn is the other seat's `propose` as the new `propose_over_offer` rejection, and `observeNegotiation` offers `counter`, `accept`, `decline` to a seat facing a proposal. `propose` keeps its two uses: opening a negotiation, and answering a counter.
+- `NEGOTIATION_GUIDANCE` states the rule alongside the accept rule from 60.0.0.
+
+### Why
+
+60.0.0 made `propose` legal at every turn index so an answer to a counter could be re-offered. With nothing stopping a proposal from answering a proposal, two agents that already agreed volleyed restatements until the turn limit: one live negotiation ran `propose > counter > propose` ten times and never settled, each turn saying what the other had just said.
+
+### Preserved behavior
+
+- Settled negotiations, turn limits, seat and eligibility checks, race detection, outcomes and their opportunity statuses are unchanged. No stored enum value changed, so no migration is required. A negotiation mid-flight facing a proposal simply loses `propose` from its menu.
+
+## 60.0.0
+
+### Breaking changes
+
+- A counter is no longer a standing offer. `decideNegotiationTurn` accepts an `accept` only against the other seat's `propose`; an accept whose previous turn is a counter is rejected as `accept_without_offer`. The seat that asked a question is now the one that settles, because answering means proposing again.
+- `propose` is valid at any turn index, not only the opening one. It is how an answer to a counter is put back on the table. The `propose_not_first` rejection is removed from `NegotiationRejection`; `counter_is_first` still blocks a counter at turn 0, and the opening remains a propose or a decline.
+- `observeNegotiation` derives its menu from the same fact. A seat facing a `propose` sees `propose`, `counter`, `accept`, `decline`; a seat facing a `counter` sees `propose`, `counter`, `decline`; an empty log still sees `propose`, `decline`.
+- `NEGOTIATION_GUIDANCE` states the new rule in place of "counter responds with revised terms".
+
+### Preserved behavior
+
+- Settled negotiations, turn limits, seat and eligibility checks, race detection, and the `agreed`/`declined` outcomes and their opportunity statuses are unchanged. No stored enum value changed, so no migration is required. A negotiation mid-flight whose last turn is a counter simply loses `accept` from its menu.
+
 ## 59.0.1
 
 ### Documentation

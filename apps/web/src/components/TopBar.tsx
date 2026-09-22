@@ -75,13 +75,11 @@ export default function TopBar() {
       const acceptedOpportunities = await opportunitiesService.getOpportunities({ status: 'accepted', limit: 300 });
       const latestByRecipient = new Map<string, number>();
       for (const opportunity of acceptedOpportunities) {
-        const counterpart = opportunity.actors.find(
-          (actor) => actor.userId !== user.id,
-        ) ?? opportunity.actors.find((actor) => actor.userId !== user.id);
-        if (!counterpart?.userId) continue;
-        const ts = new Date(opportunity.updatedAt).getTime();
-        const prev = latestByRecipient.get(counterpart.userId) ?? 0;
-        if (ts > prev) latestByRecipient.set(counterpart.userId, ts);
+        const counterpartUserId = opportunity.peer.userId;
+        if (!counterpartUserId) continue;
+        const ts = new Date(opportunity.acceptedAt ?? opportunity.updatedAt ?? opportunity.createdAt ?? 0).getTime();
+        const prev = latestByRecipient.get(counterpartUserId) ?? 0;
+        if (ts > prev) latestByRecipient.set(counterpartUserId, ts);
       }
       const topConversation = Array.from(latestByRecipient.entries()).sort((a, b) => b[1] - a[1])[0];
       if (topConversation?.[0]) {

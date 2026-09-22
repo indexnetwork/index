@@ -342,6 +342,15 @@ export function createIndexApiClient(options = {}) {
         `/networks/${encodeURIComponent(networkId)}/regenerate-invitation`,
         { ...options, method: 'PATCH', body: {} },
       ),
+      // People waiting on an owner because the network gates link joins.
+      listJoinRequests: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/join-requests`,
+        options,
+      ),
+      reviewJoinRequest: (networkId, userId, decision, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/join-requests/${encodeURIComponent(userId)}/review`,
+        { ...options, method: 'POST', body: { decision } },
+      ),
       getMembers: (networkId, options = {}) => request(
         `/networks/${encodeURIComponent(networkId)}/members`,
         options,
@@ -423,16 +432,16 @@ export function createIndexApiClient(options = {}) {
     opportunities: {
       list: (query = {}, options = {}) => request(`/opportunities${toQueryString(query)}`, options),
       listForIntent: (intentId, query = {}, options = {}) => request(
-        `/opportunities${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+        `/intents/${encodeURIComponent(intentId)}/opportunities${toQueryString(query)}`,
         options,
       ),
-      radar: (query = {}, options = {}) => request(`/opportunities/radar${toQueryString(query)}`, options),
+      radar: (query = {}, options = {}) => request(`/opportunities${toQueryString(query)}`, options),
       radarForIntent: (intentId, query = {}, options = {}) => request(
-        `/opportunities/radar${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+        `/intents/${encodeURIComponent(intentId)}/opportunities${toQueryString(query)}`,
         options,
       ),
       chatContext: (peerUserId, options = {}) => request(
-        `/opportunities/chat-context${toQueryString({ peerUserId })}`,
+        `/opportunities${toQueryString({ peerUserId })}`,
         options,
       ),
       get: (opportunityId, options = {}) => request(`/opportunities/${encodeURIComponent(opportunityId)}`, options),
@@ -440,21 +449,25 @@ export function createIndexApiClient(options = {}) {
         `/opportunities/${encodeURIComponent(opportunityId)}/invite-message`,
         options,
       ),
+      negotiation: (opportunityId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/negotiation`,
+        options,
+      ),
       updateStatus: (opportunityId, status, options = {}) => request(
         `/opportunities/${encodeURIComponent(opportunityId)}/status`,
         { ...options, method: 'PATCH', body: { status } },
       ),
       updateStatusForIntent: (opportunityId, status, intentId, options = {}) => request(
-        `/opportunities/${encodeURIComponent(opportunityId)}/status`,
-        { ...options, method: 'PATCH', body: { status, scopeType: 'intent', scopeId: intentId } },
+        `/intents/${encodeURIComponent(intentId)}/opportunities/${encodeURIComponent(opportunityId)}/status`,
+        { ...options, method: 'PATCH', body: { status } },
       ),
       startChat: (opportunityId, options = {}) => request(
         `/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
         { ...options, method: 'POST', body: {} },
       ),
       startChatForIntent: (opportunityId, intentId, options = {}) => request(
-        `/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
-        { ...options, method: 'POST', body: { scopeType: 'intent', scopeId: intentId } },
+        `/intents/${encodeURIComponent(intentId)}/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
+        { ...options, method: 'POST', body: {} },
       ),
     },
 
@@ -472,6 +485,10 @@ export function createIndexApiClient(options = {}) {
       sendMessage: (conversationId, body, options = {}) => request(
         `/conversations/${encodeURIComponent(conversationId)}/messages`,
         { ...options, method: 'POST', body },
+      ),
+      sendAnswers: (intentId, answers, options = {}) => request(
+        '/conversations/agent/answers',
+        { ...options, method: 'POST', body: { intentId, answers } },
       ),
       getOrCreateDm: (peerUserId, options = {}) => request(
         '/conversations/dm',

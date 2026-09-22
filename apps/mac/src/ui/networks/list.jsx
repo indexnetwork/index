@@ -118,6 +118,8 @@ function Networks({ onClose, onOpenSignal }) {
       members: 1,
       privacy: access,
       joinPolicy,
+      requireAdminApproval: false,
+      pendingJoinCount: 0,
       invitationCode: null,
       role: "owner",
       joined: true,
@@ -372,6 +374,93 @@ function Networks({ onClose, onOpenSignal }) {
         </MacWindow>
       </div>
 
+    </div>
+  );
+}
+
+/* ---------- invite: every link you can hand out, in one place ---------- */
+// Owners see all of their networks, members only the public ones, because a
+// private network is the owner's to open up. Both come from networkShareUrl.
+function InviteNetworks({ networks, onClose }) {
+  const [copiedId, setCopiedId] = useState(null);
+  const invitable = (networks || [])
+    .filter(n => n.joined !== false)
+    .map(n => ({ net: n, url: networkShareUrl(n) }))
+    .filter(item => item.url);
+
+  const copy = async (item) => {
+    try {
+      await navigator.clipboard.writeText(item.url);
+      setCopiedId(item.net.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (e) { /* leave idle */ }
+  };
+
+  return (
+    <div style={{
+      position:"absolute", inset:0,
+      display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
+      padding:"56px 40px", overflow:"auto",
+    }}>
+      <div style={{ width:660, maxWidth:"100%", height:"min(620px, calc(100vh - 96px))" }}>
+        <MacWindow title="invite" onClose={onClose} style={{ height:"100%", minHeight:0 }}>
+          <div style={{ padding:"18px 24px 14px", borderBottom:"2px solid #000" }}>
+            <h2 style={{
+              margin:0,
+              fontFamily:"var(--mac-mono)", fontSize:22, fontWeight:700, color:"#000",
+            }}>invite</h2>
+            <p style={{
+              margin:"6px 0 0",
+              fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
+            }}>Share a link to any network you can invite people to.</p>
+          </div>
+
+          <div className="mac-scroll" style={{ flex:"1 1 auto", minHeight:0, overflowY:"auto", padding:"6px 12px 14px" }}>
+            {invitable.map(({ net, url }) => (
+              <div key={net.id} style={{
+                display:"flex", alignItems:"center", gap:12,
+                padding:"10px 12px", borderBottom:"1px solid #DDD8CC",
+              }}>
+                <NetworkTile id={net.id} name={net.name} photo={net.photo} size={32}/>
+                <span style={{ flex:1, minWidth:0 }}>
+                  <span style={{
+                    display:"flex", alignItems:"center", gap:7,
+                    fontFamily:"var(--mac-mono)", fontSize:14, fontWeight:700, color:"#000",
+                  }}>
+                    <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{net.name}</span>
+                    {net.role === "owner" && <QuietTag>{net.privacy === "public" ? "public" : "private"}</QuietTag>}
+                  </span>
+                  <code style={{
+                    display:"block", marginTop:3,
+                    fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                  }}>{url}</code>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => copy({ net, url })}
+                  title={copiedId === net.id ? "Copied" : "Copy link"}
+                  style={{
+                    flex:"0 0 auto", cursor:"pointer",
+                    padding:"4px 10px", border:"1px solid #000",
+                    background: copiedId === net.id ? "#000" : "#fff",
+                    color: copiedId === net.id ? "#fff" : "#000",
+                    fontFamily:"var(--mac-mono)", fontSize:11,
+                    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                  }}>{copiedId === net.id ? "copied" : "copy"}</button>
+              </div>
+            ))}
+
+            {!invitable.length && (
+              <p style={{
+                margin:"18px 12px",
+                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
+              }}>No networks to invite people to yet.</p>
+            )}
+          </div>
+        </MacWindow>
+      </div>
     </div>
   );
 }

@@ -25,7 +25,7 @@ function InitialsTile({ id, name, size = 46, photo }) {
 // The glyph occupies the same 34px block as the account tile and the label uses
 // the same size and weight, so the two rows line up even though their fills
 // differ on purpose.
-function NetworksRow({ count, onClick }) {
+function NetworksRow({ count, pending, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -50,6 +50,39 @@ function NetworksRow({ count, onClick }) {
         flex:1, minWidth:0,
         fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
       }}>networks ({count})</span>
+      <QCount
+        n={pending}
+        muted={!pending}
+        title={`${pending} waiting on you — people asking to join`}
+      />
+    </button>
+  );
+}
+
+// Handing out a link is its own errand, so it gets its own shelf row rather
+// than living inside one network's access tab. Chain-link mark, same 34px
+// block as the rows around it.
+function InviteRow({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display:"flex", alignItems:"center", gap:12, width:"100%",
+        padding:"5px 13px", cursor:"pointer", textAlign:"left",
+        border:"none", background:"#F2F0EC",
+      }}>
+      <span style={{
+        flex:"0 0 auto", width:34, height:34,
+        display:"flex", alignItems:"center", justifyContent:"center",
+      }}>
+        <span style={{ width:9, height:9, border:"2px solid #000" }}/>
+        <span style={{ width:7, height:2, background:"#000" }}/>
+        <span style={{ width:9, height:9, border:"2px solid #000" }}/>
+      </span>
+      <span style={{
+        flex:1, minWidth:0,
+        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+      }}>invite</span>
     </button>
   );
 }
@@ -191,6 +224,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
   const NETWORKS = env.networks || [];
   const AGENTS = [];
   const joinedCount = NETWORKS.filter(n => n.joined !== false).length;
+  const pendingJoins = NETWORKS.reduce((sum, n) => sum + (n.pendingJoinCount || 0), 0);
   const agentCount  = 1 + AGENTS.filter(a => a.state === "connected").length;
 
   useEffect(() => {
@@ -211,6 +245,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
 
   const [hovered, setHovered] = useState(null);
   const [showAgents, setShowAgents] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
 
   // Width the shelf's scrollbar takes when it appears, so the pinned
   // new-signal row below can line up with the rows inside. Measured rather
@@ -242,6 +277,15 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
     return (
       <Agents
         onClose={() => setShowAgents(false)}
+      />
+    );
+  }
+
+  if (showInvite) {
+    return (
+      <InviteNetworks
+        networks={NETWORKS}
+        onClose={() => setShowInvite(false)}
       />
     );
   }
@@ -321,7 +365,8 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
 
               {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
-                <NetworksRow count={joinedCount} onClick={() => onOpenView && onOpenView("networks")}/>
+                <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
+                <InviteRow onClick={() => setShowInvite(true)}/>
                 <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
                 <UserMenu me={ME} onSelect={onAccountSelect}/>
               </div>
@@ -472,32 +517,6 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
       {/* awaiting opportunities, the hero */}
       <QCount n={pending} muted={!hasQ}/>
     </button>
-  );
-}
-
-/* ---------- Pending hero count ---------- */
-// One unlabeled number: opportunities awaiting you, matching the Hermes and
-// web dashboards. The tooltip carries the explanation the label used to.
-function QCount({ n, muted }) {
-  if (muted) {
-    return null;
-  }
-  return (
-    <span
-      title={`${n} waiting on you — pending opportunities`}
-      style={{
-        display:"flex", alignItems:"baseline", justifyContent:"center",
-        padding:"3px 8px",
-        border:"1px solid #000",
-        background:"#FF8A00",
-        boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500",
-        flex:"0 0 auto",
-      }}>
-      <span style={{
-        fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:700,
-        lineHeight:1, color:"#000", letterSpacing:-0.3,
-      }}>{n}</span>
-    </span>
   );
 }
 

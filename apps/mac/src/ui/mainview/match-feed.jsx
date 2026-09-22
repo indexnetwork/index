@@ -177,7 +177,7 @@ function DiscoveryStages({ metrics = {}, art }) {
   );
 }
 
-function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, unread = {}, chatIds = [], profile = {}, discovering = false, discoveryMetrics = {} }) {
+function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, onNegotiation, unread = {}, chatIds = [], profile = {}, discovering = false, discoveryMetrics = {} }) {
   const shownPeople = people.filter(p => opportunityBucket(p) !== null);
   const peopleForTab = tab === "all"
     ? shownPeople
@@ -215,7 +215,7 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
           />
         )}
         {!discovering && peopleForTab.map(p => (
-          <MatchCard key={p.id} person={p} onOpenRoom={onOpenRoom} onAccept={onAccept} onPass={onPass} onSummary={onSummary} onProfile={onProfile}
+          <MatchCard key={p.id} person={p} onOpenRoom={onOpenRoom} onAccept={onAccept} onPass={onPass} onSummary={onSummary} onProfile={onProfile} onNegotiation={onNegotiation}
             hasChat={chatIds.includes(p.id)} unreadCount={unread[p.id] || 0} compact={compact}/>
         ))}
         {!discovering && peopleForTab.length === 0 && (
@@ -277,7 +277,7 @@ function AnswerChip({ label, onClick }) {
   );
 }
 
-function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile, hasChat = false, unreadCount = 0, compact = false }) {
+function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile, onNegotiation, hasChat = false, unreadCount = 0, compact = false }) {
   const openProfile = (e) => { e.stopPropagation(); onProfile && onProfile(person.id); };
   const [hover, setHover] = useState(false);
   const accepted = person.status === "accepted";
@@ -286,12 +286,16 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
   const isExpired = person.status === "expired";
   // everyone else discovered is still in negotiation, they have an open question
   const negotiating = !accepted && !readyStage && !isPassed && !isExpired;
-  const cardClickable = accepted || isExpired;    // accepted opens chat; expired opens summary
+  const cardClickable = accepted || isExpired || readyStage || negotiating;    // accepted opens chat; expired opens summary; ready opens profile; negotiating opens the negotiation
   const handleClick = accepted
     ? () => onOpenRoom && onOpenRoom(person.id)
     : isExpired
       ? () => onSummary && onSummary(person.id)
-      : undefined;
+      : readyStage
+        ? () => onProfile && onProfile(person.id)
+        : negotiating
+          ? () => onNegotiation && onNegotiation(person.id)
+          : undefined;
   return (
     <div
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
@@ -370,14 +374,19 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
             >pass</button>
           </div>
         ) : negotiating ? (
-          <span style={{
-            display:"flex", alignItems:"center", gap:5,
-            fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1,
-            textTransform:"uppercase", color:"var(--ink-2)",
-          }}>
+          <button
+            className="amiga-gadget"
+            title={`see what your agent and ${person.name}'s agent are saying`}
+            onClick={(e) => { e.stopPropagation(); onNegotiation && onNegotiation(person.id); }}
+            style={{
+              display:"flex", alignItems:"center", gap:5,
+              fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1,
+              textTransform:"uppercase", padding:"2px 10px",
+            }}
+          >
             <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
-            negotiating
-          </span>
+            negotiating ›
+          </button>
         ) : isExpired ? (
           <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, opacity:0.75 }}>
             expired · summary ›

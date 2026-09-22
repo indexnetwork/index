@@ -495,6 +495,12 @@ function NetworkRow({ net, onOpen, onJoin, joining }) {
         }}>{net.members} members</span>
       </button>
 
+      <QCount
+        n={net.pendingJoinCount}
+        muted={!net.pendingJoinCount}
+        title={`${net.pendingJoinCount} waiting on you — people asking to join`}
+      />
+
       {net.joined
         ? <QuietTag>{net.role || "member"}</QuietTag>
         : <ActionButton disabled={joining} onClick={() => onJoin && onJoin(net)} title="ask to join">{joining ? "joining…" : "join"}</ActionButton>}

@@ -4,6 +4,12 @@
 // delete-account gadget in settings): warn-red outline at rest so archiving
 // never looks like the pause next to it, a red wash on hover, and a solid red
 // fill once it's armed, the point of no return is the only thing that fills.
+/* The gap the feed keeps above the composer, and the distance within which it
+   still counts as "at the bottom". The threshold has to clear the spacer:
+   resting on it is resting at the end of the thread, not scrolling up. */
+const FEED_BOTTOM_SPACER = 28;
+const FEED_BOTTOM_PIN = FEED_BOTTOM_SPACER + 20;
+
 function SignalAction({ label, active = false, onClick, danger = false }) {
   const [hover, setHover] = useState(false);
   const on = active || hover;
@@ -28,9 +34,17 @@ function SignalAction({ label, active = false, onClick, danger = false }) {
 }
 
 function ConversationPane({ profile, conversation, negotiatingPeople = [], onRespondPerson,
-                            agentQuestion = null, onAnswerAgent, focusQuestion = 0,
-                            paused = false, onTogglePause, onArchive }) {
+                            agentMessages = null, agentQuestions = [], onSendAgent, onSendAnswers,
+                            focusQuestion = 0, paused = false, onTogglePause, onArchive }) {
   const scrollRef = useRef(null);
+  const [draft, setDraft] = useState("");
+  const [selections, setSelections] = useState({});
+  const [writing, setWriting] = useState({});
+  const [sending, setSending] = useState(false);
+  const inbox = agentMessages != null;
+  const questions = inbox ? (agentQuestions || []) : [];
+  const inboxFeed = useMemo(() => buildInboxFeed(agentMessages || []), [agentMessages]);
+  const chosen = questions.filter((q) => typeof selections[q.id] === "string" && selections[q.id].trim());
   // Archiving takes the signal off the hub and there's no way back to it from
   // here, so the first click arms the button and the second one commits. It
   // disarms itself after a few seconds if you meant to click something else.
@@ -59,11 +73,13 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   useEffect(() => {
     if (!focusQuestion || !agentQuestionRef.current) return;
     agentQuestionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [focusQuestion, agentQuestion && agentQuestion.id]);
+  }, [focusQuestion, questions.length]);
+  useEffect(() => { setSelections({}); setWriting({}); }, [profile && profile.intentId]);
+  const feedLen = inbox ? agentMessages.length + questions.length : conversation.length;
 
   const [stuck, setStuck] = useState(true);
   const [unread, setUnread] = useState(0);
-  const lastLen = useRef(conversation.length);
+  const lastLen = useRef(feedLen);
   // Distance from the bottom of the feed, kept live as you scroll. We restore
   // this exact gap after any content change so answering a question (which
   // shrinks its card) never yanks the viewport around.
@@ -72,24 +88,43 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   React.useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const grew = conversation.length > lastLen.current;
-    if (bottomGap.current <= 24) {
+    const grew = feedLen > lastLen.current;
+    if (bottomGap.current <= FEED_BOTTOM_PIN) {
       // pinned to the bottom, stay pinned, following new content
       el.scrollTop = el.scrollHeight;
       setUnread(0);
     } else {
       // scrolled up, hold the same spot so nothing jumps under you
       el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - bottomGap.current);
-      if (grew) setUnread(u => u + (conversation.length - lastLen.current));
+      if (grew) setUnread(u => u + (feedLen - lastLen.current));
     }
-    lastLen.current = conversation.length;
-  }, [conversation, negotiatingPeople]);
+    lastLen.current = feedLen;
+  }, [feedLen, negotiatingPeople, questions.length]);
+
+  // The composer grows with what you type and stops at three lines, after
+  // which it scrolls: 13px text at 1.4 plus the field's own padding.
+  const draftRef = useRef(null);
+  const COMPOSER_MAX = Math.round(13 * 1.4 * 3) + 8;
+  React.useLayoutEffect(() => {
+    const el = draftRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX)}px`;
+  }, [draft, COMPOSER_MAX]);
+
+  const send = () => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setDraft("");
+    setSending(true);
+    onSendAgent(text, () => setSending(false));
+  };
 
   const onScroll = (e) => {
     const el = e.currentTarget;
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     bottomGap.current = gap;
-    const atBottom = gap < 24;
+    const atBottom = gap < FEED_BOTTOM_PIN;
     setStuck(atBottom);
     if (atBottom) setUnread(0);
   };
@@ -183,23 +218,110 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
 
       {/* feed body */}
       <div ref={scrollRef} onScroll={onScroll} className="mac-scroll" style={{
-        overflowY:"auto", padding:"16px 18px 8px",
+        overflowY:"auto", padding:"20px",
         display:"flex", flexDirection:"column",
       }}>
-        {/* inner column pinned to the bottom, messages stack just above the
-            input and only grow upward into the scrollback as they accumulate */}
+        {inbox ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:22, minHeight:0, flex:"0 0 auto" }}>
+            {agentMessages.length === 0 ? (
+              <div style={{
+                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", lineHeight:1.45,
+              }}>Ask about your matches, share a preference, or give your agent direction for this signal.</div>
+            ) : inboxFeed.map((it) => {
+              if (it.kind === "user") return <UserLine key={it.id}>{it.text}</UserLine>;
+              if (it.kind === "decisions") return <DecisionGroup key={it.id} items={it.items}/>;
+              if (it.kind === "negotiation-logs") return <NegotiationLogGroup key={it.id} items={it.items}/>;
+              if (it.kind === "answered-question") return <AnsweredQuestion key={it.id} item={it}/>;
+              if (it.kind === "progress") return <ProgressLine key={it.id} text={it.text}/>;
+              return <AgentNote key={it.id} item={it}/>;
+            })}
+            {questions.length > 0 && (
+              <div ref={agentQuestionRef} style={{ display:"flex", flexDirection:"column", gap:22 }}>
+                {questions.map((question) => {
+                  const options = Array.isArray(question.options) ? question.options : [];
+                  const answer = selections[question.id] || "";
+                  const asker = questionAsker(question);
+                  const own = options.indexOf(answer) < 0 && answer;
+                  const write = writing[question.id] || !options.length;
+                  return (
+                    <article key={question.id} style={{ display:"flex", gap:12 }}>
+                      {asker.owner
+                        ? <TheirAgentAvatar owner={asker.owner} size={30} style={{ marginTop:2 }}/>
+                        : <MyAgentAvatar size={30} style={{ marginTop:2 }}/>}
+                      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:10 }}>
+                        <div>
+                          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:5 }}>
+                            <span style={{
+                              background:"#111", color:"#fff", padding:"2px 6px", borderRadius:3,
+                              fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:600, letterSpacing:"0.05em",
+                            }}>QUESTION</span>
+                            <span style={{
+                              fontFamily:"var(--mac-mono)", fontSize:11, color:"#8f8f88",
+                              textTransform:"uppercase", letterSpacing:"0.05em",
+                            }}>{asker.label}</span>
+                          </div>
+                          {/* The question reads as the agent speaking, so it wears
+                              the AgentNote type — only heavier, to carry the ask. */}
+                          <div style={{
+                            maxWidth:"92%",
+                            fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:600, lineHeight:1.55, color:"#2a2a2a",
+                          }}>{question.question}</div>
+                        </div>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                          {options.map((option) => (
+                            <OptionChip key={option} label={option} selected={answer === option}
+                              onClick={() => {
+                                setSelections((cur) => ({
+                                  ...cur, [question.id]: cur[question.id] === option ? "" : option,
+                                }));
+                                setWriting((cur) => ({ ...cur, [question.id]: false }));
+                              }}/>
+                          ))}
+                          {write ? (
+                            <input
+                              autoFocus={!!options.length}
+                              value={own ? answer : ""}
+                              onChange={(e) => setSelections((cur) => ({ ...cur, [question.id]: e.target.value }))}
+                              onBlur={(e) => {
+                                if (!e.currentTarget.value.trim()) {
+                                  setWriting((cur) => ({ ...cur, [question.id]: false }));
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape" && !e.currentTarget.value.trim()) {
+                                  setWriting((cur) => ({ ...cur, [question.id]: false }));
+                                }
+                              }}
+                              placeholder="write your own"
+                              aria-label="Write your own answer"
+                              // Same box as the chip it replaces, so opening the
+                              // field never moves the row it sits in.
+                              style={{
+                                flex:"1 1 220px", minWidth:180, minHeight:36,
+                                border:"1px solid #000", padding:"8px 14px",
+                                fontFamily:"var(--mac-mono)", fontSize:12, color:"#111", outline:"none",
+                              }}
+                            />
+                          ) : (
+                            <OptionChip write label="write your own"
+                              onClick={() => {
+                                setSelections((cur) => ({ ...cur, [question.id]: "" }));
+                                setWriting((cur) => ({ ...cur, [question.id]: true }));
+                              }}/>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
         <div style={{
           marginTop:"auto",
           display:"flex", flexDirection:"column", gap:14,
         }}>
-          {/* the one question your own agent is held on for this signal */}
-          {agentQuestion && (
-            <div ref={agentQuestionRef}>
-              <AgentQuestionCard question={agentQuestion} onAnswer={onAnswerAgent}/>
-            </div>
-          )}
-
-          {/* standing questions from people in your radar */}
           {groupQuestions(negotiatingPeople).map(g =>
             g.people.length >= 2 ? (
               <CollectiveQuestionCard key={"cq-" + g.q} question={g.q} people={g.people} onRespond={onRespondPerson}/>
@@ -207,10 +329,6 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               <PersonQuestionCard key={"pq-" + g.people[0].id} person={g.people[0]} onRespond={onRespondPerson}/>
             )
           )}
-
-          {/* one chronological stream, questions stay exactly where they
-              arrived. answering one updates it in place (shows your reply)
-              instead of yanking it up to the top of the feed */}
           {conversation
             .filter(it => it.kind === "clarifier" || it.kind === "user" || it.kind === "agent")
             .map((it) =>
@@ -223,6 +341,10 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               )
             )}
         </div>
+        )}
+        {/* A scrolling flex column drops its own bottom padding once the
+            content overflows, so the gap above the composer is a spacer. */}
+        <div style={{ height:onSendAgent ? 20 : FEED_BOTTOM_SPACER, flex:"0 0 auto" }}/>
       </div>
 
       {!stuck && unread > 0 && (
@@ -238,8 +360,298 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
         }}>↓ {unread} new</button>
       )}
 
+      {chosen.length > 0 && (
+        <div style={{
+          borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
+          display:"flex", flexDirection:"row-reverse", justifyContent:"flex-start", alignItems:"center", gap:12,
+        }}>
+          <button
+            type="button"
+            disabled={!chosen.length || sending}
+            style={{
+              fontFamily:"var(--mac-mono)", fontSize:12, padding:"8px 18px",
+              background: chosen.length && !sending ? "#111" : "#fff",
+              color: chosen.length && !sending ? "#fff" : "#999",
+              border:"1px solid #000",
+              cursor: chosen.length && !sending ? "pointer" : "default",
+            }}
+            onClick={() => {
+              if (!chosen.length || sending || !onSendAnswers) return;
+              setSending(true);
+              onSendAnswers(chosen.map((q) => ({ questionId: q.id, text: selections[q.id].trim() })), () => {
+                setSelections({});
+                setWriting({});
+                setSending(false);
+              });
+            }}
+          >{sending ? "sending…" : chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}</button>
+          <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"#8f8f88" }}>
+            {questions.length - chosen.length > 0
+              ? `${questions.length - chosen.length} of ${questions.length} unanswered`
+              : "all answered · ready to send"}
+          </span>
+        </div>
+      )}
+
+      {onSendAgent && (
+        <div style={{
+          borderTop:"1px solid #000",
+          background:"#fff",
+        }}>
+          <div style={{ padding:"7px 12px 8px", display:"flex", gap:10, alignItems:"flex-end" }}>
+            <textarea
+              ref={draftRef}
+              rows={1}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              placeholder="Message your personal agent…"
+              aria-label="Message your personal agent"
+              style={{
+                flex:1, minWidth:0, display:"block",
+                maxHeight:COMPOSER_MAX, overflowY:"auto", resize:"none",
+                background:"transparent", border:"none", outline:"none",
+                color:"#000", fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
+                padding:"4px 0",
+              }}
+            />
+            <button
+              type="button"
+              onClick={send}
+              disabled={!draft.trim() || sending}
+              aria-label="Send"
+              title="send"
+              style={{
+                display:"grid", placeItems:"center", width:22, height:22, flex:"0 0 auto",
+                background:"none", border:"none", padding:0, lineHeight:0, marginBottom:2,
+                color: draft.trim() && !sending ? "#111" : "#b9b3a4",
+                cursor: draft.trim() && !sending ? "pointer" : "default",
+              }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth={2} strokeLinecap="square" strokeLinejoin="miter">
+                <line x1="12" y1="20" x2="12" y2="5"/>
+                <polyline points="5,12 12,5 19,12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
+}
+
+// Briefs and decisions are one unit of work. Gather them by opportunity and
+// leave one disclosure in the transcript where that run first appeared.
+function buildInboxFeed(messages) {
+  const decisionRuns = new Map();
+  const negotiationLogs = [];
+  let logsAt = -1;
+  const questions = new Map();
+  const answers = new Map();
+  let runId = "before-discovery";
+  messages.forEach((message, index) => {
+    if (message.kind === "progress") runId = message.id;
+    if (message.kind === "brief" || message.kind === "decision") {
+      const run = decisionRuns.get(runId) || { id:runId, at:index, decisions:new Map() };
+      const key = message.opportunityId || message.counterpart || message.id;
+      const current = run.decisions.get(key) || {
+        id:key, counterpart:message.counterpart || "match", brief:"", decision:"",
+      };
+      current[message.kind] = message.text;
+      run.decisions.set(key, current);
+      decisionRuns.set(runId, run);
+    }
+    if (message.kind === "negotiation-log") {
+      if (logsAt < 0) logsAt = index;
+      negotiationLogs.push(message);
+    }
+    if (message.kind === "question-history" && message.questionId) questions.set(message.questionId, { ...message, at:index });
+    if (message.kind === "answer-history" && message.questionId) answers.set(message.questionId, message);
+  });
+  if (!decisionRuns.size && !negotiationLogs.length && !answers.size) return messages;
+
+  const insertions = new Map();
+  decisionRuns.forEach((run) => {
+    const items = Array.from(run.decisions.values());
+    const entry = { kind:"decisions", id:`decisions-${run.id}`, items };
+    insertions.set(run.at, [...(insertions.get(run.at) || []), entry]);
+  });
+  questions.forEach((question, questionId) => {
+    const answer = answers.get(questionId);
+    if (!answer) return;
+    const entry = { ...question, kind:"answered-question", id:`answered-${questionId}`, answer:answer.text };
+    insertions.set(question.at, [...(insertions.get(question.at) || []), entry]);
+  });
+  const feed = [];
+  let logsInserted = false;
+  runId = "before-discovery";
+  messages.forEach((message, index) => {
+    if (message.kind === "progress") runId = message.id;
+    const additions = insertions.get(index) || [];
+    additions.forEach((entry) => feed.push(entry));
+    if (!logsInserted && negotiationLogs.length && index >= logsAt) {
+      feed.push({ kind:"negotiation-logs", id:"negotiation-logs", items:negotiationLogs });
+      logsInserted = true;
+    }
+    if (message.kind === "progress") {
+      feed.push(message);
+      return;
+    }
+    if (message.kind !== "brief" && message.kind !== "decision" && message.kind !== "negotiation-log"
+        && message.kind !== "question-history" && message.kind !== "answer-history") feed.push(message);
+  });
+  return feed;
+}
+
+function DecisionGroup({ items }) {
+  const continued = items.filter((item) => item.decision === "continue" || item.decision === "accept").length;
+  return (
+    <details style={{ border:"1px solid var(--ink-3)", background:"#fff" }}>
+      <summary style={{
+        padding:"9px 12px", cursor:"pointer", listStylePosition:"inside",
+        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:0.25,
+      }}>
+        Discovery decisions · {items.length} reviewed · {continued} reaching out
+      </summary>
+      <div style={{ borderTop:"1px solid var(--ink-4)" }}>
+        {items.map((item, index) => (
+          <div key={item.id} style={{
+            padding:"10px 12px", display:"grid", gap:6,
+            borderTop:index ? "1px solid var(--ink-4)" : "none",
+          }}>
+            <div style={{ display:"flex", alignItems:"baseline", gap:8, minWidth:0 }}>
+              <strong style={{
+                flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                fontFamily:"var(--mac-sans)", fontSize:13,
+              }}>{item.counterpart}</strong>
+              {item.decision && <span style={{
+                fontFamily:"var(--mac-mono)", fontSize:10, textTransform:"uppercase", letterSpacing:0.4,
+              }}>{item.decision}</span>}
+            </div>
+            {item.brief && <div style={{
+              fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.45, color:"var(--ink-2)",
+            }}><AgentMarkdown text={item.brief}/></div>}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function ProgressLine({ text }) {
+  return (
+    <div className="fade-up" role="status" style={{
+      display:"grid", gridTemplateColumns:"8px 1fr", gap:9, alignItems:"start",
+      padding:"2px 0", color:"var(--ink-2)",
+    }}>
+      <span style={{ width:7, height:7, marginTop:5, borderRadius:99, background:"#000" }}/>
+      <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.55 }}>{text}</span>
+    </div>
+  );
+}
+
+function AnsweredQuestion({ item }) {
+  const asker = questionAsker(item);
+  return (
+    <article className="fade-up" style={{ display:"flex", gap:12 }}>
+      {asker.owner
+        ? <TheirAgentAvatar owner={asker.owner} size={30} style={{ marginTop:2 }}/>
+        : <MyAgentAvatar size={30} style={{ marginTop:2 }}/>}
+      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:10 }}>
+        <div>
+          <div style={{
+            display:"flex", gap:8, alignItems:"center", marginBottom:5,
+            fontFamily:"var(--mac-mono)", fontSize:11,
+            textTransform:"uppercase", letterSpacing:"0.05em",
+          }}>
+            <span style={{ color:"#2f7d4f", fontWeight:600 }}>✓ answered</span>
+            <span style={{ color:"#8f8f88" }}>{asker.label}</span>
+          </div>
+          <div style={{
+            maxWidth:"92%", background:"#fff",
+            fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55, color:"#2a2a2a",
+          }}>{item.text}</div>
+        </div>
+        <div style={{ display:"flex", justifyContent:"flex-end" }}>
+          <div style={{
+            maxWidth:"92%", padding:"11px 14px",
+            background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
+            fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
+            wordBreak:"break-word",
+          }}>{item.answer}</div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function NegotiationLogGroup({ items }) {
+  return (
+    <details style={{ border:"1px solid var(--ink-3)", background:"#fff" }}>
+      <summary style={{
+        padding:"9px 12px", cursor:"pointer", listStylePosition:"inside",
+        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:0.25,
+      }}>
+        Negotiation log · {items.length} {items.length === 1 ? "entry" : "entries"}
+      </summary>
+      <div style={{ borderTop:"1px solid var(--ink-4)" }}>
+        {items.map((item, index) => (
+          <div key={item.id} style={{
+            padding:"10px 12px", display:"grid", gap:5,
+            borderTop:index ? "1px solid var(--ink-4)" : "none",
+          }}>
+            <strong style={{
+              fontFamily:"var(--mac-sans)", fontSize:13,
+            }}>{item.counterpart || "Match"}</strong>
+            <div style={{
+              fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.45, color:"var(--ink-2)",
+            }}><AgentMarkdown text={item.text}/></div>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function AgentNote({ item }) {
+  return (
+    <div className="fade-up" style={{ display:"flex", gap:12 }}>
+      <MyAgentAvatar size={30} style={{ marginTop:2 }}/>
+      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:10 }}>
+        <div>
+          <div style={{
+            marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:11,
+            color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
+          }}>your agent</div>
+          <aside style={{
+            maxWidth:"92%",
+            background:"#fff",
+            fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55, color:"#2a2a2a",
+          }}>
+            <AgentMarkdown text={item.text}/>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function questionAsker(question) {
+  const matches = Array.isArray(question.matches) ? question.matches : [];
+  const people = matches.map((match) => match && match.counterparty).filter((c) => c && c.name);
+  if (people.length === 1) {
+    return { label: agentLabel(people[0].name), owner: { id: people[0].id, name: people[0].name, photo: null } };
+  }
+  if (people.length > 1) {
+    return { label: `${people.map((p) => p.name).join(", ")}’s agents`, owner: null };
+  }
+  return { label: question.scope === "match" ? "this match’s agent" : "your agent", owner: null };
 }
 
 /* =================== CLARIFIER CARD =================== */
@@ -279,11 +691,11 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
         fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
         lineHeight:1.4, color:"#000", letterSpacing:-0.1,
       }}>{question}</div>
-      {/* suggested options as a lettered list, then a write-your-own row that
-          shares the exact same framing, answer however you like */}
-      <div style={{ display:"grid", gap:6 }}>
-        {chips.map((c, i) => (
-          <OptionRow key={c} letter={String.fromCharCode(65 + i)} label={c} onClick={() => onChip && onChip(c)}/>
+      {/* suggested options as chips, then a write-your-own row, answer however
+          you like */}
+      <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+        {chips.map((c) => (
+          <OptionChip key={c} label={c} onClick={() => onChip && onChip(c)}/>
         ))}
         <div style={{
           display:"flex", alignItems:"center", gap:10,
@@ -315,26 +727,27 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
 
 // A single stacked option, letter badge + full-width label, in the same frame
 // as the write-your-own row so every answer choice reads consistently.
-function OptionRow({ letter, label, onClick }) {
+function OptionChip({ label, selected = false, write = false, onClick }) {
   const [hover, setHover] = useState(false);
   return (
-    <button onClick={onClick}
+    <button type="button" onClick={onClick}
+      aria-pressed={write ? undefined : selected}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
-        display:"flex", alignItems:"center", gap:10, textAlign:"left",
-        width:"100%", padding:"7px 9px", cursor:"pointer",
-        border:"1px solid #000",
-        background: hover ? "#000" : "#fff",
-        color: hover ? "#fff" : "#000",
-      }}>
-      <span style={{
-        flex:"0 0 auto", width:18, height:18,
-        display:"grid", placeItems:"center",
-        border:`1px solid ${hover ? "#fff" : "#000"}`,
-        fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
-      }}>{letter}</span>
-      <span style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.35 }}>{label}</span>
-    </button>
+        display:"inline-flex", alignItems:"center", minHeight:36,
+        padding:"8px 14px", cursor:"pointer", textAlign:"left",
+        ...(write ? {
+          background:"transparent",
+          border:"1px solid #000",
+          color: hover ? "#111" : "#8a8577",
+          fontFamily:"var(--mac-mono)", fontSize:12,
+        } : {
+          background: selected ? "#111" : "#fff",
+          border:"1px solid #000",
+          color: selected ? "#fff" : "#111",
+          fontFamily:"var(--mac-sans)", fontSize:13.5,
+        }),
+      }}>{label}</button>
   );
 }
 
@@ -544,19 +957,17 @@ function AgentLine({ children, pending, highlight, collective }) {
 }
 // A message you typed, rendered as a sent bubble on the right, so the
 // conversation reads like a chat: your words land at the bottom, distinct
-// from the questions coming in on the left.
+// from the questions coming in on the left. Your text goes through the same
+// markdown as the agent's, so a list you typed reads as a list.
 function UserLine({ children }) {
   return (
-    <div className="fade-up" style={{ display:"flex", justifyContent:"flex-end" }}>
+    <div className="fade-up own-md" style={{ display:"flex", justifyContent:"flex-end" }}>
       <div style={{
-        maxWidth:"78%",
-        background:"#000", color:"#fff",
-        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
-        padding:"8px 12px",
-        border:"1px solid #000",
-        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+        maxWidth:"92%", padding:"11px 14px",
+        background:"#2a2a2a", color:"#fff", borderRadius:"4px 4px 2px 4px",
+        fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.5,
         wordBreak:"break-word",
-      }}>{children}</div>
+      }}><AgentMarkdown text={children}/></div>
     </div>
   );
 }

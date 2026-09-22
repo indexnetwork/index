@@ -121,10 +121,6 @@ export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser>
  * (`Authorization: Bearer` header or `?token=`), i.e. a human acting in the
  * product — NOT an agent/API-key principal. Reads the authoritative context
  * recorded by the successful guard.
- *
- * Used to prove owner-action provenance for Lens B outcome capture (IND-434):
- * only explicit human session actions may become preference labels; API-key /
- * agent-mediated status mutations must never be recorded as owner decisions.
  */
 export const isSessionAuthenticated = (req: Request): boolean =>
   getRequestAuthContext(req)?.kind === 'session';

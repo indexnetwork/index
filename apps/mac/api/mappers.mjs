@@ -117,12 +117,12 @@ export function mapPeopleFromRadarItems(items = []) {
  * @param {Object} card
  */
 export function mapPersonFromRadarCard(card) {
+  const peer = card.peer || {};
   return {
-    id: card.opportunityId || card.userId,
-    // kept separate from `id` (which is the opportunity) so the profile window
-    // can fetch this person's own intro and links
-    userId: card.userId || null,
-    name: card.name || 'unknown',
+    id: card.opportunityId || card.userId || peer.userId,
+    createdAt: card.createdAt || null,
+    userId: card.userId || peer.userId || null,
+    name: card.name || peer.name || 'unknown',
     blurb: card.headline || card.mainText || '',
     // The card's full write-up: what the opportunity is and how these two
     // fit. `blurb` keeps only the headline when there is one, so without
@@ -166,7 +166,7 @@ export function mapCounterpartProfile(source = {}) {
     // The person's real picture. Radar cards carry `avatar`, list opportunities
     // `counterpartAvatar`, GET /users/:id `avatar`. Kept raw (full URL or S3
     // key); the app absolutizes keys against the API storage base.
-    photo: profile.avatar || source.counterpartAvatar || null,
+    photo: profile.avatar || source.avatar || source.peer?.avatar || source.counterpartAvatar || null,
     socials: mapSocials(profile.socials),
   };
 }
@@ -193,12 +193,15 @@ export function mapSocials(socials) {
  * @param {Array<Object>} opportunities
  */
 export function mapPeopleFromOpportunities(opportunities = []) {
-  return opportunities.map((opportunity) => ({
-    id: opportunity.id,
-    userId: opportunity.counterpartUserId || opportunity.counterpart?.id || null,
-    name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
-    blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
-    detail: opportunity.presentation?.description || opportunity.interpretation?.summary || '',
+  return opportunities.map((opportunity) => {
+    const peer = opportunity.peer || {};
+    const otherParty = Array.isArray(opportunity.otherParties) ? opportunity.otherParties[0] : null;
+    return {
+    id: opportunity.id || opportunity.opportunityId,
+    userId: peer.userId || opportunity.counterpartUserId || otherParty?.id || null,
+    name: peer.name || opportunity.counterpartName || otherParty?.name || 'unknown',
+    blurb: opportunity.headline || opportunity.presentation?.title || opportunity.interpretation?.summary || '',
+    detail: opportunity.mainText || opportunity.presentation?.description || opportunity.interpretation?.summary || '',
     location: opportunity.network?.title || '',
     arrived: 0,
     distance: opportunity.updatedAt ? `updated ${relativeAge(opportunity.updatedAt)}` : '',
@@ -213,7 +216,8 @@ export function mapPeopleFromOpportunities(opportunities = []) {
     hidden: false,
     ...mapCounterpartProfile(opportunity),
     source: opportunity,
-  }));
+  };
+  });
 }
 
 /**

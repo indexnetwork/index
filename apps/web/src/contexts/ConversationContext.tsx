@@ -60,6 +60,9 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const eventSourceRef = useRef<EventSource | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
+  // A reconnect replaces the EventSource, which drops the browser's own
+  // Last-Event-ID, so the last frame's stream id is carried by hand.
+  const lastEventIdRef = useRef('');
   const sseGenerationRef = useRef(0);
   const connectSSERef = useRef<() => void>(() => {});
   const refreshConversationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
@@ -307,7 +310,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       const token = await getJwtToken();
       if (generation !== sseGenerationRef.current) return;
 
-      const url = `${SSE_URL}?token=${encodeURIComponent(token)}`;
+      const resume = lastEventIdRef.current
+        ? `&after=${encodeURIComponent(lastEventIdRef.current)}`
+        : '';
+      const url = `${SSE_URL}?token=${encodeURIComponent(token)}${resume}`;
       const es = new EventSource(url);
       eventSourceRef.current = es;
 
@@ -317,6 +323,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       };
 
       es.onmessage = (event) => {
+        if (event.lastEventId) lastEventIdRef.current = event.lastEventId;
         try {
           const data = JSON.parse(event.data);
           switch (data.type) {
@@ -325,7 +332,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               void refreshNegotiationsRef.current();
               break;
             case 'negotiation.changed':
-            case 'negotiation.opened':
               if (negotiationsRefreshTimeoutRef.current) clearTimeout(negotiationsRefreshTimeoutRef.current);
               negotiationsRefreshTimeoutRef.current = setTimeout(() => {
                 negotiationsRefreshTimeoutRef.current = null;

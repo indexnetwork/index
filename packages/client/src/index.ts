@@ -8,6 +8,7 @@ export type {
   ConversationMessage,
   Counterparty,
   CounterpartyPick,
+  Index,
   IntentLifecycleWireStatus,
   IntentStatus,
   IntentSummary,

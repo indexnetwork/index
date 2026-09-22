@@ -4,7 +4,6 @@ import type { NegotiationOpening, NegotiationOpeningDecision } from '../../proto
  * Database operations for the opportunity lifecycle.
  */
 
-import type { OutcomeOutbox } from './capabilities.js';
 import type { CreateIntentCounterpartyData, CreateOpportunityData, IntentScopedOpportunityPersistenceResult, OpenedNegotiation, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
 
 /** Opportunity persistence operations. */
@@ -147,14 +146,12 @@ export interface DatabaseOpportunityQueries {
    * @param id - Opportunity ID
    * @param status - New status
    * @param acceptedBy - Required when `status === 'accepted'`
-   * @param outbox - Optional IND-434 atomic outcome-capture (same-txn insert)
    * @returns The updated opportunity or null if not found
    */
   updateOpportunityStatus(
     id: string,
     status: OpportunityStatus,
     acceptedBy?: string,
-    outbox?: OutcomeOutbox,
   ): Promise<Opportunity | null>;
 
   /**
@@ -170,7 +167,6 @@ export interface DatabaseOpportunityQueries {
    * @param actorUserId - The user whose actor entry should be stamped
    * @param status - New opportunity status
    * @param acceptedBy - Required when `status === 'accepted'`
-   * @param outbox - Optional IND-434 atomic outcome-capture (same-txn insert)
    * @returns The updated opportunity, or null if not found
    */
   stampOpportunityActorAction(
@@ -178,7 +174,6 @@ export interface DatabaseOpportunityQueries {
     actorUserId: string,
     status: OpportunityStatus,
     acceptedBy?: string,
-    outbox?: OutcomeOutbox,
   ): Promise<Opportunity | null>;
 
   /**

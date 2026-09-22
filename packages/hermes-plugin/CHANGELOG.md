@@ -1,6 +1,62 @@
 # Changelog
 
 
+## 0.46.1
+
+### Fixed
+- Opening a Discover overlay no longer remounts the page behind it. Query-only
+  hash changes (`?profile=`, `?chat=`, `?user=`) stay on the existing pane
+  instead of calling `openWorkspace` again.
+
+## 0.46.0
+
+### Changed
+- **The H2A inbox is live, and behaves like a chat.** The signal's agent
+  transcript now subscribes to the same realtime stream the messages panel
+  reads and re-reads on any frame naming that signal, with the 5s poll kept as
+  the backstop for frames missed while disconnected — and as the only path in
+  the desktop host, whose REST bridge cannot stream. Question options, the
+  write-your-own box, and the send button are never disabled: answers send
+  whether or not an external negotiator is selected, matching the API. The
+  composer clears as soon as you send instead of waiting for the write, and a
+  failed send or read says nothing and keeps the last transcript on screen
+  rather than showing an error or "Retrying…". Transcript bubbles render
+  markdown — paragraphs, lists, headings, code, bold, italic, and http(s)
+  links — for the agent's words and your own.
+
+## 0.45.1
+
+### Fixed
+- Intent radar now asks the API for the same statuses the Mac app does
+  (`pending,negotiating,accepted,expired`). The previous query included
+  `stalled`, which the API rejects, so Discover painted an empty radar.
+
+### Changed
+- Discover's signal page matches the Mac split: signal | radar, all matches
+  visible by default, pause/archive on the signal header. The H2A transcript
+  and composer stay on the signal pane as an inbox — writing is not gated on
+  a selected negotiator.
+
+## 0.45.0
+
+### Added
+- **H2A chat on Discover's signal detail.** The signal panel now shows the
+  owner's whole conversation with their personal agent for that signal: the
+  transcript, every question still waiting (with its options, a write-your-own
+  answer, and the matches it is about), and a composer for messaging the agent
+  directly. Answers picked across several questions are sent as one write, so
+  the agent decides from all of them at once. Previously the panel only offered
+  the single pending question, and read a field the API no longer returns, so
+  nothing appeared at all. Questions and answers still live on the same agent DM
+  Index web uses. A read that fails says so and keeps retrying, rather than
+  sitting on a loading line forever — which is what an out-of-date plugin
+  backend looks like until Hermes restarts and mounts the new routes.
+
+### Changed
+- **BREAKING (dashboard REST):** `GET /agent/question` and `POST /agent/answer`
+  are replaced by `GET /agent/conversation`, `POST /agent/message`, and
+  `POST /agent/answers`.
+
 ## 0.44.0
 
 ### Changed

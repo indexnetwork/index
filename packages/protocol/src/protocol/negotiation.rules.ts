@@ -28,8 +28,8 @@ export interface NegotiationState {
   turns: { seatUserId: string; action: NegotiationAction; message: string }[];
 }
 export type NegotiationRejection = 'not_found' | 'not_a_seat' | 'already_settled' | 'signal_inactive'
-  | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn' | 'propose_not_first'
-  | 'counter_is_first' | 'accept_without_offer';
+  | 'turn_limit' | 'not_your_turn' | 'raced' | 'invalid_turn'
+  | 'counter_is_first' | 'accept_without_offer' | 'propose_over_offer';
 export interface NegotiationOpening {
   userA: string;
   userB: string;
@@ -71,10 +71,14 @@ export function decideNegotiationTurn(state: NegotiationState | null, userId: st
   const turnIndex = state.turns.length;
   if (turn.expectedTurnCount !== turnIndex) return { ok: false, rejection: 'raced' };
   if (!negotiationTurnSchema.safeParse(turn).success) return { ok: false, rejection: 'invalid_turn' };
-  if (turn.action === 'propose' && turnIndex !== 0) return { ok: false, rejection: 'propose_not_first' };
   if (turn.action === 'counter' && turnIndex === 0) return { ok: false, rejection: 'counter_is_first' };
   const previous = state.turns[state.turns.length - 1];
-  if (turn.action === 'accept' && (!previous || previous.seatUserId === userId || !['propose', 'counter'].includes(previous.action))) return { ok: false, rejection: 'accept_without_offer' };
+  // A counter questions an offer without making one, so only a propose stands
+  // to be accepted: answering a counter means proposing again.
+  if (turn.action === 'accept' && (!previous || previous.seatUserId === userId || previous.action !== 'propose')) return { ok: false, rejection: 'accept_without_offer' };
+  // The other seat's offer is already on the table. Restating it as your own
+  // settles nothing and spends a turn, so it is answered rather than repeated.
+  if (turn.action === 'propose' && previous && previous.seatUserId !== userId && previous.action === 'propose') return { ok: false, rejection: 'propose_over_offer' };
   const outcome = turn.action === 'accept' ? 'agreed' : turn.action === 'decline' ? 'declined' : null;
   const blockedReason = !outcome && turnIndex + 1 >= NEGOTIATION_MAX_TURNS ? 'turn_limit' : null;
   return {
@@ -87,6 +91,10 @@ export function decideNegotiationTurn(state: NegotiationState | null, userId: st
 /** @param state - Current authoritative state. @param userId - Reading principal. @returns Guidance and actions available to that seat now. */
 export function observeNegotiation(state: NegotiationState, userId: string) {
   const blockedReason = negotiationBlockedReason(state, userId);
-  const availableActions: NegotiationAction[] = blockedReason ? [] : state.turns.length ? ['counter', 'accept', 'decline'] : ['propose', 'decline'];
+  const previous = state.turns[state.turns.length - 1];
+  const availableActions: NegotiationAction[] = blockedReason ? []
+    : !previous ? ['propose', 'decline']
+      : previous.action === 'propose' ? ['counter', 'accept', 'decline']
+        : ['propose', 'counter', 'decline'];
   return { guidance: NEGOTIATION_GUIDANCE, availableActions, blockedReason, maxTurns: NEGOTIATION_MAX_TURNS, messageLimit: NEGOTIATION_MESSAGE_LIMIT };
 }

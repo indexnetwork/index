@@ -31,7 +31,6 @@ export type {
   SystemDatabase,
   OpportunityDatabase,
   OpportunityControllerDatabase,
-  OutcomeOutbox,
   RadarGraphDatabase,
   IntentGraphDatabase,
   Opportunity,
@@ -123,14 +122,6 @@ export type {
   PresenterDatabase,
 } from "./internal/opportunities/opportunity.presentation.js";
 export {
-  PoolDiscriminatorMiner,
-} from "./internal/opportunities/discriminator/discriminator.miner.js";
-export type {
-  DiscriminatorMiningInput,
-  MinedDiscriminator,
-  PoolCandidate,
-} from "./internal/opportunities/discriminator/discriminator.types.js";
-export {
   hasUnsupportedOpportunityClaim,
   stripUnsupportedOpportunityClaims,
   stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText,
@@ -162,20 +153,6 @@ export {
   selectByComposition,
   validateOpportunityActors,
 } from "./internal/opportunities/opportunity.utils.js";
-export {
-  isOutcomeQuestionsActivated,
-  OUTCOME_MAX_CANDIDATES,
-  OUTCOME_MAX_PUBLIC_CONTEXT_CHARS,
-  OUTCOME_MIN_INDEPENDENT_EXAMPLES,
-} from "./internal/opportunities/outcome/outcome.env.js";
-export {
-  runOutcomeShadow,
-} from "./internal/opportunities/outcome/outcome.shadow.js";
-export type {
-  OutcomeExample,
-  OutcomeLabel,
-  OutcomeShadowResult,
-} from "./internal/opportunities/outcome/outcome.types.js";
 export {
   RadarGraphFactory,
 } from "./internal/opportunities/radar/radar.graph.js";

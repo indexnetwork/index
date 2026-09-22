@@ -1,7 +1,7 @@
 {
   "name": "@indexnetwork/agentv2",
-  "version": "0.2.0",
-  "description": "Wake and negotiate: a stateless personal agent whose negotiators run independently and cannot wake it.",
+  "version": "0.5.2",
+  "description": "Brief, wake and negotiate: a stateless personal agent whose negotiators run independently and cannot wake it.",
   "license": "MIT",
   "type": "module",
   "private": true,
@@ -23,8 +23,10 @@
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun run build"
   },
+  "dependencies": {
+    "@indexnetwork/client": "workspace:*"
+  },
   "devDependencies": {
-    "@indexnetwork/client": "workspace:*",
     "@types/bun": "1.3.14",
     "typescript": "5.9.3"
   }

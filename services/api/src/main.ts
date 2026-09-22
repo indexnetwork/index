@@ -2,7 +2,7 @@ import './startup.env';
 
 import * as Sentry from '@sentry/bun';
 
-import { ModelClient } from '@indexnetwork/agent';
+import { ModelClient } from '@indexnetwork/agentv2';
 
 import { DebugController } from './controllers/debug.controller';
 import { DocsController } from './controllers/docs.controller';
@@ -24,7 +24,7 @@ import { EventsController } from './controllers/events.controller';
 import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
 import { OpportunityEventService } from './services/opportunity-event.service';
-import { HostedNegotiator } from './lib/agent/hosted.negotiator';
+import { HostedAgent } from './lib/agent/hosted.agent';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
 import { log, sanitizeForLog } from './lib/log';
@@ -39,6 +39,7 @@ import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adap
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
 import { publishUserEvent } from './lib/user-events';
+import { authenticateMcpRequest, handleMcpRequest } from './lib/mcp/mcp.server';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
 // emoji, LOG_LEVEL, Sentry, embedding redaction + payload truncation).
@@ -140,6 +141,7 @@ logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
 function classifyRequestSubsystem(pathname: string): string {
   if (pathname === '/throw-error') return 'sentry-test';
+  if (pathname === '/mcp') return 'mcp';
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
@@ -178,6 +180,46 @@ Bun.serve({
         return new Response('Not Found', { status: 404, headers: corsHeaders });
       }
       throw new Error('Sentry test error from /throw-error');
+    }
+
+    // MCP is a modern, stateless, API-key or device-session endpoint. It lives
+    // inside the ordinary request boundary so CORS, tracing, logging and Sentry stay shared.
+    if (url.pathname === '/mcp') {
+      const activeSpan = Sentry.getActiveSpan();
+      if (activeSpan) {
+        Sentry.updateSpanName(activeSpan, `${method} /mcp`);
+      }
+      setSpanAttributes({
+        'http.route': '/mcp',
+        subsystem: 'mcp',
+      });
+
+      if (method !== 'POST') {
+        setSpanHttpStatus(405);
+        return new Response('Method Not Allowed', {
+          status: 405,
+          headers: { Allow: 'POST', ...corsHeaders },
+        });
+      }
+
+      const principal = await authenticateMcpRequest(req);
+      if (!principal) {
+        setSpanHttpStatus(401);
+        return Response.json(
+          { error: 'Unauthorized' },
+          { status: 401, headers: corsHeaders },
+        );
+      }
+
+      const response = await handleMcpRequest(req, principal);
+      const headers = new Headers(response.headers);
+      Object.entries(corsHeaders).forEach(([key, value]) => headers.set(key, value));
+      setSpanHttpStatus(response.status);
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
     }
 
     // Handle OPTIONS preflight requests
@@ -400,14 +442,14 @@ Bun.serve({
 
 logger.info('Server running', { port: PORT });
 
-// The default A2A seat for owners without an external negotiator.
-const hostedNegotiator = new HostedNegotiator(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
-void hostedNegotiator.start();
+// The default seat for owners without an external negotiator.
+const hostedAgent = new HostedAgent(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
+void hostedAgent.start();
 
 // Graceful shutdown
 const shutdown = async () => {
   logger.info('Shutting down...');
-  await hostedNegotiator.stop();
+  await hostedAgent.stop();
   await Sentry.close(2000);
   process.exit(0);
 };

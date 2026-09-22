@@ -36,10 +36,10 @@ const stop = client.events((event) => {
 | `principalInbox(intentId)` | `GET /api/conversations/agent/messages?intentId=` |
 | `sendPrincipal(intentId, entries)` | `POST /api/conversations/agent/h2a?executorId=` |
 
-`sendPrincipal` requires an executor id. `submitTurn` needs `expectedTurnCount`. Handshake `{ type: "connected" }` is not passed to `onEvent`.
+`sendPrincipal` requires an executor id. `submitTurn` needs `expectedTurnCount`. Handshake `{ type: "connected" }` reaches `onEvent` on every connect and reconnect, after the unseen messages behind it have been replayed: it is where a caller recovers whatever it missed while the stream was down.
 
 `discover` writes nothing; `createOpportunities` is idempotent on the pair, so a counterparty that already shares an opportunity reports that one. Both need an active signal the key's owner owns.
 
-`wakesHost` is true only for `negotiation.opened`, `negotiation.turn`, and `principal.input`.
+`wakesHost` is true only for `negotiation.turn` and `principal.input`.
 
 Non-2xx throws `ApiError` (`status`, `error`). A 2xx body that is not JSON throws a distinct `Error`. JSON methods do not retry. The stream reconnects until stopped.

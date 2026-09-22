@@ -437,6 +437,88 @@
     });
   }
 
+  /**
+   * Read the owner's realtime event stream, one parsed frame at a time.
+   *
+   * The plugin backend relays the upstream stream with its own API key. We
+   * consume that relay with SDK.authedFetch (which injects the Hermes dashboard
+   * session auth — the `X-Hermes-Session-Token` header in loopback mode,
+   * cookies in gated mode) plus a streaming body reader, rather than a raw
+   * EventSource: EventSource cannot set the session header and the host does not
+   * accept a ?token= query param on plugin routes, so it would fail to
+   * authenticate in the default desktop (loopback) mode. Reconnects with
+   * exponential backoff (5s * 2^n, capped at 60s, 10 tries).
+   *
+   * Connects nothing in the desktop host, whose REST bridge buffers whole
+   * responses and so cannot stream; those callers live on their own poll.
+   *
+   * @returns The cleanup function for the caller's effect.
+   */
+  function subscribeUserEvents(onFrame) {
+    if (DESKTOP_ENV) return function () { /* nothing was opened */ };
+
+    let retryTimer = null;
+    let retries = 0;
+    let stopped = false;
+    let reader = null;
+
+    function scheduleRetry() {
+      if (stopped) return;
+      retries += 1;
+      if (retries > 10) return;
+      retryTimer = setTimeout(connect, Math.min(5000 * Math.pow(2, retries - 1), 60000));
+    }
+
+    function streamFetch() {
+      const url = API + "/conversations/stream";
+      const opts = { headers: { Accept: "text/event-stream" } };
+      if (SDK.authedFetch) return SDK.authedFetch(url, opts);
+      return window.fetch(url, Object.assign({ credentials: "include" }, opts));
+    }
+
+    function connect() {
+      streamFetch()
+        .then(function (response) {
+          if (!response || !response.ok || !response.body || !response.body.getReader) {
+            throw new Error("stream unavailable");
+          }
+          retries = 0;
+          reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          function pump() {
+            return reader.read().then(function (result) {
+              if (stopped) { try { reader.cancel(); } catch (e) { /* noop */ } return; }
+              if (result.done) { scheduleRetry(); return; }
+              buffer += decoder.decode(result.value, { stream: true });
+              let sep;
+              while ((sep = buffer.indexOf("\n\n")) >= 0) {
+                const frame = buffer.slice(0, sep);
+                buffer = buffer.slice(sep + 2);
+                const lines = frame.split("\n");
+                for (let i = 0; i < lines.length; i++) {
+                  if (lines[i].indexOf("data:") !== 0) continue;
+                  let data;
+                  try { data = JSON.parse(lines[i].slice(5).trim()); } catch (e) { continue; }
+                  if (data) onFrame(data);
+                }
+              }
+              return pump();
+            });
+          }
+          return pump();
+        })
+        .catch(function () { if (!stopped) scheduleRetry(); });
+    }
+
+    connect();
+    return function () {
+      stopped = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (reader) { try { reader.cancel(); } catch (e) { /* noop */ } }
+    };
+  }
+
   function BadgeText(props) {
     const className = "index-dashboard__badge" + (props.className ? " " + props.className : "");
     const badgeProps = { className: className };
@@ -500,6 +582,13 @@
     return svgIcon("", [
       svgPath("m12 19-7-7 7-7"),
       svgPath("M19 12H5"),
+    ]);
+  }
+
+  function ICON_ARROW_UP() {
+    return svgIcon("", [
+      svgPath("M12 19V5"),
+      svgPath("m5 12 7-7 7 7"),
     ]);
   }
 
@@ -632,21 +721,87 @@
     );
   }
 
-  function parseHash() {
-    // The desktop app owns window.location.hash (its router routes on it) —
-    // keep intent selection purely in component state there.
-    if (DESKTOP_ENV) return { intentId: null };
-    const raw = (window.location.hash || "").replace(/^#/, "");
-    const params = {};
-    raw.split("&").forEach(function (pair) {
-      if (!pair) return;
-      const idx = pair.indexOf("=");
-      const key = idx >= 0 ? pair.slice(0, idx) : pair;
-      params[key] = idx >= 0 ? decodeURIComponent(pair.slice(idx + 1)) : "";
-    });
+  // Discover lives at `/index-network` (Hermes HashRouter: `#/index-network`).
+  // View state is query on that path — never a bare `#intent=` fragment, which
+  // misses the plugin route and the host's `*` catch-all sends you to new chat.
+  const PAGE_PATH = "/index-network";
+  const LAST_PATH_KEY = "index-network.path";
+
+  function pageSearchParams() {
+    const hash = window.location.hash || "";
+    const mark = hash.indexOf("?");
+    const params = new URLSearchParams(window.location.search || "");
+    if (mark >= 0) {
+      new URLSearchParams(hash.slice(mark)).forEach(function (value, key) {
+        if (!params.has(key)) params.set(key, value);
+      });
+    }
+    return params;
+  }
+
+  function parseView() {
+    const params = pageSearchParams();
+    const chat = params.get("chat");
     return {
-      intentId: params.intent || null,
+      intentId: params.get("intent") || null,
+      messagesOpen: params.has("chat"),
+      messagesTarget: chat || null,
+      profileOpen: params.get("profile") === "1",
+      viewUserId: params.get("user") || null,
     };
+  }
+
+  function parseHash() {
+    return { intentId: parseView().intentId };
+  }
+
+  function viewPath(view) {
+    const params = pageSearchParams();
+    if (view.intentId) params.set("intent", view.intentId);
+    else params.delete("intent");
+    if (view.messagesOpen) params.set("chat", view.messagesTarget || "");
+    else params.delete("chat");
+    if (view.profileOpen) params.set("profile", "1");
+    else params.delete("profile");
+    if (view.viewUserId) params.set("user", view.viewUserId);
+    else params.delete("user");
+    const q = params.toString();
+    return q ? PAGE_PATH + "?" + q : PAGE_PATH;
+  }
+
+  function currentPageHref() {
+    if (DESKTOP_ENV) return ((window.location.hash || "").replace(/^#/, "")).split("#")[0] || "";
+    return window.location.pathname + window.location.search;
+  }
+
+  function rememberPagePath(path) {
+    try {
+      if (path && path.split("?")[0] === PAGE_PATH) window.localStorage.setItem(LAST_PATH_KEY, path);
+    } catch (e) { /* noop */ }
+  }
+
+  function onPagePath() {
+    const path = currentPageHref().split("?")[0];
+    return path === PAGE_PATH || path.startsWith(PAGE_PATH + "/");
+  }
+
+  function writeView(view, force) {
+    const target = viewPath(view);
+    rememberPagePath(target);
+    if (currentPageHref() === target) return;
+    if (!force && !onPagePath()) return;
+    if (DESKTOP_ENV && DESKTOP_ENV.navigate) {
+      DESKTOP_ENV.navigate(target);
+      return;
+    }
+    if (DESKTOP_ENV) {
+      const hash = "#" + target;
+      if ((window.location.hash || "") !== hash) window.location.hash = hash;
+      return;
+    }
+    if (window.location.pathname + window.location.search !== target) {
+      window.history.replaceState(null, "", target);
+    }
   }
 
   /**
@@ -674,11 +829,9 @@
   }
 
   function writeHash(intentId) {
-    if (DESKTOP_ENV) return;
-    const target = intentId ? "#intent=" + encodeURIComponent(intentId) : "";
-    if ((window.location.hash || "") !== target) {
-      window.location.hash = target;
-    }
+    const view = parseView();
+    view.intentId = intentId || null;
+    writeView(view, true);
   }
 
   function EmptyState(props) {
@@ -766,12 +919,15 @@
     const counts = props.counts || {};
     return React.createElement("div", { className: "index-dashboard__radar-strip" },
       RADAR_BUCKETS.map(function (bucket) {
+        const active = props.selected === bucket.key;
         return React.createElement(StatPill, {
           key: bucket.key,
           value: counts[bucket.key] || 0,
           label: bucket.label,
-          active: props.selected === bucket.key,
-          onSelect: props.onSelect ? function () { props.onSelect(bucket.key); } : null,
+          active: active,
+          // Mac-app parity: picking a stage filters to it, picking it again
+          // goes back to the whole radar.
+          onSelect: props.onSelect ? function () { props.onSelect(active ? "all" : bucket.key); } : null,
         });
       }),
     );
@@ -852,6 +1008,29 @@
     );
   }
 
+  /**
+   * A network's picture layered over its generated avatar, like UserAvatar: a
+   * stored image that fails to load (a key can outlive its file) uncovers the
+   * fallback underneath instead of leaving a broken tile.
+   */
+  function NetworkAvatar(props) {
+    const children = [React.createElement(BoringAvatar, { key: "fallback", seed: props.seed || "network" })];
+    if (props.imageUrl) {
+      children.push(React.createElement("img", {
+        key: "img",
+        className: "index-dashboard__net-avatar-img",
+        src: props.imageUrl,
+        alt: "",
+        loading: "lazy",
+        onError: function (e) { if (e && e.currentTarget) e.currentTarget.style.display = "none"; },
+      }));
+    }
+    return React.createElement("span", {
+      className: "index-dashboard__net-avatar" + (props.className ? " " + props.className : ""),
+      "aria-hidden": "true",
+    }, children);
+  }
+
   function UserAvatar(props) {
     const seed = props.id || props.name || "default";
     const size = props.size;
@@ -889,12 +1068,12 @@
           key: "accept", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { props.onAccept(opportunity); },
-        }, acting ? "Working…" : "Accept"),
+        }, acting ? "Working…" : "accept"),
         React.createElement(Button, {
           key: "pass", type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { if (props.onSkip) props.onSkip(opportunity); },
-        }, "Pass"),
+        }, "pass"),
       ];
     } else if (status === "accepted") {
       if (props.onStartChat && opportunity.counterpartUserId) {
@@ -902,7 +1081,7 @@
           key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { props.onStartChat(opportunity); },
-        }, acting ? "Working…" : "Open chat ›")];
+        }, acting ? "Working…" : "send message")];
       } else if (opportunity.chatUrl) {
         actionButtons = [React.createElement("a", {
           key: "open", className: "index-dashboard__opp-openchat",
@@ -931,16 +1110,32 @@
           }),
           React.createElement("div", { className: "index-dashboard__opp-meta" },
             React.createElement("strong", { className: "index-dashboard__opp-name" }, opportunity.name || "New match"),
-            React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle || "Suggested connection"),
+            // Mac-app parity: a radar row is a name and what the pairing is for,
+            // nothing else. Only the negotiations rows carry a subtitle.
+            opportunity.subtitle
+              ? React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle)
+              : null,
           ),
         ),
         // Mac-app parity: the head's right column shows the action buttons when
         // the card is actionable, otherwise the status label — never both.
         actionButtons
           ? React.createElement("div", { className: "index-dashboard__opp-btns" }, actionButtons)
-          : resolved
-            ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
-            : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
+          // A negotiating row is the only status you can open: the two agents
+          // are mid-conversation and it is readable.
+          : props.onOpenNegotiation && bucketForStatus(status) === "negotiating"
+            ? React.createElement("button", {
+              type: "button",
+              className: "index-dashboard__opp-negotiating",
+              onClick: function () { props.onOpenNegotiation(opportunity); },
+            },
+              React.createElement("span", { className: "index-dashboard__opp-negotiating-dot", "aria-hidden": "true" }),
+              "negotiating",
+              React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"),
+            )
+            : resolved
+              ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
+              : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
       ),
       opportunity.mainText ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText) : null,
     );
@@ -960,6 +1155,7 @@
           key: opportunity.opportunityId || String(index),
           opportunity: opportunity,
           onOpenUser: props.onOpenUser,
+          onOpenNegotiation: props.onOpenNegotiation,
           onAccept: props.onAccept,
           onSkip: props.onSkip,
           onStartChat: props.onStartChat,
@@ -972,32 +1168,38 @@
 
   function IntentRow(props) {
     const intent = props.intent;
-    const className = props.selected ? "index-dashboard__intent-row index-dashboard__intent-row--selected" : "index-dashboard__intent-row";
-    // Mirrors the mac app's signal rows: the beacon blinks while the signal
-    // is live (real mac rows are only ever live or paused).
-    const running = intent.status === "live";
+    // The row carries its own signal instead of a status tag: a dot and a meta
+    // line that say whether anything is waiting on this intent.
+    const matches = intentMatchCount(intent);
+    const className = "index-dashboard__intent-row"
+      + (matches ? " index-dashboard__intent-row--matched" : "")
+      + (props.selected ? " index-dashboard__intent-row--selected" : "");
     return React.createElement("button", { type: "button", className: className, onClick: function () { props.onSelect(intent.id); } },
+      React.createElement("span", { className: "index-dashboard__intent-dot", "aria-hidden": "true" }),
       React.createElement("div", { className: "index-dashboard__intent-main" },
         React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
-        intent.status
-          ? React.createElement(BadgeText, { tone: statusTone(intent.status) },
-            running ? React.createElement("span", { className: "index-dashboard__live-dot" }) : null,
-            intent.status,
+        // Quiet states only: what is waiting rides the count tag instead.
+        !matches || intent.status === "paused"
+          ? React.createElement("div", { className: "index-dashboard__intent-meta" },
+            matches ? null : React.createElement("span", null, "no matches yet"),
+            intent.status === "paused" ? React.createElement("span", null, "paused") : null,
           )
           : null,
       ),
-      React.createElement("div", { className: "index-dashboard__intent-counts" },
-        PendingBadge(intent.pendingCount),
-      ),
+      matches
+        ? React.createElement("span", {
+          className: "index-dashboard__intent-count",
+          "aria-label": matches === 1 ? "1 match waiting" : matches + " matches waiting",
+        }, String(matches))
+        : null,
+      React.createElement("span", { className: "index-dashboard__intent-chevron", "aria-hidden": "true" }, "\u203A"),
     );
   }
 
-  // One consolidated, unlabeled number per row: awaiting opportunities. Every
-  // surface (Hermes web/desktop, mac app) shows this same count so they stay
-  // consistent.
-  function PendingBadge(count) {
-    if (!count) return null;
-    return React.createElement(BadgeText, null, formatCount(count));
+  // One consolidated number per row: awaiting opportunities. Every surface
+  // (Hermes web/desktop, mac app) shows this same count so they stay consistent.
+  function intentMatchCount(intent) {
+    return Number.isFinite(intent.pendingCount) ? intent.pendingCount : 0;
   }
 
   function IntentPitch() {
@@ -1011,7 +1213,7 @@
       }) : null,
       React.createElement("div", { className: "index-dashboard__pitch-body" },
         React.createElement("h2", { className: "index-dashboard__pitch-title" },
-          "meet the person your agent is already looking for.",
+          "social layer between personal agents",
         ),
         React.createElement("p", { className: "index-dashboard__pitch-text" },
           "tell index what you're after. agents negotiate quietly in the background, and let you know if there's an alignment.",
@@ -1505,11 +1707,7 @@
     }
 
     const head = React.createElement("div", { className: "index-dashboard__net-detail-head" },
-      React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-avatar--lg", "aria-hidden": "true" },
-        local.imageUrl
-          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: local.imageUrl, alt: "", loading: "lazy" })
-          : React.createElement(BoringAvatar, { seed: local.id || local.title }),
-      ),
+      React.createElement(NetworkAvatar, { className: "index-dashboard__net-avatar--lg", imageUrl: local.imageUrl, seed: local.id || local.title }),
       React.createElement("div", { className: "index-dashboard__net-detail-head-text" },
         React.createElement("h3", { className: "index-dashboard__net-detail-title" }, local.title || "Untitled network"),
         React.createElement("div", { className: "index-dashboard__net-detail-bits" },
@@ -1849,11 +2047,7 @@
       className: "index-dashboard__net-row index-dashboard__net-row--button",
       onClick: props.onOpen ? function () { props.onOpen(network); } : undefined,
     },
-      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
-        network.imageUrl
-          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
-          : React.createElement(BoringAvatar, { seed: network.id || network.title }),
-      ),
+      React.createElement(NetworkAvatar, { imageUrl: network.imageUrl, seed: network.id || network.title }),
       React.createElement("span", { className: "index-dashboard__net-meta" },
         React.createElement("span", { className: "index-dashboard__net-title" }, network.title || "Untitled network"),
         React.createElement("span", { className: "index-dashboard__net-sub" },
@@ -1872,11 +2066,7 @@
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
     const joining = props.joiningId === network.id;
     return React.createElement("div", { className: "index-dashboard__net-row" },
-      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
-        network.imageUrl
-          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
-          : React.createElement(BoringAvatar, { seed: network.id || network.title }),
-      ),
+      React.createElement(NetworkAvatar, { imageUrl: network.imageUrl, seed: network.id || network.title }),
       React.createElement("span", { className: "index-dashboard__net-meta" },
         React.createElement("span", { className: "index-dashboard__net-title" }, network.title || "Untitled network"),
         React.createElement("span", { className: "index-dashboard__net-sub" },
@@ -1925,11 +2115,7 @@
     const req = props.request;
     const needsChanges = req.status === "needs_changes";
     return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-request-row" },
-      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
-        req.imageUrl
-          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: req.imageUrl, alt: "", loading: "lazy" })
-          : React.createElement(BoringAvatar, { seed: req.id || req.title }),
-      ),
+      React.createElement(NetworkAvatar, { imageUrl: req.imageUrl, seed: req.id || req.title }),
       React.createElement("span", { className: "index-dashboard__net-meta" },
         React.createElement("span", { className: "index-dashboard__net-title" }, req.title || "Untitled network"),
         React.createElement("span", { className: "index-dashboard__net-sub" }, needsChanges ? "Needs changes" : "In review"),
@@ -2056,11 +2242,7 @@
         "Network creation is still early. Fill this in and it gets reviewed before it goes live."),
       React.createElement("div", { className: "index-dashboard__net-request-identity" },
         React.createElement("label", { className: "index-dashboard__net-request-photo", title: "Change network picture" },
-          React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-request-photo-mark", "aria-hidden": "true" },
-            photo
-              ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: photo, alt: "" })
-              : React.createElement(BoringAvatar, { seed: trimmed || "network" }),
-          ),
+          React.createElement(NetworkAvatar, { className: "index-dashboard__net-request-photo-mark", imageUrl: photo, seed: trimmed || "network" }),
           React.createElement("input", {
             ref: photoFileRef,
             type: "file",
@@ -2215,115 +2397,612 @@
     );
   }
 
-  function DetailHead(props) {
-    return React.createElement("div", { className: "index-dashboard__detail-head" },
-      props.onBack ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: props.onBack }, ICON_ARROW_LEFT(), "Back") : null,
-      React.createElement("div", { className: "index-dashboard__detail-card" },
-        React.createElement("div", { className: "index-dashboard__detail-title-row" },
-          React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
-          props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
+  /**
+   * The head of the signal pane: what the signal asks for, the controls that
+   * hold or end it, and what its agent is doing — the mac app's signal window
+   * header (apps/mac/src/ui/mainview/conversation.jsx).
+   */
+  function SignalHead(props) {
+    return React.createElement("div", { className: "index-dashboard__signal-head" },
+      React.createElement("div", { className: "index-dashboard__detail-title-row" },
+        React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
+        props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
+      ),
+      React.createElement("div", { className: "index-dashboard__detail-live" },
+        React.createElement("span", { className: "index-dashboard__live" + (props.paused ? " index-dashboard__live--paused" : "") },
+          React.createElement("span", { className: "index-dashboard__live-dot" }),
+          props.paused ? "paused" : "live",
         ),
-      props.live
-        ? React.createElement("div", { className: "index-dashboard__detail-live" },
-          React.createElement("span", { className: "index-dashboard__live" + (props.paused ? " index-dashboard__live--paused" : "") },
-            React.createElement("span", { className: "index-dashboard__live-dot" }),
-            props.paused ? "paused" : "live",
-          ),
-          React.createElement("span", { className: "index-dashboard__detail-live-text" }, props.paused ? "agent on hold" : "agent is looking in the background"),
-        )
-        : null,
+        React.createElement("span", { className: "index-dashboard__detail-live-text" }, props.paused ? "agent on hold" : "agent is looking in the background"),
       ),
     );
   }
 
   /**
-   * The one question this intent's personal agent is suspended on.
-   *
-   * The agent conversation is not in the messages list — it is per-signal and
-   * lives here, next to the radar it is asking about. Renders nothing until
-   * there is a question, which is most of the time.
+   * Whose agent is speaking. One named counterparty puts their name on the
+   * turn, several share one line, and anything else is the owner's own agent.
    */
-  function AgentQuestion(props) {
-    const questionState = React.useState(null);
-    const question = questionState[0];
-    const setQuestion = questionState[1];
-    const draftState = React.useState("");
-    const draft = draftState[0];
-    const setDraft = draftState[1];
-    const rootRef = React.useRef(null);
-    const intentId = props.intentId;
+  function agentSpeaker(source) {
+    const matches = Array.isArray(source.matches) ? source.matches : [];
+    const people = matches
+      .map(function (match) { return match && match.counterparty; })
+      .filter(function (person) { return person && person.name; });
+    if (people.length === 1) {
+      return { label: people[0].name + "\u2019s agent", id: people[0].id || "" };
+    }
+    if (people.length > 1) {
+      return {
+        label: people.map(function (person) { return person.name; }).join(", ") + "\u2019s agents",
+        id: "",
+      };
+    }
+    return { label: source.scope === "match" ? "this match\u2019s agent" : "your agent", id: "" };
+  }
+
+  // What the agent writes down as it works, rather than something it is telling
+  // the owner. The API marks each one with its own opening word.
+  const AGENT_LOG_PREFIXES = ["Brief: ", "Decision: ", "Progress: ", "Stall: "];
+
+  /** A working note and its kind, or null when the agent is speaking to you. */
+  function agentLogEntry(text) {
+    for (let i = 0; i < AGENT_LOG_PREFIXES.length; i++) {
+      const prefix = AGENT_LOG_PREFIXES[i];
+      if (text.indexOf(prefix) === 0) {
+        return { kind: prefix.slice(0, -2).toLowerCase(), text: text.slice(prefix.length) };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The working notes of one stretch of the conversation, folded away: the
+   * thread carries what the agent is telling you, and the reasoning behind it
+   * is one click down.
+   */
+  function AgentLog(props) {
+    const items = props.items;
+    return React.createElement("details", { className: "index-dashboard__agent-log" },
+      React.createElement("summary", { className: "index-dashboard__agent-log-head" },
+        "negotiation log \u00b7 " + items.length + (items.length === 1 ? " entry" : " entries"),
+      ),
+      items.map(function (item) {
+        return React.createElement("div", { key: item.id, className: "index-dashboard__agent-log-row" },
+          React.createElement("span", { className: "index-dashboard__agent-log-who" },
+            item.who ? item.who + " \u00b7 " + item.kind : item.kind),
+          React.createElement(Markdown, { text: item.text }),
+        );
+      }),
+    );
+  }
+
+  /**
+   * One agent turn: who spoke, then what they said. Questions and plain notes
+   * share it, so a question reads as the same conversation rather than a card
+   * dropped into it.
+   */
+  function AgentLine(props) {
+    const speaker = props.speaker;
+    const openUser = props.onOpenUser && speaker.id
+      ? function () { props.onOpenUser(speaker.id); }
+      : null;
+    return React.createElement("div", { className: "index-dashboard__agent-line" },
+      React.createElement("div", { className: "index-dashboard__agent-line-body" },
+        React.createElement("div", { className: "index-dashboard__agent-line-head" },
+          props.tag
+            ? React.createElement("span", { className: "index-dashboard__agent-tag" }, props.tag)
+            : null,
+          openUser
+            ? React.createElement("button", {
+              type: "button",
+              className: "index-dashboard__agent-who index-dashboard__agent-who--link",
+              onClick: openUser,
+            }, speaker.label)
+            : React.createElement("span", { className: "index-dashboard__agent-who" }, speaker.label),
+        ),
+        props.children,
+      ),
+    );
+  }
+
+  const MARKDOWN_INLINE = /`([^`]+)`|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[([^\]]+)\]\(([^)\s]+)\)/g;
+
+  /** Bold, italic, inline code, and http(s) links inside one block of text. */
+  function markdownInline(text, key) {
+    const nodes = [];
+    let last = 0;
+    let match;
+    MARKDOWN_INLINE.lastIndex = 0;
+    while ((match = MARKDOWN_INLINE.exec(text))) {
+      if (match.index > last) nodes.push(text.slice(last, match.index));
+      const nodeKey = key + ":" + match.index;
+      if (match[1] != null) nodes.push(React.createElement("code", { key: nodeKey }, match[1]));
+      else if (match[2] != null) nodes.push(React.createElement("strong", { key: nodeKey }, match[2]));
+      else if (match[3] != null) nodes.push(React.createElement("em", { key: nodeKey }, match[3]));
+      else if (/^https?:\/\/\S+$/i.test(match[5])) {
+        nodes.push(React.createElement("a", {
+          key: nodeKey, href: match[5], target: "_blank", rel: "noopener noreferrer",
+        }, match[4]));
+      } else {
+        nodes.push(match[0]);
+      }
+      last = match.index + match[0].length;
+    }
+    if (last < text.length) nodes.push(text.slice(last));
+    return nodes;
+  }
+
+  /**
+   * The markdown a transcript actually carries, as React elements.
+   *
+   * Built from elements rather than an HTML string, so nothing the agent or the
+   * owner writes can become markup. Paragraphs, bullet and numbered lists,
+   * headings, fenced and inline code, bold, italic, and http(s) links; anything
+   * else stays literal text. The bubble's `white-space: pre-wrap` keeps the
+   * line breaks inside a paragraph.
+   */
+  function Markdown(props) {
+    const lines = String(props.text || "").split("\n");
+    const blocks = [];
+    let paragraph = [];
+    let items = null;
+    let ordered = false;
+    let code = null;
+
+    function flushParagraph() {
+      if (!paragraph.length) return;
+      const key = "b" + blocks.length;
+      blocks.push(React.createElement("p", { key: key }, markdownInline(paragraph.join("\n"), key)));
+      paragraph = [];
+    }
+
+    function flushList() {
+      if (!items) return;
+      const key = "b" + blocks.length;
+      blocks.push(React.createElement(ordered ? "ol" : "ul", { key: key }, items.map(function (item, i) {
+        return React.createElement("li", { key: key + ":" + i }, markdownInline(item, key + ":" + i));
+      })));
+      items = null;
+    }
+
+    function flushCode() {
+      if (!code) return;
+      blocks.push(React.createElement("pre", { key: "b" + blocks.length },
+        React.createElement("code", null, code.join("\n"))));
+      code = null;
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*```/.test(line)) {
+        if (code) { flushCode(); } else { flushParagraph(); flushList(); code = []; }
+        continue;
+      }
+      if (code) { code.push(line); continue; }
+      if (!line.trim()) { flushParagraph(); flushList(); continue; }
+
+      const heading = line.match(/^ {0,3}#{1,6}\s+(.*)$/);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        const key = "b" + blocks.length;
+        blocks.push(React.createElement("h4", { key: key }, markdownInline(heading[1], key)));
+        continue;
+      }
+
+      const item = line.match(/^\s*[-*]\s+(.*)$/) || line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (item) {
+        flushParagraph();
+        const isOrdered = !/^\s*[-*]\s/.test(line);
+        if (items && ordered !== isOrdered) flushList();
+        if (!items) { items = []; ordered = isOrdered; }
+        items.push(item[1]);
+        continue;
+      }
+
+      flushList();
+      paragraph.push(line);
+    }
+    flushParagraph();
+    flushList();
+    flushCode();
+
+    return React.createElement("div", { className: "index-dashboard__md" }, blocks);
+  }
+
+  /**
+   * What the two agents said to each other about one match.
+   *
+   * The radar row says they are negotiating; this is the negotiation. Read
+   * only — turns are the agents' to take, not the owner's.
+   */
+  function NegotiationModal(props) {
+    const dataState = React.useState(null);
+    const data = dataState[0];
+    const setData = dataState[1];
+    const errState = React.useState(null);
+    const err = errState[0];
+    const setErr = errState[1];
+    const opportunityId = props.opportunity.opportunityId;
 
     React.useEffect(function () {
       let alive = true;
-      function read() {
-        fetchPluginJSON(API + "/agent/question?intentId=" + encodeURIComponent(intentId))
-          .then(function (payload) {
-            if (!alive || !payload || payload.success === false) return;
-            setQuestion(payload.question || null);
-          })
-          .catch(function () { /* a failed read leaves the last question up */ });
-      }
-      read();
-      const timer = setInterval(read, 5000);
-      return function () { alive = false; clearInterval(timer); };
-    }, [intentId]);
+      setData(null);
+      setErr(null);
+      fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(opportunityId) + "/negotiation")
+        .then(function (payload) {
+          if (!alive) return;
+          if (!payload || payload.success === false) {
+            setErr((payload && payload.error) || "Could not read this negotiation.");
+            return;
+          }
+          setData(payload.negotiation || { turns: [] });
+        })
+        .catch(function () { if (alive) setErr("Could not read this negotiation."); });
+      return function () { alive = false; };
+    }, [opportunityId]);
 
-    React.useEffect(function () {
-      if (!props.focusQuestion || !rootRef.current) return;
-      rootRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, [props.focusQuestion, question && question.id]);
+    const turns = (data && Array.isArray(data.turns)) ? data.turns : [];
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", {
+        className: "index-dashboard__profile-panel index-dashboard__a2a-modal",
+        onClick: function (e) { e.stopPropagation(); },
+      },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" },
+            "your agent \u2194 " + ((data && data.name) || props.opportunity.name || "match") + "\u2019s agent"),
+          React.createElement("button", {
+            type: "button",
+            className: "index-dashboard__profile-close",
+            "aria-label": "Close",
+            onClick: props.onClose,
+          }, "\u00d7"),
+        ),
+        React.createElement("div", { className: "index-dashboard__a2a-body" },
+          err
+            ? React.createElement("div", { className: "index-dashboard__error" }, err)
+            : !data
+              ? React.createElement(EmptyState, null, "Reading the negotiation\u2026")
+              : turns.length
+                ? turns.map(function (turn) {
+                  return React.createElement("div", {
+                    key: turn.id,
+                    className: "index-dashboard__a2a-turn" + (turn.mine ? " index-dashboard__a2a-turn--mine" : ""),
+                  },
+                    React.createElement("div", { className: "index-dashboard__a2a-who" },
+                      React.createElement("span", { className: "index-dashboard__a2a-name" }, turn.name),
+                      React.createElement("span", {
+                        className: "index-dashboard__a2a-action index-dashboard__a2a-action--" + (turn.action || "turn"),
+                      }, turn.action),
+                      React.createElement("span", { className: "index-dashboard__a2a-time" },
+                        timeStamp(turn.createdAt, true)),
+                    ),
+                    React.createElement("p", { className: "index-dashboard__a2a-text" }, turn.text),
+                  );
+                })
+                : React.createElement(EmptyState, null, "No turns yet \u2014 the agents have not spoken."),
+        ),
+      ),
+    );
+  }
 
-    if (!question) return null;
+  /**
+   * This intent's H2A conversation with the owner's personal agent.
+   *
+   * Lives in the signal pane, next to the radar. Transcript, questions still
+   * waiting, and a composer for messaging the negotiator. Answers picked across
+   * several questions are sent as one write.
+   */
+  function AgentChat(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
 
-    function answer(text) {
-      const asked = question;
-      setQuestion(null);
-      setDraft("");
-      fetchPluginJSON(API + "/agent/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intentId: intentId, text: text, questionId: asked.id }),
-      }).catch(function () { setQuestion(asked); });
+    const messagesState = useState([]);
+    const messages = messagesState[0];
+    const setMessages = messagesState[1];
+    const agentState = useState(null);
+    const agent = agentState[0];
+    const setAgent = agentState[1];
+    const draftState = useState("");
+    const draft = draftState[0];
+    const setDraft = draftState[1];
+    const selectionsState = useState({});
+    const selections = selectionsState[0];
+    const setSelections = selectionsState[1];
+    const writingState = useState({});
+    const writing = writingState[0];
+    const setWriting = writingState[1];
+    const sendingState = useState(false);
+    const sending = sendingState[0];
+    const setSending = sendingState[1];
+    const rootRef = useRef(null);
+    const threadRef = useRef(null);
+    const aliveRef = useRef(true);
+    const intentId = props.intentId;
+
+    function read() {
+      return fetchPluginJSON(API + "/agent/conversation?intentId=" + encodeURIComponent(intentId))
+        .then(function (payload) {
+          if (!aliveRef.current || !payload || payload.success === false) return;
+          setMessages(payload.messages || []);
+          setAgent(payload.agent || null);
+        })
+        .catch(function () { /* Keep the last good transcript; the next read is 5s away. */ });
     }
 
-    const options = Array.isArray(question.options) ? question.options : [];
-    return React.createElement("div", { ref: rootRef },
-      React.createElement(Panel, { title: "Your agent", description: "It is holding this signal until you answer." },
-        React.createElement("p", { className: "index-dashboard__card-description" }, question.question),
-        React.createElement("div", { className: "index-dashboard__action-group" },
-          options.map(function (option) {
-            return React.createElement(Button, {
-              key: option,
+    useEffect(function () {
+      aliveRef.current = true;
+      read();
+      const timer = setInterval(read, 5000);
+      return function () { aliveRef.current = false; clearInterval(timer); };
+    }, [intentId]);
+
+    // The same stream the messages panel reads already carries this signal's
+    // H2A: an agent message arrives as `message` tagged with the intent, a new
+    // question as `question.pending`. The poll above stays as the backstop for
+    // frames missed while disconnected, and is the only path in the desktop
+    // host, whose REST bridge cannot stream.
+    useEffect(function () {
+      return subscribeUserEvents(function (data) {
+        const forIntent = data.type === "message"
+          ? (data.message && data.message.metadata && data.message.metadata.intentId)
+          : data.type === "question.pending" && data.data && data.data.intentId;
+        if (forIntent === intentId) read();
+      });
+    }, [intentId]);
+
+    const questions = (agent && Array.isArray(agent.questions)) ? agent.questions : [];
+    // Keyed by id so the transcript can render each pending question where it
+    // was asked rather than dropping the message and stacking the cards last.
+    const carded = {};
+    for (let i = 0; i < questions.length; i++) carded[questions[i].id] = questions[i];
+    const chosen = questions.filter(function (question) {
+      const answer = selections[question.id];
+      return typeof answer === "string" && answer.trim();
+    });
+
+    useEffect(function () {
+      const node = threadRef.current;
+      if (node) node.scrollTop = node.scrollHeight;
+    }, [messages.length, questions.length]);
+
+    useEffect(function () {
+      if (!props.focusQuestion || !rootRef.current) return;
+      rootRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, [props.focusQuestion, questions.length]);
+
+    function send() {
+      const text = draft.trim();
+      if (!text || sending) return;
+      setDraft("");
+      setSending(true);
+      fetchPluginJSON(API + "/agent/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intentId: intentId, text: text }),
+      })
+        .catch(function () { /* Nothing to say: the read below is the transcript's only truth. */ })
+        .then(read)
+        .then(function () { if (aliveRef.current) setSending(false); });
+    }
+
+    function sendAnswers() {
+      if (!chosen.length || sending) return;
+      const answers = chosen.map(function (question) {
+        return { questionId: question.id, text: selections[question.id].trim() };
+      });
+      setSelections({});
+      setWriting({});
+      setSending(true);
+      fetchPluginJSON(API + "/agent/answers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intentId: intentId, answers: answers }),
+      })
+        .catch(function () { /* Nothing to say: the read below is the transcript's only truth. */ })
+        .then(read)
+        .then(function () { if (aliveRef.current) setSending(false); });
+    }
+
+    function choose(questionId, text) {
+      setSelections(function (current) {
+        const next = Object.assign({}, current);
+        next[questionId] = current[questionId] === text ? "" : text;
+        return next;
+      });
+      setWriting(function (current) {
+        const next = Object.assign({}, current);
+        next[questionId] = false;
+        return next;
+      });
+    }
+
+    // A question is a turn like any other, rendered where the agent asked it,
+    // so anything you said afterwards still reads as the reply it was.
+    function questionCard(question) {
+      const options = Array.isArray(question.options) ? question.options : [];
+      const answer = selections[question.id] || "";
+      const own = options.indexOf(answer) < 0 && answer;
+      const write = writing[question.id] || !options.length;
+      function stopWriting() {
+        setWriting(function (current) {
+          const next = Object.assign({}, current);
+          next[question.id] = false;
+          return next;
+        });
+      }
+      return React.createElement(AgentLine, {
+        key: question.id,
+        tag: "question",
+        speaker: agentSpeaker(question),
+        onOpenUser: props.onOpenUser,
+      },
+        React.createElement("p", { className: "index-dashboard__agent-q-text" }, question.question),
+        options.length
+          ? React.createElement("div", { className: "index-dashboard__agent-q-options" },
+            options.map(function (option) {
+              return React.createElement(Button, {
+                key: option,
+                type: "button",
+                outlined: answer !== option,
+                disabled: sending,
+                "aria-pressed": answer === option ? "true" : "false",
+                onClick: function () { choose(question.id, option); },
+              }, option);
+            }),
+          )
+          : null,
+        // Writing your own is its own line under the options, and the field
+        // takes the chip's place there, wearing the same box.
+        React.createElement("div", { className: "index-dashboard__agent-q-write-row" },
+          write
+            ? React.createElement("input", {
+              className: "index-dashboard__agent-q-input",
+              autoFocus: !!options.length,
+              value: own ? answer : "",
+              placeholder: "write your own",
+              "aria-label": "Write your own answer",
+              disabled: sending,
+              onChange: function (e) {
+                const text = e.target.value;
+                setSelections(function (current) {
+                  const next = Object.assign({}, current);
+                  next[question.id] = text;
+                  return next;
+                });
+              },
+              onBlur: function (e) { if (options.length && !e.target.value.trim()) stopWriting(); },
+              onKeyDown: function (e) {
+                if (e.key === "Escape" && options.length && !e.target.value.trim()) stopWriting();
+              },
+            })
+            : React.createElement("button", {
               type: "button",
-              outlined: true,
-              onClick: function () { answer(option); },
-            }, option);
-          }),
+              className: "index-dashboard__agent-q-write",
+              disabled: sending,
+              onClick: function () {
+                setSelections(function (current) {
+                  const next = Object.assign({}, current);
+                  next[question.id] = "";
+                  return next;
+                });
+                setWriting(function (current) {
+                  const next = Object.assign({}, current);
+                  next[question.id] = true;
+                  return next;
+                });
+              },
+            }, "write your own"),
         ),
-        React.createElement("div", { className: "index-dashboard__msg-composer" },
-          React.createElement("textarea", {
-            className: "index-dashboard__textarea index-dashboard__msg-input",
-            rows: 1,
-            value: draft,
-            placeholder: "Write your answer…",
-            onChange: function (e) { setDraft(e.target.value); },
-            onKeyDown: function (e) {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (draft.trim()) answer(draft.trim()); }
-            },
-          }),
+      );
+    }
+
+    const bubbles = [];
+    // Questions the transcript carries are drawn in place; the rest close the
+    // feed.
+    const placed = {};
+    // Working notes fold into the log that runs with them, so a stretch of
+    // reasoning stays one box in the thread instead of a dozen turns.
+    let log = null;
+    function closeLog() {
+      if (!log) return;
+      bubbles.push(React.createElement(AgentLog, { key: "log-" + log[0].id, items: log }));
+      log = null;
+    }
+    for (let i = 0; i < messages.length; i++) {
+      const raw = messages[i];
+      const content = extractContent(raw.parts);
+      const provenance = (raw.metadata && raw.metadata.principalMessage) || {};
+      if (!content.text) continue;
+      if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) {
+        closeLog();
+        placed[provenance.questionId] = true;
+        bubbles.push(questionCard(carded[provenance.questionId]));
+        continue;
+      }
+      if (raw.role === "user") {
+        closeLog();
+        bubbles.push(React.createElement("div", { key: raw.id, className: "index-dashboard__agent-mine" },
+          React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" },
+            React.createElement(Markdown, { text: content.text }),
+          ),
+        ));
+        continue;
+      }
+      const entry = agentLogEntry(content.text);
+      if (entry) {
+        const match = Array.isArray(provenance.matches) ? provenance.matches[0] : null;
+        log = log || [];
+        log.push({
+          id: raw.id,
+          kind: entry.kind,
+          text: entry.text,
+          who: (match && match.counterparty && match.counterparty.name) || "",
+        });
+        continue;
+      }
+      closeLog();
+      bubbles.push(React.createElement(AgentLine, {
+        key: raw.id,
+        speaker: agentSpeaker(provenance),
+        onOpenUser: props.onOpenUser,
+      }, React.createElement(Markdown, { text: content.text })));
+    }
+    closeLog();
+
+    const feed = bubbles.concat(questions.filter(function (question) {
+      return !placed[question.id];
+    }).map(questionCard));
+
+    return React.createElement("div", { ref: rootRef, className: "index-dashboard__agent-chat" },
+      React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef },
+        feed.length
+          ? feed
+          : React.createElement(EmptyState, null, "Ask about your matches, share a preference, or give your agent direction for this signal."),
+      ),
+      // The answer action rides above the composer rather than scrolling away
+      // with the question it belongs to, and only once there is an answer to
+      // send: a dead button is one more thing to read past.
+      chosen.length
+        ? React.createElement("div", { className: "index-dashboard__agent-send" },
           React.createElement(Button, {
             type: "button",
-            disabled: !draft.trim(),
-            onClick: function () { if (draft.trim()) answer(draft.trim()); },
-          }, "Answer"),
-        ),
+            disabled: sending,
+            onClick: sendAnswers,
+          }, chosen.length > 1 ? "send " + chosen.length + " answers" : "send answer"),
+        )
+        : null,
+      React.createElement("div", { className: "index-dashboard__msg-composer index-dashboard__agent-composer" },
+        React.createElement("textarea", {
+          className: "index-dashboard__textarea index-dashboard__msg-input",
+          rows: 1,
+          value: draft,
+          placeholder: "Message your personal agent…",
+          "aria-label": "Message your personal agent",
+          onChange: function (e) { setDraft(e.target.value); },
+          onKeyDown: function (e) {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+          },
+        }),
+        // The arrow is the send key: Enter sends, and this is the same thing
+        // for a pointer.
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__agent-send-key",
+          "aria-label": "Send message",
+          title: "Send",
+          disabled: !draft.trim() || sending,
+          onClick: send,
+        }, ICON_ARROW_UP()),
       ),
     );
   }
 
   function IntentDetail(props) {
     const intent = props.intent;
-    const bucketState = React.useState("pending");
+    // Opens on the whole radar, like the mac app: the accepted rows sit next to
+    // the ones awaiting you instead of being a tab away.
+    const bucketState = React.useState("all");
     const selectedBucket = bucketState[0];
     const setSelectedBucket = bucketState[1];
     // Armed archive: the first click arms the segment ("sure?"), the second
@@ -2345,50 +3024,57 @@
     const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
     const allOpps = Array.isArray(intent.opportunities) ? intent.opportunities : [];
     const visibleOpps = allOpps.filter(function (opp) {
-      return bucketForStatus(opp.status) === selectedBucket;
+      const bucket = bucketForStatus(opp.status);
+      if (!bucket) return false;
+      return selectedBucket === "all" || bucket === selectedBucket;
     });
     const radarEmpty = "No matches here yet.";
     const radarLoading = !!props.radarLoading;
+    const signalHead = React.createElement(SignalHead, {
+      title: intent.title || "Untitled intent",
+      paused: paused,
+      actions: (function () {
+        const archiving = props.archivingId === intent.id;
+        return React.createElement("span", { className: "index-dashboard__action-group" },
+          Tip("pause", paused ? "Resume" : "Pause", React.createElement("button", {
+            type: "button",
+            "aria-label": paused ? "Resume" : "Pause",
+            className: "index-dashboard__action-seg "
+              + (paused ? "index-dashboard__action-seg--resume index-dashboard__action-seg--filled" : "index-dashboard__action-seg--pause"),
+            onClick: props.onPause ? function () { setArmed(false); props.onPause(intent.id, paused); } : undefined,
+          }, paused ? ICON_PLAY() : ICON_PAUSE())),
+          React.createElement("span", { key: "sep", className: "index-dashboard__action-sep", "aria-hidden": "true" }),
+          Tip("archive", archiving ? "Archiving…" : armed ? "Confirm archive" : "Archive", React.createElement("button", {
+            type: "button",
+            "aria-label": armed ? "Confirm archive" : "Archive",
+            className: "index-dashboard__action-seg index-dashboard__action-seg--archive"
+              + (armed || archiving ? " index-dashboard__action-seg--filled" : ""),
+            disabled: archiving,
+            onClick: archiving ? undefined : function () {
+              if (!armed) { setArmed(true); return; }
+              setArmed(false);
+              if (props.onArchive) props.onArchive(intent.id);
+            },
+          }, ICON_TRASH(), armed ? "sure?" : null)),
+        );
+      })(),
+    });
     return React.createElement("div", { className: "index-dashboard__detail" },
-      React.createElement(DetailHead, {
-        title: intent.title || "Untitled intent",
-        live: true,
-        paused: paused,
-        onBack: props.onBack,
-        actions: (function () {
-          const archiving = props.archivingId === intent.id;
-          return React.createElement("span", { className: "index-dashboard__action-group" },
-            Tip("pause", paused ? "Resume" : "Pause", React.createElement("button", {
-              type: "button",
-              "aria-label": paused ? "Resume" : "Pause",
-              className: "index-dashboard__action-seg "
-                + (paused ? "index-dashboard__action-seg--resume index-dashboard__action-seg--filled" : "index-dashboard__action-seg--pause"),
-              onClick: props.onPause ? function () { setArmed(false); props.onPause(intent.id, paused); } : undefined,
-            }, paused ? ICON_PLAY() : ICON_PAUSE())),
-            React.createElement("span", { key: "sep", className: "index-dashboard__action-sep", "aria-hidden": "true" }),
-            Tip("archive", archiving ? "Archiving…" : armed ? "Confirm archive" : "Archive", React.createElement("button", {
-              type: "button",
-              "aria-label": armed ? "Confirm archive" : "Archive",
-              className: "index-dashboard__action-seg index-dashboard__action-seg--archive"
-                + (armed || archiving ? " index-dashboard__action-seg--filled" : ""),
-              disabled: archiving,
-              onClick: archiving ? undefined : function () {
-                if (!armed) { setArmed(true); return; }
-                setArmed(false);
-                if (props.onArchive) props.onArchive(intent.id);
-              },
-            }, ICON_TRASH(), armed ? "sure?" : null)),
-          );
-        })(),
-      }),
+      props.onBack
+        ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: props.onBack }, ICON_ARROW_LEFT(), "Back")
+        : null,
+      // signal | radar, the two windows the mac app puts side by side.
       React.createElement("div", { className: "index-dashboard__detail-cols" },
-        React.createElement(AgentQuestion, { intentId: intent.id, focusQuestion: props.focusQuestion }),
-        React.createElement(Panel, { title: "Radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
+        React.createElement(Panel, { title: "signal" },
+          signalHead,
+          React.createElement(AgentChat, { intentId: intent.id, focusQuestion: props.focusQuestion, onOpenUser: props.onOpenUser }),
+        ),
+        React.createElement(Panel, { title: "radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           props.actionError ? React.createElement("div", { className: "index-dashboard__error" }, props.actionError) : null,
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
           radarLoading && !allOpps.length
             ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
-            : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
+            : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onOpenNegotiation: props.onOpenNegotiation, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -2417,7 +3103,10 @@
 
   function ProfileField(props) {
     return React.createElement("label", { className: "index-dashboard__profile-field" },
-      React.createElement("span", { className: "index-dashboard__profile-label" }, props.label),
+      React.createElement("span", { className: "index-dashboard__profile-label-row" },
+        React.createElement("span", { className: "index-dashboard__profile-label" }, props.label),
+        props.note ? React.createElement("span", { className: "index-dashboard__profile-label-note" }, props.note) : null,
+      ),
       props.children,
       props.hint ? React.createElement("span", { className: "index-dashboard__profile-hint" }, props.hint) : null,
     );
@@ -2686,7 +3375,10 @@
     }
 
     function optionRow(key, name, sub, checked, onSelect) {
-      return React.createElement("label", { key: key, className: "index-dashboard__agent-row" },
+      return React.createElement("label", {
+        key: key,
+        className: "index-dashboard__agent-row" + (checked ? " index-dashboard__agent-row--selected" : ""),
+      },
         React.createElement("input", {
           type: "radio",
           name: "index-negotiator",
@@ -2699,6 +3391,7 @@
           React.createElement("strong", { className: "index-dashboard__agent-name" }, name),
           React.createElement("span", { className: "index-dashboard__agent-sub" }, sub),
         ),
+        checked ? React.createElement("span", { className: "index-dashboard__agent-active" }, "active") : null,
       );
     }
 
@@ -2714,8 +3407,8 @@
     return React.createElement("div", { className: "index-dashboard__profile-section" },
       error ? React.createElement("div", { className: "index-dashboard__error" }, error) : null,
       React.createElement(ProfileField, {
-        label: "Negotiator",
-        hint: "Index negotiates for you until you choose one of your own agents.",
+        label: "Who negotiates for you",
+        hint: "index negotiates for you until you choose one of your own agents.",
       },
         React.createElement("div", { className: "index-dashboard__agent-rows" },
           [optionRow(
@@ -2778,10 +3471,12 @@
       return React.createElement("div", { className: "index-dashboard__error" }, error);
     }
     if (!items || items.length === 0) {
-      return React.createElement(EmptyState, null, "No negotiation is open right now.");
+      return React.createElement("p", { className: "index-dashboard__negos-empty" },
+        "no negotiations yet. your agent will start them for you.");
     }
 
-    return React.createElement("div", { className: "index-dashboard__negos" },
+    return React.createElement(ProfileField, { label: "In progress (" + formatCount(items.length) + ")" },
+      React.createElement("div", { className: "index-dashboard__negos" },
       items.map(function (item, index) {
         const yours = item.awaiting === "you";
         return React.createElement("article", {
@@ -2800,10 +3495,13 @@
               : null,
           ),
           item.awaiting
-            ? React.createElement(BadgeText, yours ? { tone: "warning" } : {}, yours ? "your turn" : "their turn")
+            ? React.createElement("span", {
+              className: "index-dashboard__nego-turn" + (yours ? " index-dashboard__nego-turn--yours" : ""),
+            }, yours ? "Your turn \u2192" : "Their turn")
             : null,
         );
       }),
+      ),
     );
   }
 
@@ -2840,15 +3538,12 @@
     const step = stepState[0];
     const setStep = stepState[1];
     const assembledRef = useRef(null);
-    const advancedOpenState = useState(false);
-    const advancedOpen = advancedOpenState[0];
-    const setAdvancedOpen = advancedOpenState[1];
 
     const readOnly = !!props.readOnly;
     const gettingStarted = !!props.gettingStarted;
-    // The two panes behind Advanced own the whole body: neither edits the
+    // These two panes own the whole body: neither edits the
     // profile, so the form's save bar has nothing to do while one is open.
-    const advancedActive = !readOnly && !gettingStarted
+    const paneTab = !readOnly && !gettingStarted
       && (tab === "agents" || tab === "negotiations");
 
     function applyProfile(p) {
@@ -3098,39 +3793,8 @@
       return React.createElement("button", {
         type: "button",
         className: "index-dashboard__profile-tab" + (active ? " index-dashboard__profile-tab--active" : ""),
-        onClick: function () { setTab(id); setAdvancedOpen(false); },
+        onClick: function () { setTab(id); },
       }, label);
-    }
-
-    // Advanced sits in the tab row but opens a menu instead of a pane, so the
-    // owner controls behind it stay out of the way of everyday settings.
-    function advancedItem(id, label) {
-      return React.createElement("button", {
-        type: "button",
-        role: "menuitem",
-        className: "index-dashboard__advanced-item"
-          + (tab === id ? " index-dashboard__advanced-item--active" : ""),
-        onClick: function () { setTab(id); setAdvancedOpen(false); },
-      }, label);
-    }
-
-    function advancedMenu() {
-      return React.createElement("div", { className: "index-dashboard__advanced" },
-        React.createElement("button", {
-          type: "button",
-          className: "index-dashboard__profile-tab"
-            + (advancedActive ? " index-dashboard__profile-tab--active" : ""),
-          "aria-expanded": advancedOpen ? "true" : "false",
-          "aria-haspopup": "menu",
-          onClick: function () { setAdvancedOpen(!advancedOpen); },
-        }, "Advanced ▾"),
-        advancedOpen
-          ? React.createElement("div", { className: "index-dashboard__advanced-menu", role: "menu" },
-            advancedItem("agents", "Settings"),
-            advancedItem("negotiations", "Negotiations"),
-          )
-          : null,
-      );
     }
 
     function socialRows() {
@@ -3158,11 +3822,7 @@
             onClick: function () { removeCustom(index); },
           }, "×"),
         );
-      })).concat([
-        customSocials().length < 3
-          ? React.createElement("button", { key: "add", type: "button", className: "index-dashboard__profile-add", onClick: addCustom }, "+ Add website")
-          : null,
-      ]);
+      }));
     }
 
     function profileTab() {
@@ -3182,6 +3842,10 @@
             React.createElement("strong", { className: "index-dashboard__profile-identity-name" }, form.name || "Your name"),
             form.location ? React.createElement("span", { className: "index-dashboard__profile-identity-sub" }, form.location) : null,
           ),
+          React.createElement("label", { className: "index-dashboard__profile-photo-link" },
+            "Change photo",
+            React.createElement("input", { type: "file", accept: "image/*", className: "index-dashboard__profile-avatar-input", onChange: onAvatarFile }),
+          ),
         ),
         React.createElement("div", { className: "index-dashboard__profile-grid" },
           React.createElement(ProfileField, { label: "Name" },
@@ -3191,11 +3855,14 @@
             React.createElement("input", { className: "index-dashboard__profile-input", value: form.location, placeholder: "Brooklyn, NY", onChange: function (e) { patchForm({ location: e.target.value }); } }),
           ),
         ),
-        React.createElement(ProfileField, { label: "Introduction" },
+        React.createElement(ProfileField, { label: "Introduction", note: "agents share this when negotiating" },
           React.createElement("textarea", { className: "index-dashboard__textarea", rows: 4, value: form.intro, placeholder: "Tell others about yourself…", onChange: function (e) { patchForm({ intro: e.target.value }); } }),
         ),
         React.createElement(ProfileField, { label: "Socials" },
           React.createElement("div", { className: "index-dashboard__profile-socials" }, socialRows()),
+          customSocials().length < 3
+            ? React.createElement("button", { type: "button", className: "index-dashboard__profile-add", onClick: addCustom }, "+ add website")
+            : null,
         ),
       );
     }
@@ -3215,7 +3882,8 @@
             return React.createElement("option", { key: tz, value: tz }, tz.replace(/_/g, " "));
           })),
         ),
-        React.createElement("div", { className: "index-dashboard__profile-checks" },
+        React.createElement(ProfileField, { label: "Email" },
+          React.createElement("div", { className: "index-dashboard__profile-checks" },
           [["connectionUpdates", "Connection updates", "Email when someone connects with you"], ["weeklyNewsletter", "Weekly newsletter", "Weekly summary of new connections"]].map(function (row) {
             const key = row[0];
             return React.createElement("label", { key: key, className: "index-dashboard__profile-check" },
@@ -3226,6 +3894,7 @@
               React.createElement("input", { type: "checkbox", checked: !!prefs[key], onChange: function (e) { setPref(key, e.target.checked); } }),
             );
           }),
+          ),
         ),
       );
     }
@@ -3274,7 +3943,7 @@
 
     const title = gettingStarted
       ? "Getting started"
-      : (readOnly ? ((form && form.name) || "Profile") : "Settings");
+      : (readOnly ? ((form && form.name) || "Profile") : "settings");
 
     const panel = React.createElement("div", {
       className: "index-dashboard__profile-panel" + (gettingStarted ? " index-dashboard__profile-panel--getting-started" : ""),
@@ -3296,14 +3965,15 @@
           "Here's what I pulled together. Make sure it's right.")
         : null,
       (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
-        tabButton("profile", "Profile Settings"),
+        tabButton("profile", "Profile"),
         tabButton("notifications", "Notifications"),
-        advancedMenu(),
+        tabButton("agents", "Negotiator"),
+        tabButton("negotiations", "Negotiations"),
       ),
       panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
-      advancedActive
-        // Each Advanced pane loads its own data, so it opens without waiting on
-        // the profile fetch behind it.
+      paneTab
+        // Each pane loads its own data, so it opens without waiting on the
+        // profile fetch behind it.
         ? React.createElement("div", { className: "index-dashboard__profile-body" },
           tab === "agents"
             ? React.createElement(NegotiatorSettings)
@@ -3314,10 +3984,10 @@
           : React.createElement("div", { className: "index-dashboard__profile-body" },
             readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
           )),
-      (!readOnly && form && !advancedActive)
+      (!readOnly && form && !paneTab)
         ? React.createElement("div", { className: "index-dashboard__profile-bar" },
           React.createElement("span", { className: "index-dashboard__profile-note" },
-            note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "You have unsaved changes" : ""))),
+            note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "\u25cf unsaved changes" : ""))),
           React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
             gettingStarted
               ? React.createElement(Button, {
@@ -3330,12 +4000,12 @@
               : React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
             React.createElement(Button, {
               type: "button",
-              className: gettingStarted ? "index-dashboard__getting-started-btn" : undefined,
+              className: gettingStarted ? "index-dashboard__getting-started-btn" : "index-dashboard__profile-save",
               disabled: saving || (!gettingStarted && !dirty),
               onClick: save,
             }, saving
               ? (gettingStarted ? "Confirming…" : "Saving…")
-              : (gettingStarted ? "Looks good" : "Save Changes")),
+              : (gettingStarted ? "Looks good" : "Save changes")),
           ),
         )
         : null,
@@ -3413,6 +4083,18 @@
       createdAt: raw.createdAt || "",
       mine: mine,
     };
+  }
+
+  function timeStamp(iso, coarse) {
+    if (!iso) return "";
+    const at = new Date(iso);
+    if (isNaN(at.getTime())) return "";
+    const clock = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (!coarse) return clock;
+    const days = (Date.now() - at.getTime()) / 86400000;
+    if (days < 1) return clock;
+    if (days < 7) return at.toLocaleDateString([], { weekday: "short" });
+    return at.toLocaleDateString([], { month: "short", day: "numeric" });
   }
 
   function MessagesPanel(props) {
@@ -3536,20 +4218,10 @@
     useEffect(function () { loadList(props.initialConversationId || null); }, []);
 
     // Authoritative realtime, mirroring the web app's ConversationContext:
-    // dedup by message id, live conversation-summary updates, refresh-on-unknown,
-    // and reconnect with exponential backoff (5s * 2^n, capped at 60s, 10 tries).
-    //
-    // The plugin backend relays the upstream Redis stream with its own API key.
-    // We consume that relay with SDK.authedFetch (which injects the Hermes
-    // dashboard session auth — the `X-Hermes-Session-Token` header in loopback
-    // mode, cookies in gated mode) plus a streaming body reader, rather than a
-    // raw EventSource: EventSource cannot set the session header and the host
-    // does not accept a ?token= query param on plugin routes, so it would fail
-    // to authenticate in the default desktop (loopback) mode.
-    function applyIncoming(dataStr) {
-      let data;
-      try { data = JSON.parse(dataStr); } catch (e) { return; }
-      if (!data || data.type !== "message" || !data.message) return;
+    // dedup by message id, live conversation-summary updates, and
+    // refresh-on-unknown.
+    function applyIncoming(data) {
+      if (data.type !== "message" || !data.message) return;
       const convId = data.conversationId || data.message.conversationId;
       if (!convId) return;
       const msg = normalizeMessage(data.message, userIdRef.current);
@@ -3585,64 +4257,7 @@
         return function () { clearInterval(pollId); };
       }
 
-      let retryTimer = null;
-      let retries = 0;
-      let stopped = false;
-      let reader = null;
-
-      function scheduleRetry() {
-        if (stopped) return;
-        retries += 1;
-        if (retries > 10) return;
-        const delay = Math.min(5000 * Math.pow(2, retries - 1), 60000);
-        retryTimer = setTimeout(connect, delay);
-      }
-
-      function streamFetch() {
-        const url = API + "/conversations/stream";
-        const opts = { headers: { Accept: "text/event-stream" } };
-        if (SDK.authedFetch) return SDK.authedFetch(url, opts);
-        return window.fetch(url, Object.assign({ credentials: "include" }, opts));
-      }
-
-      function connect() {
-        streamFetch()
-          .then(function (response) {
-            if (!response || !response.ok || !response.body || !response.body.getReader) {
-              throw new Error("stream unavailable");
-            }
-            retries = 0;
-            reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
-            function pump() {
-              return reader.read().then(function (result) {
-                if (stopped) { try { reader.cancel(); } catch (e) { /* noop */ } return; }
-                if (result.done) { scheduleRetry(); return; }
-                buffer += decoder.decode(result.value, { stream: true });
-                let sep;
-                while ((sep = buffer.indexOf("\n\n")) >= 0) {
-                  const frame = buffer.slice(0, sep);
-                  buffer = buffer.slice(sep + 2);
-                  const lines = frame.split("\n");
-                  for (let i = 0; i < lines.length; i++) {
-                    if (lines[i].indexOf("data:") === 0) applyIncoming(lines[i].slice(5).trim());
-                  }
-                }
-                return pump();
-              });
-            }
-            return pump();
-          })
-          .catch(function () { if (!stopped) scheduleRetry(); });
-      }
-
-      connect();
-      return function () {
-        stopped = true;
-        if (retryTimer) clearTimeout(retryTimer);
-        if (reader) { try { reader.cancel(); } catch (e) { /* noop */ } }
-      };
+      return subscribeUserEvents(applyIncoming);
     }, []);
 
     useEffect(function () {
@@ -3731,20 +4346,23 @@
     return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
       React.createElement("div", { className: "index-dashboard__profile-panel index-dashboard__msg-panel", onClick: function (e) { e.stopPropagation(); } },
         React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Messages"),
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "messages"),
           React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
         listErr ? React.createElement("div", { className: "index-dashboard__error" }, listErr) : null,
         React.createElement("div", { className: "index-dashboard__msg-body" },
           React.createElement("div", { className: "index-dashboard__msg-list" },
-            React.createElement("input", {
-              type: "search",
-              className: "index-dashboard__msg-search",
-              placeholder: "Search conversations…",
-              value: query,
-              onChange: function (e) { setQuery(e.target.value); },
-              "aria-label": "Search conversations",
-            }),
+            React.createElement("div", { className: "index-dashboard__msg-search-bar" },
+              React.createElement("input", {
+                type: "search",
+                className: "index-dashboard__msg-search",
+                placeholder: "\u2315 search conversations…",
+                value: query,
+                onChange: function (e) { setQuery(e.target.value); },
+                "aria-label": "Search conversations",
+              }),
+            ),
+            React.createElement("div", { className: "index-dashboard__msg-convs" },
             listLoading
               ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading…")
               : (convs.length === 0
@@ -3767,19 +4385,34 @@
                         className: "index-dashboard__avatar index-dashboard__msg-conv-avatar",
                       }),
                       React.createElement("span", { className: "index-dashboard__msg-conv-main" },
-                        React.createElement("span", { className: "index-dashboard__msg-conv-name" },
-                          unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,
-                          c.title || "Conversation",
-                          c.kind === "negotiation" ? React.createElement("span", { className: "index-dashboard__msg-conv-badge" }, "Agent") : null,
+                        React.createElement("span", { className: "index-dashboard__msg-conv-top" },
+                          React.createElement("span", { className: "index-dashboard__msg-conv-name" },
+                            c.title || "Conversation",
+                            c.kind === "negotiation" ? React.createElement("span", { className: "index-dashboard__msg-conv-badge" }, "Agent") : null,
+                          ),
+                          React.createElement("span", { className: "index-dashboard__msg-conv-time" }, timeStamp(c.lastMessageAt, true)),
                         ),
                         c.lastMessagePreview ? React.createElement("span", { className: "index-dashboard__msg-conv-preview" }, c.lastMessagePreview) : null,
                       ),
+                      unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,
                     );
                   }))),
+            ),
           ),
           React.createElement("div", { className: "index-dashboard__msg-thread-col" },
             activeId
               ? React.createElement(React.Fragment, null,
+                activeConv
+                  ? React.createElement("div", { className: "index-dashboard__msg-thread-head" },
+                    React.createElement(UserAvatar, {
+                      id: activeConv.counterpartUserId,
+                      name: activeConv.counterpartName || activeConv.title,
+                      avatar: activeConv.avatar,
+                      className: "index-dashboard__avatar index-dashboard__msg-thread-avatar",
+                    }),
+                    React.createElement("span", { className: "index-dashboard__msg-thread-name" }, activeConv.title || "Conversation"),
+                  )
+                  : null,
                 React.createElement("div", { className: "index-dashboard__msg-thread", ref: threadRef },
                   threadLoading
                     ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading messages…")
@@ -3790,13 +4423,18 @@
                           let cls = "index-dashboard__msg-bubble";
                           if (m.mine) cls += " index-dashboard__msg-bubble--mine";
                           if (m.isInternal) cls += " index-dashboard__msg-bubble--internal";
-                          if (m.isInternal) {
-                            return React.createElement("div", { key: m.id, className: cls },
-                              React.createElement("span", { className: "index-dashboard__msg-internal-label" }, "Internal assessment"),
-                              React.createElement("span", null, m.text),
-                            );
-                          }
-                          return React.createElement("div", { key: m.id, className: cls }, m.text);
+                          return React.createElement("div", {
+                            key: m.id,
+                            className: "index-dashboard__msg-row" + (m.mine ? " index-dashboard__msg-row--mine" : ""),
+                          },
+                            m.isInternal
+                              ? React.createElement("div", { className: cls },
+                                React.createElement("span", { className: "index-dashboard__msg-internal-label" }, "Internal assessment"),
+                                React.createElement("span", null, m.text),
+                              )
+                              : React.createElement("div", { className: cls }, m.text),
+                            React.createElement("span", { className: "index-dashboard__msg-time" }, timeStamp(m.createdAt)),
+                          );
                         });
                       })(),
                 ),
@@ -3805,11 +4443,17 @@
                     className: "index-dashboard__textarea index-dashboard__msg-input",
                     rows: 1,
                     value: input,
-                    placeholder: activeConv ? ("Message " + (activeConv.counterpartName || activeConv.title) + "…") : "Type a message…",
+                    placeholder: "write a message…",
                     onChange: function (e) { setInput(e.target.value); },
                     onKeyDown: onComposerKey,
                   }),
-                  React.createElement(Button, { type: "button", disabled: sending || !input.trim(), onClick: send }, sending ? "Sending…" : "Send"),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "index-dashboard__msg-send",
+                    "aria-label": "Send",
+                    disabled: sending || !input.trim(),
+                    onClick: send,
+                  }, "\u2191"),
                 ),
               )
               : React.createElement("div", { className: "index-dashboard__msg-thread" },
@@ -3825,7 +4469,7 @@
     const useState = React.useState;
     const useEffect = React.useEffect;
     const useRef = React.useRef;
-    const initial = parseHash();
+    const initial = parseView();
     // Root node + host theme; every animated asset resolves against SCHEME.
     const rootRef = useRef(null);
     const scheme = useColorScheme(rootRef);
@@ -3875,16 +4519,20 @@
     const autoState = useState(true);
     const autoRefresh = autoState[0];
     const setAutoRefresh = autoState[1];
-    const profileOpenState = useState(false);
+    const profileOpenState = useState(!!initial.profileOpen);
     const profileOpen = profileOpenState[0];
     const setProfileOpen = profileOpenState[1];
-    const viewUserState = useState(null);
+    // The radar row whose negotiation is open, if any.
+    const negotiationState = useState(null);
+    const negotiation = negotiationState[0];
+    const setNegotiation = negotiationState[1];
+    const viewUserState = useState(initial.viewUserId || null);
     const viewUserId = viewUserState[0];
     const setViewUserId = viewUserState[1];
-    const messagesOpenState = useState(false);
+    const messagesOpenState = useState(!!initial.messagesOpen);
     const messagesOpen = messagesOpenState[0];
     const setMessagesOpen = messagesOpenState[1];
-    const messagesTargetState = useState(null);
+    const messagesTargetState = useState(initial.messagesTarget || null);
     const messagesTarget = messagesTargetState[0];
     const setMessagesTarget = messagesTargetState[1];
     // Bumped by a question notification, so the card scrolls into view even
@@ -4394,15 +5042,31 @@
     }, [autoRefresh, auth]);
 
     useEffect(function () {
-      if (DESKTOP_ENV) return undefined;
-      function onHashChange() {
-        setSelectedId(parseHash().intentId);
+      function applyView() {
+        const view = parseView();
+        setSelectedId(view.intentId);
+        setMessagesOpen(view.messagesOpen);
+        setMessagesTarget(view.messagesTarget);
+        setProfileOpen(view.profileOpen);
+        setViewUserId(view.viewUserId);
       }
-      window.addEventListener("hashchange", onHashChange);
+      window.addEventListener("hashchange", applyView);
+      window.addEventListener("popstate", applyView);
       return function () {
-        window.removeEventListener("hashchange", onHashChange);
+        window.removeEventListener("hashchange", applyView);
+        window.removeEventListener("popstate", applyView);
       };
     }, []);
+
+    useEffect(function () {
+      writeView({
+        intentId: selectedId,
+        profileOpen: profileOpen,
+        viewUserId: viewUserId,
+        messagesOpen: messagesOpen,
+        messagesTarget: messagesTarget,
+      });
+    }, [selectedId, profileOpen, viewUserId, messagesOpen, messagesTarget]);
 
     // A notification tap re-enters this page with its target on the URL. An
     // opportunity or a conversation opens as a panel over whatever was already
@@ -4430,7 +5094,9 @@
         } else {
           setSelectedId(target.id);
           writeHash(target.id);
-          setFocusQuestion(function (n) { return n + 1; });
+          if (selectedIdRef.current !== target.id) {
+            setFocusQuestion(function (n) { return n + 1; });
+          }
         }
       }
       applyFocus();
@@ -4472,7 +5138,7 @@
       : null;
 
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
@@ -4527,6 +5193,12 @@
           onRefresh: function () { if (loadRef.current) loadRef.current(); },
           onMessages: function () { if (openMessagesRef.current) openMessagesRef.current(null); },
           onAccount: function () { if (toggleProfileRef.current) toggleProfileRef.current(); },
+        })
+        : null,
+      negotiation
+        ? React.createElement(NegotiationModal, {
+          opportunity: negotiation,
+          onClose: function () { setNegotiation(null); },
         })
         : null,
       viewUserId

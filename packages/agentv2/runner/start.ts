@@ -11,7 +11,7 @@ const model = new ModelClient();
 
 const me = await client.me();
 console.log(`${stamp()} ${me.name ?? me.id} on ${process.env.INDEX_API_URL ?? "http://localhost:3001"}`);
-console.log(`${stamp()} cron 08:00, 14:00, 20:00. Ctrl-C to stop.`);
+console.log(`${stamp()} waking on events only. Ctrl-C to stop.`);
 
 const runner = startRunner({
   client,

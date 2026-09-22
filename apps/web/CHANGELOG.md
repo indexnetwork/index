@@ -8,12 +8,27 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- The negotiations inbox refreshes on `negotiation.changed` alone. The API no
+  longer publishes `negotiation.opened`; a pair that opens now sends
+  `negotiation.changed` to both seats, so the list still refreshes when a
+  negotiation appears, and the counterpart's list refreshes too.
+- **The realtime stream resumes where it left off.** Each frame now arrives with
+  a stream id, and a reconnect asks for `?after=<id>`, so frames published while
+  the tab was disconnected are delivered instead of lost. The reconnect builds a
+  new `EventSource`, which drops the browser's own `Last-Event-ID`, so the id is
+  carried by hand.
 - Read a negotiation at `GET /api/opportunities/:id/negotiation` (was
   `GET /api/negotiations/:opportunityId`). The negotiations inbox still reads
   `GET /api/negotiations`.
-- **BREAKING: the Index-hosted negotiator only handles matches.** It remains the
-  default in Settings and takes negotiation turns for you, but it does not chat:
-  intent chat only sends when an external negotiator is selected.
+- **The Index-hosted negotiator only handles matches.** It remains the default
+  in Settings and takes negotiation turns for you, and it authors no chat of its
+  own. The intent chat is still always writable: messages and answers send
+  whether or not an external negotiator is selected.
+- **The intent chat behaves like a chat.** The composer clears as soon as you
+  send instead of waiting for the write, a failed send or read says nothing and
+  keeps the last transcript on screen, and the draft no longer survives a reload
+  in `sessionStorage`. Question cards and the composer are never disabled. The
+  transcript stays live on the realtime stream with a 5s catch-up read.
 - Subscribe to the user event stream at `GET /api/events` (was
   `/api/conversations/stream`), and make the CLI setup snippet smoke-test with
   `index intent list --json` on CLI 0.25.0.

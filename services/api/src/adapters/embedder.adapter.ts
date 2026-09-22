@@ -17,7 +17,10 @@ export interface IntentCandidate {
   type: 'intent'; id: string; userId: string; score: number; networkId: string;
 }
 export interface IntentSearchOptions {
-  networkScope: string[]; excludeUserId?: string; limit: number; minScore: number; signal?: AbortSignal;
+  networkScope: string[]; excludeUserId?: string; limit: number;
+  /** Similarity cutoff, 0..1. Zero searches without one, for a caller that wants a top-N. */
+  minScore: number;
+  signal?: AbortSignal;
 }
 
 export interface VectorSearchResult<T> {
@@ -189,7 +192,9 @@ export class EmbedderAdapter {
       isNull(schema.networkMembers.deletedAt),
       isNull(schema.networks.deletedAt),
       isNotNull(intents.embedding),
-      sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+      ...(minScore > 0
+        ? [sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`]
+        : []),
     ];
 
     const results = await db

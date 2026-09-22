@@ -1,3 +1,5 @@
+import type { Index } from "@indexnetwork/client";
+
 import type { Model } from "./model.ts";
 
 export interface User {
@@ -17,31 +19,23 @@ export interface Intent {
 
 export type NegotiationAction = "propose" | "counter" | "accept" | "decline";
 
+export interface NegotiationTurn {
+  turnIndex: number;
+  actor: "you" | "counterpart";
+  action: NegotiationAction;
+  message: string;
+  createdAt: string;
+}
+
 /** A one-shot instruction the next negotiator run must carry out. */
 export type Decision = "continue" | "accept" | "decline" | "stop";
-
-/** One counterparty a search surfaced, as a run judging it sees them. */
-export interface Counterparty {
-  intentId: string;
-  userId: string;
-  name: string;
-  statement: string;
-  networkId: string;
-  score: number;
-}
-
-/** One counterparty a run picked to become an opportunity. */
-export interface CounterpartyPick {
-  intentId: string;
-  networkId: string;
-}
 
 /**
  * One entry of the principal conversation. Briefs and decisions are entries
  * too: they are how a wake's work persists, and the principal can read them.
  */
 export interface ConversationEntry {
-  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall";
+  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall" | "expire" | "progress";
   text: string;
   scope?: "intent" | "opportunity";
   counterpart?: string;
@@ -56,18 +50,35 @@ export interface Opportunity {
   counterpart: string;
   status: string;
   awaiting?: string;
-  turns?: string;
+  turnCount?: number;
+  turns?: NegotiationTurn[];
+  maxTurns?: number;
+  remainingTurns?: number;
   /** What this seat may do right now. Constrains `submit_turn`. */
   actions?: NegotiationAction[];
   intent?: { statement: string };
   why?: string;
-  terms?: string;
   brief?: string;
   decision?: Decision;
   /** Why the last negotiator run stopped without a turn. */
   stall?: Stall;
   /** Whether the principal has spoken to this opportunity since its last decision. */
   answered?: boolean;
+}
+
+/**
+ * Everything a first brief sees: one opportunity and the conversation behind
+ * it. No siblings, and no way to reach the principal — this run only writes
+ * the standing state a negotiator needs to exist.
+ */
+export interface BriefInput {
+  user: User;
+  intent: Intent;
+  principalConversation: ConversationEntry[];
+  opportunity: Opportunity;
+  model: Model;
+  now?: () => Date;
+  signal?: AbortSignal;
 }
 
 /** Everything a wake sees: one signal, its conversation, and all of its opportunities. */
@@ -77,27 +88,26 @@ export interface WakeInput {
   principalConversation: ConversationEntry[];
   opportunities: Opportunity[];
   model: Model;
-  /**
-   * One opportunity to work alone. No other opportunity is decided and the
-   * principal is not addressed, however much either is owed.
-   */
-  focus?: string;
+  /** Index for this owner, for the two operations the model triggers mid-loop. */
+  client: Index;
   now?: () => Date;
   signal?: AbortSignal;
   /**
    * One opportunity's brief and decision, the moment they are decided. The
    * wake waits for it, so the host can persist and act on that opportunity
-   * while the others are still being decided.
+   * while the wake goes on thinking. A failure here is raised from `wake`
+   * once the loop ends; the model is never told the host could not persist.
    */
-  onDecision?: (actions: WakeAction[]) => void | Promise<void>;
+  onBrief?: (actions: WakeAction[]) => void | Promise<void>;
   /**
-   * Search this signal's communities. Given both this and
-   * {@link WakeInput.createOpportunities}, an unfocused wake looks for new
-   * counterparties; given neither, it only works what it already has.
+   * The opportunities this wake just opened, as Index created them. They have
+   * no brief yet and it is this seat's turn on every one, so nothing else will
+   * ever move them: the host starts each one, which briefs it and takes the
+   * first turn.
    */
-  discoverCounterparties?: (query: string) => Promise<Counterparty[]>;
-  /** Turn picked counterparties into opportunities. Nothing else opens one. */
-  createOpportunities?: (counterparties: CounterpartyPick[]) => Promise<{ opportunityId: string }[]>;
+  onOpened?: (opportunityIds: string[]) => void;
+  /** Persist one user-facing boundary for each discovery tool call. */
+  onProgress?: (text: string) => void | Promise<void>;
 }
 
 export type WakeAction =
@@ -105,6 +115,7 @@ export type WakeAction =
   | { type: "decision"; opportunityId: string; decision: Decision }
   | { type: "ask"; scope: "intent" | "opportunity"; opportunityId?: string; question: string; options: string[] }
   | { type: "note"; text: string }
+  | { type: "progress"; text: string }
   | { type: "expire"; questionId: string };
 
 export interface WakeResult {

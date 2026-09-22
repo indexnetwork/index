@@ -147,19 +147,39 @@ function DesktopPage() {
 }
 
 const DISCOVER_PATH = '/index-network'
+const LAST_PATH_KEY = 'index-network.path'
 // Host stamps this on the contributed sidebar row (`sidebar-nav-${contribution.id}`).
 const DISCOVER_NAV_TOUR = 'sidebar-nav-index-network:nav'
 
+function discoverHref() {
+  return ((window.location.hash || '').replace(/^#/, '')).split('#')[0] || ''
+}
+
 function discoverHash() {
-  const path = ((window.location.hash || '').replace(/^#/, '')).split('?')[0]
+  const path = discoverHref().split('?')[0]
   return path === DISCOVER_PATH || path.startsWith(DISCOVER_PATH + '/')
+}
+
+function readLastDiscoverPath() {
+  try { return window.localStorage.getItem(LAST_PATH_KEY) || '' } catch (e) { return '' }
+}
+
+function writeLastDiscoverPath(path) {
+  try {
+    if (path) window.localStorage.setItem(LAST_PATH_KEY, path)
+    else window.localStorage.removeItem(LAST_PATH_KEY)
+  } catch (e) { /* noop */ }
 }
 
 // Discover is a workspace-pane route. Hash navigation is a no-op when the
 // workspace already holds the zone (a chat or another page), and a focused
-// session tile keeps the page behind it. Re-open the tab every time — the
-// host fronts an existing id instead of stacking a duplicate.
+// session tile keeps the page behind it. Front the tab when entering Discover
+// — not on query-only hash changes (profile/messages/user overlays). Those
+// rewrite `#/index-network?…`; remounting here reloads the page behind the modal.
+let onDiscover = false
+
 function showDiscover(to) {
+  onDiscover = true
   if (to) host.navigate(to)
   else if (!discoverHash()) host.navigate(DISCOVER_PATH)
   if (typeof host.openWorkspace !== 'function') return
@@ -172,7 +192,14 @@ function showDiscover(to) {
 }
 
 function onDiscoverHash() {
-  if (discoverHash()) showDiscover()
+  const on = discoverHash()
+  if (on) {
+    writeLastDiscoverPath(discoverHref())
+    if (!onDiscover) showDiscover()
+  } else {
+    writeLastDiscoverPath('')
+  }
+  onDiscover = on
 }
 
 function onDiscoverNavClick(event) {
@@ -205,7 +232,6 @@ export default {
       window.removeEventListener('hashchange', onDiscoverHash)
       document.removeEventListener('click', onDiscoverNavClick)
     })
-    onDiscoverHash()
 
     ctx.registerMany([
       {
@@ -231,5 +257,11 @@ export default {
         }
       }
     ])
+
+    // Register the route first. Hermes's `*` catch-all rewrites unknown paths
+    // (including `#/index-network` before this plugin mounts) to new chat.
+    // Restore the last Discover path after the route exists so reload stays here.
+    if (discoverHash()) onDiscoverHash()
+    else if (readLastDiscoverPath()) showDiscover(readLastDiscoverPath())
   }
 }

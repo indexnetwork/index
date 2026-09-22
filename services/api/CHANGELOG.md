@@ -9,7 +9,95 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Fixed
+- Restore API architecture lint by keeping opportunity presentation and preload
+  helpers in `lib/opportunity`, outside the service layer. Runtime behavior is
+  unchanged.
+
+### Removed
+- Removed opportunity outcome-feedback capture, storage, shadow mining, and telemetry.
+  Applying the migration that drops `opportunity_outcome_events` permanently deletes
+  all recorded feedback history. Opportunity actions, actor stamps, chat creation,
+  and negotiation outcomes remain unchanged.
+- **BREAKING: the `negotiation.opened` user event is gone.** It was published
+  only to `initiatorUserId`, which is always whoever called
+  `createOpportunities`, so it reached the seat that had just opened those
+  negotiations and started their negotiators in-process a moment earlier — it
+  never told anybody anything they did not already know, and never reached the
+  counterpart at all. Opening a pair now publishes `negotiation.changed` to
+  both seats instead, which is what the web inbox and the A2A negotiation host
+  already refresh on. `HostedAgent` no longer routes the frame and its
+  `startUnstarted` sweep is deleted with it; consumers that filtered on the
+  type must drop it.
+
 ### Changed
+- **A burst of stalls reaches the owner as one wake.** `HostedAgent` woke the
+  signal on the first negotiator that stalled, so that wake read the transcript
+  while its siblings were still running and asked about whichever missing fact
+  it happened to see; the stalls that landed after it were folded into a
+  follow-up wake which then had nothing to say, leaving those negotiations
+  waiting on a question nobody had asked. A wake now fires once no negotiator of
+  that signal is in flight and a stall no wake has read is waiting, so every
+  stall of a burst is put to the owner together, and the wake may ask one
+  question per missing fact rather than staying silent whenever any question is
+  already open. A stall the owner already has stays standing until they answer
+  and no longer re-wakes the signal over each turn that lands meanwhile.
+- **The hosted seat is a whole personal agent, not just an A2A responder.**
+  `HostedNegotiator` is replaced by `HostedAgent`, which runs
+  `@indexnetwork/agentv2` — `briefIfMissing`, `wake`, `negotiate` — for every
+  owner who has selected no external negotiator. It reaches Index through
+  `HostedIndex`, an in-process implementation of the same `Index` protocol an
+  external runner reaches over HTTP: the agent package is unchanged and no
+  request leaves the process. Frames route the way the reference runner routes
+  them — a counterpart's turn and an opening move one opportunity each and never
+  wake, while the owner's input, a new signal and a resumed one do. The Redis
+  consumer group is still `hosted-negotiator`, so a wake is taken by exactly one
+  API process and no offset is lost on deploy. Consequences for owners on the
+  hosted seat: it now searches their communities, opens opportunities, and asks
+  them questions, where before it only took one A2A turn per wake.
+- **`agent.status` no longer decides whether there are questions.**
+  `GET /conversations/:id/messages` with `intentId` returns the unanswered
+  questions on the signal's transcript for both seats; `status` still names the
+  speaker (`hosted` or `external`). It previously hard-coded
+  `{ status: 'hosted', questions: [] }`, which was correct only while the hosted
+  seat could not speak to its owner.
+- **`POST /intents/:id/opportunities` opens up to 30 counterparties per call**,
+  where it took the first 10 and silently dropped the rest. An agent that
+  searched its communities broadly can now act on what it found in one call
+  instead of having two thirds of its picks disappear without saying so. Request
+  validation shares that number with the service rather than carrying its own
+  copy, which is what left a batch of 30 rejected as invalid after the service
+  had already been raised.
+- **`POST /intents/:id/discover` returns a top-N, not whatever clears a score.**
+  The similarity floor of `0.20` is gone, and the body takes an optional
+  `limit` (integer, 1..30, default 10). Retrieval now reads deeper than the
+  limit and drops counterparties this signal already shares a negotiation with
+  before cutting, so a caller asking for ten gets the ten strongest people it
+  can still open rather than three survivors of a cutoff.
+- **The H2A inbox is a chat, not the responder seat.**
+  `POST /conversations/agent/answers` no longer returns 409 when Index holds the
+  negotiator seat. Owner answers are recorded whether or not an external
+  negotiator is selected, matching `POST /conversations/:id/messages`, which
+  already accepted owner text unconditionally. `agent.status` still reports
+  `hosted` or `external`, and the hosted negotiator still publishes no
+  questions; it is no longer a write gate. The `message` frame's `metadata` is
+  now part of the declared wire shape rather than an incidental passthrough:
+  owner surfaces drive the H2A inbox live off `metadata.intentId`.
+- **Realtime frames are Redis Streams, not pub/sub.** `events:user:<userId>` is
+  a stream (`XADD` with `MAXLEN ~ 1000`) instead of a pub/sub channel, so a
+  consumer keeps an offset rather than seeing only what is published while it is
+  attached. Frame JSON is unchanged. `GET /events` sends each frame's stream id
+  as the SSE `id:` field and accepts `Last-Event-ID` (or `?after=`) to resume
+  from it. `?consumer=<agentId>` names one of the caller's own agents and keeps
+  that consumer's offset in Redis instead: frames it never acknowledged are
+  redelivered after a reconnect, and two connections under one agent compete for
+  frames rather than each taking every one. An unknown or unowned `consumer` is
+  `404`, and a consumer's first connection starts at the oldest retained frame
+  rather than going live. An offset older than the 1000-frame window is gone — the client falls
+  back to live frames and reconciles over REST, which is what it already did,
+  and notification snapshots stay deleted. The hosted negotiator reads the
+  `hosted-negotiator` group across every owner's stream, so a wake is taken by
+  exactly one API process instead of every process racing on the same frame.
 - **BREAKING: domain tables drop the `protocol_` prefix.** `protocol_intents`,
   `protocol_networks`, `protocol_network_members`, `protocol_intent_networks`,
   `protocol_agents`, `protocol_opportunities`, `protocol_negotiations`,
@@ -156,9 +244,11 @@ section before promoting to `main`).
 ### Changed
 - **`AuthGuard` and the MCP resolver accept a session token as `Bearer`.** A
   three-segment credential is verified as a JWT and anything else as a Better
-  Auth session, so device sessions reach product routes and MCP. Both record
-  `kind: 'session'`, which means a device is the owner acting and may use
-  session-only routes such as agent management; API keys still cannot.
+  Auth session, so device sessions reach product routes and MCP as their owning
+  user. MCP still accepts `x-api-key`, but an invalid Bearer never falls back to
+  it and query parameters are never MCP credentials. Both session forms record
+  `kind: 'session'`, so a device is the owner acting and may use session-only
+  routes such as agent management; API keys still cannot.
 - **Sessions last 30 days instead of the 7-day default.** Devices cache the
   issued expiry to decide whether to send a request at all, so a short window
   would sign the Mac app out weekly. Revocation is the counterweight: a device

@@ -279,7 +279,7 @@ export class NegotiationAgent {
     };
     const submitTool: Tool<Omit<TurnInput, 'expectedTurnCount'>> = {
       name: 'submit_turn',
-      description: 'Record this match decision immediately. propose opens; counter revises; accept agrees to the standing offer; decline ends the match. Read current principal context first. At most one POST attempt per turn.',
+      description: 'Record this match decision immediately. propose offers or renews the reason to connect; counter questions it without offering; accept agrees to the standing propose; decline ends the match. Only a propose can be accepted, so answer a counter by proposing again. Read current principal context first. At most one POST attempt per turn.',
       parameters: {
         type: 'object',
         properties: {

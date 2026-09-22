@@ -384,3 +384,8 @@
   .agent-md a{ text-decoration:underline }
   .agent-md blockquote{ border-left:2px solid var(--amiga-fg); padding-left:8px; color:#444 }
   .agent-md hr{ border:none; border-top:1px solid var(--amiga-fg); margin:8px 0 }
+  /* Your own words render through the same markdown, inside a black bubble, so
+     the light code/quote surfaces above have to invert to stay readable. */
+  .own-md .agent-md code, .own-md .agent-md pre{ background:#2a2a2a }
+  .own-md .agent-md blockquote{ border-left-color:#fff; color:#ccc }
+  .own-md .agent-md hr{ border-top-color:#fff }

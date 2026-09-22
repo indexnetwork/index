@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 import { NegotiationAgent, type Model, type Negotiation, type NegotiationHost } from '@indexnetwork/agent';
 import { NEGOTIATION_GUIDANCE } from '@indexnetwork/protocol';
@@ -8,7 +9,10 @@ import { AgentSessionDatabaseAdapter, AgentSessionIneligibleError } from '../../
 import { createRedisClient } from '../../adapters/cache.adapter';
 import { IntentDatabaseAdapter } from '../../adapters/intent.database.adapter';
 import { negotiationService, type NegotiationDetail } from '../../services/negotiation.service';
-import { userEventChannel } from '../user-events';
+import { readUserEvents } from '../user-events';
+
+/** How long a stream read waits on Redis before asking again. */
+const READ_BLOCK_MS = 15000;
 
 export interface ApiPrincipal {
   id: string; userId: string; name: string; intentId: string; intent: string; principalContext: string;
@@ -83,19 +87,34 @@ export class ApiNegotiationHost extends EventEmitter {
     await Promise.all([...this.agents.values()].map((agent) => agent.start()));
     if (this.stopped) return;
     this.subscriber = createRedisClient();
-    this.subscriber.on('message', (_channel, raw: string) => {
-      try {
-        const { type, data } = JSON.parse(raw);
-        if (!['negotiation.changed', 'negotiation.opened'].includes(type)) return;
-        if (!this.users.some(({ intentId }) => intentId === data?.intentId)) return;
-      } catch { return; }
-      void this.scan();
-    });
-    this.subscriber.on('ready', () => { void this.scan(); });
-    await this.subscriber.subscribe(...[...new Set(this.users.map(({ userId }) => userEventChannel(userId)))]);
+    void this.follow(this.subscriber);
     if (this.stopped) return;
     // Ongoing notifications can keep a scan alive indefinitely; discovery does not gate session readiness.
     void this.scan();
+  }
+
+  /** Rescan on frames naming this session's signals. The lab is one process, so it holds its own offsets in memory. */
+  private async follow(reader: ReturnType<typeof createRedisClient>): Promise<void> {
+    const cursors = new Map<string, string>([...new Set(this.users.map(({ userId }) => userId))].map((userId) => [userId, '$']));
+    while (!this.stopped) {
+      try {
+        for (const record of await readUserEvents(reader, cursors, READ_BLOCK_MS)) {
+          cursors.set(record.userId, record.id);
+          if (this.wakes(record.data)) void this.scan();
+        }
+      } catch {
+        if (this.stopped) return;
+        await sleep(READ_BLOCK_MS);
+      }
+    }
+  }
+
+  private wakes(data: string): boolean {
+    try {
+      const frame = JSON.parse(data);
+      if (frame.type !== 'negotiation.changed') return false;
+      return this.users.some(({ intentId }) => intentId === frame.data?.intentId);
+    } catch { return false; }
   }
 
   private record(record: NegotiationDetail): Negotiation {

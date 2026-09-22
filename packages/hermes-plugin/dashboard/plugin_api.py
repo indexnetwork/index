@@ -106,8 +106,10 @@ _STATUS_BUCKET = {
 # split pending/negotiating display buckets above).
 _NEGOTIATION_STATUSES = {"pending", "negotiating", "stalled"}
 
-# Lifecycle statuses the web intent radar requests (rejected hidden client-side).
-_RADAR_STATUSES = "pending,negotiating,stalled,accepted,expired"
+# Lifecycle statuses the intent radar requests, exactly the set the mac app asks
+# for. `stalled` is a negotiation state, not an opportunity lifecycle status, and
+# the API rejects the whole query when it appears here.
+_RADAR_STATUSES = "pending,negotiating,accepted,expired"
 
 # Static images the DESKTOP plugin fetches as base64 (its REST bridge cannot
 # address the dashboard's static file mount by URL). Allow-list only.
@@ -197,23 +199,24 @@ def _web_url() -> str:
 def _update_opportunity(
     opportunity_id: str,
     status: str,
-    scope_id: str | None = None,
+    intent_id: str | None = None,
 ) -> dict[str, Any]:
-    """Accept/skip an opportunity over REST (`PATCH /opportunities/:id/status`), matching the Mac app."""
+    """Accept/skip an opportunity over REST, matching the Mac app."""
     body: dict[str, Any] = {"status": status}
-    if scope_id:
-        body["scopeType"] = "intent"
-        body["scopeId"] = scope_id
-    return tools._api_request("PATCH", f"/opportunities/{quote(opportunity_id, safe='')}/status", body)
+    if intent_id:
+        path = f"/intents/{quote(intent_id, safe='')}/opportunities/{quote(opportunity_id, safe='')}/status"
+    else:
+        path = f"/opportunities/{quote(opportunity_id, safe='')}/status"
+    return tools._api_request("PATCH", path, body)
 
 
-def _start_chat(opportunity_id: str, scope_id: str | None = None) -> dict[str, Any]:
-    """Open (or resolve) the DM for an opportunity over REST (`POST /opportunities/:id/start-chat`)."""
-    body: dict[str, Any] = {}
-    if scope_id:
-        body["scopeType"] = "intent"
-        body["scopeId"] = scope_id
-    return tools._api_request("POST", f"/opportunities/{quote(opportunity_id, safe='')}/start-chat", body)
+def _start_chat(opportunity_id: str, intent_id: str | None = None) -> dict[str, Any]:
+    """Open (or resolve) the DM for an opportunity over REST."""
+    if intent_id:
+        path = f"/intents/{quote(intent_id, safe='')}/opportunities/{quote(opportunity_id, safe='')}/start-chat"
+    else:
+        path = f"/opportunities/{quote(opportunity_id, safe='')}/start-chat"
+    return tools._api_request("POST", path, {})
 
 
 def _resolve_user_id() -> str | None:
@@ -662,19 +665,22 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
 
 def _radar_item(card: dict[str, Any], intent_id: str | None = None) -> dict[str, Any]:
     """Map a presenter radar card to the Hermes opportunity card shape."""
+    peer = card.get("peer") if isinstance(card.get("peer"), dict) else {}
     item: dict[str, Any] = {
         "opportunityId": _text(card.get("opportunityId")),
-        "name": _text(card.get("name"), "New match"),
-        "subtitle": "Suggested connection",
-        "mainText": _truncate(card.get("mainText") or card.get("headline")),
+        "name": _text(card.get("name") or peer.get("name"), "New match"),
+        # One line per card, the mac app's `blurb`: the headline is what the
+        # presenter wrote for this pairing, and the long form only stands in
+        # when there is no headline.
+        "mainText": _truncate(card.get("headline") or card.get("mainText")),
     }
-    avatar = _avatar_url(card.get("avatar"))
+    avatar = _avatar_url(card.get("avatar") or peer.get("avatar"))
     if avatar:
         item["avatar"] = avatar
     status = _text(card.get("status"))
     if status:
         item["status"] = status
-    user_id = _text(card.get("userId"))
+    user_id = _text(card.get("userId") or peer.get("userId"))
     if user_id:
         item["counterpartUserId"] = user_id
     if intent_id:
@@ -1035,13 +1041,13 @@ def summary() -> dict[str, Any]:
 
 @full_router.get("/intents/{intent_id}/radar")
 def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
-    """Intent-scoped radar cards via GET /opportunities/radar (web intent page parity)."""
+    """Intent-scoped radar cards via GET /opportunities (web intent page parity)."""
     intent_id = _text(intent_id)
     if not intent_id:
         return {"success": False, "error": "An intent id is required."}
     query = (
-        f"/opportunities/radar?scopeType=intent&scopeId={quote(intent_id, safe='')}"
-        f"&statuses={_RADAR_STATUSES}"
+        f"/intents/{quote(intent_id, safe='')}/opportunities"
+        f"?statuses={_RADAR_STATUSES}"
     )
     if _text(presentation) == "skeleton":
         query += "&presentation=skeleton"
@@ -1050,7 +1056,7 @@ def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
         return payload
     items = [
         _radar_item(card, intent_id)
-        for card in _list(payload.get("items"))
+        for card in _list(payload.get("opportunities"))
         if isinstance(card, dict) and _text(card.get("opportunityId"))
     ]
     meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
@@ -1470,7 +1476,7 @@ def accept_opportunity(
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
         return {"success": False, "error": "An opportunity id is required."}
-    scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
+    scope_id = _text(body.get("intentId") or body.get("scopeId")) if isinstance(body, dict) else ""
     payload = _update_opportunity(opportunity_id, "accepted", scope_id or None)
     if payload.get("success") is False:
         return payload
@@ -1486,7 +1492,7 @@ def skip_opportunity(
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
         return {"success": False, "error": "An opportunity id is required."}
-    scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
+    scope_id = _text(body.get("intentId") or body.get("scopeId")) if isinstance(body, dict) else ""
     payload = _update_opportunity(opportunity_id, "rejected", scope_id or None)
     if payload.get("success") is False:
         return payload
@@ -1505,7 +1511,7 @@ def start_chat(
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
         return {"success": False, "error": "An opportunity id is required."}
-    scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
+    scope_id = _text(body.get("intentId") or body.get("scopeId")) if isinstance(body, dict) else ""
     payload = _start_chat(opportunity_id, scope_id or None)
     if payload.get("success") is False:
         return payload
@@ -2013,9 +2019,54 @@ def opportunity_counterpart(opportunity_id: str) -> dict[str, Any]:
     return {"success": True, "userId": counterpart_id}
 
 
-@full_router.get("/agent/question")
-def agent_question(intentId: str = "") -> dict[str, Any]:
-    """Return the one question this signal's personal agent is suspended on."""
+@full_router.get("/opportunities/{opportunity_id}/negotiation")
+def opportunity_negotiation(opportunity_id: str) -> dict[str, Any]:
+    """The A2A transcript behind a match: each turn, its action, and who took it.
+
+    A negotiating row says only that two agents are talking; this is what they
+    said, so the owner can read it before accepting or passing.
+    """
+    opportunity_id = _text(opportunity_id)
+    if not opportunity_id:
+        return {"success": False, "error": "An opportunity id is required."}
+    current_user_id = _resolve_user_id()
+    payload = tools._api_request(
+        "GET",
+        f"/opportunities/{quote(opportunity_id, safe='')}/negotiation",
+    )
+    if payload.get("success") is False:
+        return payload
+    negotiation = payload.get("negotiation") if isinstance(payload.get("negotiation"), dict) else {}
+    counterparty = negotiation.get("counterparty")
+    counterparty = counterparty if isinstance(counterparty, dict) else {}
+    name = _text(counterparty.get("name"), "Match")
+    turns: list[dict[str, Any]] = []
+    for turn in _list(negotiation.get("turns")):
+        if not isinstance(turn, dict):
+            continue
+        seat = _text(turn.get("seatUserId"))
+        mine = bool(current_user_id) and seat == current_user_id
+        turns.append({
+            "id": _text(turn.get("id")),
+            "mine": mine,
+            "name": "your agent" if mine else f"{name}'s agent",
+            "action": _text(turn.get("action")),
+            "text": _text(turn.get("message")),
+            "createdAt": _text(turn.get("createdAt")),
+        })
+    return {
+        "success": True,
+        "negotiation": {
+            "name": name,
+            "status": _text(negotiation.get("status")),
+            "turns": turns,
+        },
+    }
+
+
+@full_router.get("/agent/conversation")
+def agent_conversation(intentId: str = "") -> dict[str, Any]:
+    """Return this signal's H2A transcript and the questions still waiting on the owner."""
     intent_id = _text(intentId)
     if not intent_id:
         return {"success": False, "error": "An intent id is required."}
@@ -2026,25 +2077,47 @@ def agent_question(intentId: str = "") -> dict[str, Any]:
     if payload.get("success") is False:
         return payload
     agent = payload.get("agent") if isinstance(payload.get("agent"), dict) else {}
-    return {"success": True, "question": agent.get("pending")}
+    return {
+        "success": True,
+        "conversationId": _text(payload.get("conversationId")),
+        "messages": [row for row in _list(payload.get("messages")) if isinstance(row, dict)],
+        "agent": {
+            "status": _text(agent.get("status"), "hosted"),
+            "questions": [row for row in _list(agent.get("questions")) if isinstance(row, dict)],
+        },
+    }
 
 
-@full_router.post("/agent/answer")
-def agent_answer(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Answer that question, naming it so a stale answer is refused rather than mis-filed."""
+@full_router.post("/agent/message")
+def agent_message(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Send the owner's own words to this signal's personal agent."""
     intent_id = _text(body.get("intentId")) if isinstance(body, dict) else ""
     text = _text(body.get("text")) if isinstance(body, dict) else ""
-    question_id = _text(body.get("questionId")) if isinstance(body, dict) else ""
     if not intent_id or not text:
-        return {"success": False, "error": "An intent id and answer text are required."}
+        return {"success": False, "error": "An intent id and message text are required."}
     return tools._api_request(
         "POST",
         "/conversations/agent/messages",
-        {
-            "parts": [{"kind": "text", "text": text}],
-            "metadata": {"intentId": intent_id},
-            "questionId": question_id or None,
-        },
+        {"parts": [{"kind": "text", "text": text}], "metadata": {"intentId": intent_id}},
+    )
+
+
+@full_router.post("/agent/answers")
+def agent_answers(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Answer several questions at once, naming each so a stale answer is refused rather than mis-filed."""
+    intent_id = _text(body.get("intentId")) if isinstance(body, dict) else ""
+    answers = [
+        {"questionId": _text(row.get("questionId")), "text": _text(row.get("text"))}
+        for row in (_list(body.get("answers")) if isinstance(body, dict) else [])
+        if isinstance(row, dict)
+    ]
+    answers = [row for row in answers if row["questionId"] and row["text"]]
+    if not intent_id or not answers:
+        return {"success": False, "error": "An intent id and at least one answered question are required."}
+    return tools._api_request(
+        "POST",
+        "/conversations/agent/answers",
+        {"intentId": intent_id, "answers": answers},
     )
 
 

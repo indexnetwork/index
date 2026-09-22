@@ -320,8 +320,11 @@ const memberActStyle = {
   fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
 };
 
+// An owner can hand out a link to any network they run; everyone else only to
+// a public one, which anyone could join anyway.
 function networkShareUrl(net) {
-  if (!net || !networkIsOwner(net)) return null;
+  if (!net) return null;
+  if (!networkIsOwner(net) && net.joinPolicy !== "anyone") return null;
   const base = (window.IndexApp && window.IndexApp.webBaseUrl
     ? window.IndexApp.webBaseUrl()
     : "https://index.network").replace(/\/+$/, "");
@@ -352,6 +355,7 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [members, setMembers] = useState([]);
+  const [joinRequests, setJoinRequests] = useState([]);
   // settings draft
   const [title, setTitle] = useState(local.name || "");
   const [prompt, setPrompt] = useState(local.blurb || "");
@@ -363,8 +367,11 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
   const client = live ? window.IndexApp.getClient() : null;
   const meId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
+  const env = useIndexEnv();
   const shareUrl = networkShareUrl(local);
   const isPublic = local.joinPolicy === "anyone";
+  // The flag only bites on a private network; public link joins stay instant.
+  const gated = !isPublic && local.requireAdminApproval === true;
   const settingsDirty = title !== (local.name || "") || prompt !== (local.blurb || "") || photoDirty || removePhoto;
 
   useEffect(() => {
@@ -396,6 +403,25 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
       .finally(() => { if (!cancelled) setSignalsLoading(false); });
     return () => { cancelled = true; };
   }, [client, local.id]);
+
+  // `live`, not `client`: getClient() hands back a new object every render, so
+  // depending on it would re-run this on every render.
+  useEffect(() => {
+    if (!live || !local.id || !isOwner || !gated) {
+      setJoinRequests(prev => (prev.length ? [] : prev));
+      return;
+    }
+    const c = window.IndexApp.getClient();
+    if (!c) return;
+    let cancelled = false;
+    c.networks.listJoinRequests(local.id)
+      .then((res) => {
+        if (cancelled) return;
+        setJoinRequests((res && res.requests) || []);
+      })
+      .catch(() => { if (!cancelled) setJoinRequests(prev => (prev.length ? [] : prev)); });
+    return () => { cancelled = true; };
+  }, [live, local.id, isOwner, gated]);
 
   useEffect(() => {
     if (isOwner && typeof members.length === "number" && members.length > 0) {
@@ -481,6 +507,68 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
     } finally {
       setBusy(false);
     }
+  };
+
+  const reloadMembers = () => {
+    if (!client) return;
+    client.networks.getMembers(local.id)
+      .then((res) => setMembers((res && res.members) || []))
+      .catch(() => {});
+  };
+
+  const setRequireApproval = async (next) => {
+    if (busy) return;
+    setBusy(true);
+    const prev = local;
+    // joinPolicy rides along unchanged: the native bridge requires it, and the
+    // server needs it to decide whether the queue should be admitted.
+    const optimistic = { ...local, requireAdminApproval: next };
+    setLocal(optimistic);
+    if (onUpdated) onUpdated(optimistic);
+    try {
+      if (client) {
+        const res = await client.networks.updatePermissions(local.id, {
+          joinPolicy: local.joinPolicy,
+          requireAdminApproval: next,
+        });
+        const n = (res && res.network) || res || {};
+        const perms = n.permissions || {};
+        // Dropping the gate admits everyone who was waiting, server-side.
+        const merged = {
+          ...optimistic,
+          requireAdminApproval: perms.requireAdminApproval === true,
+          pendingJoinCount: next ? optimistic.pendingJoinCount : 0,
+        };
+        setLocal(merged);
+        if (onUpdated) onUpdated(merged);
+        if (!next) {
+          setJoinRequests([]);
+          reloadMembers();
+          if (env.refreshNetworks) env.refreshNetworks();
+        }
+      }
+    } catch (e) {
+      setLocal(prev);
+      if (onUpdated) onUpdated(prev);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewRequest = async (userId, decision) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.reviewJoinRequest(local.id, userId, decision);
+      const left = joinRequests.filter(r => r.userId !== userId);
+      setJoinRequests(left);
+      const merged = { ...local, pendingJoinCount: left.length };
+      setLocal(merged);
+      if (onUpdated) onUpdated(merged);
+      if (decision === "approve") reloadMembers();
+      if (env.refreshNetworks) env.refreshNetworks();
+    } catch (e) { /* leave the row in place */ }
+    finally { setBusy(false); }
   };
 
   const saveSettings = async () => {
@@ -755,6 +843,20 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
                   </div>
                 </div>
 
+                {!isPublic && (
+                  <div>
+                    <RuleLabel>Approval</RuleLabel>
+                    <div style={{ marginTop:12 }}>
+                      <Toggle
+                        on={local.requireAdminApproval === true}
+                        onClick={() => setRequireApproval(local.requireAdminApproval !== true)}
+                        title="Require admin approval"
+                        blurb="Require an admin to approve new members joining via the group link."
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <RuleLabel>Invitation link</RuleLabel>
                   <div style={{
@@ -829,6 +931,37 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
                     </div>
                   )}
                 </div>
+
+                {gated && joinRequests.length > 0 && (
+                  <div>
+                    <RuleLabel>Pending ({joinRequests.length})</RuleLabel>
+                    <div style={{ marginTop:12, border:"1px solid #000", background:"#fff" }}>
+                      {joinRequests.map(r => (
+                        <div key={r.userId} style={{
+                          display:"flex", alignItems:"center", gap:10, padding:"8px 10px",
+                        }}>
+                          <MemberFace member={{ id: r.userId, name: r.name, avatar: r.avatar }}/>
+                          <span style={{ flex:1, minWidth:0 }}>
+                            <span style={{
+                              display:"block", fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                            }}>{r.name}</span>
+                            <span style={{
+                              display:"block", fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                            }}>{r.email}</span>
+                          </span>
+                          <button type="button" title="Approve" disabled={busy}
+                            onClick={() => reviewRequest(r.userId, "approve")}
+                            style={memberActStyle}>approve</button>
+                          <button type="button" title="Decline" disabled={busy}
+                            onClick={() => reviewRequest(r.userId, "decline")}
+                            style={{ ...memberActStyle, color:"var(--ink-warn)" }}>decline</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <NetworkMembers
                   networkId={local.id}

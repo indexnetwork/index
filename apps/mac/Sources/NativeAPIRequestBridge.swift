@@ -183,6 +183,9 @@ final class NativeAPIStreamDelegate: NSObject, URLSessionDataDelegate {
         var values: [String] = []
         for rawLine in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false) {
             if rawLine.hasPrefix(":") { continue }
+            // `id:` carries the server's resume offset, which this bounded
+            // stream has no use for. Rejecting it would drop every frame.
+            if rawLine.hasPrefix("id:") || rawLine.hasPrefix("event:") || rawLine.hasPrefix("retry:") { continue }
             guard rawLine == "data" || rawLine.hasPrefix("data:") else {
                 fail(.transportFailure, task: task); return false
             }
@@ -247,8 +250,9 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/auth/me$"#), ("PATCH", #"^/auth/profile/update$"#),
         ("GET", #"^/networks$"#), ("POST", #"^/networks$"#),
         ("GET", #"^/networks/discovery/public(?:\?.*)?$"#),
-        ("GET", #"^/networks/[^/?]+/(?:overview|my-intents|members)$"#),
+        ("GET", #"^/networks/[^/?]+/(?:overview|my-intents|members|join-requests)$"#),
         ("POST", #"^/networks/[^/?]+/(?:join|leave)$"#),
+        ("POST", #"^/networks/[^/?]+/join-requests/[^/?]+/review$"#),
         ("POST", #"^/networks/[^/?]+/members(?:/invite)?$"#),
         ("PATCH", #"^/networks/[^/?]+/members/[^/?]+$"#),
         ("DELETE", #"^/networks/[^/?]+/members/[^/?]+$"#),
@@ -258,10 +262,12 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/agents$"#),
         ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
         ("POST", #"^/intents(?:/(?:list|clarify))?$"#),
+        ("GET", #"^/intents/[^/?]+/opportunities(?:\?.*)?$"#),
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
+        ("PATCH", #"^/intents/[^/?]+/opportunities/[^/?]+/status$"#),
+        ("POST", #"^/intents/[^/?]+/opportunities/[^/?]+/start-chat$"#),
         ("GET", #"^/opportunities(?:\?.*)?$"#),
-        ("GET", #"^/opportunities/(?:radar|chat-context)(?:\?.*)?$"#),
-        ("GET", #"^/opportunities/[^/?]+(?:/invite-message)?$"#),
+        ("GET", #"^/opportunities/[^/?]+(?:/invite-message|/negotiation)?$"#),
         ("PATCH", #"^/opportunities/[^/?]+/status$"#),
         ("POST", #"^/opportunities/[^/?]+/start-chat$"#),
         ("POST", #"^/enrichment/enrich$"#),
@@ -275,7 +281,7 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/auth/api-key/(?:create|delete)$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
-        ("POST", #"^/conversations/(?:dm|[^/?]+/messages)$"#),
+        ("POST", #"^/conversations/(?:dm|agent/answers|[^/?]+/messages)$"#),
         ("PATCH", #"^/conversations/[^/?]+/metadata$"#),
         ("DELETE", #"^/conversations/[^/?]+$"#),
     ]
@@ -533,12 +539,21 @@ final class NativeAPIRequestBridge {
             }
         }
     }
+    private static func validAgentAnswers(_ value: NativeJSONValue?) -> Bool {
+        guard case .array(let values) = value, !values.isEmpty, values.count <= 20 else { return false }
+        return values.allSatisfy { item in
+            exactTypedObject(item, required: ["questionId", "text"]) { answer in
+                identifier(answer["questionId"]) && boundedString(answer["text"], maximum: 65_536)
+            }
+        }
+    }
     private static func validMessageParts(_ value: NativeJSONValue?) -> Bool {
         guard case .array(let values) = value, !values.isEmpty, values.count <= 100 else { return false }
         return values.allSatisfy { item in
-            exactTypedObject(item, required: ["text"], optional: ["type"]) { part in
+            exactTypedObject(item, required: ["text"], optional: ["type", "kind"]) { part in
                 boundedString(part["text"], maximum: 65_536)
                     && (part["type"] == nil || enumString(part["type"], ["text"]))
+                    && (part["kind"] == nil || enumString(part["kind"], ["text"]))
             }
         }
     }
@@ -582,8 +597,13 @@ final class NativeAPIRequestBridge {
                 validNetworkMemberPermissions($0["permissions"])
             }
         case let value where value.range(of: #"^/networks/[^/?]+/permissions$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["joinPolicy"]) {
-                enumString($0["joinPolicy"], ["anyone", "invite_only"])
+            return exactTypedObject(body, required: ["joinPolicy"], optional: ["requireAdminApproval"]) { item in
+                enumString(item["joinPolicy"], ["anyone", "invite_only"])
+                    && optionalBool(item, "requireAdminApproval")
+            }
+        case let value where value.range(of: #"^/networks/[^/?]+/join-requests/[^/?]+/review$"#, options: .regularExpression) != nil:
+            return exactTypedObject(body, required: ["decision"]) {
+                enumString($0["decision"], ["approve", "decline"])
             }
         case "/network-requests": return validNetworkRequest(body)
         case let value where value.range(of: #"^/network-requests/[^/?]+$"#, options: .regularExpression) != nil:
@@ -606,19 +626,14 @@ final class NativeAPIRequestBridge {
             }
         case let value where value.range(of: #"^/intents/[^/?]+/status$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["ACTIVE", "PAUSED"]) }
+        case let value where value.range(of: #"^/intents/[^/?]+/opportunities/[^/?]+/status$"#, options: .regularExpression) != nil:
+            return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["accepted", "rejected"]) }
         case let value where value.range(of: #"^/opportunities/[^/?]+/status$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["status"], optional: ["scopeType", "scopeId"]) { item in
-                enumString(item["status"], ["accepted", "rejected"])
-                    && (item["scopeType"] == nil || enumString(item["scopeType"], ["intent"]))
-                    && (item["scopeId"] == nil || uuidIdentifier(item["scopeId"]))
-                    && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
-            }
+            return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["accepted", "rejected"]) }
+        case let value where value.range(of: #"^/intents/[^/?]+/opportunities/[^/?]+/start-chat$"#, options: .regularExpression) != nil:
+            return keysAllowed(body, allowed: [])
         case let value where value.range(of: #"^/opportunities/[^/?]+/start-chat$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, optional: ["scopeType", "scopeId"]) { item in
-                (item["scopeType"] == nil || enumString(item["scopeType"], ["intent"]))
-                    && (item["scopeId"] == nil || uuidIdentifier(item["scopeId"]))
-                    && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
-            }
+            return keysAllowed(body, allowed: [])
         case "/enrichment/enrich":
             return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "websites"])
         case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
@@ -631,8 +646,18 @@ final class NativeAPIRequestBridge {
             return exactTypedObject(body, required: ["keyId"]) { identifier($0["keyId"]) }
         case "/conversations/dm":
             return exactTypedObject(body, required: ["peerUserId"]) { identifier($0["peerUserId"]) }
+        case "/conversations/agent/answers":
+            return exactTypedObject(body, required: ["intentId", "answers"]) { item in
+                uuidIdentifier(item["intentId"]) && validAgentAnswers(item["answers"])
+            }
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["parts"]) { validMessageParts($0["parts"]) }
+            return exactTypedObject(body, required: ["parts"], optional: ["metadata", "questionId"]) { item in
+                validMessageParts(item["parts"])
+                    && (item["questionId"] == nil || identifier(item["questionId"]))
+                    && (item["metadata"] == nil || exactTypedObject(item["metadata"], optional: ["intentId"]) { meta in
+                        meta["intentId"] == nil || uuidIdentifier(meta["intentId"])
+                    })
+            }
         case let value where value.range(of: #"^/conversations/[^/?]+/metadata$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["metadata"]) { item in
                 exactTypedObject(item["metadata"], optional: ["title"]) { metadata in
@@ -678,12 +703,11 @@ final class NativeAPIRequestBridge {
         // radar call the app actually makes, so they are spelled out separately
         // and each mirrors what its own handler reads.
         case "/opportunities":
-            allowed = ["status", "limit", "offset", "scopeType", "scopeId", "noCache"]
-        case "/opportunities/radar":
-            allowed = ["statuses", "presentation", "limit", "offset", "scopeType", "scopeId", "noCache"]
-        case "/opportunities/chat-context": allowed = ["peerUserId"]
+            allowed = ["status", "statuses", "presentation", "peerUserId", "networkId", "limit", "offset", "noCache"]
+        case let value where value.range(of: #"^/intents/[^/?]+/opportunities$"#, options: .regularExpression) != nil:
+            allowed = ["statuses", "presentation", "limit", "offset", "noCache"]
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
-            allowed = ["limit", "before", "after"]
+            allowed = ["limit", "before", "after", "intentId"]
         default: return false
         }
         return Set(names).isSubset(of: allowed)

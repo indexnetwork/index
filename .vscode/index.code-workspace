@@ -1,18 +1,20 @@
 {
   "folders": [
     { "name": "🏠 root", "path": ".." },
-    { "name": "⚙️ backend", "path": "../backend" },
-    { "name": "🎨 frontend", "path": "../frontend" },
+    { "name": "⚙️ api", "path": "../services/api" },
+    { "name": "🎨 web", "path": "../apps/web" },
+    { "name": "🖥️ mac", "path": "../apps/mac" },
     { "name": "📡 protocol", "path": "../packages/protocol" },
-    { "name": "⌨️ cli", "path": "../packages/cli" },
-    { "name": "📚 docs", "path": "../docs" }
+    { "name": "🤖 agent", "path": "../packages/agent" },
+    { "name": "💬 agent-tui", "path": "../packages/agent-tui" },
+    { "name": "⌨️ cli", "path": "../packages/cli" }
   ],
   "settings": {
     "js/ts.tsdk.path": "node_modules/typescript/lib",
     "js/ts.tsdk.promptToUseWorkspaceVersion": true,
     "eslint.workingDirectories": [
-      { "pattern": "backend" },
-      { "pattern": "frontend" },
+      { "pattern": "services/*" },
+      { "pattern": "apps/*" },
       { "pattern": "packages/*" }
     ],
     "files.exclude": {

@@ -49,6 +49,7 @@ function DesktopButton(props) {
 const DESKTOP_ENV = {
   sdk: { React: React, components: { Button: DesktopButton }, fetchJSON: desktopFetchJSON },
   assets: {},
+  navigate: function (path) { host.navigate(path) },
   onComponent: function (component) { DashboardComponent = component }
 }
 

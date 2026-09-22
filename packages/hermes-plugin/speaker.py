@@ -20,7 +20,7 @@ _CONSUMED = {"action": "skip", "reason": "Index session input."}
 
 SPEAK_TOOLS = (
     ("read_negotiation", "index_speak", "Read this match and shared principal context.", {"type": "object", "properties": {}, "additionalProperties": False}, []),
-    ("submit_turn", "index_speak", "Record this match decision. propose opens; counter revises; accept agrees; decline ends it.", {
+    ("submit_turn", "index_speak", "Record this match decision. propose offers or renews the reason to connect; counter questions it without offering; accept agrees to the standing propose; decline ends it. Answer a counter by proposing again.", {
         "type": "object", "additionalProperties": False,
         "properties": {"action": {"type": "string"}, "message": {"type": "string", "minLength": 1}},
         "required": ["action", "message"],

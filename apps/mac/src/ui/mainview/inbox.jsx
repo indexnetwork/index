@@ -234,9 +234,13 @@ function SocialLink({ social }) {
         background: hover ? "#000" : "#fff",
         color: ink,
         boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+        // a handle can arrive as a full tracking URL; it is a chip, not a column
+        maxWidth:"100%", minWidth:0, overflow:"hidden",
       }}>
       <SocialGlyph id={platform} size={13} color={ink}/>
-      <span>{socialHandleOf(social)}</span>
+      <span style={{
+        minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+      }}>{socialHandleOf(social)}</span>
     </a>
   );
 }

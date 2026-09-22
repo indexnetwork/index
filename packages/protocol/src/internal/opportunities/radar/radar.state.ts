@@ -7,6 +7,7 @@ import type { DebugMetaAgent } from "../../../protocol/core.js";
  */
 export interface RadarCardItem {
   opportunityId: string;
+  createdAt?: string;
   /** Lifecycle status of the underlying opportunity at render time (client bucketing, e.g. intent radar). */
   status?: OpportunityStatus;
   userId: string;

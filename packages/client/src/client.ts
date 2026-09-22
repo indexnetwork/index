@@ -48,6 +48,14 @@ export interface NegotiationDetail extends Negotiation {
     message: string;
     createdAt: string;
   }[];
+  /** What Index says this seat may do now. The only authority on it. */
+  protocol: {
+    guidance: string;
+    availableActions: NegotiationAction[];
+    blockedReason: string | null;
+    maxTurns: number;
+    messageLimit: number;
+  };
 }
 
 export type IntentStatus = "ACTIVE" | "PAUSED" | "FULFILLED" | "EXPIRED" | "ARCHIVED";
@@ -98,7 +106,8 @@ export interface PrincipalMessage {
   id: string;
   createdAt: string;
   questionId?: string;
-  kind: "question" | "answer" | "user" | "message";
+  /** `expire` is the agent retiring its own question: it leaves the queue unanswered. */
+  kind: "question" | "answer" | "user" | "message" | "expire";
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;
@@ -128,6 +137,8 @@ export interface ConversationMessage {
   role: "user" | "agent";
   parts: unknown;
   createdAt: string;
+  /** Carries `intentId` and the entry's `principalMessage` on the agent DM. */
+  metadata?: unknown;
 }
 
 export type IntentLifecycleWireStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
@@ -136,7 +147,6 @@ export type ConnectedEvent = { type: "connected" };
 
 export type UserEvent =
   | { type: "opportunity.new"; id: string; title: string; body: string; link?: string; data?: { opportunityId: string } }
-  | { type: "negotiation.opened"; id: string; title: string; body: string; link?: string; data: { intentId: string; count: number } }
   | { type: "negotiation.turn"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; turnIndex: number } }
   | { type: "negotiation.settled"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; outcome: string } }
   | { type: "negotiation.changed"; id: string; title: string; body: string; data: { intentId: string; opportunityId?: string } }
@@ -146,7 +156,7 @@ export type UserEvent =
   | { type: "principal.input"; id: string; title: string; body: string; data: { intentId: string; questionId: string | null; text: string } }
   | { type: "message"; conversationId: string; message: ConversationMessage };
 
-const WAKE_TYPES = ["negotiation.opened", "negotiation.turn", "principal.input"] as const;
+const WAKE_TYPES = ["negotiation.turn", "principal.input"] as const;
 
 /**
  * @param event - A parsed user-event frame.
@@ -161,7 +171,6 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
   const type = (raw as { type?: unknown }).type;
   switch (type) {
     case "opportunity.new":
-    case "negotiation.opened":
     case "negotiation.turn":
     case "negotiation.settled":
     case "negotiation.changed":
@@ -177,9 +186,67 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
 }
 
 /**
+ * The Index protocol as one owner sees it, independent of transport.
+ *
+ * `IndexClient` is the REST implementation an external agent uses. A host that
+ * already owns the data implements the same surface in-process.
+ */
+export interface Index {
+  /** @returns The owner this instance acts for. */
+  me(): Promise<Me>;
+  /** @param limit - How many signals to read. @returns The owner's signals. */
+  listIntents(limit?: number): Promise<IntentSummary[]>;
+  /**
+   * @param intentId - The signal to search from.
+   * @param query - What to look for, in the caller's own words.
+   * @param limit - How many counterparties to return, 1..30.
+   * @returns Counterparties, strongest first.
+   */
+  discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]>;
+  /**
+   * @param intentId - The signal the opportunities belong to.
+   * @param counterparties - Counterparty signals and the community each pair sits in.
+   * @returns The opportunities that now exist.
+   */
+  createOpportunities(intentId: string, counterparties: CounterpartyPick[]): Promise<{ opportunityId: string }[]>;
+  /** @returns Open negotiations for this seat. */
+  listNegotiations(): Promise<Negotiation[]>;
+  /** @param id - Opportunity id. @returns The negotiation as this seat sees it. */
+  getNegotiation(id: string): Promise<NegotiationDetail>;
+  /**
+   * @param id - Opportunity id.
+   * @param turn - Action, message, and the log length it was decided against.
+   * @returns The negotiation after the turn.
+   */
+  submitTurn(
+    id: string,
+    turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
+  ): Promise<NegotiationDetail>;
+  /**
+   * @param intentId - Signal whose principal conversation to read.
+   * @returns The agent DM slice for that signal.
+   */
+  principalInbox(intentId: string): Promise<{
+    conversationId: string;
+    messages: ConversationMessage[];
+    agent?: PersonalAgentState;
+  }>;
+  /**
+   * @param intentId - Signal.
+   * @param entries - `question` and `message` entries.
+   */
+  sendPrincipal(intentId: string, entries: PrincipalMessage[]): Promise<void>;
+  /**
+   * @param onEvent - Frames the caller handles, the connect handshake included.
+   * @returns Stop handle.
+   */
+  events(onEvent: (event: UserEvent | ConnectedEvent) => void): () => void;
+}
+
+/**
  * The Index protocol over REST, as an agent-bound API key.
  */
-export class IndexClient {
+export class IndexClient implements Index {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly executorId?: string;
@@ -289,11 +356,13 @@ export class IndexClient {
    *
    * @param intentId - The signal to search from.
    * @param query - What to look for, in the caller's own words.
+   * @param limit - How many counterparties to return, 1..30. Index decides when omitted.
    * @returns Counterparties, strongest first.
    */
-  async discover(intentId: string, query: string): Promise<Counterparty[]> {
+  async discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]> {
     const { counterparties } = await this.request<{ counterparties: Counterparty[] }>(
-      "POST", `/intents/${encodeURIComponent(intentId)}/discover`, { query },
+      "POST", `/intents/${encodeURIComponent(intentId)}/discover`,
+      { query, ...(limit === undefined ? {} : { limit }) },
     );
     return counterparties;
   }
@@ -375,28 +444,24 @@ export class IndexClient {
   }
 
   /**
-   * Open the user's SSE channel. Reconnects until stopped. JSON calls do not retry.
-   * @param onEvent - Parsed frames the caller handles. Handshake is not delivered.
+   * Open the user's SSE channel. Reconnects until stopped, resuming from the
+   * last frame it received. JSON calls do not retry.
+   *
+   * The handshake is delivered once the catch-up behind it is done, so a caller
+   * that recovers work it may have missed does that on a stream it can trust.
+   *
+   * @param onEvent - Parsed frames the caller handles.
    * @returns Stop handle. After stop there is no reconnect.
    */
-  events(onEvent: (event: UserEvent) => void): () => void {
+  events(onEvent: (event: UserEvent | ConnectedEvent) => void): () => void {
     const abort = new AbortController();
     let stopped = false;
     let delay = 1000;
     let primed = false;
+    let lastEventId = "";
     const seen = new Set<string>();
 
     const catchUp = async () => {
-      const rows = await this.listNegotiations();
-      if (rows.length) {
-        onEvent({
-          type: "negotiation.opened",
-          id: `${rows[0]!.intentId}:opened:catchup`,
-          title: "",
-          body: "",
-          data: { intentId: rows[0]!.intentId, count: rows.length },
-        });
-      }
       const { conversationId, messages } = await this.request<{
         conversationId: string;
         messages: ConversationMessage[];
@@ -416,7 +481,11 @@ export class IndexClient {
       while (!stopped) {
         try {
           const response = await fetch(`${this.baseUrl}/api/events`, {
-            headers: { "x-api-key": this.apiKey, Accept: "text/event-stream" },
+            headers: {
+              "x-api-key": this.apiKey,
+              Accept: "text/event-stream",
+              ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}),
+            },
             signal: abort.signal,
           });
           if (!response.ok || !response.body) throw new Error("stream");
@@ -430,17 +499,21 @@ export class IndexClient {
             const parts = buffer.split("\n\n");
             buffer = parts.pop() ?? "";
             for (const part of parts) {
-              if (part.split("\n").every((line) => line.startsWith(":"))) continue;
-              const data = part.split("\n")
+              const lines = part.split("\n");
+              if (lines.every((line) => line.startsWith(":"))) continue;
+              const id = lines.find((line) => line.startsWith("id:"))?.slice(3).trimStart();
+              const data = lines
                 .filter((line) => line.startsWith("data:"))
                 .map((line) => line.slice(5).trimStart())
                 .join("\n");
               if (!data) continue;
+              if (id) lastEventId = id;
               let parsed: unknown;
               try { parsed = JSON.parse(data); } catch { continue; }
               if ((parsed as { type?: string })?.type === "connected") {
                 delay = 1000;
                 await catchUp();
+                onEvent({ type: "connected" });
                 continue;
               }
               const event = parseUserEvent(parsed);

@@ -1,12 +1,12 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.127.0",
+  "version": "0.136.1",
   "license": "MIT",
   "private": true,
   "scripts": {
-    "predev": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build",
+    "predev": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agentv2 build",
     "dev": "NODE_ENV=development bun --watch --preload ./src/instrument.ts src/main.ts",
-    "build": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && tsc",
+    "build": "bun run --cwd ../../packages/protocol build && bun run --cwd ../../packages/agent build && bun run --cwd ../../packages/agent-tui build && bun run --cwd ../../packages/client build && bun run --cwd ../../packages/agentv2 build && tsc",
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
@@ -31,6 +31,7 @@
     "@langchain/core": "^1.1.17",
     "@langchain/langgraph": "^1.4.12",
     "@langchain/openai": "^1.2.3",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@sentry/bun": "^10.55.0",
     "better-auth": "^1.5.6",
     "busboy": "^1.6.0",
@@ -45,7 +46,10 @@
     "resend": "^4.0.1",
     "uuid": "^11.1.0",
     "zod": "^3.22.4",
-    "@indexnetwork/agent": "workspace:*"
+    "zod-v4": "npm:zod@^4.2.0",
+    "@indexnetwork/agent": "workspace:*",
+    "@indexnetwork/agentv2": "workspace:*",
+    "@indexnetwork/client": "workspace:*"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "1.4.5",

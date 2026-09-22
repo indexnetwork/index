@@ -40,14 +40,22 @@ export interface IntentGraphRunner {
   invoke(input: Record<string, unknown>, options?: { recursionLimit?: number }): Promise<Record<string, unknown>>;
 }
 
-/** How many counterparties one search returns. */
+/** How many counterparties one search returns when the caller names no limit. */
 const DISCOVER_LIMIT = 10;
 
-/** Semantic retrieval cutoff, 0..1. Below this a candidate is noise. */
-const DISCOVER_MIN_SCORE = 0.20;
+/** The largest top-N a caller may ask one search for. */
+export const DISCOVER_LIMIT_MAX = 30;
+
+/**
+ * How deep retrieval reads to fill one search. A signal shared in several of
+ * the searched communities takes one row per community, and the counterparties
+ * already paired with this signal drop out afterwards, so reading exactly the
+ * caller's limit would return fewer than it asked for.
+ */
+const DISCOVER_RETRIEVAL_MAX = 90;
 
 /** How many counterparties one call may turn into opportunities. */
-const CREATE_OPPORTUNITIES_LIMIT = 10;
+export const CREATE_OPPORTUNITIES_LIMIT = 30;
 
 /**
  * Provenance for an opportunity the owner's agent created after a search. The
@@ -402,12 +410,21 @@ export class IntentService {
    * signal vectors. Nothing is judged and nothing is written: the caller reads
    * the ranked counterparties and decides which are worth an opportunity.
    *
+   * Retrieval has no similarity floor, so what comes back is the strongest N
+   * the caller can still act on rather than however many clear a cutoff. A
+   * counterparty this signal already shares a negotiation with is left out
+   * without spending one of those N.
+   *
    * @param intentId - Full intent UUID, owned by the caller.
    * @param userId - Authenticated owner.
-   * @param query - What to look for, in the caller's own words.
+   * @param input - The query in the caller's own words, and how many counterparties to return.
    * @returns Ranked counterparties, or why the signal cannot be searched.
    */
-  async discover(intentId: string, userId: string, query: string): Promise<IntentDiscoverOutcome> {
+  async discover(
+    intentId: string,
+    userId: string,
+    input: { query: string; limit?: number },
+  ): Promise<IntentDiscoverOutcome> {
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
     if (intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) return { kind: 'inactive' };
@@ -415,14 +432,16 @@ export class IntentService {
     const networkScope = await chatDatabaseAdapter.getNetworkIdsForIntent(intentId);
     if (networkScope.length === 0) return { kind: 'ok', counterparties: [] };
 
-    logger.verbose('Discovering counterparties', { intentId, userId, networkCount: networkScope.length });
+    const limit = input.limit ?? DISCOVER_LIMIT;
 
-    const embedding = await this.embedder.generate(query) as number[];
+    logger.verbose('Discovering counterparties', { intentId, userId, networkCount: networkScope.length, limit });
+
+    const embedding = await this.embedder.generate(input.query) as number[];
     const candidates = await this.embedder.searchIntentCandidates(embedding, {
       networkScope,
       excludeUserId: userId,
-      limit: DISCOVER_LIMIT,
-      minScore: DISCOVER_MIN_SCORE,
+      limit: Math.min(limit * 3, DISCOVER_RETRIEVAL_MAX),
+      minScore: 0,
     });
 
     // One signal shared in several of the searched communities comes back once
@@ -448,7 +467,8 @@ export class IntentService {
           score: hit.score,
         };
       })
-      .sort((a, b) => b.score - a.score);
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
 
     await chatDatabaseAdapter.markIntentFirstDiscoverySucceeded(intentId);
 

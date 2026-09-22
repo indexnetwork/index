@@ -40,13 +40,14 @@ speaker sessions**, lazily, and reuses them:
 - Speak: `{opportunityId}` — the A2A working transcript for that match
 
 Settled matches keep their history but are not woken. Your Telegram or Discord
-chat is not one of these sessions. Questions, options, and your answers live
-on Index web (`IntentNegotiatorChat`), the same agent DM the hosted
+chat is not one of these sessions. Questions, options, and your answers live on
+the owner's agent DM — one conversation per signal, shown on Discover's signal
+detail and on Index web (`IntentNegotiatorChat`), the same DM the hosted
 negotiator uses.
 
 The plugin follows `GET /events`. A frame that names a signal wakes the
 sidecar; frames close together collapse into one wake. `principal.input` is
-an owner answer or message from Index web and is applied instead of a wake.
+an owner answer or message from that chat and is applied instead of a wake.
 The sidecar reads authoritative state over REST before deciding, and each
 reconnection reconciles against `GET /negotiations`. Type on a think or
 speaker session is ignored.

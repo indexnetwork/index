@@ -214,10 +214,7 @@ export default function IntentDetailPage() {
   }, [intentId]);
 
   const scope = useMemo(
-    () =>
-      intentId
-        ? { scopeType: "intent" as const, scopeId: intentId }
-        : undefined,
+    () => (intentId ? { intentId } : undefined),
     [intentId],
   );
 
@@ -256,8 +253,7 @@ export default function IntentDetailPage() {
       setOpportunities(items);
     };
     const baseOptions = {
-      scopeType: "intent" as const,
-      scopeId: intentId,
+      intentId,
       statuses: RADAR_STATUSES,
     };
     // Phase 1 (fast, LLM-free): identity + status for every card. Paints the
