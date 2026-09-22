@@ -855,6 +855,7 @@
         props.media
           ? React.createElement("img", { className: "index-dashboard__card-title-media", src: props.media, alt: "", "aria-hidden": "true", loading: "lazy" })
           : null,
+        props.action || null,
       ),
     );
     return React.createElement(Card, { className: props.primary ? "index-dashboard__card index-dashboard__card--primary" : "index-dashboard__card" },
@@ -2302,6 +2303,20 @@
     );
   }
 
+  function NewSignalModal(props) {
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", { className: "index-dashboard__profile-panel index-dashboard__signal-modal", onClick: function (e) { e.stopPropagation(); } },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "New signal"),
+          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        ),
+        React.createElement("div", { className: "index-dashboard__signal-modal-body" },
+          React.createElement(NewSignal, { onDone: props.onDone }),
+        ),
+      ),
+    );
+  }
+
   // Networks card: "My networks" / "Discover" tabs on the left, a Create button
   // on the right. Create opens the (reviewed) request form as a modal. Owner
   // rows open a detail modal with Access-tab invite links (web parity).
@@ -2384,6 +2399,312 @@
         })
         : null,
     );
+  }
+
+  const NEW_SIGNAL_PROMPT = "who are you trying to meet right now?";
+  const NEW_SIGNAL_EXAMPLES = [
+    "traveling soon, want to meet cool people in ai",
+    "building something, want honest feedback on it",
+    "just launched, want cool people to try it",
+    "new in town, want to find my people",
+    "raising soon, want to meet investors who get it",
+    "hiring soon, want to meet great people early",
+    "have an idea, want someone to build it with",
+  ];
+  const SIGNAL_MAX = 65536;
+  const SIGNAL_CALIBRATING = [
+    "compressing your edges into a signal…",
+    "reaching out across the network…",
+    "filtering people you'd rather not see…",
+    "opening the field.",
+  ];
+
+  function WorkingDots() {
+    return React.createElement("span", { className: "index-dashboard__dots", "aria-label": "Working" },
+      React.createElement("span", null), React.createElement("span", null), React.createElement("span", null));
+  }
+
+  /**
+   * New signal, the mac app's flow: opening → prepare → recovery (once) →
+   * summary → create. `onDone(intentId, description)` fires once the signal exists.
+   */
+  function NewSignal(props) {
+    const stageState = React.useState("opening");
+    const stage = stageState[0];
+    const setStage = stageState[1];
+    const answerState = React.useState("");
+    const answer = answerState[0];
+    const setAnswer = answerState[1];
+    const draftState = React.useState("");
+    const draft = draftState[0];
+    const setDraft = draftState[1];
+    const thinkingState = React.useState(false);
+    const thinking = thinkingState[0];
+    const setThinking = thinkingState[1];
+    const feedbackState = React.useState("");
+    const feedback = feedbackState[0];
+    const setFeedback = feedbackState[1];
+    const fieldsState = React.useState([]);
+    const recoveryFields = fieldsState[0];
+    const setRecoveryFields = fieldsState[1];
+    const descriptionState = React.useState("");
+    const description = descriptionState[0];
+    const setDescription = descriptionState[1];
+    const creatingState = React.useState(false);
+    const creating = creatingState[0];
+    const setCreating = creatingState[1];
+    const payloadRef = React.useRef("");
+    const receiptRef = React.useRef("");
+    const recoveryUsedRef = React.useRef(false);
+    const aliveRef = React.useRef(true);
+    React.useEffect(function () { return function () { aliveRef.current = false; }; }, []);
+
+    function post(path, body) {
+      return fetchPluginJSON(API + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function (payload) {
+        if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Request failed.");
+        return payload;
+      });
+    }
+
+    function runPrepare(answers) {
+      setThinking(true);
+      const body = { payload: payloadRef.current };
+      if (answers && answers.length) body.answers = answers;
+      post("/intents/prepare", body)
+        .then(function (result) {
+          if (!aliveRef.current) return;
+          payloadRef.current = result.payload;
+          setDescription(result.payload);
+          if (result.status === "ready") {
+            receiptRef.current = result.preparationReceipt;
+            setFeedback("");
+            setStage("summary");
+          } else if (!recoveryUsedRef.current) {
+            recoveryUsedRef.current = true;
+            setFeedback(result.feedback || "");
+            setRecoveryFields(Array.isArray(result.recovery) ? result.recovery : []);
+            setStage("recovery");
+          } else {
+            setFeedback(result.feedback || "");
+            setStage("summary");
+          }
+        })
+        .catch(function () { if (aliveRef.current) setStage("retry"); })
+        .then(function () { if (aliveRef.current) setThinking(false); });
+    }
+
+    function submitOpening(value) {
+      const text = String(value != null ? value : draft).trim();
+      if (!text) return;
+      setAnswer(text);
+      payloadRef.current = text;
+      runPrepare();
+    }
+
+    function recheck() {
+      payloadRef.current = description;
+      receiptRef.current = "";
+      runPrepare();
+    }
+
+    function create() {
+      if (creating || !description.trim() || description.length > SIGNAL_MAX) return;
+      setCreating(true);
+      post("/intents", { description: description, preparationReceipt: receiptRef.current })
+        .then(function (created) { if (aliveRef.current) props.onDone(created.intentId, description); })
+        .catch(function (err) {
+          if (!aliveRef.current) return;
+          setCreating(false);
+          setStage("summary");
+          setFeedback("that didn't go through — " + ((err && err.message) || "try again."));
+        });
+    }
+
+    if (creating) return React.createElement(SettingUpScreen, { lines: SIGNAL_CALIBRATING });
+
+    const stepIdx = stage === "summary" ? 2 : 1;
+    const agent = { label: "your agent", id: "" };
+    let current;
+    if (thinking) {
+      current = React.createElement(AgentLine, { speaker: agent }, React.createElement(WorkingDots, null));
+    } else if (stage === "retry") {
+      current = React.createElement(AgentLine, { speaker: agent },
+        React.createElement("p", null, "couldn't reach your agent."),
+        React.createElement("div", null, React.createElement(Button, { type: "button", onClick: function () { runPrepare(); } }, "try again")));
+    } else if (stage === "summary") {
+      current = React.createElement(AgentLine, { speaker: agent },
+        React.createElement("p", { className: "index-dashboard__signal-new-strong" }, "Here's your signal."),
+        React.createElement("div", { className: "index-dashboard__signal-new-summary" },
+          React.createElement("textarea", {
+            className: "index-dashboard__textarea",
+            "aria-label": "Signal description",
+            value: description,
+            maxLength: SIGNAL_MAX,
+            rows: 6,
+            onChange: function (e) {
+              // An edited draft is no longer the one the receipt admitted.
+              if (receiptRef.current && e.target.value !== payloadRef.current) receiptRef.current = "";
+              setDescription(e.target.value);
+            },
+          }),
+          feedback ? React.createElement("p", { className: "index-dashboard__signal-new-note" }, feedback) : null,
+        ),
+        React.createElement("div", null,
+          receiptRef.current
+            ? React.createElement(Button, { type: "button", disabled: !description.trim(), onClick: create }, "create this signal")
+            : React.createElement(Button, { type: "button", disabled: !description.trim(), onClick: recheck }, "check signal")));
+    } else if (stage === "recovery") {
+      current = React.createElement(SignalRecovery, { fields: recoveryFields, feedback: feedback, onSubmit: runPrepare });
+    } else {
+      current = React.createElement(AgentLine, { speaker: agent, tag: "opening" },
+        React.createElement("p", { className: "index-dashboard__signal-new-strong" }, NEW_SIGNAL_PROMPT),
+        React.createElement("form", {
+          className: "index-dashboard__signal-new-compose",
+          onSubmit: function (e) { e.preventDefault(); submitOpening(); },
+        },
+          React.createElement("textarea", {
+            className: "index-dashboard__signal-new-input",
+            autoFocus: true,
+            value: draft,
+            maxLength: SIGNAL_MAX,
+            rows: 3,
+            placeholder: "type what you're looking for…",
+            "aria-label": "What you're looking for",
+            onChange: function (e) { setDraft(e.target.value); },
+            onKeyDown: function (e) {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitOpening(); }
+            },
+          }),
+          React.createElement("div", { className: "index-dashboard__signal-new-compose-foot" },
+            React.createElement(Button, { type: "submit", size: "sm", disabled: !draft.trim() }, "send →"))),
+        React.createElement("div", { className: "index-dashboard__agent-q-options" },
+          NEW_SIGNAL_EXAMPLES.map(function (example) {
+            return React.createElement(Button, { key: example, type: "button", outlined: true, onClick: function () { submitOpening(example); } }, example);
+          })));
+    }
+
+    const previewLines = [
+      "getting a read on what you need…",
+      answer ? "you're after: “" + (answer.length > 40 ? answer.slice(0, 39) + "…" : answer) + "”" : null,
+      stepIdx >= 2 ? "sharpening the edges…" : null,
+    ].filter(Boolean);
+
+    return React.createElement("div", { className: "index-dashboard__signal-new" },
+      React.createElement("section", { className: "index-dashboard__signal-new-main" },
+        React.createElement("div", { className: "index-dashboard__signal-new-steps" },
+          React.createElement("span", null, "step " + stepIdx + " of 2"),
+          React.createElement("div", { className: "index-dashboard__signal-new-bars" },
+            [0, 1].map(function (i) {
+              const state = i < stepIdx - 1 ? "done" : i === stepIdx - 1 ? "current" : "todo";
+              return React.createElement("span", { key: i, className: "index-dashboard__signal-new-bar index-dashboard__signal-new-bar--" + state });
+            }))),
+        React.createElement("div", { className: "index-dashboard__signal-new-thread" },
+          answer
+            ? React.createElement(React.Fragment, null,
+              React.createElement(AgentLine, { speaker: agent, tag: "✓ answered" }, React.createElement("p", null, NEW_SIGNAL_PROMPT)),
+              React.createElement("div", { className: "index-dashboard__agent-mine" },
+                React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" }, answer)))
+            : null,
+          current)),
+      React.createElement("aside", { className: "index-dashboard__signal-new-field" },
+        React.createElement("p", { className: "index-dashboard__signal-new-field-title" }, "the field, warming"),
+        previewLines.map(function (line, i) {
+          return React.createElement("p", {
+            key: i,
+            className: "index-dashboard__signal-new-field-line" + (i === previewLines.length - 1 ? " index-dashboard__signal-new-field-line--last" : ""),
+          }, React.createElement("span", { "aria-hidden": "true" }, "·"), line);
+        }),
+        answer
+          ? React.createElement("div", { className: "index-dashboard__signal-new-orbit", "aria-hidden": "true" },
+            React.createElement("span", { className: "index-dashboard__signal-new-core" }),
+            [36, 56, 78].map(function (r, i) {
+              return React.createElement("span", { key: r, className: "index-dashboard__signal-new-ring", style: { width: r * 2, height: r * 2, marginLeft: -r, marginTop: -r, animationDuration: (22 + i * 8) + "s" } });
+            }))
+          : null));
+  }
+
+  /** The one recovery form prepare may ask for: text, single and multi fields. */
+  function SignalRecovery(props) {
+    const valuesState = React.useState({});
+    const values = valuesState[0];
+    const setValues = valuesState[1];
+    const writingState = React.useState({});
+    const writing = writingState[0];
+    const setWriting = writingState[1];
+    function set(map, setMap, key, value) {
+      const next = Object.assign({}, map);
+      next[key] = value;
+      setMap(next);
+    }
+    function pick(field, label) {
+      const chosen = Array.isArray(values[field.id]) ? values[field.id] : [];
+      if (field.kind === "multi") {
+        set(values, setValues, field.id, chosen.indexOf(label) >= 0 ? chosen.filter(function (l) { return l !== label; }) : chosen.concat([label]));
+      } else {
+        // one answer: picking a chip replaces what was typed
+        set(values, setValues, field.id, chosen[0] === label ? [] : [label]);
+        set(writing, setWriting, field.id, false);
+      }
+    }
+    function submit() {
+      const answers = [];
+      props.fields.forEach(function (field) {
+        const own = String(values[field.id + ":own"] || "").trim();
+        const chosen = Array.isArray(values[field.id]) ? values[field.id] : [];
+        let text;
+        if (field.kind === "text") text = own;
+        else if (field.kind === "single") text = (writing[field.id] && own) || chosen[0] || "";
+        else text = chosen.concat(writing[field.id] && own ? [own] : []).join(" — ");
+        if (text) answers.push({ prompt: field.label, answer: text });
+      });
+      props.onSubmit(answers);
+    }
+    return React.createElement(AgentLine, { speaker: { label: "your agent", id: "" }, tag: "shape your signal" },
+      React.createElement("p", { className: "index-dashboard__signal-new-strong" }, props.feedback || "help me understand what you're looking for."),
+      props.fields.map(function (field) {
+        const chosen = Array.isArray(values[field.id]) ? values[field.id] : [];
+        const ownKey = field.id + ":own";
+        const own = values[ownKey] || "";
+        return React.createElement("div", { key: field.id, className: "index-dashboard__signal-new-field-q" },
+          React.createElement("p", { className: "index-dashboard__signal-new-strong" }, field.label),
+          field.kind === "text"
+            ? React.createElement("textarea", {
+              className: "index-dashboard__textarea",
+              rows: 2,
+              value: own,
+              placeholder: field.placeholder || "type your answer…",
+              onChange: function (e) { set(values, setValues, ownKey, e.target.value); },
+            })
+            : React.createElement("div", { className: "index-dashboard__agent-q-options" },
+              (Array.isArray(field.options) ? field.options : []).map(function (option) {
+                const on = chosen.indexOf(option.label) >= 0 && !(field.kind === "single" && writing[field.id]);
+                return React.createElement(Button, {
+                  key: option.label, type: "button", outlined: !on, "aria-pressed": on ? "true" : "false",
+                  onClick: function () { pick(field, option.label); },
+                }, option.label);
+              }),
+              writing[field.id]
+                ? React.createElement("input", {
+                  className: "index-dashboard__agent-q-input",
+                  autoFocus: true,
+                  value: own,
+                  placeholder: "write your own",
+                  "aria-label": "Write your own answer",
+                  onChange: function (e) { set(values, setValues, ownKey, e.target.value); },
+                  onBlur: function (e) { if (!e.target.value.trim()) set(writing, setWriting, field.id, false); },
+                  onKeyDown: function (e) { if (e.key === "Escape" && !e.target.value.trim()) set(writing, setWriting, field.id, false); },
+                })
+                : React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__agent-q-write",
+                  onClick: function () { set(writing, setWriting, field.id, true); },
+                }, "write your own")));
+      }),
+      React.createElement("div", null, React.createElement(Button, { type: "button", onClick: submit }, "send answer")));
   }
 
   function IntentList(props) {
@@ -4510,6 +4831,9 @@
     const createOpenState = useState(false);
     const createOpen = createOpenState[0];
     const setCreateOpen = createOpenState[1];
+    const newSignalState = useState(false);
+    const newSignalOpen = newSignalState[0];
+    const setNewSignalOpen = newSignalState[1];
     const editingRequestState = useState(null);
     const editingRequest = editingRequestState[0];
     const setEditingRequest = editingRequestState[1];
@@ -5137,12 +5461,36 @@
       )
       : null;
 
+    // Open the new signal at once: put its row in the list the detail page
+    // reads from, then let the reload bring the server's version.
+    function finishNewSignal(intentId, description) {
+      setNewSignalOpen(false);
+      if (!intentId) { load(); return; }
+      setSummary(function (prev) {
+        if (!prev) return prev;
+        const rest = (prev.intents || []).filter(function (intent) { return intent.id !== intentId; });
+        const row = { id: intentId, title: description, lifecycleStatus: "ACTIVE", status: "live", pendingCount: 0 };
+        return Object.assign({}, prev, { intents: [row].concat(rest) });
+      });
+      selectIntent(intentId);
+      load();
+    }
+
     const intentsView = selectedIntent
       ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
-          React.createElement(Panel, { icon: ICON_SPARKLES(), title: "Intents", count: intents.length },
+          React.createElement(Panel, {
+            icon: ICON_SPARKLES(),
+            title: "Intents",
+            count: intents.length,
+            action: React.createElement(Button, {
+              type: "button", outlined: true, size: "sm",
+              className: "index-dashboard__net-create-btn",
+              onClick: function () { setNewSignalOpen(true); },
+            }, ICON_PLUS(), "New signal"),
+          },
             React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
@@ -5206,6 +5554,9 @@
         : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); }, onSignOut: signOut }) : null),
       messagesOpen
         ? React.createElement(MessagesPanel, { initialConversationId: messagesTarget, onClose: function () { setMessagesOpen(false); setMessagesTarget(null); } })
+        : null,
+      newSignalOpen
+        ? React.createElement(NewSignalModal, { onDone: finishNewSignal, onClose: function () { setNewSignalOpen(false); } })
         : null,
       createOpen
         ? React.createElement(NetworkCreateModal, { initial: editingRequest, onSubmit: submitNetworkRequest, onClose: closeCreate })
