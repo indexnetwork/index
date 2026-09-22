@@ -1,12 +1,13 @@
 # Changelog
 
 
-## 0.47.0
+## Unreleased
+
+### Added
+- Register the Index MCP server (`mcp_servers.index`) while `INDEX_API_KEY` is set, authenticated with `x-api-key`. Clearing the key removes the entry.
 
 ### Changed
-- **BREAKING: the negotiator fence is `agentId`.** Turns and H2A posts send
-  `?agentId=`, and the sidecar sets `INDEX_AGENT_ID`. `executorId` and
-  `INDEX_EXECUTOR_ID` are no longer accepted.
+- Browser login and sign-out leave `INDEX_API_KEY` in place. That key is the Index MCP credential.
 
 ## 0.46.1
 
