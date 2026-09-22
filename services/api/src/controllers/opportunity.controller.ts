@@ -7,7 +7,7 @@ import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
-import { parseListOpportunitiesQuery } from '../lib/opportunity/list-opportunities-query';
+import { parseListOpportunitiesQuery } from '../services/opportunity.list-query';
 
 const logger = log.controller.from('opportunity');
 

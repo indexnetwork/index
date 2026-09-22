@@ -7,10 +7,10 @@ import {
   type PresenterDatabase,
 } from '@indexnetwork/protocol';
 
-import { log } from '../log';
-import { isOpportunityPresentationCacheable } from './presented-opportunity';
+import { log } from '../lib/log';
+import { isOpportunityPresentationCacheable } from './opportunity.presentation';
 
-const logger = log.service.from('preloadOpportunityPresentation');
+const logger = log.service.from('OpportunityService.preload');
 const CHAT_CACHE_TTL = 24 * 60 * 60;
 
 interface PreloadDeps {
@@ -35,7 +35,7 @@ export async function preloadOpportunityPresentation(
   deps: PreloadDeps,
   opportunity: Opportunity,
   viewerIds: string[],
-  scopeId?: string,
+  intentId?: string,
 ): Promise<void> {
   if (!isOpportunityPresentationCacheable(opportunity.status)) return;
 
@@ -74,7 +74,7 @@ export async function preloadOpportunityPresentation(
       const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);
       const counterpartUser = counterpart ? await deps.db.getUser(counterpart.userId) : null;
       await deps.cache.set(
-        buildRadarCardPresentationCacheKey(opportunity.id, opportunity.status, viewerId, scopeId),
+        buildRadarCardPresentationCacheKey(opportunity.id, opportunity.status, viewerId, intentId),
         {
           opportunityId: opportunity.id,
           status: opportunity.status,
@@ -112,9 +112,9 @@ export function scheduleOpportunityPresentationPreload(
   deps: PreloadDeps,
   opportunity: Opportunity,
   viewerIds: string[],
-  scopeId?: string,
+  intentId?: string,
 ): void {
-  void preloadOpportunityPresentation(deps, opportunity, viewerIds, scopeId).catch((error) => {
+  void preloadOpportunityPresentation(deps, opportunity, viewerIds, intentId).catch((error) => {
     logger.warn('preloadOpportunityPresentation batch failed', {
       opportunityId: opportunity.id,
       error,
