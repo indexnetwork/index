@@ -55,7 +55,7 @@ speaker session is ignored.
 Negotiation checkpoints stay in one JSON file per signal under
 `$HERMES_HOME/index-network/negotiator/`. Every restored match reads current
 Index state before deciding, and a turn is attempted at most once. Turns
-include `?executorId=<agent UUID>` so Index refuses work from an agent that
+include `?agentId=<agent UUID>` so Index refuses work from an agent that
 is no longer selected.
 
 Disable the `index` platform in Hermes to stop listening, or change the

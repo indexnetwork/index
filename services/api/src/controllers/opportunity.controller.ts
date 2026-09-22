@@ -201,9 +201,9 @@ export class OpportunityController {
       return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
     }
 
-    const executorId = new URL(req.url).searchParams.get('executorId');
-    if (executorId !== null && !uuidQuerySchema.safeParse(executorId).success) {
-      return Response.json({ error: 'executorId must be a UUID' }, { status: 400 });
+    const agentId = new URL(req.url).searchParams.get('agentId');
+    if (agentId !== null && !uuidQuerySchema.safeParse(agentId).success) {
+      return Response.json({ error: 'agentId must be a UUID' }, { status: 400 });
     }
 
     let raw: unknown;
@@ -227,7 +227,7 @@ export class OpportunityController {
     let result;
     try {
       result = await negotiationService.submitTurn(opportunityId, user.id, parsed.data,
-        executorId ? { userId: user.id, agentId: executorId } : undefined);
+        agentId ? { userId: user.id, agentId } : undefined);
     } catch (error) {
       if (error instanceof RuntimeConflictError) {
         return Response.json({ error: 'The selected negotiation executor changed; stop this work' }, { status: 409 });

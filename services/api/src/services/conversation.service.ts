@@ -362,10 +362,10 @@ export class ConversationService {
 
   /**
    * Persist an agent's question or message on the owner's agent DM.
-   * @param input - Owner, signal, the selected executor when one is speaking, and agent-authored H2A entries.
+   * @param input - Owner, signal, the selected agent when one is speaking, and agent-authored H2A entries.
    * @throws AgentConversationError when the intent is not owned.
    */
-  async publishH2A(input: { userId: string; intentId: string; executorId?: string; entries: PrincipalMessage[] }) {
+  async publishH2A(input: { userId: string; intentId: string; agentId?: string; entries: PrincipalMessage[] }) {
     if (!await this.intents.isOwnedByUser(input.intentId, input.userId)) throw new AgentConversationError('Intent not found.', 404);
     const { messages } = await AgentSessionDatabaseAdapter.readTranscript(input.userId, input.intentId);
     const known = new Set(messages.map((message) => message.id));

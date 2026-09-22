@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 0.47.0
+
+### Changed
+- **BREAKING: the negotiator fence is `agentId`.** Turns and H2A posts send
+  `?agentId=`, and the sidecar sets `INDEX_AGENT_ID`. `executorId` and
+  `INDEX_EXECUTOR_ID` are no longer accepted.
+
 ## 0.46.1
 
 ### Fixed
