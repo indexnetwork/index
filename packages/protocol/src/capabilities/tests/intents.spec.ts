@@ -200,7 +200,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
 
     expect(result.executionResults).toEqual([]);
     expect(host.intents).toEqual([]);
-    expect(result.preparationResult?.status).toBe("needs_clarification");
+    expect(result.preparationResult?.status).toBe("needs_revision");
     expect(result.validationFailures.map((failure) => failure.category)).toContainEqual(expect.stringMatching(/vague_or_invalid|non_actionable/));
   }, 120_000);
 });

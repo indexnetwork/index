@@ -9,7 +9,7 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { ExplicitIntentInferrer } from "../intent.inferrer.js";
 import { SemanticVerifier } from "../intent.verifier.js";
-import { IntentClarifier } from "../intent.clarifier.js";
+import { IntentPreparer } from "../intent.preparer.js";
 import type { IntentGraphDatabase } from "../../../platform/database.js";
 import type { EmbeddingGenerator } from "../../../platform/discovery/embedder.js";
 import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
@@ -41,7 +41,7 @@ export class IntentGraphFactory {
       intentFollowUp,
       inferrer: agents?.inferrer ?? new ExplicitIntentInferrer(),
       verifier: agents?.verifier ?? new SemanticVerifier(),
-      clarifier: new IntentClarifier(agents?.verifier),
+      preparer: new IntentPreparer(agents?.verifier),
     };
   }
 

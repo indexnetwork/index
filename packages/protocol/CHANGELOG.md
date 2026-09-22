@@ -1,5 +1,12 @@
 # Changelog
 
+## 63.0.0
+
+### Breaking changes
+
+- **`Intents.clarify()` → `Intents.prepare()`.** Fold recovery answers into the draft, run creation admission, and return `ready` with metadata or `needs_revision` with admission feedback plus a dynamic recovery form. Remove `ClarifyAnswer`, `ClarifyInput`, `ClarifyQuestion`, `ClarifyQuestionOption`, `ClarifyResult`, and `needs_clarification`.
+- Export `PrepareAnswer`, `PrepareInput`, `PrepareResult`, `RecoveryField`, `RecoveryFieldKind`, and `RecoveryFieldOption` instead.
+
 ## 62.0.0
 
 ### Breaking changes

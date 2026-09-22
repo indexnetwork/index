@@ -416,8 +416,8 @@ export function createIndexApiClient(options = {}) {
     intents: {
       list: (body = {}, options = {}) => request('/intents/list', { ...options, method: 'POST', body }),
       // Prepare { payload, answers }: ready includes preparationReceipt;
-      // needs_clarification includes feedback and questions. Retain answers on failure.
-      clarify: (body, options = {}) => request('/intents/clarify', { ...options, method: 'POST', body }),
+      // needs_revision includes feedback and recovery. Retain answers on failure.
+      prepare: (body, options = {}) => request('/intents/prepare', { ...options, method: 'POST', body }),
       // Persist { description, preparationReceipt? }; resolves { intentId, networkIds }.
       // The receipt authorizes final revisions without another admission gate.
       create: (body, options = {}) => request('/intents', { ...options, method: 'POST', body }),

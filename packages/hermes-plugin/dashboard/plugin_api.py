@@ -449,7 +449,14 @@ def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> st
     """Resolve the displayed counterpart: the first actor who is not the viewer."""
     if not current_user_id:
         return ""
-    fallback = ""
+    peer = opp.get("peer") if isinstance(opp.get("peer"), dict) else {}
+    uid = _text(peer.get("userId"))
+    if uid and uid != current_user_id:
+        return uid
+    for key in ("userId", "counterpartUserId"):
+        uid = _text(opp.get(key))
+        if uid and uid != current_user_id:
+            return uid
     for actor in _list(opp.get("actors")):
         if not isinstance(actor, dict):
             continue
@@ -457,21 +464,17 @@ def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> st
         if not uid or uid == current_user_id:
             continue
         return uid
-    return fallback
+    return ""
 
 
 def _visible_counterpart_user_ids(current_user_id: str) -> set[str]:
     """Return user ids visible through the caller's opportunity cards."""
     visible: set[str] = set()
-    for query in ("", "?status=expired"):
-        opportunities, _ = _fetch_opportunities(query)
-        for opp in opportunities:
-            status = _text(opp.get("status"))
-            if status == "pending" and not _is_actionable_for_viewer(opp, current_user_id):
-                continue
-            counterpart_id = _counterpart_user_id(opp, current_user_id)
-            if counterpart_id:
-                visible.add(counterpart_id)
+    opportunities, _ = _fetch_opportunities(f"?statuses={_RADAR_STATUSES}")
+    for opp in opportunities:
+        counterpart_id = _counterpart_user_id(opp, current_user_id)
+        if counterpart_id:
+            visible.add(counterpart_id)
     return visible
 
 

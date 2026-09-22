@@ -8,6 +8,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- **`/i/new`** uses prepare → recovery form → summary. One dynamic recovery
+  screen on admission failure; no clarifying-question loop.
 - The negotiations inbox refreshes on `negotiation.changed` alone. The API no
   longer publishes `negotiation.opened`; a pair that opens now sends
   `negotiation.changed` to both seats, so the list still refreshes when a
