@@ -1,19 +1,19 @@
 /** Client for preparing a signal and saving its final revision. */
-import type { ClarifyAnswer, ClarifyQuestion, ClarifyResult as ProtocolClarifyResult } from "@indexnetwork/protocol";
+import type { PrepareAnswer, PrepareResult as ProtocolPrepareResult, RecoveryField } from "@indexnetwork/protocol";
 
 import { apiClient } from "@/lib/api";
 
-export type { ClarifyAnswer, ClarifyQuestion };
+export type { PrepareAnswer, RecoveryField };
 
 /** The API host replaces admitted metadata with authenticated preparation. */
-export type ClarifyResult =
-  | (Omit<Extract<ProtocolClarifyResult, { status: "ready" }>, "metadata"> & { preparationReceipt: string })
-  | Extract<ProtocolClarifyResult, { status: "needs_clarification" }>;
+export type PrepareResult =
+  | (Extract<ProtocolPrepareResult, { status: "ready" }> & { preparationReceipt: string })
+  | Extract<ProtocolPrepareResult, { status: "needs_revision" }>;
 
 export const signalService = {
-  /** Prepare a draft; keep pending answers until this round succeeds. */
-  clarify: (payload: string, answers: ClarifyAnswer[] = []) =>
-    apiClient.post<ClarifyResult>("/intents/clarify", { payload, answers }),
+  /** Prepare a draft; fold recovery answers and run admission. */
+  prepare: (payload: string, answers: PrepareAnswer[] = []) =>
+    apiClient.post<PrepareResult>("/intents/prepare", { payload, answers }),
 
   /** Save the final text using server-authorized preparation. */
   create: (description: string, preparationReceipt: string) =>

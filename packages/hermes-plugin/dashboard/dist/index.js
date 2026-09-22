@@ -3979,7 +3979,7 @@
             ? React.createElement(NegotiatorSettings)
             : React.createElement(NegotiationsList),
         )
-        : (loading || !form
+        : (loading || (!form && !panelError)
           ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
           : React.createElement("div", { className: "index-dashboard__profile-body" },
             readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),

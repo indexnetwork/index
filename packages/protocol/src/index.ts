@@ -78,15 +78,16 @@ export type { NetworksDeps } from "./capabilities/networks.js";
 
 // ─── Intents ──────────────────────────────────────────────────────────────────
 // The whole capability behind one class: lifecycle graph, verification, and
-// payload clarification.
+// payload preparation.
 
 export { Intents } from "./capabilities/intents.js";
 export type {
-  ClarifyAnswer,
-  ClarifyInput,
-  ClarifyQuestion,
-  ClarifyQuestionOption,
-  ClarifyResult,
+  PrepareAnswer,
+  PrepareInput,
+  PrepareResult,
+  RecoveryField,
+  RecoveryFieldKind,
+  RecoveryFieldOption,
   IntentsDeps,
   IntentSemanticMetadata,
   PreparedIntent,

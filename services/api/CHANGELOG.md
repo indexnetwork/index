@@ -9,6 +9,11 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- **`POST /intents/prepare`** replaces `/intents/clarify`. Returns `ready` with a
+  preparation receipt or `needs_revision` with admission feedback and a dynamic
+  recovery form.
+
 ### Fixed
 - Restore API architecture lint by keeping opportunity presentation and preload
   helpers in `lib/opportunity`, outside the service layer. Runtime behavior is

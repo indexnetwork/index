@@ -3,7 +3,7 @@ import { BaseMessage } from "@langchain/core/messages";
 import { InferredIntent } from "../intent.inferrer.js";
 import { SemanticVerifierOutput } from "../intent.verifier.js";
 import type { IntentSemanticMetadata } from "../intent.admission.js";
-import type { PreparedIntent, ClarifyResult } from "../intent.clarifier.js";
+import type { PreparedIntent, PrepareResult } from "../intent.preparer.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
 import type { ScopeType } from '../../shared/agent/scope.js';
 import type { IntentLifecycleStatus } from "../../../platform/database.js";
@@ -101,7 +101,7 @@ export const IntentGraphState = Annotation.Root({
   preparation: Annotation<PreparedIntent | undefined>,
 
   /** The full preparation outcome for an unprepared create, including repairable feedback. */
-  preparationResult: Annotation<ClarifyResult | undefined>,
+  preparationResult: Annotation<PrepareResult | undefined>,
 
   /**
    * Conversation history for context-aware intent inference.

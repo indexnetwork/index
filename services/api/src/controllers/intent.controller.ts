@@ -15,7 +15,7 @@ const CreateSchema = z.object({
   preparationReceipt: z.string().min(1).max(65_536).optional(),
   networkIds: z.array(z.string().uuid('networkIds must be UUIDs')).default([]),
 }).strict();
-const ClarifySchema = z.object({
+const PrepareSchema = z.object({
   payload: z.string().trim().min(1, 'payload is required').max(65_536),
   answers: z.array(z.object({
     prompt: z.string().trim().min(1),
@@ -80,17 +80,17 @@ export class IntentController {
   }
 
   /**
-   * Run one stateless clarification round over a draft signal.
+   * Prepare a draft signal for creation admission.
    *
-   * @param req - Current payload and answers not yet folded into it.
+   * @param req - Current payload and recovery answers not yet folded into it.
    * @param user - Authenticated owner.
-   * @returns An admitted draft with a receipt, or repairable feedback and questions.
+   * @returns An admitted draft with a receipt, or repairable feedback and a recovery form.
    */
-  @Post('/clarify')
+  @Post('/prepare')
   @UseGuards(AuthGuard)
-  async clarify(req: Request, user: AuthenticatedUser) {
+  async prepare(req: Request, user: AuthenticatedUser) {
     const raw = await req.json().catch(() => ({}));
-    const parsed = ClarifySchema.safeParse(raw);
+    const parsed = PrepareSchema.safeParse(raw);
     if (!parsed.success) {
       return Response.json(
         { error: 'Validation failed', details: parsed.error.flatten() },
@@ -99,7 +99,7 @@ export class IntentController {
     }
 
     try {
-      return Response.json(await intentService.clarify(user.id, parsed.data));
+      return Response.json(await intentService.prepare(user.id, parsed.data));
     } catch (error) {
       logger.error('Intent preparation failed', { userId: user.id, error });
       return Response.json({ error: 'preparation_failed', detail: 'Could not prepare this signal. Your answers are kept; try again.', retryable: true }, { status: 503 });

@@ -261,7 +261,7 @@ final class NativeAPIRequestBridge {
         ("PATCH", #"^/network-requests/[^/?]+$"#), ("DELETE", #"^/network-requests/[^/?]+$"#),
         ("GET", #"^/agents$"#),
         ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
-        ("POST", #"^/intents(?:/(?:list|clarify))?$"#),
+        ("POST", #"^/intents(?:/(?:list|prepare))?$"#),
         ("GET", #"^/intents/[^/?]+/opportunities(?:\?.*)?$"#),
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
         ("PATCH", #"^/intents/[^/?]+/opportunities/[^/?]+/status$"#),
@@ -614,7 +614,7 @@ final class NativeAPIRequestBridge {
                     && optionalInteger(item, "limit", minimum: 1, maximum: 100)
                     && optionalBool(item, "archived") && optionalString(item, "sourceType", maximum: 128)
             }
-        case "/intents/clarify":
+        case "/intents/prepare":
             return exactTypedObject(body, required: ["payload"], optional: ["answers"]) { item in
                 boundedString(item["payload"], maximum: 65_536)
                     && (item["answers"] == nil || validClarifyAnswers(item["answers"]))

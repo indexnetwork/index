@@ -1,4 +1,4 @@
-import { Intents, Networks, decideNegotiationOpening, pairKeyOf, type ClarifyInput } from '@indexnetwork/protocol';
+import { Intents, Networks, decideNegotiationOpening, pairKeyOf, type PrepareInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { IntentDatabaseAdapter, chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
@@ -155,16 +155,16 @@ export class IntentService {
    * @returns Repairable feedback or a signed receipt for final review.
    * @throws {IntentPreparationFailedError} When a model fails; retain answers for retry.
    */
-  async clarify(userId: string, input: ClarifyInput) {
-    const result = await this.prepare(input);
+  async prepare(userId: string, input: PrepareInput) {
+    const result = await this.runPrepare(input);
     if (result.status !== 'ready') return result;
     const preparationReceipt = await issuePreparationReceipt(userId, result);
-    return { status: result.status, payload: result.payload, questions: result.questions, preparationReceipt };
+    return { status: result.status, payload: result.payload, preparationReceipt };
   }
 
-  private async prepare(input: ClarifyInput) {
+  private async runPrepare(input: PrepareInput) {
     try {
-      return await this.intents.clarify(input);
+      return await this.intents.prepare(input);
     } catch (error) {
       logger.error('Intent preparation failed', { error });
       throw new IntentPreparationFailedError();
@@ -206,7 +206,7 @@ export class IntentService {
     if (preparationReceipt) {
       preparation = await readPreparationReceipt(userId, description, preparationReceipt);
     } else {
-      const result = await this.prepare({ payload: description });
+      const result = await this.runPrepare({ payload: description });
       if (result.status !== 'ready') throw new IntentCreateRejectedError(result.feedback);
       preparation = { metadata: result.metadata };
     }

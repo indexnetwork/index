@@ -192,12 +192,12 @@ first use, so an unused method costs nothing.
 |---|---|
 | `createGraph()` | Prepare and create exactly one new signal; explicitly read, update, archive, or transition existing signals. Requires `database` |
 | `verifyIntent(content, profileContext)` | Felicity conditions, speech-act classification, semantic entropy, specificity |
-| `clarify({ payload, answers? })` | Fold answers into the draft, then return `ready` with metadata or `needs_clarification` with feedback and questions; model failures throw for retry |
+| `prepare({ payload, answers? })` | Fold recovery answers into the draft, then return `ready` with metadata or `needs_revision` with admission feedback and a dynamic recovery form; model failures throw for retry |
 | `scoreIntent(content, profileContext?)` | Measure saved text without admission filters; a negative verdict still returns metadata |
 | `Intents.normalizeDescription(description)` | Normalize an explicit update description; creation preserves text verbatim |
 
 Creation with `inputContent` prepares the description once and persists that exact
-text in a new record, even if a similar signal exists. Guided hosts call `clarify`
+text in a new record, even if a similar signal exists. Guided hosts call `prepare`
 until it returns `ready`, then issue their own authenticated preparation receipt
 bound to the owner and admitted draft. After authenticating the receipt, pass
 `preparation: { metadata }` to `createGraph().invoke()` alongside the final
