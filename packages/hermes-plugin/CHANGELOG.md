@@ -19,6 +19,19 @@
   strip above it, grouped by match with where each one stands; an answer
   carries the question it settled; and a note points at a counterparty with a
   trailing link rather than being attributed to their agent.
+- Follow the Hermes theme instead of painting in absolute ink. The signal
+  thread, the A2A turns, the pane title, the radar's accept button and the send
+  key all derived their colour from hard-coded black/white pairs with a
+  `[data-scheme="dark"]` twin; they now read from `--color-foreground`,
+  `--color-background` and `--color-border`, which the host already flips. A
+  filled bubble is a surface mixed from the theme's own ink rather than a slab
+  of the opposite colour, and the question options take the page's ink instead
+  of the host Button's, which left them unreadable on a dark dashboard.
+- Radar rows carry the presenter's summary, not just its hook. The transport
+  collapsed both fields into one line and preferred the headline, so a
+  negotiating row read only "Negotiation in progress" and never said what the
+  pairing was about. `headline` and `mainText` now travel separately and the
+  row shows the hook over the summary, as the web radar does.
 
 ### Fixed
 - Restore the dashboard mode probe so Discover registers in Hermes after the

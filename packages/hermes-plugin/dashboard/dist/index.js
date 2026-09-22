@@ -1137,7 +1137,14 @@
               ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
               : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
       ),
-      opportunity.mainText ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText) : null,
+      // The hook leads, the summary explains: the pair the presenter wrote for
+      // this pairing, the same two the web radar shows.
+      opportunity.headline
+        ? React.createElement("p", { className: "index-dashboard__opp-headline" }, opportunity.headline)
+        : null,
+      opportunity.mainText
+        ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText)
+        : null,
     );
   }
 

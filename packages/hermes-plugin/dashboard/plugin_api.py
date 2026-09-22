@@ -674,10 +674,13 @@ def _radar_item(card: dict[str, Any], intent_id: str | None = None) -> dict[str,
     item: dict[str, Any] = {
         "opportunityId": _text(card.get("opportunityId")),
         "name": _text(card.get("name"), "New match"),
-        # One line per card, the mac app's `blurb`: the headline is what the
-        # presenter wrote for this pairing, and the long form only stands in
-        # when there is no headline.
-        "mainText": _truncate(card.get("headline") or card.get("mainText")),
+        # The presenter writes two things about a pairing: a one-line hook and
+        # the summary that explains why these two were put together. The web
+        # radar shows both, so a row here carries both rather than the hook
+        # alone, which left a negotiating card saying only "Negotiation in
+        # progress".
+        "headline": _truncate(card.get("headline")),
+        "mainText": _truncate(card.get("mainText")),
     }
     avatar = _avatar_url(card.get("avatar"))
     if avatar:
