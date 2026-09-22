@@ -19,6 +19,8 @@ const logger = log.agent.from('HostedAgent');
 const WAKE_GROUP = 'hosted-negotiator';
 /** Short enough that an owner's first-ever stream is picked up by the next scan. */
 const WAKE_BLOCK_MS = 2000;
+/** How long an owner may go without a sweep for turns their runner owes but never ran. */
+const RECONCILE_INTERVAL_MS = 5 * 60_000;
 
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
@@ -35,8 +37,8 @@ export class HostedAgent {
   private readonly registry = new AgentDatabaseAdapter();
   private readonly runners = new Map<string, AgentRunner>();
   private readonly joined = new Set<string>();
-  /** Owners whose current executor binding and outstanding first turns were recovered. */
-  private readonly reconciled = new Set<string>();
+  /** When each owner's executor binding and owed turns were last recovered. */
+  private readonly reconciled = new Map<string, number>();
   /** Event-stream owners without a user profile, such as the system discovery worker. */
   private readonly unavailableOwners = new Set<string>();
   private reader?: ReturnType<typeof createRedisClient>;
@@ -83,7 +85,7 @@ export class HostedAgent {
           this.joined.add(userId);
         }
 
-        await Promise.all(userIds.filter((userId) => !this.reconciled.has(userId)).map(async (userId) => {
+        await Promise.all(userIds.filter((userId) => this.needsReconcile(userId)).map(async (userId) => {
           try {
             await this.reconcileOwner(userId);
           } catch (error: unknown) {
@@ -172,23 +174,24 @@ export class HostedAgent {
     if (configurationChanged) this.reconciled.delete(userId);
     const runner = await this.runnerFor(userId);
     if (!runner) {
-      if (this.running) this.reconciled.add(userId);
+      if (this.running) this.markReconciled(userId);
       return;
     }
-    if (!this.reconciled.has(userId)) await this.reconcileOwner(userId, runner);
+    if (this.needsReconcile(userId)) await this.reconcileOwner(userId, runner);
     if (!events.length || this.runners.get(userId) !== runner) return;
     for (const event of events) runner.handle(event);
   }
 
   /**
-   * Rebuild one hosted runner's durable state after process start or a binding change.
-   * @param userId - The owner whose selected executor and first turns are recovered.
+   * Rebuild one hosted runner's durable state after process start, a binding
+   * change, or an interval without a sweep.
+   * @param userId - The owner whose selected executor and owed turns are recovered.
    * @param existing - A runner already resolved for this owner, when dispatch has one.
    */
   private async reconcileOwner(userId: string, existing?: AgentRunner): Promise<void> {
     const runner = existing ?? await this.runnerFor(userId);
     if (!runner) {
-      if (this.running) this.reconciled.add(userId);
+      if (this.running) this.markReconciled(userId);
       return;
     }
     try {
@@ -199,8 +202,23 @@ export class HostedAgent {
       this.runners.delete(userId);
       this.unavailableOwners.add(userId);
     }
-    if (this.running && this.runners.get(userId) === runner) this.reconciled.add(userId);
-    if (this.running && this.unavailableOwners.has(userId)) this.reconciled.add(userId);
+    if (this.running && this.runners.get(userId) === runner) this.markReconciled(userId);
+    if (this.running && this.unavailableOwners.has(userId)) this.markReconciled(userId);
+  }
+
+  /**
+   * @param userId - The owner to test.
+   * @returns Whether their runner has never been swept, or was swept long enough
+   *   ago that a turn lost since then should be recovered.
+   */
+  private needsReconcile(userId: string): boolean {
+    const swept = this.reconciled.get(userId);
+    return swept === undefined || Date.now() - swept >= RECONCILE_INTERVAL_MS;
+  }
+
+  /** @param userId - The owner whose sweep just finished. */
+  private markReconciled(userId: string): void {
+    this.reconciled.set(userId, Date.now());
   }
 
   /**

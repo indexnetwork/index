@@ -6,6 +6,15 @@ import type { AgentHost } from "./agent.host.js";
 import { readConversation, readStandingContext } from "./conversation.codec.js";
 import type { IntentMembership } from "./runner.context.js";
 
+/**
+ * Negotiations this principal runs at once. Set above a normal discovery burst:
+ * measured latency does not grow with burst position, so queueing ordinary work
+ * only delays it. This bounds pathological fan-out, nothing else.
+ */
+const NEGOTIATION_CONCURRENCY = 24;
+/** Retries for one negotiation run, so a single lost turn does not wait for the next wake. */
+const NEGOTIATION_RETRIES = 1;
+
 /** Dependencies for one principal's runner, without transport ownership. */
 export interface AgentRunnerOptions {
   /** Host access already scoped to the principal this runner represents. */
@@ -38,6 +47,8 @@ export class AgentRunner {
   private readonly activeWakes = new Set<string>();
   private readonly pendingWakes = new Set<string>();
   private readonly activeNegotiations = new Map<string, string>();
+  /** Scheduled negotiations waiting for a slot, oldest first. */
+  private readonly queuedNegotiations = new Map<string, string>();
   private readonly heldNegotiations = new Map<string, string>();
   private readonly pendingPrincipalWork = new Map<string, string>();
 
@@ -59,7 +70,9 @@ export class AgentRunner {
   }
 
   /**
-   * Adopts active intents and recovers outstanding first turns using the normal schedulers.
+   * Adopts active intents and recovers every turn this principal owes, using the
+   * normal schedulers. Repeating it is the sweep that recovers a turn lost to a
+   * failed run, so it covers negotiations already under way, not only first turns.
    * Persisted unresolved stalls remain held until the principal answers them.
    * The first refresh does not wake existing intents; later refreshes wake newly active ones.
    * @returns After serialized host reads, membership refresh, and scheduling, not reasoning completion.
@@ -103,7 +116,6 @@ export class AgentRunner {
           continue;
         }
         this.heldNegotiations.delete(negotiation.opportunityId);
-        if (negotiation.turnCount !== 0) continue;
         abortSignal.throwIfAborted();
         this.scheduleNegotiation(negotiation.intentId, negotiation.opportunityId);
       }
@@ -155,6 +167,7 @@ export class AgentRunner {
   stop(): void {
     this.pendingWakes.clear();
     this.pendingPrincipalWork.clear();
+    this.queuedNegotiations.clear();
     this.abortController.abort();
   }
 
@@ -181,20 +194,55 @@ export class AgentRunner {
   }
 
   private scheduleNegotiation(intentId: string, opportunityId: string, decision?: Decision): void {
-    if (this.abortController.signal.aborted || this.activeNegotiations.has(opportunityId)) return;
+    if (this.abortController.signal.aborted) return;
+    if (this.activeNegotiations.has(opportunityId) || this.queuedNegotiations.has(opportunityId)) return;
     if (decision === "accept" || decision === "decline") this.heldNegotiations.delete(opportunityId);
     if (this.heldNegotiations.has(opportunityId)) return;
 
-    this.activeNegotiations.set(opportunityId, intentId);
-    void this.execution.runNegotiation(intentId, opportunityId)
-      .then((result) => this.recordNegotiationResult(intentId, opportunityId, result))
-      .catch((error) => this.options.onError?.(error))
-      .finally(() => {
-        this.activeNegotiations.delete(opportunityId);
-        if (this.abortController.signal.aborted) return;
-        if ([...this.activeNegotiations.values()].includes(intentId)) return;
-        if ([...this.pendingPrincipalWork.values()].includes(intentId)) this.scheduleWake(intentId);
-      });
+    this.queuedNegotiations.set(opportunityId, intentId);
+    this.startNegotiations();
+  }
+
+  /** Starts queued negotiations, oldest first, up to the concurrency limit. */
+  private startNegotiations(): void {
+    for (const [opportunityId, intentId] of this.queuedNegotiations) {
+      if (this.activeNegotiations.size >= NEGOTIATION_CONCURRENCY) return;
+      this.queuedNegotiations.delete(opportunityId);
+      this.activeNegotiations.set(opportunityId, intentId);
+      void this.attemptNegotiation(intentId, opportunityId)
+        .finally(() => {
+          this.activeNegotiations.delete(opportunityId);
+          if (this.abortController.signal.aborted) return;
+          this.startNegotiations();
+          if (this.negotiating(intentId)) return;
+          if ([...this.pendingPrincipalWork.values()].includes(intentId)) this.scheduleWake(intentId);
+        });
+    }
+  }
+
+  /**
+   * Runs one negotiation and retries it. A model, publication or submission
+   * failure otherwise loses the turn until something unrelated schedules the
+   * opportunity again, which is indistinguishable from the counterpart being slow.
+   */
+  private async attemptNegotiation(intentId: string, opportunityId: string): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        this.recordNegotiationResult(intentId, opportunityId, await this.execution.runNegotiation(intentId, opportunityId));
+        return;
+      } catch (error: unknown) {
+        this.options.onError?.(error);
+        if (attempt >= NEGOTIATION_RETRIES || this.abortController.signal.aborted) return;
+        this.options.log?.(`retrying ${opportunityId}`);
+      }
+    }
+  }
+
+  /** @param intentId - Intent to test. @returns Whether it still has a negotiation running or waiting. */
+  private negotiating(intentId: string): boolean {
+    for (const active of this.activeNegotiations.values()) if (active === intentId) return true;
+    for (const queued of this.queuedNegotiations.values()) if (queued === intentId) return true;
+    return false;
   }
 
   private recordNegotiationResult(intentId: string, opportunityId: string, result: NegotiationRunResult): void {

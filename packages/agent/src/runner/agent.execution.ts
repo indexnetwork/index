@@ -6,7 +6,7 @@ import type { Decision } from "../agents/shared/agent.context.js";
 import type { Execute } from "../agents/shared/reasoning/reasoning.execution.js";
 
 import type { AgentHost } from "./agent.host.js";
-import { publishActions, publishStall } from "./conversation.codec.js";
+import { publishActions, publishStall, readConversation, readStandingContext } from "./conversation.codec.js";
 import { prepareNegotiationContext, readNegotiationContext, readWakeContext, type IntentMembership } from "./runner.context.js";
 
 export type NegotiationRunResult = NegotiateResult | { unbriefed: true } | undefined;
@@ -47,9 +47,17 @@ export class AgentExecution {
       ...wake,
       onBrief: async (actions) => {
         abortSignal.throwIfAborted();
-        await publishActions(this.options.host, this.options.log, wake.intent.id, actions, publication);
+        // A wake reasons from the context it read at the start, which its own
+        // negotiations have usually overtaken by now: they brief an opportunity
+        // themselves before proposing. Republishing that brief writes it twice
+        // and replaces a decision the negotiation has already acted on.
+        const standing = await this.standingOpportunities(wake.intent.id);
         abortSignal.throwIfAborted();
-        for (const action of actions) {
+        const needed = actions.filter((action) => !("opportunityId" in action) || !action.opportunityId || !standing.has(action.opportunityId));
+        if (!needed.length) return;
+        await publishActions(this.options.host, this.options.log, wake.intent.id, needed, publication);
+        abortSignal.throwIfAborted();
+        for (const action of needed) {
           if (action.type === "decision" && action.decision !== "stop") {
             abortSignal.throwIfAborted();
             this.options.scheduleNegotiation(wake.intent.id, action.opportunityId, action.decision);
@@ -117,6 +125,19 @@ export class AgentExecution {
     else await publishStall(this.options.host, negotiation, result.stall);
     abortSignal.throwIfAborted();
     return result;
+  }
+
+  /**
+   * @param intentId - Intent whose conversation is reread.
+   * @returns Opportunities whose brief and decision both stand right now, with no
+   *   stall or principal input since, so nothing about them needs restating.
+   */
+  private async standingOpportunities(intentId: string): Promise<Set<string>> {
+    const { messages } = await this.options.host.getConversation(intentId);
+    const standing = readStandingContext(readConversation(messages));
+    return new Set([...standing]
+      .filter(([, entry]) => entry.brief && entry.decision && !entry.stall && !entry.answered)
+      .map(([opportunityId]) => opportunityId));
   }
 
   private getPrincipalAgent(principalId: string, intentId: string): PrincipalAgent {

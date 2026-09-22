@@ -215,7 +215,7 @@ export async function runAgent(
 | `submitTurn(opportunityId, turn)` | Atomically validate `expectedTurnCount`, ownership, eligibility, and protocol permissions before persisting. |
 
 - Context-read, conversation-publication, and turn-submission failures reject through the caller or `onError`.
-- The runner does not retry those failures or convert them into fabricated stalls.
+- The runner retries a failed negotiation run once and never converts a failure into a fabricated stall.
 - Discovery and opportunity-creation handler failures become ordinary tool feedback inside the bounded run.
 
 ### Conversation persistence
@@ -249,7 +249,7 @@ export async function runAgent(
 - `handle()` returns after scheduling or coalescing, before reasoning or persistence completes.
 - One wake runs per intent with at most one coalesced follow-up.
 - Duplicate notifications for an in-flight opportunity are dropped.
-- Different intents and opportunities may run concurrently.
+- Different intents and opportunities may run concurrently, up to a fixed per-principal limit on negotiations; the rest wait for a slot.
 - Event acknowledgment must not treat `handle()` as a durable queue or completed job.
 - `onWake(intentId, active)` reports when an intent starts and stops being reasoned about, so a host can show work that ends silently. A coalesced follow-up stays active rather than reporting idle between the two runs.
 
@@ -264,10 +264,11 @@ export async function runAgent(
 
 ## Reconciliation and runtime state
 
-- The first `reconcile()` silently adopts existing active intents and recovers eligible turn-zero negotiations.
+- The first `reconcile()` silently adopts existing active intents and recovers every eligible turn the principal owes.
 - Later reconciliations remove missing or inactive IDs and wake newly active intents.
 - Persisted unresolved stalls remain held until principal input or a valid standing decision releases them.
-- Reconciliation does not replay missed principal input, recover every later turn, or reconstruct a durable job queue.
+- Repeating `reconcile()` is how a turn lost to a failed run is recovered; hosts should call it periodically as well as on connection.
+- Reconciliation does not replay missed principal input or reconstruct a durable job queue.
 - Concurrent reconciliation calls serialize their reads.
 - A reconciliation promise resolves after its reads, membership update, and recovery scheduling; background reasoning may still be running.
 - Reconciliation failures reject without rolling back already completed membership changes or scheduling.
