@@ -182,8 +182,8 @@ Bun.serve({
       throw new Error('Sentry test error from /throw-error');
     }
 
-    // MCP is a modern, stateless, API-key-only endpoint. It lives inside the
-    // ordinary request boundary so CORS, tracing, logging and Sentry stay shared.
+    // MCP is a modern, stateless, API-key or device-session endpoint. It lives
+    // inside the ordinary request boundary so CORS, tracing, logging and Sentry stay shared.
     if (url.pathname === '/mcp') {
       const activeSpan = Sentry.getActiveSpan();
       if (activeSpan) {

@@ -1,12 +1,28 @@
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 
-import { authenticateApiKey } from '../../guards/auth.guard';
+import { authenticateApiKey, SessionOnlyGuard } from '../../guards/auth.guard';
 
 import { registerMcpTools } from './mcp.tools';
 import type { McpPrincipal } from './mcp.types';
 
-/** Authenticate `/mcp` exclusively with the existing Better Auth API-key path. */
+/** Authenticate `/mcp` with a Better Auth session or API key. */
 export async function authenticateMcpRequest(request: Request): Promise<McpPrincipal | null> {
+  const authorization = request.headers.get('Authorization');
+  if (authorization?.startsWith('Bearer ')) {
+    try {
+      const user = await SessionOnlyGuard(request);
+      return { userId: user.id, authKind: 'session' };
+    } catch (error) {
+      if (error instanceof Error && (
+        error.message === 'Access token required'
+        || error.message === 'Invalid or expired access token'
+      )) return null;
+      // Do not attach the SDK error: authentication failures must never carry a raw token into logs or Sentry.
+      // eslint-disable-next-line preserve-caught-error
+      throw new Error('Session verification failed');
+    }
+  }
+
   const apiKey = request.headers.get('x-api-key');
   if (!apiKey) return null;
 
@@ -23,7 +39,7 @@ export async function authenticateMcpRequest(request: Request): Promise<McpPrinc
 
 /** Build a fresh owner-scoped MCP server for one stateless HTTP request. */
 function createIndexMcpServer(principal: McpPrincipal): McpServer {
-  const server = new McpServer({ name: 'index', version: '0.135.0' });
+  const server = new McpServer({ name: 'index', version: '0.135.1' });
   registerMcpTools(server, principal);
   return server;
 }

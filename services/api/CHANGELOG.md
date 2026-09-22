@@ -235,9 +235,11 @@ section before promoting to `main`).
 ### Changed
 - **`AuthGuard` and the MCP resolver accept a session token as `Bearer`.** A
   three-segment credential is verified as a JWT and anything else as a Better
-  Auth session, so device sessions reach product routes and MCP. Both record
-  `kind: 'session'`, which means a device is the owner acting and may use
-  session-only routes such as agent management; API keys still cannot.
+  Auth session, so device sessions reach product routes and MCP as their owning
+  user. MCP still accepts `x-api-key`, but an invalid Bearer never falls back to
+  it and query parameters are never MCP credentials. Both session forms record
+  `kind: 'session'`, so a device is the owner acting and may use session-only
+  routes such as agent management; API keys still cannot.
 - **Sessions last 30 days instead of the 7-day default.** Devices cache the
   issued expiry to decide whether to send a request at all, so a short window
   would sign the Mac app out weekly. Revocation is the counterweight: a device
