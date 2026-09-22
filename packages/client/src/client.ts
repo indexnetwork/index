@@ -249,20 +249,20 @@ export interface Index {
 export class IndexClient implements Index {
   private readonly baseUrl: string;
   private readonly apiKey: string;
-  private readonly executorId?: string;
+  private readonly agentId?: string;
   private identity?: Me;
 
   /**
-   * @param options - Origin, key, and optional executor fence. Env fills gaps.
+   * @param options - Origin, key, and optional agent id. Env fills gaps.
    * @throws When no API key is given and `INDEX_API_KEY` is empty.
    */
-  constructor(options?: { baseUrl?: string; apiKey?: string; executorId?: string }) {
+  constructor(options?: { baseUrl?: string; apiKey?: string; agentId?: string }) {
     this.baseUrl = (options?.baseUrl ?? process.env.INDEX_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
     const apiKey = options?.apiKey ?? process.env.INDEX_API_KEY ?? "";
     if (!apiKey) throw new Error("INDEX_API_KEY is required");
     this.apiKey = apiKey;
-    const executorId = options?.executorId ?? process.env.INDEX_EXECUTOR_ID;
-    if (executorId) this.executorId = executorId;
+    const agentId = options?.agentId ?? process.env.INDEX_AGENT_ID;
+    if (agentId) this.agentId = agentId;
   }
 
   private headers(json = false): Record<string, string> {
@@ -274,7 +274,7 @@ export class IndexClient implements Index {
   }
 
   private fence(path: string): string {
-    return this.executorId ? `${path}${path.includes("?") ? "&" : "?"}executorId=${encodeURIComponent(this.executorId)}` : path;
+    return this.agentId ? `${path}${path.includes("?") ? "&" : "?"}agentId=${encodeURIComponent(this.agentId)}` : path;
   }
 
   /**
@@ -436,10 +436,10 @@ export class IndexClient implements Index {
    * Publish agent-authored questions and messages onto the principal conversation.
    * @param intentId - Signal.
    * @param entries - `question` and `message` entries. The API drops the rest.
-   * @throws When this instance has no executor id.
+   * @throws When this instance has no agent id.
    */
   async sendPrincipal(intentId: string, entries: PrincipalMessage[]): Promise<void> {
-    if (!this.executorId) throw new Error("INDEX_EXECUTOR_ID is required");
+    if (!this.agentId) throw new Error("INDEX_AGENT_ID is required");
     await this.request("POST", this.fence("/conversations/agent/h2a"), { intentId, entries });
   }
 

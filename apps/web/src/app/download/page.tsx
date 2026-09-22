@@ -1,48 +1,18 @@
 import "./download.css";
 
-/**
- * Single source of truth for the macOS app artifact.
- *
- * Set `VITE_MAC_APP_DOWNLOAD_URL` at build time once a Developer ID-signed,
- * notarized build is published (IND-616); until then the Mac card stays visible
- * with a disabled action rather than linking at nothing.
- */
-const MAC_APP_DOWNLOAD_URL: string =
-  import.meta.env.VITE_MAC_APP_DOWNLOAD_URL || "";
-
-/**
- * Artifact size, shown under the install button beside the filename. There is
- * no way to know it from the URL without fetching the file, so it is supplied
- * at build time next to the URL above, and simply omitted when absent.
- */
-const MAC_APP_DOWNLOAD_SIZE: string =
-  import.meta.env.VITE_MAC_APP_DOWNLOAD_SIZE || "";
-
-/**
- * Hermes Desktop plugin-install deeplink. Override with
- * `VITE_HERMES_INSTALL_URL` for staging or docs links.
- */
-const HERMES_INSTALL_URL: string =
-  import.meta.env.VITE_HERMES_INSTALL_URL ||
+const MAC_TAG = import.meta.env.VITE_PROTOCOL_URL?.includes("dev.") ? "mac-dev" : "mac";
+const MAC_APP_DOWNLOAD_URL = `https://github.com/indexnetwork/index/releases/download/${MAC_TAG}/Index.dmg`;
+const HERMES_INSTALL_URL =
   "hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1";
 
 /** Shown on the Index for Mac card. */
 export const MAC_APP_REQUIREMENTS = "macOS 13+ · Apple silicon";
-
-/** `index-0.1.0.dmg · 84 mb`, from whichever halves are actually known. */
-function macArtifactLine(): string {
-  const filename = MAC_APP_DOWNLOAD_URL.split("?")[0].split("/").pop() || "";
-  return [filename, MAC_APP_DOWNLOAD_SIZE].filter(Boolean).join(" · ");
-}
 
 /**
  * `/download` — post-invite install page. Full-viewport column: header,
  * centered hero and cards. No app chrome.
  */
 export default function Download() {
-  const indexAvailable = MAC_APP_DOWNLOAD_URL.length > 0;
-  const artifactLine = indexAvailable ? macArtifactLine() : "";
-
   return (
     <div className="download-page">
       <header className="download-page__header">
@@ -65,31 +35,18 @@ export default function Download() {
               <span className="download-card__icon">
                 <IndexMark />
               </span>
-              {/* The card's own name, so it carries the heading the removed
-                  header bar used to. */}
               <h2 className="download-card__name">Index for Mac</h2>
               <p className="download-card__meta">{MAC_APP_REQUIREMENTS}</p>
 
-              {/* Until a notarized build is published there is nothing to link
-                  at, so the primary action holds its place disabled rather than
-                  claiming a download that would 404. */}
-              {indexAvailable ? (
-                <a
-                  className="download-btn download-btn--primary"
-                  href={MAC_APP_DOWNLOAD_URL}
-                  aria-label="Download Index for Mac"
-                >
-                  INSTALL →
-                </a>
-              ) : (
-                <span className="download-btn download-btn--disabled" aria-disabled="true">
-                  COMING SOON
-                </span>
-              )}
+              <a
+                className="download-btn download-btn--primary"
+                href={MAC_APP_DOWNLOAD_URL}
+                aria-label="Download Index for Mac"
+              >
+                INSTALL →
+              </a>
 
-              {artifactLine ? (
-                <p className="download-card__note">{artifactLine}</p>
-              ) : null}
+              <p className="download-card__note">Index.dmg</p>
             </div>
           </section>
 
@@ -101,8 +58,6 @@ export default function Download() {
               <h2 className="download-card__name">Hermes plugin</h2>
               <p className="download-card__meta">one-line plugin install</p>
 
-              {/* Both buttons read "INSTALL"; the labels say which is which for
-                  anyone who cannot see the card they sit in. */}
               <a
                 className="download-btn download-btn--ghost"
                 href={HERMES_INSTALL_URL}

@@ -47,24 +47,24 @@ class Sidecar:
         self._lock = threading.Lock()
         self._process: subprocess.Popen | None = None
         self._wanted: tuple[str, str] | None = None
-        self._executor = ""
+        self._agent_id = ""
         self._url = ""
         atexit.register(self.stop)
 
-    def start(self, account: str, executor_id: str) -> None:
+    def start(self, account: str, agent_id: str) -> None:
         """Ensure a negotiator is running for this owner and selected agent.
 
         Idempotent for the same selection; a different agent replaces the
-        process, because a negotiator's turns are fenced to one executor ID.
+        process, because a negotiator's turns are fenced to one agent id.
         While wanted, an unexpected child exit restarts it.
 
         @param account - The Index account this machine negotiates for.
-        @param executor_id - The selected external agent's ID.
+        @param agent_id - The selected external agent's ID.
         """
         with self._lock:
-            self._wanted = (account, executor_id)
+            self._wanted = (account, agent_id)
             if self._process is not None and self._process.poll() is None:
-                if self._executor == executor_id:
+                if self._agent_id == agent_id:
                     return
                 self._terminate()
             if not BUNDLE.exists():
@@ -81,7 +81,7 @@ class Sidecar:
                      "INDEX_BRIDGE_URL": self.bridge.url,
                      "INDEX_BRIDGE_TOKEN": self.bridge.token,
                      "INDEX_API_ORIGIN": api_origin(),
-                     "INDEX_EXECUTOR_ID": executor_id,
+                     "INDEX_AGENT_ID": agent_id,
                      "INDEX_STATE_DIR": str(self._state),
                      "INDEX_SUPERVISOR_PID": str(os.getpid())},
             )
@@ -91,10 +91,10 @@ class Sidecar:
             except Exception:
                 process.kill()
                 raise
-            self._process, self._executor = process, executor_id
+            self._process, self._agent_id = process, agent_id
             self._url = f"http://127.0.0.1:{port}"
             threading.Thread(
-                target=self._reap, args=(process, account, executor_id),
+                target=self._reap, args=(process, account, agent_id),
                 name="index-negotiator-watch", daemon=True,
             ).start()
             logger.info("Index negotiator running for %s on %s", account, self._url)
@@ -164,21 +164,21 @@ class Sidecar:
             raise RuntimeError("The Index negotiator did not report a control port.")
         return int(json.loads(line)["port"])
 
-    def _reap(self, process: subprocess.Popen, account: str, executor_id: str) -> None:
+    def _reap(self, process: subprocess.Popen, account: str, agent_id: str) -> None:
         """Restart the child if it exits while this selection is still wanted."""
         process.wait()
         with self._lock:
             if self._process is process:
                 self._process, self._url = None, ""
-            restart = self._wanted == (account, executor_id)
+            restart = self._wanted == (account, agent_id)
         if not restart:
             return
         time.sleep(RESTART_SECONDS)
-        if self._wanted != (account, executor_id):
+        if self._wanted != (account, agent_id):
             return
         logger.warning("Index negotiator exited; restarting for %s", account)
         try:
-            self.start(account, executor_id)
+            self.start(account, agent_id)
         except Exception as error:  # noqa: BLE001
             logger.warning("Index negotiator did not restart: %s", error)
 
@@ -198,7 +198,7 @@ class Sidecar:
 
     def _terminate(self) -> None:
         process, self._process = self._process, None
-        self._executor, self._url = "", ""
+        self._agent_id, self._url = "", ""
         if process is None or process.poll() is not None:
             return
         process.terminate()

@@ -29,14 +29,14 @@ interface ApiIntent {
 /**
  * The Index protocol over REST, as the owner's selected external negotiator.
  *
- * Turns carry `executorId` so the API fences them: a turn is refused unless
+ * Turns carry `agentId` so the API fences them: a turn is refused unless
  * this agent is still the selected negotiator at the moment it is applied.
  */
 export class IndexClient {
   constructor(
     private readonly origin: string,
     private readonly token: string,
-    private readonly executorId: string,
+    private readonly agentId: string,
   ) {}
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -75,7 +75,7 @@ export class IndexClient {
   async submitTurn(id: string, turn: NegotiationTurn): Promise<Negotiation> {
     const { negotiation } = await this.request<{ negotiation: Negotiation }>(
       'POST',
-      `/opportunities/${encodeURIComponent(id)}/negotiation/turns?executorId=${encodeURIComponent(this.executorId)}`,
+      `/opportunities/${encodeURIComponent(id)}/negotiation/turns?agentId=${encodeURIComponent(this.agentId)}`,
       turn,
     );
     return negotiation;
@@ -127,7 +127,7 @@ export class IndexClient {
   async publishH2A(intentId: string, entries: PrincipalMessage[]): Promise<void> {
     await this.request(
       'POST',
-      `/conversations/agent/h2a?executorId=${encodeURIComponent(this.executorId)}`,
+      `/conversations/agent/h2a?agentId=${encodeURIComponent(this.agentId)}`,
       { intentId, entries },
     );
   }

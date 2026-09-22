@@ -4,12 +4,12 @@ import { ApiError, IndexClient, wakesHost, type ConnectedEvent, type Conversatio
 
 const savedKey = process.env.INDEX_API_KEY;
 const savedUrl = process.env.INDEX_API_URL;
-const savedExecutor = process.env.INDEX_EXECUTOR_ID;
+const savedAgentId = process.env.INDEX_AGENT_ID;
 
 afterEach(() => {
   process.env.INDEX_API_KEY = savedKey;
   process.env.INDEX_API_URL = savedUrl;
-  process.env.INDEX_EXECUTOR_ID = savedExecutor;
+  process.env.INDEX_AGENT_ID = savedAgentId;
 });
 
 function sse(chunks: string[]): Response {
@@ -108,7 +108,7 @@ test("non-2xx is ApiError; 401 mentions minting; non-JSON 200 is not ApiError", 
   server.stop(true);
 });
 
-test("sendPrincipal refuses without executorId and fences the write", async () => {
+test("sendPrincipal refuses without agentId and fences the write", async () => {
   let path = "";
   const server = Bun.serve({
     port: 0,
@@ -118,12 +118,12 @@ test("sendPrincipal refuses without executorId and fences the write", async () =
     },
   });
   const bare = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" });
-  expect(bare.sendPrincipal("i1", [])).rejects.toThrow("INDEX_EXECUTOR_ID is required");
+  expect(bare.sendPrincipal("i1", [])).rejects.toThrow("INDEX_AGENT_ID is required");
   const client = new IndexClient({
-    baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k", executorId: "e1",
+    baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k", agentId: "e1",
   });
   await client.sendPrincipal("i1", []);
-  expect(path).toBe("/api/conversations/agent/h2a?executorId=e1");
+  expect(path).toBe("/api/conversations/agent/h2a?agentId=e1");
   server.stop(true);
 });
 

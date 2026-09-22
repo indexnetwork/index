@@ -294,16 +294,16 @@ export class ConversationController {
   /**
    * POST /conversations/agent/h2a — an external executor publishes questions and messages.
    *
-   * @param req - `executorId` query fence plus `{ intentId, entries }`.
+   * @param req - `agentId` query fence plus `{ intentId, entries }`.
    * @param user - Authenticated owner (session token).
    * @returns Success when the entries are on the agent DM.
    */
   @Post('/agent/h2a')
   @UseGuards(AuthGuard)
   async publishH2A(req: Request, user: AuthenticatedUser) {
-    const executorId = new URL(req.url).searchParams.get('executorId');
-    if (!executorId || !z.string().uuid().safeParse(executorId).success) {
-      return Response.json({ error: 'executorId must be a UUID' }, { status: 400 });
+    const agentId = new URL(req.url).searchParams.get('agentId');
+    if (!agentId || !z.string().uuid().safeParse(agentId).success) {
+      return Response.json({ error: 'agentId must be a UUID' }, { status: 400 });
     }
     let body: { intentId?: string; entries?: PrincipalMessage[] };
     try {
@@ -316,7 +316,7 @@ export class ConversationController {
     }
     try {
       await this.conversationService.publishH2A({
-        userId: user.id, intentId: body.intentId, executorId, entries: body.entries,
+        userId: user.id, intentId: body.intentId, agentId, entries: body.entries,
       });
       return Response.json({ ok: true });
     } catch (err: unknown) {

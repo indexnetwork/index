@@ -163,7 +163,7 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
    * Persist agent-authored H2A on the owner's agent DM.
    *
    * An external speaker names itself and is only allowed to write while it is
-   * still the selected negotiator. Index's own hosted agent names no executor:
+   * still the selected negotiator. Index's own hosted agent names no agent id:
    * it is the seat of last resort, so there is nothing to revalidate.
    *
    * @param input - Owner, signal, the selected agent when one is speaking, and question/message entries.
@@ -171,15 +171,15 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
    * @throws RuntimeConflictError when a named agent is no longer the selected negotiator.
    */
   static async publishAgentEntries(input: {
-    userId: string; intentId: string; executorId?: string; entries: readonly PrincipalMessage[];
+    userId: string; intentId: string; agentId?: string; entries: readonly PrincipalMessage[];
   }): Promise<Message[]> {
     const conversations = new ConversationDatabaseAdapter();
     const conversation = await conversations.getOrCreateAgentDm(input.userId);
     const persisted = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${input.userId}`}, 0))`);
-      if (input.executorId) {
+      if (input.agentId) {
         const [selected] = await tx.select({ id: agents.id }).from(agents).where(and(
-          eq(agents.id, input.executorId), eq(agents.ownerId, input.userId),
+          eq(agents.id, input.agentId), eq(agents.ownerId, input.userId),
           eq(agents.type, 'external'), eq(agents.status, 'active'),
           eq(agents.handleNegotiations, true), isNull(agents.deletedAt),
         ));

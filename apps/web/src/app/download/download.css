@@ -201,17 +201,6 @@
   color: #e8873d;
 }
 
-/* Same footprint as the primary button so the card does not resize when a
-   build is published; muted and inert because there is nothing to click yet. */
-.download-btn--disabled {
-  padding: 13px 34px;
-  border: none;
-  background: #1b2c22;
-  color: #5d7466;
-  font-weight: 700;
-  cursor: default;
-}
-
 /* ---------- responsive ---------- */
 
 /* The handoff wraps the cards to one centred column here; the gutters come in

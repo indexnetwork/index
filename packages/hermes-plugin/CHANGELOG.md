@@ -1,6 +1,14 @@
 # Changelog
 
 
+## Unreleased
+
+### Added
+- Register the Index MCP server (`mcp_servers.index`) while `INDEX_API_KEY` is set, authenticated with `x-api-key`. Clearing the key removes the entry.
+
+### Changed
+- Browser login and sign-out leave `INDEX_API_KEY` in place. That key is the Index MCP credential.
+
 ## 0.46.1
 
 ### Fixed

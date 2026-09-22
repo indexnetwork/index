@@ -227,7 +227,7 @@ class Negotiator {
 
 const bridge: Bridge = { url: required('INDEX_BRIDGE_URL'), token: required('INDEX_BRIDGE_TOKEN') };
 const negotiator = new Negotiator(
-  new IndexClient(required('INDEX_API_ORIGIN'), required('INDEX_SESSION_TOKEN'), required('INDEX_EXECUTOR_ID')),
+  new IndexClient(required('INDEX_API_ORIGIN'), required('INDEX_SESSION_TOKEN'), required('INDEX_AGENT_ID')),
   bridge,
   required('INDEX_STATE_DIR'),
 );

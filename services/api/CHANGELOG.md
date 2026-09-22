@@ -31,6 +31,10 @@ section before promoting to `main`).
   type must drop it.
 
 ### Changed
+- **BREAKING: negotiation writes fence on `agentId`.**
+  `POST /opportunities/:id/negotiation/turns` and
+  `POST /conversations/agent/h2a` take `?agentId=` (`INDEX_AGENT_ID` on the
+  client). `executorId` and `INDEX_EXECUTOR_ID` are no longer accepted.
 - **A burst of stalls reaches the owner as one wake.** `HostedAgent` woke the
   signal on the first negotiator that stalled, so that wake read the transcript
   while its siblings were still running and asked about whichever missing fact

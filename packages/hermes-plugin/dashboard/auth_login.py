@@ -30,8 +30,6 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from .env_transport import api_origin
 
 _SESSION_ENV = "INDEX_SESSION_TOKEN"
-_LEGACY_API_KEY_ENV = "INDEX_API_KEY"
-_LEGACY_KEY_ID_ENV = "INDEX_API_KEY_ID"
 _CALLBACK_HOST = "127.0.0.1"
 _LOGIN_TIMEOUT_SECONDS = 180.0
 _DEVICE_CLIENT_ID = "index-device"
@@ -88,29 +86,21 @@ def remove_env_var(name: str, path: Path | None = None) -> None:
 
 
 def persist_session_token(token: str) -> None:
-    """Persist the device session token to the Hermes env file and the live process.
-
-    Any API key left by an older install is removed in the same pass so the
-    transport cannot keep authenticating with a credential nothing renews.
-    """
+    """Persist the device session token to the Hermes env file and the live process."""
     upsert_env_var(_SESSION_ENV, token)
     os.environ[_SESSION_ENV] = token
-    clear_legacy_api_key()
+    from .mcp import sync_index_mcp
 
-
-def clear_legacy_api_key() -> None:
-    """Remove an API key persisted by an install from before the device grant."""
-    remove_env_var(_LEGACY_API_KEY_ENV)
-    remove_env_var(_LEGACY_KEY_ID_ENV)
-    os.environ.pop(_LEGACY_API_KEY_ENV, None)
-    os.environ.pop(_LEGACY_KEY_ID_ENV, None)
+    sync_index_mcp()
 
 
 def clear_session_token() -> None:
     """Remove the persisted session token from the Hermes env file and the process."""
     remove_env_var(_SESSION_ENV)
     os.environ.pop(_SESSION_ENV, None)
-    clear_legacy_api_key()
+    from .mcp import sync_index_mcp
+
+    sync_index_mcp()
 
 
 def _http_error_detail(exc: urllib.error.HTTPError) -> str:

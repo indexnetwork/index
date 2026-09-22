@@ -17,9 +17,9 @@ const stop = client.events((event) => {
 |---|---|
 | `INDEX_API_URL` | Origin. Default `http://localhost:3001`. |
 | `INDEX_API_KEY` | Required. Sent as `x-api-key`. |
-| `INDEX_EXECUTOR_ID` | Optional. Fences `submitTurn` and `sendPrincipal`. |
+| `INDEX_AGENT_ID` | Optional. Fences `submitTurn` and `sendPrincipal`. |
 
-`new IndexClient({ baseUrl?, apiKey?, executorId? })` fills the same fields. Refuse to construct with no key. Trailing `/` is stripped. Paths are `/api/...`. No `Authorization` header.
+`new IndexClient({ baseUrl?, apiKey?, agentId? })` fills the same fields. Refuse to construct with no key. Trailing `/` is stripped. Paths are `/api/...`. No `Authorization` header.
 
 ## Calls
 
@@ -34,9 +34,9 @@ const stop = client.events((event) => {
 | `submitTurn(id, turn)` | `POST /api/opportunities/:id/negotiation/turns` |
 | `events(onEvent)` | `GET /api/events` SSE. Returns a stop handle. |
 | `principalInbox(intentId)` | `GET /api/conversations/agent/messages?intentId=` |
-| `sendPrincipal(intentId, entries)` | `POST /api/conversations/agent/h2a?executorId=` |
+| `sendPrincipal(intentId, entries)` | `POST /api/conversations/agent/h2a?agentId=` |
 
-`sendPrincipal` requires an executor id. `submitTurn` needs `expectedTurnCount`. Handshake `{ type: "connected" }` reaches `onEvent` on every connect and reconnect, after the unseen messages behind it have been replayed: it is where a caller recovers whatever it missed while the stream was down.
+`sendPrincipal` requires an agent id. `submitTurn` needs `expectedTurnCount`. Handshake `{ type: "connected" }` reaches `onEvent` on every connect and reconnect, after the unseen messages behind it have been replayed: it is where a caller recovers whatever it missed while the stream was down.
 
 `discover` writes nothing; `createOpportunities` is idempotent on the pair, so a counterparty that already shares an opportunity reports that one. Both need an active signal the key's owner owns.
 
