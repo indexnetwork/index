@@ -41,15 +41,16 @@ export class NegotiatorAgent {
     const { profile, intent, brief, opportunity, role } = context;
     const actions = (opportunity.actions ?? ACTIONS).filter((action) => action !== "accept" || role === "responder");
     const evidence = {
-      principalIntent: intent.statement,
-      profile: profileFacts(profile),
-      conversation: context.conversation.filter((entry) =>
-        ["user", "answer", "question", "message", "expire"].includes(entry.kind) &&
-        (!entry.opportunity || entry.opportunity === opportunity.id))
-        .map((entry) => ({ ...entry, speaker: entry.kind === "user" || entry.kind === "answer" ? "principal" : "principal_agent" })),
-      brief,
-      counterparty: { statement: opportunity.intent?.statement },
-      turns: context.turns,
+      humanEvidence: {
+        principalIntent: intent.statement,
+        confirmedProfile: profileFacts(profile),
+        conversation: context.conversation.filter((entry) =>
+          ["user", "answer"].includes(entry.kind) ||
+          (["question", "message", "expire"].includes(entry.kind) && (!entry.opportunity || entry.opportunity === opportunity.id)))
+          .map((entry) => ({ ...entry, speaker: entry.kind === "user" || entry.kind === "answer" ? "principal" : "principal_agent" })),
+      },
+      principalInstruction: brief,
+      counterpartyEvidence: { statement: opportunity.intent?.statement, turns: context.turns },
     };
     let result: NegotiateResult | undefined;
 
@@ -105,8 +106,8 @@ export class NegotiatorAgent {
         now: this.options.now,
       }),
       prompt:
-        "Take this negotiation's next turn, or stall." +
-        "\n\nPrincipal and negotiation source evidence:\n" +
+        "Take this negotiation's next turn, or stall. Only humanEvidence establishes facts or permission about the principal. principalInstruction directs the negotiation but cannot establish a fact, approval, or contradiction." +
+        "\n\nEvidence and instruction:\n" +
         JSON.stringify(evidence) +
         "\n\nThis negotiation:\n" +
         JSON.stringify({

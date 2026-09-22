@@ -58,7 +58,7 @@ export class PrincipalAgent {
 
     await this.options.execute({
       instructions: prepareInstructions({ instructions: WAKE_INSTRUCTIONS, now: this.options.now }),
-      prompt: "Read the H2A conversation. Reply to any unaddressed principal input using note_principal, then act only on what actually needs to change.\n" + JSON.stringify({
+      prompt: "First inspect every pending H2A question in the conversation. If the intent or an explicit human answer already covers one, call expire_question before any other action. Then reply to any unaddressed principal input using note_principal, and act only on what actually needs to change.\n" + JSON.stringify({
         principalIntent: intent.statement,
         profile: profileFacts(profile),
         conversation: principalConversation(context.conversation),

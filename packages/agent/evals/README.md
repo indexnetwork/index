@@ -11,7 +11,7 @@ Jev gate committed at `3e6e277aa` against the working tree's single negotiator,
 using three repetitions per case and alternating which implementation runs first.
 The baseline is extracted to a temporary directory; runtime code has no mode flag.
 
-Both receive identical evidence, checked by SHA-256 for each run,
+Both receive equivalent source evidence, canonicalized and checked by SHA-256 for each run,
 the same fixed date, and the same requested writer model (`google/gemini-3.7-flash`).
 The gate uses `jev-latest`; each response's actual model, confidence, probabilities,
 and usage are saved. OpenRouter routing and latency can still vary.
@@ -76,10 +76,9 @@ caching, and model latency were uncontrolled. Part of the first repetition
 overlapped the TUI smoke test; repetitions 2 and 3 ran after it reached idle and
 also had lower median latency with the gate. Costs were not measured.
 
-**Recommendation:** retain Jev for now. This comparison contradicts the earlier
-recommendation to remove its mandatory gate; the removal experiment should not
-be shipped on these results. The eight cases do not resolve the earlier broader
-context-scoping, question relevance, or duplicate-question findings.
+This initial result was superseded by the grounded follow-up below. The eight
+cases did not then resolve the broader context-scoping, question-relevance, or
+duplicate-question findings.
 
 A separate `agent-tui` smoke test through `tmux`, with `TYPESAFE_API_KEY` deleted
 from the process, completed without Jev calls or execution errors. Confirming
@@ -130,3 +129,38 @@ passed. No new repository specs were added.
 Local artifacts: [live results and provider usage](/private/tmp/index-agent-prompt-VQts7x/live.jsonl),
 [live summary](/private/tmp/index-agent-prompt-VQts7x/live-summary.json),
 and [request-size comparisons](/private/tmp/index-agent-prompt-VQts7x/prompt-sizes.json).
+
+## Grounding and quality follow-up — 2026-09-22
+
+After grounding the brief, retaining general human facts across opportunities,
+and retiring covered questions, the full three-repetition comparison was rerun.
+Each workflow received equivalent source evidence, canonicalized and checked by
+SHA-256 on every run.
+
+| Metric | Single negotiator | Jev gate + writer |
+|---|---:|---:|
+| Expected action | 24/24 | 24/24 |
+| Unsupported advances | 0 | 0 |
+| Incorrect declines | 0 | 0 |
+| Unnecessary principal-question requests | 0 | 0 |
+| Execution errors | 0 | 0 |
+| Median complete negotiation | 4.619 s | 5.931 s |
+| Mean complete negotiation | 4.764 s | 6.304 s |
+| p95 complete negotiation | 7.375 s | 7.754 s |
+
+The unknown-budget case stalled for real budget information in all three single
+negotiator runs. The current single path was 1.312 seconds faster at the median
+than the gated workflow in this sample. This is still a small controlled
+regression sample, not a general model-quality estimate.
+
+The `agent-tui` regression work exercised all six bundled scenarios. The final
+research sweep confirmed that a mapping/visualization answer on one opportunity
+resumed both relevant negotiations without carrying over opportunity-specific
+approval. The final local-friendship sweep removed an unnecessary question about
+sketching and café stops; it retained questions about stated route, day, and
+stroller constraints. The community fixture reached idle in current runs without
+reproducing the earlier principal-agent timeout. Those runs also kept budget and
+location questions tied to explicit requirements.
+
+The single negotiator remains the runtime path. `TypeSafeClient` stays available
+for fixed-case comparisons; Jev is not called during a negotiation.

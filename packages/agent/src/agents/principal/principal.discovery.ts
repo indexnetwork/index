@@ -66,7 +66,7 @@ export function createDiscoveryTool(input: {
         .map(({ intentId, networkId }) => ({ intentId, networkId }));
       if (!picks.length) return "No counterparties matched those queries. Try different ones, or stop.";
       const created = await input.operations.createOpportunities(input.intentId, picks);
-      await input.onProgress?.(`Discovered ${found.size} people and reached out to ${created.length}.`);
+      await input.onProgress?.(`Discovered ${found.size} ${found.size === 1 ? "person" : "people"} and reached out to ${created.length}.`);
       input.onOpened?.(created.map(({ opportunityId }) => opportunityId));
       return `Reached ${created.length} of ${picks.length} found, and each one is being briefed and proposed to now. The rest were already opportunities or are no longer reachable.`;
     },

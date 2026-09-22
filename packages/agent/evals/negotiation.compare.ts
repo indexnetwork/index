@@ -53,6 +53,25 @@ const model = new OpenRouterClient({ apiKey: OPENROUTER_API_KEY, models: [MODEL]
 const jev = new TypeSafeClient({ apiKey: TYPESAFE_API_KEY });
 const hash = (value: TypeSafeContent) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
+function canonicalEvidence(evidence: TypeSafeContent): TypeSafeContent {
+  if (typeof evidence !== "object" || !evidence || Array.isArray(evidence)) return evidence;
+  const humanEvidence = evidence.humanEvidence;
+  const counterpartyEvidence = evidence.counterpartyEvidence;
+  if (!isRecord(humanEvidence) || !isRecord(counterpartyEvidence)) return evidence;
+  return {
+    principalIntent: humanEvidence.principalIntent,
+    profile: humanEvidence.confirmedProfile,
+    conversation: humanEvidence.conversation,
+    brief: evidence.principalInstruction,
+    counterparty: { statement: counterpartyEvidence.statement },
+    turns: counterpartyEvidence.turns,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 for (let repeat = 1; repeat <= REPEATS; repeat++) {
   for (const [index, sample] of CASES.entries()) {
     const modes: Mode[] = (repeat + index) % 2 ? ["single", "jev-gate"] : ["jev-gate", "single"];
@@ -62,7 +81,7 @@ for (let repeat = 1; repeat <= REPEATS; repeat++) {
       let evidenceHash: string | undefined;
       let prepared: object | undefined;
       const recordEvidence = (evidence: TypeSafeContent) => {
-        evidenceHash = hash(evidence);
+        evidenceHash = hash(canonicalEvidence(evidence));
         const previous = hashes.get(sample.id);
         if (previous) assert.equal(evidenceHash, previous, `Evidence changed for ${sample.id}`);
         hashes.set(sample.id, evidenceHash);
@@ -78,7 +97,7 @@ for (let repeat = 1; repeat <= REPEATS; repeat++) {
       const execute: Execute = async (input) => {
         prepared = { instructions: input.instructions, prompt: input.prompt };
         if (mode === "single") {
-          const source = input.prompt.split("\n\nPrincipal and negotiation source evidence:\n")[1]?.split("\n\nThis negotiation:\n")[0];
+          const source = input.prompt.split("\n\nEvidence and instruction:\n")[1]?.split("\n\nThis negotiation:\n")[0];
           assert.ok(source, "Missing single-negotiator evidence block");
           recordEvidence(JSON.parse(source));
         }

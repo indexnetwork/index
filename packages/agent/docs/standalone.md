@@ -193,4 +193,4 @@ An external `Execute` implementation must:
 - The API uses `@indexnetwork/client` conversation contracts and has removed the old principal checkpoint/store runtime. It still runs `agentv2`; this cleanup does not migrate its hosted seat to `AgentRunner`.
 - Seref owns the remaining API/Hermes/macOS migration, selecting the authoritative runner per principal, enforcing the original-responder-only acceptance rule in the protocol/API, and removing v2 after migration. Old agent checkpoint types are not restored as compatibility exports.
 
-For architecture and persistence details, see [rewrite-plan.md](rewrite-plan.md). For the completed package-local implementation checklist, see [TODO.md](../TODO.md).
+For architecture and persistence details, see [rewrite-plan.md](rewrite-plan.md).
