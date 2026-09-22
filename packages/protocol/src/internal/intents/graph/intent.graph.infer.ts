@@ -124,8 +124,8 @@ export async function inferenceNode(state: IntentState, deps: IntentGraphDeps) {
 
 /** Prepare an unprepared create, or reuse host authorization for the final edited text. */
 export async function preparationNode(state: IntentState, deps: IntentGraphDeps) {
-  const result = state.preparation ? undefined : await deps.clarifier.invoke({ payload: state.inputContent! }, state.userProfile);
-  if (result?.status === "needs_clarification") {
+  const result = state.preparation ? undefined : await deps.preparer.invoke({ payload: state.inputContent! }, state.userProfile);
+  if (result?.status === "needs_revision") {
     return {
       preparationResult: result,
       actions: [],

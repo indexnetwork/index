@@ -9,7 +9,7 @@
 import { IntentGraphState, VerifiedIntent, type IntentGraphAction, type IntentValidationFailure } from "./intent.graph.state.js";
 import { ExplicitIntentInferrer } from "../intent.inferrer.js";
 import { SemanticVerifier } from "../intent.verifier.js";
-import { IntentClarifier } from "../intent.clarifier.js";
+import { IntentPreparer } from "../intent.preparer.js";
 import { IntentGraphDatabase } from "../../../platform/database.js";
 import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import type { EmbeddingGenerator } from "../../../platform/discovery/embedder.js";
@@ -26,7 +26,7 @@ export interface IntentGraphDeps {
   intentFollowUp?: IntentFollowUp;
   inferrer: Pick<ExplicitIntentInferrer, 'invoke'>;
   verifier: Pick<SemanticVerifier, 'invoke'>;
-  clarifier: Pick<IntentClarifier, 'invoke'>;
+  preparer: Pick<IntentPreparer, 'invoke'>;
 }
 
 export const logger = protocolLogger("IntentGraphFactory");

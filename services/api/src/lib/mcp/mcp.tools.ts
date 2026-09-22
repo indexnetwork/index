@@ -221,36 +221,36 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'create_intent',
     {
-      description: 'Clarify and create a signal for the authenticated owner, sharing it only with eligible networks.',
+      description: 'Prepare and create a signal for the authenticated owner, sharing it only with eligible networks.',
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
       }).strict(),
     },
     ({ description, networkIds }) => runTool('create_intent', principal, async () => {
-      let clarification;
+      let prepared;
       try {
-        clarification = await intentService.clarify(principal.userId, { payload: description });
+        prepared = await intentService.prepare(principal.userId, { payload: description });
       } catch (error) {
         if (error instanceof IntentPreparationFailedError) {
           return mcpError('preparation_failed', error.message, { retryable: true });
         }
         throw error;
       }
-      if (clarification.status !== 'ready') {
-        return mcpError('intent_needs_clarification', 'The signal needs clarification before it can be created.', {
-          feedback: clarification.feedback,
-          proposedPayload: clarification.payload,
-          questions: clarification.questions,
+      if (prepared.status !== 'ready') {
+        return mcpError('intent_needs_revision', 'The signal needs revision before it can be created.', {
+          feedback: prepared.feedback,
+          proposedPayload: prepared.payload,
+          recovery: prepared.recovery,
         });
       }
 
       try {
         const created = await intentService.create(
           principal.userId,
-          clarification.payload,
+          prepared.payload,
           networkIds ?? [],
-          clarification.preparationReceipt,
+          prepared.preparationReceipt,
         );
         return mcpSuccess({ intentId: created.id, networkIds: created.networkIds });
       } catch (error) {
