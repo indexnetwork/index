@@ -521,7 +521,7 @@ export class IntentDatabaseAdapter {
     archived: boolean;
     sourceType?: string;
     q?: string;
-  }): Promise<{ rows: IntentListRow[]; total: number; totalWaitingOpportunities: number }> {
+  }): Promise<{ rows: IntentListRow[]; total: number; totalWaitingOpportunities: number; totalStalledNegotiations: number }> {
     const offset = (options.page - 1) * options.limit;
     const where = ownIntentsListWhere(userId, { archived: options.archived, sourceType: options.sourceType, q: options.q });
 
@@ -547,11 +547,12 @@ export class IntentDatabaseAdapter {
       db.select({ count: count() }).from(schema.intents).where(where),
     ]);
 
-    const { rows: withExtras, totalWaitingOpportunities } = await this.attachIntentExtras(rows, userId);
+    const { rows: withExtras, totalWaitingOpportunities, totalStalledNegotiations } = await this.attachIntentExtras(rows, userId);
     return {
       rows: withExtras,
       total: Number(totalResult[0]?.count ?? 0),
       totalWaitingOpportunities,
+      totalStalledNegotiations,
     };
   }
 
@@ -568,13 +569,13 @@ export class IntentDatabaseAdapter {
    *   opportunities across the page's signals.
    */
   private async attachIntentExtras(
-    rows: (Omit<IntentListRow, 'networks' | 'waitingOpportunityCount' | 'warming'> & {
+    rows: (Omit<IntentListRow, 'networks' | 'waitingOpportunityCount' | 'warming' | 'stalledNegotiationCount' | 'awaitingReply'> & {
       /** Stamped by the discovery queue on first successful discovery (IND-482). */
       firstDiscoverySucceededAt: Date | null;
     })[],
     userId: string,
-  ): Promise<{ rows: IntentListRow[]; totalWaitingOpportunities: number }> {
-    if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0 };
+  ): Promise<{ rows: IntentListRow[]; totalWaitingOpportunities: number; totalStalledNegotiations: number }> {
+    if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0, totalStalledNegotiations: 0 };
     const intentIds = rows.map(r => r.id);
     const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [networks, countResult] = await Promise.all([
@@ -582,14 +583,21 @@ export class IntentDatabaseAdapter {
       this.countsByIntent(intentIds, userId),
     ]);
     return {
-      rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
-        ...r,
-        networks: networks.get(r.id) ?? [],
-        waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
-        warming: r.createdAt > warmingCutoff
-          && firstDiscoverySucceededAt == null,
-      })),
+      rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => {
+        const counts = countResult.byIntent.get(r.id);
+        const stalledCount = counts?.stalledNegotiations ?? 0;
+        return {
+          ...r,
+          networks: networks.get(r.id) ?? [],
+          waitingOpportunityCount: counts?.opportunities ?? 0,
+          stalledNegotiationCount: stalledCount,
+          awaitingReply: stalledCount > 0,
+          warming: r.createdAt > warmingCutoff
+            && firstDiscoverySucceededAt == null,
+        };
+      }),
       totalWaitingOpportunities: countResult.totalWaitingOpportunities,
+      totalStalledNegotiations: countResult.totalStalledNegotiations,
     };
   }
 
@@ -630,34 +638,58 @@ export class IntentDatabaseAdapter {
     intentIds: string[],
     userId: string,
   ): Promise<{
-    byIntent: Map<string, { opportunities: number }>;
+    byIntent: Map<string, { opportunities: number; stalledNegotiations: number }>;
     totalWaitingOpportunities: number;
+    totalStalledNegotiations: number;
   }> {
-    const byIntent = new Map<string, { opportunities: number }>();
-    if (intentIds.length === 0) return { byIntent, totalWaitingOpportunities: 0 };
-    for (const id of intentIds) byIntent.set(id, { opportunities: 0 });
+    const byIntent = new Map<string, { opportunities: number; stalledNegotiations: number }>();
+    if (intentIds.length === 0) return { byIntent, totalWaitingOpportunities: 0, totalStalledNegotiations: 0 };
+    for (const id of intentIds) byIntent.set(id, { opportunities: 0, stalledNegotiations: 0 });
     const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
 
-    const oppRows = await db.execute(sql`
-      WITH matching AS (
-        SELECT DISTINCT
-          ${schema.opportunities.id} AS opportunity_id,
-          requested.intent_id
-        FROM ${schema.opportunities}
-        CROSS JOIN LATERAL jsonb_array_elements(${schema.opportunities.actors}) AS actor
-        CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
-        WHERE ${schema.opportunities.status} = 'pending'
-          AND actor->>'userId' = ${userId}
-          AND actor->>'actedAt' IS NULL
-          AND (
-            ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id
-            OR actor->>'intent' = requested.intent_id
-          )
-      )
-      SELECT intent_id, COUNT(DISTINCT opportunity_id)::int AS cnt
-      FROM matching
-      GROUP BY GROUPING SETS ((intent_id), ())
-    `) as unknown as Array<{ intent_id: string | null; cnt: number }>;
+    const [oppRows, negRows] = await Promise.all([
+      db.execute(sql`
+        WITH matching AS (
+          SELECT DISTINCT
+            ${schema.opportunities.id} AS opportunity_id,
+            requested.intent_id
+          FROM ${schema.opportunities}
+          CROSS JOIN LATERAL jsonb_array_elements(${schema.opportunities.actors}) AS actor
+          CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
+          WHERE ${schema.opportunities.status} = 'pending'
+            AND actor->>'userId' = ${userId}
+            AND actor->>'actedAt' IS NULL
+            AND (
+              ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id
+              OR actor->>'intent' = requested.intent_id
+            )
+        )
+        SELECT intent_id, COUNT(DISTINCT opportunity_id)::int AS cnt
+        FROM matching
+        GROUP BY GROUPING SETS ((intent_id), ())
+      `) as unknown as Promise<Array<{ intent_id: string | null; cnt: number }>>,
+
+      db.execute(sql`
+        WITH user_negotiations AS (
+          SELECT
+            CASE
+              WHEN ${schema.negotiations.initiatorUserId} = ${userId} THEN ${schema.negotiations.initiatorIntentId}
+              ELSE ${schema.negotiations.responderIntentId}
+            END AS intent_id
+          FROM ${schema.negotiations}
+          WHERE ${schema.negotiations.awaitingUserId} = ${userId}
+            AND ${schema.negotiations.outcome} IS NULL
+            AND (
+              (${schema.negotiations.initiatorUserId} = ${userId} AND ${schema.negotiations.initiatorIntentId} = ANY(ARRAY[${idList}]::text[]))
+              OR
+              (${schema.negotiations.responderUserId} = ${userId} AND ${schema.negotiations.responderIntentId} = ANY(ARRAY[${idList}]::text[]))
+            )
+        )
+        SELECT intent_id, COUNT(*)::int AS cnt
+        FROM user_negotiations
+        GROUP BY GROUPING SETS ((intent_id), ())
+      `) as unknown as Promise<Array<{ intent_id: string | null; cnt: number }>>,
+    ]);
 
     let totalWaitingOpportunities = 0;
     for (const r of oppRows) {
@@ -668,7 +700,18 @@ export class IntentDatabaseAdapter {
       const entry = byIntent.get(r.intent_id);
       if (entry) entry.opportunities = Number(r.cnt);
     }
-    return { byIntent, totalWaitingOpportunities };
+
+    let totalStalledNegotiations = 0;
+    for (const r of negRows) {
+      if (r.intent_id == null) {
+        totalStalledNegotiations = Number(r.cnt);
+        continue;
+      }
+      const entry = byIntent.get(r.intent_id);
+      if (entry) entry.stalledNegotiations = Number(r.cnt);
+    }
+
+    return { byIntent, totalWaitingOpportunities, totalStalledNegotiations };
   }
 
   async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {

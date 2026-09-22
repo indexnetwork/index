@@ -23,6 +23,14 @@ interface BaseIntent {
    */
   waitingOpportunityCount?: number;
   /**
+   * Stalled negotiations on this signal awaiting the user's move.
+   */
+  stalledNegotiationCount?: number;
+  /**
+   * Derived boolean indicating the signal has stalled negotiations awaiting reply.
+   */
+  awaitingReply?: boolean;
+  /**
    * Lifecycle status (ACTIVE|PAUSED|FULFILLED|EXPIRED). A badge renders only for
    * non-default (non-ACTIVE) values; undefined or ACTIVE renders nothing — the
    * enum is vestigial today, so this is forward-looking. See EDG-53.
@@ -172,6 +180,20 @@ export default function IntentList<T extends BaseIntent>({
                         <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
                       </span>
                       live
+                    </div>
+                  )}
+
+                  {/* Your move — stalled negotiations awaiting the user */}
+                  {(intent.stalledNegotiationCount ?? (intent.awaitingReply ? 1 : 0)) > 0 && (
+                    <div
+                      className="flex items-center gap-1.5 text-xs font-medium text-[#041729] font-ibm-plex-mono"
+                      title={`${(intent.stalledNegotiationCount ?? 1) === 1 ? "1 stalled negotiation" : `${intent.stalledNegotiationCount} stalled negotiations`} awaiting your move`}
+                    >
+                      <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[#041729]" />
+                      your move
+                      {(intent.stalledNegotiationCount ?? 0) > 1 && (
+                        <span className="text-[10px] text-gray-500">({intent.stalledNegotiationCount})</span>
+                      )}
                     </div>
                   )}
 

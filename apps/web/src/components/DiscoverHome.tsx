@@ -22,6 +22,8 @@ interface HomeIntent {
   createdAt: string;
   sourceType?: "integration" | "discovery_form" | "enrichment";
   waitingOpportunityCount?: number;
+  stalledNegotiationCount?: number;
+  awaitingReply?: boolean;
   status?: string;
   warming?: boolean;
 }
@@ -38,6 +40,7 @@ export default function DiscoverHome() {
   const { negotiations } = useConversation();
   const [intents, setIntents] = useState<HomeIntent[]>([]);
   const [totalWaitingOpportunities, setTotalWaitingOpportunities] = useState(0);
+  const [totalStalledNegotiations, setTotalStalledNegotiations] = useState(0);
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
 
@@ -48,21 +51,46 @@ export default function DiscoverHome() {
     return { live: groups.inProgress.length, yourMove: groups.yourMove.length };
   }, [negotiations, user?.id]);
 
+  const stalledByIntent = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const negotiation of negotiations) {
+      if (!negotiation.outcome && negotiation.awaitingUserId === user?.id) {
+        counts.set(negotiation.intentId, (counts.get(negotiation.intentId) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [negotiations, user?.id]);
+
+  const enrichedIntents = useMemo(() => {
+    return intents.map((intent) => {
+      const liveCount = stalledByIntent.get(intent.id);
+      const stalledCount = liveCount !== undefined ? liveCount : (intent.stalledNegotiationCount ?? 0);
+      return {
+        ...intent,
+        stalledNegotiationCount: stalledCount,
+        awaitingReply: stalledCount > 0,
+      };
+    });
+  }, [intents, stalledByIntent]);
+
   const fetchIntents = useCallback(async () => {
     try {
       const res = await apiClient.post<{
         intents?: HomeIntent[];
         totalWaitingOpportunities?: number;
+        totalStalledNegotiations?: number;
       }>("/intents/list", { page: 1, limit: 100 });
       if (mountedRef.current) {
         setIntents(res.intents ?? []);
         setTotalWaitingOpportunities(res.totalWaitingOpportunities ?? 0);
+        setTotalStalledNegotiations(res.totalStalledNegotiations ?? 0);
       }
     } catch (err) {
       logger.error("Failed to load signals", { error: err });
       if (mountedRef.current) {
         setIntents([]);
         setTotalWaitingOpportunities(0);
+        setTotalStalledNegotiations(0);
       }
     }
   }, []);
@@ -115,11 +143,11 @@ export default function DiscoverHome() {
               </Link>
             </>
           )}
-          {negotiationCounts.yourMove > 0 && (
+          {(negotiationCounts.yourMove > 0 || totalStalledNegotiations > 0) && (
             <>
               {" · "}
               <Link to="/negotiations" className="font-semibold text-[#041729] hover:underline">
-                {negotiationCounts.yourMove} your move
+                {negotiationCounts.yourMove || totalStalledNegotiations} your move
               </Link>
             </>
           )}
@@ -140,7 +168,7 @@ export default function DiscoverHome() {
         </button>
 
         <IntentList
-          intents={intents}
+          intents={enrichedIntents}
           isLoading={loading}
           emptyMessage="No signals yet"
           onIntentClick={(intent) => navigate(`/i/${intent.id}`)}

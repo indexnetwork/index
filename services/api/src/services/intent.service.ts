@@ -349,7 +349,7 @@ export class IntentService {
 
     logger.verbose('Listing intents', { userId, page, limit, archived });
 
-    const { rows, total, totalWaitingOpportunities } = await this.adapter.listIntents(userId, {
+    const { rows, total, totalWaitingOpportunities, totalStalledNegotiations } = await this.adapter.listIntents(userId, {
       page,
       limit,
       archived,
@@ -363,6 +363,7 @@ export class IntentService {
         status: intent.status ?? 'ACTIVE' as const,
       })),
       totalWaitingOpportunities,
+      totalStalledNegotiations,
       pagination: {
         current: page,
         total: Math.ceil(total / limit),

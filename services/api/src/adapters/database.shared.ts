@@ -116,6 +116,14 @@ export interface IntentListRow {
    * actor intent. Rows the owner already acted on are excluded.
    */
   waitingOpportunityCount: number;
+  /**
+   * Count of open negotiations on this signal awaiting the user's move.
+   */
+  stalledNegotiationCount: number;
+  /**
+   * Derived boolean indicating the signal has stalled negotiations awaiting reply.
+   */
+  awaitingReply: boolean;
   /** True while a fresh intent has not completed its first discovery run. */
   warming: boolean;
 }
