@@ -27,6 +27,17 @@ const sentryRelease = process.env.SENTRY_RELEASE?.trim() || (sentryCommitSha ? `
 
 const tracesSampleRate = process.env.NODE_ENV === 'development' ? 1.0 : 0.1;
 
+function redactCredentialHeaders<T extends { request?: { headers?: Record<string, string> } }>(event: T): T {
+  const headers = event.request?.headers;
+  if (!headers) return event;
+  for (const key of Object.keys(headers)) {
+    if (['authorization', 'cookie', 'set-cookie', 'x-api-key'].includes(key.toLowerCase())) {
+      headers[key] = '[Filtered]';
+    }
+  }
+  return event;
+}
+
 // Loaded via Bun's --preload flag so Sentry initializes before application imports.
 Sentry.init({
   dsn: sentryDsn,
@@ -36,6 +47,8 @@ Sentry.init({
 
   // Adds request headers and IP addresses to events.
   sendDefaultPii: true,
+  beforeSend: redactCredentialHeaders,
+  beforeSendTransaction: redactCredentialHeaders,
 
   // Capture all traces in development and sample production traffic.
   tracesSampleRate,

@@ -39,6 +39,7 @@ import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adap
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
 import { publishUserEvent } from './lib/user-events';
+import { authenticateMcpRequest, handleMcpRequest } from './lib/mcp/mcp.server';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
 // emoji, LOG_LEVEL, Sentry, embedding redaction + payload truncation).
@@ -140,6 +141,7 @@ logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
 function classifyRequestSubsystem(pathname: string): string {
   if (pathname === '/throw-error') return 'sentry-test';
+  if (pathname === '/mcp') return 'mcp';
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
@@ -178,6 +180,46 @@ Bun.serve({
         return new Response('Not Found', { status: 404, headers: corsHeaders });
       }
       throw new Error('Sentry test error from /throw-error');
+    }
+
+    // MCP is a modern, stateless, API-key-only endpoint. It lives inside the
+    // ordinary request boundary so CORS, tracing, logging and Sentry stay shared.
+    if (url.pathname === '/mcp') {
+      const activeSpan = Sentry.getActiveSpan();
+      if (activeSpan) {
+        Sentry.updateSpanName(activeSpan, `${method} /mcp`);
+      }
+      setSpanAttributes({
+        'http.route': '/mcp',
+        subsystem: 'mcp',
+      });
+
+      if (method !== 'POST') {
+        setSpanHttpStatus(405);
+        return new Response('Method Not Allowed', {
+          status: 405,
+          headers: { Allow: 'POST', ...corsHeaders },
+        });
+      }
+
+      const principal = await authenticateMcpRequest(req);
+      if (!principal) {
+        setSpanHttpStatus(401);
+        return Response.json(
+          { error: 'Unauthorized' },
+          { status: 401, headers: corsHeaders },
+        );
+      }
+
+      const response = await handleMcpRequest(req, principal);
+      const headers = new Headers(response.headers);
+      Object.entries(corsHeaders).forEach(([key, value]) => headers.set(key, value));
+      setSpanHttpStatus(response.status);
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
     }
 
     // Handle OPTIONS preflight requests
