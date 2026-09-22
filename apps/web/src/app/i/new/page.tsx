@@ -243,7 +243,6 @@ function SignalSummary({
         rows={6}
         className="mt-4 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-base leading-relaxed text-[#041729] outline-none focus:border-[#041729] disabled:opacity-60"
       />
-      <p className="mt-3 text-xs text-gray-500">Going out to · everywhere</p>
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {canCreate ? (
           <button

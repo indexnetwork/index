@@ -190,7 +190,13 @@ function NewIntent({ onDone, onBack }) {
                 <div className="fade-up" style={{ display:"grid", gap:10 }}>
                   <AgentBubble label={<TurnLabel tag="opening"/>}>{INTENT_STEP.prompt}</AgentBubble>
                   <div style={{ marginLeft:42, display:"grid", gap:10 }}>
-                    <form onSubmit={(e) => { e.preventDefault(); submitOpening(); }} style={{ display:"flex", gap:10, maxWidth:620 }}>
+                    {/* One composer box: the send button lives inside it, on a
+                        footer strip under the text, rather than as a second box
+                        standing beside it. */}
+                    <form onSubmit={(e) => { e.preventDefault(); submitOpening(); }} style={{
+                      maxWidth:620, border:"1px solid #000", background:"#fff",
+                      display:"flex", flexDirection:"column",
+                    }}>
                       <textarea
                         ref={inputRef}
                         value={draft}
@@ -199,17 +205,14 @@ function NewIntent({ onDone, onBack }) {
                         onChange={e => setDraft(e.target.value)}
                         placeholder={INTENT_STEP.placeholder}
                         style={{
-                          flex:1, background:"#fff", border:"1px solid #000", outline:"none",
+                          background:"transparent", border:"none", outline:"none",
                           color:"#111", fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.45,
-                          resize:"vertical", padding:"11px 14px",
+                          resize:"vertical", padding:"11px 14px 4px",
                         }}
                       />
-                      <button type="submit" disabled={!draft.trim()} style={{
-                        padding:"11px 22px", borderRadius:4, background:"#fff",
-                        border:"1.5px solid #b9b3a4", fontFamily:"var(--mac-sans)", fontSize:14,
-                        color: draft.trim() ? "#111" : "#b9b3a4",
-                        cursor: draft.trim() ? "pointer" : "default",
-                      }}>send</button>
+                      <div style={{ display:"flex", justifyContent:"flex-end", padding:"0 8px 8px" }}>
+                        <Btn primary small type="submit" disabled={!draft.trim()}>send →</Btn>
+                      </div>
                     </form>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                       {INTENT_STEP.examples.map(ex => (
@@ -235,6 +238,11 @@ function RecoveryFormView({ fields, feedback, onSubmit }) {
   const [singleSelected, setSingleSelected] = useState({});
   const [multiSelected, setMultiSelected] = useState({});
   const [textValues, setTextValues] = useState({});
+  // choice fields whose "write your own" box is open; what's typed there
+  // lives in textValues, same as a text field's answer
+  const [writing, setWriting] = useState({});
+  const setText = (fieldId, value) => setTextValues((current) => ({ ...current, [fieldId]: value }));
+  const setWrite = (fieldId, open) => setWriting((current) => ({ ...current, [fieldId]: open }));
 
   const toggleMulti = (fieldId, label) => {
     setMultiSelected((current) => {
@@ -252,11 +260,12 @@ function RecoveryFormView({ fields, feedback, onSubmit }) {
         const answer = textValues[field.id]?.trim();
         return answer ? [{ prompt: field.label, answer }] : [];
       }
+      const own = writing[field.id] ? textValues[field.id]?.trim() : "";
       if (field.kind === "single") {
-        const answer = singleSelected[field.id]?.trim();
+        const answer = own || singleSelected[field.id]?.trim();
         return answer ? [{ prompt: field.label, answer }] : [];
       }
-      const answer = (multiSelected[field.id] ?? []).join(" — ");
+      const answer = [...(multiSelected[field.id] ?? []), ...(own ? [own] : [])].join(" — ");
       return answer ? [{ prompt: field.label, answer }] : [];
     });
     onSubmit(answers);
@@ -283,20 +292,36 @@ function RecoveryFormView({ fields, feedback, onSubmit }) {
                 }}
               />
             )}
-            {field.kind === "single" && (field.options ?? []).map((option) => {
-              const checked = singleSelected[field.id] === option.label;
-              return (
-                <OptionChip
-                  key={option.label}
-                  label={option.label}
-                  selected={checked}
-                  onClick={() => setSingleSelected((current) => ({
-                    ...current,
-                    [field.id]: checked ? "" : option.label,
-                  }))}
+            {field.kind === "single" && (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {(field.options ?? []).map((option) => {
+                  const checked = !writing[field.id] && singleSelected[field.id] === option.label;
+                  return (
+                    <OptionChip
+                      key={option.label}
+                      label={option.label}
+                      selected={checked}
+                      onClick={() => {
+                        setSingleSelected((current) => ({
+                          ...current,
+                          [field.id]: checked ? "" : option.label,
+                        }));
+                        // one answer: picking a chip replaces what was typed
+                        setWrite(field.id, false);
+                        setText(field.id, "");
+                      }}
+                    />
+                  );
+                })}
+                <WriteOwn
+                  open={!!writing[field.id]}
+                  value={textValues[field.id] ?? ""}
+                  onOpen={() => { setSingleSelected((current) => ({ ...current, [field.id]: "" })); setWrite(field.id, true); }}
+                  onChange={(value) => setText(field.id, value)}
+                  onClose={() => setWrite(field.id, false)}
                 />
-              );
-            })}
+              </div>
+            )}
             {field.kind === "multi" && (
               <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                 {(field.options ?? []).map((option) => {
@@ -310,6 +335,14 @@ function RecoveryFormView({ fields, feedback, onSubmit }) {
                     />
                   );
                 })}
+                {/* many answers: what's typed goes in alongside the chips */}
+                <WriteOwn
+                  open={!!writing[field.id]}
+                  value={textValues[field.id] ?? ""}
+                  onOpen={() => setWrite(field.id, true)}
+                  onChange={(value) => setText(field.id, value)}
+                  onClose={() => setWrite(field.id, false)}
+                />
               </div>
             )}
           </div>
@@ -317,6 +350,28 @@ function RecoveryFormView({ fields, feedback, onSubmit }) {
         <Btn primary onClick={handleSubmit}>send answer</Btn>
       </div>
     </div>
+  );
+}
+
+// The "write your own" chip from the conversation's question cards: a chip
+// until clicked, then an input in the same box. Closes again if left empty.
+function WriteOwn({ open, value, onOpen, onChange, onClose }) {
+  if (!open) return <OptionChip write label="write your own" onClick={onOpen}/>;
+  return (
+    <input
+      autoFocus
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={(e) => { if (!e.currentTarget.value.trim()) onClose(); }}
+      onKeyDown={(e) => { if (e.key === "Escape" && !e.currentTarget.value.trim()) onClose(); }}
+      placeholder="write your own"
+      aria-label="Write your own answer"
+      style={{
+        flex:"1 1 220px", minWidth:180, minHeight:36,
+        border:"1px solid #000", padding:"8px 14px",
+        fontFamily:"var(--mac-mono)", fontSize:12, color:"#111", outline:"none",
+      }}
+    />
   );
 }
 
@@ -405,18 +460,18 @@ function SignalSummaryCard({ description, onChange, note, canCreate, onCreate, o
             lineHeight:1.4, color:"#000", background:"#fff", resize:"vertical",
           }}
         />
-        <div style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>
-          going out to · everywhere
-        </div>
+        {note && (
+          <div style={{
+            fontFamily:"var(--mac-sans)", fontSize:12.5, fontStyle:"italic",
+            lineHeight:1.5, color:"var(--ink-2)",
+          }}>{note}</div>
+        )}
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
         {canCreate ? (
           <Btn primary disabled={!description.trim() || description.length > 65_536} onClick={onCreate}>create this signal</Btn>
         ) : (
           <Btn primary disabled={!description.trim()} onClick={onRecheck}>check signal</Btn>
-        )}
-        {note && (
-          <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"#000", fontWeight:700 }}>{note}</span>
         )}
       </div>
     </div>
