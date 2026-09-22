@@ -104,9 +104,8 @@ export interface RadarViewResponse {
 }
 
 export interface GetRadarViewOptions {
+  intentId?: string;
   networkId?: string;
-  scopeType?: 'intent';
-  scopeId?: string;
   limit?: number;
   noCache?: boolean;
   /** Explicit lifecycle filter — switches the radar view into lifecycle mode (intent radar). */
@@ -177,14 +176,15 @@ export const createOpportunitiesService = (
   ): Promise<RadarViewResponse> => {
     const params = new URLSearchParams();
     if (options?.networkId) params.set('networkId', options.networkId);
-    if (options?.scopeType) params.set('scopeType', options.scopeType);
-    if (options?.scopeId) params.set('scopeId', options.scopeId);
     if (options?.statuses?.length) params.set('statuses', options.statuses.join(','));
     if (options?.limit != null) params.set('limit', String(options.limit));
     if (options?.noCache) params.set('noCache', '1');
     if (options?.presentation) params.set('presentation', options.presentation);
     const qs = params.toString();
-    const url = qs ? `/opportunities?${qs}` : '/opportunities';
+    const basePath = options?.intentId
+      ? `/intents/${encodeURIComponent(options.intentId)}/opportunities`
+      : '/opportunities';
+    const url = qs ? `${basePath}?${qs}` : basePath;
 
     const fetchRadar = async () => {
       const res = await api.get<{ opportunities: PresentedOpportunity[]; meta: RadarViewResponse['meta'] }>(url);
@@ -227,12 +227,12 @@ export const createOpportunitiesService = (
   updateStatus: async (
     opportunityId: string,
     status: OpportunityStatus,
-    scope?: { scopeType: 'intent'; scopeId: string },
+    scope?: { intentId: string },
   ): Promise<OpportunityStatusUpdateResponse> => {
-    return api.patch<OpportunityStatusUpdateResponse>(
-      `/opportunities/${opportunityId}/status`,
-      { status, ...(scope ?? {}) }
-    );
+    const path = scope?.intentId
+      ? `/intents/${encodeURIComponent(scope.intentId)}/opportunities/${encodeURIComponent(opportunityId)}/status`
+      : `/opportunities/${opportunityId}/status`;
+    return api.patch<OpportunityStatusUpdateResponse>(path, { status });
   },
 
   getOpportunity: async (opportunityId: string): Promise<OpportunityDetailResponse> => {
@@ -249,19 +249,20 @@ export const createOpportunitiesService = (
    */
   startChat: async (
     opportunityId: string,
-    scope?: { scopeType: 'intent'; scopeId: string },
+    scope?: { intentId: string },
   ): Promise<{
     conversationId: string;
     counterpartUserId: string;
     opportunity: PresentedOpportunity;
   }> => {
+    const path = scope?.intentId
+      ? `/intents/${encodeURIComponent(scope.intentId)}/opportunities/${encodeURIComponent(opportunityId)}/start-chat`
+      : `/opportunities/${opportunityId}/start-chat`;
     return api.post<{
       conversationId: string;
       counterpartUserId: string;
       opportunity: PresentedOpportunity;
-    }>(`/opportunities/${opportunityId}/start-chat`, {
-      ...(scope ?? {}),
-    });
+    }>(path, {});
   },
 
   /**

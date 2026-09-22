@@ -199,23 +199,24 @@ def _web_url() -> str:
 def _update_opportunity(
     opportunity_id: str,
     status: str,
-    scope_id: str | None = None,
+    intent_id: str | None = None,
 ) -> dict[str, Any]:
-    """Accept/skip an opportunity over REST (`PATCH /opportunities/:id/status`), matching the Mac app."""
+    """Accept/skip an opportunity over REST, matching the Mac app."""
     body: dict[str, Any] = {"status": status}
-    if scope_id:
-        body["scopeType"] = "intent"
-        body["scopeId"] = scope_id
-    return tools._api_request("PATCH", f"/opportunities/{quote(opportunity_id, safe='')}/status", body)
+    if intent_id:
+        path = f"/intents/{quote(intent_id, safe='')}/opportunities/{quote(opportunity_id, safe='')}/status"
+    else:
+        path = f"/opportunities/{quote(opportunity_id, safe='')}/status"
+    return tools._api_request("PATCH", path, body)
 
 
-def _start_chat(opportunity_id: str, scope_id: str | None = None) -> dict[str, Any]:
-    """Open (or resolve) the DM for an opportunity over REST (`POST /opportunities/:id/start-chat`)."""
-    body: dict[str, Any] = {}
-    if scope_id:
-        body["scopeType"] = "intent"
-        body["scopeId"] = scope_id
-    return tools._api_request("POST", f"/opportunities/{quote(opportunity_id, safe='')}/start-chat", body)
+def _start_chat(opportunity_id: str, intent_id: str | None = None) -> dict[str, Any]:
+    """Open (or resolve) the DM for an opportunity over REST."""
+    if intent_id:
+        path = f"/intents/{quote(intent_id, safe='')}/opportunities/{quote(opportunity_id, safe='')}/start-chat"
+    else:
+        path = f"/opportunities/{quote(opportunity_id, safe='')}/start-chat"
+    return tools._api_request("POST", path, {})
 
 
 def _resolve_user_id() -> str | None:
@@ -1045,8 +1046,8 @@ def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
     if not intent_id:
         return {"success": False, "error": "An intent id is required."}
     query = (
-        f"/opportunities?scopeType=intent&scopeId={quote(intent_id, safe='')}"
-        f"&statuses={_RADAR_STATUSES}"
+        f"/intents/{quote(intent_id, safe='')}/opportunities"
+        f"?statuses={_RADAR_STATUSES}"
     )
     if _text(presentation) == "skeleton":
         query += "&presentation=skeleton"
@@ -1475,7 +1476,7 @@ def accept_opportunity(
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
         return {"success": False, "error": "An opportunity id is required."}
-    scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
+    scope_id = _text(body.get("intentId") or body.get("scopeId")) if isinstance(body, dict) else ""
     payload = _update_opportunity(opportunity_id, "accepted", scope_id or None)
     if payload.get("success") is False:
         return payload
@@ -1491,7 +1492,7 @@ def skip_opportunity(
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
         return {"success": False, "error": "An opportunity id is required."}
-    scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
+    scope_id = _text(body.get("intentId") or body.get("scopeId")) if isinstance(body, dict) else ""
     payload = _update_opportunity(opportunity_id, "rejected", scope_id or None)
     if payload.get("success") is False:
         return payload
@@ -1510,7 +1511,7 @@ def start_chat(
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
         return {"success": False, "error": "An opportunity id is required."}
-    scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
+    scope_id = _text(body.get("intentId") or body.get("scopeId")) if isinstance(body, dict) else ""
     payload = _start_chat(opportunity_id, scope_id or None)
     if payload.get("success") is False:
         return payload

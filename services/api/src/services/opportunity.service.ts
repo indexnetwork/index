@@ -53,8 +53,7 @@ interface OpportunityStatusUpdateResult {
 }
 
 interface IntentScopeOptions {
-  scopeType?: 'intent';
-  scopeId?: string;
+  intentId?: string;
   /**
    * Verified provenance of the owner action, set ONLY by controller entry
    * points that represent a genuine explicit human owner action (REST session
@@ -101,11 +100,11 @@ async function buildOutcomeOutbox(
 function matchesSelectedIntentScope(
   opportunity: Pick<Opportunity, 'detection' | 'actors'>,
   userId: string,
-  scope?: IntentScopeOptions,
+  intentId?: string,
 ): boolean {
-  if (scope?.scopeType !== 'intent' || !scope.scopeId) return true;
-  if (opportunity.detection?.triggeredBy === scope.scopeId) return true;
-  return opportunity.actors.some((actor) => actor.userId === userId && actor.intent === scope.scopeId);
+  if (!intentId) return true;
+  if (opportunity.detection?.triggeredBy === intentId) return true;
+  return opportunity.actors.some((actor) => actor.userId === userId && actor.intent === intentId);
 }
 
 interface MatchProvenanceInput {
@@ -243,14 +242,14 @@ export class OpportunityService {
   private schedulePresentationPreload(
     opportunity: Opportunity,
     viewerIds: string[],
-    scopeId?: string,
+    intentId?: string,
   ): void {
-    scheduleOpportunityPresentationPreload(this.getPreloadDeps(), opportunity, viewerIds, scopeId);
+    scheduleOpportunityPresentationPreload(this.getPreloadDeps(), opportunity, viewerIds, intentId);
   }
 
   /** Non-blocking cache warm after writes; safe to call from controllers. */
-  warmPresentationCache(opportunity: Opportunity, viewerIds: string[], scopeId?: string): void {
-    this.schedulePresentationPreload(opportunity, viewerIds, scopeId);
+  warmPresentationCache(opportunity: Opportunity, viewerIds: string[], intentId?: string): void {
+    this.schedulePresentationPreload(opportunity, viewerIds, intentId);
   }
 
   async getStoredOpportunity(opportunityId: string): Promise<Opportunity | null> {
@@ -268,8 +267,7 @@ export class OpportunityService {
       status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       statuses?: OpportunityStatus[];
       networkId?: string;
-      scopeType?: 'intent';
-      scopeId?: string;
+      intentId?: string;
       limit?: number;
       offset?: number;
       noCache?: boolean;
@@ -291,8 +289,7 @@ export class OpportunityService {
       ?? (options?.status ? [options.status] : DEFAULT_LIST_STATUSES);
     const radar = await this.getRadarView(userId, {
       networkId: options?.networkId,
-      scopeType: options?.scopeType,
-      scopeId: options?.scopeId,
+      intentId: options?.intentId,
       limit: options?.limit ?? 50,
       noCache: options?.noCache,
       statuses,
@@ -314,11 +311,10 @@ export class OpportunityService {
   async presentOpportunityForViewer(
     opportunity: Opportunity,
     viewerId: string,
-    scopeId?: string,
+    intentId?: string,
   ): Promise<PresentedOpportunity> {
     const radar = await this.getRadarView(viewerId, {
-      scopeType: scopeId ? 'intent' : undefined,
-      scopeId,
+      intentId,
       statuses: [opportunity.status],
       limit: 50,
     });
@@ -393,7 +389,7 @@ export class OpportunityService {
    */
   async getRadarView(
     userId: string,
-    options?: { networkId?: string; scopeType?: 'intent'; scopeId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[]; presentation?: 'full' | 'skeleton' }
+    options?: { networkId?: string; intentId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[]; presentation?: 'full' | 'skeleton' }
   ): Promise<{ items: unknown[]; meta: { totalOpportunities: number } } | { error: string }> {
     logger.verbose('Getting radar view', { userId, options });
     try {
@@ -401,8 +397,8 @@ export class OpportunityService {
       const radarInput = {
         userId,
         networkId: options?.networkId,
-        scopeType: options?.scopeType,
-        scopeId: options?.scopeId,
+        scopeType: options?.intentId ? 'intent' as const : undefined,
+        scopeId: options?.intentId,
         limit: options?.limit ?? 50,
         noCache: options?.noCache,
         statuses: options?.statuses,
@@ -450,8 +446,7 @@ export class OpportunityService {
       status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       statuses?: OpportunityStatus[];
       networkId?: string;
-      scopeType?: 'intent';
-      scopeId?: string;
+      intentId?: string;
       limit?: number;
       offset?: number;
     }
@@ -637,8 +632,7 @@ export class OpportunityService {
       opportunityId,
       status,
       userId,
-      scopeType: options?.scopeType,
-      scopeId: options?.scopeId,
+      intentId: options?.intentId,
     });
 
     const opp = await this.db.getOpportunity(opportunityId);
@@ -650,7 +644,7 @@ export class OpportunityService {
     if (!callerActor) {
       return { error: 'Not authorized to update this opportunity', status: 403 };
     }
-    if (!matchesSelectedIntentScope(opp, userId, options)) {
+    if (!matchesSelectedIntentScope(opp, userId, options?.intentId)) {
       return { error: 'Opportunity not found', status: 404 };
     }
 
@@ -690,7 +684,7 @@ export class OpportunityService {
           userId,
           captureAction,
           options?.actionProvenance,
-          options?.scopeType === 'intent' ? options.scopeId : undefined,
+          options?.intentId,
         )
       : { outbox: undefined, prepared: null };
 
@@ -727,19 +721,19 @@ export class OpportunityService {
       const presented = await this.presentOpportunityForViewer(
         updated,
         userId,
-        options?.scopeType === 'intent' ? options.scopeId : undefined,
+        options?.intentId,
       );
       this.schedulePresentationPreload(
         updated,
         updated.actors.map((actor) => actor.userId),
-        options?.scopeType === 'intent' ? options.scopeId : undefined,
+        options?.intentId,
       );
       return { opportunity: presented };
     }
 
     const counterpartUserId = counterpart.userId;
 
-    if (options?.scopeType !== 'intent') {
+    if (!options?.intentId) {
       await this.db.acceptSiblingOpportunities(userId, counterpartUserId, opportunityId).catch((err) => {
         updateStatusLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
           opportunityId,
@@ -753,12 +747,12 @@ export class OpportunityService {
     const presented = await this.presentOpportunityForViewer(
       updated,
       userId,
-      options?.scopeType === 'intent' ? options.scopeId : undefined,
+      options?.intentId,
     );
     this.schedulePresentationPreload(
       updated,
       updated.actors.map((actor) => actor.userId),
-      options?.scopeType === 'intent' ? options.scopeId : undefined,
+      options?.intentId,
     );
 
     return {
@@ -816,7 +810,7 @@ export class OpportunityService {
       if (!isActor) {
         return { error: 'Not authorized to start chat for this opportunity', status: 403 };
       }
-      if (!matchesSelectedIntentScope(opp, userId, options)) {
+      if (!matchesSelectedIntentScope(opp, userId, options?.intentId)) {
         return { error: 'Opportunity not found', status: 404 };
       }
       const counterpart = resolveCounterpart(opp.actors, userId);
@@ -848,7 +842,7 @@ export class OpportunityService {
         opportunity: await this.presentOpportunityForViewer(
           opp,
           userId,
-          options?.scopeType === 'intent' ? options.scopeId : undefined,
+          options?.intentId,
         ),
       };
     }
@@ -862,7 +856,7 @@ export class OpportunityService {
     if (!callerActor) {
       return { error: 'Not authorized to start chat for this opportunity', status: 403 };
     }
-    if (!matchesSelectedIntentScope(opp, userId, options)) {
+    if (!matchesSelectedIntentScope(opp, userId, options?.intentId)) {
       return { error: 'Opportunity not found', status: 404 };
     }
 
@@ -921,7 +915,7 @@ export class OpportunityService {
       userId,
       'accepted',
       options?.actionProvenance,
-      options?.scopeType === 'intent' ? options.scopeId : undefined,
+      options?.intentId,
     );
 
     // Only flip status once we know the chat destination exists.
@@ -947,7 +941,7 @@ export class OpportunityService {
         error: err,
       });
     });
-    if (options?.scopeType !== 'intent') {
+    if (!options?.intentId) {
       await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
         startChatLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
           opportunityId,
@@ -960,7 +954,7 @@ export class OpportunityService {
     this.schedulePresentationPreload(
       updated,
       updated.actors.map((actor) => actor.userId),
-      options?.scopeType === 'intent' ? options.scopeId : undefined,
+      options?.intentId,
     );
     return {
       conversationId: conversation.id,
@@ -968,7 +962,7 @@ export class OpportunityService {
       opportunity: await this.presentOpportunityForViewer(
         updated,
         userId,
-        options?.scopeType === 'intent' ? options.scopeId : undefined,
+        options?.intentId,
       ),
     };
   }

@@ -1,11 +1,12 @@
 import { z } from 'zod';
 
-import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { IntentPreparationReceiptError } from '../lib/intent/intent.preparation';
 import { CREATE_OPPORTUNITIES_LIMIT, DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../services/intent.service';
 import { opportunityService } from '../services/opportunity.service';
+import { parseListOpportunitiesQuery } from '../lib/opportunity/list-opportunities-query';
 
 const logger = log.controller.from('intent');
 
@@ -233,12 +234,124 @@ export class IntentController {
         opportunityService.warmPresentationCache(
           opp,
           opp.actors.map((actor) => actor.userId),
+          resolved.id,
         );
-        return opportunityService.presentOpportunityForViewer(opp, user.id);
+        return opportunityService.presentOpportunityForViewer(opp, user.id, resolved.id);
       }),
     );
 
     return Response.json({ opportunities: opportunities.filter((row) => row !== null) });
+  }
+
+  /**
+   * GET /intents/:id/opportunities — presented opportunity cards scoped to one signal.
+   */
+  @Get('/:id/opportunities')
+  @UseGuards(AuthGuard)
+  async listOpportunities(req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
+    const query = parseListOpportunitiesQuery(url);
+    if (query instanceof Response) return query;
+
+    const result = await opportunityService.presentOpportunitiesForViewer(user.id, {
+      ...query,
+      intentId: resolved.id,
+    });
+    if ('error' in result) {
+      logger.error('listIntentOpportunities failed', { userId: user.id, intentId: resolved.id, error: result.error });
+      return Response.json({ error: result.error }, { status: 500 });
+    }
+
+    return Response.json(result);
+  }
+
+  /**
+   * PATCH /intents/:id/opportunities/:opportunityId/status — intent-scoped status update.
+   */
+  @Patch('/:id/opportunities/:opportunityId/status')
+  @UseGuards(AuthGuard)
+  async updateOpportunityStatus(req: Request, user: AuthenticatedUser, params: { id: string; opportunityId: string }) {
+    const resolvedIntent = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolvedIntent) {
+      return Response.json({ error: resolvedIntent.error }, { status: resolvedIntent.status });
+    }
+
+    const resolvedOpportunity = await opportunityService.resolveId(params.opportunityId, user.id);
+    if ('error' in resolvedOpportunity) {
+      return Response.json({ error: resolvedOpportunity.error }, { status: resolvedOpportunity.status });
+    }
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    const rawStatus = typeof (body as Record<string, unknown>).status === 'string'
+      ? (body as Record<string, unknown>).status as string
+      : undefined;
+    const allowed = ['pending', 'negotiating', 'accepted', 'rejected', 'expired'];
+    if (!rawStatus || !allowed.includes(rawStatus)) {
+      return Response.json({ error: 'Invalid status; use one of: ' + allowed.join(', ') }, { status: 400 });
+    }
+
+    const result = await opportunityService.updateOpportunityStatus(
+      resolvedOpportunity.id,
+      rawStatus as 'pending' | 'negotiating' | 'accepted' | 'rejected' | 'expired',
+      user.id,
+      {
+        intentId: resolvedIntent.id,
+        actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
+      },
+    );
+
+    if (result && 'error' in result) {
+      return Response.json(
+        'advisory' in result ? { error: result.error, advisory: result.advisory } : { error: result.error },
+        { status: result.status as number },
+      );
+    }
+
+    return Response.json(result);
+  }
+
+  /**
+   * POST /intents/:id/opportunities/:opportunityId/start-chat — intent-scoped start chat.
+   */
+  @Post('/:id/opportunities/:opportunityId/start-chat')
+  @UseGuards(AuthGuard)
+  async startOpportunityChat(_req: Request, user: AuthenticatedUser, params: { id: string; opportunityId: string }) {
+    const resolvedIntent = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolvedIntent) {
+      return Response.json({ error: resolvedIntent.error }, { status: resolvedIntent.status });
+    }
+
+    const resolvedOpportunity = await opportunityService.resolveId(params.opportunityId, user.id);
+    if ('error' in resolvedOpportunity) {
+      return Response.json({ error: resolvedOpportunity.error }, { status: resolvedOpportunity.status });
+    }
+
+    const result = await opportunityService.startChat(resolvedOpportunity.id, user.id, {
+      intentId: resolvedIntent.id,
+      actionProvenance: isSessionAuthenticated(_req) ? 'user_session' : 'api_key',
+    });
+    if ('error' in result) {
+      return Response.json(
+        'advisory' in result ? { error: result.error, advisory: result.advisory } : { error: result.error },
+        { status: result.status },
+      );
+    }
+
+    return Response.json(result);
   }
 
   /**

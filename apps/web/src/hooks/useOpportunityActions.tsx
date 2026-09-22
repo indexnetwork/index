@@ -7,7 +7,7 @@ import { useConversation } from "@/contexts/ConversationContext";
 
 /** Intent scope threaded into opportunity status/start-chat calls, if any. */
 export type OpportunityActionScope =
-  | { scopeType: "intent"; scopeId: string }
+  | { intentId: string }
   | undefined;
 
 interface UseOpportunityActionsOptions {
