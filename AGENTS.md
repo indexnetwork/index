@@ -151,12 +151,11 @@ variables are `DATABASE_URL`, `OPENROUTER_API_KEY`, `PORT`, and `NODE_ENV`.
 `services/api/src/startup.env.ts` validates them at boot, failing hard on invalid
 values.
 
-Two Neon projects exist: Protocol-dev-europe (`patient-pine-89907813`) for local
-development, and Protocol (`shiny-cloud-34341469`) with branches `production`
-(never touch), `dev` (the Railway dev environment, database `protocol_prod`), and
-`local-dev`. On `local-dev`, `protocol_prod` is a real-data copy while
-`protocol_sandbox` is the disposable one and the safe default for
-`.env.development`.
+Before touching any database, follow `.agents/skills/neon-databases/SKILL.md`:
+it maps every Neon project, branch, and database to its data and purpose. In
+short, `protocol` is real data on every branch; the us-east-1 Protocol
+project serves Railway only, `.env.development` uses the eu-central-1 clone in
+Protocol-dev-europe, and `.env.test` uses local `index_test`.
 
 The schema is `services/api/src/schemas/database.schema.ts` and the Drizzle client
 is `services/api/src/lib/drizzle/drizzle.ts`. To change the schema: edit the

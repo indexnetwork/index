@@ -10,11 +10,22 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- The hosted personal agent groups its initial negotiations into one readable
+  summary on the principal conversation instead of displaying the raw negotiation log.
+  Direct replies are marked separately from notes and progress updates, with a
+  focused retry when a wake omits the reply.
+- The hosted personal agent answers an unanswered direct message from its principal
+  once per wake, including a bare greeting, instead of treating it as a silent
+  signal update. Wakes without an unanswered message retain their silence rules.
 - **`POST /intents/prepare`** replaces `/intents/clarify`. Returns `ready` with a
   preparation receipt or `needs_revision` with admission feedback and a dynamic
   recovery form.
+- `db:dev:resume --confirm [count]` accepts an optional intent count (default 5)
+  and spaces activations 5–10 seconds apart (was 10–30).
 
 ### Fixed
+- Run development intent reset and resume locally with root `.env.development`
+  values instead of orchestrating the Railway dev API.
 - Restore API architecture lint by keeping opportunity presentation and preload
   helpers in `lib/opportunity`, outside the service layer. Runtime behavior is
   unchanged.

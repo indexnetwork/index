@@ -8,6 +8,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- **`/download`** shows Index for Mac, the Hermes plugin, and a bordered row
+  with centered orange text: "Open Index in the browser →".
 - **`/i/new`** uses prepare → recovery form → summary. One dynamic recovery
   screen on admission failure; no clarifying-question loop.
 - The negotiations inbox refreshes on `negotiation.changed` alone. The API no

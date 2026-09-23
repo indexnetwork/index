@@ -108,6 +108,10 @@ export interface PrincipalMessage {
   questionId?: string;
   /** `expire` is the agent retiring its own question: it leaves the queue unanswered. */
   kind: "question" | "answer" | "user" | "message" | "expire";
+  /** Marks the negotiation summary, so the next one can be read from the notes after this. */
+  summary?: boolean;
+  /** Marks a direct reply, distinct from an unrelated note or progress update. */
+  reply?: boolean;
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;
@@ -211,6 +215,13 @@ export interface Index {
   createOpportunities(intentId: string, counterparties: CounterpartyPick[]): Promise<{ opportunityId: string }[]>;
   /** @returns Open negotiations for this seat. */
   listNegotiations(): Promise<Negotiation[]>;
+  /**
+   * Negotiations on one signal, open and settled.
+   *
+   * @param intentId - The signal.
+   * @returns That signal's negotiations, newest first.
+   */
+  listIntentNegotiations(intentId: string): Promise<Negotiation[]>;
   /** @param id - Opportunity id. @returns The negotiation as this seat sees it. */
   getNegotiation(id: string): Promise<NegotiationDetail>;
   /**
@@ -391,6 +402,14 @@ export class IndexClient implements Index {
    */
   async listNegotiations(): Promise<Negotiation[]> {
     const { negotiations } = await this.request<{ negotiations: Negotiation[] }>("GET", "/negotiations?state=open");
+    return negotiations;
+  }
+
+  /** @param intentId - The signal. @returns That signal's negotiations, open and settled. */
+  async listIntentNegotiations(intentId: string): Promise<Negotiation[]> {
+    const { negotiations } = await this.request<{ negotiations: Negotiation[] }>(
+      "GET", `/negotiations?intentId=${encodeURIComponent(intentId)}`,
+    );
     return negotiations;
   }
 

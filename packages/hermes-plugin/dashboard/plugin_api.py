@@ -1762,6 +1762,41 @@ def archive_intent(intent_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
+@full_router.post("/intents/prepare")
+def prepare_intent(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Prepare a draft signal via REST `POST /intents/prepare`.
+
+    @returns `{ status: "ready", payload, preparationReceipt }` or
+             `{ status, payload, feedback, recovery }` when the draft needs answers.
+    """
+    body = body if isinstance(body, dict) else {}
+    payload_text = _text(body.get("payload"))
+    if not payload_text:
+        return {"success": False, "error": "Say what you're looking for first."}
+    answers = body.get("answers") if isinstance(body.get("answers"), list) else []
+    return tools._api_request("POST", "/intents/prepare", {"payload": payload_text, "answers": answers})
+
+
+@full_router.post("/intents")
+def create_intent(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Create a prepared signal via REST `POST /intents`.
+
+    @returns `{ success: True, intentId }` or the API's error payload.
+    """
+    body = body if isinstance(body, dict) else {}
+    description = body.get("description") if isinstance(body.get("description"), str) else ""
+    if not description.strip():
+        return {"success": False, "error": "A signal description is required."}
+    request: dict[str, Any] = {"description": description}
+    receipt = _text(body.get("preparationReceipt"))
+    if receipt:
+        request["preparationReceipt"] = receipt
+    payload = tools._api_request("POST", "/intents", request)
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "intentId": payload.get("intentId")}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Conversations / realtime DMs
 #

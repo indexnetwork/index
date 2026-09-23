@@ -12,28 +12,6 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* ---------- header ---------- */
-
-/* The wordmark is the only thing in here now that the status chip is gone, so
-   it sits on the left rather than being spaced against nothing. */
-.download-page__header {
-  display: flex;
-  align-items: center;
-  padding: 30px 48px;
-}
-
-.download-page__logo {
-  display: inline-flex;
-  line-height: 0;
-}
-
-/* 200px wide is the handoff's size; the wordmark is 522x44, so height follows. */
-.download-page__logo img {
-  display: block;
-  width: 200px;
-  height: auto;
-}
-
 /* ---------- hero ---------- */
 
 .download-page__main {
@@ -45,8 +23,16 @@
   padding: 10px 48px 60px;
 }
 
-.download-page__kicker {
+.download-page__step {
   margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: #e8873d;
+}
+
+.download-page__kicker {
+  margin: 18px 0 0;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.3em;
@@ -55,7 +41,7 @@
 }
 
 .download-page__title {
-  margin: 22px 0 16px;
+  margin: 36px 0 16px;
   font-size: 52px;
   font-weight: 600;
   line-height: 1.1;
@@ -74,20 +60,46 @@
 
 /* ---------- cards ---------- */
 
-.download-page__cards {
+.download-page__offers {
+  width: min(1060px, 100%);
   margin-top: 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.download-page__cards {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 28px;
+  gap: 40px;
 }
 
 .download-card {
-  width: 340px;
+  flex: 1 1 320px;
+  width: auto;
+  max-width: 510px;
   display: flex;
   flex-direction: column;
   background: #122019;
   border: 1px solid #2b4234;
+}
+
+.download-page__browser {
+  display: block;
+  padding: 28px 22px;
+  border: 1px solid #2b4234;
+  background: #122019;
+  color: #e8873d;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+
+.download-page__browser:hover {
+  border-color: #e8873d;
+  color: #f09a55;
 }
 
 /* Even top and bottom padding now that the header bar is gone: the 36px top was
@@ -206,19 +218,8 @@
 /* The handoff wraps the cards to one centred column here; the gutters come in
    to match, and the 52px title would otherwise overflow a phone. */
 @media (max-width: 760px) {
-  .download-page__header {
-    padding-left: 24px;
-    padding-right: 24px;
-    padding-top: 24px;
-    padding-bottom: 24px;
-  }
-
   .download-page__main {
     padding: 10px 24px 48px;
-  }
-
-  .download-page__logo img {
-    width: 160px;
   }
 
   .download-page__title {
@@ -226,7 +227,7 @@
   }
 
   .download-card {
-    width: 100%;
-    max-width: 340px;
+    flex-basis: 100%;
+    max-width: 510px;
   }
 }

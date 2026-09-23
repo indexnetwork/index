@@ -1,7 +1,7 @@
 import type { Index } from "@indexnetwork/client";
 
 import type { Intent, Model } from "../src/index.ts";
-import { runNegotiate, runWake } from "../src/host.ts";
+import { closeInitiation, runNegotiate, runWake } from "../src/host.ts";
 
 export interface RunnerOptions {
   client: Index;
@@ -25,9 +25,9 @@ export interface Runner {
  * for one.
  *
  * A counterpart's turn is the passive trigger: it briefs that one opportunity
- * if it needs briefing and takes its turn. No sibling is decided, and the
- * principal is addressed only once those negotiators are done and one of them
- * stalled.
+ * if it needs briefing and takes its turn. No sibling is decided. When the
+ * negotiations this seat opened since the last summary have all left their
+ * opening turn, one summary goes to the principal and one wake decides them.
  *
  * @param options - Index, the model, and where to report.
  * @returns A handle that wakes a signal on demand and stops everything.
@@ -44,6 +44,9 @@ export function startRunner(options: RunnerOptions): Runner {
   const stalled = new Map<string, string>();
   /** Stalls no wake has read yet, by signal: the only ones worth waking for. */
   const unread = new Map<string, string>();
+  /** Signals whose initiation check is running, and those that asked for one while it ran. */
+  const closing = new Set<string>();
+  const resettle = new Set<string>();
   let stopped = false;
 
   const runtime = () => ({ model, now, signal: abort.signal, log });
@@ -99,22 +102,45 @@ export function startRunner(options: RunnerOptions): Runner {
   }
 
   /**
-   * One negotiator is done. Wake the signal only once nothing else of it is in
-   * flight and a stall no wake has read is waiting, so every stall of a burst
-   * is put to the principal by one wake rather than one wake, one question at a
-   * time — whether a wake or a counterpart's turn started these negotiators.
-   *
-   * A stall the principal already has stays standing until they answer, and is
-   * not a reason to wake over every turn that lands meanwhile.
+   * One negotiator is done. The initiation is read from the database: the
+   * negotiations this seat opened since the last summary. While one is still
+   * on its opening turn, a stall waits here. When none are, one summary is
+   * written and one wake decides the whole set.
    *
    * @param intentId - The signal that negotiator belonged to.
    * @param opportunityId - The negotiation it worked.
    */
   function finish(intentId: string, opportunityId: string): void {
     working.delete(opportunityId);
+    void settle(intentId);
+  }
+
+  /**
+   * Read the initiation and wake once it has finished. A check that arrives
+   * while one is running becomes a single follow-up.
+   *
+   * @param intentId - The signal.
+   */
+  async function settle(intentId: string): Promise<void> {
     if (stopped) return;
-    if ([...working.values()].includes(intentId)) return;
-    if ([...unread.values()].includes(intentId)) startWake(intentId);
+    if (closing.has(intentId)) {
+      resettle.add(intentId);
+      return;
+    }
+    closing.add(intentId);
+    try {
+      const intent = intents.get(intentId);
+      if (!intent) return;
+      const status = await closeInitiation(client, intent, runtime());
+      if (stopped) return;
+      const waiting = [...unread.values()].includes(intentId);
+      if (status === "done" || (status === "idle" && waiting)) startWake(intentId);
+    } catch (error) {
+      onError(error);
+    } finally {
+      closing.delete(intentId);
+      if (resettle.delete(intentId) && !stopped) await settle(intentId);
+    }
   }
 
   /**

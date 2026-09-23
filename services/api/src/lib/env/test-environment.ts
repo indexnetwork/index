@@ -52,6 +52,11 @@ export function latchTestInvocationNodeEnv(nodeEnv: string | undefined): 'test' 
  * Test mode is latched before dotenv runs. A test file may omit `NODE_ENV` or
  * set it to `test`, but it cannot downgrade the process to another mode.
  *
+ * The file always overrides inherited variables (`override: true`): a local
+ * `.env.development`/`.env.test` is authoritative over shell or global env, and
+ * the files are gitignored so they never exist in deployments, where
+ * platform-injected variables remain the only source.
+ *
  * @param options - Environment paths and injectable state/loader for tests.
  * @returns The selected file and whether test mode was latched.
  * @throws When a test invocation declares a conflicting `NODE_ENV` value.
@@ -64,7 +69,7 @@ export function loadEnvironmentWithTestLock(options: EnvironmentLoadOptions): Lo
   const preservedReservedValues = Object.fromEntries(
     RESERVED_TEST_ENV_KEYS.map((key) => [key, environment[key]]),
   ) as Record<(typeof RESERVED_TEST_ENV_KEYS)[number], string | undefined>;
-  const result = load({ path: envFile, override: testMode });
+  const result = load({ path: envFile, override: true });
 
   if (testMode) {
     // Restore latched test mode and parent-owned orchestration markers before

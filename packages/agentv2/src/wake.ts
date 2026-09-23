@@ -22,7 +22,8 @@ const WAKE_PROMPT = [
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
   "A stall you are reading here for the first time is asked about on this wake. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is waiting on an answer to something nobody has put to them yet, so holding it is how a negotiation stops for good.",
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
-  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, why the questions you are about to ask matter, why you discovered or reached out to people. Say discovered and reaching out, never search or searching. Not a summary of the signal, and never a negotiator's own moves.",
+  "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly, in the principal's language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. This reply replaces the note for this wake; do not write both unless questions follow.",
+  "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the signal, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
   "Do not invent facts. Do not contradict what your principal's conversation already settled. You never take a negotiation turn yourself.",
 ].join("\n\n");
 
@@ -45,6 +46,25 @@ function openQuestions(conversation: ConversationEntry[]): Map<string, string> {
 }
 
 /**
+ * Find the latest direct message that has not received a direct reply.
+ * An answer to a question is not a direct message; notes and bookkeeping do not reply.
+ *
+ * @param conversation - The signal's conversation, oldest first.
+ * @returns The message to answer, or null when none is waiting.
+ */
+export function unansweredPrincipalMessage(conversation: ConversationEntry[]): { text: string } | null {
+  let answered = false;
+  for (let index = conversation.length - 1; index >= 0; index--) {
+    const entry = conversation[index]!;
+    if (entry.kind === "user" || entry.kind === "answer") {
+      return entry.kind === "user" && !answered ? { text: entry.text } : null;
+    }
+    if (entry.kind === "reply") answered = true;
+  }
+  return null;
+}
+
+/**
  * One wake over one signal: a single reasoning pass that decides what this
  * event requires, in whatever mix of deciding, speaking and searching that
  * takes — or nothing.
@@ -59,6 +79,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   const { user, intent, opportunities, client } = input;
   const actions: WakeAction[] = [];
   const conversation = principalOnly(input.principalConversation);
+  const unansweredMessage = unansweredPrincipalMessage(input.principalConversation);
   const open = openQuestions(input.principalConversation);
   const byId = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
   let noted = false;
@@ -106,7 +127,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "note_principal",
       description:
-        "Tell your principal what you did on this wake: the decisions you just made, the reason for the questions you are about to ask, why you searched or opened something. Required before any question. Do not write one when this wake did nothing worth their attention.",
+        "Tell your principal what you did on this wake: the decisions you just made, and the reason for the questions you are about to ask. Required before any question. Do not recap a discovery. Do not write one when this wake did nothing worth their attention.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -117,6 +138,25 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         actions.push({ type: "note", text });
         noted = true;
         return "Note recorded. You may ask now.";
+      },
+    }),
+    tool({
+      name: "reply_principal",
+      description:
+        "Answer your principal's unanswered direct message, once on this wake. Only for answering their message, never for status reports. Do not use this when no direct message is waiting.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: { text: { type: "string", minLength: 1 } },
+        required: ["text"],
+      },
+      run: ({ text }: { text: string }) => {
+        if (!unansweredMessage) throw new Error("No unanswered direct message from your principal to reply to.");
+        if (actions.some((action) => action.type === "reply")) {
+          throw new Error("You already replied to your principal's direct message on this wake. Do not reply again.");
+        }
+        actions.push({ type: "reply", text });
+        return "Reply recorded.";
       },
     }),
     tool({
@@ -176,11 +216,12 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "reach_counterparties",
       description:
-        "Discover people in this signal's communities and open an opportunity with everyone discovered. A query describes the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. Everyone discovered is opened and briefed for you. Describe this to the principal as discovering people and reaching out, never as searching.",
+        "Discover people in this signal's communities and open an opportunity with everyone discovered. A query describes the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. Everyone discovered is opened and briefed for you. plan is one sentence to your principal, in their language, about who you are going to look for. Future tense. Not a count, and not a recap of the results. Say discovering and reaching out, never searching.",
       parameters: {
         type: "object",
         additionalProperties: false,
         properties: {
+          plan: { type: "string", minLength: 1 },
           queries: {
             type: "array",
             minItems: 1,
@@ -188,9 +229,9 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
             items: { type: "string", minLength: 1 },
           },
         },
-        required: ["queries"],
+        required: ["plan", "queries"],
       },
-      run: async ({ queries }: { queries: string[] }) => {
+      run: async ({ plan, queries }: { plan: string; queries: string[] }) => {
         // Each angle asks for as many as one call may open, so a single query is
         // never the reason only a handful are reached. People are what a signal
         // needs, so a person holding several matching signals keeps one seat.
@@ -207,7 +248,12 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         if (!picks.length) return "No counterparties matched those queries. Try different ones, or stop.";
         const created = await client.createOpportunities(intent.id, picks);
         try {
-          await input.onProgress?.(`Discovered ${found.size} people and reached out to ${created.length}.`);
+          await input.onProgress?.(JSON.stringify({
+            plan,
+            queries,
+            discovered: found.size,
+            reached: created.length,
+          }));
         } catch (cause) {
           unpersisted ??= cause;
         }
@@ -219,9 +265,10 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     }),
   ];
 
+  const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
   await run({
     model: input.model,
-    identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
+    identity,
     intent,
     maxSteps: WAKE_STEPS,
     ...(input.now ? { now: input.now } : {}),
@@ -232,6 +279,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       JSON.stringify({
         principal: principalFacts(user),
         conversation,
+        unansweredMessage,
         opportunities,
         openQuestions: [...open].map(([questionId, question]) => ({ questionId, question })),
       }),
@@ -239,5 +287,29 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   });
 
   if (unpersisted) throw unpersisted;
+  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+    await run({
+      model: input.model,
+      identity,
+      intent,
+      maxSteps: 2,
+      ...(input.now ? { now: input.now } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
+      instructions: "Reply to your principal's unanswered direct message. Call reply_principal exactly once; this run has no other product.",
+      prompt: JSON.stringify({
+        principal: principalFacts(user),
+        conversation,
+        unansweredMessage,
+        opportunities,
+      }),
+      tools: tools.filter((entry) => entry.name === "reply_principal"),
+    });
+  }
+  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+    throw new Error("No reply to principal's direct message.");
+  }
+  if (actions.some((action) => action.type === "reply") && !actions.some((action) => action.type === "ask")) {
+    return { actions: actions.filter((action) => action.type !== "note") };
+  }
   return { actions };
 }

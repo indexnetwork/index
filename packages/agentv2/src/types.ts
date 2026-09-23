@@ -35,7 +35,7 @@ export type Decision = "continue" | "accept" | "decline" | "stop";
  * too: they are how a wake's work persists, and the principal can read them.
  */
 export interface ConversationEntry {
-  kind: "user" | "message" | "question" | "answer" | "brief" | "decision" | "stall" | "expire" | "progress";
+  kind: "user" | "message" | "reply" | "question" | "answer" | "brief" | "decision" | "stall" | "expire" | "progress";
   text: string;
   scope?: "intent" | "opportunity";
   counterpart?: string;
@@ -115,6 +115,7 @@ export type WakeAction =
   | { type: "decision"; opportunityId: string; decision: Decision }
   | { type: "ask"; scope: "intent" | "opportunity"; opportunityId?: string; question: string; options: string[] }
   | { type: "note"; text: string }
+  | { type: "reply"; text: string }
   | { type: "progress"; text: string }
   | { type: "expire"; questionId: string };
 

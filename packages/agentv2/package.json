@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/agentv2",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Brief, wake and negotiate: a stateless personal agent whose negotiators run independently and cannot wake it.",
   "license": "MIT",
   "type": "module",
@@ -21,6 +21,7 @@
     "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target node --format esm --packages external && tsc --project tsconfig.build.json",
     "start": "bun runner/start.ts",
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "check": "bun run typecheck && bun run build"
   },
   "dependencies": {
