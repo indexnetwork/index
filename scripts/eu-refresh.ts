@@ -7,7 +7,7 @@ import path from "node:path";
 
 const SOURCE = { project: "shiny-cloud-34341469", branch: "br-fragrant-brook-ahexgsek" };
 const TARGET = { project: "patient-pine-89907813", branch: "br-polished-bread-agalu9tk" };
-const DATABASE = "protocol_prod";
+const DATABASE = "protocol";
 const OWNER = "neondb_owner";
 const ROOT = path.resolve(import.meta.dir, "..");
 

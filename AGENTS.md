@@ -153,7 +153,7 @@ values.
 
 Before touching any database, follow `.agents/skills/neon-databases/SKILL.md`:
 it maps every Neon project, branch, and database to its data and purpose. In
-short, `protocol_prod` is real data on every branch; the us-east-1 Protocol
+short, `protocol` is real data on every branch; the us-east-1 Protocol
 project serves Railway only, `.env.development` uses the eu-central-1 clone in
 Protocol-dev-europe, and `.env.test` uses local `index_test`.
 
