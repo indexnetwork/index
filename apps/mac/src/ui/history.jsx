@@ -6,14 +6,21 @@
 // counterparties at once. "grouped" slides in a thread drawer on the left and
 // narrows the log to the selected thread, the master/detail view.
 //
-// Live data comes from GET /users/:id/negotiations (threads with counterparty,
-// outcome, and per-turn agent reasoning). No demo fallback, signed out the
-// wire is simply empty.
+// The list is GET /users/:id/negotiations: counterparty, outcome
+// ("agreed" | "declined" | "closed" | null), and a turn count. Turn text is a
+// second read, GET /opportunities/:id/negotiation. No demo fallback; signed
+// out, the wire is simply empty.
 
-// A thread's result bucket: won (opportunity), lost, or still open.
+// A thread's result bucket: won (agreed), lost, or still open.
 function negoResult(th) {
-  if (!th.outcome) return "open";
-  return th.outcome.hasOpportunity ? "won" : "lost";
+  if (th.outcome === "agreed") return "won";
+  if (th.outcome === "declined" || th.outcome === "closed") return "lost";
+  return "open";
+}
+function negoDetail(th) {
+  if (th.outcome === "agreed") return "opportunity";
+  if (th.outcome === "declined") return "declined";
+  return "no opportunity";
 }
 function negoFirstName(th) {
   return ((th.counterparty && th.counterparty.name) || "unknown").split(/\s+/)[0].toLowerCase();
@@ -70,12 +77,12 @@ function NegoTurnLine({ th, turn, you, withTag, onTag }) {
         }}>{turn.action || "unknown"}</span>
         {roles && <span style={{ color:"var(--ink-2)", fontSize:10 }}>roles: {roles}</span>}
       </div>
-      {turn.reasoning && (
+      {turn.message && (
         <div style={{
           marginLeft: withTag ? 156 : 72,
           fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.45,
           color:"var(--ink-2)", maxWidth:560,
-        }}>"{turn.reasoning}"</div>
+        }}>"{turn.message}"</div>
       )}
     </div>
   );
@@ -85,19 +92,33 @@ function NegoTurnLine({ th, turn, you, withTag, onTag }) {
 function NegoClosedLine({ th, withTag }) {
   const r = negoResult(th);
   const { g } = NEGO_RESULT_GLYPH[r];
-  const detail = r === "won"
-    ? `opportunity${th.outcome.role ? ` · ${th.outcome.role}` : ""}`
-    : (th.outcome && th.outcome.reason) || "no opportunity";
   return (
     <div className="fade-up" style={{
       display:"flex", alignItems:"center", gap:8,
       fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.5,
       color: r === "won" ? "#000" : "var(--ink-2)",
     }}>
-      <span style={{ color:"var(--ink-4)" }}>{negoClock(th.statusTimestamp || th.updatedAt)}</span>
+      <span style={{ color:"var(--ink-4)" }}>{negoClock(th.settledAt || th.updatedAt)}</span>
       <span style={{ flex:"0 0 auto" }}>───</span>
       <span style={{ fontWeight:700 }}>
-        {withTag ? `${negoFirstName(th)} · ` : ""}closed {g} {detail}
+        {withTag ? `${negoFirstName(th)} · ` : ""}closed {g} {negoDetail(th)}
+      </span>
+      <span style={{ flex:1, borderTop:"1px dashed var(--ink-4)" }}/>
+    </div>
+  );
+}
+
+// An open thread has no settlement line. Mark it so it still shows in the log.
+function NegoOpenLine({ th, withTag }) {
+  return (
+    <div className="fade-up" style={{
+      display:"flex", alignItems:"center", gap:8,
+      fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.5, color:"#FF8A00",
+    }}>
+      <span style={{ color:"var(--ink-4)" }}>{negoClock(th.updatedAt)}</span>
+      <span style={{ flex:"0 0 auto" }}>───</span>
+      <span style={{ fontWeight:700 }}>
+        {withTag ? `${negoFirstName(th)} · ` : ""}open ● {th.turnCount || 0}t
       </span>
       <span style={{ flex:1, borderTop:"1px dashed var(--ink-4)" }}/>
     </div>
@@ -123,7 +144,7 @@ function NegoThreadRow({ th, active, onPick }) {
         {negoFirstName(th)}
       </span>
       <span style={{ color: active ? "#FF8A00" : "var(--ink-3)", fontSize:10 }}>
-        {th.turns.length}t
+        {th.turnCount || 0}t
       </span>
       <span style={{ color: active ? "#FF8A00" : color, fontWeight:700 }}>{g}</span>
     </button>
@@ -136,9 +157,13 @@ function NegotiationHistory({ onClose }) {
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
   const [threads, setThreads] = useState(null);   // null = loading
+  const [turnLogs, setTurnLogs] = useState({});   // opportunityId -> { turnCount, turns }
   const [mode, setMode] = useState("stream");
   const [filter, setFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
+  const turnLogsRef = useRef({});
+  const inflight = useRef(new Set());
+  turnLogsRef.current = turnLogs;
 
   useEffect(() => {
     let dead = false;
@@ -157,6 +182,26 @@ function NegotiationHistory({ onClose }) {
     return () => { dead = true; clearInterval(t); };
   }, [live, myId]);
 
+  // Turns are not on the list. Read each thread once, and again when its
+  // turn count moves.
+  useEffect(() => {
+    if (!live || !threads || !window.IndexApp.getClient) return;
+    const client = window.IndexApp.getClient();
+    if (!client || !client.opportunities || !client.opportunities.negotiation) return;
+    for (const th of threads) {
+      const id = th.opportunityId;
+      if (!id || !th.turnCount || inflight.current.has(id)) continue;
+      const hit = turnLogsRef.current[id];
+      if (hit && hit.turnCount === th.turnCount) continue;
+      inflight.current.add(id);
+      const turnCount = th.turnCount;
+      client.opportunities.negotiation(id).then((res) => {
+        const turns = (res && res.negotiation && res.negotiation.turns) || [];
+        setTurnLogs((prev) => ({ ...prev, [id]: { turnCount, turns } }));
+      }).catch(() => {}).finally(() => { inflight.current.delete(id); });
+    }
+  }, [live, threads]);
+
   const all = threads || [];
   const counts = useMemo(() => ({
     won:  all.filter((t) => negoResult(t) === "won").length,
@@ -174,15 +219,18 @@ function NegotiationHistory({ onClose }) {
     const src = mode === "grouped" ? (selected ? [selected] : []) : filtered;
     const evs = [];
     for (const th of src) {
-      for (const turn of (th.turns || [])) {
+      const turns = (turnLogs[th.opportunityId] && turnLogs[th.opportunityId].turns) || [];
+      for (const turn of turns) {
         evs.push({ kind:"turn", t: Date.parse(turn.createdAt) || 0, th, turn });
       }
       if (th.outcome) {
-        evs.push({ kind:"closed", t: Date.parse(th.statusTimestamp || th.updatedAt) || 0, th });
+        evs.push({ kind:"closed", t: Date.parse(th.settledAt || th.updatedAt) || 0, th });
+      } else {
+        evs.push({ kind:"open", t: Date.parse(th.updatedAt) || 0, th });
       }
     }
     return evs.sort((a, b) => a.t - b.t);
-  }, [filtered, mode, selected]);
+  }, [filtered, mode, selected, turnLogs]);
 
   // tail -f scroll: pinned to bottom unless the user scrolls up.
   const scrollRef = useRef(null);
@@ -204,7 +252,7 @@ function NegotiationHistory({ onClose }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   };
 
-  const isYou = (turn) => !!turn.speaker && (turn.speaker.id === myId || turn.speaker.id === "me");
+  const isYou = (turn) => !!turn.seatUserId && (turn.seatUserId === myId || turn.seatUserId === "me");
   const openGrouped = (th) => { setMode("grouped"); setSelectedId(th.id); };
 
   const log = (
@@ -229,8 +277,10 @@ function NegotiationHistory({ onClose }) {
           ) : events.map((ev, i) =>
             ev.kind === "closed"
               ? <NegoClosedLine key={`c-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"}/>
-              : <NegoTurnLine key={`t-${ev.th.id}-${i}`} th={ev.th} turn={ev.turn}
-                  you={isYou(ev.turn)} withTag={mode === "stream"} onTag={openGrouped}/>
+              : ev.kind === "open"
+                ? <NegoOpenLine key={`o-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"}/>
+                : <NegoTurnLine key={`t-${ev.th.id}-${ev.turn.turnIndex}-${i}`} th={ev.th} turn={ev.turn}
+                    you={isYou(ev.turn)} withTag={mode === "stream"} onTag={openGrouped}/>
           )}
           {/* live cursor, the wire stays open */}
           <span style={{
@@ -316,7 +366,7 @@ function NegotiationHistory({ onClose }) {
               {mode === "grouped" && selected && (
                 <React.Fragment>
                   <span>·</span>
-                  <span>viewing {negoFirstName(selected)} · {selected.turns.length} turns</span>
+                  <span>viewing {negoFirstName(selected)} · {selected.turnCount || 0} turns</span>
                 </React.Fragment>
               )}
               <div style={{ flex:1 }}/>
