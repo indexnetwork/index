@@ -86,22 +86,16 @@
 }
 
 .download-page__browser {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 28px 22px;
-  border: 1px solid #2b4234;
-  background: #122019;
-  color: #fff;
+  align-self: center;
+  color: #e8873d;
   font-size: 16px;
   font-weight: 600;
+  text-align: center;
   text-decoration: none;
 }
 
 .download-page__browser:hover {
-  border-color: #e8873d;
-  color: #e8873d;
+  color: #f09a55;
 }
 
 /* Even top and bottom padding now that the header bar is gone: the 36px top was

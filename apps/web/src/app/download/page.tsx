@@ -10,7 +10,7 @@ export const MAC_APP_REQUIREMENTS = "macOS 13+ · Apple silicon";
 
 /**
  * `/download` — post-invite install page. Centered hero, the two install
- * cards, and a browser row. No app chrome.
+ * cards, and a browser link. No app chrome.
  */
 export default function Download() {
   return (
@@ -64,8 +64,7 @@ export default function Download() {
           </div>
 
           <a className="download-page__browser" href="/">
-            <span>Index in the browser</span>
-            <span>Open →</span>
+            Open Index in the browser →
           </a>
         </div>
       </main>
