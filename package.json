@@ -20,6 +20,7 @@
     "dev:api": "cd services/api && bun run dev",
     "dev:frontend": "bun run dev:web",
     "dev:backend": "bun run dev:api",
+    "dev:kill-ports": "lsof -nP -iTCP:3000,3001 -sTCP:LISTEN || echo 'Nothing listening on 3000/3001'; lsof -ti TCP:3000,3001 -sTCP:LISTEN | xargs -r kill -9",
     "build": "bun run build:package:protocol && bun run build:api && bun run build:web",
     "build:web": "cd apps/web && bun install && bun run build",
     "build:api": "cd services/api && bun install && bun run build",
