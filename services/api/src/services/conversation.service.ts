@@ -396,7 +396,7 @@ export class ConversationService {
    * @param userId - Owner whose stream to follow.
    * @param options - `after` is the last entry the client saw; `consumer` names one of the owner's agents.
    * @returns Object with `onMessage` handler registration and `cleanup` teardown function.
-   * @throws AgentConversationError when `consumer` does not name an agent this user owns.
+   * @throws AgentConversationError when `consumer` does not name an agent this user owns, or names one that is not the selected negotiator.
    * @throws Error when Redis is unreachable.
    */
   async openEventStream(
@@ -408,6 +408,10 @@ export class ConversationService {
       const agent = await this.registry.getAgent(group);
       if (!agent || agent.ownerId !== userId) {
         throw new AgentConversationError('consumer must name one of your agents.', 404);
+      }
+      const selected = await this.registry.getSelectedNegotiator(userId);
+      if (selected?.id !== agent.id) {
+        throw new AgentConversationError('The selected negotiation executor changed; stop this work', 409);
       }
     }
 

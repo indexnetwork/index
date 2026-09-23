@@ -448,7 +448,9 @@ export class NegotiationDatabaseAdapter {
    * @param callerUserId - The seat submitting.
    * @param turn - The decision and its message.
    * @param execution - Hosted lease or external executor binding to fence before applying a decision.
+   *   An unnamed caller is the hosted seat and is refused while an external negotiator holds it.
    * @returns The applied turn, or the reason it was refused.
+   * @throws RuntimeConflictError when the named agent is no longer selected, or an unnamed caller writes while an external negotiator is selected.
    */
   async commitNegotiationTurn(
     opportunityId: string,
@@ -474,6 +476,13 @@ export class NegotiationDatabaseAdapter {
           } else {
             await AgentSessionDatabaseAdapter.assertOwner(tx, execution);
           }
+        } else {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${callerUserId}`}, 0))`);
+          const [selected] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
+            eq(schema.agents.ownerId, callerUserId), eq(schema.agents.type, 'external'),
+            eq(schema.agents.handleNegotiations, true), isNull(schema.agents.deletedAt),
+          ));
+          if (selected) throw new RuntimeConflictError();
         }
         const [negotiation] = await tx.select().from(negotiations)
           .where(eq(negotiations.opportunityId, opportunityId)).limit(1).for('update');
