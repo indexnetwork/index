@@ -31,7 +31,7 @@ class ScriptedModel implements Model {
   }
 }
 
-function message(role: "user" | "agent", text: string, kind?: "answer"): ConversationMessage {
+function message(role: "user" | "agent", text: string, kind?: "answer" | "reply"): ConversationMessage {
   return {
     id: crypto.randomUUID(),
     conversationId: "conversation-1",
@@ -39,7 +39,7 @@ function message(role: "user" | "agent", text: string, kind?: "answer"): Convers
     role,
     parts: [{ kind: "text", text }],
     createdAt: new Date().toISOString(),
-    ...(kind ? { metadata: { principalMessage: { kind } } } : {}),
+    ...(kind ? { metadata: { principalMessage: kind === "reply" ? { kind: "message", reply: true } : { kind } } } : {}),
   };
 }
 
@@ -69,7 +69,11 @@ test("an unanswered direct message is explicit, replied to once, and published a
   expect(conversation).toEqual([{ kind: "user", text: "Hello" }]);
   expect(unansweredPrincipalMessage(conversation)).toEqual({ text: "Hello" });
 
-  const model = new ScriptedModel([call("1", "reply_principal", { text: "Hello!" }), done]);
+  const model = new ScriptedModel([
+    call("0", "note_principal", { text: "An unnecessary note" }),
+    call("1", "reply_principal", { text: "Hello!" }),
+    done,
+  ]);
   const result = await wake({ user, intent, principalConversation: conversation, opportunities: [], model, client });
   expect(model.seen[0]![1]!.content).toContain('"unansweredMessage":{"text":"Hello"}');
   expect(result.actions).toEqual([{ type: "reply", text: "Hello!" }]);
@@ -78,7 +82,9 @@ test("an unanswered direct message is explicit, replied to once, and published a
   await publishActions(client, intent.id, result.actions, { counterparts: new Map(), log: (line) => log.push(line) });
   expect(sent).toHaveLength(1);
   expect(sent[0]).toHaveLength(1);
-  expect(sent[0]![0]).toMatchObject({ kind: "message", text: "Hello!", matches: [] });
+  expect(sent[0]![0]).toMatchObject({ kind: "message", reply: true, text: "Hello!", matches: [] });
+  expect(readConversation([message("user", "Hello"), message("agent", "Hello!", "reply")]).at(-1)?.kind).toBe("reply");
+  expect(readConversation([message("user", "Hello"), message("agent", "Progress: here's where we stand", "reply")]).at(-1)?.kind).toBe("reply");
   expect(log).toEqual(["  reply: Hello!"]);
 });
 
@@ -100,18 +106,21 @@ test("reply_principal rejects a second reply and a wake with no unanswered messa
   expect(absent.seen[1]!.at(-1)?.content).toContain("Error: No unanswered direct message");
 });
 
-test("an agent response or a principal's question answer is not an unanswered direct message", () => {
-  expect(unansweredPrincipalMessage(readConversation([message("user", "Hello"), message("agent", "Hello!")]))).toBeNull();
-  expect(unansweredPrincipalMessage([{ kind: "user", text: "Hello" }, { kind: "question", text: "Why?" }])).toBeNull();
-  expect(unansweredPrincipalMessage([{ kind: "user", text: "Hello" }, { kind: "progress", text: "Working" }])).toBeNull();
+test("only a direct reply closes a direct message; a question answer is not one", () => {
+  const pending = [{ kind: "user", text: "Hello" }] as ConversationEntry[];
+  expect(unansweredPrincipalMessage(readConversation([message("user", "Hello"), message("agent", "Working")]))).toEqual({ text: "Hello" });
+  expect(unansweredPrincipalMessage([...pending, { kind: "question", text: "Why?" }])).toEqual({ text: "Hello" });
+  expect(unansweredPrincipalMessage([...pending, { kind: "progress", text: "Working" }])).toEqual({ text: "Hello" });
+  expect(unansweredPrincipalMessage(readConversation([message("user", "Hello"), message("agent", "Hello!", "reply")]))).toBeNull();
   expect(unansweredPrincipalMessage(readConversation([message("user", "Hello"), message("user", "Yes", "answer")]))).toBeNull();
 });
 
-test("runWake logs a missing reply when the model stays silent on a direct message", async () => {
+test("runWake retries a silent first pass and publishes one direct reply", async () => {
   const { client, sent } = index([message("user", "Hello")]);
-  const log: string[] = [];
-  const result = await runWake(client, intent, { model: new ScriptedModel([done]), log: (line) => log.push(line) });
-  expect(result.actions).toEqual([]);
-  expect(log).toContain("  no reply to principal message");
-  expect(sent).toEqual([]);
+  const result = await runWake(client, intent, { model: new ScriptedModel([done, call("1", "reply_principal", { text: "Hello!" }), done]) });
+  expect(result.actions).toEqual([{ type: "reply", text: "Hello!" }]);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]![0]).toMatchObject({ reply: true, text: "Hello!" });
+  await expect(runWake(client, intent, { model: new ScriptedModel([done, done]) }))
+    .rejects.toThrow("No reply to principal's direct message.");
 });

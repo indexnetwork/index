@@ -110,6 +110,8 @@ export interface PrincipalMessage {
   kind: "question" | "answer" | "user" | "message" | "expire";
   /** Marks the negotiation summary, so the next one can be read from the notes after this. */
   summary?: boolean;
+  /** Marks a direct reply, distinct from an unrelated note or progress update. */
+  reply?: boolean;
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;
