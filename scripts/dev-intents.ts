@@ -2,7 +2,9 @@
 import path from 'node:path';
 import dotenv from 'dotenv';
 
-import { databaseUrl, openControl, resetReplay, resumeReplay } from '../services/api/src/cli/dev-intents';
+import { databaseUrl, openControl, parseReplayLimit, resetReplay, resumeReplay } from '../services/api/src/cli/dev-intents';
+
+const USAGE = 'Use bun run db:dev:resume --confirm [count] or bun run db:dev:reset --confirm.';
 
 function loadDevelopmentDatabaseUrl(): string {
   const envFile = path.resolve(import.meta.dir, '..', '.env.development');
@@ -32,14 +34,19 @@ async function resetDevelopmentDatabase(connectionString: string): Promise<void>
 
 async function main(): Promise<void> {
   const [action, confirm, ...extra] = process.argv.slice(2);
-  if (!['resume', 'reset'].includes(action) || confirm !== '--confirm' || extra.length) {
-    throw new Error('Use bun run db:dev:resume --confirm or bun run db:dev:reset --confirm.');
+  if (confirm !== '--confirm') throw new Error(USAGE);
+  if (action === 'reset' && extra.length === 0) {
+    const connectionString = loadDevelopmentDatabaseUrl();
+    printTarget(connectionString);
+    await resetDevelopmentDatabase(connectionString);
+  } else if (action === 'resume' && extra.length <= 1) {
+    const limit = parseReplayLimit(extra[0]);
+    const connectionString = loadDevelopmentDatabaseUrl();
+    printTarget(connectionString);
+    await resumeReplay(limit);
+  } else {
+    throw new Error(USAGE);
   }
-
-  const connectionString = loadDevelopmentDatabaseUrl();
-  printTarget(connectionString);
-  if (action === 'reset') await resetDevelopmentDatabase(connectionString);
-  else await resumeReplay();
 }
 
 if (import.meta.main) {

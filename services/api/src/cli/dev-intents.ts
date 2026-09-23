@@ -127,18 +127,31 @@ export function shuffled<T>(values: readonly T[]): T[] {
   return result;
 }
 
-/** Independently jitter each gap between ten and thirty seconds. */
-export function replayDelayMs(): number {
-  return 10_000 + Math.floor(Math.random() * 20_001);
+export const DEFAULT_REPLAY_LIMIT = 5;
+
+/** Read the optional resume count argument; omitted means the default limit. */
+export function parseReplayLimit(value: string | undefined): number {
+  if (value === undefined) return DEFAULT_REPLAY_LIMIT;
+  const limit = Number(value);
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(limit) || limit < 1) {
+    throw new Error(`Resume count must be a positive integer (got "${value}").`);
+  }
+  return limit;
 }
 
-/** Select at most five intents before staggering transitions; the caller drains discovery. */
+/** Independently jitter each gap between five and ten seconds. */
+export function replayDelayMs(): number {
+  return 5_000 + Math.floor(Math.random() * 5_001);
+}
+
+/** Select at most `limit` intents before staggering transitions; the caller drains discovery. */
 export async function runReplay(
   candidates: readonly ReplayIntent[],
+  limit: number,
   activate: (intent: ReplayIntent) => Promise<IntentTransitionOutcome>,
   signal: AbortSignal,
 ): Promise<{ selected: number; resumed: number; skipped: number; failed: string[] }> {
-  const ordered = shuffled(candidates).slice(0, 5);
+  const ordered = shuffled(candidates).slice(0, limit);
   const result = { selected: ordered.length, resumed: 0, skipped: 0, failed: [] as string[] };
   console.log(`[dev-intents] Selected ${result.selected} of ${candidates.length} eligible paused intents.`);
   for (const [index, intent] of ordered.entries()) {
@@ -163,7 +176,7 @@ export async function runReplay(
   return result;
 }
 
-export async function resumeReplay(): Promise<void> {
+export async function resumeReplay(limit: number): Promise<void> {
   process.env.DATABASE_URL = databaseUrl(process.env.DATABASE_URL);
   if (!process.env.REDIS_URL || !process.env.OPENROUTER_API_KEY || process.env.NODE_ENV === 'test') {
     throw new Error('Development Redis and model credentials are required; test mode is not supported.');
@@ -191,7 +204,7 @@ export async function resumeReplay(): Promise<void> {
       ]);
       const graph = new Intents({ database: intentDatabaseAdapter, followUp: intentIndexing }).createGraph();
       const service = new IntentService({ intentGraph: graph });
-      const result = await runReplay(candidates, ({ id, userId }) => service.transitionStatus(id, userId, 'ACTIVE'), stop.signal);
+      const result = await runReplay(candidates, limit, ({ id, userId }) => service.transitionStatus(id, userId, 'ACTIVE'), stop.signal);
       const remaining = connectionLost ? null : (await replayCandidates(control)).length;
       console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, remaining, interrupted: stop.signal.aborted }));
       if (connectionLost) throw new Error('Replay lost its control connection; remaining intents were not activated.');
@@ -212,13 +225,15 @@ export async function resumeReplay(): Promise<void> {
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  if (args.length !== 2 || args[0] !== 'resume' || args[1] !== '--confirm') {
-    console.error('Use bun run db:dev:resume --confirm from the repository root.');
+  if (args.length < 2 || args.length > 3 || args[0] !== 'resume' || args[1] !== '--confirm') {
+    console.error('Use bun run db:dev:resume --confirm [count] from the repository root.');
     process.exitCode = 1;
   } else {
-    await resumeReplay().catch((error: unknown) => {
+    try {
+      await resumeReplay(parseReplayLimit(args[2]));
+    } catch (error) {
       console.error('[dev-intents]', error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
-    });
+    }
   }
 }

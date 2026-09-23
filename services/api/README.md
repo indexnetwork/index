@@ -57,7 +57,8 @@ credentials in `.env.development`, then run:
 
 ```bash
 bun run db:dev:reset --confirm
-bun run db:dev:resume --confirm
+bun run db:dev:resume --confirm      # activates up to 5 intents
+bun run db:dev:resume --confirm 20   # activates up to 20 intents
 ```
 
 Both commands run locally and load the root `.env.development` with override
@@ -67,9 +68,9 @@ running either confirmed command. Keep the resume terminal connected. Ctrl+C
 stops new activations, waits for the current discovery scan, and closes its
 local database and Redis connections.
 
-Each resume shuffles eligible paused intents and selects at most five before
-activating any, then activates them through the normal lifecycle graph with
-10–30-second gaps. Discovery scans can overlap; the command waits for them to
+Each resume shuffles eligible paused intents and selects at most the given
+count (default five) before activating any, then activates them through the
+normal lifecycle graph with 5–10-second gaps. Discovery scans can overlap; the command waits for them to
 finish and exits. Progress logs include activation times, intent IDs, and scan
 failures, with selected, resumed, and remaining eligible paused counts in the
 final result (`remaining` is unavailable if the control connection is lost).

@@ -53,7 +53,7 @@ Before any migration, reset, seed, flush, or test run:
   database-backed tests with `TEST_DATABASE_SAFE=1`. The guard in
   `services/api/src/lib/drizzle/test-database-readiness.ts` refuses
   production-like database names.
-- Intent replay: `bun run db:dev:resume --confirm` / `bun run db:dev:reset --confirm`
+- Intent replay: `bun run db:dev:resume --confirm [count]` (default 5) / `bun run db:dev:reset --confirm`
   run against whatever `.env.development` names, which is the EU clone
   (`scripts/dev-intents.ts`). The reset is a scoped cleanup of discovery state,
   not a refresh.

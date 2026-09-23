@@ -13,6 +13,8 @@ section before promoting to `main`).
 - **`POST /intents/prepare`** replaces `/intents/clarify`. Returns `ready` with a
   preparation receipt or `needs_revision` with admission feedback and a dynamic
   recovery form.
+- `db:dev:resume --confirm [count]` accepts an optional intent count (default 5)
+  and spaces activations 5–10 seconds apart (was 10–30).
 
 ### Fixed
 - Run development intent reset and resume locally with root `.env.development`
