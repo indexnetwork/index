@@ -58,12 +58,12 @@ export interface TestDatabaseReadinessOptions {
  *
  * `TEST_DATABASE_SAFE=1` alone is a weak barrier: it says the operator believes
  * the target is disposable, but nothing checks that belief. In this project every
- * Neon branch — production, dev and local-dev alike — exposes a `protocol_prod`
+ * Neon branch — production, dev and local-dev alike — exposes a `protocol`
  * database holding a copy of real user data, alongside an empty `neondb`. So the
  * database *name*, not the branch, is what distinguishes real data from a
  * disposable target.
  */
-const REAL_DATA_DATABASE_NAMES = /^(.*_)?(prod|production)$/i;
+const REAL_DATA_DATABASE_NAMES = /^(protocol|(.*_)?(prod|production))$/i;
 
 /**
  * Extracts the database name from a PostgreSQL URL path.
@@ -109,7 +109,7 @@ export function validateTestDatabaseUrl(value: string | undefined): string {
       `[test-db] Refusing to run tests against a database that carries real data: production-like database name ("${databaseName}"). `
       + 'Database-backed tests truncate and rewrite tables. Point DATABASE_URL in the repository-root '
       + '.env.test at a disposable database — for example the empty "neondb" on a Neon dev branch with '
-      + 'migrations applied (cd services/api && bun run db:migrate) — never a *_prod/*_production database.',
+      + 'migrations applied (cd services/api && bun run db:migrate) — never the "protocol" database.',
     );
   }
 
