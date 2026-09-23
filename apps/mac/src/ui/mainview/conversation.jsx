@@ -230,6 +230,9 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
               }}>Ask about your matches, share a preference, or give your agent direction for this signal.</div>
             ) : inboxFeed.map((it) => {
               if (it.kind === "user") return <UserLine key={it.id}>{it.text}</UserLine>;
+              if (it.kind === "discovery") return (
+                <DiscoveryTrace key={it.id} plan={it.plan} queries={it.queries} discovered={it.discovered} reached={it.reached} progress={it.progress} items={it.items}/>
+              );
               if (it.kind === "decisions") return <DecisionGroup key={it.id} items={it.items}/>;
               if (it.kind === "answered-question") return <AnsweredQuestion key={it.id} item={it}/>;
               if (it.kind === "open-question") return (
@@ -373,13 +376,23 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
 
 // Briefs and decisions are one unit of work. Gather them by opportunity and
 // leave one disclosure in the transcript where that run first appeared.
+// A progress line that has decisions under it becomes one discovery section
+// with the note that follows that progress.
 function buildInboxFeed(messages) {
   const decisionRuns = new Map();
   const questions = new Map();
   const answers = new Map();
+  const progress = new Map();
+  const planNote = new Map();
   let runId = "before-discovery";
   messages.forEach((message, index) => {
-    if (message.kind === "progress") runId = message.id;
+    if (message.kind === "progress") {
+      runId = message.id;
+      progress.set(runId, message.text);
+    }
+    if (message.kind === "note" && progress.has(runId) && !planNote.has(runId)) {
+      planNote.set(runId, index);
+    }
     if (message.kind === "brief" || message.kind === "decision") {
       const run = decisionRuns.get(runId) || { id:runId, at:index, decisions:new Map() };
       const key = message.opportunityId || message.counterpart || message.id;
@@ -397,6 +410,7 @@ function buildInboxFeed(messages) {
 
   const insertions = new Map();
   decisionRuns.forEach((run) => {
+    if (progress.has(run.id)) return;
     const items = Array.from(run.decisions.values());
     const entry = { kind:"decisions", id:`decisions-${run.id}`, items };
     insertions.set(run.at, [...(insertions.get(run.at) || []), entry]);
@@ -407,10 +421,33 @@ function buildInboxFeed(messages) {
     const entry = { ...question, kind:"answered-question", id:`answered-${questionId}`, answer:answer.text };
     insertions.set(question.at, [...(insertions.get(question.at) || []), entry]);
   });
+  const planIndexes = new Set();
+  planNote.forEach((index, id) => {
+    if (!decisionRuns.has(id)) return;
+    const trace = parseDiscoveryProgress(progress.get(id));
+    if (trace && trace.plan) return;
+    planIndexes.add(index);
+  });
   const feed = [];
   messages.forEach((message, index) => {
     const additions = insertions.get(index) || [];
     additions.forEach((entry) => feed.push(entry));
+    if (message.kind === "progress" && decisionRuns.has(message.id)) {
+      const run = decisionRuns.get(message.id);
+      const trace = parseDiscoveryProgress(message.text);
+      feed.push({
+        kind:"discovery",
+        id:`discovery-${message.id}`,
+        plan: trace ? trace.plan : "",
+        queries: trace ? trace.queries : [],
+        discovered: trace ? trace.discovered : null,
+        reached: trace ? trace.reached : null,
+        progress: trace ? "" : message.text,
+        items: Array.from(run.decisions.values()),
+      });
+      return;
+    }
+    if (planIndexes.has(index)) return;
     if (message.kind === "progress") {
       feed.push(message);
       return;
@@ -419,6 +456,165 @@ function buildInboxFeed(messages) {
         && message.kind !== "question-history" && message.kind !== "answer-history") feed.push(message);
   });
   return feed;
+}
+
+function reachedDecision(decision) {
+  return decision === "continue" || decision === "accept";
+}
+
+function parseDiscoveryProgress(text) {
+  if (typeof text !== "string" || !text) return null;
+  try {
+    const data = JSON.parse(text);
+    if (data && Array.isArray(data.queries) && typeof data.discovered === "number") {
+      return {
+        plan: typeof data.plan === "string" ? data.plan : "",
+        queries: data.queries.filter((query) => typeof query === "string" && query),
+        discovered: data.discovered,
+        reached: typeof data.reached === "number" ? data.reached : data.discovered,
+      };
+    }
+  } catch { /* a plain progress sentence */ }
+  const match = /^Discovered (\d+) people and reached out to (\d+)\.$/.exec(text);
+  if (!match) return null;
+  return { plan:"", queries:[], discovered:Number(match[1]), reached:Number(match[2]) };
+}
+
+function discoverySummary(discovered, reached, items) {
+  const pending = !items.length || items.some((item) => !item.decision);
+  const promising = pending ? reached : items.filter((item) => reachedDecision(item.decision)).length;
+  const people = discovered === 1 ? "person" : "people";
+  const ones = promising === 1 ? "one" : "ones";
+  return `Discovered ${discovered} ${people} with compatible intentions, and decided to reach out to ${promising} promising ${ones}`;
+}
+
+const discoveryToggle = {
+  display:"grid", gridTemplateColumns:"18px 1fr", gap:10, alignItems:"center",
+  background:"none", border:"none", padding:0, textAlign:"left",
+  fontSize:14, lineHeight:1.55, fontFamily:"var(--mac-sans)",
+};
+
+const discoveryRail = {
+  marginLeft:8, padding:"2px 0 2px 19px", borderLeft:"1px solid #B5AF9F",
+  display:"flex", flexDirection:"column", gap:9,
+};
+
+function DiscoveryTrace({ plan, queries = [], discovered, reached, progress, items }) {
+  const [queriesOpen, setQueriesOpen] = useState(true);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [queryHover, setQueryHover] = useState(false);
+  const [peopleHover, setPeopleHover] = useState(false);
+  const shown = items.slice(0, 7);
+  const rest = items.slice(7);
+  const reaching = rest.filter((item) => reachedDecision(item.decision)).length;
+  const summary = discovered == null ? progress : discoverySummary(discovered, reached, items);
+  return (
+    <section className="fade-up" style={{ display:"flex", gap:12 }}>
+      <MyAgentAvatar size={30} style={{ marginTop:2 }}/>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{
+          marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:11,
+          color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
+        }}>your agent</div>
+        {plan ? (
+          <p style={{
+            margin:"0 0 10px", fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55,
+            color:"#2a2a2a", textWrap:"pretty",
+          }}>{plan}</p>
+        ) : null}
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {queries.length > 0 && (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <button
+                type="button"
+                aria-expanded={queriesOpen}
+                onClick={() => setQueriesOpen((value) => !value)}
+                onMouseEnter={() => setQueryHover(true)}
+                onMouseLeave={() => setQueryHover(false)}
+                style={{ ...discoveryToggle, color: queryHover ? "#000" : "#5A5548" }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="10.5" cy="10.5" r="6.5"/>
+                  <line x1="15.5" y1="15.5" x2="21" y2="21"/>
+                </svg>
+                <span>Ran {queries.length} {queries.length === 1 ? "query" : "queries"}</span>
+              </button>
+              {queriesOpen && (
+                <div style={discoveryRail}>
+                  {queries.map((query, index) => (
+                    <div key={index} style={{
+                      display:"grid", gridTemplateColumns:"14px 1fr", gap:9, alignItems:"baseline",
+                      color:"#5A5548", fontSize:14, lineHeight:1.55, fontFamily:"var(--mac-sans)",
+                    }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform:"translateY(1px)" }}>
+                        <circle cx="12" cy="12" r="9"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                      </svg>
+                      <span>Looking for <span style={{ fontFamily:"var(--mac-mono)", fontSize:14, color:"#8A8578" }}>{query}</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            aria-expanded={items.length ? peopleOpen : undefined}
+            onClick={() => { if (items.length) setPeopleOpen((value) => !value); }}
+            onMouseEnter={() => setPeopleHover(true)}
+            onMouseLeave={() => setPeopleHover(false)}
+            style={{ ...discoveryToggle, color: peopleHover ? "#000" : "#5A5548" }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="8" r="4"/>
+              <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>
+            </svg>
+            <span>{summary}</span>
+          </button>
+          {peopleOpen && items.length > 0 && (
+            <div style={discoveryRail}>
+              {shown.map((item) => <DiscoveryRow key={item.id} item={item}/>)}
+              {rest.length > 0 && (
+                <span style={{
+                  fontFamily:"var(--mac-mono)", fontSize:14, lineHeight:1.55, color:"#8A8578", paddingLeft:23,
+                }}>
+                  + {rest.length} more · {reaching} reaching out, {rest.length - reaching} dropped
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DiscoveryRow({ item }) {
+  const line = item.brief ? `${item.counterpart} · ${item.brief}` : item.counterpart;
+  const row = {
+    display:"grid", gridTemplateColumns:"14px 1fr", gap:9, alignItems:"baseline",
+    fontSize:14, lineHeight:1.55, fontFamily:"var(--mac-sans)",
+  };
+  if (reachedDecision(item.decision)) {
+    return (
+      <div style={row}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.4"
+          style={{ transform:"translateY(1px)" }}>
+          <path d="M3 11l18-8-8 18-2-8z"/>
+        </svg>
+        <span>
+          <span style={{ color:"#000", fontWeight:500 }}>{item.counterpart}</span>
+          {item.brief ? <span style={{ color:"#8A8578" }}> · {item.brief}</span> : null}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div style={row}>
+      <span style={{ width:8, height:1, background:"#B5AF9F", transform:"translateY(-4px)", display:"block" }}/>
+      <span style={{ color:"#B5AF9F", textDecoration:"line-through", textDecorationColor:"#B5AF9F" }}>{line}</span>
+    </div>
+  );
 }
 
 function DecisionGroup({ items }) {
@@ -457,6 +653,12 @@ function DecisionGroup({ items }) {
 }
 
 function ProgressLine({ text }) {
+  const trace = parseDiscoveryProgress(text);
+  if (trace) {
+    return (
+      <DiscoveryTrace plan={trace.plan} queries={trace.queries} discovered={trace.discovered} reached={trace.reached} items={[]}/>
+    );
+  }
   return (
     <div className="fade-up" role="status" style={{
       display:"grid", gridTemplateColumns:"8px 1fr", gap:9, alignItems:"start",
