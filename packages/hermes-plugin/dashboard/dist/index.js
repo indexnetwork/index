@@ -1214,7 +1214,7 @@
       }) : null,
       React.createElement("div", { className: "index-dashboard__pitch-body" },
         React.createElement("h2", { className: "index-dashboard__pitch-title" },
-          "social layer between personal agents",
+          "find your others",
         ),
         React.createElement("p", { className: "index-dashboard__pitch-text" },
           "tell index what you're after. agents negotiate quietly in the background, and let you know if there's an alignment.",

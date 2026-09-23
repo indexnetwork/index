@@ -3828,6 +3828,13 @@
 
 .index-dashboard__signal-new-strong { font-weight: 700; }
 
+/* Host buttons bring their own rounding; every control in the flow wears the
+   dashboard's one radius instead. */
+.index-dashboard .index-dashboard__signal-new button,
+.index-dashboard .index-dashboard__signal-new input {
+  border-radius: var(--index-radius, 2px);
+}
+
 .index-dashboard__signal-new-compose {
   display: flex;
   flex-direction: column;
