@@ -15,6 +15,8 @@ section before promoting to `main`).
   recovery form.
 
 ### Fixed
+- Run development intent reset and resume locally with root `.env.development`
+  values instead of orchestrating the Railway dev API.
 - Restore API architecture lint by keeping opportunity presentation and preload
   helpers in `lib/opportunity`, outside the service layer. Runtime behavior is
   unchanged.

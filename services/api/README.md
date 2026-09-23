@@ -50,19 +50,22 @@ displayed `questionId`, or `null` for a direct message. A successful response
 contains the persisted message; input naming a question that is no longer
 waiting is still recorded, as a plain message.
 
-## Railway dev intent replay
+## Local development intent replay
 
-After these scripts have been deployed to Railway dev, use the repository root:
+From the repository root, configure the disposable database, Redis, and model
+credentials in `.env.development`, then run:
 
 ```bash
 bun run db:dev:reset --confirm
 bun run db:dev:resume --confirm
 ```
 
-The launcher requires an authenticated Railway CLI. Resume also requires a
-registered SSH key (`railway ssh keys add`). It runs inside the dev API container,
-using that service's Redis and model credentials. Keep the terminal connected;
-Ctrl+C stops new activations and waits for current discovery scans to finish.
+Both commands run locally and load the root `.env.development` with override
+enabled, so its values replace matching shell environment variables. They use
+exactly the configured `DATABASE_URL`; verify that it is not production before
+running either confirmed command. Keep the resume terminal connected. Ctrl+C
+stops new activations, waits for the current discovery scan, and closes its
+local database and Redis connections.
 
 Each resume shuffles eligible paused intents and selects at most five before
 activating any, then activates them through the normal lifecycle graph with
@@ -74,18 +77,15 @@ Archived intents and intents without a current network assignment/member are
 reported and skipped. Re-running resume selects another batch from the remaining
 eligible paused intents. Use reset to start the experiment from the beginning.
 
-Reset briefly stops the dev API and any replay in its container, then pauses
-non-archived, non-terminal intents and clears discovery progress, opportunities,
-negotiations/turns, agent checkpoints and agent conversations.
-Human conversations keep their messages but lose old match provenance. Users,
-API keys/sessions, profiles, intents, networks, memberships, assignments and
-embeddings/HyDE remain. The exact API deployment is restarted and health-checked,
-including after a cleanup failure. Advisory locks exclude overlapping runs.
-
-Both commands are pinned to Railway's dev API and its Neon `protocol_prod`
-endpoint. They reject production and `protocol_sandbox`; local `.env` files
-never choose the target. Reset does not recopy production or replace credentials.
-These commands replace `db:playground:resume` and `db:clear-negotiations`.
+Before resetting, stop the local API and every other process that can write to
+the configured database. Reset no longer stops API writers; its advisory locks
+only exclude overlapping reset and resume commands. Reset pauses non-archived,
+non-terminal intents and atomically clears discovery progress, opportunities,
+negotiations/turns, agent checkpoints, and agent conversations. Human
+conversations keep their messages but lose old match provenance. Users, API
+keys/sessions, profiles, intents, networks, memberships, assignments, and
+embeddings/HyDE remain. If reset is interrupted or its control connection closes,
+the transaction rolls back uncommitted cleanup.
 
 ## Personal-agent TUI
 
