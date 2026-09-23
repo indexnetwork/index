@@ -86,7 +86,10 @@
 }
 
 .download-page__browser {
-  align-self: center;
+  display: block;
+  padding: 28px 22px;
+  border: 1px solid #2b4234;
+  background: #122019;
   color: #e8873d;
   font-size: 16px;
   font-weight: 600;
@@ -95,6 +98,7 @@
 }
 
 .download-page__browser:hover {
+  border-color: #e8873d;
   color: #f09a55;
 }
 
