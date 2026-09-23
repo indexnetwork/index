@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.138.1",
+  "version": "0.138.2",
   "license": "MIT",
   "private": true,
   "scripts": {

@@ -115,6 +115,7 @@ export type WakeAction =
   | { type: "decision"; opportunityId: string; decision: Decision }
   | { type: "ask"; scope: "intent" | "opportunity"; opportunityId?: string; question: string; options: string[] }
   | { type: "note"; text: string }
+  | { type: "reply"; text: string }
   | { type: "progress"; text: string }
   | { type: "expire"; questionId: string };
 

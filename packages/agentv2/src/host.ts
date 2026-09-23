@@ -4,7 +4,7 @@ import { briefIfMissing } from "./brief.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
 import type { ConversationEntry, Decision, Intent, NegotiateResult, NegotiationAction, Opportunity, Stall, WakeAction, WakeResult } from "./types.ts";
-import { wake } from "./wake.ts";
+import { unansweredPrincipalMessage, wake } from "./wake.ts";
 
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
 export interface Runtime {
@@ -178,6 +178,7 @@ function describe(action: WakeAction): string {
     case "decision": return `decision ${action.opportunityId}: ${action.decision}`;
     case "ask": return `ask (${action.scope}${action.opportunityId ? ` ${action.opportunityId}` : ""}): ${action.question} [${action.options.join(" | ")}]`;
     case "note": return `note: ${action.text}`;
+    case "reply": return `reply: ${action.text}`;
     case "progress": return `progress: ${action.text}`;
     case "expire": return `expire ${action.questionId}`;
   }
@@ -219,6 +220,7 @@ export async function publishActions(
         entries.push(entry("message", `${DECISION}${action.decision}`, match ? [match] : []));
         break;
       case "note":
+      case "reply":
         entries.push(entry("message", action.text));
         break;
       case "progress":
@@ -276,6 +278,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
   );
 
   const principalConversation = readConversation(inbox.messages);
+  const unansweredMessage = unansweredPrincipalMessage(principalConversation);
   const carried = latestBriefs(principalConversation);
   const opportunities = details.map((detail) => ({ ...toOpportunity(detail, user.id), ...carried.get(detail.opportunityId) }));
   const context: PublishContext = {
@@ -319,6 +322,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
   });
 
   if (!result.actions.length) log("  silent");
+  if (unansweredMessage && !result.actions.some((action) => action.type === "reply")) log("  no reply to principal message");
   await publishActions(
     client,
     intent.id,

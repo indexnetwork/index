@@ -10,6 +10,9 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- The hosted personal agent answers an unanswered direct message from its principal
+  once per wake, including a bare greeting, instead of treating it as a silent
+  signal update. Wakes without an unanswered message retain their silence rules.
 - **`POST /intents/prepare`** replaces `/intents/clarify`. Returns `ready` with a
   preparation receipt or `needs_revision` with admission feedback and a dynamic
   recovery form.
