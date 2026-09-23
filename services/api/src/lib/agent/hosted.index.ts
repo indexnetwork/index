@@ -147,6 +147,12 @@ export class HostedIndex implements Index {
     return negotiations.map(toNegotiation);
   }
 
+  /** @param intentId - The signal. @returns That signal's negotiations, open and settled. */
+  async listIntentNegotiations(intentId: string): Promise<Negotiation[]> {
+    const negotiations = await negotiationService.list(this.userId, { intentId });
+    return negotiations.map(toNegotiation);
+  }
+
   /** @param id - Opportunity id. @returns The negotiation as this seat sees it. @throws When this seat cannot read it. */
   async getNegotiation(id: string): Promise<NegotiationDetail> {
     const record = await negotiationService.read(id, this.userId);

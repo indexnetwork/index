@@ -51,6 +51,7 @@ function index(messages: ConversationMessage[] = []) {
     discover: async () => { throw new Error("Unexpected discovery"); },
     createOpportunities: async () => { throw new Error("Unexpected opportunity"); },
     listNegotiations: async () => [],
+    listIntentNegotiations: async () => { throw new Error("Unexpected negotiation list"); },
     getNegotiation: async () => { throw new Error("Unexpected negotiation read"); },
     submitTurn: async () => { throw new Error("Unexpected turn"); },
     principalInbox: async () => ({ conversationId: "conversation-1", messages }),
