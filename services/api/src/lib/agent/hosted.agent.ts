@@ -10,7 +10,7 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { runNegotiate, runWake, type Decision, type Intent, type Model } from '@indexnetwork/agentv2';
+import { closeInitiation, runNegotiate, runWake, type Decision, type Intent, type Model } from '@indexnetwork/agentv2';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
@@ -45,6 +45,9 @@ export class HostedAgent {
   private readonly stalled = new Map<string, string>();
   /** Stalls no wake has read yet, by signal: the only ones worth waking for. */
   private readonly unread = new Map<string, string>();
+  /** Signals whose initiation check is running, and those that asked for one while it ran. */
+  private readonly closing = new Set<string>();
+  private readonly resettle = new Set<string>();
   private readonly joined = new Set<string>();
   private abort = new AbortController();
   private reader?: ReturnType<typeof createRedisClient>;
@@ -253,10 +256,10 @@ export class HostedAgent {
   }
 
   /**
-   * One negotiator is done. Wake the signal only once nothing else of it is in
-   * flight and a stall no wake has read is waiting, so every stall of a burst
-   * is put to the principal by one wake rather than one wake, one question at a
-   * time — whether a wake or a counterpart's turn started these negotiators.
+   * One negotiator is done. The initiation is the negotiations this seat opened
+   * since the last summary. While one of them is still on its opening turn,
+   * a stall waits here instead of waking. When none are, one summary is written
+   * and one wake decides the whole set.
    *
    * A stall the principal already has stays standing until they answer, and is
    * not a reason to wake over every turn that lands meanwhile.
@@ -267,13 +270,36 @@ export class HostedAgent {
    */
   private async finish(userId: string, intentId: string, opportunityId: string): Promise<void> {
     this.working.delete(opportunityId);
+    await this.settle(userId, intentId);
+  }
+
+  /**
+   * Read the initiation from the database and wake once it has finished.
+   * A check that arrives while one is running becomes a single follow-up.
+   *
+   * @param userId - The seat owner.
+   * @param intentId - The signal.
+   */
+  private async settle(userId: string, intentId: string): Promise<void> {
     if (!this.running) return;
-    for (const signal of this.working.values()) if (signal === intentId) return;
-    for (const signal of this.unread.values()) {
-      if (signal === intentId) {
-        await this.wake(userId, intentId);
-        return;
-      }
+    if (this.closing.has(intentId)) {
+      this.resettle.add(intentId);
+      return;
+    }
+    this.closing.add(intentId);
+    try {
+      if (!await this.holdsSeat(userId)) return;
+      const intent = await this.activeIntent(userId, intentId);
+      if (!intent) return;
+      const status = await closeInitiation(new HostedIndex(userId), intent, this.runtime());
+      if (!this.running) return;
+      const unread = [...this.unread.values()].includes(intentId);
+      if (status === 'done' || (status === 'idle' && unread)) await this.wake(userId, intentId);
+    } catch (error: unknown) {
+      logger.error('Negotiation summary failed', { error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      this.closing.delete(intentId);
+      if (this.resettle.delete(intentId) && this.running) await this.settle(userId, intentId);
     }
   }
 

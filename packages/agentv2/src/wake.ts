@@ -46,8 +46,8 @@ function openQuestions(conversation: ConversationEntry[]): Map<string, string> {
 }
 
 /**
- * Find the latest direct message that has not received an agent response.
- * An answer to a question is not a direct message; bookkeeping does not reply.
+ * Find the latest direct message that has not received a direct reply.
+ * An answer to a question is not a direct message; notes and bookkeeping do not reply.
  *
  * @param conversation - The signal's conversation, oldest first.
  * @returns The message to answer, or null when none is waiting.
@@ -59,7 +59,7 @@ export function unansweredPrincipalMessage(conversation: ConversationEntry[]): {
     if (entry.kind === "user" || entry.kind === "answer") {
       return entry.kind === "user" && !answered ? { text: entry.text } : null;
     }
-    if (entry.kind === "message" || entry.kind === "question" || entry.kind === "progress") answered = true;
+    if (entry.kind === "reply") answered = true;
   }
   return null;
 }
@@ -259,9 +259,10 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     }),
   ];
 
+  const identity = { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id };
   await run({
     model: input.model,
-    identity: { id: user.id, name: user.name ? `${user.name}'s personal agent` : user.id },
+    identity,
     intent,
     maxSteps: WAKE_STEPS,
     ...(input.now ? { now: input.now } : {}),
@@ -280,5 +281,29 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   });
 
   if (unpersisted) throw unpersisted;
+  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+    await run({
+      model: input.model,
+      identity,
+      intent,
+      maxSteps: 2,
+      ...(input.now ? { now: input.now } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
+      instructions: "Reply to your principal's unanswered direct message. Call reply_principal exactly once; this run has no other product.",
+      prompt: JSON.stringify({
+        principal: principalFacts(user),
+        conversation,
+        unansweredMessage,
+        opportunities,
+      }),
+      tools: tools.filter((entry) => entry.name === "reply_principal"),
+    });
+  }
+  if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
+    throw new Error("No reply to principal's direct message.");
+  }
+  if (actions.some((action) => action.type === "reply") && !actions.some((action) => action.type === "ask")) {
+    return { actions: actions.filter((action) => action.type !== "note") };
+  }
   return { actions };
 }

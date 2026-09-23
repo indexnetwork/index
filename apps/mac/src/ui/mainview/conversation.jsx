@@ -44,6 +44,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
   const inbox = agentMessages != null;
   const questions = inbox ? (agentQuestions || []) : [];
   const inboxFeed = useMemo(() => buildInboxFeed(agentMessages || []), [agentMessages]);
+  const firstOpenId = inboxFeed.find((item) => item.kind === "open-question")?.id;
   const chosen = questions.filter((q) => typeof selections[q.id] === "string" && selections[q.id].trim());
   // Archiving takes the signal off the hub and there's no way back to it from
   // here, so the first click arms the button and the second one commits. It
@@ -75,7 +76,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
     agentQuestionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusQuestion, questions.length]);
   useEffect(() => { setSelections({}); setWriting({}); }, [profile && profile.intentId]);
-  const feedLen = inbox ? agentMessages.length + questions.length : conversation.length;
+  const feedLen = inbox ? agentMessages.length : conversation.length;
 
   const [stuck, setStuck] = useState(true);
   const [unread, setUnread] = useState(0);
@@ -230,92 +231,16 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
             ) : inboxFeed.map((it) => {
               if (it.kind === "user") return <UserLine key={it.id}>{it.text}</UserLine>;
               if (it.kind === "decisions") return <DecisionGroup key={it.id} items={it.items}/>;
-              if (it.kind === "negotiation-logs") return <NegotiationLogGroup key={it.id} items={it.items}/>;
               if (it.kind === "answered-question") return <AnsweredQuestion key={it.id} item={it}/>;
+              if (it.kind === "open-question") return (
+                <OpenQuestion key={it.id} item={it}
+                  cardRef={it.id === firstOpenId ? agentQuestionRef : null}
+                  selections={selections} setSelections={setSelections}
+                  writing={writing} setWriting={setWriting}/>
+              );
               if (it.kind === "progress") return <ProgressLine key={it.id} text={it.text}/>;
               return <AgentNote key={it.id} item={it}/>;
             })}
-            {questions.length > 0 && (
-              <div ref={agentQuestionRef} style={{ display:"flex", flexDirection:"column", gap:22 }}>
-                {questions.map((question) => {
-                  const options = Array.isArray(question.options) ? question.options : [];
-                  const answer = selections[question.id] || "";
-                  const asker = questionAsker(question);
-                  const own = options.indexOf(answer) < 0 && answer;
-                  const write = writing[question.id] || !options.length;
-                  return (
-                    <article key={question.id} style={{ display:"flex", gap:12 }}>
-                      {asker.owner
-                        ? <TheirAgentAvatar owner={asker.owner} size={30} style={{ marginTop:2 }}/>
-                        : <MyAgentAvatar size={30} style={{ marginTop:2 }}/>}
-                      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:10 }}>
-                        <div>
-                          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:5 }}>
-                            <span style={{
-                              background:"#111", color:"#fff", padding:"2px 6px", borderRadius:3,
-                              fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:600, letterSpacing:"0.05em",
-                            }}>QUESTION</span>
-                            <span style={{
-                              fontFamily:"var(--mac-mono)", fontSize:11, color:"#8f8f88",
-                              textTransform:"uppercase", letterSpacing:"0.05em",
-                            }}>{asker.label}</span>
-                          </div>
-                          {/* The question reads as the agent speaking, so it wears
-                              the AgentNote type — only heavier, to carry the ask. */}
-                          <div style={{
-                            maxWidth:"92%",
-                            fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:600, lineHeight:1.55, color:"#2a2a2a",
-                          }}>{question.question}</div>
-                        </div>
-                        <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                          {options.map((option) => (
-                            <OptionChip key={option} label={option} selected={answer === option}
-                              onClick={() => {
-                                setSelections((cur) => ({
-                                  ...cur, [question.id]: cur[question.id] === option ? "" : option,
-                                }));
-                                setWriting((cur) => ({ ...cur, [question.id]: false }));
-                              }}/>
-                          ))}
-                          {write ? (
-                            <input
-                              autoFocus={!!options.length}
-                              value={own ? answer : ""}
-                              onChange={(e) => setSelections((cur) => ({ ...cur, [question.id]: e.target.value }))}
-                              onBlur={(e) => {
-                                if (!e.currentTarget.value.trim()) {
-                                  setWriting((cur) => ({ ...cur, [question.id]: false }));
-                                }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Escape" && !e.currentTarget.value.trim()) {
-                                  setWriting((cur) => ({ ...cur, [question.id]: false }));
-                                }
-                              }}
-                              placeholder="write your own"
-                              aria-label="Write your own answer"
-                              // Same box as the chip it replaces, so opening the
-                              // field never moves the row it sits in.
-                              style={{
-                                flex:"1 1 220px", minWidth:180, minHeight:36,
-                                border:"1px solid #000", padding:"8px 14px",
-                                fontFamily:"var(--mac-mono)", fontSize:12, color:"#111", outline:"none",
-                              }}
-                            />
-                          ) : (
-                            <OptionChip write label="write your own"
-                              onClick={() => {
-                                setSelections((cur) => ({ ...cur, [question.id]: "" }));
-                                setWriting((cur) => ({ ...cur, [question.id]: true }));
-                              }}/>
-                          )}
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
           </div>
         ) : (
         <div style={{
@@ -450,8 +375,6 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
 // leave one disclosure in the transcript where that run first appeared.
 function buildInboxFeed(messages) {
   const decisionRuns = new Map();
-  const negotiationLogs = [];
-  let logsAt = -1;
   const questions = new Map();
   const answers = new Map();
   let runId = "before-discovery";
@@ -467,14 +390,10 @@ function buildInboxFeed(messages) {
       run.decisions.set(key, current);
       decisionRuns.set(runId, run);
     }
-    if (message.kind === "negotiation-log") {
-      if (logsAt < 0) logsAt = index;
-      negotiationLogs.push(message);
-    }
     if (message.kind === "question-history" && message.questionId) questions.set(message.questionId, { ...message, at:index });
     if (message.kind === "answer-history" && message.questionId) answers.set(message.questionId, message);
   });
-  if (!decisionRuns.size && !negotiationLogs.length && !answers.size) return messages;
+  if (!decisionRuns.size && !answers.size) return messages;
 
   const insertions = new Map();
   decisionRuns.forEach((run) => {
@@ -489,21 +408,14 @@ function buildInboxFeed(messages) {
     insertions.set(question.at, [...(insertions.get(question.at) || []), entry]);
   });
   const feed = [];
-  let logsInserted = false;
-  runId = "before-discovery";
   messages.forEach((message, index) => {
-    if (message.kind === "progress") runId = message.id;
     const additions = insertions.get(index) || [];
     additions.forEach((entry) => feed.push(entry));
-    if (!logsInserted && negotiationLogs.length && index >= logsAt) {
-      feed.push({ kind:"negotiation-logs", id:"negotiation-logs", items:negotiationLogs });
-      logsInserted = true;
-    }
     if (message.kind === "progress") {
       feed.push(message);
       return;
     }
-    if (message.kind !== "brief" && message.kind !== "decision" && message.kind !== "negotiation-log"
+    if (message.kind !== "brief" && message.kind !== "decision"
         && message.kind !== "question-history" && message.kind !== "answer-history") feed.push(message);
   });
   return feed;
@@ -591,34 +503,6 @@ function AnsweredQuestion({ item }) {
   );
 }
 
-function NegotiationLogGroup({ items }) {
-  return (
-    <details style={{ border:"1px solid var(--ink-3)", background:"#fff" }}>
-      <summary style={{
-        padding:"9px 12px", cursor:"pointer", listStylePosition:"inside",
-        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:0.25,
-      }}>
-        Negotiation log · {items.length} {items.length === 1 ? "entry" : "entries"}
-      </summary>
-      <div style={{ borderTop:"1px solid var(--ink-4)" }}>
-        {items.map((item, index) => (
-          <div key={item.id} style={{
-            padding:"10px 12px", display:"grid", gap:5,
-            borderTop:index ? "1px solid var(--ink-4)" : "none",
-          }}>
-            <strong style={{
-              fontFamily:"var(--mac-sans)", fontSize:13,
-            }}>{item.counterpart || "Match"}</strong>
-            <div style={{
-              fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.45, color:"var(--ink-2)",
-            }}><AgentMarkdown text={item.text}/></div>
-          </div>
-        ))}
-      </div>
-    </details>
-  );
-}
-
 function AgentNote({ item }) {
   return (
     <div className="fade-up" style={{ display:"flex", gap:12 }}>
@@ -639,6 +523,81 @@ function AgentNote({ item }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function OpenQuestion({ item, cardRef, selections, setSelections, writing, setWriting }) {
+  const id = item.questionId;
+  const options = Array.isArray(item.options) ? item.options : [];
+  const answer = selections[id] || "";
+  const asker = questionAsker(item);
+  const own = options.indexOf(answer) < 0 && answer;
+  const write = writing[id] || !options.length;
+  return (
+    <article ref={cardRef} style={{ display:"flex", gap:12 }}>
+      {asker.owner
+        ? <TheirAgentAvatar owner={asker.owner} size={30} style={{ marginTop:2 }}/>
+        : <MyAgentAvatar size={30} style={{ marginTop:2 }}/>}
+      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:10 }}>
+        <div>
+          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:5 }}>
+            <span style={{
+              background:"#111", color:"#fff", padding:"2px 6px", borderRadius:3,
+              fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:600, letterSpacing:"0.05em",
+            }}>QUESTION</span>
+            <span style={{
+              fontFamily:"var(--mac-mono)", fontSize:11, color:"#8f8f88",
+              textTransform:"uppercase", letterSpacing:"0.05em",
+            }}>{asker.label}</span>
+          </div>
+          <div style={{
+            maxWidth:"92%",
+            fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:600, lineHeight:1.55, color:"#2a2a2a",
+          }}>{item.text}</div>
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+          {options.map((option) => (
+            <OptionChip key={option} label={option} selected={answer === option}
+              onClick={() => {
+                setSelections((cur) => ({
+                  ...cur, [id]: cur[id] === option ? "" : option,
+                }));
+                setWriting((cur) => ({ ...cur, [id]: false }));
+              }}/>
+          ))}
+          {write ? (
+            <input
+              autoFocus={!!options.length}
+              value={own ? answer : ""}
+              onChange={(e) => setSelections((cur) => ({ ...cur, [id]: e.target.value }))}
+              onBlur={(e) => {
+                if (!e.currentTarget.value.trim()) {
+                  setWriting((cur) => ({ ...cur, [id]: false }));
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && !e.currentTarget.value.trim()) {
+                  setWriting((cur) => ({ ...cur, [id]: false }));
+                }
+              }}
+              placeholder="write your own"
+              aria-label="Write your own answer"
+              style={{
+                flex:"1 1 220px", minWidth:180, minHeight:36,
+                border:"1px solid #000", padding:"8px 14px",
+                fontFamily:"var(--mac-mono)", fontSize:12, color:"#111", outline:"none",
+              }}
+            />
+          ) : (
+            <OptionChip write label="write your own"
+              onClick={() => {
+                setSelections((cur) => ({ ...cur, [id]: "" }));
+                setWriting((cur) => ({ ...cur, [id]: true }));
+              }}/>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 

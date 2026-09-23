@@ -284,10 +284,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             .map((p) => p.text).join("\n").trim();
           const provenance = (m.metadata && m.metadata.principalMessage) || {};
           if (!text) return null;
-          if (provenance.kind === "question" && provenance.questionId && carded[provenance.questionId]) return null;
+          if (text.startsWith("Stall: ")) return null;
           const match = Array.isArray(provenance.matches) ? provenance.matches[0] : null;
+          const waiting = provenance.kind === "question" && provenance.questionId && carded[provenance.questionId];
           const classified = provenance.kind === "question"
-            ? { kind: "question-history", text }
+            ? { kind: waiting ? "open-question" : "question-history", text }
             : provenance.kind === "answer"
               ? { kind: "answer-history", text }
               : m.role === "user"
@@ -298,9 +299,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
                 ? { kind: "decision", text: text.slice(10) }
                 : text.startsWith("Progress: ")
                   ? { kind: "progress", text: text.slice(10) }
-                  : text.startsWith("Stall: ")
-                    ? { kind: "negotiation-log", text: text.slice(7) }
-                    : { kind: "note", text };
+                  : { kind: "note", text };
           return {
             id: m.id,
             ...classified,

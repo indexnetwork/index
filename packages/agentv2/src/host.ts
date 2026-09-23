@@ -1,10 +1,11 @@
-import type { ConversationMessage, Index, MatchReference, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
+import type { ConversationMessage, Index, MatchReference, Negotiation, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
 
 import { briefIfMissing } from "./brief.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
+import { summarize } from "./summary.ts";
 import type { ConversationEntry, Decision, Intent, NegotiateResult, NegotiationAction, Opportunity, Stall, WakeAction, WakeResult } from "./types.ts";
-import { unansweredPrincipalMessage, wake } from "./wake.ts";
+import { wake } from "./wake.ts";
 
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
 export interface Runtime {
@@ -21,6 +22,8 @@ const DECISION = "Decision: ";
 const STALL = "Stall: ";
 const PROGRESS = "Progress: ";
 const WITHDRAWN = "Withdrawn: ";
+/** An opening turn still running after this is no longer held. The rest of the initiation can finish. */
+const OPENING_MS = 60_000;
 const DECISIONS: readonly string[] = ["continue", "accept", "decline", "stop"];
 
 /**
@@ -57,12 +60,13 @@ function textOf(message: ConversationMessage): string {
  * @returns The conversation as a run takes it.
  */
 export function readConversation(messages: ConversationMessage[]): ConversationEntry[] {
-  return messages.map((message) => {
+  return messages.filter((message) => !principalOf(message)?.summary).map((message) => {
     const principal = (message as { metadata?: { principalMessage?: Partial<PrincipalMessage> } }).metadata?.principalMessage;
     const opportunity = principal?.matches?.[0]?.opportunityId;
     const counterpart = principal?.matches?.[0]?.counterparty.name ?? undefined;
     const text = textOf(message);
 
+    if (principal?.reply) return { kind: "reply", text };
     if (message.role === "agent" && text.startsWith(BRIEF)) {
       return { kind: "brief", text: text.slice(BRIEF.length), ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
     }
@@ -220,8 +224,10 @@ export async function publishActions(
         entries.push(entry("message", `${DECISION}${action.decision}`, match ? [match] : []));
         break;
       case "note":
-      case "reply":
         entries.push(entry("message", action.text));
+        break;
+      case "reply":
+        entries.push({ ...entry("message", action.text), reply: true });
         break;
       case "progress":
         entries.push(entry("message", `${PROGRESS}${action.text}`));
@@ -278,7 +284,6 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
   );
 
   const principalConversation = readConversation(inbox.messages);
-  const unansweredMessage = unansweredPrincipalMessage(principalConversation);
   const carried = latestBriefs(principalConversation);
   const opportunities = details.map((detail) => ({ ...toOpportunity(detail, user.id), ...carried.get(detail.opportunityId) }));
   const context: PublishContext = {
@@ -322,7 +327,6 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
   });
 
   if (!result.actions.length) log("  silent");
-  if (unansweredMessage && !result.actions.some((action) => action.type === "reply")) log("  no reply to principal message");
   await publishActions(
     client,
     intent.id,
@@ -331,6 +335,119 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
   );
 
   return result;
+}
+
+/**
+ * @param message - One agent DM row.
+ * @returns The principal entry stored on it, when this row is one.
+ */
+function principalOf(message: ConversationMessage): { summary?: boolean; kind?: string; matches?: { opportunityId?: string }[] } | undefined {
+  const metadata = message.metadata as { principalMessage?: { summary?: boolean; kind?: string; matches?: { opportunityId?: string }[] } } | undefined;
+  return metadata?.principalMessage;
+}
+
+/**
+ * @param messages - The signal's agent DM, oldest first.
+ * @returns When the last negotiation summary was written, or null when there has not been one.
+ */
+function lastSummaryAt(messages: ConversationMessage[]): Date | null {
+  let latest: Date | null = null;
+  for (const message of messages) {
+    if (!principalOf(message)?.summary) continue;
+    const at = new Date(message.createdAt);
+    if (!latest || at > latest) latest = at;
+  }
+  return latest;
+}
+
+/**
+ * @param messages - The signal's agent DM.
+ * @returns Opportunities with a stall still in the transcript.
+ */
+function stalledOpportunities(messages: ConversationMessage[]): Set<string> {
+  const stalled = new Set<string>();
+  for (const entry of readConversation(messages)) {
+    if (entry.kind === "stall" && entry.opportunity) stalled.add(entry.opportunity);
+  }
+  return stalled;
+}
+
+/**
+ * @param negotiation - One negotiation on this signal.
+ * @param userId - The seat owner.
+ * @returns Whether this seat opened it: the first turn is theirs, or nobody has spoken and it is their turn.
+ */
+function initiatedBy(negotiation: NegotiationDetail, userId: string): boolean {
+  const first = negotiation.turns[0];
+  if (first) return first.seatUserId === userId;
+  return negotiation.turnCount === 0 && negotiation.awaitingUserId === userId;
+}
+
+/**
+ * @param negotiation - One negotiation this seat opened.
+ * @param userId - The seat owner.
+ * @param stalled - Opportunities already waiting on the principal.
+ * @param now - Clock for the opening timeout.
+ * @returns Whether its opening turn is still running, so this initiation is not finished.
+ */
+function stillOpening(negotiation: Negotiation, userId: string, stalled: Set<string>, now: Date): boolean {
+  if (negotiation.settledAt || negotiation.turnCount > 0 || negotiation.awaitingUserId !== userId) return false;
+  if (stalled.has(negotiation.opportunityId)) return false;
+  return now.getTime() - new Date(negotiation.createdAt).getTime() < OPENING_MS;
+}
+
+/**
+ * One initiation, read from the negotiations this seat opened since the last summary.
+ *
+ * While any of them is still on its opening turn, nothing is sent. When none are,
+ * the summary of that set is written and the caller wakes once, so the decision
+ * sees the whole initiation.
+ *
+ * @param client - Index for this owner.
+ * @param intent - The signal.
+ * @param runtime - Model, clock, and cancellation.
+ * @returns `pending` while an opening turn is still running, `idle` when there is nothing to close, `done` when the summary note was sent.
+ */
+export async function closeInitiation(client: Index, intent: Intent, runtime: Runtime): Promise<"pending" | "idle" | "done"> {
+  const { model, now: clock, signal, log = () => {} } = runtime;
+  const now = clock?.() ?? new Date();
+  const [user, inbox, rows] = await Promise.all([
+    client.me(),
+    client.principalInbox(intent.id),
+    client.listIntentNegotiations(intent.id),
+  ]);
+  const since = lastSummaryAt(inbox.messages) ?? new Date(now.getTime() - OPENING_MS);
+  const stalled = stalledOpportunities(inbox.messages);
+  const batch = rows.filter((negotiation) => negotiation.intentId === intent.id && new Date(negotiation.createdAt) > since);
+  if (batch.some((negotiation) => stillOpening(negotiation, user.id, stalled, now))) return "pending";
+
+  const details = (await Promise.all(
+    batch.map((negotiation) => client.getNegotiation(negotiation.opportunityId).catch(() => null)),
+  )).filter((detail): detail is NegotiationDetail => detail !== null && initiatedBy(detail, user.id));
+  if (!details.length) return "idle";
+
+  const opportunities = details
+    .map((detail) => toOpportunity(detail, user.id))
+    .filter((opportunity) => (opportunity.turns?.length ?? 0) > 0);
+  if (!opportunities.length) return "idle";
+
+  log(`  summarizing ${opportunities.length} negotiations`);
+  const text = await summarize({ user, intent, opportunities, model, now: clock, signal });
+  if (!text) {
+    log("  no summary");
+    return "idle";
+  }
+  const note: PrincipalMessage = {
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    kind: "message",
+    matches: [],
+    text,
+    summary: true,
+  };
+  await client.sendPrincipal(intent.id, [note]);
+  log(`  note: ${text}`);
+  return "done";
 }
 
 /**

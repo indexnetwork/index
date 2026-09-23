@@ -10,6 +10,10 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Changed
+- The hosted personal agent groups its initial negotiations into one readable
+  summary on the principal conversation instead of displaying the raw negotiation log.
+  Direct replies are marked separately from notes and progress updates, with a
+  focused retry when a wake omits the reply.
 - The hosted personal agent answers an unanswered direct message from its principal
   once per wake, including a bare greeting, instead of treating it as a silent
   signal update. Wakes without an unanswered message retain their silence rules.
