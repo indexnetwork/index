@@ -378,7 +378,35 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
 // leave one disclosure in the transcript where that run first appeared.
 // A progress line that has decisions under it becomes one discovery section
 // with the note that follows that progress.
+function sameDiscovery(left, right) {
+  return left.plan === right.plan
+    && left.queries.length === right.queries.length
+    && left.queries.every((query, index) => query === right.queries[index]);
+}
+
+// The looking write and the counted write are two inbox rows. Once the count
+// arrives, the earlier row is the same card and drops out of the feed.
+function withoutSupersededLooking(messages) {
+  const traces = messages.map((message) => (
+    message.kind === "progress" ? parseDiscoveryProgress(message.text) : null
+  ));
+  const drop = new Set();
+  traces.forEach((trace, index) => {
+    if (!trace || typeof trace.discovered === "number") return;
+    const closed = traces.some((other, otherIndex) => (
+      otherIndex > index
+      && other
+      && typeof other.discovered === "number"
+      && sameDiscovery(trace, other)
+    ));
+    if (closed) drop.add(index);
+  });
+  if (!drop.size) return messages;
+  return messages.filter((_, index) => !drop.has(index));
+}
+
 function buildInboxFeed(messages) {
+  messages = withoutSupersededLooking(messages);
   const decisionRuns = new Map();
   const questions = new Map();
   const answers = new Map();
@@ -466,12 +494,15 @@ function parseDiscoveryProgress(text) {
   if (typeof text !== "string" || !text) return null;
   try {
     const data = JSON.parse(text);
-    if (data && Array.isArray(data.queries) && typeof data.discovered === "number") {
+    if (data && Array.isArray(data.queries)) {
+      const queries = data.queries.filter((query) => typeof query === "string" && query);
+      const counted = typeof data.discovered === "number";
+      if (!queries.length && !counted) return null;
       return {
         plan: typeof data.plan === "string" ? data.plan : "",
-        queries: data.queries.filter((query) => typeof query === "string" && query),
-        discovered: data.discovered,
-        reached: typeof data.reached === "number" ? data.reached : data.discovered,
+        queries,
+        discovered: counted ? data.discovered : null,
+        reached: counted ? (typeof data.reached === "number" ? data.reached : data.discovered) : null,
       };
     }
   } catch { /* a plain progress sentence */ }
@@ -507,7 +538,8 @@ function DiscoveryTrace({ plan, queries = [], discovered, reached, progress, ite
   const shown = items.slice(0, 7);
   const rest = items.slice(7);
   const reaching = rest.filter((item) => reachedDecision(item.decision)).length;
-  const summary = discovered == null ? progress : discoverySummary(discovered, reached, items);
+  const counted = typeof discovered === "number";
+  const summary = counted ? discoverySummary(discovered, reached, items) : progress;
   return (
     <section className="fade-up" style={{ display:"flex", gap:12 }}>
       <MyAgentAvatar size={30} style={{ marginTop:2 }}/>
@@ -557,6 +589,7 @@ function DiscoveryTrace({ plan, queries = [], discovered, reached, progress, ite
               )}
             </div>
           )}
+          {(counted || progress) && (
           <button
             type="button"
             aria-expanded={items.length ? peopleOpen : undefined}
@@ -571,7 +604,8 @@ function DiscoveryTrace({ plan, queries = [], discovered, reached, progress, ite
             </svg>
             <span>{summary}</span>
           </button>
-          {peopleOpen && items.length > 0 && (
+          )}
+          {counted && peopleOpen && items.length > 0 && (
             <div style={discoveryRail}>
               {shown.map((item) => <DiscoveryRow key={item.id} item={item}/>)}
               {rest.length > 0 && (

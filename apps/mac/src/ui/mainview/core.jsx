@@ -327,10 +327,15 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // agent message arrives as `message` tagged with the intent, a new question
   // as `question.pending`. Read on either so the inbox is live; the poll above
   // stays as the backstop, since the native stream does not resume by event id.
+  // `negotiation.changed` is the batch open, so the radar paints with the
+  // counted progress instead of waiting for the next poll.
   useEffect(() => {
     if (!live || !client || !intentId || !window.IndexApp) return;
     const sub = window.IndexApp.streamInbox((event) => {
       if (!event) return;
+      if (event.type === "negotiation.changed" && event.data && event.data.intentId === intentId) {
+        refreshRadar();
+      }
       const forIntent = event.type === "message"
         ? event.message && event.message.metadata && event.message.metadata.intentId
         : event.type === "question.pending" && event.data && event.data.intentId;
@@ -338,7 +343,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       refreshInbox();
     });
     return () => { if (sub && sub.close) sub.close(); };
-  }, [live, client, intentId, refreshInbox]);
+  }, [live, client, intentId, refreshInbox, refreshRadar]);
 
   const sendAgentMessage = (text, onDone) => {
     if (!client || !intentId || !text) return;
