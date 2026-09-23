@@ -9,19 +9,14 @@ const HERMES_INSTALL_URL =
 export const MAC_APP_REQUIREMENTS = "macOS 13+ · Apple silicon";
 
 /**
- * `/download` — post-invite install page. Full-viewport column: header,
- * centered hero and cards. No app chrome.
+ * `/download` — post-invite install page. Centered hero, the two install
+ * cards, and a browser row. No app chrome.
  */
 export default function Download() {
   return (
     <div className="download-page">
-      <header className="download-page__header">
-        <a className="download-page__logo" href="/" aria-label="Index Network">
-          <img src="/logos/logo-white-full.svg" alt="Index Network" />
-        </a>
-      </header>
-
       <main className="download-page__main">
+        <p className="download-page__step">5</p>
         <p className="download-page__kicker">You&apos;re in</p>
         <h1 className="download-page__title">get the apps</h1>
         <p className="download-page__lede">
@@ -29,42 +24,49 @@ export default function Download() {
           your networks.
         </p>
 
-        <div className="download-page__cards">
-          <section className="download-card">
-            <div className="download-card__body">
-              <span className="download-card__icon">
-                <IndexMark />
-              </span>
-              <h2 className="download-card__name">Index for Mac</h2>
-              <p className="download-card__meta">{MAC_APP_REQUIREMENTS}</p>
+        <div className="download-page__offers">
+          <div className="download-page__cards">
+            <section className="download-card">
+              <div className="download-card__body">
+                <span className="download-card__icon">
+                  <IndexMark />
+                </span>
+                <h2 className="download-card__name">Index for Mac</h2>
+                <p className="download-card__meta">{MAC_APP_REQUIREMENTS}</p>
 
-              <a
-                className="download-btn download-btn--primary"
-                href={MAC_APP_DOWNLOAD_URL}
-                aria-label="Download Index for Mac"
-              >
-                INSTALL →
-              </a>
-            </div>
-          </section>
+                <a
+                  className="download-btn download-btn--primary"
+                  href={MAC_APP_DOWNLOAD_URL}
+                  aria-label="Download Index for Mac"
+                >
+                  INSTALL →
+                </a>
+              </div>
+            </section>
 
-          <section className="download-card">
-            <div className="download-card__body">
-              <span className="download-card__icon download-card__icon--outlined">
-                <img src="/logos/nous.webp" alt="" aria-hidden="true" />
-              </span>
-              <h2 className="download-card__name">Hermes plugin</h2>
-              <p className="download-card__meta">one-line plugin install</p>
+            <section className="download-card">
+              <div className="download-card__body">
+                <span className="download-card__icon download-card__icon--outlined">
+                  <img src="/logos/nous.webp" alt="" aria-hidden="true" />
+                </span>
+                <h2 className="download-card__name">Hermes plugin</h2>
+                <p className="download-card__meta">one-line plugin install</p>
 
-              <a
-                className="download-btn download-btn--ghost"
-                href={HERMES_INSTALL_URL}
-                aria-label="Install Hermes plugin"
-              >
-                INSTALL
-              </a>
-            </div>
-          </section>
+                <a
+                  className="download-btn download-btn--ghost"
+                  href={HERMES_INSTALL_URL}
+                  aria-label="Install Hermes plugin"
+                >
+                  INSTALL
+                </a>
+              </div>
+            </section>
+          </div>
+
+          <a className="download-page__browser" href="/">
+            <span>Index in the browser</span>
+            <span>Open →</span>
+          </a>
         </div>
       </main>
     </div>
