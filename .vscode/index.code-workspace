@@ -6,7 +6,6 @@
     { "name": "🖥️ mac", "path": "../apps/mac" },
     { "name": "📡 protocol", "path": "../packages/protocol" },
     { "name": "🤖 agent", "path": "../packages/agent" },
-    { "name": "💬 agent-tui", "path": "../packages/agent-tui" },
     { "name": "⌨️ cli", "path": "../packages/cli" }
   ],
   "settings": {

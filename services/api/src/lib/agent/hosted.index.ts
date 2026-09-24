@@ -1,7 +1,7 @@
 /**
  * Index for one owner, answered from this process.
  *
- * `@indexnetwork/agentv2` is written against `Index` and knows nothing else:
+ * `@indexnetwork/agent` is written against `Index` and knows nothing else:
  * an external runner reaches it over HTTP with an agent-bound key, and the
  * hosted seat reaches the same protocol through the services that key would
  * have called. The owner is fixed at construction, where the key's identity

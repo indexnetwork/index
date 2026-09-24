@@ -73,3 +73,7 @@ apps/mac/Resources/index.html
 .zed
 scripts/hooks/post-commit
 scripts/hooks/post-rewrite
+
+# Retired packages kept locally for reference.
+/packages/.agent/
+/packages/.agent-tui/

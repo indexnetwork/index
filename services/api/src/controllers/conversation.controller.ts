@@ -1,4 +1,3 @@
-import type { PrincipalMessage } from '@indexnetwork/agent';
 import { z } from 'zod';
 
 import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
@@ -6,7 +5,7 @@ import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { log } from '../lib/log';
 import { agentService } from '../services/agent.service';
-import { AGENT_DM_ID, AgentConversationError, ConversationService } from '../services/conversation.service';
+import { AGENT_DM_ID, AgentConversationError, ConversationService, type PrincipalMessage } from '../services/conversation.service';
 
 type RouteParams = Record<string, string>;
 

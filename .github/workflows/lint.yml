@@ -113,9 +113,6 @@ jobs:
           bun run --cwd packages/hermes-plugin build:desktop
           git diff --exit-code -- packages/hermes-plugin/runtime/dist/negotiator.js packages/hermes-plugin/desktop/dist/plugin.js
 
-      - name: Check agent TUI
-        run: bun run --cwd packages/agent-tui check && bun run --cwd packages/agent-tui build
-
   protocol-architecture:
     # Keep the architectural dependency checks visible as separate CI checks so
     # a failure names the violated invariant directly in the checks list.

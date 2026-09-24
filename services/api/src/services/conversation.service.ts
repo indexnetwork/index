@@ -1,15 +1,15 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { PrincipalMessage, PrincipalQuestion } from '@indexnetwork/agent';
-
 import { AgentDatabaseAdapter } from '../adapters/agent.database.adapter';
-import { AgentSessionDatabaseAdapter, publishPendingQuestionEvent } from '../adapters/agent-session.database.adapter';
+import { AgentSessionDatabaseAdapter, publishPendingQuestionEvent, type PrincipalMessage, type PrincipalQuestion } from '../adapters/agent-session.database.adapter';
 import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
 import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
 import { log } from '../lib/log';
 import { ackUserEvent, ensureUserEventGroup, publishUserEvent, readUserEventGroup, readUserEvents, type UserEventRecord } from '../lib/user-events';
+
+export type { PrincipalMessage } from '../adapters/agent-session.database.adapter';
 
 const logger = log.service.from('ConversationService');
 

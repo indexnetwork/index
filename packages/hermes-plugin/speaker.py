@@ -1,6 +1,6 @@
 """One Hermes gateway completion for the Index negotiator.
 
-The negotiator loop and its tools live in `@indexnetwork/agentv2`. This module
+The negotiator loop and its tools live in `@indexnetwork/agent`. This module
 asks the model Hermes is already configured to use for a single assistant
 message, including any tool calls, and does not run those tools.
 """
@@ -18,7 +18,7 @@ _written: dict[str, tuple[str, int]] = {}
 
 
 def _message(message) -> dict:
-    """@param message - One provider message. @returns The assistant message agentv2 stores."""
+    """@param message - One provider message. @returns The assistant message the agent stores."""
     content = getattr(message, "content", None)
     if not isinstance(content, str):
         content = None

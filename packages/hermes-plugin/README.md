@@ -22,7 +22,7 @@ The session authenticates you, not an agent. `GET /agents/me` returns the agent 
 
 ## Personal agent
 
-Hermes runs the same negotiator as hosted Index — `@indexnetwork/agentv2`
+Hermes runs the same negotiator as hosted Index — `@indexnetwork/agent`
 on `@indexnetwork/client`. The sidecar authenticates with `INDEX_API_KEY`
 and the selected agent id. Hermes supplies one completion per step from the
 gateway model; the negotiator runs its own tools.
@@ -58,8 +58,8 @@ hermes plugins doctor . --ci
 `desktop/dist/plugin.js` or `runtime/dist/negotiator.js` manually. Commit
 them after a rebuild; CI fails when they differ from the scripts.
 
-`runtime/` is the negotiator host: it wires `@indexnetwork/agentv2` to Index
+`runtime/` is the negotiator host: it wires `@indexnetwork/agent` to Index
 through `@indexnetwork/client` and asks Hermes for each model step. It is
 bundled into `runtime/dist/negotiator.js` so the published plugin carries no
 npm dependency on the monorepo. Negotiation behaviour is never changed here —
-change `packages/agentv2` and rebuild.
+change `packages/agent` and rebuild.

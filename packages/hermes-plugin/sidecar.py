@@ -1,6 +1,6 @@
 """Supervise the Bun process that runs the Index negotiator.
 
-The negotiator is `@indexnetwork/agentv2` on `@indexnetwork/client`, bundled
+The negotiator is `@indexnetwork/agent` on `@indexnetwork/client`, bundled
 into `runtime/dist/negotiator.js`. This module starts it while this machine is
 the owner's selected negotiator, keeps that child alive for the gateway
 process, and stops it when the platform disconnects or the selection moves
