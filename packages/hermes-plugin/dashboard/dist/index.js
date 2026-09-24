@@ -627,13 +627,21 @@
 
   // React twin of the DOM controls injected into the web dashboard's banner
   // header — rendered inline when no such header exists (desktop host).
+  function sidecarView(payload, busy) {
+    const running = payload.running === true;
+    const error = payload.success === false ? (payload.error || "Could not update the sidecar.") : "";
+    const status = error || payload.status || (running ? "Running" : "Off");
+    return { running: running, busy: busy, error: error, status: status };
+  }
+
   function SidecarToggle() {
-    const [state, setState] = React.useState({ running: false, busy: false, error: "" });
+    const [state, setState] = React.useState({ running: false, busy: false, error: "", status: "Off" });
     const refresh = React.useCallback(function () {
       fetchPluginJSON(API + "/sidecar", { method: "GET" }).then(function (payload) {
         if (!payload) return;
         setState(function (current) {
-          return Object.assign({}, current, { running: payload.running === true });
+          if (current.busy) return current;
+          return sidecarView(payload, false);
         });
       }).catch(function () { /* status is shown again on the next poll */ });
     }, []);
@@ -650,16 +658,13 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       }).then(function (payload) {
-        setState({
-          running: payload.running === true,
-          busy: false,
-          error: payload.success === false ? (payload.error || "Could not update the sidecar.") : "",
-        });
+        setState(sidecarView(payload || {}, false));
       }).catch(function (error) {
         setState(function (current) {
           return Object.assign({}, current, {
             busy: false,
             error: (error && error.message) || "Could not update the sidecar.",
+            status: (error && error.message) || "Could not update the sidecar.",
           });
         });
       });
@@ -669,6 +674,10 @@
       : (state.running ? "Stop" : "Start");
     return React.createElement(React.Fragment, null,
       React.createElement("span", { className: "index-dashboard__hdr-label" }, "SIDECAR"),
+      React.createElement("span", {
+        className: "index-dashboard__hdr-sidecar-status" + (state.running ? " index-dashboard__hdr-sidecar-status--on" : ""),
+        title: state.error || state.status,
+      }, state.status),
       React.createElement("button", {
         type: "button",
         className: "index-dashboard__hdr-sidecar" + (state.running ? " index-dashboard__hdr-sidecar--on" : ""),
@@ -1203,15 +1212,72 @@
     return Number.isFinite(intent.pendingCount) ? intent.pendingCount : 0;
   }
 
+  const ENVIRONMENTS = ["main", "dev", "local"];
+
   function IntentPitch() {
+    const menuState = React.useState(null);
+    const menu = menuState[0];
+    const setMenu = menuState[1];
+    const envState = React.useState("");
+    const environment = envState[0];
+    const setEnvironment = envState[1];
+
+    React.useEffect(function () {
+      if (!menu) return undefined;
+      function close() { setMenu(null); }
+      window.addEventListener("mousedown", close);
+      return function () { window.removeEventListener("mousedown", close); };
+    }, [menu]);
+
+    function openEnvironmentMenu(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      setMenu({ x: event.clientX, y: event.clientY });
+      fetchPluginJSON(API + "/environment").then(function (payload) {
+        if (payload && payload.environment) setEnvironment(payload.environment);
+      }).catch(function () {});
+    }
+
+    function chooseEnvironment(name, event) {
+      event.preventDefault();
+      event.stopPropagation();
+      setMenu(null);
+      fetchPluginJSON(API + "/environment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ environment: name }),
+      }).then(function (payload) {
+        if (!payload || payload.success === false) return;
+        return fetchPluginJSON(API + "/auth/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+      }).then(function (payload) {
+        if (payload === undefined) return;
+        window.dispatchEvent(new Event("index-network-sign-out"));
+      }).catch(function () {});
+    }
+
     return React.createElement("aside", { className: "index-dashboard__pitch" },
-      PITCH_IMAGE() ? React.createElement("img", {
+      PITCH_IMAGE() ? React.createElement("div", {
         className: "index-dashboard__pitch-media",
-        src: PITCH_IMAGE(),
-        alt: "",
+        style: { backgroundImage: "url(" + JSON.stringify(PITCH_IMAGE()) + ")" },
         "aria-hidden": "true",
-        loading: "lazy",
+        onDoubleClick: openEnvironmentMenu,
       }) : null,
+      menu ? React.createElement("div", {
+        className: "index-dashboard__env-menu",
+        style: { left: menu.x, top: menu.y },
+        onMouseDown: function (event) { event.stopPropagation(); },
+      }, ENVIRONMENTS.map(function (name) {
+        return React.createElement("button", {
+          key: name,
+          type: "button",
+          className: "index-dashboard__env-item" + (name === environment ? " index-dashboard__env-item--on" : ""),
+          onMouseDown: function (event) { chooseEnvironment(name, event); },
+        }, name);
+      })) : null,
       React.createElement("div", { className: "index-dashboard__pitch-body" },
         React.createElement("h2", { className: "index-dashboard__pitch-title" },
           "find your others",
@@ -5557,6 +5623,16 @@
           setLoading(false);
         });
     }
+
+    React.useEffect(function () {
+      function onEnvironmentSignOut() {
+        setSummary(null);
+        setNeedsOnboarding(false);
+        setAuth("needsLogin");
+      }
+      window.addEventListener("index-network-sign-out", onEnvironmentSignOut);
+      return function () { window.removeEventListener("index-network-sign-out", onEnvironmentSignOut); };
+    }, []);
 
     function signOut() {
       setProfileOpen(false);

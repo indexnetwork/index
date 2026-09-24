@@ -227,14 +227,6 @@ export interface OpportunityActor {
   userId: Id<'users'>;
   intent?: Id<'intents'>;
   role: string;
-  /**
-   * ISO-8601 timestamp set the first time this actor advanced the opportunity's
-   * state (patient sending, agent accepting, peer "accepting" on draft = sending
-   * under the hood, peer accepting on pending). Once set,
-   * this actor has committed and cannot be the one to subsequently `accept` the
-   * same opportunity — enforced by the self-accept guard in `updateNode`.
-   */
-  actedAt?: string;
 }
 
 export interface OpportunitySignal {
@@ -263,13 +255,25 @@ export const opportunities = pgTable('opportunities', {
   context: jsonb('context').$type<OpportunityContext>().notNull(),
   confidence: numeric('confidence').notNull(),
   status: opportunityStatusEnum('status').notNull().default('pending'),
-  acceptedBy: text('accepted_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
+}));
+
+/** Append-only facts whose fold is `opportunities.status`. */
+export const opportunityEvents = pgTable('opportunity_events', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  opportunityId: text('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
+  type: text('type').$type<'opened' | 'agreed' | 'committed' | 'declined' | 'expired'>().notNull(),
+  actorUserId: text('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  opportunityIdx: index('opportunity_events_opportunity_idx').on(table.opportunityId),
+  oneFact: uniqueIndex('opportunity_events_one_fact').on(table.opportunityId, table.type).where(sql`${table.type} <> 'committed'`),
+  oneCommit: uniqueIndex('opportunity_events_one_commit').on(table.opportunityId, table.actorUserId).where(sql`${table.type} = 'committed'`),
 }));
 
 /**

@@ -185,11 +185,8 @@ export interface UserDatabase {
   /** Get a specific opportunity (if user is an actor). */
   getOpportunity(id: string): Promise<Opportunity | null>;
 
-  /** Update an opportunity's status (if user is an actor). acceptedBy is derived from the auth context. */
+  /** Update an opportunity's status (if user is an actor). */
   updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<Opportunity | null>;
-
-  /** Accept sibling opportunities between the authenticated user and another actor. */
-  acceptSiblingOpportunities(counterpartUserId: string, excludeOpportunityId: string): Promise<string[]>;
 
 }
 
@@ -311,15 +308,7 @@ export interface SystemDatabase {
   getOpportunitiesForNetwork(networkId: string, options?: OpportunityQueryOptions): Promise<Opportunity[]>;
 
   /** Update an opportunity's status (system-level). */
-  updateOpportunityStatus(id: string, status: OpportunityStatus, acceptedBy?: string): Promise<Opportunity | null>;
-
-  /** Stamp actor `actedAt` + update status atomically (system-level). */
-  stampOpportunityActorAction(
-    id: string,
-    actorUserId: string,
-    status: OpportunityStatus,
-    acceptedBy?: string,
-  ): Promise<Opportunity | null>;
+  updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<Opportunity | null>;
 
   /** Check if opportunity exists between actors in a network. */
   opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean>;

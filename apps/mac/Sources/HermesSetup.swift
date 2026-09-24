@@ -115,9 +115,21 @@ enum HermesSetup {
     /// ~/.hermes/.env. The agent (and its keys) are removed server-side by the
     /// caller; this only cleans the local runtime.
     static func teardown(progress: (String) -> Void = { _ in }) -> [String: Any] {
+        let home = NSHomeDirectory() + "/.hermes"
         progress("unlinking the desktop plugin")
-        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.hermes/desktop-plugins/index-network")
-        if FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.hermes/plugins/index-network") {
+        try? FileManager.default.removeItem(atPath: home + "/desktop-plugins/index-network")
+
+        let pluginPath = home + "/plugins/index-network"
+        var removedPlugin = false
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: pluginPath)) != nil {
+            progress("removing the Index plugin")
+            do {
+                try FileManager.default.removeItem(atPath: pluginPath)
+            } catch {
+                return ["ok": false, "error": "could not unlink Index plugin: \(error.localizedDescription)"]
+            }
+            removedPlugin = true
+        } else if FileManager.default.fileExists(atPath: pluginPath) {
             guard let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] else {
                 return ["ok": false, "error": "hermes binary not found on this mac"]
             }
@@ -126,13 +138,14 @@ enum HermesSetup {
             if status != 0 {
                 return ["ok": false, "error": "hermes plugins remove: \(String(output.suffix(300)))"]
             }
-            progress("clearing Index credentials")
-            removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL"])
-            restartGatewayIfRunning(hermes, progress: progress)
-            return ["ok": true]
+            removedPlugin = true
         }
         progress("clearing Index credentials")
         removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL"])
+        if removedPlugin,
+           let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] {
+            restartGatewayIfRunning(hermes, progress: progress)
+        }
         return ["ok": true]
     }
 

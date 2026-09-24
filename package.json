@@ -10,13 +10,12 @@
     "packages/claude-plugin",
     "packages/hermes-plugin",
     "packages/agent",
-    "packages/client",
-    "packages/agentv2",
-    "packages/agent-tui"
+    "packages/client"
   ],
   "scripts": {
     "dev": "bash scripts/dev.sh",
     "dev:web": "cd apps/web && bun run dev",
+    "dev:mac": "cd apps/mac && ./dev.sh",
     "dev:api": "cd services/api && bun run dev",
     "dev:frontend": "bun run dev:web",
     "dev:backend": "bun run dev:api",
@@ -39,7 +38,6 @@
     "db:eu:refresh": "bun scripts/eu-refresh.ts",
     "db:dev:resume": "bun scripts/dev-intents.ts resume",
     "db:dev:reset": "bun scripts/dev-intents.ts reset",
-    "agent:tui": "bun run --cwd packages/protocol build && bun run --cwd packages/agent build && bun packages/agent-tui/src/main.ts",
     "sync:lockfile-versions": "bun scripts/sync-lockfile-versions.ts",
     "check:lockfile-versions": "bun scripts/sync-lockfile-versions.ts --check",
     "pr:snapshot": "bun scripts/pr-snapshot.ts",

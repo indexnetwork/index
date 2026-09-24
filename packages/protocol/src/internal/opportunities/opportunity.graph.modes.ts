@@ -13,25 +13,10 @@
 import type { Id, OpportunityActor } from '../../platform/database.js';
 import { timed } from '../shared/observability/performance.js';
 import { safeFallbackSummary } from "./opportunity.presentation.js";
-import type { OpportunityMutationResult } from "./opportunity.lifecycle.js";
-import { deleteOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
 import type { OpportunityDatabase } from '../../platform/database.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
-const deleteLog = protocolLogger('Opportunity:Delete');
 const readLog = protocolLogger('Opportunity:Read');
-const updateLog = protocolLogger('Opportunity:Update');
-
-/** Identifies the caller and the opportunity every mutation mode acts on. */
-export interface OpportunityMutationRequest {
-  userId: Id<'users'>;
-  opportunityId: string | undefined;
-}
-
-/** Shape the update/delete/send/approve modes return. */
-export interface OpportunityMutationOutcome {
-  mutationResult: OpportunityMutationResult;
-}
 
 /**
  * Read mode: list opportunities for the user, optionally filtered by networkId.
@@ -168,61 +153,3 @@ const OPPORTUNITY_SOURCE_LABEL: Record<string, string> = {
   member_added: 'Member added',
   // Read-only history: nothing stamps this source any more, but old rows carry it.
 };
-
-/**
- * Update mode: change opportunity status (accept, reject, etc.).
- * For 'accepted', enforces the self-accept guard: the caller's actor entry
- * must not already have `actedAt` set — i.e. the caller has not yet been
- * the one to advance this opportunity's state. Stamps `actedAt` on accept
- * atomically with the status change via `stampOpportunityActorAction`.
- */
-export async function updateOpportunityStatus(
-  deps: { database: OpportunityDatabase },
-  request: OpportunityMutationRequest & { newStatus: string | undefined },
-): Promise<OpportunityMutationOutcome> {
-  return timed("OpportunityGraph.update", async () => {
-    updateLog.verbose('Updating opportunity status', {
-      userId: request.userId,
-      opportunityId: request.opportunityId,
-      newStatus: request.newStatus,
-    });
-
-    try {
-      return {
-        mutationResult: await updateOpportunityLifecycle(deps.database, {
-          opportunityId: request.opportunityId,
-          actorUserId: request.userId,
-          newStatus: request.newStatus,
-        }),
-      };
-    } catch (err) {
-      updateLog.error('Failed', { error: err });
-      return { mutationResult: { success: false, error: 'Failed to update opportunity.' } };
-    }
-  });
-}
-
-/** Delete mode: expire/archive an opportunity. */
-export async function deleteOpportunity(
-  deps: { database: OpportunityDatabase },
-  request: OpportunityMutationRequest,
-): Promise<OpportunityMutationOutcome> {
-  return timed("OpportunityGraph.delete", async () => {
-    deleteLog.verbose('Expiring opportunity', {
-      userId: request.userId,
-      opportunityId: request.opportunityId,
-    });
-
-    try {
-      return {
-        mutationResult: await deleteOpportunityLifecycle(deps.database, {
-          opportunityId: request.opportunityId,
-          actorUserId: request.userId,
-        }),
-      };
-    } catch (err) {
-      deleteLog.error('Failed', { error: err });
-      return { mutationResult: { success: false, error: 'Failed to delete opportunity.' } };
-    }
-  });
-}

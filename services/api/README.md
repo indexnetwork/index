@@ -36,7 +36,7 @@ each match. Pending matches retain Start Chat and Skip.
 
 The API runs no personal-agent session. Its hosted agent is `HostedAgent`, the
 default seat for owners without a selected external negotiator: it runs
-`@indexnetwork/agentv2` — brief, wake and negotiate — against `HostedIndex`, an
+`@indexnetwork/agent` — brief, wake and negotiate — against `HostedIndex`, an
 in-process implementation of the same `Index` protocol an external runner reaches
 over HTTP. Nothing runs on a clock. A counterpart's turn and an opening each move
 one opportunity; the owner's own input, a new signal and a resumed one are what
@@ -87,32 +87,6 @@ conversations keep their messages but lose old match provenance. Users, API
 keys/sessions, profiles, intents, networks, memberships, assignments, and
 embeddings/HyDE remain. If reset is interrupted or its control connection closes,
 the transaction rolls back uncommitted cleanup.
-
-## Personal-agent TUI
-
-From the repository root:
-
-```bash
-bun run --cwd services/api agent:tui
-# Optional ordered OpenRouter model IDs:
-bun run --cwd services/api agent:tui google/gemini-3.8-flash anthropic/claude-haiku-4.5
-```
-
-Uses the root `.env.development`, existing database principals/intents, and the
-API's negotiation services. Space selects principal/intent sessions; Enter starts
-all selected agents. No HTTP server or login is needed for this trusted local
-command. HTTP guards are unchanged. Models, the session store, protocol guidance,
-and protocol-backed reads/writes are injected into `@indexnetwork/agent`.
-
-`packages/protocol` owns participation rules and consent/transition gates;
-`packages/agent` owns reasoning, parallel matches, and the shared H2A inbox.
-The TUI composes both against the API database. It persists domain
-tables, `agent_sessions` checkpoints/leases, and intent-tagged H2A `messages`
-in the owner's existing DM. A2A agreement remains pending human approval. The
-API server does not take these session leases. Do not run two TUIs for the same
-intents.
-
-See [agent-tui controls and behavior](../../packages/agent-tui/README.md).
 
 ## Tests
 

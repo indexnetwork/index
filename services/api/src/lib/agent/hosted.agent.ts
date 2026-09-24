@@ -4,13 +4,13 @@
  *
  * It is not a session. Nothing runs on a clock — a wake happens because
  * something changed on the signal, and a negotiator runs because a decision
- * authorised it. The reasoning is `@indexnetwork/agentv2`, reached through
+ * authorised it. The reasoning is `@indexnetwork/agent`, reached through
  * {@link HostedIndex}, so a hosted seat runs exactly the code an external
  * runner would without a request leaving this process.
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { closeInitiation, runNegotiate, runWake, type Decision, type Intent, type Model } from '@indexnetwork/agentv2';
+import { closeInitiation, runNegotiate, runWake, type Decision, type Intent, type Model } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';

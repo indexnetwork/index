@@ -145,35 +145,11 @@ export interface DatabaseOpportunityQueries {
    *
    * @param id - Opportunity ID
    * @param status - New status
-   * @param acceptedBy - Required when `status === 'accepted'`
    * @returns The updated opportunity or null if not found
    */
   updateOpportunityStatus(
     id: string,
     status: OpportunityStatus,
-    acceptedBy?: string,
-  ): Promise<Opportunity | null>;
-
-  /**
-   * Stamp `actedAt` on the actor matching `actorUserId` and update the
-   * opportunity's status atomically (row-lock + JSONB merge in one txn).
-   *
-   * Used by `sendNode` (status → 'pending') and `updateNode` (status →
-   * 'accepted'). The self-accept guard is enforced in the caller, not here —
-   * this method blindly stamps. Callers must pre-check `actor.actedAt` before
-   * invocation when the semantics require it (i.e. accepting).
-   *
-   * @param id - Opportunity ID
-   * @param actorUserId - The user whose actor entry should be stamped
-   * @param status - New opportunity status
-   * @param acceptedBy - Required when `status === 'accepted'`
-   * @returns The updated opportunity, or null if not found
-   */
-  stampOpportunityActorAction(
-    id: string,
-    actorUserId: string,
-    status: OpportunityStatus,
-    acceptedBy?: string,
   ): Promise<Opportunity | null>;
 
   /**
@@ -278,22 +254,5 @@ export interface DatabaseOpportunityQueries {
    * @returns Number of opportunities updated to expired
    */
   expireStaleOpportunities(): Promise<number>;
-
-  /**
-   * Accept all sibling opportunities between the same actor pair in one transaction.
-   * Selects opportunities where both userId and counterpartUserId are actors and status
-   * is not accepted/expired/rejected, excludes excludeOpportunityId, then bulk-updates status to accepted.
-   * Rolls back on any failure.
-   *
-   * @param userId - First actor user ID
-   * @param counterpartUserId - Second actor user ID
-   * @param excludeOpportunityId - Opportunity ID to exclude (the one already being accepted)
-   * @returns IDs of opportunities that were updated to accepted
-   */
-  acceptSiblingOpportunities(
-    userId: string,
-    counterpartUserId: string,
-    excludeOpportunityId: string
-  ): Promise<string[]>;
 
 }

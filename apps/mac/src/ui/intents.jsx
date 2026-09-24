@@ -239,10 +239,13 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
     env.refreshIntents();
   }, [env.live, env.refreshIntents]);
 
-  // A just-onboarded user has no signals yet, the hub opens empty.
-  const [signals, setSignals] = useState(() => fresh ? [] : (env.data.INTENTS || []));
+  // A just-onboarded user has no signals yet, the hub opens empty. Once any
+  // signals are in the snapshot, show them — `fresh` must not hide the ones
+  // that remain after an archive.
+  const [signals, setSignals] = useState(() => env.data.INTENTS || []);
   useEffect(() => {
-    setSignals(fresh ? [] : (env.data.INTENTS || []));
+    const intents = env.data.INTENTS || [];
+    setSignals(fresh && intents.length === 0 ? [] : intents);
   }, [env.data, fresh]);
 
   const [hovered, setHovered] = useState(null);
@@ -292,11 +295,12 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
     );
   }
 
-  const visible  = signals.filter(i => i.status !== "archived");
+  const visible  = signals.filter(i => i && i.status !== "archived");
   const active   = visible.filter(i => i.status === "active");
   const idle     = visible.filter(i => i.status === "idle");
   const paused   = visible.filter(i => i.status === "paused");
-  const ordered  = [...active, ...idle, ...paused];
+  const rest     = visible.filter(i => i.status !== "active" && i.status !== "idle" && i.status !== "paused");
+  const ordered  = [...active, ...idle, ...paused, ...rest];
 
   return (
     <div style={{

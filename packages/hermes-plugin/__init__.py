@@ -8,7 +8,6 @@ from pathlib import Path
 from . import schemas, tools
 from .bridge import HermesBridge
 from .sidecar import Sidecar
-from .speaker import register_tools
 
 
 def _install_desktop_plugin():
@@ -40,7 +39,6 @@ def register(ctx):
     _sidecar = sidecar
     bridge.sidecar = sidecar
     events.register_platform(ctx, sidecar)
-    register_tools(ctx, sidecar)
     for name, schema, handler in (
         ("index_read_intents", schemas.INDEX_READ_INTENTS, tools.index_read_intents),
         ("index_create_intent", schemas.INDEX_CREATE_INTENT, tools.index_create_intent),

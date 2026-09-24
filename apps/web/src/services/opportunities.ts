@@ -251,7 +251,7 @@ export const createOpportunitiesService = (
     opportunityId: string,
     scope?: { intentId: string },
   ): Promise<{
-    conversationId: string;
+    conversationId?: string;
     counterpartUserId: string;
     opportunity: PresentedOpportunity;
   }> => {
@@ -259,7 +259,7 @@ export const createOpportunitiesService = (
       ? `/intents/${encodeURIComponent(scope.intentId)}/opportunities/${encodeURIComponent(opportunityId)}/start-chat`
       : `/opportunities/${opportunityId}/start-chat`;
     return api.post<{
-      conversationId: string;
+      conversationId?: string;
       counterpartUserId: string;
       opportunity: PresentedOpportunity;
     }>(path, {});

@@ -106,11 +106,12 @@ jobs:
       - name: Check client
         run: bun run --cwd packages/client check
 
-      - name: Check Hermes negotiator runtime
-        run: bun run --cwd packages/hermes-plugin typecheck:runtime && bun run --cwd packages/hermes-plugin build:runtime
-
-      - name: Check agent TUI
-        run: bun run --cwd packages/agent-tui check && bun run --cwd packages/agent-tui build
+      - name: Check Hermes plugin builds
+        run: |
+          bun run --cwd packages/hermes-plugin typecheck:runtime
+          bun run --cwd packages/hermes-plugin build:runtime
+          bun run --cwd packages/hermes-plugin build:desktop
+          git diff --exit-code -- packages/hermes-plugin/runtime/dist/negotiator.js packages/hermes-plugin/desktop/dist/plugin.js
 
   protocol-architecture:
     # Keep the architectural dependency checks visible as separate CI checks so

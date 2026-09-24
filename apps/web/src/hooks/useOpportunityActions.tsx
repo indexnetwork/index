@@ -50,11 +50,12 @@ export function useOpportunityActions({
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
           const result = await opportunitiesService.startChat(opportunityId, scope);
-          setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
+          setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: result.opportunity.status }));
           onRemove?.(opportunityId);
-          refreshConversations();
-          // Always route to the h2h chat page (`/u/:peer/chat` renders `ChatView`).
-          navigate(`/u/${result.counterpartUserId ?? fallbackUserId ?? ""}/chat`);
+          if (result.conversationId) {
+            refreshConversations();
+            navigate(`/u/${result.counterpartUserId ?? fallbackUserId ?? ""}/chat`);
+          }
         } catch (error) {
           showError(error instanceof Error ? error.message : "Failed to start chat");
         } finally {
@@ -88,9 +89,11 @@ export function useOpportunityActions({
       setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
       try {
         const result = await opportunitiesService.startChat(opportunityId, scope);
-        setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
-        refreshConversations();
-        navigate(`/u/${result.counterpartUserId ?? counterpartUserId}/chat`);
+        setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: result.opportunity.status }));
+        if (result.conversationId) {
+          refreshConversations();
+          navigate(`/u/${result.counterpartUserId ?? counterpartUserId}/chat`);
+        }
       } catch (error) {
         showError(error instanceof Error ? error.message : "Failed to start chat");
       } finally {

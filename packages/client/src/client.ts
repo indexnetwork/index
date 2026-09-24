@@ -234,6 +234,22 @@ export interface Index {
     turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
   ): Promise<NegotiationDetail>;
   /**
+   * Accept one opportunity for this owner. Same write as the MCP `accept_opportunity` tool.
+   *
+   * @param id - Opportunity id.
+   * @returns The opportunity and its new status.
+   * @throws When Index refuses the update.
+   */
+  acceptOpportunity(id: string): Promise<{ opportunityId: string; status: "accepted" }>;
+  /**
+   * Reject one opportunity for this owner. Same write as the MCP `reject_opportunity` tool.
+   *
+   * @param id - Opportunity id.
+   * @returns The opportunity and its new status.
+   * @throws When Index refuses the update.
+   */
+  rejectOpportunity(id: string): Promise<{ opportunityId: string; status: "rejected" }>;
+  /**
    * @param intentId - Signal whose principal conversation to read.
    * @returns The agent DM slice for that signal.
    */
@@ -437,6 +453,18 @@ export class IndexClient implements Index {
       "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/turns`), turn,
     );
     return negotiation;
+  }
+
+  /** @param id - Opportunity id. @returns The opportunity now accepted. */
+  async acceptOpportunity(id: string): Promise<{ opportunityId: string; status: "accepted" }> {
+    await this.request("PATCH", `/opportunities/${encodeURIComponent(id)}/status`, { status: "accepted" });
+    return { opportunityId: id, status: "accepted" };
+  }
+
+  /** @param id - Opportunity id. @returns The opportunity now rejected. */
+  async rejectOpportunity(id: string): Promise<{ opportunityId: string; status: "rejected" }> {
+    await this.request("PATCH", `/opportunities/${encodeURIComponent(id)}/status`, { status: "rejected" });
+    return { opportunityId: id, status: "rejected" };
   }
 
   /**

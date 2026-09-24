@@ -29,6 +29,20 @@
       "when": 1790087919224,
       "tag": "0003_drop_opportunity_outcome_events",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790090000000,
+      "tag": "0004_create_opportunity_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790091000000,
+      "tag": "0005_drop_protocol_network_join_requests",
+      "breakpoints": true
     }
   ]
 }

@@ -158,5 +158,7 @@ export {
   RadarGraphFactory,
 } from "./internal/opportunities/radar/radar.graph.js";
 
-export { readOpportunities, updateOpportunityStatus, deleteOpportunity } from './internal/opportunities/opportunity.graph.modes.js';
+export { readOpportunities } from './internal/opportunities/opportunity.graph.modes.js';
+export { admitOpportunityEvent, projectOpportunity } from './internal/opportunities/opportunity.events.js';
+export type { OpportunityAdmission, OpportunityEventType, OpportunityLogEvent, OpportunityProjection, OpportunityProjectionStatus } from './internal/opportunities/opportunity.events.js';
 export { resolveDiscoveryNetworkScope, renderDiscoveryNetworkContext } from './protocol/discovery.rules.js';

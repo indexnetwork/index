@@ -100,14 +100,6 @@ export interface OpportunityActor {
   userId: Id<'users'>;
   intent?: Id<'intents'>;
   role: string;
-  /**
-   * ISO-8601 timestamp set the first time this actor advanced the opportunity's
-   * state (patient sending, agent accepting, peer "accepting" on draft = sending
-   * under the hood, peer accepting on pending). Once set,
-   * this actor has committed and cannot be the one to subsequently `accept` the
-   * same opportunity — enforced by the self-accept guard in `updateNode`.
-   */
-  actedAt?: string;
 }
 
 /** Individual signal contributing to an opportunity score. */
@@ -467,6 +459,8 @@ export interface Opportunity {
   context: OpportunityContext;
   confidence: string;
   status: OpportunityStatus;
+  /** Actor ids with a `committed` event. Populated by the host on read. */
+  committedActorIds?: string[];
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;

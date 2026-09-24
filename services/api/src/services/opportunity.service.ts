@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
 import { RadarGraphFactory, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
-import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache } from '@indexnetwork/protocol';
+import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache, OpportunityLogEvent } from '@indexnetwork/protocol';
+import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
@@ -595,91 +596,39 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
-    // Self-accept guard: if the caller has already committed (actedAt is set)
-    // and they are trying to accept, block them — the other party must accept.
-    if (status === 'accepted' && callerActor.actedAt) {
-      return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
-    }
+    const event: OpportunityLogEvent | undefined = status === 'accepted'
+      ? { type: 'committed', actorUserId: userId }
+      : status === 'rejected'
+        ? { type: 'declined', actorUserId: null }
+        : status === 'expired'
+          ? { type: 'expired', actorUserId: null }
+          : undefined;
+    if (!event) return { error: 'This opportunity can no longer change.', status: 409 };
 
-    const counterpart = status === 'accepted'
-      ? resolveCounterpart(opp.actors, userId)
-      : undefined;
+    const applied = await recordOpportunityEvent(opportunityId, event);
+    if (!applied.ok) return { error: applied.error, status: 409 };
+    const updated = await this.db.getOpportunity(opportunityId);
+    if (!updated) return { error: 'Opportunity not found', status: 404 };
 
-    if (counterpart) {
-      try {
-        await this.db.getOrCreateDM(userId, counterpart.userId);
-      } catch (err) {
-        updateStatusLogger.error('getOrCreateDM failed; status left untouched', {
-          opportunityId,
-          userId,
-          counterpartUserId: counterpart.userId,
-          error: err,
-        });
-        return { error: 'Failed to create conversation for this opportunity', status: 500 };
-      }
-    }
-
-    let updated: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
-    if (status === 'accepted') {
-      updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
-    } else if (status === 'pending') {
-      updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'pending');
-    } else {
-      // Terminal flips (rejected, expired) — no actor stamp needed.
-      updated = await this.db.updateOpportunityStatus(opportunityId, status);
-    }
-    if (!updated) {
-      return { error: 'Opportunity not found', status: 404 };
-    }
-
-    // The owner's verdict ends the negotiation; Index closes it rather than
-    // asking a seat to decline. Both seats see it closed on their next read.
-    if (status === 'accepted' || status === 'rejected' || status === 'expired') {
+    if (applied.status === 'accepted' || applied.status === 'rejected' || applied.status === 'expired') {
       await this.negotiations.closeForOpportunities([opportunityId]);
     }
 
-    if (!counterpart) {
-      const presented = await this.presentOpportunityForViewer(
-        updated,
-        userId,
-        options?.intentId,
-      );
-      this.schedulePresentationPreload(
-        updated,
-        updated.actors.map((actor) => actor.userId),
-        options?.intentId,
-      );
-      return { opportunity: presented };
-    }
+    const presented = await this.presentOpportunityForViewer(updated, userId, options?.intentId);
+    this.schedulePresentationPreload(updated, updated.actors.map((actor) => actor.userId), options?.intentId);
+    if (!applied.introduction) return { opportunity: presented };
 
-    const counterpartUserId = counterpart.userId;
-
-    if (!options?.intentId) {
-      await this.db.acceptSiblingOpportunities(userId, counterpartUserId, opportunityId).catch((err) => {
-        updateStatusLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
-          opportunityId,
-          userId,
-          counterpartUserId,
-          error: err,
-        });
+    const counterpart = resolveCounterpart(updated.actors, userId);
+    if (!counterpart) return { opportunity: presented };
+    try {
+      await this.db.getOrCreateDM(userId, counterpart.userId);
+    } catch (err) {
+      updateStatusLogger.error('getOrCreateDM failed after the set committed', {
+        opportunityId, userId, counterpartUserId: counterpart.userId, error: err,
       });
+      return { error: 'Failed to create conversation for this opportunity', status: 500 };
     }
-
-    const presented = await this.presentOpportunityForViewer(
-      updated,
-      userId,
-      options?.intentId,
-    );
-    this.schedulePresentationPreload(
-      updated,
-      updated.actors.map((actor) => actor.userId),
-      options?.intentId,
-    );
-
-    return {
-      opportunity: presented,
-      counterpartUserId,
-    };
+    return { opportunity: presented, counterpartUserId: counterpart.userId };
   }
 
   /**
@@ -719,7 +668,7 @@ export class OpportunityService {
     userId: string,
     options?: IntentScopeOptions,
   ): Promise<
-    | { conversationId: string; counterpartUserId: string; opportunity: PresentedOpportunity }
+    | { conversationId?: string; counterpartUserId: string; opportunity: PresentedOpportunity }
     | { error: string; status: number }
   > {
     const opp = await this.db.getOpportunity(opportunityId);
@@ -781,92 +730,44 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
-    // Self-accept guard: if the caller already committed (actedAt is set) they
-    // cannot accept again — the other party must be the one to accept.
-    if (callerActor.actedAt) {
-      return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
-    }
-
     const counterpart = resolveCounterpart(opp.actors, userId);
     if (!counterpart) {
       return { error: 'Opportunity has no counterpart to chat with', status: 400 };
     }
 
-    // Resolve the DM first — independent of opp state, safe to retry if it
-    // throws (opp is still pending/draft/latent, button re-appears).
+    const applied = await recordOpportunityEvent(opportunityId, { type: 'committed', actorUserId: userId });
+    if (!applied.ok) return { error: applied.error, status: 409 };
+    const updated = await this.db.getOpportunity(opportunityId);
+    if (!updated) return { error: 'Failed to accept opportunity', status: 500 };
+    this.schedulePresentationPreload(updated, updated.actors.map((actor) => actor.userId), options?.intentId);
+    const opportunity = await this.presentOpportunityForViewer(updated, userId, options?.intentId);
+    if (!applied.introduction) {
+      return { counterpartUserId: counterpart.userId, opportunity };
+    }
+
     let conversation: { id: string };
     try {
       conversation = await this.db.getOrCreateDM(userId, counterpart.userId);
     } catch (err) {
-      startChatLogger.error('getOrCreateDM failed; opp left untouched', {
-        opportunityId,
-        userId,
-        counterpartUserId: counterpart.userId,
-        error: err,
+      startChatLogger.error('getOrCreateDM failed after the set committed', {
+        opportunityId, userId, counterpartUserId: counterpart.userId, error: err,
       });
       return { error: 'Failed to resolve conversation for this opportunity', status: 500 };
     }
-
     await appendMatchProvenance(this.db, conversation.id, buildMatchProvenance(opp)).catch((err: unknown) => {
       startChatLogger.error('appendMatchProvenance failed (non-blocking)', {
-        conversationId: conversation.id,
-        opportunityId,
-        userId,
-        error: err,
+        conversationId: conversation.id, opportunityId, userId, error: err,
       });
     });
-
-    // Clear hiddenAt so the conversation appears in the sidebar even if the
-    // user previously hid it. This must happen before returning — the frontend
-    // immediately calls refreshConversations() and expects to see the DM.
     await this.db.unhideConversation(userId, conversation.id).catch((err) => {
       startChatLogger.error('unhideConversation failed (non-blocking)', {
-        conversationId: conversation.id,
-        userId,
-        error: err,
+        conversationId: conversation.id, userId, error: err,
       });
     });
-
-    // Only flip status once we know the chat destination exists.
-    const updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
-    if (!updated) {
-      return { error: 'Failed to accept opportunity', status: 500 };
-    }
-
-    // Best-effort side effects — their failure must not block the user from
-    // reaching the chat. The opportunity is already accepted and the DM already
-    // resolved.
     await this.negotiations.closeForOpportunities([opportunityId]).catch((err) => {
-      startChatLogger.error('closeForOpportunities failed (non-blocking)', {
-        opportunityId,
-        userId,
-        error: err,
-      });
+      startChatLogger.error('closeForOpportunities failed (non-blocking)', { opportunityId, userId, error: err });
     });
-    if (!options?.intentId) {
-      await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
-        startChatLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
-          opportunityId,
-          userId,
-          counterpartUserId: counterpart.userId,
-          error: err,
-        });
-      });
-    }
-    this.schedulePresentationPreload(
-      updated,
-      updated.actors.map((actor) => actor.userId),
-      options?.intentId,
-    );
-    return {
-      conversationId: conversation.id,
-      counterpartUserId: counterpart.userId,
-      opportunity: await this.presentOpportunityForViewer(
-        updated,
-        userId,
-        options?.intentId,
-      ),
-    };
+    return { conversationId: conversation.id, counterpartUserId: counterpart.userId, opportunity };
   }
 
   /**

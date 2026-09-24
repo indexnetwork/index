@@ -1,11 +1,10 @@
 """Supervise the Bun process that runs the Index negotiator.
 
-The negotiator is `@indexnetwork/agent`, the same package the hosted Index
-runtime executes, bundled into `runtime/dist/negotiator.js`. This module starts
-it while this machine is the owner's selected negotiator, keeps that child
-alive for the gateway process, and stops it when the platform disconnects or
-the selection moves elsewhere. It holds no negotiation state: scheduling,
-questions, turns, and checkpoints all live inside the agent package.
+The negotiator is `@indexnetwork/agent` on `@indexnetwork/client`, bundled
+into `runtime/dist/negotiator.js`. This module starts it while this machine is
+the owner's selected negotiator, keeps that child alive for the gateway
+process, and stops it when the platform disconnects or the selection moves
+elsewhere. It holds no negotiation state.
 """
 
 from __future__ import annotations
@@ -43,10 +42,11 @@ class Sidecar:
 
     def __init__(self, bridge, home: Path):
         self.bridge = bridge
-        self._state = home / "index-network" / "negotiator"
+        del home
         self._lock = threading.Lock()
         self._process: subprocess.Popen | None = None
         self._wanted: tuple[str, str] | None = None
+        self._paused = False
         self._agent_id = ""
         self._url = ""
         atexit.register(self.stop)
@@ -62,6 +62,7 @@ class Sidecar:
         @param agent_id - The selected external agent's ID.
         """
         with self._lock:
+            self._paused = False
             self._wanted = (account, agent_id)
             if self._process is not None and self._process.poll() is None:
                 if self._agent_id == agent_id:
@@ -69,8 +70,10 @@ class Sidecar:
                 self._terminate()
             if not BUNDLE.exists():
                 raise RuntimeError(f"The Index negotiator bundle is missing at {BUNDLE}.")
+            api_key = os.environ.get("INDEX_API_KEY", "").strip()
+            if not api_key:
+                raise RuntimeError("INDEX_API_KEY is required to run the Index negotiator.")
             self.bridge.start()
-            self._state.mkdir(parents=True, exist_ok=True, mode=0o700)
             from .env_transport import api_origin
 
             # Same process group as the gateway: a group signal reaches Bun too.
@@ -80,9 +83,9 @@ class Sidecar:
                 env={**os.environ,
                      "INDEX_BRIDGE_URL": self.bridge.url,
                      "INDEX_BRIDGE_TOKEN": self.bridge.token,
-                     "INDEX_API_ORIGIN": api_origin(),
+                     "INDEX_API_URL": api_origin(),
+                     "INDEX_API_KEY": api_key,
                      "INDEX_AGENT_ID": agent_id,
-                     "INDEX_STATE_DIR": str(self._state),
                      "INDEX_SUPERVISOR_PID": str(os.getpid())},
             )
             threading.Thread(target=self._relay, args=(process,), name="index-negotiator-log", daemon=True).start()
@@ -99,9 +102,14 @@ class Sidecar:
             ).start()
             logger.info("Index negotiator running for %s on %s", account, self._url)
 
-    def stop(self) -> None:
-        """Ask the negotiator to checkpoint and exit, then release the process."""
+    def stop(self, *, paused: bool = False) -> None:
+        """Ask the negotiator to exit, then release the process.
+
+        @param paused - Keep it stopped while this agent stays selected. The
+        header's Stop sets this; losing the selection does not.
+        """
         with self._lock:
+            self._paused = paused
             self._wanted = None
             if self._process is None:
                 return
@@ -118,24 +126,10 @@ class Sidecar:
         """@returns Whether a negotiator process is alive and reachable."""
         return self._process is not None and self._process.poll() is None
 
-    def wake(self, intent_id: str) -> None:
-        """Reconsider one signal's matches. A failure is logged, not raised: the
-        next Index event wakes the same signal again.
-
-        @param intent_id - The signal an Index event moved.
-        """
-        try:
-            self.call("/wake", {"intentId": intent_id})
-        except Exception as error:  # noqa: BLE001
-            logger.warning("Index negotiator could not work signal %s: %s", intent_id, error)
-
-    def call(self, path: str, payload: dict) -> dict:
-        """@param path - A negotiator control route. @param payload - Its arguments.
-        @returns The negotiator's reply. @throws When it is not running or refuses.
-        """
-        if not self.running:
-            raise RuntimeError("The Index negotiator is not running on this machine.")
-        return self._post(path, payload)
+    @property
+    def paused(self) -> bool:
+        """@returns Whether Stop is holding the negotiator off while it stays selected."""
+        return self._paused
 
     def _post(self, path: str, payload: dict) -> dict:
         request = urllib.request.Request(
@@ -143,7 +137,7 @@ class Sidecar:
             headers={"Authorization": f"Bearer {self.bridge.token}", "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(request, timeout=None if path == "/tool" else CALL_SECONDS) as response:
+            with urllib.request.urlopen(request, timeout=CALL_SECONDS) as response:
                 return json.loads(response.read() or b"{}")
         except urllib.error.HTTPError as exc:
             detail = json.loads(exc.read() or b"{}").get("error") or f"status {exc.code}"

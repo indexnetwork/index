@@ -30,11 +30,12 @@ function formatDate(now: Date): string {
 function systemPrompt(input: RunInput): string {
   return [
     input.instructions,
+    "Write everything in English: every message, question, brief and turn, whatever language the principal, counterpart or anything you read uses.",
     `You are ${input.identity.name}, acting on behalf of ${input.identity.id}.`,
     // Without this the run has no clock, and "next Tuesday" can only be
     // repeated, never resolved.
     `Today is ${formatDate((input.now ?? (() => new Date()))())}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`,
-    `Current intent: ${input.intent.statement}\nEverything you do in this run serves that intent. If something falls outside it, say so rather than acting.`,
+    `Current intent: ${input.intent.statement}\nIntent id: ${input.intent.id}\nEverything you do in this run serves that intent. If something falls outside it, say so rather than acting.`,
   ].join("\n\n");
 }
 

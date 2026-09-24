@@ -22,11 +22,10 @@ The session authenticates you, not an agent. `GET /agents/me` returns the agent 
 
 ## Personal agent
 
-Hermes runs the same negotiator as hosted Index — `@indexnetwork/agent` —
-rather than a second copy of the state machine. The package still owns
-eligibility, one POST per turn, `contextVersion`, the principal inbox, and
-checkpoints. Hermes is only the speaker: it runs constrained `AIAgent` loops
-on Index-platform sessions.
+Hermes runs the same negotiator as hosted Index — `@indexnetwork/agent`
+on `@indexnetwork/client`. The sidecar authenticates with `INDEX_API_KEY`
+and the selected agent id. Hermes supplies one completion per step from the
+gateway model; the negotiator runs its own tools.
 
 Choosing Hermes as your negotiator — in the dashboard under **Settings →
 Advanced**, or in the Index web app — starts a Bun sidecar
@@ -35,34 +34,13 @@ be installed.** It restarts if that child exits, and stops when the gateway
 does or the selection moves. Keep the gateway running. Choosing the hosted
 Index negotiator, or another registered agent, stops the sidecar.
 
-For one signal with N matches the speaker creates **1 think session + N
-speaker sessions**, lazily, and reuses them:
+The sidecar follows Index events itself. Briefs, decisions, stalls, and the
+summary are written on the owner's agent conversation. Turns include
+`?agentId=<agent UUID>` so Index refuses work from an agent that is no
+longer selected.
 
-- Think: `{intentId}:think` — inbox review working transcript
-- Speak: `{opportunityId}` — the A2A working transcript for that match
-
-Settled matches keep their history but are not woken. Your Telegram or Discord
-chat is not one of these sessions. Questions, options, and your answers live on
-the owner's agent DM — one conversation per signal, shown on Discover's signal
-detail and on Index web (`IntentNegotiatorChat`), the same DM the hosted
-negotiator uses.
-
-The plugin follows `GET /events`. A frame that names a signal wakes the
-sidecar; frames close together collapse into one wake. `principal.input` is
-an owner answer or message from that chat and is applied instead of a wake.
-The sidecar reads authoritative state over REST before deciding, and each
-reconnection reconciles against `GET /negotiations`. Type on a think or
-speaker session is ignored.
-
-Negotiation checkpoints stay in one JSON file per signal under
-`$HERMES_HOME/index-network/negotiator/`. Every restored match reads current
-Index state before deciding, and a turn is attempted at most once. Turns
-include `?agentId=<agent UUID>` so Index refuses work from an agent that
-is no longer selected.
-
-Disable the `index` platform in Hermes to stop listening, or change the
-selected executor in Index. The sidecar stops with it. A failed H2A publish
-stays undelivered and is offered again.
+Disable the `index` platform in Hermes to stop the selection check, or change
+the selected executor in Index. The sidecar stops with it.
 
 ## Development
 
@@ -77,10 +55,11 @@ hermes plugins doctor . --ci
 ```
 
 `plugin.yaml` is the static package capability union. Do not edit
-`desktop/dist/plugin.js` or `runtime/dist/negotiator.js` manually.
+`desktop/dist/plugin.js` or `runtime/dist/negotiator.js` manually. Commit
+them after a rebuild; CI fails when they differ from the scripts.
 
 `runtime/` is the negotiator host: it wires `@indexnetwork/agent` to Index
-REST and asks Hermes to speak or think. It is bundled into
-`runtime/dist/negotiator.js` so the published plugin carries no npm
-dependency on the monorepo. Negotiation behaviour is never changed here —
+through `@indexnetwork/client` and asks Hermes for each model step. It is
+bundled into `runtime/dist/negotiator.js` so the published plugin carries no
+npm dependency on the monorepo. Negotiation behaviour is never changed here —
 change `packages/agent` and rebuild.

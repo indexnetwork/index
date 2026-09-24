@@ -51,7 +51,9 @@ function index(messages: ConversationMessage[] = []) {
     discover: async () => { throw new Error("Unexpected discovery"); },
     createOpportunities: async () => { throw new Error("Unexpected opportunity"); },
     listNegotiations: async () => [],
-    listIntentNegotiations: async () => { throw new Error("Unexpected negotiation list"); },
+    listIntentNegotiations: async () => [],
+    acceptOpportunity: async () => { throw new Error("Unexpected accept"); },
+    rejectOpportunity: async () => { throw new Error("Unexpected reject"); },
     getNegotiation: async () => { throw new Error("Unexpected negotiation read"); },
     submitTurn: async () => { throw new Error("Unexpected turn"); },
     principalInbox: async () => ({ conversationId: "conversation-1", messages }),
@@ -113,6 +115,32 @@ test("only a direct reply closes a direct message; a question answer is not one"
   expect(unansweredPrincipalMessage([...pending, { kind: "progress", text: "Working" }])).toEqual({ text: "Hello" });
   expect(unansweredPrincipalMessage(readConversation([message("user", "Hello"), message("agent", "Hello!", "reply")]))).toBeNull();
   expect(unansweredPrincipalMessage(readConversation([message("user", "Hello"), message("user", "Yes", "answer")]))).toBeNull();
+});
+
+test("reject_opportunity records the verdict and the reply reports it", async () => {
+  const { client } = index();
+  const rejected: string[] = [];
+  client.rejectOpportunity = async (id) => {
+    rejected.push(id);
+    return { opportunityId: id, status: "rejected" };
+  };
+  const opportunity = { id: "opp-1", counterpart: "Sean", status: "pending" };
+  const model = new ScriptedModel([
+    call("1", "reject_opportunity", { opportunityId: "opp-1" }),
+    call("2", "reply_principal", { text: "Opportunity rejected: opp-1." }),
+    done,
+  ]);
+  const result = await wake({
+    user,
+    intent,
+    principalConversation: [{ kind: "user", text: "reject sean" }],
+    opportunities: [opportunity],
+    model,
+    client,
+  });
+  expect(rejected).toEqual(["opp-1"]);
+  expect(model.seen[1]!.at(-1)?.content).toBe("Opportunity rejected: opp-1.");
+  expect(result.actions).toEqual([{ type: "reply", text: "Opportunity rejected: opp-1." }]);
 });
 
 test("runWake retries a silent first pass and publishes one direct reply", async () => {

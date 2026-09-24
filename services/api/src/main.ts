@@ -2,7 +2,7 @@ import './startup.env';
 
 import * as Sentry from '@sentry/bun';
 
-import { ModelClient } from '@indexnetwork/agentv2';
+import { ModelClient } from '@indexnetwork/agent';
 
 import { DebugController } from './controllers/debug.controller';
 import { DocsController } from './controllers/docs.controller';

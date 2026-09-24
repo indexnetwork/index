@@ -2285,9 +2285,8 @@ export class ChatDatabaseAdapter {
   async updateOpportunityStatus(
     id: string,
     status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
-    acceptedBy?: string,
   ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy);
+    return this.opportunityAdapter.updateOpportunityStatus(id, status);
   }
 
 
@@ -2319,14 +2318,6 @@ export class ChatDatabaseAdapter {
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
   }
-  async stampOpportunityActorAction(
-    id: string,
-    actorUserId: string,
-    status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
-    acceptedBy?: string,
-  ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.stampOpportunityActorAction(id, actorUserId, status, acceptedBy);
-  }
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
     return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, networkId);
   }
@@ -2352,18 +2343,6 @@ export class ChatDatabaseAdapter {
   async expireStaleOpportunities(): Promise<number> {
     return this.opportunityAdapter.expireStaleOpportunities();
   }
-  async acceptSiblingOpportunities(
-    userId: string,
-    counterpartUserId: string,
-    excludeOpportunityId: string
-  ): Promise<string[]> {
-    return this.opportunityAdapter.acceptSiblingOpportunities(
-      userId,
-      counterpartUserId,
-      excludeOpportunityId
-    );
-  }
-
   // ─────────────────────────────────────────────────────────────────────────────
   // Contact / My Network Operations
   // ─────────────────────────────────────────────────────────────────────────────

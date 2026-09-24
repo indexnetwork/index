@@ -36,8 +36,8 @@ Pushes to `dev` and `main` that touch `apps/mac` run `.github/workflows/mac-app-
 
 | Branch | Release | Download |
 | --- | --- | --- |
-| `dev` | prerelease `mac-dev` | `https://github.com/indexnetwork/index/releases/download/mac-dev/Index.dmg` |
-| `main` | `mac` (latest) | `https://github.com/indexnetwork/index/releases/download/mac/Index.dmg` |
+| `dev` | prerelease `mac-dev` | `https://github.com/indexnetwork/mac-client/releases/download/mac-dev/Index.dmg` |
+| `main` | `mac` (latest) | `https://github.com/indexnetwork/mac-client/releases/download/mac/Index.dmg` |
 
 Required Actions secrets (fail closed if any are missing): `MAC_CODESIGN_P12`, `MAC_CODESIGN_P12_PASSWORD`, `MAC_CODESIGN_IDENTITY`, `MAC_APP_IDENTIFIER_PREFIX`, `MAC_PROVISIONING_PROFILE`, `MAC_NOTARY_KEY`, `MAC_NOTARY_KEY_ID`, `MAC_NOTARY_ISSUER`. Pull requests do not produce a DMG; they stay on the ad-hoc compile in `mac-app-build.yml`.
 
