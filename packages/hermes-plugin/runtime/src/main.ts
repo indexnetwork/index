@@ -1,7 +1,7 @@
 import { IndexClient } from '@indexnetwork/client';
 import type { Model, ModelMessage, ToolDefinition } from '@indexnetwork/agent';
 
-import { startRunner } from '../../../agent/runner/runner.ts';
+import { startRunner } from '@indexnetwork/agent/runner';
 
 interface Bridge {
   url: string;
