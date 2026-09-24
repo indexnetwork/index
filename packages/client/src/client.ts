@@ -464,7 +464,8 @@ export class IndexClient implements Index {
 
   /**
    * Open the user's SSE channel. Reconnects until stopped, resuming from the
-   * last frame it received. JSON calls do not retry.
+   * last frame it received. JSON calls do not retry. When this instance has an
+   * agent id, the request names it as `consumer`.
    *
    * The handshake is delivered once the catch-up behind it is done, so a caller
    * that recovers work it may have missed does that on a stream it can trust.
@@ -499,7 +500,8 @@ export class IndexClient implements Index {
     const read = async () => {
       while (!stopped) {
         try {
-          const response = await fetch(`${this.baseUrl}/api/events`, {
+          const eventsPath = this.agentId ? `/api/events?consumer=${encodeURIComponent(this.agentId)}` : "/api/events";
+          const response = await fetch(`${this.baseUrl}${eventsPath}`, {
             headers: {
               "x-api-key": this.apiKey,
               Accept: "text/event-stream",

@@ -17,7 +17,7 @@ const stop = client.events((event) => {
 |---|---|
 | `INDEX_API_URL` | Origin. Default `http://localhost:3001`. |
 | `INDEX_API_KEY` | Required. Sent as `x-api-key`. |
-| `INDEX_AGENT_ID` | Optional. Fences `submitTurn` and `sendPrincipal`. |
+| `INDEX_AGENT_ID` | Optional. Fences `submitTurn`, `sendPrincipal`, and `events`. |
 
 `new IndexClient({ baseUrl?, apiKey?, agentId? })` fills the same fields. Refuse to construct with no key. Trailing `/` is stripped. Paths are `/api/...`. No `Authorization` header.
 
@@ -32,7 +32,7 @@ const stop = client.events((event) => {
 | `listNegotiations()` | `GET /api/negotiations?state=open` |
 | `getNegotiation(id)` | `GET /api/opportunities/:id/negotiation` |
 | `submitTurn(id, turn)` | `POST /api/opportunities/:id/negotiation/turns` |
-| `events(onEvent)` | `GET /api/events` SSE. Returns a stop handle. |
+| `events(onEvent)` | `GET /api/events` SSE, with `?consumer=` when an agent id is set. Returns a stop handle. |
 | `principalInbox(intentId)` | `GET /api/conversations/agent/messages?intentId=` |
 | `sendPrincipal(intentId, entries)` | `POST /api/conversations/agent/h2a?agentId=` |
 

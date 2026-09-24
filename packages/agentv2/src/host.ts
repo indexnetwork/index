@@ -416,9 +416,10 @@ export async function closeInitiation(client: Index, intent: Intent, runtime: Ru
     client.principalInbox(intent.id),
     client.listIntentNegotiations(intent.id),
   ]);
-  const since = lastSummaryAt(inbox.messages) ?? new Date(now.getTime() - OPENING_MS);
+  const since = lastSummaryAt(inbox.messages);
   const stalled = stalledOpportunities(inbox.messages);
-  const batch = rows.filter((negotiation) => negotiation.intentId === intent.id && new Date(negotiation.createdAt) > since);
+  const batch = rows.filter((negotiation) =>
+    negotiation.intentId === intent.id && (!since || new Date(negotiation.createdAt) > since));
   if (batch.some((negotiation) => stillOpening(negotiation, user.id, stalled, now))) return "pending";
 
   const details = (await Promise.all(

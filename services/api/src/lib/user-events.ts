@@ -256,6 +256,35 @@ export async function ackUserEvent(group: string, record: UserEventRecord): Prom
 }
 
 /**
+ * Acknowledge every entry this group has taken and not yet confirmed.
+ *
+ * @param userId - Owner whose stream to clear.
+ * @param group - Group whose pending entries to drop.
+ */
+export async function ackPendingUserEvents(userId: string, group: string): Promise<void> {
+  const stream = userEventStream(userId);
+  const client = getRedisClient();
+  for (;;) {
+    const rows = await client.xpending(stream, group, '-', '+', 100);
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    const ids = rows.flatMap((row) => (Array.isArray(row) && row[0] != null ? [String(row[0])] : []));
+    if (!ids.length) return;
+    await client.xack(stream, group, ...ids);
+    if (rows.length < 100) return;
+  }
+}
+
+/**
+ * Move a group's last-delivered id to the tail.
+ *
+ * @param userId - Owner whose stream to skip.
+ * @param group - Group that should next read only entries published after this call.
+ */
+export async function skipUserEventGroupToTail(userId: string, group: string): Promise<void> {
+  await getRedisClient().xgroup('SETID', userEventStream(userId), group, '$');
+}
+
+/**
  * Every owner who has a stream. Streams are per user, so a consumer that
  * follows all of them discovers new owners here rather than by pattern.
  *

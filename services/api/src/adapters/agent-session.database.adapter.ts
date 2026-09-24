@@ -163,12 +163,12 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
    * Persist agent-authored H2A on the owner's agent DM.
    *
    * An external speaker names itself and is only allowed to write while it is
-   * still the selected negotiator. Index's own hosted agent names no agent id:
-   * it is the seat of last resort, so there is nothing to revalidate.
+   * still the selected negotiator. The hosted seat names no agent id and is
+   * refused the same way once an external negotiator holds the seat.
    *
    * @param input - Owner, signal, the selected agent when one is speaking, and question/message entries.
    * @returns The inserted conversation messages.
-   * @throws RuntimeConflictError when a named agent is no longer the selected negotiator.
+   * @throws RuntimeConflictError when a named agent is no longer the selected negotiator, or an unnamed caller writes while one is selected.
    */
   static async publishAgentEntries(input: {
     userId: string; intentId: string; agentId?: string; entries: readonly PrincipalMessage[];
@@ -184,6 +184,12 @@ export class AgentSessionDatabaseAdapter implements PrincipalStore {
           eq(agents.handleNegotiations, true), isNull(agents.deletedAt),
         ));
         if (!selected) throw new RuntimeConflictError();
+      } else {
+        const [selected] = await tx.select({ id: agents.id }).from(agents).where(and(
+          eq(agents.ownerId, input.userId), eq(agents.type, 'external'),
+          eq(agents.handleNegotiations, true), isNull(agents.deletedAt),
+        ));
+        if (selected) throw new RuntimeConflictError();
       }
       const inserted: Message[] = [];
       for (const entry of input.entries) {

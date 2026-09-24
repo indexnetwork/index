@@ -16,7 +16,7 @@ import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
 import { intentService } from '../../services/intent.service';
 import { log } from '../log';
-import { ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, type UserEventRecord } from '../user-events';
+import { ackPendingUserEvents, ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, skipUserEventGroupToTail, type UserEventRecord } from '../user-events';
 
 import { HostedIndex } from './hosted.index';
 
@@ -49,6 +49,8 @@ export class HostedAgent {
   private readonly closing = new Set<string>();
   private readonly resettle = new Set<string>();
   private readonly joined = new Set<string>();
+  /** Owners whose seat an external negotiator holds, so this host leaves their stream unread. */
+  private readonly aside = new Set<string>();
   private abort = new AbortController();
   private reader?: ReturnType<typeof createRedisClient>;
   private running = false;
@@ -77,6 +79,10 @@ export class HostedAgent {
    * batch. The group's offset lives in Redis, so a wake reaches exactly one
    * process, and the first pass claims wakes an earlier process read but never
    * acknowledged.
+   *
+   * An owner with an external negotiator is left out of that batch. Pending
+   * entries are acknowledged on the way out, and the group id moves to the
+   * tail only when the seat comes back, so the external period is not replayed.
    */
   private async follow(reader: ReturnType<typeof createRedisClient>): Promise<void> {
     let from: '>' | '0' = '0';
@@ -90,13 +96,27 @@ export class HostedAgent {
           this.joined.add(userId);
         }
 
-        if (!userIds.length) {
+        const selected = new Set(await this.registry.listSelectedNegotiatorOwners());
+        for (const userId of userIds) {
+          if (selected.has(userId)) {
+            if (this.aside.has(userId)) continue;
+            await ackPendingUserEvents(userId, WAKE_GROUP);
+            this.aside.add(userId);
+            continue;
+          }
+          if (!this.aside.has(userId)) continue;
+          await skipUserEventGroupToTail(userId, WAKE_GROUP);
+          this.aside.delete(userId);
+        }
+
+        const seated = userIds.filter((userId) => !this.aside.has(userId));
+        if (!seated.length) {
           await sleep(WAKE_BLOCK_MS);
           continue;
         }
 
         const records = await readUserEventGroup(reader, {
-          group: WAKE_GROUP, consumer: WAKE_GROUP, userIds, from, blockMs: WAKE_BLOCK_MS,
+          group: WAKE_GROUP, consumer: WAKE_GROUP, userIds: seated, from, blockMs: WAKE_BLOCK_MS,
         });
         from = '>';
 
@@ -110,6 +130,7 @@ export class HostedAgent {
         // A restarted Redis has no groups, so the next pass rejoins every stream
         // and picks up whatever this group never acknowledged.
         this.joined.clear();
+        this.aside.clear();
         from = '0';
         await sleep(WAKE_BLOCK_MS);
       }

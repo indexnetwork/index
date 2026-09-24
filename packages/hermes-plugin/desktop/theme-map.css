@@ -235,7 +235,15 @@
 
 /* Gadget-style actions on opportunity cards: square mono buttons in ink color
    (Mac-app flavored), primary inverted to an ink fill. */
-.index-network-desktop-page .index-dashboard__opp-btns .idx-btn {
+/* The compact buttons need less room: the action column is as wide as
+   accept + pass as equal halves, the widest thing in it. */
+.index-network-desktop-page .index-dashboard .index-dashboard__opp-btns,
+.index-network-desktop-page .index-dashboard .index-dashboard__opp-negotiating {
+  width: 8.5rem;
+}
+
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn,
+.index-network-desktop-page .index-dashboard__opp-negotiating {
   border-radius: var(--index-radius, 2px);
   border: 1px solid var(--ui-text-primary, #000);
   background: transparent;
@@ -243,7 +251,7 @@
   font-family: var(--font-mono);
   font-size: 0.72rem;
   letter-spacing: 0.06em;
-  padding: 0.25rem 0.75rem;
+  padding: 0.25rem 0.5rem;
 }
 
 .index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid {
@@ -251,7 +259,8 @@
   color: var(--ui-bg-editor, #fff);
 }
 
-.index-network-desktop-page .index-dashboard__opp-btns .idx-btn:hover:not(:disabled) {
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn:hover:not(:disabled),
+.index-network-desktop-page .index-dashboard__opp-negotiating:hover {
   background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));
 }
 

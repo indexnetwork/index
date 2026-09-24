@@ -1,4 +1,5 @@
-// NewIntent — opening → prepare → recovery (once) → summary → create.
+// NewIntent — opening → prepare → recovery (once) → create. The summary only
+// returns when a create fails, to edit and retry.
 
 const INTENT_STEP = {
   id: "intent",
@@ -36,7 +37,7 @@ function NewIntent({ onDone, onBack }) {
   const cancelledRef = useRef(false);
   useEffect(() => () => { cancelledRef.current = true; }, []);
 
-  const stepIdx = stage === "summary" ? 2 : 1;
+  const stepIdx = stage === "opening" ? 1 : 2;
 
   useEffect(() => {
     setDraft("");
@@ -54,25 +55,27 @@ function NewIntent({ onDone, onBack }) {
       });
       if (cancelledRef.current) return;
       payloadRef.current = result.payload;
+      setFinalDescription(result.payload);
+      // No approval step: a ready draft is created as it stands. After the one
+      // recovery form it is created regardless, and the server's own
+      // preparation has the last word.
       if (result.status === "ready") {
         preparationReceiptRef.current = result.preparationReceipt;
-        setFinalDescription(result.payload);
-        setFeedback("");
-        setStage("summary");
         setThinking(false);
+        void create(result.payload);
         return;
       }
-      setFeedback(result.feedback);
       if (!recoveryUsed) {
+        setFeedback(result.feedback);
         setRecoveryFields(result.recovery ?? []);
         setRecoveryUsed(true);
         setStage("recovery");
         setThinking(false);
         return;
       }
-      setFinalDescription(result.payload);
-      setStage("summary");
+      preparationReceiptRef.current = "";
       setThinking(false);
+      void create(result.payload);
     } catch (_e) {
       if (cancelledRef.current) return;
       setStage("retry");
@@ -93,9 +96,8 @@ function NewIntent({ onDone, onBack }) {
     void runPrepare(answers);
   };
 
-  const create = async () => {
-    if (calibrating || !finalDescription.trim() || finalDescription.length > 65_536) return;
-    const description = finalDescription;
+  const create = async (description) => {
+    if (calibrating || !description.trim() || description.length > 65_536) return;
     setCalibrating(true);
     try {
       const created = await client.intents.create({ description, preparationReceipt: preparationReceiptRef.current });
@@ -105,11 +107,13 @@ function NewIntent({ onDone, onBack }) {
       if (cancelledRef.current) return;
       setCalibrating(false);
       setStage("summary");
-      setFeedback("that didn't go through — try again.");
+      setFeedback(`that didn't go through — ${(_e && _e.message) || "try again."}`);
     }
   };
 
-  if (calibrating) return <Calibrating/>;
+  // Once the follow-up answers are in, the next thing is the signal itself,
+  // so that wait goes straight to the calibrating card.
+  if (calibrating || (thinking && recoveryUsed)) return <Calibrating/>;
 
   return (
     <div style={{
@@ -148,10 +152,12 @@ function NewIntent({ onDone, onBack }) {
               </div>
             </div>
 
+            {/* Reaches the window's edge so the scrollbar sits on the outer
+                line; the 28px inset is carried inside instead. */}
             <div className="mac-scroll" style={{
               flex:1, minHeight:0, overflowY:"auto",
               display:"flex", flexDirection:"column", gap:20,
-              paddingRight:6, paddingBottom:18,
+              marginRight:-28, paddingRight:28, paddingBottom:18,
             }}>
               {turns.map((t) => (
                 <PastTurn key={t.id} step={{ prompt: t.prompt }} answer={t.answer}/>
@@ -176,7 +182,7 @@ function NewIntent({ onDone, onBack }) {
                     onChange={setFinalDescription}
                     note={feedback}
                     canCreate={!!preparationReceiptRef.current}
-                    onCreate={create}
+                    onCreate={() => create(finalDescription)}
                     onRecheck={() => runPrepare()}
                   />
                 </div>
@@ -188,7 +194,7 @@ function NewIntent({ onDone, onBack }) {
                 />
               ) : (
                 <div className="fade-up" style={{ display:"grid", gap:10 }}>
-                  <AgentBubble label={<TurnLabel tag="opening"/>}>{INTENT_STEP.prompt}</AgentBubble>
+                  <AgentBubble label={<TurnLabel/>}>{INTENT_STEP.prompt}</AgentBubble>
                   <div style={{ marginLeft:42, display:"grid", gap:10 }}>
                     {/* One composer box: the send button lives inside it, on a
                         footer strip under the text, rather than as a second box
@@ -273,7 +279,7 @@ function RecoveryFormView({ fields, feedback, onSubmit }) {
 
   return (
     <div className="fade-up" style={{ display:"grid", gap:16 }}>
-      <AgentBubble label={<TurnLabel tag="shape your signal"/>}>
+      <AgentBubble label={<TurnLabel/>}>
         {feedback || "help me understand what you're looking for."}
       </AgentBubble>
       <div style={{ marginLeft:42, display:"grid", gap:18, maxWidth:620 }}>
@@ -347,7 +353,7 @@ function RecoveryFormView({ fields, feedback, onSubmit }) {
             )}
           </div>
         ))}
-        <Btn primary onClick={handleSubmit}>send answer</Btn>
+        <Btn primary onClick={handleSubmit}>create signal</Btn>
       </div>
     </div>
   );
@@ -392,19 +398,13 @@ function AgentBubble({ children, label = null, muted = false }) {
   );
 }
 
-function TurnLabel({ tag, answered = false, who = "your agent" }) {
+function TurnLabel({ who = "your agent" }) {
   return (
     <div style={{
-      display:"flex", gap:8, alignItems:"center", marginBottom:6,
+      marginBottom:6, color:"#8f8f88",
       fontFamily:"var(--mac-mono)", fontSize:11,
       textTransform:"uppercase", letterSpacing:"0.05em",
-    }}>
-      <span style={answered ? { color:"#2f7d4f", fontWeight:600 } : {
-        background:"#fff", color:"#111", border:"1px solid #b9b3a4",
-        padding:"2px 7px", borderRadius:4, fontSize:10, fontWeight:600,
-      }}>{tag}</span>
-      <span style={{ color:"#8f8f88" }}>{who}</span>
-    </div>
+    }}>{who}</div>
   );
 }
 
@@ -438,7 +438,7 @@ function UserBubble({ children }) {
 function PastTurn({ step, answer }) {
   return (
     <div style={{ display:"grid", gap:10 }}>
-      <AgentBubble muted label={<TurnLabel tag="✓ answered" answered/>}>{step.prompt}</AgentBubble>
+      <AgentBubble muted label={<TurnLabel/>}>{step.prompt}</AgentBubble>
       <UserBubble>{answer}</UserBubble>
     </div>
   );
