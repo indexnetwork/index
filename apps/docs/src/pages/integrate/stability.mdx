@@ -1,15 +1,18 @@
 # Stability [What the contract covers]
 
 `@indexnetwork/protocol` follows Semantic Versioning. The public contract is
-exactly the set of symbols exported from the package root; deep imports may
-change in any release.
+exactly the set of symbols exported from the package root. `package.json`
+exports only the root, so deep imports do not resolve at all.
 
-Exports carry one of two tiers:
+The package defines two tiers:
 
-- **Stable** — interfaces, graph factories, agents, and shared schemas. A
-  breaking change requires a major bump.
-- **Experimental** — advanced graph state and internal helpers, marked
-  `@experimental`. These may change in a minor release.
+- **Stable** — the capability classes (`Intents`, `Networks`, `Negotiations`),
+  the negotiation rules, the public API helpers, the host interfaces, the
+  opportunity presenter and radar graph factory, and shared schemas. A breaking
+  change requires a major bump.
+- **Experimental** — meant for advanced graph state and internal helpers marked
+  `@experimental`, which may change in a minor release. No export carries that
+  marker today, so every export is in the stable tier.
 
 Breaking the public surface is allowed and expected at this stage: the major is
 bumped, the change is recorded, and in-repo consumers are updated in the same
