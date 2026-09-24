@@ -1,7 +1,7 @@
 import { IndexClient } from '@indexnetwork/client';
-import type { Model, ModelMessage, ToolDefinition } from '@indexnetwork/agentv2';
+import type { Model, ModelMessage, ToolDefinition } from '@indexnetwork/agent';
 
-import { startRunner } from '../../../agentv2/runner/runner.ts';
+import { startRunner } from '../../../agent/runner/runner.ts';
 
 interface Bridge {
   url: string;
@@ -18,7 +18,7 @@ function required(name: string): string {
   return value;
 }
 
-/** One Hermes gateway completion. Tool execution stays in the agentv2 loop. */
+/** One Hermes gateway completion. Tool execution stays in the agent loop. */
 class HermesModel implements Model {
   constructor(private readonly bridge: Bridge) {}
 

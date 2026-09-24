@@ -19,7 +19,7 @@
     "baseUrl": ".",
     "paths": {
       "@indexnetwork/client": ["../../client/src/index.ts"],
-      "@indexnetwork/agentv2": ["../../agentv2/src/index.ts"]
+      "@indexnetwork/agent": ["../../agent/src/index.ts"]
     }
   },
   "include": ["src"]

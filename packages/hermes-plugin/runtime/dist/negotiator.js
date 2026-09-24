@@ -248,7 +248,7 @@ class IndexClient {
     };
   }
 }
-// ../agentv2/src/tool.ts
+// ../agent/src/tool.ts
 function tool(definition) {
   return definition;
 }
@@ -259,7 +259,7 @@ function toolDefinition(tool2) {
   };
 }
 
-// ../agentv2/src/loop.ts
+// ../agent/src/loop.ts
 function formatDate(now) {
   return now.toLocaleDateString("en-GB", {
     timeZone: "UTC",
@@ -319,7 +319,7 @@ async function result(call, tools) {
   }
 }
 
-// ../agentv2/src/brief.ts
+// ../agent/src/brief.ts
 var BRIEF_LIMIT = 400;
 var DECISIONS = ["continue", "accept", "decline", "stop"];
 var BRIEF_PROMPT = [
@@ -408,7 +408,7 @@ async function briefIfMissing(input) {
   return recorded;
 }
 
-// ../agentv2/src/negotiate.ts
+// ../agent/src/negotiate.ts
 var ACTIONS = ["propose", "counter", "accept", "decline"];
 var SYSTEM_PROMPT = [
   "You negotiate one opportunity on your principal's behalf, from the brief you were given and the record of this negotiation. That is everything you have: you cannot reach your principal, read their conversation, or see their other opportunities.",
@@ -486,7 +486,7 @@ This negotiation:
   return result2 ?? { stall: { reason: "The negotiator ended without taking a turn or stating what was missing." } };
 }
 
-// ../agentv2/src/summary.ts
+// ../agent/src/summary.ts
 var NOTE_LIMIT = 700;
 var SUMMARY_PROMPT = [
   "Write a short note (Max 700 characters) to me about what people are saying, as if you sat in the conversations yourself.",
@@ -554,7 +554,7 @@ async function summarize(input) {
   return note;
 }
 
-// ../agentv2/src/wake.ts
+// ../agent/src/wake.ts
 var WAKE_STEPS = 8;
 var SEARCH_QUERIES = 5;
 var OPEN_LIMIT = 30;
@@ -852,7 +852,7 @@ async function wake(input) {
   return { actions };
 }
 
-// ../agentv2/src/host.ts
+// ../agent/src/host.ts
 var BRIEF = "Brief: ";
 var DECISION = "Decision: ";
 var STALL = "Stall: ";
@@ -1198,7 +1198,7 @@ To ask: ${result2.stall.suggestedAsk}` : result2.stall.reason;
   return result2;
 }
 
-// ../agentv2/runner/runner.ts
+// ../agent/runner/runner.ts
 function startRunner(options) {
   const { client, model, now = () => new Date, log = () => {}, onError = () => {} } = options;
   const abort = new AbortController;

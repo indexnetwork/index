@@ -3,6 +3,10 @@
 
 ## Unreleased
 
+### Changed
+- The bundled negotiator is now published as `@indexnetwork/agent` (formerly
+  `@indexnetwork/agentv2`); behaviour is unchanged.
+
 ### Added
 - Register the Index MCP server (`mcp_servers.index`) while `INDEX_API_KEY` is set, authenticated with `x-api-key`. Clearing the key removes the entry.
 

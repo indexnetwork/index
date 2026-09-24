@@ -1,32 +1,38 @@
-// Public API: a personal agent run by a host on someone's behalf. One
-// identity, scopeable to an intent, with a loop that can stop to ask the
-// party it represents a question.
-export { Agent } from "./core/agent.ts";
-export type { AgentOptions, RunOptions } from "./core/agent.ts";
+// A personal agent. `briefIfMissing` gives a new opportunity the standing
+// state a negotiator needs; `wake` is the think pass over one signal;
+// `negotiate` acts on one opportunity from its brief alone and can never
+// wake its principal's agent; `summarize` writes one note about the talks
+// once the negotiations this seat opened since the last note have all left
+// their opening turn. All are stateless: the caller passes
+// what it read in and persists what comes back. Searching and opening
+// opportunities are the exception — the model triggers those mid-loop, so
+// `wake` calls Index itself.
+export { briefIfMissing } from "./brief.ts";
+export { wake } from "./wake.ts";
+export { negotiate } from "./negotiate.ts";
+export { summarize } from "./summary.ts";
 
-export { NegotiationAgent } from "./negotiation/negotiation.agent.ts";
-export type { Action as NegotiationAction, TurnInput as NegotiationTurn, User as NegotiationUser, Intent as NegotiationIntent, Negotiation, NegotiationClient, NegotiationHost, NegotiationEvent, Speaker } from "./negotiation/negotiation.agent.ts";
-export type { PrincipalMessage, PrincipalQuestion, MatchReference, QuestionScope } from "./negotiation/principal.inbox.ts";
+// One run each, against whatever implements Index: read what the run needs,
+// call it, publish what it produced.
+export { closeInitiation, runNegotiate, runWake } from "./host.ts";
+export type { Runtime } from "./host.ts";
 
-export { askUserTool, defaultTools } from "./core/tools.ts";
-export type { Tool, ToolContext } from "./core/tools.ts";
-
-export { Inbox, TICK_MS } from "./core/inbox.ts";
-export type { InboxEvent, InboxOptions } from "./core/inbox.ts";
-
-export { MemoryMessageStore } from "./core/sessions.ts";
-export { ModelClient } from "./core/model.ts";
-export type { Model, ModelClientOptions, ModelMessage, ModelRequestOptions, ToolDefinition } from "./core/model.ts";
+export { ModelClient } from "./model.ts";
+export type { Model, ModelClientOptions, ModelMessage, ToolDefinition } from "./model.ts";
 
 export type {
-  AgentIdentity,
+  BriefInput,
+  ConversationEntry,
+  Decision,
   Intent,
-  MessageStore,
-  PendingQuestion,
-  RunEnd,
-  RunResult,
-  Step,
-} from "./core/types.ts";
-
-export { MemoryPrincipalStore } from './negotiation/principal.state.ts';
-export type { PrincipalStore, PrincipalState } from './negotiation/principal.state.ts';
+  NegotiateInput,
+  NegotiateResult,
+  NegotiationAction,
+  Opportunity,
+  Stall,
+  Turn,
+  User,
+  WakeAction,
+  WakeInput,
+  WakeResult,
+} from "./types.ts";

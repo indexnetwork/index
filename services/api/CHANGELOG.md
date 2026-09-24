@@ -9,6 +9,12 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- The `agent:tui` development command and `ApiNegotiationHost`, which ran the
+  retired stateful `@indexnetwork/agent` negotiator. The API now depends on the
+  stateless agent (formerly `@indexnetwork/agentv2`) under the name
+  `@indexnetwork/agent`.
+
 ### Changed
 - The hosted personal agent groups its initial negotiations into one readable
   summary on the principal conversation instead of displaying the raw negotiation log.
