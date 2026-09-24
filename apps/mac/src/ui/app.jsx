@@ -153,7 +153,7 @@ function App() {
     if (!nativeAuthed() || !window.IndexApp) return;
     try {
       const loaded = await window.IndexApp.loadSnapshot();
-      if (!loaded || !loaded.snapshot) return;
+      if (!loaded || !loaded.snapshot || !loaded.intentsOk) return;
       const intents = loaded.snapshot.INTENTS || [];
       setSnapshot((prev) => (prev ? { ...prev, INTENTS: intents } : loaded.snapshot));
       Object.assign(window.INDEX_DATA, { INTENTS: intents });
