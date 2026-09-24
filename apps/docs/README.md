@@ -21,15 +21,17 @@ the install avoids that without forcing an `ajv` override on every workspace.
 
 Run `bun install` here before `bun run dev:docs` from the repo root.
 
-## Mermaid diagrams do not render under `vocs dev`
+## Why `bun run dev` is not `vocs dev`
 
-The pipeline diagram on the overview page renders correctly in `bun run build`
-and `bun run preview`, but `vocs dev` shows an error box in its place:
-`dayjs.min.js does not provide an export named 'default'`. Vocs loads `mermaid`
-through a dynamic import inside `node_modules`, so Vite's dependency optimizer
-never pre-bundles `dayjs` and serves it raw. Vocs starts Vite with
-`configFile: false`, so there is no supported way to add an `optimizeDeps`
-override. Check diagrams with `bun run preview`.
+`bun run dev` runs `scripts/dev.js`, a copy of the `vocs dev` command that
+also pre-bundles `mermaid`. Under plain `vocs dev`, Mermaid diagrams show an
+error box instead: `dayjs.min.js doesn't provide an export named 'default'`.
+Vocs loads `mermaid` through a dynamic import inside `node_modules/vocs`, which
+Vite's dependency optimizer skips, so its CommonJS dependency `dayjs` is served
+raw. Vocs starts Vite with `configFile: false`, so the `optimizeDeps` override
+has to live in our own server script. Production builds are unaffected. Return
+to `vocs dev` once Vocs pre-bundles `mermaid` itself. Set `PORT` to change the
+dev port.
 
 ## Why `waku` is pinned
 
