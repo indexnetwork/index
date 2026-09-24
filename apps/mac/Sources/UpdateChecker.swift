@@ -35,11 +35,11 @@ enum UpdateChecker {
     }
 
     static var downloadURL: URL {
-        URL(string: "https://github.com/indexnetwork/index/releases/download/\(releaseTag)/Index.dmg")!
+        URL(string: "https://github.com/indexnetwork/mac-client/releases/download/\(releaseTag)/Index.dmg")!
     }
 
     private static var releaseAPIURL: URL {
-        URL(string: "https://api.github.com/repos/indexnetwork/index/releases/tags/\(releaseTag)")!
+        URL(string: "https://api.github.com/repos/indexnetwork/mac-client/releases/tags/\(releaseTag)")!
     }
 
     /// - Parameter completion: Called on the main queue.
