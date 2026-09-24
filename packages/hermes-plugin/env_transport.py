@@ -8,10 +8,78 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any, Iterator
 
 _DEFAULT_API = "https://protocol.index.network"
 _INDEX_DOMAIN = "index.network"
+NEGOTIATOR_PROFILE = "negotiator"
+
+
+def hermes_env_path() -> Path:
+    """The default Hermes `.env` (overridable for tests via HERMES_ENV_PATH)."""
+    override = os.environ.get("HERMES_ENV_PATH", "").strip()
+    if override:
+        return Path(override)
+    return Path.home() / ".hermes" / ".env"
+
+
+def negotiator_env_path() -> Path | None:
+    """The negotiator profile `.env`, once that profile directory exists."""
+    try:
+        from hermes_cli.profiles import get_profile_dir
+    except ImportError:
+        return None
+    directory = get_profile_dir(NEGOTIATOR_PROFILE)
+    if not directory.is_dir():
+        return None
+    return directory / ".env"
+
+
+def _matches_env_key(line: str, name: str) -> bool:
+    stripped = line.lstrip()
+    return stripped.startswith(f"{name}=") or stripped.startswith(f"export {name}=")
+
+
+def upsert_env_file(path: Path, name: str, value: str) -> None:
+    """Insert or update `NAME=value` in one env file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    replaced = False
+    for index, line in enumerate(lines):
+        if _matches_env_key(line, name):
+            lines[index] = f"{name}={value}"
+            replaced = True
+            break
+    if not replaced:
+        lines.append(f"{name}={value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def remove_env_file(path: Path, name: str) -> None:
+    """Remove every `NAME=` entry from one env file."""
+    if not path.exists():
+        return
+    kept = [line for line in path.read_text(encoding="utf-8").splitlines() if not _matches_env_key(line, name)]
+    path.write_text(("\n".join(kept) + "\n") if kept else "", encoding="utf-8")
+
+
+def upsert_index_env(name: str, value: str, path: Path | None = None) -> None:
+    """Write one env var to the default Hermes env, and Index vars to the negotiator profile too."""
+    upsert_env_file(path or hermes_env_path(), name, value)
+    if path is None and name.startswith("INDEX_"):
+        extra = negotiator_env_path()
+        if extra is not None:
+            upsert_env_file(extra, name, value)
+
+
+def remove_index_env(name: str, path: Path | None = None) -> None:
+    """Remove one env var from the default Hermes env, and Index vars from the negotiator profile too."""
+    remove_env_file(path or hermes_env_path(), name)
+    if path is None and name.startswith("INDEX_"):
+        extra = negotiator_env_path()
+        if extra is not None:
+            remove_env_file(extra, name)
 
 
 def api_origin() -> str:

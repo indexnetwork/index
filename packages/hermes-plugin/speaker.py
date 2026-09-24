@@ -83,9 +83,12 @@ def _record(adapter, messages: list, assistant: dict) -> None:
         return
     from gateway.session import SessionSource
 
+    from .env_transport import NEGOTIATOR_PROFILE
+
     source = SessionSource(
         platform=adapter.platform, chat_id=chat_id, chat_type="dm", chat_name=title,
         user_id=getattr(adapter, "_owner", None) or "index", user_name="Index",
+        profile=NEGOTIATOR_PROFILE,
     )
     entry = store.get_or_create_session(source)
     session_db = store._db_for_key(entry.session_key) if hasattr(store, "_db_for_key") else None
@@ -124,28 +127,42 @@ def complete(payload: dict, adapter=None) -> dict:
     @returns The assistant message. @throws When Hermes has no model or the call fails.
     """
     from agent.auxiliary_client import call_llm
+    from agent.secret_scope import build_profile_secret_scope, reset_secret_scope, set_secret_scope
     from gateway.run import _resolve_gateway_model, _resolve_runtime_agent_kwargs
+    from hermes_cli.profiles import get_profile_dir
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
 
-    runtime = _resolve_runtime_agent_kwargs()
-    model = _resolve_gateway_model()
-    if not model:
-        raise RuntimeError("Hermes has no gateway model configured.")
-    tools = payload.get("tools") or None
-    response = call_llm(
-        messages=payload.get("messages") or [],
-        tools=tools,
-        model=model,
-        provider=runtime.get("provider") or None,
-        base_url=runtime.get("base_url") or None,
-        api_key=runtime.get("api_key") or None,
-        api_mode=runtime.get("api_mode") or None,
-    )
-    choices = getattr(response, "choices", None) or []
-    if not choices:
-        raise RuntimeError("Hermes returned no completion.")
-    assistant = _message(choices[0].message)
+    from .env_transport import NEGOTIATOR_PROFILE
+    from .tools import ensure_negotiator_profile
+
+    ensure_negotiator_profile()
+    home = get_profile_dir(NEGOTIATOR_PROFILE)
+    home_token = set_hermes_home_override(home)
+    secret_token = set_secret_scope(build_profile_secret_scope(home), profile_home=str(home))
     try:
-        _record(adapter, payload.get("messages") or [], assistant)
-    except Exception as error:  # noqa: BLE001 - a session-list write must not drop the turn
-        logger.warning("Index session was not recorded: %s", error)
-    return assistant
+        runtime = _resolve_runtime_agent_kwargs()
+        model = _resolve_gateway_model()
+        if not model:
+            raise RuntimeError("Hermes has no gateway model configured.")
+        tools = payload.get("tools") or None
+        response = call_llm(
+            messages=payload.get("messages") or [],
+            tools=tools,
+            model=model,
+            provider=runtime.get("provider") or None,
+            base_url=runtime.get("base_url") or None,
+            api_key=runtime.get("api_key") or None,
+            api_mode=runtime.get("api_mode") or None,
+        )
+        choices = getattr(response, "choices", None) or []
+        if not choices:
+            raise RuntimeError("Hermes returned no completion.")
+        assistant = _message(choices[0].message)
+        try:
+            _record(adapter, payload.get("messages") or [], assistant)
+        except Exception as error:  # noqa: BLE001 - a session-list write must not drop the turn
+            logger.warning("Index session was not recorded: %s", error)
+        return assistant
+    finally:
+        reset_secret_scope(secret_token)
+        reset_hermes_home_override(home_token)

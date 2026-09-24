@@ -14,11 +14,10 @@ import os
 import platform
 import shutil
 import urllib.parse
-from pathlib import Path
 from subprocess import run as run_process
 from typing import Any
 
-from .env_transport import TransportError
+from .env_transport import NEGOTIATOR_PROFILE, TransportError, upsert_index_env
 from .transport import get_transport, reset_transport, set_transport_for_tests
 
 # Universal-link host for Index deep links. The macOS app claims /c/*, /o/* and
@@ -176,8 +175,26 @@ def local_agent_id() -> str:
     return os.environ.get(_LOCAL_AGENT_ENV, "").strip()
 
 
+def ensure_negotiator_profile() -> None:
+    """Create the negotiator Hermes profile, or reuse it when it already exists.
+
+    Clones model config and `.env` without messaging channels, so a copied bot
+    token cannot make two gateways fight over one bot.
+    """
+    from hermes_cli.profiles import create_profile, get_profile_dir
+
+    directory = get_profile_dir(NEGOTIATOR_PROFILE)
+    identity = ("config.yaml", ".env", "SOUL.md", "profile.yaml", "auth.json", "state.db")
+    if directory.is_dir() and any((directory / name).exists() for name in identity):
+        return
+    try:
+        create_profile(NEGOTIATOR_PROFILE, clone_config=True)
+    except FileExistsError:
+        return
+
+
 def remember_local_agent(agent_id: str) -> None:
-    """Store this install's agent id in the process and `~/.hermes/.env`.
+    """Store this install's agent id in the process and both Hermes env files.
 
     @param agent_id - The Hermes agent registered by this install.
     """
@@ -185,22 +202,8 @@ def remember_local_agent(agent_id: str) -> None:
     if not agent_id:
         return
     os.environ[_LOCAL_AGENT_ENV] = agent_id
-    override = os.environ.get("HERMES_ENV_PATH", "").strip()
-    target = Path(override) if override else Path.home() / ".hermes" / ".env"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    lines = target.read_text(encoding="utf-8").splitlines() if target.exists() else []
-    prefix = f"{_LOCAL_AGENT_ENV}="
-    exported = f"export {_LOCAL_AGENT_ENV}="
-    replaced = False
-    for index, line in enumerate(lines):
-        stripped = line.lstrip()
-        if stripped.startswith(prefix) or stripped.startswith(exported):
-            lines[index] = prefix + agent_id
-            replaced = True
-            break
-    if not replaced:
-        lines.append(prefix + agent_id)
-    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    ensure_negotiator_profile()
+    upsert_index_env(_LOCAL_AGENT_ENV, agent_id)
 
 
 def this_install_selected(agent: dict[str, Any]) -> bool:

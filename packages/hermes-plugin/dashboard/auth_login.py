@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
-from .env_transport import api_origin
+from .env_transport import api_origin, remove_index_env, upsert_index_env
 
 _SESSION_ENV = "INDEX_SESSION_TOKEN"
 _CALLBACK_HOST = "127.0.0.1"
@@ -47,42 +47,20 @@ _lock = threading.Lock()
 _session: "_LoginSession | None" = None
 
 
-def _env_path() -> Path:
-    """Resolve the Hermes `.env` file (overridable for tests via HERMES_ENV_PATH)."""
-    override = os.environ.get("HERMES_ENV_PATH", "").strip()
-    if override:
-        return Path(override)
-    return Path.home() / ".hermes" / ".env"
-
-
-def _matches_key(line: str, name: str) -> bool:
-    stripped = line.lstrip()
-    return stripped.startswith(f"{name}=") or stripped.startswith(f"export {name}=")
-
-
 def upsert_env_var(name: str, value: str, path: Path | None = None) -> None:
-    """Insert or update `NAME=value` in the Hermes `.env`, leaving other vars intact."""
-    target = path or _env_path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    lines = target.read_text(encoding="utf-8").splitlines() if target.exists() else []
-    replaced = False
-    for index, line in enumerate(lines):
-        if _matches_key(line, name):
-            lines[index] = f"{name}={value}"
-            replaced = True
-            break
-    if not replaced:
-        lines.append(f"{name}={value}")
-    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    """Insert or update `NAME=value` in the Hermes `.env`, leaving other vars intact.
+
+    Index vars are also written to the negotiator profile when `path` is omitted.
+    """
+    upsert_index_env(name, value, path)
 
 
 def remove_env_var(name: str, path: Path | None = None) -> None:
-    """Remove every `NAME=` (or `export NAME=`) entry from the Hermes `.env`."""
-    target = path or _env_path()
-    if not target.exists():
-        return
-    kept = [line for line in target.read_text(encoding="utf-8").splitlines() if not _matches_key(line, name)]
-    target.write_text(("\n".join(kept) + "\n") if kept else "", encoding="utf-8")
+    """Remove every `NAME=` (or `export NAME=`) entry from the Hermes `.env`.
+
+    Index vars are also removed from the negotiator profile when `path` is omitted.
+    """
+    remove_index_env(name, path)
 
 
 def persist_session_token(token: str) -> None:
