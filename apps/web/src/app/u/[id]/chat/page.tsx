@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams, useParams, useLocation } from "react-router";
 import { Loader2 } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useUsers, useOpportunities } from "@/contexts/APIContext";
+import { useUsers } from "@/contexts/APIContext";
 import { User } from "@/lib/types";
 import ChatView from "@/components/chat/ChatView";
 import { log } from "@/lib/logger";
@@ -22,11 +22,8 @@ export default function ChatPage() {
   });
   const prefillMessage = initialState?.prefill ?? searchParams.get('msg') ?? undefined;
   const autoSend = initialState?.autoSend ?? false;
-  const pendingOpportunityId = initialState?.opportunityId ?? undefined;
   const { isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
   const usersService = useUsers();
-  const opportunitiesService = useOpportunities();
-  const opportunityAcceptedRef = useRef(false);
   const loginPromptedRef = useRef(false);
 
   const [profileData, setProfileData] = useState<User | null>(null);
@@ -57,16 +54,6 @@ export default function ChatPage() {
     };
     fetchData();
   }, [id, isAuthenticated, authLoading, usersService]);
-
-  const handleFirstMessageSent = async () => {
-    if (!pendingOpportunityId || opportunityAcceptedRef.current) return;
-    opportunityAcceptedRef.current = true;
-    try {
-      await opportunitiesService.updateStatus(pendingOpportunityId, "accepted");
-    } catch (err) {
-      logger.error('Failed to accept opportunity after message sent', { error: err });
-    }
-  };
 
   const handleClose = () => {
     navigate('/');
@@ -109,7 +96,6 @@ export default function ChatPage() {
       initialGroupId={initialGroupId}
       initialMessage={prefillMessage}
       autoSend={autoSend}
-      onFirstMessageSent={pendingOpportunityId ? handleFirstMessageSent : undefined}
       onClose={handleClose}
       onBack={handleBack}
     />

@@ -48,7 +48,6 @@ export type CompositeDatabase = Pick<
   | 'findOpportunitiesByActors'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
-  | 'stampOpportunityActorAction'
   | 'getOrCreateDM'
   | 'getIntent'
   // NetworkGraph subgraph requirements (assign created intents to user's networks)
@@ -100,7 +99,7 @@ export type CompositeDatabase = Pick<
 export type OpportunityDatabase = Pick<Database,
   | 'getProfile' | 'getOpportunity' | 'getOpportunitiesForUser'
   | 'getNetwork' | 'getUser' | 'isNetworkMember' | 'isNetworkOwner'
-  | 'getOrCreateDM' | 'stampOpportunityActorAction' | 'updateOpportunityStatus'
+  | 'getOrCreateDM' | 'updateOpportunityStatus'
 >;
 
 export type OpportunityControllerDatabase = Pick<
@@ -116,7 +115,6 @@ export type OpportunityControllerDatabase = Pick<
   | 'createOpportunityAndExpireIds'
   | 'opportunityExistsBetweenActors'
   | 'findOpportunitiesByActors'
-  | 'acceptSiblingOpportunities'
   | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getUser'
@@ -130,8 +128,6 @@ export type OpportunityControllerDatabase = Pick<
   // owned by OpportunityService — services cannot import other services.
   | 'getOrCreateDM'
   | 'unhideConversation'
-  // Self-accept guard + actedAt stamping on service-layer status flips.
-  | 'stampOpportunityActorAction'
 >;
 
 /**

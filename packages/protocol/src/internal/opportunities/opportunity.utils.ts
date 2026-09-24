@@ -46,24 +46,21 @@ export function canUserSeeOpportunity(
  * Whether an opportunity should appear on the viewer's radar (actionable =
  * has a pending action for this user).
  *
- * Only `pending` is actionable, and only while the viewer has not acted.
- * Acting is per-user, not per-actor-row: re-detection can append duplicate
- * actor rows for the same user without `actedAt`, so any viewer row carrying
- * `actedAt` means the viewer has already decided.
+ * Only `pending` is actionable, and only while the viewer has no `committed` event.
  *
  * The old rules 1-3 were about pre-kickoff states and vouching. Neither
  * exists: a pairing is born `negotiating`, and a negotiating pairing is the
  * agents' to work, not the principal's to action.
  */
 export function isActionableForViewer(
-  actors: Array<{ userId: string; role: string; approved?: boolean; actedAt?: string | null }>,
+  actors: Array<{ userId: string; role: string }>,
   status: string,
-  viewerId: string
+  viewerId: string,
+  committedActorIds: readonly string[] = [],
 ): boolean {
   if (status !== 'pending') return false;
-  const viewerActors = actors.filter((a) => a.userId === viewerId);
-  if (viewerActors.length === 0) return false;
-  return !viewerActors.some((a) => !!a.actedAt);
+  if (!actors.some((actor) => actor.userId === viewerId)) return false;
+  return !committedActorIds.includes(viewerId);
 }
 
 /** Feed category for home composition. */

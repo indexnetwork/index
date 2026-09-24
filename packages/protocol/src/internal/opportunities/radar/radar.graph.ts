@@ -275,7 +275,7 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
       const visibleForRadar = visible.filter((opp) => {
         if (!requestedStatuses.has(opp.status)) return false;
         if (opp.status === 'pending') {
-          return isActionableForViewer(opp.actors, opp.status, state.userId);
+          return isActionableForViewer(opp.actors, opp.status, state.userId, opp.committedActorIds ?? []);
         }
         return true;
       });

@@ -1,8 +1,14 @@
 import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, logger, lte, ne, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
+import { applyOpportunityEvent, committedActorIdsByOpportunity, recordOpportunityEvent, seedOpportunityLog } from '../lib/opportunity/opportunity.command';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 import { exactLivePoolWhere } from './poolquery.shared';
+
+async function attachCommittedActorIds(rows: OpportunityRow[]): Promise<OpportunityRow[]> {
+  const commits = await committedActorIdsByOpportunity(rows.map((row) => row.id));
+  return rows.map((row) => ({ ...row, committedActorIds: commits.get(row.id) ?? [] }));
+}
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
@@ -90,7 +96,7 @@ async function expireEnrichmentSupersededIds(
   const candidates = await tx
     .select({ id: opportunities.id, status: opportunities.status })
     .from(opportunities)
-    .where(inArray(opportunities.id, expireIds))
+    .where(and(inArray(opportunities.id, expireIds), ...(extraWhere ? [extraWhere] : [])))
     // Deterministic lock order: two sweeps whose expire sets overlap queue up
     // behind each other instead of deadlocking on a mirrored acquisition order.
     .orderBy(opportunities.id)
@@ -102,20 +108,11 @@ async function expireEnrichmentSupersededIds(
     logger.info('enricher_skipped_pending', { opportunityIds: protectedIds });
   }
 
-  const now = new Date();
   for (const opportunityId of expireIds) {
     if (protectedIds.includes(opportunityId)) continue;
-    const [row] = await tx
-      .update(opportunities)
-      .set({ status: 'expired', updatedAt: now })
-      .where(and(
-        eq(opportunities.id, opportunityId),
-        // Belt-and-braces: the FOR UPDATE read above already settled the skip,
-        // so this can only matter if that read is ever removed.
-        notInArray(opportunities.status, [...ENRICHMENT_EXPIRY_PROTECTED_STATUSES]),
-        ...(extraWhere ? [extraWhere] : []),
-      ))
-      .returning();
+    const applied = await applyOpportunityEvent(tx, opportunityId, { type: 'expired', actorUserId: null });
+    if (!applied.ok) continue;
+    const [row] = await tx.select().from(opportunities).where(eq(opportunities.id, opportunityId)).limit(1);
     if (row) expired.push(toOpportunityRow(row));
   }
   return expired;
@@ -143,6 +140,7 @@ export class OpportunityDatabaseAdapter {
       .returning();
     if (!row) throw new Error('OpportunityDatabaseAdapter.createOpportunity: no row returned');
     const created = toOpportunityRow(row);
+    await db.transaction((tx) => seedOpportunityLog(tx, created.id, created.status, data.actors.map((actor) => actor.userId)));
     emitOpportunityLifecycleBestEffort(created);
     return created;
   }
@@ -220,6 +218,7 @@ export class OpportunityDatabaseAdapter {
         })
         .returning();
       if (!row) throw new Error('OpportunityDatabaseAdapter.createOpportunityIfNetworkEligible: no row returned');
+      await seedOpportunityLog(tx, row.id, row.status, data.actors.map((actor) => actor.userId));
       return toOpportunityRow(row);
     });
     if (created) emitOpportunityLifecycleBestEffort(created);
@@ -379,6 +378,7 @@ export class OpportunityDatabaseAdapter {
       if (!inserted) {
         throw new Error('OpportunityDatabaseAdapter.persistIntentScopedOpportunityIfNetworkEligible: no row returned');
       }
+      await seedOpportunityLog(tx, inserted.id, inserted.status, data.actors.map((actor) => actor.userId));
 
       const expired = await expireEnrichmentSupersededIds(tx, expireIds, sameTrigger);
       return { created: toOpportunityRow(inserted), expired };
@@ -473,14 +473,21 @@ export class OpportunityDatabaseAdapter {
       };
 
       const reactivate = async (): Promise<OpportunityRow | null> => {
-        const [row] = await tx
-          .update(opportunities)
-          .set({ status, acceptedBy: null, updatedAt: new Date() })
-          .where(and(
-            eq(opportunities.id, id),
-            ...(expectedStatus ? [eq(opportunities.status, expectedStatus)] : []),
-          ))
-          .returning();
+        const event = status === 'pending'
+          ? { type: 'agreed' as const, actorUserId: null }
+          : status === 'rejected'
+            ? { type: 'declined' as const, actorUserId: null }
+            : status === 'expired'
+              ? { type: 'expired' as const, actorUserId: null }
+              : null;
+        if (!event) return null;
+        if (expectedStatus) {
+          const [current] = await tx.select({ status: opportunities.status }).from(opportunities).where(eq(opportunities.id, id)).limit(1);
+          if (current?.status !== expectedStatus) return null;
+        }
+        const applied = await applyOpportunityEvent(tx, id, event);
+        if (!applied.ok) return null;
+        const [row] = await tx.select().from(opportunities).where(eq(opportunities.id, id)).limit(1);
         return row ? toOpportunityRow(row) : null;
       };
 
@@ -522,7 +529,9 @@ export class OpportunityDatabaseAdapter {
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
     const rows = await db.select().from(opportunities).where(eq(opportunities.id, id)).limit(1);
     const row = rows[0];
-    return row ? toOpportunityRow(row) : null;
+    if (!row) return null;
+    const [withCommits] = await attachCommittedActorIds([toOpportunityRow(row)]);
+    return withCommits ?? null;
   }
 
   async findEnrichedReplacementOpportunities(opportunityId: string): Promise<OpportunityRow[]> {
@@ -675,7 +684,7 @@ export class OpportunityDatabaseAdapter {
     if (options?.limit != null) q = q.limit(options.limit) as typeof q;
     if (options?.offset != null) q = q.offset(options.offset) as typeof q;
     const rows = await q;
-    return rows.map(toOpportunityRow);
+    return attachCommittedActorIds(rows.map(toOpportunityRow));
   }
 
   /**
@@ -735,79 +744,23 @@ export class OpportunityDatabaseAdapter {
   async updateOpportunityStatus(
     id: string,
     status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
-    acceptedBy?: string,
   ): Promise<OpportunityRow | null> {
-    if (status === 'accepted' && !acceptedBy) {
-      throw new Error('acceptedBy is required when status is accepted');
-    }
-    const updates: Record<string, unknown> = { status, updatedAt: new Date() };
-    if (status === 'accepted') {
-      updates.acceptedBy = acceptedBy;
-    } else {
-      updates.acceptedBy = null;
-    }
-    const [row] = await db
-      .update(opportunities)
-      .set(updates)
-      .where(eq(opportunities.id, id))
-      .returning();
-    const updated = row ? toOpportunityRow(row) : null;
+    if (status === 'accepted' || status === 'negotiating') return this.getOpportunity(id);
+    const applied = await recordOpportunityEvent(id, {
+      type: status === 'pending' ? 'agreed' : status === 'rejected' ? 'declined' : 'expired',
+      actorUserId: null,
+    });
+    if (!applied.ok) return null;
+    const updated = await this.getOpportunity(id);
     if (updated) {
       emitOpportunityLifecycleBestEffort(updated);
       emitOpportunityTransitionBestEffort(updated);
     }
     return updated;
   }
-
 
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await db.update(opportunities).set({ metadata, updatedAt: new Date() }).where(eq(opportunities.id, id));
-  }
-
-  async stampOpportunityActorAction(
-    id: string,
-    actorUserId: string,
-    status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
-    acceptedBy?: string,
-  ): Promise<OpportunityRow | null> {
-    if (status === 'accepted' && !acceptedBy) {
-      throw new Error('acceptedBy is required when status is accepted');
-    }
-    const updated = await db.transaction(async (tx) => {
-      const [locked] = await tx
-        .select({ actors: opportunities.actors })
-        .from(opportunities)
-        .where(eq(opportunities.id, id))
-        .for('update');
-      if (!locked) return null;
-      const nowIso = new Date().toISOString();
-      const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
-        actor.userId === actorUserId
-          ? { ...actor, actedAt: actor.actedAt ?? nowIso }
-          : actor,
-      );
-      const updates: Record<string, unknown> = {
-        actors: updatedActors,
-        status,
-        updatedAt: new Date(),
-      };
-      if (status === 'accepted') {
-        updates.acceptedBy = acceptedBy;
-      } else {
-        updates.acceptedBy = null;
-      }
-      const [row] = await tx
-        .update(opportunities)
-        .set(updates)
-        .where(eq(opportunities.id, id))
-        .returning();
-      return row ? toOpportunityRow(row) : null;
-    });
-    if (updated) {
-      emitOpportunityLifecycleBestEffort(updated);
-      emitOpportunityTransitionBestEffort(updated);
-    }
-    return updated;
   }
 
   async createOpportunityAndExpireIds(
@@ -841,6 +794,7 @@ export class OpportunityDatabaseAdapter {
         })
         .returning();
       if (!inserted) throw new Error('OpportunityDatabaseAdapter.createOpportunityAndExpireIds: no row returned');
+      await seedOpportunityLog(tx, inserted.id, inserted.status, data.actors.map((actor) => actor.userId));
       const created = toOpportunityRow(inserted);
       const expired = await expireEnrichmentSupersededIds(tx, expireIds);
       return { created, expired };
@@ -924,50 +878,13 @@ export class OpportunityDatabaseAdapter {
         })
         .returning();
       if (!inserted) throw new Error('OpportunityDatabaseAdapter.createOpportunityAndExpireIdsIfNetworkEligible: no row returned');
+      await seedOpportunityLog(tx, inserted.id, inserted.status, data.actors.map((actor) => actor.userId));
 
       const expired = await expireEnrichmentSupersededIds(tx, expireIds);
       return { created: toOpportunityRow(inserted), expired };
     });
     if (result) emitOpportunityLifecycleBestEffort(result.created);
     return result;
-  }
-
-  /** Condition: opportunity actors contain both userId and counterpartUserId. */
-  private static actorPairCondition(userId: string, counterpartUserId: string) {
-    return and(
-      sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`,
-      sql`${opportunities.actors} @> ${JSON.stringify([{ userId: counterpartUserId }])}::jsonb`
-    );
-  }
-
-  async acceptSiblingOpportunities(
-    userId: string,
-    counterpartUserId: string,
-    excludeOpportunityId: string
-  ): Promise<string[]> {
-    const ids = await db.transaction(async (tx) => {
-      const siblingRows = await tx
-        .select({ id: opportunities.id })
-        .from(opportunities)
-        .where(
-          and(
-            OpportunityDatabaseAdapter.actorPairCondition(userId, counterpartUserId),
-            notInArray(opportunities.status, ['accepted', 'expired', 'rejected']),
-            ne(opportunities.id, excludeOpportunityId)
-          )
-        );
-      const siblingIds = siblingRows.map((r) => r.id);
-      if (siblingIds.length === 0) return [];
-      const now = new Date();
-      await tx
-        .update(opportunities)
-        .set({ status: 'accepted', updatedAt: now })
-        .where(inArray(opportunities.id, siblingIds));
-      return siblingIds;
-    });
-    for (const id of ids) emitOpportunityTransitionBestEffort({ id, status: 'accepted' });
-    await negotiationDatabaseAdapter.closeForOpportunities(ids);
-    return ids;
   }
 
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
@@ -1095,55 +1012,53 @@ export class OpportunityDatabaseAdapter {
     const rows = await db
       .select({ id: opportunities.id })
       .from(opportunities)
-      .where(
-        sql`${opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`
-      );
-    if (rows.length === 0) return 0;
-    const updated = await db
-      .update(opportunities)
-      .set({ status: 'expired', updatedAt: new Date() })
-      .where(
-        and(
-          sql`${opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`
-        )
-      )
-      .returning({ id: opportunities.id });
-    for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
-    return updated.length;
+      .where(sql`${opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`);
+    let expired = 0;
+    for (const row of rows) {
+      const applied = await recordOpportunityEvent(row.id, { type: 'expired', actorUserId: null });
+      if (!applied.ok) continue;
+      emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
+      expired += 1;
+    }
+    return expired;
   }
 
   async expireOpportunitiesForRemovedMember(networkId: string, userId: string): Promise<number> {
-    const updated = await db
-      .update(opportunities)
-      .set({ status: 'expired', updatedAt: new Date() })
-      .where(
-        and(
-          sql`${opportunities.context}->>'networkId' = ${networkId}`,
-          sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`
-        )
-      )
-      .returning({ id: opportunities.id });
-    for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
-    return updated.length;
+    const rows = await db
+      .select({ id: opportunities.id })
+      .from(opportunities)
+      .where(and(
+        sql`${opportunities.context}->>'networkId' = ${networkId}`,
+        sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`,
+      ));
+    let expired = 0;
+    for (const row of rows) {
+      const applied = await recordOpportunityEvent(row.id, { type: 'expired', actorUserId: null });
+      if (!applied.ok) continue;
+      emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
+      expired += 1;
+    }
+    return expired;
   }
 
-  /** Set status to expired for opportunities with expires_at <= now. Skips terminal statuses (accepted, rejected, expired). */
+  /** Append `expired` for opportunities with expires_at <= now. Skips terminal statuses. */
   async expireStaleOpportunities(): Promise<number> {
-    const now = new Date();
-    const updated = await db
-      .update(opportunities)
-      .set({ status: 'expired', updatedAt: now })
-      .where(
-        and(
-          isNotNull(opportunities.expiresAt),
-          lte(opportunities.expiresAt, now),
-          notInArray(opportunities.status, ['accepted', 'rejected', 'expired'])
-        )
-      )
-      .returning({ id: opportunities.id });
-    await negotiationDatabaseAdapter.closeForOpportunities(updated.map((row) => row.id));
-    for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
-    return updated.length;
+    const due = await db
+      .select({ id: opportunities.id })
+      .from(opportunities)
+      .where(and(
+        isNotNull(opportunities.expiresAt),
+        lte(opportunities.expiresAt, new Date()),
+        notInArray(opportunities.status, ['accepted', 'rejected', 'expired']),
+      ));
+    const expiredIds: string[] = [];
+    for (const row of due) {
+      const applied = await recordOpportunityEvent(row.id, { type: 'expired', actorUserId: null });
+      if (applied.ok) expiredIds.push(row.id);
+    }
+    await negotiationDatabaseAdapter.closeForOpportunities(expiredIds);
+    for (const id of expiredIds) emitOpportunityTransitionBestEffort({ id, status: 'expired' });
+    return expiredIds.length;
   }
 
 }

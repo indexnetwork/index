@@ -41,7 +41,7 @@ function displayName(identity: UserIdentity | null | undefined, fallback: string
 
 function actionableRecipientIds(opportunity: OpportunityRow): string[] {
   return [...new Set(opportunity.actors.map(({ userId }) => userId))]
-    .filter((userId) => isActionableForViewer(opportunity.actors, opportunity.status, userId));
+    .filter((userId) => isActionableForViewer(opportunity.actors, opportunity.status, userId, opportunity.committedActorIds ?? []));
 }
 
 function counterpartForRecipient(

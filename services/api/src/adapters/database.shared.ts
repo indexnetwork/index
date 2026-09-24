@@ -276,6 +276,7 @@ export interface OpportunityRow {
   context: schema.OpportunityContext;
   confidence: string;
   status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
+  committedActorIds?: string[];
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
