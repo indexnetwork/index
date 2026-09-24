@@ -5,6 +5,7 @@
     "": {
       "name": "@indexnetwork/docs",
       "dependencies": {
+        "@vitejs/plugin-react": "^6.0.2",
         "mermaid": "^11.17.2",
         "vite": "^8.2.2",
         "vocs": "^2.8.5",
