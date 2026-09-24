@@ -1,7 +1,7 @@
 import "./download.css";
 
 const MAC_TAG = import.meta.env.VITE_PROTOCOL_URL?.includes("dev.") ? "mac-dev" : "mac";
-const MAC_APP_DOWNLOAD_URL = `https://github.com/indexnetwork/index/releases/download/${MAC_TAG}/Index.dmg`;
+const MAC_APP_DOWNLOAD_URL = `https://github.com/indexnetwork/mac-client/releases/download/${MAC_TAG}/Index.dmg`;
 const HERMES_INSTALL_URL =
   "hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1";
 

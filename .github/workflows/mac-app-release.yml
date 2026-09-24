@@ -1,4 +1,6 @@
-# Signs, notarizes, and publishes dist/Index.dmg to a rolling GitHub Release.
+# Signs, notarizes, and publishes dist/Index.dmg to a rolling GitHub Release
+# on indexnetwork/mac-client, the public subtree mirror of apps/mac, so
+# downloads keep working while this repository is private.
 #
 # PRs stay on mac-app-build.yml (ad-hoc compile). This job is the
 # distributable: Developer ID + notarized app + notarized DMG.
@@ -21,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   dmg:
@@ -107,7 +109,9 @@ jobs:
       - name: Publish GitHub Release
         working-directory: apps/mac
         env:
-          GH_TOKEN: ${{ github.token }}
+          # github.token cannot write to another repository.
+          GH_TOKEN: ${{ secrets.SUBTREE_SYNC_PAT }}
+          GH_REPO: indexnetwork/mac-client
           TAG: ${{ steps.channel.outputs.tag }}
           TITLE: ${{ steps.channel.outputs.title }}
           PRERELEASE: ${{ steps.channel.outputs.prerelease }}
@@ -119,7 +123,7 @@ jobs:
             gh release upload "$TAG" dist/Index.dmg --clobber
             gh release edit "$TAG" --title "$TITLE" --notes "$notes"
           elif [ "$PRERELEASE" = "true" ]; then
-            gh release create "$TAG" dist/Index.dmg --target "$GITHUB_SHA" --title "$TITLE" --notes "$notes" --prerelease
+            gh release create "$TAG" dist/Index.dmg --target "$GITHUB_REF_NAME" --title "$TITLE" --notes "$notes" --prerelease
           else
-            gh release create "$TAG" dist/Index.dmg --target "$GITHUB_SHA" --title "$TITLE" --notes "$notes" --latest
+            gh release create "$TAG" dist/Index.dmg --target "$GITHUB_REF_NAME" --title "$TITLE" --notes "$notes" --latest
           fi
