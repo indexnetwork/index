@@ -30,6 +30,7 @@ function formatDate(now: Date): string {
 function systemPrompt(input: RunInput): string {
   return [
     input.instructions,
+    "Write everything in English: every message, question, brief and turn, whatever language the principal, counterpart or anything you read uses.",
     `You are ${input.identity.name}, acting on behalf of ${input.identity.id}.`,
     // Without this the run has no clock, and "next Tuesday" can only be
     // repeated, never resolved.

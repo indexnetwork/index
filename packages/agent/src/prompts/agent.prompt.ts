@@ -35,6 +35,7 @@ export function buildAgentSystemPrompt({ systemPrompt, identity, intent, now }: 
 }): string {
   const parts = [
     systemPrompt,
+    "Write everything in English: every message, question, brief and turn, whatever language the principal, counterpart or anything you read uses.",
     `You are ${identity.name}, acting on behalf of ${identity.id}.`,
     // Without this the agent has no clock, and "next Tuesday" can only
     // be repeated, never resolved.

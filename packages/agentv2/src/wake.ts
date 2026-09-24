@@ -22,7 +22,7 @@ const WAKE_PROMPT = [
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
   "A stall you are reading here for the first time is asked about on this wake. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is waiting on an answer to something nobody has put to them yet, so holding it is how a negotiation stops for good.",
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
-  "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly, in the principal's language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
+  "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly and in English, even when they wrote in another language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
   "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the signal, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
   "Do not invent facts. Do not contradict what your principal's conversation already settled. You never take a negotiation turn yourself.",
 ].join("\n\n");
@@ -257,7 +257,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     tool({
       name: "reach_counterparties",
       description:
-        "Discover people in this signal's communities and open an opportunity with everyone discovered. A query describes the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. Everyone discovered is opened and briefed for you. plan is one sentence to your principal, in their language, about who you are going to look for. Future tense. Not a count, and not a recap of the results. Say discovering and reaching out, never searching.",
+        "Discover people in this signal's communities and open an opportunity with everyone discovered. A query describes the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. Everyone discovered is opened and briefed for you. plan is one sentence to your principal about who you are going to look for. Future tense. Not a count, and not a recap of the results. Say discovering and reaching out, never searching.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -345,7 +345,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
       maxSteps: 2,
       ...(input.now ? { now: input.now } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
-      instructions: "Reply to your principal's unanswered direct message. Call reply_principal exactly once; this run has no other product.",
+      instructions: "Reply to your principal's unanswered direct message in English, even when they wrote in another language. Call reply_principal exactly once; this run has no other product.",
       prompt: JSON.stringify({
         principal: principalFacts(user),
         conversation,
