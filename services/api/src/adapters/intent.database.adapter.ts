@@ -1,9 +1,10 @@
-import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, ne, or, ownIntentsListWhere, sql } from './database.shared';
+import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, or, ownIntentsListWhere, sql } from './database.shared';
 
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { publishUserEvent, publishUserInvalidation, type IntentLifecycleWireStatus } from '../lib/user-events';
+import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 
 
@@ -426,16 +427,21 @@ export class IntentDatabaseAdapter {
    * @returns The number of opportunities expired
    */
   async expireOpportunitiesByIntentActor(intentId: string): Promise<number> {
-    const result = await db.update(schema.opportunities)
-      .set({ status: 'expired', updatedAt: new Date() })
+    const rows = await db
+      .select({ id: schema.opportunities.id })
+      .from(schema.opportunities)
       .where(and(
         sql`${schema.opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`,
-        ne(schema.opportunities.status, 'expired'),
-      ))
-      .returning({ id: schema.opportunities.id });
-    await negotiationDatabaseAdapter.closeForOpportunities(result.map((row) => row.id));
-    for (const row of result) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
-    return result.length;
+        inArray(schema.opportunities.status, ['negotiating', 'pending']),
+      ));
+    const expiredIds: string[] = [];
+    for (const row of rows) {
+      const applied = await recordOpportunityEvent(row.id, { type: 'expired', actorUserId: null });
+      if (applied.ok) expiredIds.push(row.id);
+    }
+    await negotiationDatabaseAdapter.closeForOpportunities(expiredIds);
+    for (const id of expiredIds) emitOpportunityTransitionBestEffort({ id, status: 'expired' });
+    return expiredIds.length;
   }
 
   async getIntentsInNetworkForMember(userId: string, networkNameOrId: string): Promise<ActiveIntentRow[]> {
@@ -646,7 +652,12 @@ export class IntentDatabaseAdapter {
         CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
         WHERE ${schema.opportunities.status} = 'pending'
           AND actor->>'userId' = ${userId}
-          AND actor->>'actedAt' IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM opportunity_events committed
+            WHERE committed.opportunity_id = ${schema.opportunities.id}
+              AND committed.type = 'committed'
+              AND committed.actor_user_id = ${userId}
+          )
           AND (
             ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id
             OR actor->>'intent' = requested.intent_id

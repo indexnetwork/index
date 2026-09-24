@@ -185,10 +185,8 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       if (!opportunity) throw new Error('Opportunity not found');
       if (!canActorSeeOpportunity(opportunity.actors, opportunity.status, authUserId))
         throw new Error('Access denied: opportunity not visible to user');
-      return db.updateOpportunityStatus(id, status, status === 'accepted' ? authUserId : undefined);
+      return db.updateOpportunityStatus(id, status);
     },
-    acceptSiblingOpportunities: (counterpartUserId: string, excludeOpportunityId: string) =>
-      db.acceptSiblingOpportunities(authUserId, counterpartUserId, excludeOpportunityId),
   };
 }
 
@@ -390,21 +388,13 @@ export function createSystemDatabase(
       verifyScope(networkId);
       return db.getOpportunitiesForNetwork(networkId, options);
     },
-    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1], acceptedBy?: string) => {
+    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
       const opportunityNetworkId = opportunity.context?.networkId;
       if (!opportunityNetworkId) throw new Error('Opportunity not found');
       verifyScope(opportunityNetworkId);
-      return acceptedBy ? db.updateOpportunityStatus(id, status, acceptedBy) : db.updateOpportunityStatus(id, status);
-    },
-    stampOpportunityActorAction: async (id: string, actorUserId: string, status: Parameters<ChatDatabaseAdapter['stampOpportunityActorAction']>[2], acceptedBy?: string) => {
-      const opportunity = await db.getOpportunity(id);
-      if (!opportunity) throw new Error('Opportunity not found');
-      const opportunityNetworkId = opportunity.context?.networkId;
-      if (!opportunityNetworkId) throw new Error('Opportunity not found');
-      verifyScope(opportunityNetworkId);
-      return db.stampOpportunityActorAction(id, actorUserId, status, acceptedBy);
+      return db.updateOpportunityStatus(id, status);
     },
     opportunityExistsBetweenActors: (actorIds: string[], networkId: string) => {
       verifyScope(networkId);

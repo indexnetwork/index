@@ -1,5 +1,11 @@
 # Changelog
 
+## 64.0.0
+
+### Breaking changes
+
+- Opportunity status is a projection of an append-only event log (`opened`, `agreed`, `committed`, `declined`, `expired`). Remove `updateOpportunityStatus` and `deleteOpportunity` exports, `stampOpportunityActorAction`, and `acceptSiblingOpportunities`. Drop `accepted_by` and `actors.actedAt`. One person's commit no longer accepts the row or opens a conversation.
+
 ## 63.0.0
 
 ### Breaking changes

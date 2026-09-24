@@ -9,6 +9,7 @@ import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, int
 
 import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-session.database.adapter';
 
+import { applyOpportunityEvent, seedOpportunityLog } from '../lib/opportunity/opportunity.command';
 import { publishNegotiationChange } from '../lib/user-events';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
@@ -308,6 +309,7 @@ export class NegotiationDatabaseAdapter {
           metadata: { evidence: pair.evidence ?? [] },
         } as never).returning();
         if (!row) return null;
+        await seedOpportunityLog(tx, row.id, 'negotiating', [pair.userA, pair.userB]);
 
         const [negotiation] = await tx.insert(negotiations).values({
           pairKey: pair.pairKey,
@@ -499,8 +501,13 @@ export class NegotiationDatabaseAdapter {
           awaitingUserId: decision.awaitingUserId, outcome: decision.outcome,
           settledAt: decision.outcome ? now : null, updatedAt: now,
         }).where(eq(negotiations.id, negotiation.id));
-        await tx.update(opportunities).set({ status: decision.opportunityStatus, updatedAt: now })
-          .where(eq(opportunities.id, opportunityId));
+        if (decision.opportunityStatus === 'pending' || decision.opportunityStatus === 'rejected') {
+          const applied = await applyOpportunityEvent(tx, opportunityId, {
+            type: decision.opportunityStatus === 'pending' ? 'agreed' : 'declined',
+            actorUserId: null,
+          });
+          if (!applied.ok) throw new Error(applied.error);
+        }
         return decision;
       });
     } catch (error) {

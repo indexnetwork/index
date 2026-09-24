@@ -1,5 +1,6 @@
 import { buildProfileFromUser, schema, Conversation, ConversationSession, ConversationSummary, Message, ResolvedParticipant, SYSTEM_AGENT_ID, and, asc, count, db, desc, eq, gt, inArray, intents, isNull, lt, ne, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
+import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
 import { publishConversationMessageEvent } from '../lib/user-events';
 import { log } from '../lib/log';
 
@@ -1075,21 +1076,16 @@ export class ConversationDatabaseAdapter {
   async updateOpportunityStatus(
     id: string,
     status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
-    acceptedBy?: string,
   ): Promise<{ id: string; status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired' } | null> {
-    if (status === 'accepted' && !acceptedBy) throw new Error('acceptedBy is required when status is accepted');
-    const row = await db.transaction(async (tx) => {
-      const updates: Record<string, unknown> = { status, updatedAt: new Date() };
-      updates.acceptedBy = status === 'accepted' ? acceptedBy : null;
-      const [updated] = await tx.update(opportunities).set(updates)
-        .where(eq(opportunities.id, id))
-        .returning({ id: opportunities.id, status: opportunities.status });
-      return updated ?? null;
+    if (status === 'accepted' || status === 'negotiating') return null;
+    const applied = await recordOpportunityEvent(id, {
+      type: status === 'pending' ? 'agreed' : status === 'rejected' ? 'declined' : 'expired',
+      actorUserId: null,
     });
-    if (row) {
-      emitOpportunityLifecycleBestEffort(row);
-      emitOpportunityTransitionBestEffort(row);
-    }
+    if (!applied.ok) return null;
+    const row = { id, status: applied.status };
+    emitOpportunityLifecycleBestEffort(row);
+    emitOpportunityTransitionBestEffort(row);
     return row;
   }
 
