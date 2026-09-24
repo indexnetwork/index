@@ -3,28 +3,33 @@
 A network is the context and privacy boundary within which discovery happens: a
 community, event, or workspace whose members share intents with one another.
 
-The specification calls this a **community**. The API calls it a `network`.
+The user-facing term is **community**. The API calls it a `network`.
 
-## Three admissions
+## Membership and assignment
 
-A network is not a tag. It is the unit of three admissions that discovery must
-intersect before it runs:
+A network is not a tag. Discovery runs inside two boundaries:
 
 - **Membership** — who is inside. The join policy (`anyone` or `invite_only`)
   admits people.
-- **Assignment** — which intents are in this corpus. Owner action admits wants.
-  An [intent](/intent) can belong to several networks at once, each assignment a
-  separate boundary.
-- **Request** — any narrower scope chosen for this run.
+- **Assignment** — which intents are in this corpus. Assigning an intent links
+  it to a network after checking that its owner is a member; it does not score
+  the intent. A new intent with no networks named is shared to all of its
+  owner's networks. An [intent](/intent) can belong to several networks at
+  once, each assignment a separate boundary.
 
 ## Scope
 
-Effective scope is the **intersection** of the three. An empty intersection
-means discovery does not run.
+Discovery searches the networks the searching intent is assigned to. A
+candidate qualifies only if their intent is assigned to one of those networks
+and they are still a member there. An intent assigned to no network finds
+nobody. A discovery request cannot narrow this further: it takes only a query
+and a limit.
 
-A pair is always inside one shared network. Sharing network A does not leak B: a
-broader credential does not expand a narrower request, and access to one
-community must not be used to infer, reveal, or act on another.
+A pair is always inside one shared network. Sharing network A does not leak B:
+access to one community must not be used to infer, reveal, or act on another.
+One exception exists today: accepting an opportunity without naming an intent
+also accepts the pair's opportunities in other networks (see
+[Opportunity](/opportunity#states)).
 
 If two people share network A but not network B, discovery in A can find them
 and discovery in B cannot.
@@ -32,9 +37,6 @@ and discovery in B cannot.
 ## What a network defines
 
 - A purpose or prompt describing what it is for
-- Membership, and how someone joins
-- Agent permissions, which are scoped separately from membership
+- Membership, and how someone joins, with a role for each member (`owner`,
+  `admin`, or `member`)
 - Relevance and privacy expectations for its members
-
-Your personal network represents trusted contacts and direct relationships. It
-is not a public audience.

@@ -4,27 +4,15 @@ A negotiation is a bilateral, turn-based exchange that probes whether there is
 mutual intent, whether the timing is right, whether it is valuable to both
 sides, and everything in between.
 
-Discovery does not introduce people. It opens a negotiation. The protocol is the
-server for that thread: two seats (initiator, responder), one shared log, and no
-wire between agents. Each agent advocates for its own principal.
+Discovery does not introduce people, and it does not open a negotiation on its
+own. It returns ranked candidates. The agent or client then chooses whom to
+open, which creates an [opportunity](/opportunity) in `negotiating` with one
+negotiation inside it.
 
-## The four axes
-
-The probe is four independent axes, scored separately. A turn advances or
-contests an axis; it does not get to collapse them into a vibe.
-
-| Axis | Question |
-| --- | --- |
-| Mutuality | Do both sides actually want this pairing, not merely a topical overlap? |
-| Timing | Is now the right window, or is the fit real and the moment wrong? |
-| Value | Is it reciprocal — does each side get something worth the other's attention? |
-| Constraint-fit | Do the hard limits collide: availability, role, location, what each will not do? |
-
-Settlement is the **minimum** of the four. The weakest axis binds. A timing-fail
-is not a value-fail: a pair can be right and still die because it is early, or
-valuable and still die because a constraint collides.
-
-`accept` is illegal until all four have passed. `decline` on any one is enough.
+The protocol is the server for that thread: two seats (initiator, responder),
+one shared log, and no wire between agents. Each agent advocates for its own
+principal. Turns are free text; the protocol enforces the grammar below, not
+what the agents weigh.
 
 ## Staged disclosure
 
@@ -53,16 +41,17 @@ The log has a grammar:
 
 | Action | Rule |
 | --- | --- |
-| `propose` | Legal only at the head of the log. |
-| `counter` | Every later non-terminal turn. |
-| `accept` | May not follow your own turn, and not until all four axes pass. |
+| `propose` | Makes an offer. Opens the log, or answers a `counter`. Not allowed over the other seat's standing proposal. |
+| `counter` | Questions the other seat's turn without making an offer. Never the first turn. |
+| `accept` | Legal only directly after the other seat's `propose`. A `counter` cannot be accepted; answer it by proposing again. |
 | `decline` | Ends it without agreement. |
 
 The initiator owes turn zero: `propose` or `decline`. An agent acts only for its
 own seat, only on its turn, and only from the current log.
 
 A negotiation allows at most **12 turns** in total. At the limit it stops with
-the outcome undecided — an exhausted negotiation is not a rejection.
+the outcome undecided and the opportunity stays `negotiating` — an exhausted
+negotiation is not a rejection.
 
 ## What an agent may say
 
@@ -77,12 +66,14 @@ its conversations with its own principal.
 
 ## Settlement is not consent
 
-Settlement of the log is **agent-to-agent alignment**, not human consent. Those
-gates stay independent.
+Settlement of the log is **agent-to-agent alignment**, not human consent. A
+negotiation ends with one of three outcomes:
 
-- Aligned on all four axes → placed in front of the two humans as an
-  [opportunity](/opportunity).
-- Any axis failed → dies in the log.
+- `agreed` — a seat accepted the other's proposal. The opportunity moves to
+  `pending`, in front of the two humans.
+- `declined` — a seat declined. The opportunity is `rejected`.
+- `closed` — a person decided first: an owner accepted, rejected, or expired the
+  opportunity, or archived one of the intents.
 
 Silence, errors, and timeouts are never consent and never a decline. If a
 negotiation needs human judgment, the agent stops and asks a small number of

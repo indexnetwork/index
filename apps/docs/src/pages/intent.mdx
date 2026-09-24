@@ -4,22 +4,28 @@ An intent is what you are looking for or what you can offer, declared to the
 protocol by you or your agent. Intents are the primary unit of coordination:
 discovery runs on declared, current wants rather than static profile attributes.
 
-The specification calls this a **signal**. The API calls it an `intent`. They
-are the same object.
+The user-facing term is **signal**. The API, MCP tools, CLI, and database call
+it an `intent`. They are the same object.
 
 ## Admission
 
-Admission is two ordered steps, and the second is not allowed to influence the
-first.
+One model call classifies the utterance and scores it. Admission then checks
+the classification first and the scores second.
 
 ### 1. Classification
 
 The utterance is a speech act, or it is not an intent. A request for someone
 (`directive`), a commitment to do something (`commissive`), or a state change
-(`declaration`) may proceed. An assertion, a biography, a well-wish — noise — is
+(`declaration`) may proceed. An assertion or a biography (`assertive`), a
+well-wish (`expressive`), or anything the model cannot classify (`unknown`) is
 refused here.
 
-Classification does not look at scores.
+A declaration is admitted but stored without a speech-act type: the stored type
+is only `commissive` or `directive`.
+
+The prompt tells the model to classify before it scores. That order is an
+instruction to the model, not a separate step, so the scores and the
+classification come from the same judgement.
 
 ### 2. Felicity
 
@@ -31,22 +37,29 @@ Three conditions are scored independently:
 | Sincerity | Does the form imply a real want or commitment? |
 | Authority | Is this a plausible act for this speaker? |
 
-The admission score is the **minimum** of the three. The weakest condition
-binds: a vivid but insincere want does not pass, and neither does a sincere want
-the speaker has no standing to make.
+Each is scored from 0 to 100. Only clarity gates admission: an intent with
+clarity below 40 is refused. Sincerity and authority are recorded but never
+refuse an intent. Authority is judged from the text alone, because the host
+passes no profile to the model.
 
 ## Two refusals beside scoring
 
 These sit beside felicity and are not the same failure:
 
-- **Underspecification** — too little constraint to evaluate. Entropy is too
-  high, clarity too low.
+- **Underspecification** — too little constraint to evaluate. Semantic entropy
+  is above 0.75, clarity is below 40, or the request is a bare "I need a job".
 - **Unbounded reference** — enough topic, still too large a class of satisfiers
   ("meet creative people"). Missing selectional constraints — role, outcome,
-  location, timeframe, domain, need — keep the class open.
+  location, timeframe, domain, need — keep the class open. Only creation checks
+  this; updates skip it.
 
-Both are **rejected, never rewritten from your profile**. When the protocol
-lacks a constraint, it asks. Repair would be the protocol inventing a want.
+When you create an intent, both are **rejected, not rewritten from your
+profile**. The REST API returns the refusal with feedback, and guided and MCP
+creation ask you for the missing constraint.
+
+Two paths behave differently. An update saves the model's rewrite of your text
+rather than your exact words. A create whose text was edited after preparation
+keeps the preparation's approval and is not admitted again.
 
 ## Lifecycle
 
@@ -56,10 +69,13 @@ An admitted intent still has a lifecycle, independent of admission:
 | --- | --- |
 | `active` | Current and eligible for discovery. |
 | `paused` | Withdrawn from the candidate set without deleting the declaration. |
-| `fulfilled` | The want was met. |
-| `expired` | No longer current. |
 
-Only a current, active intent is eligible for discovery.
+You can switch an intent between `active` and `paused`. An intent ends when you
+archive it. Archiving cannot be undone: it unlinks the intent from its
+networks, closes its negotiations, and expires its opportunities. The schema also
+has `fulfilled` and `expired` states, but nothing sets them today.
+
+Only an active, unarchived intent is eligible for discovery.
 
 ## Privacy types
 
@@ -78,8 +94,9 @@ content is readable**, and **under what condition content is revealed**.
 immediately.
 
 **`network_only`** is in the candidate set only inside the [networks](/network)
-it is assigned to. Assignment is a second admission: an unlinked intent reaches
-nobody. Outside those networks it does not exist.
+it is assigned to. Assignment links the intent to a network after checking
+membership; it does not score the intent. An unlinked intent reaches nobody.
+Outside those networks it does not exist.
 
 **`incognito`** is in the candidate set — matching may proceed on the fact of
 the want — but its content is not readable. Reveal is not a boolean: it is the

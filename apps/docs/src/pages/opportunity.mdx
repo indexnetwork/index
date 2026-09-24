@@ -1,72 +1,79 @@
-# Opportunity [What emerges when negotiating agents align]
+# Opportunity [The record of one pair, from negotiation to decision]
 
-When agents converge — mutual interest confirmed and value established for each
-seat — the alignment is surfaced as an opportunity, along with the reasoning for
-why it is worth each person's time.
+An opportunity is the record of one pair. An agent creates it when it opens a
+[negotiation](/negotiation) with a candidate that discovery returned. The
+negotiation happens inside it. When the agents agree, the opportunity is put in
+front of both people, with the reasoning for why it is worth each person's
+time.
 
 An opportunity is not a retrieval hit, and it is not a chat with n agents on one
 log.
 
 ## Arity
 
-**[Negotiation](/negotiation) stays bilateral.** Probe axes, turn grammar, and
-the disclosure lattice are defined on two seats.
+An opportunity has exactly **two actors** and exactly **one negotiation**. The
+turn grammar and the disclosure lattice are defined on those two seats.
+Multi-party opportunities do not exist yet.
 
-An opportunity may be **n-ary**: pairwise alignments that share a network and
-cannot be explained as a pair without losing the reason are composed into one
-record. A founder plus two complementary specialists is one opportunity with
-three seats — not three separate introductions, and not one five-way thread.
+## What each actor can read
 
-## Surfacing is an admission
+Both actors can read the opportunity as soon as it opens, while it is still
+`negotiating`, and they keep that access in every later state, including
+`rejected`. Discovery results that no agent opened never become opportunities.
 
-The overlap must be specific enough to **explain**, every composed edge must
-have passed agent-to-agent alignment, and the set must share a
-[network](/network).
+The pair must share a [network](/network).
 
-Unevaluable or unaligned edges stay internal. They do not leak into the record.
-Candidate generation is not surfacing.
+## One record, two projections
 
-## One record, n projections
+Each actor reads a card rather than the raw record:
 
-Each named principal gets a card:
-
-- A role-relative explanation — why this set, why you, what you would do
+- An explanation relative to their role — why this pair, why you, what you
+  would do
 - Their own next action
 
-The other seats' private constraints never appear. Two people looking at the
-same opportunity do not see the same paragraph, and a third party does not
-inherit either of those views.
+The other seat's private constraints never appear. When the presenter model
+succeeds, each person gets their own paragraph. When it fails, both get the same
+paragraph drawn from the opportunity's shared reasoning.
 
 ## Two clocks
 
-Independent of arity, an opportunity advances on two separate clocks:
+An opportunity advances on two separate clocks:
 
-1. **Agent-to-agent.** Agents settle each bilateral log. An edge that has not
-   aligned is not composed, and disagreement on any required edge blocks the
-   opportunity.
-2. **Human.** Each principal stamps for themselves. Confirm and decline are
-   per-actor: one seat cannot accept for another, and a seat that has already
-   acted cannot act again.
+1. **Agent-to-agent.** The agents settle the negotiation log. An accepted
+   proposal moves the opportunity to `pending`; a decline moves it to
+   `rejected`.
+2. **Human.** Each actor decides for themselves. One seat cannot accept for
+   another. Accepting a second time is refused; rejecting or expiring stays
+   available to either actor.
 
-The introduction is a third object. It does not exist until every named
-principal has committed. One decline or expiry is terminal for the whole set.
+**One accept opens the connection.** The first actor to accept makes the whole
+opportunity `accepted` and opens a direct conversation between the two people.
+Nothing waits for the other actor. A person's decision also ends a negotiation
+that is still running.
 
-Agent agreement is not enough. A later yes cannot override an earlier refusal,
-and adding a party does not reopen a closed stamp.
+Agent agreement is not enough. A later yes cannot override an earlier refusal.
 
 ## States
 
 | State | Meaning |
 | --- | --- |
-| Draft | A plausible opportunity that has not been surfaced. |
-| Pending | In front of the principals, awaiting per-actor stamps. |
-| Accepted | Every named principal committed; an introduction may proceed. |
-| Rejected | A principal declined. |
-| Expired | It is no longer actionable. |
+| Negotiating | Opened by an agent; the negotiation is running inside it. |
+| Pending | The agents agreed; in front of both people, awaiting a decision. |
+| Accepted | One actor accepted; their conversation is open. |
+| Rejected | An agent declined in the negotiation, or an actor rejected it. |
+| Expired | One of its intents was archived. |
 
-The API exposes these as `draft`, `negotiating`, `pending`, `accepted`,
-`rejected`, and `expired`. Treat `negotiating` as internal process state unless
-you need to act on it.
+The API exposes these as `negotiating`, `pending`, `accepted`, `rejected`, and
+`expired`.
+
+Opportunities have no timeout today: `expired` comes only from archiving an
+intent, and a negotiation that reaches the turn limit stays `negotiating`.
+
+Accepting through `PATCH /api/opportunities/:id/status` or
+`POST /api/opportunities/:id/start-chat`, which name no intent, also accepts
+every other open opportunity between the same two people, in any network and
+including ones still `negotiating`, and closes their negotiations. The
+intent-scoped routes the web and Mac apps use accept only the one opportunity.
 
 Declined, expired, and otherwise terminal opportunities do not advance again on
 their own.
