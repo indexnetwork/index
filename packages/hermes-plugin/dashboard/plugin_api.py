@@ -2091,6 +2091,10 @@ def opportunity_negotiation(opportunity_id: str) -> dict[str, Any]:
             "action": _text(turn.get("action")),
             "text": _text(turn.get("message")),
             "createdAt": _text(turn.get("createdAt")),
+            "roles": [
+                _text(role.get("role") if isinstance(role, dict) else role)
+                for role in _list(turn.get("suggestedRoles"))
+            ],
         })
     return {
         "success": True,
@@ -2100,6 +2104,21 @@ def opportunity_negotiation(opportunity_id: str) -> dict[str, Any]:
             "turns": turns,
         },
     }
+
+
+@full_router.get("/users/{user_id}/negotiations")
+def user_negotiations(user_id: str) -> dict[str, Any]:
+    """Every negotiation the owner's agent has run, via REST `GET /users/:id/negotiations`.
+
+    @returns `{ success, negotiations }`: counterparty, outcome, turn count, timestamps.
+    """
+    user_id = _text(user_id)
+    if not user_id:
+        return {"success": False, "error": "A user id is required."}
+    payload = tools._api_request("GET", f"/users/{quote(user_id, safe='')}/negotiations?limit=50")
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "negotiations": _list(payload.get("negotiations"))}
 
 
 @full_router.get("/agent/conversation")
@@ -2233,36 +2252,6 @@ def update_agent(
     if payload.get("success") is False:
         return payload
     return {"success": True, "agent": _agent_row(payload.get("agent"))}
-
-
-@full_router.get("/negotiations")
-def list_negotiations() -> dict[str, Any]:
-    """The owner's open negotiations via REST `GET /negotiations?state=open`."""
-    payload = tools._api_request("GET", "/negotiations?state=open")
-    if payload.get("success") is False:
-        return payload
-    current_user_id = _text(_fetch_me().get("id"))
-    items: list[dict[str, Any]] = []
-    for negotiation in _list(payload.get("negotiations")):
-        if not isinstance(negotiation, dict):
-            continue
-        counterparty = negotiation.get("counterparty")
-        counterparty = counterparty if isinstance(counterparty, dict) else {}
-        awaiting = _text(negotiation.get("awaitingUserId"))
-        items.append({
-            "id": _text(negotiation.get("id")),
-            "opportunityId": _text(negotiation.get("opportunityId")),
-            "intentId": _text(negotiation.get("intentId")),
-            "name": _text(counterparty.get("name"), "Match"),
-            "avatar": _avatar_url(counterparty.get("avatar")),
-            "statement": _truncate(counterparty.get("statement")),
-            "counterpartUserId": _text(counterparty.get("userId")),
-            # Unassigned turns exist (a settled record clears it), so "theirs"
-            # is never inferred from "not mine".
-            "awaiting": "you" if awaiting and awaiting == current_user_id else ("them" if awaiting else ""),
-            "turnCount": _count(negotiation.get("turnCount")),
-        })
-    return {"success": True, "negotiations": items}
 
 
 def _conversation_stream():

@@ -1082,7 +1082,7 @@
           key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { props.onStartChat(opportunity); },
-        }, acting ? "Working…" : "send message")];
+        }, acting ? "Working…" : "open chat")];
       } else if (opportunity.chatUrl) {
         actionButtons = [React.createElement("a", {
           key: "open", className: "index-dashboard__opp-openchat",
@@ -1179,11 +1179,10 @@
       React.createElement("span", { className: "index-dashboard__intent-dot", "aria-hidden": "true" }),
       React.createElement("div", { className: "index-dashboard__intent-main" },
         React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
-        // Quiet states only: what is waiting rides the count tag instead.
-        !matches || intent.status === "paused"
+        // What is waiting rides the count tag; the meta line only says paused.
+        intent.status === "paused"
           ? React.createElement("div", { className: "index-dashboard__intent-meta" },
-            matches ? null : React.createElement("span", null, "no matches yet"),
-            intent.status === "paused" ? React.createElement("span", null, "paused") : null,
+            React.createElement("span", null, "paused"),
           )
           : null,
       ),
@@ -2317,6 +2316,180 @@
     );
   }
 
+  // A thread's result bucket, as the mac app's negotiation history reads it.
+  function negoResult(thread) {
+    if (thread.outcome === "agreed") return "won";
+    if (thread.outcome === "declined" || thread.outcome === "closed") return "lost";
+    return "open";
+  }
+  const NEGO_GLYPH = { won: "✓", lost: "✕", open: "●" };
+  const NEGO_DETAIL = { won: "opportunity", lost: "no opportunity" };
+
+  function negoFirstName(thread) {
+    return ((thread.counterparty && thread.counterparty.name) || "unknown").split(/\s+/)[0].toLowerCase();
+  }
+
+  function negoClock(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return "--:--:--";
+    const p = function (n) { return String(n).padStart(2, "0"); };
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  /**
+   * Negotiation history, the mac app's stream: every turn from every thread
+   * merged into one chronological tail -f, with a line where each thread
+   * closed (or is still open). Pinned to the bottom unless scrolled up.
+   */
+  function NegotiationStream(props) {
+    const userId = props.userId;
+    const threadsState = React.useState(null); // null = loading
+    const threads = threadsState[0];
+    const setThreads = threadsState[1];
+    const logsState = React.useState({}); // opportunityId -> { turnCount, turns }
+    const logs = logsState[0];
+    const setLogs = logsState[1];
+    const awayState = React.useState(false);
+    const away = awayState[0];
+    const setAway = awayState[1];
+    const failedState = React.useState(false);
+    const failed = failedState[0];
+    const setFailed = failedState[1];
+    const logsRef = React.useRef({});
+    const inflight = React.useRef({});
+    const scrollRef = React.useRef(null);
+    const pinned = React.useRef(true);
+    logsRef.current = logs;
+
+    React.useEffect(function () {
+      if (!userId) return undefined;
+      let dead = false;
+      function load() {
+        fetchPluginJSON(API + "/users/" + encodeURIComponent(userId) + "/negotiations")
+          .then(function (payload) {
+            if (dead) return;
+            if (!payload || payload.success === false) throw new Error("unreadable");
+            setFailed(false);
+            setThreads(Array.isArray(payload.negotiations) ? payload.negotiations : []);
+          })
+          // Keep what is shown; only an empty card says the read failed.
+          .catch(function () { if (!dead) setFailed(true); });
+      }
+      load();
+      const timer = setInterval(load, 3000); // the mac app's cadence
+      return function () { dead = true; clearInterval(timer); };
+    }, [userId]);
+
+    // Turns are not on the list. Read each thread once, and again when its
+    // turn count moves.
+    React.useEffect(function () {
+      (threads || []).forEach(function (thread) {
+        const id = thread.opportunityId;
+        if (!id || !thread.turnCount || inflight.current[id]) return;
+        const hit = logsRef.current[id];
+        if (hit && hit.turnCount === thread.turnCount) return;
+        inflight.current[id] = true;
+        const turnCount = thread.turnCount;
+        fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(id) + "/negotiation")
+          .then(function (payload) {
+            const turns = (payload && payload.negotiation && payload.negotiation.turns) || [];
+            setLogs(function (prev) {
+              const next = Object.assign({}, prev);
+              next[id] = { turnCount: turnCount, turns: turns };
+              return next;
+            });
+          })
+          .catch(function () { /* retried on the next count change */ })
+          .then(function () { delete inflight.current[id]; });
+      });
+    }, [threads]);
+
+    const all = threads || [];
+    const counts = { won: 0, lost: 0, open: 0 };
+    all.forEach(function (thread) { counts[negoResult(thread)] += 1; });
+
+    const events = [];
+    all.forEach(function (thread) {
+      const log = logs[thread.opportunityId];
+      ((log && log.turns) || []).forEach(function (turn) {
+        events.push({ kind: "turn", t: Date.parse(turn.createdAt) || 0, thread: thread, turn: turn });
+      });
+      const at = thread.outcome ? (thread.settledAt || thread.updatedAt) : thread.updatedAt;
+      events.push({ kind: thread.outcome ? "closed" : "open", t: Date.parse(at) || 0, thread: thread, at: at });
+    });
+    events.sort(function (a, b) { return a.t - b.t; });
+
+    React.useLayoutEffect(function () {
+      if (pinned.current && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }, [events.length, logs]);
+
+    function onScroll(e) {
+      const el = e.currentTarget;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+      pinned.current = atBottom;
+      setAway(!atBottom);
+    }
+
+    function jumpLive() {
+      pinned.current = true;
+      setAway(false);
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+
+    function line(ev, i) {
+      const thread = ev.thread;
+      const who = negoFirstName(thread);
+      if (ev.kind !== "turn") {
+        const result = negoResult(thread);
+        const label = ev.kind === "open"
+          ? who + " · open ● " + (thread.turnCount || 0) + "t"
+          : who + " · closed " + NEGO_GLYPH[result] + " " + NEGO_DETAIL[result];
+        return React.createElement("div", { key: ev.kind + thread.id + i, className: "index-dashboard__wire-event index-dashboard__wire-event--" + (ev.kind === "open" ? "open" : result) },
+          React.createElement("span", { className: "index-dashboard__wire-clock" }, negoClock(ev.at)),
+          React.createElement("span", null, "───"),
+          React.createElement("strong", null, label),
+          React.createElement("span", { className: "index-dashboard__wire-rule" }));
+      }
+      const turn = ev.turn;
+      const roles = (turn.roles || []).filter(Boolean).join(" / ");
+      return React.createElement("div", { key: "t" + thread.id + (turn.id || i), className: "index-dashboard__wire-turn" },
+        React.createElement("div", { className: "index-dashboard__wire-turn-head" },
+          React.createElement("span", { className: "index-dashboard__wire-clock" }, negoClock(turn.createdAt)),
+          React.createElement("span", { className: "index-dashboard__wire-tag" }, who),
+          React.createElement("strong", null, turn.mine ? "you.agent" : who + ".agent"),
+          React.createElement("span", null, turn.mine ? "→" : "←"),
+          React.createElement("span", { className: "index-dashboard__wire-action" + (turn.mine ? " index-dashboard__wire-action--mine" : "") }, turn.action || "unknown"),
+          roles ? React.createElement("span", { className: "index-dashboard__wire-roles" }, "roles: " + roles) : null),
+        turn.text ? React.createElement("p", { className: "index-dashboard__wire-text" }, "“" + turn.text + "”") : null);
+    }
+
+    return React.createElement("section", { className: "index-dashboard__wire-card" },
+      React.createElement("div", { className: "index-dashboard__wire-head" },
+        React.createElement("h2", { className: "index-dashboard__card-title" }, "Negotiation history"),
+        React.createElement("span", { className: "index-dashboard__wire-counts" },
+          React.createElement("b", null, all.length), " sessions · ",
+          React.createElement("b", null, counts.won), " ✓ · ",
+          React.createElement("b", null, counts.lost), " ✕ · ",
+          React.createElement("b", null, counts.open), " open")),
+      React.createElement("div", { className: "index-dashboard__wire-log-wrap" },
+        React.createElement("div", { ref: scrollRef, onScroll: onScroll, className: "index-dashboard__wire-log" },
+          React.createElement("div", { className: "index-dashboard__wire-lines" },
+            threads === null
+              ? React.createElement("p", { className: "index-dashboard__wire-note" }, failed ? "couldn't read the wire, retrying…" : "reading the wire…")
+              : events.length === 0
+                ? React.createElement("p", { className: "index-dashboard__wire-empty" }, "nothing on the wire yet, your agent logs every negotiation here as it happens.")
+                : events.map(line),
+            React.createElement("span", { className: "index-dashboard__wire-cursor", "aria-hidden": "true" }, "▌"))),
+        away
+          ? React.createElement("button", { type: "button", className: "index-dashboard__wire-jump", onClick: jumpLive }, "↓ jump to live")
+          : null),
+      React.createElement("div", { className: "index-dashboard__wire-foot" },
+        React.createElement("span", { className: "index-dashboard__live-dot", "aria-hidden": "true" }),
+        React.createElement("span", null, away ? "paused · scrolled into history" : "following"),
+        React.createElement("span", null, "·"),
+        React.createElement("span", null, counts.open + " open session" + (counts.open === 1 ? "" : "s"))));
+  }
+
   // Networks card: "My networks" / "Discover" tabs on the left, a Create button
   // on the right. Create opens the (reviewed) request form as a modal. Owner
   // rows open a detail modal with Access-tab invite links (web parity).
@@ -2426,7 +2599,7 @@
 
   /**
    * New signal, the mac app's flow: opening → prepare → recovery (once) →
-   * summary → create. `onDone(intentId, description)` fires once the signal exists.
+   * create. The summary only returns when a create fails, to edit and retry. `onDone(intentId, description)` fires once the signal exists.
    */
   function NewSignal(props) {
     const stageState = React.useState("opening");
@@ -2479,18 +2652,20 @@
           if (!aliveRef.current) return;
           payloadRef.current = result.payload;
           setDescription(result.payload);
+          // No approval step: a ready draft is created as it stands. After the
+          // one recovery form it is created regardless, and the server's own
+          // preparation has the last word.
           if (result.status === "ready") {
             receiptRef.current = result.preparationReceipt;
-            setFeedback("");
-            setStage("summary");
+            create(result.payload);
           } else if (!recoveryUsedRef.current) {
             recoveryUsedRef.current = true;
             setFeedback(result.feedback || "");
             setRecoveryFields(Array.isArray(result.recovery) ? result.recovery : []);
             setStage("recovery");
           } else {
-            setFeedback(result.feedback || "");
-            setStage("summary");
+            receiptRef.current = "";
+            create(result.payload);
           }
         })
         .catch(function () { if (aliveRef.current) setStage("retry"); })
@@ -2511,8 +2686,9 @@
       runPrepare();
     }
 
-    function create() {
-      if (creating || !description.trim() || description.length > SIGNAL_MAX) return;
+    function create(text) {
+      if (creating || !text.trim() || text.length > SIGNAL_MAX) return;
+      const description = text;
       setCreating(true);
       post("/intents", { description: description, preparationReceipt: receiptRef.current })
         .then(function (created) { if (aliveRef.current) props.onDone(created.intentId, description); })
@@ -2524,9 +2700,13 @@
         });
     }
 
-    if (creating) return React.createElement(SettingUpScreen, { lines: SIGNAL_CALIBRATING });
+    // Once the follow-up answers are in, the next thing is the signal itself,
+    // so that wait goes straight to the creating card.
+    if (creating || (thinking && recoveryUsedRef.current)) {
+      return React.createElement(SettingUpScreen, { lines: SIGNAL_CALIBRATING });
+    }
 
-    const stepIdx = stage === "summary" ? 2 : 1;
+    const stepIdx = stage === "opening" ? 1 : 2;
     const agent = { label: "your agent", id: "" };
     let current;
     if (thinking) {
@@ -2555,12 +2735,12 @@
         ),
         React.createElement("div", null,
           receiptRef.current
-            ? React.createElement(Button, { type: "button", disabled: !description.trim(), onClick: create }, "create this signal")
+            ? React.createElement(Button, { type: "button", disabled: !description.trim(), onClick: function () { create(description); } }, "create this signal")
             : React.createElement(Button, { type: "button", disabled: !description.trim(), onClick: recheck }, "check signal")));
     } else if (stage === "recovery") {
       current = React.createElement(SignalRecovery, { fields: recoveryFields, feedback: feedback, onSubmit: runPrepare });
     } else {
-      current = React.createElement(AgentLine, { speaker: agent, tag: "opening" },
+      current = React.createElement(AgentLine, { speaker: agent },
         React.createElement("p", { className: "index-dashboard__signal-new-strong" }, NEW_SIGNAL_PROMPT),
         React.createElement("form", {
           className: "index-dashboard__signal-new-compose",
@@ -2605,7 +2785,7 @@
         React.createElement("div", { className: "index-dashboard__signal-new-thread" },
           answer
             ? React.createElement(React.Fragment, null,
-              React.createElement(AgentLine, { speaker: agent, tag: "✓ answered" }, React.createElement("p", null, NEW_SIGNAL_PROMPT)),
+              React.createElement(AgentLine, { speaker: agent }, React.createElement("p", null, NEW_SIGNAL_PROMPT)),
               React.createElement("div", { className: "index-dashboard__agent-mine" },
                 React.createElement("div", { className: "index-dashboard__msg-bubble index-dashboard__msg-bubble--mine" }, answer)))
             : null,
@@ -2663,7 +2843,7 @@
       });
       props.onSubmit(answers);
     }
-    return React.createElement(AgentLine, { speaker: { label: "your agent", id: "" }, tag: "shape your signal" },
+    return React.createElement(AgentLine, { speaker: { label: "your agent", id: "" } },
       React.createElement("p", { className: "index-dashboard__signal-new-strong" }, props.feedback || "help me understand what you're looking for."),
       props.fields.map(function (field) {
         const chosen = Array.isArray(values[field.id]) ? values[field.id] : [];
@@ -2704,7 +2884,7 @@
                   onClick: function () { set(writing, setWriting, field.id, true); },
                 }, "write your own")));
       }),
-      React.createElement("div", null, React.createElement(Button, { type: "button", onClick: submit }, "send answer")));
+      React.createElement("div", null, React.createElement(Button, { type: "button", onClick: submit }, "create signal")));
   }
 
   function IntentList(props) {
@@ -3757,75 +3937,6 @@
     );
   }
 
-  /* The open negotiation records behind the radar: one row per match still
-     mid-exchange. Read-only — a turn is the agent's to take, and a match's
-     human decision belongs on its own card. */
-  function NegotiationsList() {
-    const useState = React.useState;
-    const useEffect = React.useEffect;
-    const itemsState = useState(null);
-    const items = itemsState[0];
-    const setItems = itemsState[1];
-    const loadingState = useState(true);
-    const loading = loadingState[0];
-    const setLoading = loadingState[1];
-    const errorState = useState(null);
-    const error = errorState[0];
-    const setError = errorState[1];
-
-    useEffect(function () {
-      fetchPluginJSON(API + "/negotiations")
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Negotiations could not be loaded.");
-          }
-          setItems(Array.isArray(payload.negotiations) ? payload.negotiations : []);
-        })
-        .catch(function (err) { setError(err && err.message ? err.message : String(err)); })
-        .finally(function () { setLoading(false); });
-    }, []);
-
-    if (loading) {
-      return React.createElement("div", { className: "index-dashboard__loading" }, "Loading negotiations…");
-    }
-    if (error) {
-      return React.createElement("div", { className: "index-dashboard__error" }, error);
-    }
-    if (!items || items.length === 0) {
-      return React.createElement("p", { className: "index-dashboard__negos-empty" },
-        "no negotiations yet. your agent will start them for you.");
-    }
-
-    return React.createElement(ProfileField, { label: "In progress (" + formatCount(items.length) + ")" },
-      React.createElement("div", { className: "index-dashboard__negos" },
-      items.map(function (item, index) {
-        const yours = item.awaiting === "you";
-        return React.createElement("article", {
-          key: item.id || item.opportunityId || String(index),
-          className: "index-dashboard__nego",
-        },
-          React.createElement(UserAvatar, {
-            id: item.counterpartUserId,
-            name: item.name,
-            avatar: item.avatar,
-          }),
-          React.createElement("div", { className: "index-dashboard__nego-meta" },
-            React.createElement("strong", { className: "index-dashboard__nego-name" }, item.name),
-            item.statement
-              ? React.createElement("span", { className: "index-dashboard__nego-text" }, item.statement)
-              : null,
-          ),
-          item.awaiting
-            ? React.createElement("span", {
-              className: "index-dashboard__nego-turn" + (yours ? " index-dashboard__nego-turn--yours" : ""),
-            }, yours ? "Your turn \u2192" : "Their turn")
-            : null,
-        );
-      }),
-      ),
-    );
-  }
-
   function ProfilePanel(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
@@ -3862,10 +3973,9 @@
 
     const readOnly = !!props.readOnly;
     const gettingStarted = !!props.gettingStarted;
-    // These two panes own the whole body: neither edits the
-    // profile, so the form's save bar has nothing to do while one is open.
-    const paneTab = !readOnly && !gettingStarted
-      && (tab === "agents" || tab === "negotiations");
+    // The negotiator pane owns the whole body: it does not edit the
+    // profile, so the form's save bar has nothing to do while it is open.
+    const paneTab = !readOnly && !gettingStarted && tab === "agents";
 
     function applyProfile(p) {
       const next = {
@@ -4289,16 +4399,13 @@
         tabButton("profile", "Profile"),
         tabButton("notifications", "Notifications"),
         tabButton("agents", "Negotiator"),
-        tabButton("negotiations", "Negotiations"),
       ),
       panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
       paneTab
-        // Each pane loads its own data, so it opens without waiting on the
+        // The pane loads its own data, so it opens without waiting on the
         // profile fetch behind it.
         ? React.createElement("div", { className: "index-dashboard__profile-body" },
-          tab === "agents"
-            ? React.createElement(NegotiatorSettings)
-            : React.createElement(NegotiationsList),
+          React.createElement(NegotiatorSettings),
         )
         : (loading || (!form && !panelError)
           ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
@@ -5527,6 +5634,9 @@
                 });
               },
             }),
+            summary && summary.currentUserId
+              ? React.createElement(NegotiationStream, { userId: summary.currentUserId })
+              : null,
           ),
         ),
       );
