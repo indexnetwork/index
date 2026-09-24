@@ -867,25 +867,12 @@ def _build_dashboard(
 
 def _plugin_sidecar():
     """The negotiator started by the plugin's Index platform, if this process has one."""
-    plugin = sys.modules.get("hermes_plugins.index_network")
-    return getattr(plugin, "_sidecar", None) if plugin is not None else None
-
-
-def _wake_open_signals(sidecar: Any, owner_id: str) -> list[str]:
-    """Start work on every open negotiation waiting for this owner."""
-    payload = tools._api_request("GET", "/negotiations")
-    if payload.get("success") is False:
-        raise RuntimeError(payload.get("error") or "Could not list negotiations.")
-    woken: list[str] = []
-    for item in _list(payload.get("negotiations")):
-        if not isinstance(item, dict) or item.get("settledAt") or item.get("awaitingUserId") != owner_id:
-            continue
-        intent_id = _text(item.get("intentId"))
-        if not intent_id or intent_id in woken:
-            continue
-        sidecar.wake(intent_id)
-        woken.append(intent_id)
-    return woken
+    for name, module in sys.modules.items():
+        if name == "hermes_plugins.index_network" or name.startswith("hermes_plugins.index_network__"):
+            sidecar = getattr(module, "_sidecar", None)
+            if sidecar is not None:
+                return sidecar
+    return None
 
 
 @full_router.get("/sidecar")
@@ -893,13 +880,19 @@ def sidecar_status() -> dict[str, Any]:
     """Whether this machine's negotiator process is running."""
     sidecar = _plugin_sidecar()
     if sidecar is None:
-        return {"success": True, "running": False}
-    return {"success": True, "running": sidecar.running}
+        return {"success": True, "running": False, "paused": False, "status": "Unavailable"}
+    if sidecar.running:
+        status = "Running"
+    elif sidecar.paused:
+        status = "Stopped"
+    else:
+        status = "Off"
+    return {"success": True, "running": sidecar.running, "paused": sidecar.paused, "status": status}
 
 
 @full_router.post("/sidecar/start")
 def sidecar_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Start the negotiator and wake every open signal waiting on this owner."""
+    """Start the negotiator while this Hermes agent is the selected executor."""
     sidecar = _plugin_sidecar()
     if sidecar is None:
         return {"success": False, "error": "The Index plugin is not loaded in this process."}
@@ -907,18 +900,17 @@ def sidecar_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str
         agent = tools.selected_agent()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": str(exc)}
-    if agent.get("type") != "external" or not agent.get("handleNegotiations"):
-        return {"success": False, "error": "Select this Hermes agent to handle negotiations first."}
+    if not tools.this_install_selected(agent):
+        return {"success": False, "error": "This Hermes agent is not the selected negotiator."}
     owner_id = _text(agent.get("ownerId"))
     agent_id = _text(agent.get("id"))
     if not owner_id or not agent_id:
         return {"success": False, "error": "Index did not name this agent's owner."}
     try:
         sidecar.start(owner_id, agent_id)
-        woken = _wake_open_signals(sidecar, owner_id)
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
-        return {"success": False, "error": str(exc)}
-    return {"success": True, "running": sidecar.running, "woken": len(woken)}
+        return {"success": False, "running": sidecar.running, "error": str(exc)}
+    return {"success": True, "running": sidecar.running, "paused": False, "status": "Running" if sidecar.running else "Off"}
 
 
 @full_router.post("/sidecar/stop")
@@ -928,10 +920,82 @@ def sidecar_stop(_body: dict[str, Any] | None = Body(default=None)) -> dict[str,
     if sidecar is None:
         return {"success": True, "running": False}
     try:
-        sidecar.stop()
+        sidecar.stop(paused=True)
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": str(exc)}
-    return {"success": True, "running": sidecar.running}
+    return {"success": True, "running": sidecar.running, "paused": sidecar.paused}
+
+
+_ENVIRONMENTS = {
+    "main": None,
+    "dev": "https://protocol.dev.index.network",
+    "local": "http://localhost:3001",
+}
+
+
+def _environment_name() -> str:
+    """Which of main, dev, or local the process is pointed at."""
+    blob = " ".join(
+        os.environ.get(name, "").strip().lower()
+        for name in ("INDEX_API_URL", "INDEX_APP_BASE_URL")
+    )
+    if any(host in blob for host in ("localhost", "127.0.0.1", "::1")):
+        return "local"
+    if "dev.index.network" in blob:
+        return "dev"
+    return "main"
+
+
+def _apply_environment(name: str) -> None:
+    """Point the Hermes env file and this process at one Index environment.
+
+    Clears the web-origin override so login follows the API. A session from
+    the previous environment is revoked there first, then dropped.
+    """
+    token = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
+    if token:
+        auth_login.revoke_session(token)
+    auth_login.clear_session_token()
+    url = _ENVIRONMENTS[name]
+    if url:
+        auth_login.upsert_env_var("INDEX_API_URL", url)
+        os.environ["INDEX_API_URL"] = url
+    else:
+        auth_login.remove_env_var("INDEX_API_URL")
+        os.environ.pop("INDEX_API_URL", None)
+    auth_login.remove_env_var("INDEX_APP_BASE_URL")
+    os.environ.pop("INDEX_APP_BASE_URL", None)
+    tools.reset_transport()
+    sidecar = _plugin_sidecar()
+    if sidecar is not None and sidecar.running:
+        try:
+            sidecar.stop()
+        except Exception:  # noqa: BLE001 - the switch still stands if the child is stuck.
+            pass
+    try:
+        mcp = _load_module(f"{_runtime_package()}.mcp", _PLUGIN_ROOT / "mcp.py")
+        mcp.sync_index_mcp()
+    except Exception:  # noqa: BLE001 - MCP config is optional to the switch.
+        pass
+    auth_login.clear_session_token()
+
+
+@full_router.get("/environment")
+def environment_get() -> dict[str, Any]:
+    """The Index environment this plugin is talking to."""
+    return {"success": True, "environment": _environment_name()}
+
+
+@full_router.post("/environment")
+def environment_set(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Switch to main, dev, or local. A real switch signs this device out."""
+    name = str((body or {}).get("environment") or "").strip()
+    if name not in _ENVIRONMENTS:
+        return {"success": False, "error": "Choose main, dev, or local."}
+    if name == _environment_name():
+        return {"success": True, "environment": name, "needsLogin": False}
+    _apply_environment(name)
+    return {"success": True, "environment": name, "needsLogin": True}
 
 
 @full_router.get("/auth/status")
@@ -2223,7 +2287,10 @@ def create_agent(body: dict[str, Any] | None = Body(default=None)) -> dict[str, 
     payload = tools._api_request("POST", "/agents", request_body)
     if payload.get("success") is False:
         return payload
-    return {"success": True, "agent": _agent_row(payload.get("agent"))}
+    agent = _agent_row(payload.get("agent"))
+    if name.lower() == "hermes" and agent["id"]:
+        tools.remember_local_agent(agent["id"])
+    return {"success": True, "agent": agent}
 
 
 @full_router.patch("/agents/{agent_id}")
@@ -2235,7 +2302,7 @@ def update_agent(
 
     `handleNegotiations: false` is how the hosted Index negotiator is chosen:
     the API clears the owner's binding rather than naming a hosted agent.
-    The event reader follows `GET /agents/me` and starts or stops the sidecar
+    The selection check follows `GET /agents/me` and starts or stops the sidecar
     from that selection.
     """
     agent_id = _text(agent_id)
@@ -2251,7 +2318,10 @@ def update_agent(
     )
     if payload.get("success") is False:
         return payload
-    return {"success": True, "agent": _agent_row(payload.get("agent"))}
+    agent = _agent_row(payload.get("agent"))
+    if handle and str(agent.get("name") or "").lower() == "hermes" and agent["id"]:
+        tools.remember_local_agent(agent["id"])
+    return {"success": True, "agent": agent}
 
 
 def _conversation_stream():

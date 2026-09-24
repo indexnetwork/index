@@ -8,11 +8,17 @@ import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .speaker import run_session
+from .speaker import complete as complete_turn
 
 logger = logging.getLogger(__name__)
 
 MAX_BODY = 8 * 1024 * 1024
+
+
+class _BridgeServer(ThreadingHTTPServer):
+    """Accept a full wake of briefs. The library default queue is 5, and the rest are reset."""
+
+    request_queue_size = 128
 
 
 class HermesBridge:
@@ -31,7 +37,7 @@ class HermesBridge:
     def start(self) -> None:
         if self._server is not None:
             return
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(self))
+        self._server = _BridgeServer(("127.0.0.1", 0), _handler(self))
         threading.Thread(target=self._server.serve_forever, name="index-bridge", daemon=True).start()
         logger.info("Index bridge listening on %s", self.url)
 
@@ -41,10 +47,11 @@ class HermesBridge:
             server.shutdown()
             server.server_close()
 
-    def speak(self, payload: dict) -> dict:
-        if self.adapter is None or self.sidecar is None:
-            raise RuntimeError("The Index platform is not connected.")
-        return run_session(self.adapter, self.sidecar, payload)
+    def complete(self, payload: dict) -> dict:
+        """@param payload - Messages and tool definitions for one model step.
+        @returns The assistant message. Tools are not executed here.
+        """
+        return complete_turn(payload, self.adapter)
 
 
 def _handler(bridge: HermesBridge):
@@ -63,8 +70,8 @@ def _handler(bridge: HermesBridge):
             except ValueError:
                 return self._send(400, {"error": "The request body must be an object."})
             try:
-                if self.path == "/speak":
-                    return self._send(200, bridge.speak(payload))
+                if self.path == "/complete":
+                    return self._send(200, bridge.complete(payload))
             except Exception as error:  # noqa: BLE001
                 logger.warning("Index bridge %s failed: %s", self.path, error)
                 return self._send(502, {"error": str(error)})

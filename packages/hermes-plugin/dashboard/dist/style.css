@@ -488,6 +488,21 @@
   cursor: pointer;
 }
 
+.index-dashboard__hdr-sidecar-status {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  white-space: nowrap;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.index-dashboard__hdr-sidecar-status--on {
+  color: var(--color-success, #3d9a5b);
+}
+
 .index-dashboard__hdr-sidecar {
   display: inline-flex;
   align-items: center;
@@ -744,8 +759,39 @@
   flex: 0 0 auto;
   width: 120px;
   height: 84px;
-  object-fit: contain;
   align-self: center;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.index-dashboard__env-menu {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  min-width: 7rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.35));
+  border-radius: var(--index-radius, 2px);
+  background: var(--color-card, #fff);
+}
+
+.index-dashboard__env-item {
+  padding: 0.35rem 0.6rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.index-dashboard__env-item--on,
+.index-dashboard__env-item:hover {
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 35%, transparent);
 }
 
 .index-dashboard__pitch-title {

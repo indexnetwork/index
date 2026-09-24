@@ -18,7 +18,5 @@ provides_tools:
   - index_read_docs
   - index_agent_me
   - index_open_app
-provides_hooks:
-  - pre_gateway_dispatch
 # The plugin authenticates with the INDEX_SESSION_TOKEN environment variable
 # (this device's own session, obtained via "log in with browser").

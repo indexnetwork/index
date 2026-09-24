@@ -1,9 +1,8 @@
-"""Index events wake the negotiator. Hermes sessions are created on speak."""
+"""Start the negotiator while this machine is the selected executor."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import threading
@@ -14,14 +13,10 @@ from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, SendResult
 
 from .speaker import PLATFORM
-from .tools import selected_agent
-from .transport import get_transport
+from .tools import selected_agent, this_install_selected
 
 logger = logging.getLogger(__name__)
 
-WAKE_TYPES = frozenset({"negotiation.changed", "intent.created", "intent.lifecycle"})
-INPUT_TYPE = "principal.input"
-SETTLE_SECONDS = 2.0
 RECONNECT_SECONDS = 5.0
 
 
@@ -35,36 +30,24 @@ def is_connected(config: PlatformConfig | None = None) -> bool:
 
 
 class IndexAdapter(BasePlatformAdapter):
-    """Follow the owner's event stream and start the sidecar when this machine is selected."""
+    """Follow the selected negotiator and start the sidecar while it is this machine."""
 
     def __init__(self, config: PlatformConfig, sidecar):
         super().__init__(config, Platform(PLATFORM))
         self._sidecar = sidecar
-        self._owner = ""
-        self._pending: set[str] = set()
-        self._inputs: list[dict] = []
         self._closing = False
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._signal: asyncio.Event | None = None
-        self._dispatcher: asyncio.Task | None = None
 
     async def connect(self, *, is_reconnect: bool = False) -> bool:
-        """Start the negotiator with this platform, then follow Index events."""
+        """Start watching the selection. The negotiator reads Index events itself."""
         del is_reconnect
         self._closing = False
-        self._loop = asyncio.get_running_loop()
-        self._signal = asyncio.Event()
         self._sidecar.bridge.adapter = self
-        self._dispatcher = self._loop.create_task(self._dispatch())
-        threading.Thread(target=self._read, name="index-events", daemon=True).start()
+        threading.Thread(target=self._watch, name="index-events", daemon=True).start()
         return True
 
     async def disconnect(self) -> None:
         self._closing = True
         self._sidecar.bridge.adapter = None
-        if self._dispatcher is not None:
-            self._dispatcher.cancel()
-            self._dispatcher = None
         await asyncio.to_thread(self._sidecar.stop)
 
     async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
@@ -74,87 +57,28 @@ class IndexAdapter(BasePlatformAdapter):
         del chat_id, content, reply_to, metadata
         return SendResult(success=False, error="Index sessions are not a delivery target.")
 
-    def _apply(self) -> bool:
-        """Run the negotiator only while this machine is the selected executor.
-
-        @returns Whether Index currently names this Hermes agent for negotiations.
-        """
-        agent = selected_agent()
-        if agent.get("type") != "external" or not agent.get("handleNegotiations"):
+    def _apply(self) -> None:
+        """Run the negotiator only while this install's agent is the selected executor."""
+        try:
+            agent = selected_agent()
+        except Exception:
             self._sidecar.stop()
-            return False
-        self._owner = agent["ownerId"]
-        self._sidecar.start(self._owner, agent["id"])
-        return True
+            return
+        if not this_install_selected(agent):
+            self._sidecar.stop()
+            return
+        if self._sidecar.paused:
+            return
+        self._sidecar.start(agent["ownerId"], agent["id"])
 
-    def _read(self) -> None:
-        """Follow Index events; start/stop already follow the selected executor."""
+    def _watch(self) -> None:
+        """Re-read the selection until the platform disconnects."""
         while not self._closing:
             try:
-                if self._apply():
-                    self._reconcile()
-                    for line in get_transport().stream_sse("/events"):
-                        if self._closing:
-                            return
-                        self._observe(line)
+                self._apply()
             except Exception as error:  # noqa: BLE001
-                logger.warning("Index event stream ended: %s", error)
+                logger.warning("Index negotiator selection check failed: %s", error)
             time.sleep(RECONNECT_SECONDS)
-
-    def _reconcile(self) -> None:
-        result = get_transport().request_rest("GET", "/negotiations")
-        for item in result.get("negotiations") or []:
-            if not item.get("settledAt") and item.get("awaitingUserId") == self._owner:
-                self._queue(item["intentId"])
-
-    def _observe(self, line: bytes) -> None:
-        if not line.startswith(b"data:"):
-            return
-        try:
-            frame = json.loads(line[len(b"data:"):])
-        except ValueError:
-            return
-        data = frame.get("data") or {}
-        intent = data.get("intentId")
-        if frame.get("type") == INPUT_TYPE and intent and isinstance(data.get("text"), str):
-            self._loop.call_soon_threadsafe(self._collect_input, data)
-            return
-        if intent and frame.get("type") in WAKE_TYPES:
-            self._queue(intent)
-
-    def _queue(self, intent: str) -> None:
-        self._loop.call_soon_threadsafe(self._collect, intent)
-
-    def _collect(self, intent: str) -> None:
-        self._pending.add(intent)
-        self._signal.set()
-
-    def _collect_input(self, data: dict) -> None:
-        self._inputs.append(data)
-        self._signal.set()
-
-    def _deliver(self, data: dict) -> None:
-        intent = data["intentId"]
-        text = data["text"]
-        question_id = data.get("questionId")
-        try:
-            if question_id:
-                self._sidecar.call("/answer", {"intentId": intent, "questionId": question_id, "text": text})
-            else:
-                self._sidecar.call("/message", {"intentId": intent, "text": text})
-        except Exception as error:  # noqa: BLE001
-            logger.warning("Index negotiator did not accept owner input for %s: %s", intent, error)
-
-    async def _dispatch(self) -> None:
-        while True:
-            await self._signal.wait()
-            self._signal.clear()
-            await asyncio.sleep(SETTLE_SECONDS)
-            while self._inputs:
-                await asyncio.to_thread(self._deliver, self._inputs.pop(0))
-            while self._pending:
-                intent = self._pending.pop()
-                await asyncio.to_thread(self._sidecar.wake, intent)
 
 
 def register_platform(ctx, sidecar) -> None:
@@ -168,5 +92,5 @@ def register_platform(ctx, sidecar) -> None:
         required_env=["INDEX_SESSION_TOKEN"],
         emoji="\U0001f9ed",
         pii_safe=True,
-        platform_hint="One think session per signal and one speaker session per match.",
+        platform_hint="The negotiator runs while this Hermes agent is selected.",
     )

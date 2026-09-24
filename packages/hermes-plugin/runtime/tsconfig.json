@@ -15,7 +15,12 @@
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true
+    "noImplicitOverride": true,
+    "baseUrl": ".",
+    "paths": {
+      "@indexnetwork/client": ["../../client/src/index.ts"],
+      "@indexnetwork/agentv2": ["../../agentv2/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

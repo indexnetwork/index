@@ -14,6 +14,7 @@ import os
 import platform
 import shutil
 import urllib.parse
+from pathlib import Path
 from subprocess import run as run_process
 from typing import Any
 
@@ -165,6 +166,60 @@ def selected_agent() -> dict[str, Any]:
     if payload.get("negotiationExecutorFence") is not True:
         raise ValueError("This Index API does not support fenced external turns. Upgrade the API before enabling the Hermes personal agent.")
     return payload["agent"]
+
+
+_LOCAL_AGENT_ENV = "INDEX_AGENT_ID"
+
+
+def local_agent_id() -> str:
+    """The agent id this Hermes install speaks as, persisted in the Hermes env."""
+    return os.environ.get(_LOCAL_AGENT_ENV, "").strip()
+
+
+def remember_local_agent(agent_id: str) -> None:
+    """Store this install's agent id in the process and `~/.hermes/.env`.
+
+    @param agent_id - The Hermes agent registered by this install.
+    """
+    agent_id = str(agent_id or "").strip()
+    if not agent_id:
+        return
+    os.environ[_LOCAL_AGENT_ENV] = agent_id
+    override = os.environ.get("HERMES_ENV_PATH", "").strip()
+    target = Path(override) if override else Path.home() / ".hermes" / ".env"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lines = target.read_text(encoding="utf-8").splitlines() if target.exists() else []
+    prefix = f"{_LOCAL_AGENT_ENV}="
+    exported = f"export {_LOCAL_AGENT_ENV}="
+    replaced = False
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith(prefix) or stripped.startswith(exported):
+            lines[index] = prefix + agent_id
+            replaced = True
+            break
+    if not replaced:
+        lines.append(prefix + agent_id)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def this_install_selected(agent: dict[str, Any]) -> bool:
+    """Whether `agent` is this install and the owner's selected negotiator.
+
+    An empty env adopts the selected agent named Hermes once, which is the
+    agent this dashboard registers.
+
+    @param agent - One `/agents/me` entity.
+    @returns True only when that entity's id is the stored id and it handles negotiations.
+    """
+    agent_id = str(agent.get("id") or "").strip()
+    if agent.get("type") != "external" or agent.get("handleNegotiations") is not True or not agent_id:
+        return False
+    stored = local_agent_id()
+    if not stored and str(agent.get("name") or "").lower() == "hermes":
+        remember_local_agent(agent_id)
+        return True
+    return agent_id == stored
 
 
 def _api_result(
