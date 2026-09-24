@@ -218,12 +218,25 @@
 }
 
 /* Mac-app parity: actions sit in the head's top-right column, not a footer. */
+/* Every row's action column is one width: accept + pass split it, and
+   negotiating or open chat fills it, so the right edges line up. */
+.index-dashboard__opp-btns,
+.index-dashboard .index-dashboard__opp-negotiating {
+  box-sizing: border-box;
+  width: 10.5rem;
+  flex-shrink: 0;
+}
+
 .index-dashboard__opp-btns {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 0.4rem;
-  flex-shrink: 0;
+}
+
+.index-dashboard .index-dashboard__opp-btns > * {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
 }
 
 /* Medium footprint for the SDK action buttons (no native `md` size). Used by
@@ -256,7 +269,7 @@
   color: #111;
 }
 
-.index-dashboard .index-dashboard__opp-btns > button:last-child {
+.index-dashboard .index-dashboard__opp-btns > button:last-child:not(:first-child) {
   background: transparent;
   color: var(--color-foreground, #f8fafc);
 }
@@ -268,6 +281,7 @@
 .index-dashboard__opp-negotiating {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.45rem;
   min-height: 1.9rem;
   padding: 0.35rem 0.85rem;
@@ -291,6 +305,7 @@
 /* The one warm mark on the row, and the only moving one: the two agents are
    mid-conversation while it beats. */
 .index-dashboard__opp-negotiating-dot {
+  flex-shrink: 0;
   width: 0.5rem;
   height: 0.5rem;
   background: var(--ui-yellow, #d97706);
@@ -3411,46 +3426,151 @@
   scrollbar-gutter: stable;
 }
 
-/* The agent's working notes — briefs, decisions, stalls — folded into one box,
-   so the thread carries what it is telling you and the reasoning is a click
-   down. */
-.index-dashboard__agent-log {
-  border: 1px solid color-mix(in srgb, var(--color-foreground, #f8fafc) 35%, transparent);
-  background: transparent;
+/* The agent's working notes as the mac app reads them: a discovery run is the
+   plan, the queries it ran and who it found, each a disclosure on a rail. */
+.index-dashboard__disc-plan { margin: 0; }
+
+.index-dashboard__disc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
-/* A thing you open, so it carries the page's ink and answers the pointer. */
-.index-dashboard__agent-log-head {
+.index-dashboard__disc-toggle {
+  display: grid;
+  grid-template-columns: 0.9rem 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.index-dashboard__disc-toggle:hover { color: var(--color-foreground, inherit); }
+
+.index-dashboard__disc-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.index-dashboard__disc-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-left: 0.45rem;
+  padding: 0 0 0 1rem;
+  border-left: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+}
+
+.index-dashboard__disc-row {
+  display: grid;
+  grid-template-columns: 0.75rem 1fr;
+  gap: 0.45rem;
+  align-items: baseline;
+}
+
+.index-dashboard__disc-row .index-dashboard__disc-icon {
+  width: 0.7rem;
+  height: 0.7rem;
+  transform: translateY(1px);
+}
+
+.index-dashboard__disc-query,
+.index-dashboard__disc-more {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.76rem;
+  opacity: 0.85;
+}
+
+.index-dashboard__disc-name {
+  font-weight: 500;
+  color: var(--color-foreground, inherit);
+}
+
+.index-dashboard__disc-row--dropped {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.index-dashboard__disc-dash {
+  display: block;
+  width: 0.5rem;
+  height: 1px;
+  background: currentColor;
+  transform: translateY(-0.25rem);
+}
+
+.index-dashboard__disc-more { padding-left: 1.2rem; }
+
+.index-dashboard__disc-decisions {
+  border: 1px solid color-mix(in srgb, var(--color-foreground, #f8fafc) 35%, transparent);
+  border-radius: var(--index-radius, 2px);
+}
+
+.index-dashboard__disc-decisions > summary {
   padding: 0.6rem 0.75rem;
   cursor: pointer;
   list-style-position: inside;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.72rem;
-  font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--color-foreground, var(--color-card-foreground, inherit));
 }
 
-.index-dashboard__agent-log-head:hover {
-  background: color-mix(in srgb, var(--color-foreground, #f8fafc) 6%, transparent);
-}
-
-.index-dashboard__agent-log-row {
+.index-dashboard__disc-decision {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.35rem;
   padding: 0.6rem 0.75rem;
   border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  color: var(--color-card-foreground, inherit);
   font-size: 0.82rem;
   line-height: 1.5;
 }
 
-.index-dashboard__agent-log-who {
+.index-dashboard__disc-decision-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.index-dashboard__disc-decision-head > strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index-dashboard__disc-decision-head > span {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.62rem;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.index-dashboard__disc-status {
+  display: grid;
+  grid-template-columns: 0.5rem 1fr;
+  gap: 0.55rem;
+  align-items: start;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.7rem;
+  line-height: 1.55;
+}
+
+.index-dashboard__disc-status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: 0.3rem;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 /* The answer action sits over the feed, right above the composer, so it stays
@@ -3708,6 +3828,37 @@
   flex-direction: column;
   overflow: hidden;
   padding: 1.125rem 1.75rem 1.75rem;
+}
+
+/* The wait inside the modal: no card in a card. The bar wears the step bar's
+   ink stripes and the lines hang under it, like the mac app's calibrating. */
+.index-dashboard__signal-modal-body > .index-dashboard__setting-up {
+  flex: 1;
+  min-height: 0;
+}
+
+.index-dashboard__signal-modal-body .index-dashboard__setting-up-card {
+  max-width: 24rem;
+  padding: 0;
+  border: none;
+  background: none;
+  align-items: stretch;
+}
+
+.index-dashboard__signal-modal-body .index-dashboard__setting-up-bar {
+  height: 10px;
+  border-color: var(--color-foreground, #f8fafc);
+  background: none;
+}
+
+.index-dashboard__signal-modal-body .index-dashboard__setting-up-bar-fill {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--color-foreground, #f8fafc) 0,
+    var(--color-foreground, #f8fafc) 6px,
+    transparent 6px,
+    transparent 12px
+  );
 }
 
 /* Only the conversation scrolls; the field preview stays put beside it, like
