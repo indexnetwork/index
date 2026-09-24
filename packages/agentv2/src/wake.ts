@@ -22,7 +22,7 @@ const WAKE_PROMPT = [
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again — the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
   "A stall you are reading here for the first time is asked about on this wake. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is waiting on an answer to something nobody has put to them yet, so holding it is how a negotiation stops for good.",
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
-  "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly, in the principal's language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. This reply replaces the note for this wake; do not write both unless questions follow.",
+  "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly, in the principal's language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something — a fact, preference or instruction — act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
   "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake — the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the signal, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
   "Do not invent facts. Do not contradict what your principal's conversation already settled. You never take a negotiation turn yourself.",
 ].join("\n\n");
@@ -85,6 +85,23 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
   let noted = false;
   /** The host's first failure to persist a decision, raised once the loop is done. */
   let unpersisted: unknown;
+
+  /**
+   * @param opportunityId - An opportunity in this wake's list.
+   * @param status - The principal's verdict.
+   * @returns What the reply must report.
+   * @throws When no direct message is waiting, or the id is not in this list.
+   */
+  async function verdict(opportunityId: string, status: "accepted" | "rejected"): Promise<string> {
+    if (!unansweredMessage) throw new Error("No unanswered direct message from your principal.");
+    if (!byId.has(opportunityId)) {
+      throw new Error(`No opportunity ${opportunityId}. Use one of: ${[...byId.keys()].join(", ") || "none"}.`);
+    }
+    const result = status === "accepted"
+      ? await client.acceptOpportunity(opportunityId)
+      : await client.rejectOpportunity(opportunityId);
+    return `Opportunity ${result.status}: ${result.opportunityId}.`;
+  }
 
   const tools: Tool<never>[] = [
     tool({
@@ -158,6 +175,30 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         actions.push({ type: "reply", text });
         return "Reply recorded.";
       },
+    }),
+    tool({
+      name: "accept_opportunity",
+      description:
+        "Accept one opportunity the principal named. Same write as accept_opportunity. Call it only for an opportunity in this list, then reply with what it returned.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: { opportunityId: { type: "string" } },
+        required: ["opportunityId"],
+      },
+      run: ({ opportunityId }: { opportunityId: string }) => verdict(opportunityId, "accepted"),
+    }),
+    tool({
+      name: "reject_opportunity",
+      description:
+        "Reject one opportunity the principal named. Same write as reject_opportunity. Call it only for an opportunity in this list, then reply with what it returned.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: { opportunityId: { type: "string" } },
+        required: ["opportunityId"],
+      },
+      run: ({ opportunityId }: { opportunityId: string }) => verdict(opportunityId, "rejected"),
     }),
     tool({
       name: "ask_principal",

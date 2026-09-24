@@ -34,7 +34,7 @@ function systemPrompt(input: RunInput): string {
     // Without this the run has no clock, and "next Tuesday" can only be
     // repeated, never resolved.
     `Today is ${formatDate((input.now ?? (() => new Date()))())}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`,
-    `Current intent: ${input.intent.statement}\nEverything you do in this run serves that intent. If something falls outside it, say so rather than acting.`,
+    `Current intent: ${input.intent.statement}\nIntent id: ${input.intent.id}\nEverything you do in this run serves that intent. If something falls outside it, say so rather than acting.`,
   ].join("\n\n");
 }
 

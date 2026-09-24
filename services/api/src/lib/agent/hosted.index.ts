@@ -14,6 +14,7 @@ import { UserDatabaseAdapter } from '../../adapters/user.database.adapter';
 import { ConversationService } from '../../services/conversation.service';
 import { intentService } from '../../services/intent.service';
 import { negotiationService, type NegotiationDetail as StoredNegotiation, type NegotiationView } from '../../services/negotiation.service';
+import { opportunityService } from '../../services/opportunity.service';
 
 /** How many of the owner's signals one read covers, matching the HTTP default. */
 const INTENT_LIMIT = 100;
@@ -173,6 +174,31 @@ export class HostedIndex implements Index {
     const result = await negotiationService.submitTurn(id, this.userId, turn);
     if ('rejection' in result) throw new Error(result.rejection);
     return toNegotiationDetail(result);
+  }
+
+  /** @param id - Opportunity id. @returns The opportunity now accepted. @throws When Index refuses the update. */
+  async acceptOpportunity(id: string): Promise<{ opportunityId: string; status: 'accepted' }> {
+    return this.setOpportunityStatus(id, 'accepted');
+  }
+
+  /** @param id - Opportunity id. @returns The opportunity now rejected. @throws When Index refuses the update. */
+  async rejectOpportunity(id: string): Promise<{ opportunityId: string; status: 'rejected' }> {
+    return this.setOpportunityStatus(id, 'rejected');
+  }
+
+  /**
+   * @param id - Opportunity id.
+   * @param status - The owner's verdict.
+   * @returns The opportunity and that status.
+   * @throws When Index refuses the update.
+   */
+  private async setOpportunityStatus<Status extends 'accepted' | 'rejected'>(
+    id: string,
+    status: Status,
+  ): Promise<{ opportunityId: string; status: Status }> {
+    const result = await opportunityService.updateOpportunityStatus(id, status, this.userId);
+    if ('error' in result) throw new Error(result.error);
+    return { opportunityId: id, status };
   }
 
   /** @param intentId - Signal whose principal conversation to read. @returns The agent DM slice for that signal. */

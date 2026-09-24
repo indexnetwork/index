@@ -273,14 +273,13 @@ function counterpartsOf(details: NegotiationDetail[]): Map<string, MatchReferenc
  */
 export async function runWake(client: Index, intent: Intent, runtime: Runtime): Promise<WakeResult> {
   const { model, now, signal, log = () => {}, onNegotiate } = runtime;
-  const [user, open, inbox] = await Promise.all([
+  const [user, negotiations, inbox] = await Promise.all([
     client.me(),
-    client.listNegotiations(),
+    client.listIntentNegotiations(intent.id),
     client.principalInbox(intent.id),
   ]);
   const details = await Promise.all(
-    open.filter((negotiation) => negotiation.intentId === intent.id)
-      .map((negotiation) => client.getNegotiation(negotiation.opportunityId)),
+    negotiations.map((negotiation) => client.getNegotiation(negotiation.opportunityId)),
   );
 
   const principalConversation = readConversation(inbox.messages);
