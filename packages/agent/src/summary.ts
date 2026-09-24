@@ -11,7 +11,6 @@ const SUMMARY_PROMPT = [
   "Use only the conversations below. Lead with the pattern across them: what people want, where, when, and what they keep asking. Bring in a name, or a role or title, when a particular person is the pattern. Leave people out when the context is the point.",
   "Sound like real life. Three short paragraphs at most. Always start with an opening.",
   "Include, in passing, what already got answered, what is still waiting, and how the conversations landed. Use \"most,\" \"a few,\" and \"one\" when that is true.",
-  "An agreed negotiation is not the principal's approval: those people are now in Radar's awaiting-you list. If anyone agreed to connect, tell me I can review and accept the people I want there now to connect and chat. Do not say no action is required or imply I already accepted them.",
   "Leave out how you know this. No search, no matching, no turns, no agents, no quotes, no labels.",
   "Call submit_note exactly once. That call is this run's whole product: nothing you say outside it is kept.",
 ].join("\n\n");
