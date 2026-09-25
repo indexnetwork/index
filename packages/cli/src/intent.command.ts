@@ -13,7 +13,9 @@ const INTENT_HELP = `
 Usage:
   index intent list [--archived] [--limit <n>] [--query <text>]  List your signals
   index intent show <id>                        Show signal details (accepts short ID)
-  index intent create <content>                 Create a signal from text
+  index intent prepare <content> [--answer 'prompt=reply']  Review and repair a draft
+  index intent create <content> [--receipt <token>]         Create an admitted signal
+  index intent pause <id> | resume <id>         Hold or restart its agent
   index intent update <id> <content>            Update a signal's description
   index intent archive <id>                     Archive a signal (accepts short ID)
   index intent networks <id>                    List the networks a signal is shared in
@@ -39,6 +41,8 @@ export async function handleIntent(
     json?: boolean;
     targetId?: string;
     query?: string;
+    receipt?: string;
+    answers?: { key: string; value: string }[];
   },
 ): Promise<void> {
   if (!subcommand) {
@@ -80,6 +84,13 @@ export async function handleIntent(
       return;
     }
 
+    case "prepare": {
+      if (!options.intentContent) throw new Error("Usage: index intent prepare <content> [--answer 'prompt=reply']");
+      const prepared = await client.prepareIntent(options.intentContent, (options.answers ?? []).map(({ key, value }) => ({ prompt: key, answer: value })));
+      console.log(JSON.stringify(prepared, null, options.json ? undefined : 2));
+      return;
+    }
+
     case "create": {
       if (!options.intentContent) {
         output.error("Missing content. Usage: index intent create <content>", 1);
@@ -89,6 +100,7 @@ export async function handleIntent(
       const result = await client.createIntent(
         options.intentContent,
         options.targetId ? [options.targetId] : undefined,
+        options.receipt,
       );
       if (options.json) { console.log(JSON.stringify(result)); return; }
       output.success("Signal created.");
@@ -109,6 +121,16 @@ export async function handleIntent(
       const result = await client.updateIntent(options.intentId, options.intentContent);
       if (options.json) { console.log(JSON.stringify(result)); return; }
       output.success("Signal updated.");
+      return;
+    }
+
+    case "pause":
+    case "resume": {
+      if (!options.intentId) throw new Error(`Usage: index intent ${subcommand} <id>`);
+      const status = subcommand === "pause" ? "PAUSED" : "ACTIVE";
+      await client.updateIntentStatus(options.intentId, status);
+      if (options.json) console.log(JSON.stringify({ intentId: options.intentId, status }));
+      else output.success(`Signal ${status.toLowerCase()}.`);
       return;
     }
 

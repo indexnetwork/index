@@ -226,36 +226,23 @@ export function opportunityTable(opportunities: Opportunity[]): void {
 
   const idW = 8;
   const nameW = 20;
-  const catW = 18;
-  const statusW = 10;
-  const confW = 8;
-  const dateW = 20;
+  const statusW = 12;
+  const headlineW = 48;
 
   process.stdout.write(
-    `  ${BOLD}${"ID".padEnd(idW)}  ${"Counterparty".padEnd(nameW)}  ${"Category".padEnd(catW)}  ${"Status".padEnd(statusW)}  ${"Conf".padEnd(confW)}  ${"Created".padEnd(dateW)}${RESET}\n`,
+    `  ${BOLD}${"ID".padEnd(idW)}  ${"Counterparty".padEnd(nameW)}  ${"Status".padEnd(statusW)}  Headline${RESET}\n`,
   );
   process.stdout.write(
-    `  ${GRAY}${"-".repeat(idW)}  ${"-".repeat(nameW)}  ${"-".repeat(catW)}  ${"-".repeat(statusW)}  ${"-".repeat(confW)}  ${"-".repeat(dateW)}${RESET}\n`,
+    `  ${GRAY}${"-".repeat(idW)}  ${"-".repeat(nameW)}  ${"-".repeat(statusW)}  ${"-".repeat(headlineW)}${RESET}\n`,
   );
 
   for (const opp of opportunities) {
-    const shortId = opp.id.slice(0, 8);
-    const fallbackName = opp.actors?.[1]?.name ?? opp.actors?.find((a) => a.name)?.name;
-    const name = (opp.counterpartName ?? fallbackName ?? "Unknown").slice(0, nameW);
-    const category = (opp.interpretation?.category ?? "-").slice(0, catW);
+    const shortId = opp.opportunityId.slice(0, idW);
+    const name = opp.peer.name.slice(0, nameW);
     const st = opp.status.slice(0, statusW);
-    const rawConf = opp.interpretation?.confidence;
-    const conf = rawConf != null ? `${Math.round(rawConf <= 1 ? rawConf * 100 : rawConf)}%` : "-";
-    const date = opp.createdAt
-      ? new Date(opp.createdAt).toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        })
-      : "-";
-
+    const headline = (opp.headline ?? opp.mainText).slice(0, headlineW);
     process.stdout.write(
-      `  ${CYAN}${shortId}${RESET}  ${name.padEnd(nameW)}  ${GRAY}${category.padEnd(catW)}${RESET}  ${statusColor(st)}${st.padEnd(statusW)}${RESET}  ${GRAY}${conf.padEnd(confW)}${RESET}  ${GRAY}${date.padEnd(dateW)}${RESET}\n`,
+      `  ${CYAN}${shortId}${RESET}  ${name.padEnd(nameW)}  ${statusColor(st)}${st.padEnd(statusW)}${RESET}  ${headline}\n`,
     );
   }
 }
@@ -269,7 +256,7 @@ export function opportunityTable(opportunities: Opportunity[]): void {
 export function opportunityCard(opp: OpportunityDetail): void {
   const width = 58;
   const innerWidth = width - 2;
-  const title = opp.presentation?.title ?? "Opportunity";
+  const title = opp.headline ?? "Opportunity";
 
   process.stdout.write(`\n  ${BLUE}+${"─".repeat(width)}+${RESET}\n`);
   cardLine(`${BOLD}${BLUE}${title}${RESET}`);
@@ -282,8 +269,9 @@ export function opportunityCard(opp: OpportunityDetail): void {
   if (opp.confidence != null) cardLine(`${BOLD}Confidence:${RESET}  ${confidenceBar(opp.confidence)}`);
   if (opp.myRole) cardLine(`${BOLD}Your role:${RESET}  ${roleLabel(opp.myRole)}`);
 
-  // Other parties
-  if (opp.otherParties && opp.otherParties.length > 0) {
+  // The presenter identifies the peer; detail also carries the actor list.
+  if (opp.peer?.name) cardLine(`${BOLD}With:${RESET}  ${opp.peer.name}`);
+  else if (opp.otherParties && opp.otherParties.length > 0) {
     process.stdout.write(`  ${BLUE}|${RESET}\n`);
     cardLine(`${BOLD}With:${RESET}`);
     for (const p of opp.otherParties) {
@@ -292,10 +280,10 @@ export function opportunityCard(opp: OpportunityDetail): void {
   }
 
   // Description
-  if (opp.presentation?.description) {
+  if (opp.mainText) {
     process.stdout.write(`  ${BLUE}|${RESET}\n`);
     cardLine(`${BOLD}Details:${RESET}`);
-    for (const line of wordWrap(opp.presentation.description, innerWidth - 4)) {
+    for (const line of wordWrap(opp.mainText, innerWidth - 4)) {
       cardLine(`  ${AGENT_TEXT}${line}${RESET}`);
     }
   }

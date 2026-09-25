@@ -28,26 +28,40 @@ import { handleOnboarding } from "./onboarding.command";
 import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
-const DEFAULT_APP_URL = "https://index.network";
+const LOGIN_API_URLS = {
+  local: "http://localhost:3001",
+  dev: "https://protocol.dev.index.network",
+  prod: DEFAULT_API_URL,
+} as const;
+
+/** Pair the selected protocol server with its web device-auth page. */
+function webOriginForApi(apiUrl: string): string {
+  const url = new URL(apiUrl);
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+    return `${url.protocol}//${url.hostname}:3000`;
+  }
+  const hostname = url.hostname.startsWith("protocol.") ? url.hostname.slice("protocol.".length) : url.hostname;
+  return `https://${hostname}`;
+}
 const VERSION = packageJson.version;
 
 /** Print current commands as text or one machine-readable help result. */
 function renderHelp(json?: boolean): void {
   const help = `Usage: index <command> [args] [options]
 
-  login [--app-url <url>]             Authenticate through the browser
+  login [local|dev|prod] [--app-url <url>] Authenticate through the matching web app
   logout                             Revoke and clear the stored session
   docs [topic]                       Read the protocol's canonical guidance
   agent me                           Read your selected personal agent
-  profile [show <user-id>|sync]       Read profiles or research public prefill
-  intent list|show|create|update|archive|networks|add-to-network|remove-from-network
-  network list|show|create|update|delete|join|leave|invite
-  opportunity list|show|accept|reject
+  profile [show <user-id>|sync|update] Read, research, or edit your profile
+  intent list|show|prepare|create|update|pause|resume|archive|networks|add-to-network|remove-from-network
+  network list|discover|requests|request-update|request-dismiss|show|create|update|delete|join|leave|invite
+  opportunity list|show|accept|reject|start-chat
   negotiation list [--intent-id <id>] [--state open|settled]
   negotiation show <opportunity-id>
   negotiation turn <opportunity-id> --action propose|counter|accept|decline
       --message <text> --expected-turn-count <n>
-  conversation list|with|show|send|stream
+  conversation list|with|show|send|answer|stream
   conversation show agent --intent-id <id>
   conversation send agent <text> --intent-id <id> [--question-id <id>]
   onboarding confirm-profile
@@ -62,6 +76,7 @@ Network options: --prompt <text> (create), --title <text> (update)
 
 Auth: INDEX_SESSION_TOKEN or INDEX_API_KEY, otherwise stored browser login.
 API origin: --api-url, INDEX_API_URL, stored login URL, production default.
+Login target: local (localhost:3001), dev (protocol.dev.index.network), prod (default).
 --json emits one result/error; conversation stream emits NDJSON events.`;
   console.log(json ? JSON.stringify({ version: VERSION, help }) : `Index CLI ${VERSION}\n\n${help}`);
 }
@@ -92,10 +107,16 @@ async function requireAuth(apiUrlOverride?: string): Promise<ApiClient> {
 /**
  * Handle the login command via the browser handshake.
  */
-async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, json?: boolean): Promise<void> {
+async function runLogin(
+  target?: keyof typeof LOGIN_API_URLS,
+  apiUrlOverride?: string,
+  appUrlOverride?: string,
+  json?: boolean,
+): Promise<void> {
   const store = new CredentialStore();
-  const apiUrl = apiUrlOverride ?? process.env.INDEX_API_URL ?? (await store.load())?.apiUrl ?? DEFAULT_API_URL;
-  const appUrl = appUrlOverride ?? DEFAULT_APP_URL;
+  const apiUrl = apiUrlOverride ?? (target ? LOGIN_API_URLS[target] : undefined)
+    ?? process.env.INDEX_API_URL ?? (await store.load())?.apiUrl ?? DEFAULT_API_URL;
+  const appUrl = appUrlOverride ?? webOriginForApi(apiUrl);
 
   // Browser flow: opens /cli-auth which exchanges existing session or starts OAuth
   output.info(`Authenticating with ${apiUrl}...`);
@@ -195,7 +216,7 @@ async function main(): Promise<void> {
       output.error(`Unknown command: ${args.unknown}`, 1);
       return;
     case "login":
-      await runLogin(args.apiUrl, args.appUrl, args.json);
+      await runLogin(args.loginTarget, args.apiUrl, args.appUrl, args.json);
       return;
     case "logout":
       await runLogout(args.json);
@@ -222,6 +243,10 @@ async function main(): Promise<void> {
           : (args.userId ? [args.userId] : []),
         {
           json: args.json,
+          name: args.name,
+          intro: args.intro,
+          location: args.location,
+          socials: args.socials,
         },
       );
       return;
@@ -234,12 +259,16 @@ async function main(): Promise<void> {
         json: args.json,
         targetId: args.targetId,
         query: args.query,
+        receipt: args.receipt,
+        answers: args.answers,
       });
       return;
     case "opportunity":
       await handleOpportunity(client, args.subcommand, {
         targetId: args.targetId,
         status: args.status,
+        statuses: args.statuses,
+        intentId: args.intentId,
         limit: args.limit,
         json: args.json,
         positionals: args.positionals,
@@ -269,6 +298,7 @@ async function main(): Promise<void> {
         json: args.json,
         intentId: args.intentId,
         questionId: args.questionId,
+        answers: args.answers,
       });
       return;
     case "scrape":

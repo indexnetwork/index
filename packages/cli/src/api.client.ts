@@ -7,8 +7,7 @@
 
 import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationDetail, NegotiationTurnAction, NegotiationListOptions, EnrichmentResult } from "./types";
 
-// Re-export all types for backward compatibility
-export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult } from "./types";
+export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult } from "./types";
 
 /** HTTP error retaining a parsed structured response for JSON/advisory clients. */
 export class ApiError extends Error {
@@ -82,9 +81,11 @@ export class ApiClient {
   async listOpportunities(opts?: OpportunityListOptions): Promise<Opportunity[]> {
     const params = new URLSearchParams();
     if (opts?.status) params.set("status", opts.status);
+    if (opts?.statuses) params.set("statuses", opts.statuses);
     if (opts?.limit) params.set("limit", String(opts.limit));
     const qs = params.toString();
-    const path = qs ? `/api/opportunities?${qs}` : "/api/opportunities";
+    const base = opts?.intentId ? `/api/intents/${encodeURIComponent(opts.intentId)}/opportunities` : "/api/opportunities";
+    const path = qs ? `${base}?${qs}` : base;
     const res = await this.get(path);
     const body = (await res.json()) as { opportunities: Opportunity[] };
     return body.opportunities;
@@ -107,8 +108,14 @@ export class ApiClient {
     id: string,
     status: "accepted" | "rejected",
   ): Promise<Record<string, unknown>> {
-    const res = await this.patch(`/api/opportunities/${id}/status`, { status });
+    const res = await this.patch(`/api/opportunities/${encodeURIComponent(id)}/status`, { status });
     return await res.json() as Record<string, unknown>;
+  }
+
+  /** Start or resume the human chat through the opportunity's consent path. */
+  async startOpportunityChat(id: string): Promise<{ conversationId: string }> {
+    const res = await this.post(`/api/opportunities/${encodeURIComponent(id)}/start-chat`, {});
+    return await res.json() as { conversationId: string };
   }
 
   /**
@@ -152,12 +159,27 @@ export class ApiClient {
    * @returns The created signal id and the networks it was linked to.
    * @throws Error on auth failure, a refused description, or network error.
    */
-  async createIntent(description: string, networkIds?: string[]): Promise<{ intentId: string; networkIds: string[] }> {
+  async createIntent(description: string, networkIds?: string[], preparationReceipt?: string): Promise<{ intentId: string; networkIds: string[] }> {
     const res = await this.post("/api/intents", {
       description,
       ...(networkIds?.length ? { networkIds } : {}),
+      ...(preparationReceipt ? { preparationReceipt } : {}),
     });
     return (await res.json()) as { intentId: string; networkIds: string[] };
+  }
+
+  /** Prepare the same draft and recovery answers used by the macOS intake. */
+  async prepareIntent(payload: string, answers: { prompt: string; answer: string }[] = []): Promise<
+    | { status: "ready"; payload: string; preparationReceipt: string }
+    | { status: "needs_revision"; payload: string; feedback: string; recovery: { id: string; label: string; kind: string; options?: { label: string; description: string }[] }[] }
+  > {
+    const res = await this.post("/api/intents/prepare", { payload, answers });
+    return await res.json();
+  }
+
+  /** Pause or resume without archiving the signal. */
+  async updateIntentStatus(id: string, status: "ACTIVE" | "PAUSED"): Promise<void> {
+    await this.patch(`/api/intents/${encodeURIComponent(id)}/status`, { status });
   }
 
   /**
@@ -232,6 +254,24 @@ export class ApiClient {
       ...n,
       joinPolicy: n.joinPolicy ?? n.permissions?.joinPolicy,
     }));
+  }
+
+  /** Public networks available to join, alongside current memberships. */
+  async discoverNetworks(): Promise<{ networks: Network[] }> {
+    return await (await this.get("/api/networks/discovery/public?page=1&limit=50")).json() as { networks: Network[] };
+  }
+
+  /** Owner's early-access creation requests. */
+  async listNetworkRequests(): Promise<{ requests: NetworkRequest[] }> {
+    return await (await this.get("/api/network-requests")).json() as { requests: NetworkRequest[] };
+  }
+
+  async updateNetworkRequest(id: string, name: string, purpose?: string): Promise<{ request: NetworkRequest }> {
+    return await (await this.patch(`/api/network-requests/${encodeURIComponent(id)}`, { name, ...(purpose ? { purpose } : {}) })).json() as { request: NetworkRequest };
+  }
+
+  async dismissNetworkRequest(id: string): Promise<void> {
+    await this.del(`/api/network-requests/${encodeURIComponent(id)}`);
   }
 
   /**
@@ -415,6 +455,11 @@ export class ApiClient {
     return body.message;
   }
 
+  /** Answer all selected pending questions in one owner write, as in macOS. */
+  async answerAgentQuestions(intentId: string, answers: { questionId: string; text: string }[]): Promise<unknown> {
+    return await (await this.post("/api/conversations/agent/answers", { intentId, answers })).json();
+  }
+
   /**
    * Hide a conversation (soft-hide via hiddenAt).
    *
@@ -475,6 +520,12 @@ export class ApiClient {
   async enrichProfile(): Promise<EnrichmentResult> {
     const res = await this.post("/api/enrichment/enrich", {});
     return await res.json() as EnrichmentResult;
+  }
+
+  /** Save the owner's reviewed profile fields. */
+  async updateProfile(fields: { name?: string; intro?: string; location?: string; socials?: { label: string; value: string }[] }): Promise<UserData> {
+    const body = await (await this.patch("/api/auth/profile/update", fields)).json() as { user: UserData };
+    return body.user;
   }
 
   /**
