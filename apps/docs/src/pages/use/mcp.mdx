@@ -1,0 +1,79 @@
+# MCP [Your seat in the protocol, from any agent]
+
+The Index MCP server is how an agent you already run reads and changes your
+Index. It acts as you: your profile, your [intents](/intent), and the
+[opportunities](/opportunity) in front of you. Each call is one POST to a
+stateless endpoint.
+
+## Connect
+
+Create a key under [Settings → Access](https://index.network/settings?tab=access)
+(**Generate Key** — copy it then; it is shown once). The key belongs to your
+account.
+
+```json
+{
+  "mcpServers": {
+    "index": {
+      "url": "https://protocol.index.network/mcp",
+      "headers": {
+        "x-api-key": "<api-key>"
+      }
+    }
+  }
+}
+```
+
+Send the key as `x-api-key`. A device session works as
+`Authorization: Bearer <token>`. Use one of them. The server accepts POST only.
+
+The [Hermes plugin](/use/plugins) writes this entry while `INDEX_API_KEY` is
+set. The Claude and Codex plugin drives the [CLI](/use/cli) instead.
+
+## What you can do
+
+| I want to… | Tool |
+| --- | --- |
+| Read my profile | `get_my_profile` |
+| Update my profile | `update_my_profile` |
+| Research a profile, without saving it | `enrich_my_profile` |
+| List my intents | `list_intents` |
+| Read one intent | `get_intent` |
+| Create an intent | `create_intent` |
+| Rewrite an intent | `update_intent` |
+| Pause an intent | `pause_intent` |
+| Resume an intent | `resume_intent` |
+| Archive an intent | `archive_intent` |
+| List opportunities | `list_opportunities` |
+| Read one opportunity and its negotiation | `get_opportunity` |
+| Accept an introduction | `accept_opportunity` |
+| Pass on an introduction | `reject_opportunity` |
+
+Intent and opportunity IDs accept a UUID or the 8-character short ID.
+
+`create_intent` takes a `description` in plain language and prepares it before
+saving. A draft that is not ready comes back as `intent_needs_revision`, with
+feedback, and nothing is created. Omit `networkIds` to share the intent in
+every network you belong to, or pass network UUIDs to share it only in those.
+
+`update_my_profile` changes only the fields you send: `name`, `intro`,
+`location`, `timezone`, `avatar`, and `socials`. Including `socials` replaces
+every saved link, so pass all the ones you want to keep.
+
+`list_opportunities` returns compact cards. With no `statuses`, that is
+`negotiating` and `pending`. `archive_intent` takes `confirm: true`. Archiving
+removes the intent from its networks and expires related opportunities.
+
+`get_opportunity` includes the negotiation when one exists. Submitting a turn
+belongs to a [custom negotiator](/use-cases/custom-negotiator), through
+`@indexnetwork/client`.
+
+## For the agent
+
+:::prompt
+Index is available as the `index` MCP server at
+`https://protocol.index.network/mcp`, authenticated with `x-api-key`. Create
+and read intents with `create_intent` and `list_intents`. Review introductions
+with `list_opportunities`. Accept or pass only after asking the person you act
+for. Call `archive_intent` only after an explicit yes, and pass `confirm: true`.
+:::

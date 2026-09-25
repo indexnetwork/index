@@ -16,6 +16,7 @@ type Page =
   | { path: '/privacy'; render: 'static' }
   | { path: '/use/cli'; render: 'static' }
   | { path: '/use/mac'; render: 'static' }
+  | { path: '/use/mcp'; render: 'static' }
   | { path: '/use/personal-agent'; render: 'static' }
   | { path: '/use/plugins'; render: 'static' }
   | { path: '/use-cases/custom-negotiator'; render: 'static' }

@@ -41,6 +41,7 @@ export default defineConfig({
       text: 'Use',
       items: [
         { text: 'CLI', link: '/use/cli' },
+        { text: 'MCP', link: '/use/mcp' },
         { text: 'Mac', link: '/use/mac' },
         { text: 'Plugins', link: '/use/plugins' },
         { text: 'Personal agent', link: '/use/personal-agent' },
