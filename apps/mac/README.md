@@ -32,7 +32,9 @@ Generated HTML must be regenerated through `assemble.py`, never hand-edited. The
 
 Production distribution is direct Developer ID distribution, not the Mac App Store. It requires macOS 13+, Universal 2 artifacts, Hardened Runtime, Developer ID signing, notarization, stapling, checksums, immutable production HTTPS endpoint inputs, and a clean-account acceptance run. **App Sandbox is not a production requirement** for this direct-distribution model; release validation rejects unexpected sandbox/debug entitlements rather than requiring them.
 
-Pushes to `dev` and `main` that touch `apps/mac` run `.github/workflows/mac-app-release.yml`: Developer ID sign, notarize the app, package the branded DMG, notarize that, and attach `Index.dmg` to a rolling release.
+Pushes to `dev` and `main` that touch `apps/mac` run `.github/workflows/mac-app-release.yml`: Developer ID sign, notarize the app, package the branded DMG, notarize that, and attach `Index.dmg` plus `Index.zip` (the same stapled app) to a rolling release.
+
+Signed installs update themselves: on launch and every 30 minutes the app compares its `IndexBuildSHA` with the commit in its channel's release notes, downloads `Index.zip` in the background, accepts it only if it satisfies the running app's designated requirement, prompts once with Restart Now / Later, and swaps the bundle when the app quits. Ad-hoc, translocated, or read-only installs fall back to the DMG from Index ▸ Check for Updates….
 
 | Branch | Release | Download |
 | --- | --- | --- |
