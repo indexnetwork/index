@@ -10,7 +10,7 @@ hermes plugins install indexnetwork/hermes-plugin
 
 Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The web page runs the device authorization grant against your browser session and returns a short-lived device code, which the plugin exchanges for its own session token and persists as `INDEX_SESSION_TOKEN` in the Hermes env file. There is no approval prompt. **Sign out** revokes that session server-side and clears the local file. On a headless host the dashboard shows the login link to open elsewhere.
 
-When `INDEX_API_KEY` is set, the plugin registers the Index MCP server in Hermes as `mcp_servers.index` (`{origin}/mcp`, `x-api-key: ${INDEX_API_KEY}`). Clearing that key removes the entry.
+When `INDEX_API_KEY` is set on the gateway profile, the plugin registers the Index MCP server in Hermes as `mcp_servers.index` (`{origin}/mcp`, `x-api-key: ${INDEX_API_KEY}`). Clearing that key removes the entry. The negotiator profile does not get that server: it is only the model home for a completion.
 
 Optional overrides: `INDEX_API_URL` (the bare API origin, without `/api`; defaults to `https://protocol.index.network`). Browser login pairs with the configured API environment (`INDEX_APP_BASE_URL` wins, else derived from `INDEX_API_URL`).
 
@@ -24,8 +24,10 @@ The session authenticates you, not an agent. `GET /agents/me` returns the agent 
 
 Hermes runs the same negotiator as hosted Index — `@indexnetwork/agent`
 on `@indexnetwork/client`. The sidecar authenticates with `INDEX_API_KEY`
-and the selected agent id. Hermes supplies one completion per step from the
-gateway model; the negotiator runs its own tools.
+and the selected agent id. When the gateway is signed in and that key is
+missing, the sidecar mints one from the device session and stores it on the
+gateway env. Hermes supplies one completion per step from the gateway model;
+the negotiator runs its own tools.
 
 Choosing Hermes as your negotiator — in the dashboard under **Settings →
 Advanced**, or in the Index web app — starts a Bun sidecar

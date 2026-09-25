@@ -70,23 +70,31 @@ class Sidecar:
                 self._terminate()
             if not BUNDLE.exists():
                 raise RuntimeError(f"The Index negotiator bundle is missing at {BUNDLE}.")
-            api_key = os.environ.get("INDEX_API_KEY", "").strip()
-            if not api_key:
-                raise RuntimeError("INDEX_API_KEY is required to run the Index negotiator.")
+            from .env_transport import api_origin, ensure_negotiator_api_key
+
+            api_key = ensure_negotiator_api_key()
+            from .mcp import sync_index_mcp
+
+            sync_index_mcp()
             self.bridge.start()
-            from .env_transport import api_origin
 
             # Same process group as the gateway: a group signal reaches Bun too.
+            # The child authenticates with the API key. It does not read the
+            # device session, so that token stays in the gateway process.
+            child_env = os.environ.copy()
+            child_env.pop("INDEX_SESSION_TOKEN", None)
+            child_env.update({
+                "INDEX_BRIDGE_URL": self.bridge.url,
+                "INDEX_BRIDGE_TOKEN": self.bridge.token,
+                "INDEX_API_URL": api_origin(),
+                "INDEX_API_KEY": api_key,
+                "INDEX_AGENT_ID": agent_id,
+                "INDEX_SUPERVISOR_PID": str(os.getpid()),
+            })
             process = subprocess.Popen(
                 [_bun(), str(BUNDLE)],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                env={**os.environ,
-                     "INDEX_BRIDGE_URL": self.bridge.url,
-                     "INDEX_BRIDGE_TOKEN": self.bridge.token,
-                     "INDEX_API_URL": api_origin(),
-                     "INDEX_API_KEY": api_key,
-                     "INDEX_AGENT_ID": agent_id,
-                     "INDEX_SUPERVISOR_PID": str(os.getpid())},
+                env=child_env,
             )
             threading.Thread(target=self._relay, args=(process,), name="index-negotiator-log", daemon=True).start()
             try:

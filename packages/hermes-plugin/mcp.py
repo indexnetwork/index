@@ -35,13 +35,28 @@ def _is_ours(entry: dict) -> bool:
     )
 
 
-def sync_index_mcp() -> None:
-    """Upsert `mcp_servers.index` when `INDEX_API_KEY` is set, or remove it when the key is gone.
+def _negotiator_home():
+    """The negotiator profile directory, once it exists."""
+    from .env_transport import negotiator_env_path
 
-    A hand-edited entry, including one set `enabled: false`, is left in place.
-    Import and config failures are ignored so plugin load still succeeds.
+    env = negotiator_env_path()
+    return env.parent if env is not None else None
+
+
+def sync_index_mcp() -> None:
+    """Upsert `mcp_servers.index` on the gateway profile when `INDEX_API_KEY` is set.
+
+    The negotiator profile is only the model home, so a completion that has
+    overridden Hermes home does not receive the Index MCP server. A hand-edited
+    entry, including one set `enabled: false`, is left in place. Import and
+    config failures are ignored so plugin load still succeeds.
     """
     try:
+        from hermes_constants import get_hermes_home
+
+        negotiator = _negotiator_home()
+        if negotiator is not None and get_hermes_home().resolve() == negotiator.resolve():
+            return
         current = _raw_entry()
         from hermes_cli.mcp_config import _remove_mcp_server, _save_mcp_server
 
