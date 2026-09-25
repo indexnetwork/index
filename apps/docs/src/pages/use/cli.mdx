@@ -103,8 +103,8 @@ that chat through the opportunity's consent flow while it is `pending` or
 | Edit my profile | `index profile update --intro "<text>"` |
 | Give an agent my context | `index sync --json` |
 
-Intent, opportunity, negotiation, and conversation commands accept the
-8-character short ID shown in tables.
+IDs you pass as arguments accept the 8-character short ID shown in tables.
+`--intent-id` needs the full intent ID, which `index intent show <id>` prints.
 
 ## Intents
 
@@ -126,6 +126,10 @@ index intent remove-from-network <id> <network-id>
 `intent prepare` either lists the questions to answer, by label, or prints the
 prepared payload with the exact `index intent create '<payload>' --receipt
 '<receipt>'` command that creates it. Answer with `--answer 'label=reply'`.
+
+```ansi [Terminal]
+// [!include ~/snippets/cli/intent-prepare.ansi]
+```
 
 ```ansi [Terminal]
 // [!include ~/snippets/cli/intent-list.ansi]
@@ -170,6 +174,10 @@ index conversation send agent "<text>" --intent-id <id> \
 # Answer several questions at once
 index conversation answer agent --intent-id <id> \
   --answer '<question-id>=<text>' --answer '<question-id>=<text>'
+```
+
+```ansi [Terminal]
+// [!include ~/snippets/cli/agent-conversation.ansi]
 ```
 
 Use the question ID that `conversation show agent` prints. If that question is
