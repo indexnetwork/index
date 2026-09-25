@@ -5,7 +5,7 @@
  * common error patterns (401, network errors).
  */
 
-import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationDetail, NegotiationTurnAction, NegotiationListOptions, EnrichmentResult } from "./types";
+import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, IntentPreparation, AgentConversation, AgentAnswerMessage, SelectedAgent, ProfileConfirmation, OnboardingCompletion, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationDetail, NegotiationTurnAction, NegotiationListOptions, EnrichmentResult } from "./types";
 
 export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult } from "./types";
 
@@ -169,12 +169,9 @@ export class ApiClient {
   }
 
   /** Prepare the same draft and recovery answers used by the macOS intake. */
-  async prepareIntent(payload: string, answers: { prompt: string; answer: string }[] = []): Promise<
-    | { status: "ready"; payload: string; preparationReceipt: string }
-    | { status: "needs_revision"; payload: string; feedback: string; recovery: { id: string; label: string; kind: string; options?: { label: string; description: string }[] }[] }
-  > {
+  async prepareIntent(payload: string, answers: { prompt: string; answer: string }[] = []): Promise<IntentPreparation> {
     const res = await this.post("/api/intents/prepare", { payload, answers });
-    return await res.json();
+    return await res.json() as IntentPreparation;
   }
 
   /** Pause or resume without archiving the signal. */
@@ -456,8 +453,8 @@ export class ApiClient {
   }
 
   /** Answer all selected pending questions in one owner write, as in macOS. */
-  async answerAgentQuestions(intentId: string, answers: { questionId: string; text: string }[]): Promise<unknown> {
-    return await (await this.post("/api/conversations/agent/answers", { intentId, answers })).json();
+  async answerAgentQuestions(intentId: string, answers: { questionId: string; text: string }[]): Promise<{ messages: AgentAnswerMessage[] }> {
+    return await (await this.post("/api/conversations/agent/answers", { intentId, answers })).json() as { messages: AgentAnswerMessage[] };
   }
 
   /**
@@ -554,8 +551,8 @@ export class ApiClient {
   }
 
   /** Read the current agent selection. */
-  async getAgent(): Promise<unknown> {
-    return (await this.get("/api/agents/me")).json();
+  async getAgent(): Promise<SelectedAgent> {
+    return await (await this.get("/api/agents/me")).json() as SelectedAgent;
   }
 
   /** Read an opportunity's negotiation, including protocol guidance. */
@@ -571,18 +568,18 @@ export class ApiClient {
   }
 
   /** Read the scoped personal-agent conversation and availability. */
-  async getAgentConversation(intentId: string): Promise<unknown> {
-    return (await this.get(`/api/conversations/agent/messages?${new URLSearchParams({ intentId })}`)).json();
+  async getAgentConversation(intentId: string): Promise<AgentConversation> {
+    return await (await this.get(`/api/conversations/agent/messages?${new URLSearchParams({ intentId })}`)).json() as AgentConversation;
   }
 
   /** Explicitly confirm the owner's profile. */
-  async confirmProfile(): Promise<unknown> {
-    return (await this.post("/api/auth/onboarding/confirm-profile", {})).json();
+  async confirmProfile(): Promise<ProfileConfirmation> {
+    return await (await this.post("/api/auth/onboarding/confirm-profile", {})).json() as ProfileConfirmation;
   }
 
   /** Complete onboarding, subject to server prerequisites. */
-  async completeOnboarding(intentId?: string): Promise<unknown> {
-    return (await this.post("/api/auth/onboarding/complete", { intentId })).json();
+  async completeOnboarding(intentId?: string): Promise<OnboardingCompletion> {
+    return await (await this.post("/api/auth/onboarding/complete", { intentId })).json() as OnboardingCompletion;
   }
 
   // ── Private helpers ──────────────────────────────────────────────

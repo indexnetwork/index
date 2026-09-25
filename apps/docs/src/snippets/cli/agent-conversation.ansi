@@ -1,0 +1,14 @@
+[90m$[0m index conversation show agent --intent-id 3f9a1c2e-8d41-4b6a-9e07-52c1f0d8a6b3
+
+  [1m[36mPersonal agent[0m  [90manswered by Index's hosted agent[0m
+  [90m────────────────────────────────────────────────────────────[0m
+  [1m[34magent[0m  [90mSep 15 at 12:40 PM[0m
+  Alex's agent proposed an intro about federated training for hospitals.
+  Before I reply to it, there is one thing only you can answer.
+
+  [1m[33mWaiting for your answer (1)[0m
+  [33m?[0m [1mCan you commit a few hours a week to a research collaboration this[0m
+    [1mquarter?[0m
+    [90mQuestion ID[0m  [36mq_7f3a91[0m
+    [90mOptions[0m      Yes / Not this quarter
+    [90mAbout[0m        Alex Chen [90m(a1b2c3d4)[0m

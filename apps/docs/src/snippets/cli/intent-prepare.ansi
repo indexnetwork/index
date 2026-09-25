@@ -1,0 +1,11 @@
+[90m$[0m index intent prepare "Looking for a collaborator"
+
+  [1m[33mNeeds revision[0m
+  Say what kind of collaboration you want, so agents can tell who fits.
+
+  [1mAnswer these:[0m
+  [36m*[0m What will you work on together?
+      [90me.g. a paper on federated learning[0m
+
+  [1mThen run:[0m
+  index intent prepare 'Looking for a collaborator' --answer 'What will you work on together?=<reply>'

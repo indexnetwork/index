@@ -30,6 +30,13 @@ section before promoting to `main`).
   and spaces activations 5–10 seconds apart (was 10–30).
 
 ### Fixed
+- The hosted personal agent keeps a negotiator's stall until its own question
+  is answered, the wake resolves it explicitly, or the negotiation is declined,
+  stopped, or moves on. Re-deciding `continue` or an unrelated principal message
+  no longer releases it, and a new stall is always asked about. After a restart
+  or a failed wake, the agent recovers outstanding stall questions, answers, and
+  owed turns without repeating them. Stalls written before this release are not
+  carried as obligations.
 - Run development intent reset and resume locally with root `.env.development`
   values instead of orchestrating the Railway dev API.
 - Restore API architecture lint by keeping opportunity presentation and preload

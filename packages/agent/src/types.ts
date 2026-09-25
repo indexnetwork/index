@@ -35,8 +35,14 @@ export type Decision = "continue" | "accept" | "decline" | "stop";
  * too: they are how a wake's work persists, and the principal can read them.
  */
 export interface ConversationEntry {
-  kind: "user" | "message" | "reply" | "question" | "answer" | "brief" | "decision" | "stall" | "expire" | "progress";
+  kind: "user" | "message" | "reply" | "question" | "answer" | "brief" | "decision" | "stall" | "resolution" | "expire" | "progress";
   text: string;
+  /** The agent DM row this entry was read from. */
+  id?: string;
+  /** On a stall, the negotiation's turn count when it stalled. */
+  turnCount?: number;
+  /** On a question or a resolution, the stall entries it is about. */
+  stalls?: string[];
   scope?: "intent" | "opportunity";
   counterpart?: string;
   opportunity?: string;
@@ -60,10 +66,29 @@ export interface Opportunity {
   why?: string;
   brief?: string;
   decision?: Decision;
-  /** Why the last negotiator run stopped without a turn. */
-  stall?: Stall;
-  /** Whether the principal has spoken to this opportunity since its last decision. */
+  /** The stall still standing on this negotiation: its negotiator is held until it is answered or resolved. */
+  stall?: StandingStall;
+  /** Whether the principal answered a question about this opportunity since its last decision. */
   answered?: boolean;
+}
+
+/**
+ * A stall as an obligation: the missing fact stays owed until the question
+ * that asks for it is answered and the opportunity re-decided, the wake
+ * resolves it explicitly, the negotiation is declined or stopped, or a turn
+ * or settlement moves the negotiation past it.
+ */
+export interface StandingStall extends Stall {
+  /** The stall entry on the agent DM. */
+  id: string;
+  /** The negotiation's turn count when it stalled. */
+  turnCount: number;
+  /** The question that asks the principal for it, once one does. */
+  questionId?: string;
+  /** Whether the principal answered that question. The next decision discharges it. */
+  answered?: boolean;
+  /** Whether this stall repeats one the wake already resolved without asking, so it can only be asked now. */
+  retried?: boolean;
 }
 
 /**
@@ -113,7 +138,8 @@ export interface WakeInput {
 export type WakeAction =
   | { type: "brief"; opportunityId: string; brief: string }
   | { type: "decision"; opportunityId: string; decision: Decision }
-  | { type: "ask"; scope: "intent" | "opportunity"; opportunityId?: string; question: string; options: string[] }
+  | { type: "ask"; scope: "intent" | "opportunity"; opportunityId?: string; question: string; options: string[]; stalls?: string[] }
+  | { type: "resolve"; opportunityId: string; stallId: string; reason: string }
   | { type: "note"; text: string }
   | { type: "reply"; text: string }
   | { type: "progress"; text: string }
@@ -122,6 +148,8 @@ export type WakeAction =
 export interface WakeResult {
   /** What the host should persist and run. Empty when staying silent was right. */
   actions: WakeAction[];
+  /** Stalled opportunities this wake left neither asked about, resolved, nor re-decided after their answer. */
+  unresolved: string[];
 }
 
 /** Everything a negotiator sees. No conversation, no other opportunities. */
@@ -147,3 +175,6 @@ export interface Stall {
 }
 
 export type NegotiateResult = { turn: Turn } | { stall: Stall };
+
+/** One host negotiator run: a turn, a stall, or held by a stall still standing. */
+export type NegotiateRun = NegotiateResult | { held: string };
