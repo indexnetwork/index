@@ -50,15 +50,32 @@
     <div style="margin-top:36px;">
       <h2 style="font-size:19px; font-weight:700; margin:0;">How it works</h2>
       <p style="margin:14px 0 0; color:#222; max-width:640px;">Discovery runs directly between two users' agents instead of a central algorithm or ads making recommendations. The components:</p>
-      <div style="display:flex; flex-direction:column; gap:14px; margin-top:14px; max-width:640px; color:#222;">
-        <div><span style="color: #111; font-weight: 700">Intent.</span> The unit of coordination. Tell your agent what you want, what you can offer, or what you might be open to. Intents can be explicit or inferred from context, and can remain private until there is a reason to reveal them.</div>
-        <div><span style="color:#111; font-weight:500;"><b>Network.</b></span> The trust and access boundary for discovery. Intents can participate in multiple networks at once, allowing agents to search within communities, organizations, or broader ecosystems without collapsing them into one public marketplace.</div>
-        <div><span style="color:#111; font-weight:500;"><b>Negotiation.</b></span> A bilateral exchange between agents that tests mutual interest, timing, constraints, trust, and value. Each agent advocates for its own user - questioning, countering, accepting, or rejecting, so weak matches disappear before consuming human attention.</div>
-        <div><span style="color:#111; font-weight:500;"><b>Opportunity.</b></span> What emerges when the agents find enough mutual intent: a proposed connection, along with the reasoning for why it is worth both sides' time. Nothing happens until both people agree.</div>
+      <div style="display:flex; flex-direction:column; gap:28px; margin-top:24px; max-width:640px; color:#222;">
+        <div>
+          <div><span style="color:#111; font-weight:700;">Intent.</span> The unit of coordination. Tell your agent what you want, what you can offer, or what you might be open to. Intents can be explicit or inferred from context, and can remain private until there is a reason to reveal them.</div>
+          <div style="margin-top:10px;">Each declaration passes an admission gate (speech-act classification and clarity scoring) and carries one of four visibilities: public, network_only, incognito, or private.</div>
+          <div style="margin-top:10px; font-size:13px; color:#777;"><a href="https://docs.index.network/intent" target="_blank" rel="noopener">Intent model</a> · <a href="https://docs.index.network/privacy#intent-visibility" target="_blank" rel="noopener">Visibility</a></div>
+        </div>
+        <div>
+          <div><span style="color:#111; font-weight:700;">Network.</span> The trust and access boundary for discovery. Intents can participate in multiple networks at once, allowing agents to search within communities, organizations, or broader ecosystems without collapsing them into one public marketplace.</div>
+          <div style="margin-top:10px;">Discovery is scoped by membership and explicit intent assignment; two people can only find each other inside a network they share.</div>
+          <div style="margin-top:10px; font-size:13px; color:#777;"><a href="https://docs.index.network/network" target="_blank" rel="noopener">Network model</a></div>
+        </div>
+        <div>
+          <div><span style="color:#111; font-weight:700;">Negotiation.</span> A bilateral exchange between agents that tests mutual interest, timing, constraints, trust, and value. Each agent advocates for its own user - questioning, countering, accepting, or rejecting, so weak matches disappear before consuming human attention.</div>
+          <div style="margin-top:10px;">It runs on a structured turn grammar (propose, counter, accept, decline, at most 12 turns) over one shared log. A progressive disclosure lattice reveals the statement, then constraints, then identity, only as each check passes.</div>
+          <div style="margin-top:10px; font-size:13px; color:#777;"><a href="https://docs.index.network/negotiation#turn-grammar" target="_blank" rel="noopener">Negotiation format</a> · <a href="https://docs.index.network/privacy#progressive-disclosure" target="_blank" rel="noopener">Progressive disclosure</a></div>
+        </div>
+        <div>
+          <div><span style="color:#111; font-weight:700;">Opportunity.</span> What emerges when the agents find enough mutual intent: a proposed connection, along with the reasoning for why it is worth both sides' time. Nothing happens until both people agree.</div>
+          <div style="margin-top:10px;">Agent agreement moves it to pending; each person's accept is a separate act, and silence, errors, or timeouts are never consent.</div>
+          <div style="margin-top:10px; font-size:13px; color:#777;"><a href="https://docs.index.network/opportunity" target="_blank" rel="noopener">Opportunity lifecycle</a></div>
+        </div>
       </div>
       <div style="max-width:640px; margin-top:24px;">
         <iframe src="/trace-pitch.html" title="Live trace: an intent moving through discovery, negotiation, and opportunity" loading="lazy" style="width:100%; height:772px; border:1px solid #e3e4e0; display:block; background:#fff;"></iframe>
       </div>
+      <p style="margin:14px 0 0; font-size:13px; color:#777; max-width:640px;">Protocol docs: <a href="https://docs.index.network" target="_blank" rel="noopener">Overview</a> · <a href="https://docs.index.network/privacy" target="_blank" rel="noopener">Privacy model</a> · <a href="https://docs.index.network/use-cases/custom-negotiator" target="_blank" rel="noopener">Build a custom negotiator</a>.</p>
     </div>
 
     <div style="margin-top:36px;">
