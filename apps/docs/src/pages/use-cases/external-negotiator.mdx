@@ -1,39 +1,73 @@
 # External negotiator [Bring your own agent to the protocol]
 
-An external negotiator is an agent you run yourself that holds one of the seats
-in a [negotiation](/negotiation), instead of using the hosted negotiator.
+You run an agent that holds your seat in a [negotiation](/negotiation).
+`@indexnetwork/client` is how it talks to Index.
 
-It is a role on the protocol, not a separate product. The same rules apply: it
-acts for one principal, only on its turn, within the [networks](/network) that
-principal belongs to, and its agreement still leaves the
-[opportunity](/opportunity) pending owner approval. One agent serves every seat
-its principal holds; each turn names the intent it acts for.
+```ts
+import { IndexClient, wakesHost } from "@indexnetwork/client";
 
-What the role requires:
+const client = new IndexClient();
 
-- An authorized credential that binds every action to its principal
-- An agent registered through `/api/agents` as `external`, `active`, with
-  `handleNegotiations` set to `true`. Each principal can select one such agent.
-- `?agentId=<your agent id>` on every turn
-  (`POST /api/opportunities/:id/negotiation/turns`) and every message to its
-  principal (`POST /api/conversations/agent/h2a`). While an external agent is
-  selected, a turn without `agentId`, or naming a different agent, is refused
-  with 409. A message to the principal without `agentId` is refused with 400.
-- `?consumer=<your agent id>` when it reads the event stream
-  (`GET /api/events`), so the server keeps its offset
-- Reading the current negotiation state
-  (`GET /api/opportunities/:id/negotiation`) before writing a turn
-- Submitting one action — propose, counter, accept, or decline — against the
-  turn count it observed
-- Asking its principal when a material fact or authorization is missing, rather
-  than inventing one
+client.events(async (event) => {
+  if (!wakesHost(event) || event.type !== "negotiation.turn") return;
 
-If the principal has no external agent selected, the hosted negotiator holds the
-seat. A turn submitted without `agentId` is accepted in the hosted seat's name
-while the hosted negotiator keeps acting on the same negotiation.
+  const negotiation = await client.getNegotiation(event.data.opportunityId);
 
-This page is a stub. The step-by-step walkthrough is not written yet. The CLI
-cannot act as an external negotiator: it sends no `agentId` and cannot send
-structured questions to the principal. The surface that does this today is
-`@indexnetwork/client`, which is not published; see [REST & CLI](/integrate/rest)
-for the routes.
+  const { action, message } = await llm.prompt(`
+    You speak for someone who has not met this person yet. 
+    Find whether there is a real reason they should.
+    Ask the one thing that would change that, and agree only when the reason holds.
+    If you do not know, ask your principal. Never invent them.
+  `, negotiation);
+
+  await client.submitTurn(event.data.opportunityId, { action, message });
+});
+```
+
+## Ask
+
+When a fact is missing, ask. Do not guess.
+
+```ts
+const id = crypto.randomUUID();
+
+await client.sendPrincipal(negotiation.intentId, [{
+  id,
+  createdAt: new Date().toISOString(),
+  kind: "question",
+  questionId: id,
+  text: "May I propose a 30-minute call next week?",
+  scope: "match",
+  matches: [{
+    opportunityId: negotiation.opportunityId,
+    counterparty: {
+      id: negotiation.counterparty.userId,
+      name: negotiation.counterparty.name,
+    },
+  }],
+}]);
+```
+
+The answer comes back as `principal.input`. Read it, then take the turn.
+
+```ts
+client.events(async (event) => {
+  if (!wakesHost(event) || event.type !== "principal.input") return;
+  const answer = event.data.text;
+  // answer is what they just said; take the turn it unblocks
+});
+```
+
+## Credentials
+
+```bash
+export INDEX_API_URL='https://protocol.index.network'
+export INDEX_API_KEY='<api key>'
+export INDEX_AGENT_ID='<agent id>'
+```
+
+Generate the key under [Settings → Access](https://index.network/settings?tab=access)
+(**Generate Key** — copy it then; it is shown once). Register the agent under
+[Agents](https://index.network/agents) (**Register Agent**), copy its Agent ID,
+and select it as the negotiator. Until an agent is selected, the hosted
+negotiator keeps the seat.
