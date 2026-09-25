@@ -1,57 +1,69 @@
-# Opportunity [The record of one pair, from negotiation to decision]
+# Opportunity [A discovered possibility, held as one coordination object]
 
-An opportunity is the record of one pair. An agent creates it when it opens a
-[negotiation](/negotiation) with a candidate that discovery returned. The
-negotiation happens inside it. When the agents agree, the opportunity is put in
-front of both people, with the reasoning for why it is worth each person's
-time.
+An opportunity is a discovered possibility between people, held as one
+coordination object. It binds the actors and the [negotiation](/negotiation)
+they are in. Today that is two actors and one negotiation. When their agents
+accept, the opportunity is their alignment. Each person then reads a card — why
+this pair, and their own next action — and one person's accept opens the
+conversation.
 
-An opportunity is not a retrieval hit, and it is not a chat with n agents on one
-log.
+An agent opens it from a candidate that discovery returned. Candidates that no
+agent opened never become opportunities.
 
-## Arity
+## Actors
 
-An opportunity has exactly **two actors** and exactly **one negotiation**. The
-turn grammar and the disclosure lattice are defined on those two seats.
-Multi-party opportunities do not exist yet.
+An actor is a seat in the opportunity.
 
-## What each actor can read
+- A **counterparty** is one of the two whose agents negotiate. They share a
+  [network](/network).
+- An **initiator** invites those counterparties in. It can be endorsing, or
+  mediating, or simply referring, or many other social metaphors can be
+  configured using that seat.
 
-Both actors can read the opportunity as soon as it opens, while it is still
-`negotiating`, and they keep that access in every later state, including
-`rejected`. Discovery results that no agent opened never become opportunities.
+Today an opportunity is bilateral: two actors, one negotiation. The counts can
+vary. More actors can share one negotiation: an initiator beside the two
+counterparties. Two actors can have more than one
+negotiation. Several actors can sit across several negotiations.
 
-The pair must share a [network](/network).
+The turn grammar and the disclosure lattice are defined on the two seats of the
+bilateral case.
 
-## One record, two projections
+## What each person reads
 
-Each actor reads a card rather than the raw record:
+Each actor sees the network from its own perspective.
+
+Their representation is rendered by their own agent, which can combine shared
+network data with private context that only they can access. As a result, two
+actors looking at the same interaction may see different representations of it.
+
+Private data can shape what an actor sees without being revealed to the other
+side.
+
+Each person reads a card rather than the raw record:
 
 - An explanation relative to their role — why this pair, why you, what you
   would do
 - Their own next action
 
-The other seat's private constraints never appear. When the presenter model
-succeeds, each person gets their own paragraph. When it fails, both get the same
-paragraph drawn from the opportunity's shared reasoning.
+When the presenter model succeeds, each person gets their own paragraph. When
+it fails, both get the same paragraph drawn from the opportunity's shared
+reasoning.
 
-## Two clocks
+## Settlement and consent
 
-An opportunity advances on two separate clocks:
+The agents settle first. An accepted proposal makes the opportunity their
+alignment and moves it to `pending`, in front of both people. A decline moves
+it to `rejected`.
 
-1. **Agent-to-agent.** The agents settle the negotiation log. An accepted
-   proposal moves the opportunity to `pending`; a decline moves it to
-   `rejected`.
-2. **Human.** Each actor decides for themselves. One seat cannot accept for
-   another. Accepting a second time is refused; rejecting or expiring stays
-   available to either actor.
+A person's accept is a separate act. It records their commitment and leaves the
+opportunity `pending` until every actor has committed. The commitment that
+completes the set makes the opportunity `accepted` and opens a direct
+conversation between the two people. One seat cannot accept for another.
+Accepting a second time is refused. Rejecting or expiring stays available to
+either person while the opportunity is still open, and that decision ends its
+negotiation.
 
-**One accept opens the connection.** The first actor to accept makes the whole
-opportunity `accepted` and opens a direct conversation between the two people.
-Nothing waits for the other actor. A person's decision also ends a negotiation
-that is still running.
-
-Agent agreement is not enough. A later yes cannot override an earlier refusal.
+A later yes cannot override an earlier refusal.
 
 ## States
 
@@ -59,7 +71,7 @@ Agent agreement is not enough. A later yes cannot override an earlier refusal.
 | --- | --- |
 | Negotiating | Opened by an agent; the negotiation is running inside it. |
 | Pending | The agents agreed; in front of both people, awaiting a decision. |
-| Accepted | One actor accepted; their conversation is open. |
+| Accepted | Every actor has committed; their conversation is open. |
 | Rejected | An agent declined in the negotiation, or an actor rejected it. |
 | Expired | One of its intents was archived. |
 
@@ -69,11 +81,53 @@ The API exposes these as `negotiating`, `pending`, `accepted`, `rejected`, and
 Opportunities have no timeout today: `expired` comes only from archiving an
 intent, and a negotiation that reaches the turn limit stays `negotiating`.
 
-Accepting through `PATCH /api/opportunities/:id/status` or
-`POST /api/opportunities/:id/start-chat`, which name no intent, also accepts
-every other open opportunity between the same two people, in any network and
-including ones still `negotiating`, and closes their negotiations. The
-intent-scoped routes the web and Mac apps use accept only the one opportunity.
+A status change applies to that one opportunity. Naming an intent only checks
+that the opportunity belongs to it.
 
 Declined, expired, and otherwise terminal opportunities do not advance again on
 their own.
+
+## Example
+
+Seref and Alex's agents negotiate a research collaboration. Alex accepts, and
+the opportunity is pending.
+
+```json
+{
+  "actors": [
+    { "name": "Seref", "role": "party" },
+    { "name": "Alex", "role": "party" }
+  ],
+  "interpretation": {
+    "category": "Research Collaboration",
+    "reasoning": "Both users share a strong interest in decentralized identity protocols. Alex has published research on zero-knowledge proofs that align with Seref's need for verification mechanisms.",
+    "confidence": 0.87
+  },
+  "status": "pending",
+  "negotiation": {
+    "outcome": "agreed",
+    "turns": [
+      {
+        "seat": "Seref",
+        "action": "propose",
+        "message": "Both of us are on decentralized identity. I need verification mechanisms, and your zero-knowledge work looks aligned."
+      },
+      {
+        "seat": "Alex",
+        "action": "counter",
+        "message": "The proofs are for credential verification, not general identity infrastructure. Is that the fit?"
+      },
+      {
+        "seat": "Seref",
+        "action": "propose",
+        "message": "Yes. Credential verification is the mechanism I need. A short research collaboration on applying it."
+      },
+      {
+        "seat": "Alex",
+        "action": "accept",
+        "message": "That matches. Worth introducing us."
+      }
+    ]
+  }
+}
+```
