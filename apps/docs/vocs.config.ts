@@ -11,6 +11,15 @@ export default defineConfig({
     dark: '/logos/logo-white-full.svg',
   },
   accentColor: '#E08A2E',
+  head: {
+    script: [
+      {
+        async: true,
+        'data-domain': 'docs.index.network',
+        src: 'https://plausible.io/js/script.outbound-links.js',
+      },
+    ],
+  },
   socials: [{ icon: 'github', link: 'https://github.com/indexnetwork/index' }],
   sidebar: [
     {
