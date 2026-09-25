@@ -40,11 +40,11 @@ export default defineConfig({
       ],
     },
     {
-      text: 'Use-cases',
+      text: 'Guides',
       items: [
-        { text: 'Find someone', link: '/use-cases/find-someone' },
-        { text: 'Custom negotiator', link: '/use-cases/custom-negotiator' },
-        { text: 'Introducer agent (planned)', link: '/use-cases/introducer-agent' },
+        { text: 'Find someone', link: '/guides/find-someone' },
+        { text: 'Custom negotiator', link: '/guides/custom-negotiator' },
+        { text: 'Introducer agent (planned)', link: '/guides/introducer-agent' },
       ],
     },
     {
