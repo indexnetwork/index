@@ -45,7 +45,7 @@ flags are listed in [Options](#options), and examples follow this reference.
 | --- | --- |
 | `index help` | Show global help; also available as `index`, `index --help`, or `index -h`. |
 | `index version` | Show the installed version; also available as `index --version` or `index -v`. |
-| `index login` | Sign in through the browser and store this device's session. |
+| `index login [local\|dev\|prod]` | Sign in through the matching browser app and store this device's session. |
 | `index logout` | Revoke and clear the stored device session. |
 | `index docs [topic]` | Read canonical protocol guidance, optionally narrowed to a topic. |
 | `index agent me` | Read the agent selected to handle your negotiations. |
@@ -98,11 +98,14 @@ flags are listed in [Options](#options), and examples follow this reference.
 Authenticate with Index Network. Opens a browser window that runs the device authorization grant against your existing session (or a fresh login), then hands this machine a session of its own.
 
 ```bash
-index login                     # Browser-based auth
-index login --api-url <url>     # Custom server URL
+index login local               # http://localhost:3001 API + http://localhost:3000 web app
+index login dev                 # https://protocol.dev.index.network API + https://dev.index.network web app
+index login prod                # Production (also the default on first login)
+index login --api-url <url>     # Custom API; matching web origin is inferred
+index login --api-url <url> --app-url <url>  # Override both origins
 ```
 
-Credentials are stored in `~/.index/credentials.json`. Browser login explicitly requests protocol v2 and binds the loopback callback with a one-time state. Only a short-lived device code travels through the redirect; the CLI exchanges it at `/api/auth/device/token` for its own session token and sends that as `Authorization: Bearer`. There is no approval prompt, because the web page mints and approves the code itself — no code from anywhere else can enter the grant. A re-login revokes the session it replaces, so logins do not pile up.
+Credentials are stored in `~/.index/credentials.json`; the latest login replaces the previous target and its session. Without a target, login reuses the stored API origin (or production on first use). The local web app must be running on port 3000 and the API on 3001; the dev web app must be configured to authenticate against the dev protocol service. Browser login explicitly requests protocol v2 and binds the loopback callback with a one-time state. Only a short-lived device code travels through the redirect; the CLI exchanges it at `/api/auth/device/token` for its own session token and sends that as `Authorization: Bearer`. There is no approval prompt, because the web page mints and approves the code itself — no code from anywhere else can enter the grant. A re-login revokes the session it replaces, so logins do not pile up.
 
 For noninteractive calls, set exactly one credential:
 

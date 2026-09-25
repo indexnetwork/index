@@ -20,7 +20,7 @@ export async function connectOwner() {
     stored = JSON.parse(await readFile(join(homedir(), ".index", "credentials.json"), "utf8"));
   } catch { /* No CLI login; the environment may still supply a session. */ }
   const token = process.env.INDEX_SESSION_TOKEN || (stored?.authKind === "session" ? stored.token : undefined);
-  if (!token) throw new Error("Not logged in. Run `bun run --cwd packages/cli dev login` or set INDEX_SESSION_TOKEN.");
+  if (!token) throw new Error("Not logged in. Run `bun run --cwd packages/cli dev login local` (or `login dev` / `login prod`) or set INDEX_SESSION_TOKEN.");
   const origin = (process.env.INDEX_API_URL || stored?.apiUrl || "http://localhost:3001").replace(/\/+$/, "");
   const client = createIndexApiClient({ apiBaseUrl: `${origin}/api`, getToken: () => token });
   const meResponse = await client.auth.me() as { user?: { id: string; name?: string }; id?: string; name?: string };

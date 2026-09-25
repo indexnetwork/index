@@ -10,6 +10,8 @@ export interface ParsedCommand {
   apiUrl?: string;
   /** Override the app URL (frontend, serves /cli-auth). */
   appUrl?: string;
+  /** Named login target. */
+  loginTarget?: "local" | "dev" | "prod";
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
@@ -215,6 +217,14 @@ export function parseArgs(args: string[]): ParsedCommand {
   if (result.command === "agent") {
     result.subcommand = positionals[0] as ParsedCommand["subcommand"];
     result.positionals = positionals.slice(1);
+    return result;
+  }
+
+  if (result.command === "login") {
+    if (positionals.length > 1 || (positionals[0] && !["local", "dev", "prod"].includes(positionals[0]))) {
+      throw new Error("Usage: index login [local|dev|prod] [--api-url <origin>] [--app-url <origin>]");
+    }
+    result.loginTarget = positionals[0] as ParsedCommand["loginTarget"];
     return result;
   }
 

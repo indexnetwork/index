@@ -28,14 +28,28 @@ import { handleOnboarding } from "./onboarding.command";
 import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
-const DEFAULT_APP_URL = "https://index.network";
+const LOGIN_API_URLS = {
+  local: "http://localhost:3001",
+  dev: "https://protocol.dev.index.network",
+  prod: DEFAULT_API_URL,
+} as const;
+
+/** Pair the selected protocol server with its web device-auth page. */
+function webOriginForApi(apiUrl: string): string {
+  const url = new URL(apiUrl);
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+    return `${url.protocol}//${url.hostname}:3000`;
+  }
+  const hostname = url.hostname.startsWith("protocol.") ? url.hostname.slice("protocol.".length) : url.hostname;
+  return `https://${hostname}`;
+}
 const VERSION = packageJson.version;
 
 /** Print current commands as text or one machine-readable help result. */
 function renderHelp(json?: boolean): void {
   const help = `Usage: index <command> [args] [options]
 
-  login [--app-url <url>]             Authenticate through the browser
+  login [local|dev|prod] [--app-url <url>] Authenticate through the matching web app
   logout                             Revoke and clear the stored session
   docs [topic]                       Read the protocol's canonical guidance
   agent me                           Read your selected personal agent
@@ -62,6 +76,7 @@ Network options: --prompt <text> (create), --title <text> (update)
 
 Auth: INDEX_SESSION_TOKEN or INDEX_API_KEY, otherwise stored browser login.
 API origin: --api-url, INDEX_API_URL, stored login URL, production default.
+Login target: local (localhost:3001), dev (protocol.dev.index.network), prod (default).
 --json emits one result/error; conversation stream emits NDJSON events.`;
   console.log(json ? JSON.stringify({ version: VERSION, help }) : `Index CLI ${VERSION}\n\n${help}`);
 }
@@ -92,10 +107,16 @@ async function requireAuth(apiUrlOverride?: string): Promise<ApiClient> {
 /**
  * Handle the login command via the browser handshake.
  */
-async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, json?: boolean): Promise<void> {
+async function runLogin(
+  target?: keyof typeof LOGIN_API_URLS,
+  apiUrlOverride?: string,
+  appUrlOverride?: string,
+  json?: boolean,
+): Promise<void> {
   const store = new CredentialStore();
-  const apiUrl = apiUrlOverride ?? process.env.INDEX_API_URL ?? (await store.load())?.apiUrl ?? DEFAULT_API_URL;
-  const appUrl = appUrlOverride ?? DEFAULT_APP_URL;
+  const apiUrl = apiUrlOverride ?? (target ? LOGIN_API_URLS[target] : undefined)
+    ?? process.env.INDEX_API_URL ?? (await store.load())?.apiUrl ?? DEFAULT_API_URL;
+  const appUrl = appUrlOverride ?? webOriginForApi(apiUrl);
 
   // Browser flow: opens /cli-auth which exchanges existing session or starts OAuth
   output.info(`Authenticating with ${apiUrl}...`);
@@ -195,7 +216,7 @@ async function main(): Promise<void> {
       output.error(`Unknown command: ${args.unknown}`, 1);
       return;
     case "login":
-      await runLogin(args.apiUrl, args.appUrl, args.json);
+      await runLogin(args.loginTarget, args.apiUrl, args.appUrl, args.json);
       return;
     case "logout":
       await runLogout(args.json);
