@@ -1,0 +1,7 @@
+[90m$[0m index opportunity list --status pending
+
+[1mOpportunities[0m
+  [1mID        Counterparty          Status        Headline[0m
+  [90m--------  --------------------  ------------  ------------------------------------------------[0m
+  [36ma1b2c3d4[0m  Alex Chen             [33mpending     [0m  Federated learning for hospital data
+  [36me5f6a7b8[0m  Maria Santos          [33mpending     [0m  Co-author a paper on on-device training

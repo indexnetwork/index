@@ -1,0 +1,9 @@
+[90m$[0m index negotiation list --state open
+
+[1mNegotiations[0m
+  [1mID        Counterparty            Turns  Whose turn  Outcome   Updated     [0m
+  [90m--------  ----------------------  -----  ----------  --------  ------------[0m
+  [36ma1b2c3d4[0m  Alex Chen               2      [33m[1myou       [0m  [33mopen[0m      [90mSep 16, 2026[0m
+  [36me5f6a7b8[0m  Maria Santos            1      [90mthem      [0m  [33mopen[0m      [90mSep 16, 2026[0m
+[90m
+  Details: index negotiation show <id>  (the short ID works)[0m

@@ -1,0 +1,8 @@
+[90m$[0m index login
+[36mAuthenticating with https://protocol.index.network...[0m
+[36mOpening browser for authentication...[0m
+[90mIf the browser does not open, visit:
+  https://index.network/cli-auth?...
+[0m
+[90mWaiting for authentication callback...[0m
+[32m[1m+[0m Logged in as Ada Park (ada@example.com)
