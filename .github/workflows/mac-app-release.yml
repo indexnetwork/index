@@ -8,6 +8,7 @@
 # Durable downloads:
 #   dev  → …/releases/download/mac-dev/Index.dmg  (prerelease)
 #   main → …/releases/download/mac/Index.dmg
+# Each release also carries Index.zip (the same stapled app) for the in-app updater.
 name: Release macOS DMG
 
 on:
@@ -105,6 +106,8 @@ jobs:
           open -a Finder
           ./scripts/dmg.sh
           xcrun stapler validate dist/Index.dmg
+          # The in-app updater downloads this instead of the DMG.
+          ditto -c -k --keepParent dist/Index.app dist/Index.zip
 
       - name: Publish GitHub Release
         working-directory: apps/mac
@@ -118,12 +121,13 @@ jobs:
         run: |
           set -euo pipefail
           test -f dist/Index.dmg
+          test -f dist/Index.zip
           notes="Index.dmg from ${GITHUB_SHA} on ${GITHUB_REF_NAME}."
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/Index.dmg --clobber
+            gh release upload "$TAG" dist/Index.dmg dist/Index.zip --clobber
             gh release edit "$TAG" --title "$TITLE" --notes "$notes"
           elif [ "$PRERELEASE" = "true" ]; then
-            gh release create "$TAG" dist/Index.dmg --target "$GITHUB_REF_NAME" --title "$TITLE" --notes "$notes" --prerelease
+            gh release create "$TAG" dist/Index.dmg dist/Index.zip --target "$GITHUB_REF_NAME" --title "$TITLE" --notes "$notes" --prerelease
           else
-            gh release create "$TAG" dist/Index.dmg --target "$GITHUB_REF_NAME" --title "$TITLE" --notes "$notes" --latest
+            gh release create "$TAG" dist/Index.dmg dist/Index.zip --target "$GITHUB_REF_NAME" --title "$TITLE" --notes "$notes" --latest
           fi

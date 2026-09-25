@@ -67,6 +67,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     /// Once a page has finished, a later failed reload can safely use it.
     private var hasLoadedDocument = false
 
+    /// Verified bundle that replaces this one when the app quits.
+    private var stagedUpdate: UpdateChecker.Staged?
+    /// Release commit currently downloading, so overlapping checks don't race
+    /// on the staging directory.
+    private var stagingSHA: String?
+    /// Each staged build prompts at most once.
+    private var promptedUpdateSHA: String?
+    /// The ready prompt is deferred until the app is frontmost with its window up.
+    private var updatePromptPending = false
+    private var relaunchAfterUpdate = false
+
     /// Smallest window the web layout renders correctly at. See the note where
     /// it's applied, the screens clip below roughly 860x600. The width is held
     /// higher than that: the radar column keeps a 600px floor so its funnel
@@ -208,6 +219,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+
+        checkForUpdatesInBackground()
+        Timer.scheduledTimer(withTimeInterval: 30 * 60, repeats: true) { [weak self] _ in
+            self?.checkForUpdatesInBackground()
+        }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if updatePromptPending { presentUpdateReady() }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let stagedUpdate {
+            UpdateChecker.installOnExit(stagedUpdate, relaunch: relaunchAfterUpdate)
+        }
     }
 
     private func loadBundledHTML() {
@@ -980,23 +1006,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         openExternally(URL(string: "https://docs.index.network"))
     }
 
-    /// Compare this build's commit with the rolling release and offer the DMG.
-    /// Deliberately manual: nothing checks on launch.
+    /// Menu action. Once an update is staged the same item reads "Restart to
+    /// Update" and installs it; otherwise it checks now and stages what it finds,
+    /// falling back to the DMG when this copy cannot replace itself.
     @objc func checkForUpdates(_ sender: Any?) {
+        if stagedUpdate != nil { return restartToUpdate() }
         UpdateChecker.check { [weak self] outcome in
+            guard let self else { return }
             switch outcome {
             case .current:
-                self?.presentUpdateAlert(
+                self.presentUpdateAlert(
                     message: "Index is up to date.",
                     detail: "This build matches the latest release.",
                     download: nil)
-            case .available(let download):
-                self?.presentUpdateAlert(
-                    message: "A newer Index is available.",
-                    detail: "The latest release was built from a different commit than this app.",
-                    download: download)
+            case .available(let sha):
+                let offerDMG = {
+                    self.presentUpdateAlert(
+                        message: "A newer Index is available.",
+                        detail: "The latest release was built from a different commit than this app.",
+                        download: UpdateChecker.downloadURL)
+                }
+                guard UpdateChecker.canSelfUpdate else { return offerDMG() }
+                self.stageUpdate(sha: sha) { staged in
+                    guard staged else { return offerDMG() }
+                    self.promptedUpdateSHA = nil
+                    self.presentUpdateReady()
+                }
             case .indeterminate(let reason, let download):
-                self?.presentUpdateAlert(
+                self.presentUpdateAlert(
                     message: "Could not check for updates.",
                     detail: reason,
                     download: download)
@@ -1018,12 +1055,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         alert.runModal()
     }
 
+    /// Launch and every 30 minutes: stage a newer release silently, then prompt.
+    private func checkForUpdatesInBackground() {
+        guard UpdateChecker.canSelfUpdate else { return }
+        UpdateChecker.check { [weak self] outcome in
+            guard case .available(let sha) = outcome else { return }
+            self?.stageUpdate(sha: sha) { staged in
+                if staged { self?.presentUpdateReady() }
+            }
+        }
+    }
+
+    /// - Parameter completion: Whether `sha` is staged. Not called when that
+    ///   commit is already downloading.
+    private func stageUpdate(sha: String, completion: @escaping (Bool) -> Void) {
+        if stagedUpdate?.sha == sha { return completion(true) }
+        guard stagingSHA == nil else { return }
+        stagingSHA = sha
+        stagedUpdate = nil
+        UpdateChecker.stage(sha: sha) { [weak self] staged in
+            self?.stagingSHA = nil
+            self?.stagedUpdate = staged
+            completion(staged != nil)
+        }
+    }
+
+    private func presentUpdateReady() {
+        guard let staged = stagedUpdate, promptedUpdateSHA != staged.sha else { return }
+        guard NSApp.isActive, window.isVisible, window.attachedSheet == nil else {
+            updatePromptPending = true
+            return
+        }
+        updatePromptPending = false
+        promptedUpdateSHA = staged.sha
+        let alert = NSAlert()
+        alert.messageText = "A new version of Index is ready."
+        alert.informativeText = "Restart now to finish updating, or it installs the next time you quit."
+        alert.addButton(withTitle: "Restart Now")
+        alert.addButton(withTitle: "Later")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn { self?.restartToUpdate() }
+        }
+    }
+
+    private func restartToUpdate() {
+        relaunchAfterUpdate = true
+        NSApp.terminate(nil)
+    }
+
     /// Every screen the menus can open belongs to a signed-in account, so those
     /// items stay dimmed until there is one.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(openSettings(_:)), #selector(openNetworks(_:)), #selector(openNegotiations(_:)):
             return ownerIsAuthenticated()
+        case #selector(checkForUpdates(_:)):
+            menuItem.title = stagedUpdate == nil ? "Check for Updates…" : "Restart to Update"
+            return true
         default:
             return true
         }
