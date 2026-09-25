@@ -116,7 +116,7 @@
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.47.1",
+      "version": "0.47.2",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",

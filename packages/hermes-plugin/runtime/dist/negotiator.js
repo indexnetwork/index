@@ -345,7 +345,7 @@ function principalFacts(user) {
   return { name: user.name, intro: user.intro ?? null, location: user.location ?? null, timezone: user.timezone ?? null };
 }
 function principalOnly(conversation) {
-  return conversation.filter((entry) => entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall");
+  return conversation.filter((entry) => entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall" && entry.kind !== "resolution");
 }
 function briefParameters(opportunity) {
   return {
@@ -564,7 +564,7 @@ var WAKE_PROMPT = [
   BRIEF_PROMPT,
   "A signal with nothing open yet is the one case where breadth is the whole job: discover people in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone discovered is reached, so how wide you cast is decided entirely by the queries you write \u2014 being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again \u2014 the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
-  "A stall you are reading here for the first time is asked about on this wake. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is waiting on an answer to something nobody has put to them yet, so holding it is how a negotiation stops for good.",
+  "A stall with no questionId has never been put to your principal, and is settled on this wake: ask them for what it is missing, naming it in stalled, or resolve_stall when their own words already cover it. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is held until then, so leaving it is how a negotiation stops for good. A stall whose question is still waiting is left alone. A stall marked answered is decided on this wake with set_brief, in a brief that carries the answer: that decision is what resumes its negotiator.",
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
   "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly and in English, even when they wrote in another language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something \u2014 a fact, preference or instruction \u2014 act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
   "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake \u2014 the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the signal, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
@@ -603,6 +603,7 @@ async function wake(input) {
   const unansweredMessage = unansweredPrincipalMessage(input.principalConversation);
   const open = openQuestions(input.principalConversation);
   const byId = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
+  const asking = new Set;
   let noted = false;
   let unpersisted;
   async function verdict(opportunityId, status) {
@@ -613,6 +614,16 @@ async function wake(input) {
     }
     const result2 = status === "accepted" ? await client.acceptOpportunity(opportunityId) : await client.rejectOpportunity(opportunityId);
     return `Opportunity ${result2.status}: ${result2.opportunityId}.`;
+  }
+  async function persist(decided) {
+    try {
+      await input.onBrief?.(decided);
+    } catch (cause) {
+      unpersisted ??= cause;
+    }
+  }
+  function owed() {
+    return opportunities.filter(({ id, stall }) => stall && (stall.answered || !stall.questionId && !asking.has(id))).map(({ id }) => id);
   }
   const tools = [
     tool({
@@ -638,12 +649,44 @@ async function wake(input) {
         if (brief)
           opportunity.brief = brief;
         opportunity.decision = decision;
-        try {
-          await input.onBrief?.(decided);
-        } catch (cause) {
-          unpersisted ??= cause;
-        }
-        return "Brief recorded, and its negotiator is starting.";
+        const held = opportunity.stall && !opportunity.stall.answered && (decision === "continue" || decision === "accept");
+        if (!held)
+          delete opportunity.stall;
+        await persist(decided);
+        return held ? "Brief recorded. Its negotiator stays held: the stall still needs its question asked, answered, or resolve_stall." : "Brief recorded, and its negotiator is starting.";
+      }
+    }),
+    tool({
+      name: "resolve_stall",
+      description: "Release one stalled negotiation without asking, only when your principal's own words or its brief already carry what the stall missed, or they told you to go ahead without it. Rewrite the brief when the negotiator needs that in it. Its negotiator starts as soon as you call this.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          opportunityId: { type: "string" },
+          reason: { type: "string", minLength: 1, description: "Why the stall's missing fact is covered, in one sentence." },
+          decision: { type: "string", enum: ["continue", "accept"] },
+          brief: { type: "string", minLength: 1, maxLength: BRIEF_LIMIT }
+        },
+        required: ["opportunityId", "reason", "decision"]
+      },
+      run: async ({ opportunityId, reason, decision, brief }) => {
+        const opportunity = byId.get(opportunityId);
+        const stall = opportunity?.stall;
+        if (!opportunity || !stall)
+          throw new Error(`No stall stands on ${opportunityId}.`);
+        if (stall.answered)
+          throw new Error("Its question was answered: decide it with set_brief, carrying the answer.");
+        if (stall.retried)
+          throw new Error("It stalled again on the same turn after you resolved it once: ask your principal instead.");
+        const decided = [{ type: "resolve", opportunityId, stallId: stall.id, reason }, ...recordBrief(opportunity, decision, brief)];
+        actions.push(...decided);
+        if (brief)
+          opportunity.brief = brief;
+        opportunity.decision = decision;
+        delete opportunity.stall;
+        await persist(decided);
+        return "Stall resolved, and its negotiator is starting.";
       }
     }),
     tool({
@@ -712,7 +755,13 @@ async function wake(input) {
           question: { type: "string", minLength: 1 },
           options: { type: "array", minItems: 2, maxItems: 4, uniqueItems: true, items: { type: "string", minLength: 1 } },
           scope: { type: "string", enum: ["intent", "opportunity"] },
-          opportunityId: { type: "string", description: "Required when scope is opportunity." }
+          opportunityId: { type: "string", description: "Required when scope is opportunity." },
+          stalled: {
+            type: "array",
+            uniqueItems: true,
+            items: { type: "string" },
+            description: "The opportunities whose stall this question asks for. An opportunity-scoped question asks for its own stall when this is omitted."
+          }
         },
         required: ["question", "options", "scope"]
       },
@@ -727,12 +776,26 @@ async function wake(input) {
             throw new Error(`No opportunity ${argument.opportunityId}. Use one of: ${[...byId.keys()].join(", ") || "none"}.`);
           }
         }
+        const unasked = (opportunityId) => {
+          const stall = byId.get(opportunityId)?.stall;
+          return stall && !stall.questionId && !stall.answered && !asking.has(opportunityId) ? stall : undefined;
+        };
+        const stalled = argument.stalled ?? (argument.scope === "opportunity" && unasked(argument.opportunityId) ? [argument.opportunityId] : []);
+        const stalls = stalled.map((opportunityId) => {
+          const stall = unasked(opportunityId);
+          if (!stall)
+            throw new Error(`${opportunityId} has no stall waiting for a question.`);
+          return stall.id;
+        });
+        for (const opportunityId of stalled)
+          asking.add(opportunityId);
         actions.push({
           type: "ask",
           scope: argument.scope,
           question: argument.question,
           options: argument.options,
-          ...argument.opportunityId ? { opportunityId: argument.opportunityId } : {}
+          ...argument.opportunityId ? { opportunityId: argument.opportunityId } : {},
+          ...stalls.length ? { stalls } : {}
         });
         return "Question recorded.";
       }
@@ -752,6 +815,10 @@ async function wake(input) {
         }
         open.delete(questionId);
         actions.push({ type: "expire", questionId });
+        for (const opportunity of opportunities) {
+          if (opportunity.stall?.questionId === questionId && !opportunity.stall.answered)
+            delete opportunity.stall.questionId;
+        }
         return "Question retired.";
       }
     }),
@@ -823,6 +890,30 @@ async function wake(input) {
     }),
     tools
   });
+  if (!unpersisted && owed().length) {
+    const due = new Set(owed());
+    await run({
+      model: input.model,
+      identity,
+      intent,
+      maxSteps: 4,
+      ...input.now ? { now: input.now } : {},
+      ...input.signal ? { signal: input.signal } : {},
+      instructions: [
+        "These negotiations are held on a stall, and this run settles each one. A stall with no questionId: write one note_principal, then ask_principal for what it is missing, naming it in stalled, unless your principal's own words already cover it, in which case resolve_stall. A stall marked answered: set_brief, in a brief that carries the answer. Decline or stop one only when the conversation already says so.",
+        BRIEF_PROMPT
+      ].join(`
+
+`),
+      prompt: JSON.stringify({
+        principal: principalFacts(user),
+        conversation,
+        opportunities: opportunities.filter(({ id }) => due.has(id)),
+        openQuestions: [...open].map(([questionId, question]) => ({ questionId, question }))
+      }),
+      tools: tools.filter((entry) => ["note_principal", "ask_principal", "resolve_stall", "set_brief"].includes(entry.name))
+    });
+  }
   if (unpersisted)
     throw unpersisted;
   if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
@@ -846,16 +937,21 @@ async function wake(input) {
   if (unansweredMessage && !actions.some((action) => action.type === "reply")) {
     throw new Error("No reply to principal's direct message.");
   }
+  const unresolved = owed();
   if (actions.some((action) => action.type === "reply") && !actions.some((action) => action.type === "ask")) {
-    return { actions: actions.filter((action) => action.type !== "note") };
+    return { actions: actions.filter((action) => action.type !== "note"), unresolved };
   }
-  return { actions };
+  return { actions, unresolved };
 }
 
 // ../agent/src/host.ts
 var BRIEF = "Brief: ";
 var DECISION = "Decision: ";
 var STALL = "Stall: ";
+var RESOLVED = "Resolved: ";
+var TO_ASK = `
+
+To ask: `;
 var PROGRESS = "Progress: ";
 var WITHDRAWN = "Withdrawn: ";
 var OPENING_MS = 60000;
@@ -876,6 +972,7 @@ function readConversation(messages) {
     const opportunity = principal?.matches?.[0]?.opportunityId;
     const counterpart = principal?.matches?.[0]?.counterparty.name ?? undefined;
     const text = textOf(message);
+    const stalls = principal?.stalls?.length ? { stalls: principal.stalls } : {};
     if (principal?.reply)
       return { kind: "reply", text };
     if (message.role === "agent" && text.startsWith(BRIEF)) {
@@ -885,7 +982,17 @@ function readConversation(messages) {
       return { kind: "decision", text: text.slice(DECISION.length), ...opportunity ? { opportunity } : {}, ...counterpart ? { counterpart } : {} };
     }
     if (message.role === "agent" && text.startsWith(STALL)) {
-      return { kind: "stall", text: text.slice(STALL.length), ...opportunity ? { opportunity } : {}, ...counterpart ? { counterpart } : {} };
+      return {
+        kind: "stall",
+        id: message.id,
+        text: text.slice(STALL.length),
+        ...principal?.stall ? { turnCount: principal.stall.turnCount } : {},
+        ...opportunity ? { opportunity } : {},
+        ...counterpart ? { counterpart } : {}
+      };
+    }
+    if (message.role === "agent" && text.startsWith(RESOLVED)) {
+      return { kind: "resolution", text: text.slice(RESOLVED.length), ...stalls, ...opportunity ? { opportunity } : {}, ...counterpart ? { counterpart } : {} };
     }
     if (message.role === "agent" && text.startsWith(PROGRESS)) {
       return { kind: "progress", text: text.slice(PROGRESS.length) };
@@ -897,6 +1004,7 @@ function readConversation(messages) {
       ...principal?.scope ? { scope: principal.scope === "match" ? "opportunity" : "intent" } : {},
       ...principal?.questionId ? { questionId: principal.questionId } : {},
       ...principal?.options ? { options: principal.options } : {},
+      ...stalls,
       ...opportunity ? { opportunity } : {},
       ...counterpart ? { counterpart } : {}
     };
@@ -924,29 +1032,87 @@ function toOpportunity(negotiation, userId) {
 }
 function latestBriefs(conversation) {
   const perOpportunity = new Map;
+  const asked = new Map;
+  const resolvedAt = new Map;
+  const of = (opportunityId) => {
+    const current = perOpportunity.get(opportunityId) ?? {};
+    perOpportunity.set(opportunityId, current);
+    return current;
+  };
+  const linked = (stallIds) => [...perOpportunity].filter(([, carried]) => carried.stall && stallIds?.includes(carried.stall.id));
   for (const entry of conversation) {
-    if (entry.kind === "answer" || entry.kind === "user") {
-      for (const [id, carried] of perOpportunity) {
-        if (!entry.opportunity || entry.opportunity === id)
-          carried.answered = true;
+    switch (entry.kind) {
+      case "brief":
+        if (entry.opportunity)
+          of(entry.opportunity).brief = entry.text;
+        break;
+      case "stall": {
+        if (!entry.opportunity || !entry.id || entry.turnCount === undefined)
+          break;
+        const current = of(entry.opportunity);
+        if (current.stall && !current.stall.answered && current.stall.turnCount === entry.turnCount)
+          break;
+        const [reason = entry.text, suggestedAsk] = entry.text.split(TO_ASK);
+        current.stall = {
+          id: entry.id,
+          reason,
+          ...suggestedAsk ? { suggestedAsk } : {},
+          turnCount: entry.turnCount,
+          ...resolvedAt.get(entry.opportunity) === entry.turnCount ? { retried: true } : {}
+        };
+        break;
       }
-      continue;
+      case "question":
+        if (!entry.questionId || !entry.stalls)
+          break;
+        asked.set(entry.questionId, entry.stalls);
+        for (const [, carried] of linked(entry.stalls))
+          carried.stall.questionId ??= entry.questionId;
+        break;
+      case "expire":
+        for (const [, carried] of linked(asked.get(entry.questionId ?? ""))) {
+          if (carried.stall.questionId === entry.questionId && !carried.stall.answered)
+            delete carried.stall.questionId;
+        }
+        break;
+      case "answer": {
+        const stalled = linked(asked.get(entry.questionId ?? ""));
+        for (const [, carried] of stalled) {
+          carried.stall.answered = true;
+          carried.answered = true;
+        }
+        if (entry.opportunity && perOpportunity.has(entry.opportunity))
+          of(entry.opportunity).answered = true;
+        break;
+      }
+      case "resolution":
+        for (const [opportunityId, carried] of linked(entry.stalls)) {
+          resolvedAt.set(opportunityId, carried.stall.turnCount);
+          delete carried.stall;
+        }
+        break;
+      case "decision": {
+        if (!entry.opportunity || !DECISIONS2.includes(entry.text))
+          break;
+        const current = of(entry.opportunity);
+        current.decision = entry.text;
+        if (current.stall && (current.stall.answered || current.decision === "decline" || current.decision === "stop")) {
+          delete current.stall;
+        }
+        delete current.answered;
+        break;
+      }
+      default:
+        break;
     }
-    if (!entry.opportunity || entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall")
-      continue;
-    const current = perOpportunity.get(entry.opportunity) ?? {};
-    if (entry.kind === "brief")
-      current.brief = entry.text;
-    else if (entry.kind === "stall")
-      current.stall = { reason: entry.text };
-    else if (DECISIONS2.includes(entry.text)) {
-      current.decision = entry.text;
-      delete current.stall;
-      delete current.answered;
-    }
-    perOpportunity.set(entry.opportunity, current);
   }
   return perOpportunity;
+}
+function standing(carried, negotiation) {
+  const { stall, ...rest } = carried ?? {};
+  if (!stall || negotiation.settledAt || negotiation.turnCount > stall.turnCount)
+    return rest;
+  return { ...rest, stall };
 }
 function questionsAsked(conversation) {
   const asked = new Map;
@@ -966,7 +1132,9 @@ function describe(action) {
     case "decision":
       return `decision ${action.opportunityId}: ${action.decision}`;
     case "ask":
-      return `ask (${action.scope}${action.opportunityId ? ` ${action.opportunityId}` : ""}): ${action.question} [${action.options.join(" | ")}]`;
+      return `ask (${action.scope}${action.opportunityId ? ` ${action.opportunityId}` : ""}): ${action.question} [${action.options.join(" | ")}]${action.stalls ? ` for ${action.stalls.join(", ")}` : ""}`;
+    case "resolve":
+      return `resolve ${action.opportunityId} ${action.stallId}: ${action.reason}`;
     case "note":
       return `note: ${action.text}`;
     case "reply":
@@ -999,13 +1167,17 @@ async function publishActions(client, intentId, actions, context) {
       case "progress":
         entries.push(entry("message", `${PROGRESS}${action.text}`));
         break;
+      case "resolve":
+        entries.push({ ...entry("message", `${RESOLVED}${action.reason}`, match ? [match] : []), stalls: [action.stallId] });
+        break;
       case "ask": {
         const question = entry("question", action.question, match ? [match] : []);
         entries.push({
           ...question,
           questionId: question.id,
           scope: action.scope === "opportunity" ? "match" : "intent",
-          options: action.options
+          options: action.options,
+          ...action.stalls ? { stalls: action.stalls } : {}
         });
         break;
       }
@@ -1036,7 +1208,7 @@ async function runWake(client, intent, runtime) {
   const details = await Promise.all(negotiations.map((negotiation) => client.getNegotiation(negotiation.opportunityId)));
   const principalConversation = readConversation(inbox.messages);
   const carried = latestBriefs(principalConversation);
-  const opportunities = details.map((detail) => ({ ...toOpportunity(detail, user.id), ...carried.get(detail.opportunityId) }));
+  const opportunities = details.map((detail) => ({ ...toOpportunity(detail, user.id), ...standing(carried.get(detail.opportunityId), detail) }));
   const context = {
     counterparts: counterpartsOf(details),
     questions: questionsAsked(principalConversation),
@@ -1060,7 +1232,7 @@ async function runWake(client, intent, runtime) {
       await publishActions(client, intent.id, decided, context);
       for (const action of decided) {
         if (action.type === "decision" && action.decision !== "stop")
-          onNegotiate?.(action.opportunityId, action.decision);
+          onNegotiate?.(action.opportunityId);
       }
     },
     onOpened: (opportunityIds) => {
@@ -1072,7 +1244,9 @@ async function runWake(client, intent, runtime) {
   });
   if (!result2.actions.length)
     log("  silent");
-  await publishActions(client, intent.id, result2.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "progress"), context);
+  await publishActions(client, intent.id, result2.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress"), context);
+  if (result2.unresolved.length)
+    throw new Error(`Wake left stalls unresolved on ${result2.unresolved.join(", ")}.`);
   return result2;
 }
 function principalOf(message) {
@@ -1160,7 +1334,10 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
   if (detail.awaitingUserId !== user.id)
     return { stall: { reason: "It is not this seat's turn." } };
   const principalConversation = readConversation(inbox.messages);
-  const carried = latestBriefs(principalConversation).get(opportunityId) ?? {};
+  const carried = standing(latestBriefs(principalConversation).get(opportunityId), detail);
+  if (carried.stall) {
+    return { held: carried.stall.answered ? "Its stall was answered and waits for a new decision." : "Its stall is still waiting on the principal." };
+  }
   const opportunity = { ...toOpportunity(detail, user.id), ...carried };
   const context = { counterparts: counterpartsOf([detail]), log };
   if (!opportunity.brief || !opportunity.decision) {
@@ -1191,14 +1368,39 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
     await client.submitTurn(opportunityId, { ...result2.turn, expectedTurnCount: detail.turnCount });
     return result2;
   }
-  const text = result2.stall.suggestedAsk ? `${result2.stall.reason}
-
-To ask: ${result2.stall.suggestedAsk}` : result2.stall.reason;
-  await client.sendPrincipal(intent.id, [entry("message", `${STALL}${text}`, [context.counterparts.get(opportunityId)])]);
+  const text = result2.stall.suggestedAsk ? `${result2.stall.reason}${TO_ASK}${result2.stall.suggestedAsk}` : result2.stall.reason;
+  await client.sendPrincipal(intent.id, [{
+    ...entry("message", `${STALL}${text}`, [context.counterparts.get(opportunityId)]),
+    stall: { turnCount: detail.turnCount }
+  }]);
   return result2;
+}
+async function owedWork(client, intent) {
+  const [user, negotiations, inbox] = await Promise.all([
+    client.me(),
+    client.listIntentNegotiations(intent.id),
+    client.principalInbox(intent.id)
+  ]);
+  const carried = latestBriefs(readConversation(inbox.messages));
+  let wake2 = false;
+  const negotiate2 = [];
+  for (const negotiation of negotiations) {
+    if (negotiation.settledAt)
+      continue;
+    const { stall, decision } = standing(carried.get(negotiation.opportunityId), negotiation);
+    if (stall) {
+      if (!stall.questionId || stall.answered)
+        wake2 = true;
+    } else if (negotiation.awaitingUserId === user.id && decision !== "stop") {
+      negotiate2.push(negotiation.opportunityId);
+    }
+  }
+  return { wake: wake2, negotiate: negotiate2 };
 }
 
 // ../agent/runner/runner.ts
+var WAKE_RETRIES = 3;
+var WAKE_RETRY_MS = 30000;
 function startRunner(options) {
   const { client, model, now = () => new Date, log = () => {}, onError = () => {} } = options;
   const abort = new AbortController;
@@ -1206,7 +1408,7 @@ function startRunner(options) {
   const waking = new Set;
   const again = new Set;
   const working = new Map;
-  const stalled = new Map;
+  const retries = new Map;
   const unread = new Map;
   const closing = new Set;
   const resettle = new Set;
@@ -1227,24 +1429,50 @@ function startRunner(options) {
           unread.delete(opportunityId);
       log(`wake ${intent.statement}`);
       const started = Date.now();
-      await runWake(client, intent, { ...runtime(), onNegotiate: (opportunityId, decision) => startNegotiate(intentId, opportunityId, decision) });
+      await runWake(client, intent, { ...runtime(), onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId) });
+      retries.delete(intentId);
       log(`  wake done in ${Math.round((Date.now() - started) / 1000)}s`);
-    })().catch(onError).finally(() => {
+    })().catch((error) => {
+      retry(intentId);
+      onError(error);
+    }).finally(() => {
       waking.delete(intentId);
       if (again.delete(intentId))
         startWake(intentId);
     });
   }
+  function retry(intentId) {
+    const attempt = (retries.get(intentId) ?? 0) + 1;
+    if (stopped || attempt > WAKE_RETRIES) {
+      retries.delete(intentId);
+      return;
+    }
+    retries.set(intentId, attempt);
+    log(`wake retry ${attempt} on ${intentId}`);
+    setTimeout(() => startWake(intentId), WAKE_RETRY_MS * attempt).unref?.();
+  }
+  async function recover(intentId) {
+    const intent = intents.get(intentId);
+    if (stopped || !intent)
+      return;
+    const owed = await owedWork(client, intent);
+    if (owed.wake)
+      startWake(intentId);
+    for (const opportunityId of owed.negotiate)
+      startNegotiate(intentId, opportunityId);
+  }
   async function takeTurn(intent, opportunityId) {
     const result2 = await runNegotiate(client, opportunityId, intent, runtime());
     if ("turn" in result2) {
       log(`turn ${result2.turn.action} on ${opportunityId}`);
-      stalled.delete(opportunityId);
       unread.delete(opportunityId);
       return;
     }
+    if ("held" in result2) {
+      log(`held ${opportunityId}: ${result2.held}`);
+      return;
+    }
     log(`stall on ${opportunityId}: ${result2.stall.reason}`);
-    stalled.set(opportunityId, intent.id);
     unread.set(opportunityId, intent.id);
   }
   function finish(intentId, opportunityId) {
@@ -1277,26 +1505,17 @@ function startRunner(options) {
         await settle(intentId);
     }
   }
-  function startNegotiate(intentId, opportunityId, decision) {
+  function startNegotiate(intentId, opportunityId) {
     const intent = intents.get(intentId);
     if (stopped || !intent || working.has(opportunityId))
-      return;
-    if (decision === "accept" || decision === "decline")
-      stalled.delete(opportunityId);
-    if (stalled.has(opportunityId))
       return;
     working.set(opportunityId, intentId);
     takeTurn(intent, opportunityId).catch(onError).finally(() => finish(intentId, opportunityId));
   }
-  async function startUnstarted() {
-    const [user, open] = await Promise.all([client.me(), client.listNegotiations()]);
-    for (const negotiation of open) {
-      if (!intents.has(negotiation.intentId))
-        continue;
-      if (negotiation.awaitingUserId !== user.id || negotiation.turnCount > 0)
-        continue;
-      startNegotiate(negotiation.intentId, negotiation.opportunityId);
-    }
+  async function recoverAll() {
+    const open = await client.listNegotiations();
+    for (const intentId of new Set(open.map((negotiation) => negotiation.intentId)))
+      await recover(intentId);
   }
   let adopted = false;
   async function refresh() {
@@ -1330,16 +1549,12 @@ function startRunner(options) {
         startNegotiate(event.data.intentId, event.data.opportunityId);
         break;
       case "principal.input":
-        for (const [opportunityId, intentId] of stalled) {
-          if (intentId === event.data.intentId)
-            stalled.delete(opportunityId);
-        }
         log(`event ${event.type} on ${event.data.intentId}`);
         startWake(event.data.intentId);
         break;
       case "connected":
         log(`event ${event.type}`);
-        refresh().then(startUnstarted).catch(onError);
+        refresh().then(recoverAll).catch(onError);
         break;
       case "intent.created":
         log(`event ${event.type}: ${event.data.intentId}`);
