@@ -3,6 +3,13 @@
 
 ## Unreleased
 
+### Fixed
+- The bundled negotiator keeps a stall until its own question is answered, it
+  is resolved explicitly, or the negotiation is declined, stopped, or moves on.
+  An unrelated message no longer releases every stall on the signal. On
+  reconnect it recovers outstanding stall questions, answers and owed turns,
+  and it retries a failed wake up to three times.
+
 ### Changed
 - The bundled negotiator is now published as `@indexnetwork/agent` (formerly
   `@indexnetwork/agentv2`); behaviour is unchanged.
