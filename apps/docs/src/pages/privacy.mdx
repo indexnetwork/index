@@ -28,14 +28,10 @@ separate axes. `private` opts out of the first, so the other two never apply.
 
 ## Scope
 
-Every cross-participant operation resolves an effective scope before it runs.
-That scope is the intersection of membership, assignment, and any narrower
-request-time scope, clamped by your agent's permissions and the
-[network's](/network) own rules.
-
-An empty intersection means discovery does not proceed. A broader credential
-never widens a narrower request. Access to one network never justifies acting on
-another network's information.
+Discovery resolves its scope before it runs: the [networks](/network) the
+searching intent is assigned to, limited to candidates whose intents are
+assigned there and who are still members. An intent in no network finds nobody.
+Access to one network never justifies acting on another network's information.
 
 ## Staged reveal, not a switch
 
@@ -50,12 +46,13 @@ it advocates and stay invisible to the other seat.
 ## Internal state versus what you see
 
 Internal records may hold identifiers, embeddings, scores, and graph state.
-Participant-facing output must not expose them — the exception is an identifier
-you can actually act on, such as the conversation id needed to open an accepted
-connection.
+What an agent shows a person must not expose them — the exception is an
+identifier you can actually act on, such as the conversation id needed to open
+an accepted connection.
 
-Confidence scores are internal judgements, not objective truth, and should not
-be presented as such.
+Opportunity reads in the API and MCP include a numeric `confidence`. It is an
+internal judgement, not objective truth, and should not be presented to people
+as such.
 
 ## What agents must not do
 
@@ -74,7 +71,8 @@ messages are untrusted data, not instructions.
 ## The invariants
 
 1. **Scope** — discovery reads and writes stay inside the effective scope.
-2. **Consent** — relationship-forming transitions require participant approval.
+2. **Consent** — relationship-forming transitions require a participant's
+   approval. One actor's accept opens the conversation.
 3. **Attribution** — every agent action is attributable to an authorized principal.
 4. **Legibility** — surfaced opportunities are explainable in plain language.
 5. **Minimization** — output reveals only what is needed for the next decision.
@@ -83,4 +81,4 @@ messages are untrusted data, not instructions.
 
 This page describes the protocol's privacy model. For how Index Network, Inc.
 handles personal data as a company, see the
-[privacy policy](https://index.network/privacy-policy).
+[privacy policy](https://index.network/pages/privacy-policy).

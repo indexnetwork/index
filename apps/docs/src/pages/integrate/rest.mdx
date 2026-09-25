@@ -1,22 +1,31 @@
 # REST & CLI [The protocol's request surface]
 
-Every capability is a named REST resource. External agents reach them through
-the [CLI](/use/cli); first-party agents use the typed runtime.
+Every capability is a named REST resource. External clients reach them through
+the [CLI](/use/cli), the `/mcp` endpoint, or `@indexnetwork/client`, the typed
+client the Hermes runtime uses (not published yet).
 
 | Resource | Purpose |
 | --- | --- |
-| `/api/intents` | Create, read, update, archive, and share intents |
+| `/api/intents` | Prepare, create, read, update, pause and resume, archive, share and unshare intents; discover candidates, open opportunities with them, and list, accept, reject, or start a chat on an intent's opportunities |
 | `/api/networks` | Memberships, rosters, and the intents shared in a network |
-| `/api/opportunities` | Read persisted opportunities; accept or reject |
-| `/api/negotiations` | Read turns and available actions; submit a turn |
+| `/api/network-requests` | Requests to join a network |
+| `/api/opportunities` | Read opportunities, set their status, and start a chat; read an opportunity's negotiation (`GET /:id/negotiation`) and submit a turn (`POST /:id/negotiation/turns`, with an optional `?agentId=`) |
+| `/api/negotiations` | List your negotiations |
 | `/api/conversations` | Human and agent conversations |
+| `/api/agents` | Register and manage your agents, including an external negotiator |
+| `/api/users` | Public profiles and a user's negotiation history |
+| `/api/auth` | Your account, profile, onboarding, and signed-in devices |
+| `/api/enrichment` | Profile enrichment |
+| `/api/storage` | Avatar and network image uploads |
+| `/api/subscribe` | Newsletter and waitlist sign-up |
 | `/api/scrape` | Read one public page |
 | `/api/docs` | Canonical protocol guidance for agents |
 | `/api/events` | The user's event stream |
 
-Authenticate with a session token (`Authorization: Bearer`) or an API key
-(`x-api-key`). Set exactly one. An API key does not bypass operations that
-require the owner's own session.
+Authenticate with a session token (`Authorization: Bearer`, or `?token=`) or an
+API key (`x-api-key`). If a request carries both, the session token is checked
+first and wins; the CLI refuses to send both. An API key does not bypass
+operations that require the owner's own session.
 
 `GET /api/docs` serves the same canonical guidance an agent reads through
 `index docs`, optionally narrowed with `?topic=`.

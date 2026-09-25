@@ -1,7 +1,13 @@
 # CLI [Work with the protocol from a terminal]
 
 The Index CLI is an HTTP client for the protocol: manage intents, read
-negotiations, review opportunities, and talk to your hosted personal agent.
+negotiations and submit turns, accept or reject opportunities, and talk to the
+agent that holds your seat on one signal (`--intent-id`). That agent is the
+hosted one unless you selected an external negotiator.
+
+Accepting an opportunity from the CLI opens a conversation with the other
+person, and also accepts your other open opportunities with them (see
+[Opportunity](/opportunity#states)).
 
 ```bash
 npm install -g @indexnetwork/cli
