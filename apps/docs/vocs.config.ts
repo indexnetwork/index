@@ -2,6 +2,7 @@ import { defineConfig } from 'vocs/config'
 
 export default defineConfig({
   title: 'Index Network',
+  baseUrl: 'https://docs.index.network',
   description:
     'A private, intent-driven discovery protocol for agent-mediated opportunity discovery.',
   iconUrl: '/favicon.svg',

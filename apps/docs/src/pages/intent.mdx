@@ -20,6 +20,17 @@ One model call classifies the utterance and scores it. The classification is
 checked first, the scores second. The checks below are the default. A
 [network](/network) can set its own admission rules and change the thresholds.
 
+```mermaid
+flowchart TD
+    Utterance[Utterance] --> Classify[Speech-act classification]
+    Classify -->|commissive directive declaration| Clarity[Clarity and entropy]
+    Classify -->|assertive expressive unknown| DropNoise[Refuse]
+    Clarity -->|unclear or generic| DropVague[Refuse]
+    Clarity -->|clear| Breadth[Breadth on creation]
+    Breadth -->|unbounded| DropBroad[Refuse and ask]
+    Breadth -->|admitted| Privacy[Privacy lattice]
+```
+
 ### 1. Classification
 
 Classification decides whether the utterance is an intent at all. Discovery
