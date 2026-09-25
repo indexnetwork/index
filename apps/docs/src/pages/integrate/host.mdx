@@ -1,0 +1,25 @@
+# Host [Run the protocol yourself]
+
+`@indexnetwork/protocol` is the canonical implementation. It knows no host: it
+defines the interfaces, and you provide the infrastructure behind them.
+
+```bash
+npm install @indexnetwork/protocol
+```
+
+A host supplies persistence, an embedder, a cache, and request context; the
+package supplies the graphs, the capability classes (`Intents`, `Networks`,
+`Negotiations`), and the opportunity presenter. The package root is the only
+import: `package.json` exports nothing else, so deep imports do not resolve.
+
+The package builds its own models through OpenRouter from environment
+variables, and a host cannot pass in its own:
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENROUTER_API_KEY` | Required. The package throws without it. |
+| `CHAT_MODEL` | Optional override for the chat model. |
+| `CHAT_REASONING_EFFORT` | Optional reasoning effort for the chat model. |
+
+This page is a stub. The adapter list, graph factories, and wiring are in
+[IMPLEMENTATION.md](https://github.com/indexnetwork/index/blob/dev/packages/protocol/IMPLEMENTATION.md).

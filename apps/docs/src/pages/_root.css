@@ -1,0 +1,69 @@
+/*
+ * Site-wide styles, loaded by Vocs from `src/pages/_root.css`.
+ */
+
+/* Header wordmark. Vocs caps it at 1.75rem (`max-h-7`). */
+[data-v-logo-image] {
+  max-height: 0.875rem;
+}
+
+/* #region Mermaid
+ *
+ * Vocs renders Mermaid with its stock `default`/`dark` themes. Recolor the
+ * diagram with the site's own tokens so nodes read like Vocs cards and follow
+ * the light/dark scheme without a re-render. Mermaid scopes its styles under
+ * the SVG's id, so these overrides need `!important`. Font sizes are left
+ * alone: Mermaid sizes each box from the text it measured at render time.
+ */
+
+[data-v-mermaid] .node rect,
+[data-v-mermaid] .node polygon,
+[data-v-mermaid] .node circle,
+[data-v-mermaid] .node ellipse,
+[data-v-mermaid] .node path {
+  fill: var(--vocs-background-color-surface) !important;
+  stroke: var(--vocs-border-color-primary) !important;
+  stroke-width: 1px !important;
+}
+
+[data-v-mermaid] .node rect {
+  rx: 8px;
+  ry: 8px;
+}
+
+[data-v-mermaid] .nodeLabel,
+[data-v-mermaid] .node .label text {
+  color: var(--vocs-text-color-primary) !important;
+  fill: var(--vocs-text-color-primary) !important;
+}
+
+[data-v-mermaid] .flowchart-link,
+[data-v-mermaid] .edgePaths .path {
+  stroke: var(--vocs-text-color-muted) !important;
+}
+
+[data-v-mermaid] .marker,
+[data-v-mermaid] .arrowMarkerPath,
+[data-v-mermaid] .arrowheadPath {
+  fill: var(--vocs-text-color-muted) !important;
+  stroke: var(--vocs-text-color-muted) !important;
+}
+
+/* Article content always sits on the surface color (a surface layer on
+ * desktop, the root background on mobile). Edge labels take that color so
+ * they mask the line beneath without showing a box. */
+[data-v-mermaid] .labelBkg,
+[data-v-mermaid] .edgeLabel,
+[data-v-mermaid] .edgeLabel p,
+[data-v-mermaid] .edgeLabel rect {
+  background-color: var(--vocs-background-color-surface) !important;
+  fill: var(--vocs-background-color-surface) !important;
+  opacity: 1 !important;
+}
+
+[data-v-mermaid] .edgeLabel,
+[data-v-mermaid] .edgeLabel p {
+  color: var(--vocs-text-color-secondary) !important;
+}
+
+/* #endregion */

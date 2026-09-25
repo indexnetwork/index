@@ -77,3 +77,6 @@ scripts/hooks/post-rewrite
 # Retired packages kept locally for reference.
 /packages/.agent/
 /packages/.agent-tui/
+
+# Vocs/Waku build output for the docs site
+apps/docs/dist/
