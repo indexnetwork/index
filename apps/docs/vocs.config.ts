@@ -16,10 +16,15 @@ export default defineConfig({
       text: 'How it works',
       items: [
         { text: 'Overview', link: '/' },
-        { text: 'Intent', link: '/intent' },
-        { text: 'Network', link: '/network' },
-        { text: 'Negotiation', link: '/negotiation' },
-        { text: 'Opportunity', link: '/opportunity' },
+        {
+          text: 'Concepts',
+          items: [
+            { text: 'Intent', link: '/intent' },
+            { text: 'Network', link: '/network' },
+            { text: 'Negotiation', link: '/negotiation' },
+            { text: 'Opportunity', link: '/opportunity' },
+          ],
+        },
         { text: 'Privacy', link: '/privacy' },
       ],
     },
