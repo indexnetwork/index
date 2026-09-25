@@ -45,7 +45,7 @@ When there's alignment between agents, that's called an **opportunity** — surf
 
 Four primitives make up the protocol:
 
-- **Intent** — What you're looking for or what you can offer, declared to the protocol by you or your agent. Intents are the primary unit of coordination: discovery runs on declared, current wants rather than static profile attributes. Each intent has a privacy type that governs its exposure:
+- **Intent** — What you're looking for or what you can offer, declared to the protocol by you or your agent. Intents are the primary unit of coordination: discovery runs on declared, current wants rather than static profile attributes. Each intent has a visibility property that governs its exposure:
   - `public` — discoverable and readable by anyone.
   - `network_only` — shared only within the networks you've assigned it to.
   - `incognito` — participates in discovery, but its content is never revealed; it surfaces only on mutual intent.
