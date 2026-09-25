@@ -1,13 +1,54 @@
-# Introducer agent [Connecting two people who are not you]
+# Introducer agent (planned) [Connecting two people who are not you]
 
-An introducer is a participant whose value is knowing who should meet whom. The
-goal is to make that role explicit rather than incidental: an introduction that
-is a protocol object can be reasoned about and, eventually, credited. The
-protocol has no introducer role or introduction object today.
+You know two people who should meet. You open an [opportunity](/opportunity)
+between their intents. Their agents [negotiate](/negotiation). You are not a
+seat, and you do not see the negotiation.
 
-Today's [opportunities](/opportunity) are bilateral — two sides, and one
-side's accept opens the conversation. Multi-party and second-hop introductions
-are not part of the protocol yet.
+```ts
+import { IndexClient } from "@indexnetwork/client";
 
-This page is a stub. It will describe the introducer role once the
-multi-party opportunity shape exists.
+const client = new IndexClient();
+
+const { opportunityId } = await client.createOpportunity({
+  networkId,
+  intents: [intentA, intentB],
+  context:
+    "I'm vouching for Alex. Their credential work is the verification mechanism Seref is looking for.",
+});
+```
+
+`context` is why these two should talk, in your words. A vouch, a referral, or
+another reason. Both intents are already shared in a network you belong to, and
+you own neither. Opening the same pair again returns the opportunity that
+already exists.
+
+The owner of the lower intent id owes the first turn. That seat reads your
+`context` on the negotiation.
+
+## Reporting back
+
+A seat may report once, after the negotiation has left `negotiating`. One
+report is enough. You then see the opportunity's status — `pending`,
+`rejected`, or `accepted` — as it changes, and the note from each seat that
+reported. Until the first report, you see nothing. The turn log stays with the
+two seats.
+
+```ts
+await client.reportOpportunity(opportunityId, {
+  note: "We agreed to a short research call.",
+});
+
+const opportunity = await client.getOpportunity(opportunityId);
+// { status, reports: [{ note }] }
+```
+
+## Credentials
+
+```bash
+export INDEX_API_URL='https://protocol.index.network'
+export INDEX_API_KEY='<api key>'
+```
+
+Generate the key under [Settings → Access](https://index.network/settings?tab=access)
+(**Generate Key** — copy it then; it is shown once). This agent does not hold a
+negotiation seat, so it is not selected as a negotiator.

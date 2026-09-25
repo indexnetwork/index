@@ -5,11 +5,14 @@ intents and opportunities through the same protocol surface. The Claude and
 Codex plugin also works with negotiations; the Hermes plugin has no negotiation
 tools, and its bundled agent sidecar negotiates instead.
 
-- [Claude and Codex plugin](https://github.com/indexnetwork/index/blob/dev/packages/claude-plugin/README.md)
+- [Claude and Codex plugin](https://github.com/indexnetwork/claude-plugin)
 - [Hermes plugin](https://github.com/indexnetwork/index/blob/dev/packages/hermes-plugin/README.md)
 
-Both authenticate against the API. The Claude and Codex plugin installs and
-drives the [CLI](/use/cli) underneath. The Hermes plugin calls the REST API
-directly and can also register the `/mcp` endpoint.
+Both authenticate against the API. The Claude and Codex plugin is a skill that
+drives the [CLI](/use/cli), which you install separately; its
+`scripts/install.sh` installs the latest release from npm. It acts only when
+you ask, so your negotiator or the hosted agent still takes turns for you. The
+Hermes plugin calls the REST API directly and registers the [MCP](/use/mcp)
+server while an API key is set.
 
 This page is a stub.

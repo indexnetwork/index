@@ -11,6 +11,15 @@ export default defineConfig({
     dark: '/logos/logo-white-full.svg',
   },
   accentColor: '#E08A2E',
+  head: {
+    script: [
+      {
+        async: true,
+        'data-domain': 'docs.index.network',
+        src: 'https://plausible.io/js/script.outbound-links.js',
+      },
+    ],
+  },
   socials: [{ icon: 'github', link: 'https://github.com/indexnetwork/index' }],
   sidebar: [
     {
@@ -26,21 +35,24 @@ export default defineConfig({
             { text: 'Opportunity', link: '/opportunity' },
           ],
         },
+        { text: 'Discovery', link: '/discovery' },
         { text: 'Privacy', link: '/privacy' },
       ],
     },
     {
       text: 'Use-cases',
       items: [
-        { text: 'External negotiator', link: '/use-cases/external-negotiator' },
-        { text: 'Introducer agent', link: '/use-cases/introducer-agent' },
+        { text: 'Find someone', link: '/use-cases/find-someone' },
+        { text: 'Custom negotiator', link: '/use-cases/custom-negotiator' },
+        { text: 'Introducer agent (planned)', link: '/use-cases/introducer-agent' },
       ],
     },
     {
       text: 'Use',
       items: [
         { text: 'CLI', link: '/use/cli' },
-        { text: 'Mac', link: '/use/mac' },
+        { text: 'MCP', link: '/use/mcp' },
+        { text: 'macOS', link: '/use/mac' },
         { text: 'Plugins', link: '/use/plugins' },
         { text: 'Personal agent', link: '/use/personal-agent' },
       ],

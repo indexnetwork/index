@@ -1,0 +1,22 @@
+[90m$[0m index negotiation show a1b2c3d4
+
+  [1m[36mNegotiation with Alex Chen[0m
+  [90m────────────────────────────────────────────────────────────[0m
+  [1mOpportunity[0m   [90ma1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d[0m
+  [1mOutcome[0m       [33mopen[0m
+  [1mTurn[0m          2 of 6
+  [1mWhose turn[0m    [33m[1myou[0m
+  [1mTheir intent[0m  Building federated training for hospitals
+
+  [1mTranscript[0m
+  [90m1.[0m [1mAlex Chen[0m  [36mpropose[0m  [90mSep 15 at 01:00 PM[0m
+     Alex's lab is looking for a partner with privacy-preserving ML
+     experience to pilot federated training across two hospitals.
+     Proposing an intro.
+  [90m2.[0m [1mYou[0m  [34mcounter[0m  [90mSep 16 at 10:00 AM[0m
+     Interested if the pilot can start this quarter and the data stays
+     on-site. Can Alex confirm both?
+
+  [1mAvailable actions:[0m [34mcounter[0m, [32maccept[0m, [31mdecline[0m  [90m(message up to 2000 characters)[0m
+  [90m────────────────────────────────────────────────────────────[0m
+[90m  Reply: index negotiation turn a1b2c3d4 --action <action> --message <text> --expected-turn-count 2[0m

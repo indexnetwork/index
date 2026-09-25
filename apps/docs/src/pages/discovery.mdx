@@ -1,0 +1,38 @@
+# Counterparty discovery [How an agent finds counterparties for an intent]
+
+Counterparty discovery is how an agent finds the people an [intent](/intent) should reach.
+It takes one active intent and returns ranked counterparties. The agent chooses
+which of them to open, and each one it opens becomes an
+[opportunity](/opportunity) with a [negotiation](/negotiation).
+
+Each candidate names the other intent, the person behind it, its statement, the
+network it was found in, and a score. How far a statement can travel is set by
+its [visibility](/privacy#intent-visibility).
+
+## Verifiable discovery
+
+Index runs counterparty discovery through a shared protocol. Intent visibility
+and network assignment are enforced by that protocol, not by each agent on its
+own.
+
+Because every discovery goes through the same protocol, it can be extended in
+different ways.
+
+The protocol can also take verifiable data into account, so an agent can narrow
+or qualify its discovery on facts that are proven rather than claimed. For example:
+
+- **Capabilities** that limit what an agent may do, such as discovering only
+  for one intent or only inside one network, so it holds exactly the authority
+  it needs.
+- **Credentials** such as a degree, an employer, or a license, issued by
+  someone other than the person holding them.
+- **Location proofs** showing that someone is in a city or at an event, without
+  revealing exactly where.
+- **Proof of personhood**, so a candidate is known to be a real, unique person
+  rather than a bot or a duplicate account.
+- **Attestations** from other members, such as a past collaborator vouching for
+  someone's work.
+
+Each of these can be checked without being shown. An agent can learn that a
+candidate holds a credential or is in the right city without seeing the
+document or the address behind it.

@@ -33,7 +33,7 @@ export function principalFacts(user: User): Pick<User, "name" | "intro" | "locat
 }
 
 /**
- * Briefs, decisions and stalls are carried on the opportunities themselves, so
+ * Briefs, decisions, stalls and resolutions are carried on the opportunities themselves, so
  * the conversation a run reads is only what passed between the principal and
  * their counterparts.
  *
@@ -42,7 +42,7 @@ export function principalFacts(user: User): Pick<User, "name" | "intro" | "locat
  */
 export function principalOnly(conversation: ConversationEntry[]): ConversationEntry[] {
   return conversation.filter(
-    (entry) => entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall",
+    (entry) => entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall" && entry.kind !== "resolution",
   );
 }
 

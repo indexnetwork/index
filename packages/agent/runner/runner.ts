@@ -1,7 +1,12 @@
 import type { Index } from "@indexnetwork/client";
 
 import type { Intent, Model } from "../src/index.ts";
-import { closeInitiation, runNegotiate, runWake } from "../src/host.ts";
+import { closeInitiation, owedWork, runNegotiate, runWake } from "../src/host.ts";
+
+/** How many times a failed wake is retried before it waits for the next event or restart. */
+const WAKE_RETRIES = 3;
+/** The first retry's delay; each later one waits that much longer again. */
+const WAKE_RETRY_MS = 30_000;
 
 export interface RunnerOptions {
   client: Index;
@@ -40,8 +45,8 @@ export function startRunner(options: RunnerOptions): Runner {
   const again = new Set<string>();
   /** Opportunities with a negotiator in flight, by signal. */
   const working = new Map<string, string>();
-  /** Opportunities whose stall is waiting on the principal, by signal. */
-  const stalled = new Map<string, string>();
+  /** Failed wakes retried so far, by signal. */
+  const retries = new Map<string, number>();
   /** Stalls no wake has read yet, by signal: the only ones worth waking for. */
   const unread = new Map<string, string>();
   /** Signals whose initiation check is running, and those that asked for one while it ran. */
@@ -73,12 +78,48 @@ export function startRunner(options: RunnerOptions): Runner {
       const started = Date.now();
       // Each opportunity opens the moment its own decision is published, so
       // the first turns go out while the wake is still thinking.
-      await runWake(client, intent, { ...runtime(), onNegotiate: (opportunityId, decision) => startNegotiate(intentId, opportunityId, decision) });
+      await runWake(client, intent, { ...runtime(), onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId) });
+      retries.delete(intentId);
       log(`  wake done in ${Math.round((Date.now() - started) / 1000)}s`);
-    })().catch(onError).finally(() => {
+    })().catch((error: unknown) => {
+      retry(intentId);
+      onError(error);
+    }).finally(() => {
       waking.delete(intentId);
       if (again.delete(intentId)) startWake(intentId);
     });
+  }
+
+  /**
+   * A failed wake leaves what it owed on the conversation, so the wake runs
+   * again a few times, further apart each time, then waits for the next event
+   * or restart.
+   *
+   * @param intentId - The signal whose wake failed.
+   */
+  function retry(intentId: string): void {
+    const attempt = (retries.get(intentId) ?? 0) + 1;
+    if (stopped || attempt > WAKE_RETRIES) {
+      retries.delete(intentId);
+      return;
+    }
+    retries.set(intentId, attempt);
+    log(`wake retry ${attempt} on ${intentId}`);
+    setTimeout(() => startWake(intentId), WAKE_RETRY_MS * attempt).unref?.();
+  }
+
+  /**
+   * Take up whatever one signal still owes, as Index records it: the wake a
+   * stall is waiting on, and the turns nothing is holding.
+   *
+   * @param intentId - The signal.
+   */
+  async function recover(intentId: string): Promise<void> {
+    const intent = intents.get(intentId);
+    if (stopped || !intent) return;
+    const owed = await owedWork(client, intent);
+    if (owed.wake) startWake(intentId);
+    for (const opportunityId of owed.negotiate) startNegotiate(intentId, opportunityId);
   }
 
   /**
@@ -92,12 +133,14 @@ export function startRunner(options: RunnerOptions): Runner {
     const result = await runNegotiate(client, opportunityId, intent, runtime());
     if ("turn" in result) {
       log(`turn ${result.turn.action} on ${opportunityId}`);
-      stalled.delete(opportunityId);
       unread.delete(opportunityId);
       return;
     }
+    if ("held" in result) {
+      log(`held ${opportunityId}: ${result.held}`);
+      return;
+    }
     log(`stall on ${opportunityId}: ${result.stall.reason}`);
-    stalled.set(opportunityId, intent.id);
     unread.set(opportunityId, intent.id);
   }
 
@@ -145,41 +188,27 @@ export function startRunner(options: RunnerOptions): Runner {
 
   /**
    * Work one negotiation, whether a decision authorised it or a counterpart
-   * just moved it. A stalled opportunity is held either way: their next turn
-   * carries no fact the stall was missing, so re-running the negotiator would
-   * only stall again.
+   * just moved it. A stall still standing on the conversation holds it inside
+   * {@link runNegotiate}, so no runtime state can release it early.
    *
    * @param intentId - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
-   * @param decision - The wake's decision, when this start came from one.
    */
-  function startNegotiate(intentId: string, opportunityId: string, decision?: string): void {
+  function startNegotiate(intentId: string, opportunityId: string): void {
     const intent = intents.get(intentId);
     if (stopped || !intent || working.has(opportunityId)) return;
-    // A continue after a stall still has no new fact. Accept and decline are
-    // the fact: release the hold so that turn goes out.
-    if (decision === "accept" || decision === "decline") stalled.delete(opportunityId);
-    if (stalled.has(opportunityId)) return;
     working.set(opportunityId, intentId);
     void takeTurn(intent, opportunityId).catch(onError).finally(() => finish(intentId, opportunityId));
   }
 
   /**
-   * Start every negotiation this seat owes a first turn on, across every
-   * signal.
-   *
-   * An opportunity at turn zero waiting on us moves only because we move it,
-   * and the wake that opened it starts its negotiator there and then. This is
-   * the recovery for the ones that never got that far: whatever was opened
-   * while this process was gone, or was in flight when it died.
+   * Recover every signal with an open negotiation: whatever was opened, moved,
+   * stalled or answered while this process was gone, or was in flight when it
+   * died.
    */
-  async function startUnstarted(): Promise<void> {
-    const [user, open] = await Promise.all([client.me(), client.listNegotiations()]);
-    for (const negotiation of open) {
-      if (!intents.has(negotiation.intentId)) continue;
-      if (negotiation.awaitingUserId !== user.id || negotiation.turnCount > 0) continue;
-      startNegotiate(negotiation.intentId, negotiation.opportunityId);
-    }
+  async function recoverAll(): Promise<void> {
+    const open = await client.listNegotiations();
+    for (const intentId of new Set(open.map((negotiation) => negotiation.intentId))) await recover(intentId);
   }
 
   // Signals already running when this process started are adopted, not woken:
@@ -216,11 +245,8 @@ export function startRunner(options: RunnerOptions): Runner {
         startNegotiate(event.data.intentId, event.data.opportunityId);
         break;
       case "principal.input":
-        // The answer is what every stall on this signal was waiting for, and
-        // it is the moment a standing question may have died.
-        for (const [opportunityId, intentId] of stalled) {
-          if (intentId === event.data.intentId) stalled.delete(opportunityId);
-        }
+        // An answer releases only the stalls its question asked about, which the
+        // wake reads from the conversation; anything else they write releases none.
         log(`event ${event.type} on ${event.data.intentId}`);
         startWake(event.data.intentId);
         break;
@@ -229,7 +255,7 @@ export function startRunner(options: RunnerOptions): Runner {
       // negotiation on one this process has never heard of cannot be started.
       case "connected":
         log(`event ${event.type}`);
-        void refresh().then(startUnstarted).catch(onError);
+        void refresh().then(recoverAll).catch(onError);
         break;
       case "intent.created":
         log(`event ${event.type}: ${event.data.intentId}`);

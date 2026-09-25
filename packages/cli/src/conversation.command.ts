@@ -5,6 +5,7 @@
  */
 
 import type { ApiClient } from "./api.client";
+import type { AgentAnswerMessage } from "./types";
 import { parseSSEEvents } from "./sse.parser";
 import * as output from "./output";
 
@@ -46,24 +47,37 @@ export async function handleConversation(
 ): Promise<void> {
   if (positionals[0] === "agent" && (subcommand === "show" || subcommand === "send")) {
     if (!options?.intentId) throw new Error("Personal-agent conversations require --intent-id <id>");
-    let result: unknown;
-    if (subcommand === "show") result = await client.getAgentConversation(options.intentId);
-    else {
-      const text = positionals.slice(1).join(" ");
-      if (!text.trim()) throw new Error("A message is required");
-      result = options.questionId
-        ? await client.answerAgentQuestions(options.intentId, [{ questionId: options.questionId, text }])
-        : await client.sendMessage("agent", text, options.intentId);
+    if (subcommand === "show") {
+      const conversation = await client.getAgentConversation(options.intentId);
+      if (options.json) { console.log(JSON.stringify(conversation)); return; }
+      output.agentConversation(conversation);
+      if (conversation.agent.questions.length > 0) {
+        output.dim(`  Answer: index conversation answer agent --intent-id ${options.intentId} --answer '<question-id>=<reply>'`);
+      }
+      return;
     }
-    console.log(JSON.stringify(result, null, options.json ? undefined : 2));
+    const text = positionals.slice(1).join(" ");
+    if (!text.trim()) throw new Error("A message is required");
+    if (options.questionId) {
+      const answers = [{ questionId: options.questionId, text }];
+      const result = await client.answerAgentQuestions(options.intentId, answers);
+      if (options.json) { console.log(JSON.stringify(result)); return; }
+      printAgentAnswers(answers, result.messages);
+      return;
+    }
+    const message = await client.sendMessage("agent", text, options.intentId);
+    if (options.json) { console.log(JSON.stringify(message)); return; }
+    output.success(`Message sent to your agent (${message.id})`);
     return;
   }
   if (subcommand === "answer") {
     if (positionals[0] !== "agent" || !options?.intentId || !options.answers?.length) {
       throw new Error("Usage: index conversation answer agent --intent-id <id> --answer 'question-id=text' [--answer ...]");
     }
-    const result = await client.answerAgentQuestions(options.intentId, options.answers.map(({ key, value }) => ({ questionId: key, text: value })));
-    console.log(JSON.stringify(result, null, options.json ? undefined : 2));
+    const answers = options.answers.map(({ key, value }) => ({ questionId: key, text: value }));
+    const result = await client.answerAgentQuestions(options.intentId, answers);
+    if (options.json) { console.log(JSON.stringify(result)); return; }
+    printAgentAnswers(answers, result.messages);
     return;
   }
   if (!subcommand) throw new Error(CONVERSATION_HELP.trim());
@@ -89,6 +103,24 @@ export async function handleConversation(
       return;
     default:
       output.error(`Unknown conversation subcommand: ${subcommand}`, 1);
+  }
+}
+
+/**
+ * Print one line per submitted answer. The server keeps an answer to a question
+ * that is no longer waiting as a plain message rather than refusing it.
+ *
+ * @param answers - The answers as submitted, in order.
+ * @param messages - The persisted messages, in the same order.
+ */
+function printAgentAnswers(answers: { questionId: string }[], messages: AgentAnswerMessage[]): void {
+  for (const [index, message] of messages.entries()) {
+    const { questionId } = answers[index];
+    if (message.metadata.principalMessage.kind === "answer") {
+      output.success(`Answered question ${questionId}`);
+    } else {
+      output.success(`Question ${questionId} is no longer waiting; your reply was sent to your agent as a message`);
+    }
   }
 }
 
