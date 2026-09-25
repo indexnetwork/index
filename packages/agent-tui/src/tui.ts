@@ -262,7 +262,7 @@ export async function runTui(owner: Owner): Promise<void> {
     const title = signal?.title || "No signal selected";
     const maxTitle = Math.max(12, renderer.terminalWidth - 12);
     header.content = ` INDEX  /  ${owner.name}  /  ${host}\n Signal: ${title.slice(0, maxTitle)}${title.length > maxTitle ? "…" : ""}`;
-    banner.content = loadingSignals ? " ● Loading signals…" : !signal ? " ● No signal · Create one with the CLI." : signal.status === "paused" ? " ● PAUSED · Agent on hold · Ctrl+R resume" : " ● ACTIVE · Updates every 5s";
+    banner.content = loadingSignals ? " ● Loading signals…" : !signal ? " ● No signal · Ctrl+X to choose." : signal.status === "paused" ? " ● PAUSED · Agent on hold · Ctrl+R resume" : " ● ACTIVE · Updates every 5s · Ctrl+R pause";
     banner.fg = signal?.status === "paused" || !signal ? colors.question : colors.success;
     tabs.content = ` ${focused === "inbox" ? "▶" : " "} Agent    ${focused === "radar" ? "▶" : " "} Radar (${people.length})    ${focused === "negotiation" ? "▶" : " "} Negotiation`;
     for (const [name, pane] of [["inbox", inboxPane], ["radar", radarPane], ["negotiation", negotiationPane]] as const) pane.box.visible = focused === name;
@@ -310,14 +310,14 @@ export async function runTui(owner: Owner): Promise<void> {
     if (focused === "inbox" && inbox.messages.at(-1)?.role === "user") {
       idleStatus = signal?.status === "paused" ? " ● Agent on hold while paused · Ctrl+R resumes." : " ● Latest message is yours; no agent response yet.";
     }
-    status.content = confirmation ? ` Press Alt+${confirmation === "accepted" ? "A" : "X"} again to ${confirmation === "accepted" ? "accept" : "pass"} ${activePerson()?.name}; Esc cancels.`
+    status.content = confirmation ? ` Press ${confirmation === "accepted" ? "a" : "x"} again to ${confirmation === "accepted" ? "accept" : "pass"} ${activePerson()?.name}; Esc cancels.`
       : error ? ` ● ${error}` : notice ? ` ● ${notice}` : busy ? " ● Working…" : loadingSignals || loadingInbox || loadingRadar ? " ● Loading live data…" : idleStatus;
     status.fg = confirmation || error ? colors.question : notice ? colors.success : colors.muted;
     help.content = focused === "inbox"
-      ? " Tab views · Alt+S signals · Ctrl+R\n Alt+Q questions · Enter send · Ctrl+C"
+      ? " Tab views · Ctrl+X signals · Ctrl+C quit\n ←→ questions · ↑↓ options · Enter send"
       : focused === "radar"
-        ? " Tab views · ↑↓ select · Alt+A accept\n Alt+X pass · Esc cancel · Ctrl+C"
-        : " Tab views · PgUp/PgDn scroll · Ctrl+C";
+        ? " Tab views · Ctrl+X signals · ↑↓ select\n a accept · x pass · Esc cancel · Ctrl+C"
+        : " Tab views · Ctrl+X signals · PgUp/PgDn\n Ctrl+C quit";
     if (selector.visible) selectorList.focus();
     else if (focused === "inbox") input.focus();
     else if (focused === "radar") radarPane.history.focus();
@@ -326,7 +326,7 @@ export async function runTui(owner: Owner): Promise<void> {
   const onKey = (key: KeyEvent) => {
     if (key.name === "c" && key.ctrl) {
       key.preventDefault(); renderer.destroy();
-    } else if (key.name === "s" && key.meta) {
+    } else if (key.name === "x" && key.ctrl) {
       key.preventDefault();
       selector.visible = !selector.visible;
       if (selector.visible) { selectedSignal = Math.max(0, signals.findIndex((entry) => entry.id === signal?.id)); renderSelector(); }
@@ -354,10 +354,13 @@ export async function runTui(owner: Owner): Promise<void> {
       key.preventDefault();
       selectedPerson = Math.max(0, Math.min(people.length - 1, selectedPerson + (key.name === "up" ? -1 : 1)));
       confirmation = null; negotiation = null; render(); void refreshNegotiation();
-    } else if (focused === "radar" && key.meta && (key.name === "a" || key.name === "x")) {
+    } else if (focused === "radar" && !key.ctrl && !key.meta && (key.name === "a" || key.name === "x")) {
       key.preventDefault(); void review(key.name === "a" ? "accepted" : "rejected");
-    } else if (focused === "inbox" && key.name === "q" && key.meta) {
-      key.preventDefault(); selectedQuestion = (selectedQuestion + 1) % Math.max(1, inbox.questions.length); selectedChoice = 0; render();
+    } else if (focused === "inbox" && inbox.questions.length > 0 && !input.plainText && (key.name === "left" || key.name === "right")) {
+      key.preventDefault();
+      selectedQuestion = (selectedQuestion + (key.name === "right" ? 1 : inbox.questions.length - 1)) % inbox.questions.length;
+      selectedChoice = 0;
+      render();
     } else if (focused === "inbox" && activeQuestion() && !input.plainText && (key.name === "up" || key.name === "down")) {
       key.preventDefault(); selectedChoice = Math.max(0, Math.min((activeQuestion()?.options?.length || 0), selectedChoice + (key.name === "up" ? -1 : 1))); render();
     } else if (focused === "inbox" && activeQuestion() && !input.plainText && key.name === "return") {
