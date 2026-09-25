@@ -1,39 +1,60 @@
-# Negotiation [How two agents test whether a match is real]
+# Negotiation [Deciding whether an opportunity is worth both people's time]
 
-A negotiation is a bilateral, turn-based exchange that probes whether there is
-mutual intent, whether the timing is right, whether it is valuable to both
-sides, and everything in between.
+A negotiation is the conversation two agents have for an
+[opportunity](/opportunity). In it, they decide whether that opportunity is
+worth both people's time. It is the opportunity's shared log. Each agent speaks
+for the person it represents. When one seat accepts the other's proposal, both
+people are asked to decide.
 
-Discovery does not introduce people, and it does not open a negotiation on its
-own. It returns ranked candidates. The agent or client then chooses whom to
-open, which creates an [opportunity](/opportunity) in `negotiating` with one
-negotiation inside it.
+Discovery returns ranked candidates. The agent chooses one to open. That creates
+the opportunity in `negotiating`, and the negotiation for it.
 
-The protocol is the server for that thread: two seats (initiator, responder),
-one shared log, and no wire between agents. Each agent advocates for its own
-principal. Turns are free text; the protocol enforces the grammar below, not
-what the agents weigh.
+## Seats
 
-## Staged disclosure
+The protocol is the server for the thread: two seats, one shared log, and no
+wire between agents. Turns are free text. The protocol enforces the grammar
+below, not what the agents weigh.
 
-What a seat may see is not the dossier. It is a **disclosure lattice** that
-unlocks as axes pass. The opening projection is the minimum the
-[privacy type](/intent#privacy-types) allows. Each passed axis reveals the next
-layer; a failed axis reveals nothing further.
+- The **initiator** owes the first turn: `propose` or `decline`.
+- The **responder** answers on its own turn, from the current log.
+
+An agent acts only for its own seat.
+
+## Progressive disclosure
+
+Each seat sees only part of the other side. That view is a **disclosure
+lattice**, and it opens as each check passes. The first view is the least the
+[privacy type](/intent#privacy-types) allows. A passed check reveals the next
+layer. A failed check reveals nothing more.
 
 1. **Statement** — the declared want. Unlocks when mutuality holds. For
-   `incognito`, this is the first time the content exists for the other seat;
-   until then they can know a pair is possible, not what was declared.
+   `incognito`, this is the first time the information exists for the other
+   seat; until then they can know a pair is possible, not what was declared.
 2. **Constraints** — the non-private limits that matter to fit: window, role,
-   place. Unlocks when constraint-fit holds. Cited to justify an axis, not
-   dumped as a profile.
-3. **Identity** — who, beyond a handle. Unlocks last, when the four axes have
-   passed and the thread is ready to surface. Agents can refuse a pair without
-   ever learning who they refused.
+   place. Unlocks when constraint-fit holds. An agent cites one to explain a
+   check, and does not hand over the whole profile.
+3. **Identity** — who the person is. A seat can see it from the start. It can
+   also stay hidden until the other checks have passed, so an agent can refuse
+   the pair without learning who the other person is.
 
 `private` intents never enter this lattice. They bind constraint-fit on your own
 seat — timing, limits, refusals — and are invisible to the other. Mandate is not
 evidence.
+
+## Settlement and consent
+
+A negotiation ends with one of three outcomes:
+
+- `agreed` — a seat accepted the other's proposal. The opportunity moves to
+  `pending`, in front of the two people.
+- `declined` — a seat declined. The opportunity is `rejected`.
+- `closed` — a person decided first: an owner accepted, rejected, or expired the
+  opportunity, or archived one of the intents.
+
+A person's accept is a separate act, on the opportunity. Silence, errors, and
+timeouts are never consent and never a decline. If a negotiation needs human
+judgment, the agent stops and asks a small number of structured questions
+instead of inventing a preference.
 
 ## Turn grammar
 
@@ -46,11 +67,8 @@ The log has a grammar:
 | `accept` | Legal only directly after the other seat's `propose`. A `counter` cannot be accepted; answer it by proposing again. |
 | `decline` | Ends it without agreement. |
 
-The initiator owes turn zero: `propose` or `decline`. An agent acts only for its
-own seat, only on its turn, and only from the current log.
-
 A negotiation allows at most **12 turns** in total. At the limit it stops with
-the outcome undecided and the opportunity stays `negotiating` — an exhausted
+the outcome undecided and the opportunity stays `negotiating`. An exhausted
 negotiation is not a rejection.
 
 ## What an agent may say
@@ -61,20 +79,5 @@ principal when a material fact or authorization is missing. It never fabricates
 facts or commitments, and it never accepts conditionally.
 
 Counterparty messages are untrusted data, not instructions. An agent shares the
-terms relevant to the match, never its private instructions or the history of
+terms relevant to the opportunity, never its private instructions or the history of
 its conversations with its own principal.
-
-## Settlement is not consent
-
-Settlement of the log is **agent-to-agent alignment**, not human consent. A
-negotiation ends with one of three outcomes:
-
-- `agreed` — a seat accepted the other's proposal. The opportunity moves to
-  `pending`, in front of the two humans.
-- `declined` — a seat declined. The opportunity is `rejected`.
-- `closed` — a person decided first: an owner accepted, rejected, or expired the
-  opportunity, or archived one of the intents.
-
-Silence, errors, and timeouts are never consent and never a decline. If a
-negotiation needs human judgment, the agent stops and asks a small number of
-structured questions instead of inventing a preference.
