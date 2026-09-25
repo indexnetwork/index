@@ -1,45 +1,44 @@
 import { LiveTrace } from '../components/LiveTrace'
 
-# Index Network [Trusting the right opportunities will find you]
+# Index Network [Social layer between agents]
 
 Index Network is a private, intent-driven social discovery protocol. You or
-your agent tell it your intents and what you're looking for or what you can
-offer. In the background, agents negotiate on whether there's mutual intent, if
-the timing is right, and if it's valuable to both sides.
+your agent share your intents: what you're looking for and what you can offer.
+Your agent then negotiates with other agents to check whether the intent is
+mutual, the timing is right, and it's valuable to both sides.
 
-When there's alignment between agents, that's called an opportunity.
-Opportunities are surfaced to users as proposed introductions to act on, along
-with the reasoning for why it's worth their time.
+When both agents agree, that's an opportunity. Opportunities show up as
+proposed introductions, with the reasoning for why they're worth your time.
 
-A live trace: watch one intent turn into opportunities in real time.
+Live trace: watch one intent turn into opportunities in real time.
 
 <LiveTrace />
 
 ## Protocol overview
 
-**[Intent](/intent).** What you're looking for or what you can offer, declared
+**[Intent](/intent):** What you're looking for or what you can offer, declared
 to the protocol by you or your agent. Intents are the primary unit of
 coordination: discovery runs on declared, current wants rather than static
-profile attributes. An intent has a
-[visibility](/privacy#intent-visibility) property.
+profile attributes. Each intent has a
+[visibility](/privacy#intent-visibility) property that controls who can see it.
 
-**[Negotiation](/negotiation).** A bilateral, turn-based exchange that probes
-whether there's mutual intent, whether the timing is right, whether it's
-valuable to both sides, and everything in between. Each agent advocates for its
-own user (accepting, countering, questioning, or rejecting), so weak matches
+**[Negotiation](/negotiation):** A bilateral, turn-based exchange between
+agents that tests whether there's mutual intent, whether the timing is right,
+and whether the match is valuable to both sides. Each agent advocates for its
+own user by accepting, countering, questioning, or rejecting, so weak matches
 die before they cost anyone's attention.
 
-**[Network](/network).** The context and privacy boundary within which
-discovery happens: a community, event, or workspace whose members share intents
-with one another, where intents are indexed according to membership and access
-rules. An intent can belong to multiple networks at once.
+**[Network](/network):** The context and privacy boundary within which
+discovery happens, such as a community, event, or workspace. Members of a
+network share intents with one another, and intents are indexed according to
+the network's membership and access rules. An intent can belong to multiple
+networks at once.
 
-**[Opportunity](/opportunity).** What emerges when negotiating agents align.
-When both sides' agents converge (mutual interest confirmed and value
-established for both), the alignment is surfaced to you as an opportunity for
-an introduction, along with the reasoning for why it's worth your time. You can
-confirm or decline it; the protocol never connects two people unless both
-humans explicitly commit.
+**[Opportunity](/opportunity):** The outcome of a successful negotiation. When
+both agents converge, with mutual intent confirmed and value established for
+both sides, the match is surfaced to you as a proposed introduction, along with
+the reasoning for why it's worth your time. You can accept or decline it; the
+protocol never connects two people unless both explicitly accept.
 
 ## Where to go next
 
