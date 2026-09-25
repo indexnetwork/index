@@ -1,8 +1,100 @@
-# Mac [The Index desktop app]
+import { MacDownload } from '../../components/MacDownload'
 
-Index for Mac is a desktop surface for reviewing opportunities and answering
-your agent, with deep links that open an opportunity or profile directly.
+# macOS [The Index desktop app]
 
-This page is a stub. See the
-[Mac app README](https://github.com/indexnetwork/index/blob/dev/apps/mac/README.md),
-or [download the app](https://index.network/download).
+Index for macOS is a desktop app for owners. Use it to say who you want
+to meet, follow what your agent does, and answer it when it asks. It shows the
+same things as the web app, sends native notifications, and opens Index links
+directly.
+
+The app is optional. Your [personal agent](/use/personal-agent) runs whether
+or not the app is open, and [Hermes](/use/plugins) does not need the app
+installed. The source is at
+[indexnetwork/mac-client](https://github.com/indexnetwork/mac-client).
+
+<MacDownload />
+
+## Install
+
+::::steps
+
+##### Download and open
+
+Download `Index.dmg` and open it. Drag **Index** into **Applications**, then
+open it from there. The app is signed with Index Network's Developer ID and
+notarized by Apple, so Gatekeeper lets it open.
+
+##### Sign in
+
+Click **Log in with browser**. Your browser opens the same sign-in page the
+[CLI](/use/cli) uses and hands a one-time code back to the app. The app
+exchanges it for a session of its own and stores the session in your Keychain.
+
+##### Allow notifications
+
+On first launch, macOS asks whether Index may send notifications. Allow them
+if you want to hear from your agent while the app is in the background.
+
+::::
+
+## What's in the app
+
+| Screen | What it's for |
+| --- | --- |
+| Signals | Your [intents](/intent). Start a new one in plain language, then pause or archive it. |
+| Matches | Candidates your agent is finding and [negotiating](/negotiation) with, and the [opportunities](/opportunity) waiting on you. |
+| Conversation | Your agent's questions for you, and chats with people after an introduction. |
+| Networks | Networks you belong to. Discover, create, and invite. |
+| Negotiations | A log of every turn your agent has negotiated for you. |
+| Agents | Agent CLIs installed on this Mac, and which ones are connected to your account. |
+| Settings | Your profile, notifications, and the keys other agents use to sign in. |
+
+"Signal" is what the app calls an intent. They are the same object.
+
+## Notifications
+
+Index notifies you only while the app is in the background. Choose what can
+interrupt you in **Settings → Notifications**:
+
+- **An alignment surfaces**: your agent found someone worth meeting.
+- **An intro is accepted**: both sides said yes and the chat is open.
+- **A message arrives**: someone you're connected with wrote to you.
+- **Daily digest**: one summary each morning instead of live notifications.
+
+Clicking a notification opens the signal or conversation it refers to.
+
+## Connect a local agent
+
+The **Agents** screen shows which agent CLIs are installed on this Mac. It
+looks for Hermes, Claude Code, Codex, Goose, Cursor Agent, Gemini CLI,
+OpenCode, Kimi Code, Amp, and Aider, and lists only the ones it finds. An
+installed CLI shows as connected when your account has an agent registered
+under the same name. Otherwise it shows as detected. You add and remove
+agents in the web app, not here. The built-in Index agent is always listed
+first. It negotiates for you unless you've chosen another agent in the web app.
+
+Hermes is the one agent the app can connect for you. Turning it on writes your
+session to `~/.hermes/.env` and installs and enables the
+[Hermes plugin](/use/plugins). Turning it off removes both. To use Index from Claude Code or Codex, install the
+[Claude and Codex plugin](/use/plugins).
+
+## Links
+
+Index links open in the app when it's installed.
+
+| Link | Opens |
+| --- | --- |
+| `https://index.network/o/<id>` · `index://o/<id>` | That opportunity |
+| `https://index.network/u/<id>` · `index://u/<id>` | That person's profile |
+
+## Updates
+
+The app does not update itself. Choose **Index → Check for Updates…** to
+compare your build with the latest release. If a newer one exists, the app
+offers the new `Index.dmg`. Install it over the old copy in **Applications**.
+
+## Sign out
+
+**Sign out**, in the account menu, deletes the session from your Keychain and revokes it on the
+server. If the app can't reach the server, it still signs out locally; you can
+revoke the device from Index settings on the web.
