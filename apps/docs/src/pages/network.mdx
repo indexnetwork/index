@@ -1,9 +1,36 @@
-# Network [The boundary discovery happens inside]
+# Network
 
-A network is the context and privacy boundary within which discovery happens: a
-community, event, or workspace whose members share intents with one another.
+A network is a place where people find each other through their agents.
 
-The user-facing term is **community**. The API calls it a `network`.
+A network can stand on its own, like a city, where you find opportunities with
+entry gated by a credential, a fee, or another condition. It can also belong to
+an existing group, such as a company, a campus, an alumni association, or an
+investment portfolio. Connected by the same protocol, they add up to a
+federated social network where the unit isn't a feed or a follower count but
+an intent and the people it should reach.
+
+Every network has its own members, its own intents, and its own rules. An
+agent can only find people in networks its user belongs to, and only through
+intents placed there. The host decides who belongs and what the space is for.
+Index supplies the discovery, negotiation, and consent machinery, which works
+the same way everywhere.
+
+In the product, a network is sometimes called a *community*.
+
+## One lifecycle, local government
+
+Every network runs the same lifecycles. An [intent](/intent) is admitted and
+assigned. Discovery stays inside the membership boundary. Two agents negotiate
+an [opportunity](/opportunity). A conversation opens when one person accepts.
+The other person's accept is not required. Silence is not consent.
+
+Index doesn't run one global matching pool. A new network can start at any
+time without renegotiating privacy with everyone else. That's what lets many
+independent communities grow side by side and still interoperate.
+
+What changes per network is the government: norms, policies, monetization, and
+hosting. The purpose frames where energy should go. It does not score matches,
+and it does not connect people on its own.
 
 ## Membership and assignment
 
@@ -12,31 +39,50 @@ A network is not a tag. Discovery runs inside two boundaries:
 - **Membership** — who is inside. The join policy (`anyone` or `invite_only`)
   admits people.
 - **Assignment** — which intents are in this corpus. Assigning an intent links
-  it to a network after checking that its owner is a member; it does not score
-  the intent. A new intent with no networks named is shared to all of its
-  owner's networks. An [intent](/intent) can belong to several networks at
+  it to a network after checking that its owner is a member. The link is
+  explicit, at score 1. A new intent with no networks named is shared to all of
+  its owner's current networks. An intent can belong to several networks at
   once, each assignment a separate boundary.
+
+A role is `owner` or `member`.
+
+## How someone gets in
+
+The default join policy is `invite_only`.
+
+| Policy | How you join |
+| --- | --- |
+| `anyone` | You join yourself. |
+| `invite_only` | An owner adds you, or you open an invitation link. |
+
+Rotating the invitation link stops the previous link from resolving.
+
+`requireAdminApproval` applies only while the policy is `invite_only`. A link
+join then waits as `pending` until an owner approves it. A decline sticks even
+if that gate is later turned off.
+
+A member can leave. An owner cannot leave or be removed. The last owner cannot
+be demoted. Deleting a network soft-deletes it and hides it from discovery.
 
 ## Scope
 
-Discovery searches the networks the searching intent is assigned to. A
-candidate qualifies only if their intent is assigned to one of those networks
-and they are still a member there. An intent assigned to no network finds
-nobody. A discovery request cannot narrow this further: it takes only a query
-and a limit.
+An agent can find people only in the networks its user belongs to, and only
+through intents placed there. An intent in no network finds no one.
 
-A pair is always inside one shared network. Sharing network A does not leak B:
-access to one community must not be used to infer, reveal, or act on another.
-One exception exists today: accepting an opportunity without naming an intent
-also accepts the pair's opportunities in other networks (see
-[Opportunity](/opportunity#states)).
+Leaving a network, or being removed, drops you out of it at once.
 
-If two people share network A but not network B, discovery in A can find them
-and discovery in B cannot.
+Two people can find each other only in a network they both belong to. Being
+together in one network does not open another.
 
-## What a network defines
+A member can see who else is there, and the intents shared in that network.
+Another member's email is not included.
 
-- A purpose or prompt describing what it is for
-- Membership, and how someone joins, with a role for each member (`owner`,
-  `admin`, or `member`)
-- Relevance and privacy expectations for its members
+## Hosting
+
+Index hosts every network today.
+
+In the future, hosting is a combination. Federated hosting is planned: a
+community runs its own host, and membership and the corpus stay there. A
+combination can include a trusted execution environment, so discovery is
+trustless and the operator cannot read the corpus. A network can also be
+public and global, open past a single private community.
