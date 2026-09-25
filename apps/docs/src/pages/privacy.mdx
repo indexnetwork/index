@@ -52,6 +52,9 @@ may negotiate for them.
 Your agent decides how open each intent is. A network is a shared boundary its
 members hold together.
 
+**[Appropriateness](#appropriateness)** can be used to automate these decisions: how open an intent
+should be, and which network it belongs in.
+
 ### Intent visibility
 
 Every intent has a visibility, which decides whether other people's agents
@@ -75,8 +78,7 @@ are shared with them.
 ### Network assignment
 
 Visibility decides how open an intent is, and assignment decides which networks
-it belongs to. Your agent can make that choice for you, assigning each intent
-only to the networks where it is appropriate and relevant, so that a job search
+it belongs to. Your agent can make that choice for you, so that a job search
 goes to a professional community rather than to a neighborhood group.
 
 How assignment happens is up to each personal agent. Some assign intents
@@ -86,22 +88,16 @@ to, and one with no networks named is shared to all of your current networks.
 
 ### Counterparty discovery
 
-Discovery respects both of the choices above. Network assignment decides where
-it looks: only in the networks the searching intent is assigned to, and only at
-people who are still members there, so an intent in no network finds nobody and
-leaving a network drops you out of it at once. Intent visibility decides what it
-may see there: `public` and `network_only` intents can be found and read,
-`incognito` intents can be found but not read until mutual interest is
-confirmed, and `private` intents are never found at all.
+Index runs counterparty discovery through a shared protocol. Intent visibility
+and network assignment are enforced by that protocol, not by each agent on its
+own.
 
-Discovery returns candidates, not connections. Your agent chooses which ones to
-open, and only an opened candidate becomes an opportunity with a negotiation.
+Because every search goes through the same protocol, it can be extended in
+different ways.
 
-**What this makes possible: verifiable discovery.** Today discovery matches on
-what people say they want. Because every search already runs through one
-scoped check, that check can also take verifiable data into account, so an
-agent can narrow or qualify its search on facts that are proven rather than
-claimed:
+**What this makes possible: verifiable discovery.** The protocol can also take
+verifiable data into account, so an agent can narrow or qualify its search on facts that are proven
+rather than claimed. For example:
 
 - **Capabilities** that limit what an agent may do, such as discovering only
   for one intent or only inside one network, so it holds exactly the authority
@@ -119,22 +115,13 @@ Each of these can be checked without being shown. An agent can learn that a
 candidate holds a credential or is in the right city without seeing the
 document or the address behind it.
 
-**What this makes possible:**
-
-- **Encrypted ACLs.** Every assignment is already an explicit link between an
-  intent and a network, so each link can carry an encrypted access list.
-  Readability is then enforced by cryptography rather than by the operator.
-- **Expiration-based privacy.** Intents already expire, and leaving a network
-  already takes effect at once. The same boundary can carry a time limit, so an
-  assignment or a visibility lapses on a date without anyone removing it.
-
 ## Agent and agent
 
 The two agents talk directly. A [negotiation](/negotiation) is that
 agent-to-agent conversation: each speaks for its principal, and each learns
 only what progressive disclosure has unlocked.
 
-Two things never enter that lattice.
+Two things never enter that lattice. They are never appropriate to disclose.
 
 - A **`private` intent** — timing, limits, refusals — is not disclosed. It binds
   constraint-fit on your own side and only shapes how the agent advocates.
@@ -152,6 +139,9 @@ Each side sees only part of the other. That view is a **disclosure lattice**,
 and it opens as each check passes. The first view is the least the
 [intent visibility](#intent-visibility) allows. A passed check reveals the next
 layer. A failed check reveals nothing more.
+
+The negotiator agent can use **[Appropriateness](#appropriateness)** information
+to make better disclosure decisions.
 
 1. **Statement** — the declared want. Unlocks when mutuality holds. For
    `incognito`, this is the first time the information exists for the other
@@ -204,6 +194,23 @@ conversation, or into a further event.
   environment, so the operator cannot read the corpus.
 - **Incognito negotiation**, built on the network TEE (see
   [above](#incognito-negotiation)).
+
+## Concepts
+
+### Appropriateness
+
+An evaluation metric for the decision in front of the agent. It works as a
+question asked of that decision, and a yes is what lets the agent act.
+
+- **Assignment.** Is it appropriate to assign this intent to this network, in
+  order to reach the people that context is for? A job search belongs in a
+  professional community, not a neighborhood group. A yes automates the
+  assignment. A no leaves the intent out.
+- **Visibility.** Is it appropriate to open this intent this far, in order to
+  be found by those people and not by everyone else?
+- **Disclosure.** Is it appropriate to reveal this next, in order to test the
+  match and nothing more? The negotiator agent can use that information to make
+  better disclosure decisions.
 
 This page describes the protocol's privacy model. For how Index Network, Inc.
 handles personal data as a company, see the
