@@ -2,7 +2,7 @@ import { BoxRenderable, ScrollBoxRenderable, TextareaRenderable, TextRenderable,
 
 import type { Inbox, Negotiation, Owner, Person, Question, Signal } from "./api";
 
-const colors = { background: "#10151e", text: "#dce4ef", muted: "#8996aa", focus: "#77b8ff", question: "#f4c773", border: "#364255" };
+const colors = { background: "#10151e", text: "#dce4ef", muted: "#8996aa", focus: "#77b8ff", question: "#f4c773", success: "#8de3b0", border: "#364255" };
 type Pane = "inbox" | "radar" | "negotiation";
 
 /** The three owner views read the same data as the macOS signal workspace. */
@@ -13,18 +13,22 @@ export async function runTui(owner: Owner): Promise<void> {
   const root = new BoxRenderable(renderer, { width: "100%", height: "100%", flexDirection: "column", backgroundColor: colors.background });
   renderer.root.add(root);
   const header = new TextRenderable(renderer, { height: 2, fg: colors.focus, wrapMode: "word" });
+  const banner = new TextRenderable(renderer, { height: 1, fg: colors.question });
+  const tabs = new TextRenderable(renderer, { height: 1, fg: colors.text });
   root.add(header);
-  const board = new BoxRenderable(renderer, { flexDirection: "row", flexGrow: 1, minHeight: 0, gap: 1 });
+  root.add(banner);
+  root.add(tabs);
+  const board = new BoxRenderable(renderer, { flexDirection: "column", flexGrow: 1, minHeight: 0 });
   root.add(board);
 
-  function addPane(title: string, grow: number) {
-    const box = new BoxRenderable(renderer, { title, border: true, borderColor: colors.border, flexDirection: "column", flexGrow: grow, flexBasis: 0, minWidth: 0 });
+  function addPane(title: string) {
+    const box = new BoxRenderable(renderer, { title, border: true, borderColor: colors.border, flexDirection: "column", flexGrow: 1, minHeight: 0 });
     const history = new ScrollBoxRenderable(renderer, { flexGrow: 1, minHeight: 0, scrollX: false, scrollY: true, stickyScroll: true, stickyStart: "bottom", contentOptions: { flexDirection: "column" } });
     box.add(history);
     board.add(box);
     return { box, history };
   }
-  const inboxPane = addPane(" YOUR AGENT ", 2);
+  const inboxPane = addPane(" YOUR AGENT ");
   const questionText = new TextRenderable(renderer, { fg: colors.question, flexShrink: 0, wrapMode: "word" });
   const choicesText = new TextRenderable(renderer, { fg: colors.question, flexShrink: 0, wrapMode: "word" });
   inboxPane.box.add(questionText);
@@ -35,20 +39,25 @@ export async function runTui(owner: Owner): Promise<void> {
     onSubmit: () => { void send(input.plainText); },
   });
   inboxPane.box.add(input);
-  const radarPane = addPane(" RADAR ", 1);
-  const negotiationPane = addPane(" AGENT ↔ AGENT ", 2);
+  const radarPane = addPane(" RADAR ");
+  const negotiationPane = addPane(" AGENT ↔ AGENT ");
   const status = new TextRenderable(renderer, { height: 2, fg: colors.muted, wrapMode: "word" });
-  const help = new TextRenderable(renderer, { height: 2, fg: colors.muted, wrapMode: "word", content: " Ctrl+S signals · Tab pane · ↑↓ select · Enter send · Ctrl+Q questions · Ctrl+A accept / Ctrl+P pass · Esc cancel · Ctrl+C quit" });
+  const help = new TextRenderable(renderer, { height: 2, fg: colors.muted, wrapMode: "word" });
   root.add(status);
   root.add(help);
 
   const selector = new BoxRenderable(renderer, { visible: false, position: "absolute", top: 1, left: 0, width: "100%", height: "100%", zIndex: 1, border: true, borderColor: colors.focus, backgroundColor: colors.background, flexDirection: "column" });
   const selectorList = new ScrollBoxRenderable(renderer, { flexGrow: 1, minHeight: 0, scrollY: true, contentOptions: { flexDirection: "column" } });
-  selector.add(new TextRenderable(renderer, { content: " Choose a signal · ↑↓ Enter · Esc", height: 2, fg: colors.focus }));
+  selector.add(new TextRenderable(renderer, { content: " Choose a signal · ↑↓ select · Enter open · Esc close", height: 2, fg: colors.focus }));
   selector.add(selectorList);
   root.add(selector);
 
   let signals: Signal[] = [];
+  let loadingSignals = true;
+  let loadingInbox = true;
+  let loadingRadar = true;
+  let inboxFailed = false;
+  let radarFailed = false;
   let signal: Signal | undefined;
   let inbox: Inbox = { messages: [], questions: [] };
   let people: Person[] = [];
@@ -60,6 +69,9 @@ export async function runTui(owner: Owner): Promise<void> {
   let selectedSignal = 0;
   let busy = false;
   let error = "";
+  let notice = "";
+  let awaitingReply = false;
+  let outgoing: { id?: string; text: string; stage: "sending" | "saved"; signalId: string } | null = null;
   let confirmation: "accepted" | "rejected" | null = null;
   let generation = 0;
   let inboxRequest = 0;
@@ -89,9 +101,15 @@ export async function runTui(owner: Owner): Promise<void> {
     signal = next;
     inbox = { messages: [], questions: [] };
     people = [];
+    loadingInbox = loadingRadar = true;
+    inboxFailed = radarFailed = false;
     negotiation = null;
     selectedPerson = selectedQuestion = selectedChoice = 0;
     confirmation = null;
+    outgoing = null;
+    awaitingReply = false;
+    notice = "";
+    error = "";
     input.clear();
     selector.visible = false;
     renderedInbox = renderedRadar = renderedNegotiation = "";
@@ -112,11 +130,19 @@ export async function runTui(owner: Owner): Promise<void> {
       const next = await owner.inbox(current);
       if (renderer.isDestroyed || generation !== session || inboxRequest !== version) return;
       const oldQuestion = activeQuestion()?.id;
+      if (awaitingReply && next.messages.some((message) => message.role !== "user" && !inbox.messages.some((previous) => previous.id === message.id))) {
+        awaitingReply = false;
+        notice = "Your agent responded.";
+      }
       inbox = next;
+      loadingInbox = inboxFailed = false;
+      if (outgoing?.id && next.messages.some((message) => message.id === outgoing?.id)) outgoing = null;
       selectedQuestion = Math.max(0, inbox.questions.findIndex((q) => q.id === oldQuestion));
       render();
     } catch (cause) {
       if (generation !== session || inboxRequest !== version || renderer.isDestroyed) return;
+      loadingInbox = false;
+      inboxFailed = true;
       error = cause instanceof Error ? cause.message : String(cause);
       render();
     }
@@ -131,11 +157,14 @@ export async function runTui(owner: Owner): Promise<void> {
       if (renderer.isDestroyed || generation !== session || radarRequest !== version) return;
       const oldPerson = activePerson()?.id;
       people = next;
+      loadingRadar = radarFailed = false;
       selectedPerson = Math.max(0, people.findIndex((p) => p.id === oldPerson));
       render();
       void refreshNegotiation();
     } catch (cause) {
       if (generation !== session || radarRequest !== version || renderer.isDestroyed) return;
+      loadingRadar = false;
+      radarFailed = true;
       error = cause instanceof Error ? cause.message : String(cause);
       render();
     }
@@ -163,26 +192,61 @@ export async function runTui(owner: Owner): Promise<void> {
     const question = activeQuestion();
     const intentId = signal.id;
     const draft = input.plainText;
+    outgoing = { text: content, stage: "sending", signalId: intentId };
+    notice = "";
+    error = "";
     busy = true; render();
     try {
-      if (question) await owner.sendAnswer(intentId, question.id, content);
-      else await owner.sendMessage(intentId, content);
-      if (signal.id === intentId && input.plainText === draft) input.clear();
-      error = "";
+      const result = (question
+        ? await owner.sendAnswer(intentId, question.id, content)
+        : await owner.sendMessage(intentId, content)) as { message?: { id?: string }; messages?: { id?: string }[] };
+      if (signal.id !== intentId) return;
+      outgoing = { text: content, stage: "saved", signalId: intentId, id: result.message?.id ?? result.messages?.[0]?.id };
+      if (input.plainText === draft) input.clear();
+      notice = signal.status === "paused"
+        ? "Saved. Agent is on hold while paused; Ctrl+R resumes it."
+        : "Saved to agent inbox. Waiting for agent activity; checking every 5s.";
+      awaitingReply = true;
       refresh();
     } catch (cause) {
+      if (signal.id === intentId) {
+        outgoing = null;
+        error = `Not sent: ${cause instanceof Error ? cause.message : String(cause)}. Your draft is still here.`;
+      }
+    } finally { busy = false; render(); }
+  }
+  async function toggleSignal() {
+    if (!signal || busy) return;
+    const current = signal;
+    const next = current.status === "paused" ? "ACTIVE" : "PAUSED";
+    busy = true; notice = `Updating signal…`; error = ""; render();
+    try {
+      await owner.setSignalStatus(current.id, next);
+      if (signal?.id !== current.id) return;
+      current.status = next === "ACTIVE" ? "active" : "paused";
+      notice = next === "ACTIVE" ? "Signal resumed. Discovery can continue." : "Signal paused. Discovery is on hold.";
+      signals = signals.map((entry) => entry.id === current.id ? current : entry);
+    } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause);
+      notice = "";
     } finally { busy = false; render(); }
   }
   async function review(status: "accepted" | "rejected") {
     const person = activePerson();
-    if (!signal || !person || person.status !== "ready" || busy) return;
+    if (!signal || busy) return;
+    if (!person || person.status !== "ready") {
+      notice = person ? "This opportunity is not awaiting your review." : "Select an opportunity to review.";
+      render();
+      return;
+    }
     if (confirmation !== status) { confirmation = status; render(); return; }
     const intentId = signal.id;
     confirmation = null;
     busy = true; render();
     try {
       await owner.setOpportunityStatus(intentId, person.id, status);
+      notice = status === "accepted" ? "Opportunity accepted." : "Opportunity passed.";
+      error = "";
       refresh();
     } catch (cause) { error = cause instanceof Error ? cause.message : String(cause); }
     finally { busy = false; render(); }
@@ -194,31 +258,42 @@ export async function runTui(owner: Owner): Promise<void> {
   }
   function render() {
     if (renderer.isDestroyed) return;
-    header.content = ` INDEX · ${owner.name} · ${signal ? signal.title : "no signals"} (${signal?.status || ""})`;
-    for (const [name, pane] of [["inbox", inboxPane], ["radar", radarPane], ["negotiation", negotiationPane]] as const) pane.box.borderColor = focused === name ? colors.focus : colors.border;
-    const messages = JSON.stringify(inbox.messages);
+    const host = new URL(owner.apiUrl).hostname;
+    const title = signal?.title || "No signal selected";
+    const maxTitle = Math.max(12, renderer.terminalWidth - 12);
+    header.content = ` INDEX  /  ${owner.name}  /  ${host}\n Signal: ${title.slice(0, maxTitle)}${title.length > maxTitle ? "…" : ""}`;
+    banner.content = loadingSignals ? " ● Loading signals…" : !signal ? " ● No signal · Create one with the CLI." : signal.status === "paused" ? " ● PAUSED · Agent on hold · Ctrl+R resume" : " ● ACTIVE · Updates every 5s";
+    banner.fg = signal?.status === "paused" || !signal ? colors.question : colors.success;
+    tabs.content = ` ${focused === "inbox" ? "▶" : " "} Agent    ${focused === "radar" ? "▶" : " "} Radar (${people.length})    ${focused === "negotiation" ? "▶" : " "} Negotiation`;
+    for (const [name, pane] of [["inbox", inboxPane], ["radar", radarPane], ["negotiation", negotiationPane]] as const) pane.box.visible = focused === name;
+    const messages = JSON.stringify([inbox.messages, outgoing, loadingInbox, inboxFailed, signal?.status]);
     if (messages !== renderedInbox) {
       renderedInbox = messages;
       clear(inboxPane.history);
       for (const message of inbox.messages) {
         const text = (message.parts || []).map((part) => part.text || "").join("\n").trim();
-        if (!text || text.startsWith("Stall: ")) continue;
+        if (!text) continue;
         const provenance = message.metadata?.principalMessage;
-        const label = message.role === "user" ? "you" : provenance?.kind === "question" ? "your agent asks" : "your agent";
-        line(inboxPane.history, `${label} · ${provenance?.kind || "message"}\n${text}`, message.role === "user" ? colors.text : colors.focus);
+        const label = message.role === "user" ? "YOU" : provenance?.kind === "question" ? "? YOUR AGENT ASKS" : "YOUR AGENT";
+        line(inboxPane.history, `${label}\n${text}`, message.role === "user" ? colors.text : colors.focus);
       }
-      if (!inbox.messages.length) line(inboxPane.history, "Ask about your matches, share a preference, or give your agent direction for this signal.", colors.muted);
+      if (outgoing && outgoing.signalId === signal?.id) {
+        line(inboxPane.history, `YOU · ${outgoing.stage === "sending" ? "SENDING…" : "SAVED ON SERVER"}\n${outgoing.text}`, colors.question);
+      } else if (inbox.messages.at(-1)?.role === "user") {
+        line(inboxPane.history, signal?.status === "paused" ? "Agent on hold while paused · Ctrl+R resumes." : "No agent response yet · updates every 5s.", colors.muted);
+      }
+      if (!inbox.messages.length && !outgoing) line(inboxPane.history, loadingInbox ? "Loading agent messages…" : inboxFailed ? "Could not load messages. Retrying…" : "No messages yet. Share what you need from your agent below.", colors.muted);
     }
     const question = activeQuestion();
     questionText.content = question ? ` ${selectedQuestion + 1}/${inbox.questions.length} · ${question.scope || "question"}: ${question.question}` : "";
     choicesText.content = question ? [...(question.options || []), "Custom reply…"].map((text, index) => ` ${selectedChoice === index ? "›" : " "} ${text}`).join("\n") : "";
-    input.placeholder = question ? "Answer this question…" : "Message your agent…";
-    const radar = JSON.stringify([people, selectedPerson]);
+    input.placeholder = question ? "Answer the selected question…" : "Message your agent…";
+    const radar = JSON.stringify([people, selectedPerson, signal?.status, loadingRadar, radarFailed]);
     if (radar !== renderedRadar) {
       renderedRadar = radar;
       clear(radarPane.history);
       people.forEach((person, index) => line(radarPane.history, `${index === selectedPerson ? "›" : " "} ${person.name} · ${person.status}${person.score == null ? "" : ` · ${Math.round(person.score * 100)}%`}\n  ${person.blurb}`, index === selectedPerson ? colors.focus : colors.text, `person-${index}`));
-      if (!people.length) line(radarPane.history, "No opportunities yet.", colors.muted);
+      if (!people.length) line(radarPane.history, loadingRadar ? "Loading opportunities…" : radarFailed ? "Could not load opportunities. Retrying…" : signal?.status === "paused" ? "No opportunities yet. Discovery is paused; Ctrl+R resumes it." : "No opportunities yet. Your agent's matches will appear here.", colors.muted);
       else radarPane.history.scrollChildIntoView(`person-${selectedPerson}`);
     }
     const transcript = JSON.stringify([activePerson()?.id, negotiation]);
@@ -231,9 +306,18 @@ export async function runTui(owner: Owner): Promise<void> {
       if (negotiation?.outcome) line(negotiationPane.history, `Outcome: ${negotiation.outcome}`, colors.question);
       else if (!negotiation?.turns.length) line(negotiationPane.history, person ? "No negotiation turns yet." : "Select a radar opportunity.", colors.muted);
     }
-    status.content = confirmation ? ` Press Ctrl+${confirmation === "accepted" ? "A" : "P"} again to ${confirmation === "accepted" ? "accept" : "pass"} ${activePerson()?.name}; Esc cancels.`
-      : error ? ` Error: ${error}` : busy ? " Sending…" : ` ${inbox.questions.length} question(s) · ${people.length} opportunities · ${activePerson()?.name || "no selection"}`;
-    status.fg = confirmation || error ? colors.question : colors.muted;
+    let idleStatus = ` ● ${inbox.questions.length} questions · ${people.length} opportunities · ${activePerson()?.name || "no match selected"}`;
+    if (focused === "inbox" && inbox.messages.at(-1)?.role === "user") {
+      idleStatus = signal?.status === "paused" ? " ● Agent on hold while paused · Ctrl+R resumes." : " ● Latest message is yours; no agent response yet.";
+    }
+    status.content = confirmation ? ` Press Alt+${confirmation === "accepted" ? "A" : "X"} again to ${confirmation === "accepted" ? "accept" : "pass"} ${activePerson()?.name}; Esc cancels.`
+      : error ? ` ● ${error}` : notice ? ` ● ${notice}` : busy ? " ● Working…" : loadingSignals || loadingInbox || loadingRadar ? " ● Loading live data…" : idleStatus;
+    status.fg = confirmation || error ? colors.question : notice ? colors.success : colors.muted;
+    help.content = focused === "inbox"
+      ? " Tab views · Alt+S signals · Ctrl+R\n Alt+Q questions · Enter send · Ctrl+C"
+      : focused === "radar"
+        ? " Tab views · ↑↓ select · Alt+A accept\n Alt+X pass · Esc cancel · Ctrl+C"
+        : " Tab views · PgUp/PgDn scroll · Ctrl+C";
     if (selector.visible) selectorList.focus();
     else if (focused === "inbox") input.focus();
     else if (focused === "radar") radarPane.history.focus();
@@ -242,7 +326,7 @@ export async function runTui(owner: Owner): Promise<void> {
   const onKey = (key: KeyEvent) => {
     if (key.name === "c" && key.ctrl) {
       key.preventDefault(); renderer.destroy();
-    } else if (key.name === "s" && key.ctrl) {
+    } else if (key.name === "s" && key.meta) {
       key.preventDefault();
       selector.visible = !selector.visible;
       if (selector.visible) { selectedSignal = Math.max(0, signals.findIndex((entry) => entry.id === signal?.id)); renderSelector(); }
@@ -260,6 +344,8 @@ export async function runTui(owner: Owner): Promise<void> {
       render();
     } else if (key.name === "escape" && confirmation) {
       key.preventDefault(); confirmation = null; render();
+    } else if (key.name === "r" && key.ctrl) {
+      key.preventDefault(); void toggleSignal();
     } else if (key.name === "tab") {
       key.preventDefault();
       const order: Pane[] = ["inbox", "radar", "negotiation"];
@@ -268,9 +354,9 @@ export async function runTui(owner: Owner): Promise<void> {
       key.preventDefault();
       selectedPerson = Math.max(0, Math.min(people.length - 1, selectedPerson + (key.name === "up" ? -1 : 1)));
       confirmation = null; negotiation = null; render(); void refreshNegotiation();
-    } else if (focused === "radar" && key.ctrl && (key.name === "a" || key.name === "p")) {
+    } else if (focused === "radar" && key.meta && (key.name === "a" || key.name === "x")) {
       key.preventDefault(); void review(key.name === "a" ? "accepted" : "rejected");
-    } else if (focused === "inbox" && key.name === "q" && key.ctrl) {
+    } else if (focused === "inbox" && key.name === "q" && key.meta) {
       key.preventDefault(); selectedQuestion = (selectedQuestion + 1) % Math.max(1, inbox.questions.length); selectedChoice = 0; render();
     } else if (focused === "inbox" && activeQuestion() && !input.plainText && (key.name === "up" || key.name === "down")) {
       key.preventDefault(); selectedChoice = Math.max(0, Math.min((activeQuestion()?.options?.length || 0), selectedChoice + (key.name === "up" ? -1 : 1))); render();
@@ -288,15 +374,21 @@ export async function runTui(owner: Owner): Promise<void> {
     if (!signal) return;
     if (event.type === "message" && event.message?.metadata?.intentId === signal.id || event.type === "question.pending" && event.data?.intentId === signal.id) void refreshInbox();
     if (event.data?.intentId === signal.id && ["negotiation.changed", "negotiation.turn"].includes(event.type)) void refreshRadar();
-    if (["intent.created", "intent.lifecycle"].includes(event.type)) void owner.signals().then((next) => { signals = next; render(); }).catch((cause: unknown) => { error = String(cause); render(); });
+    if (["intent.created", "intent.lifecycle"].includes(event.type)) void owner.signals().then((next) => {
+      signals = next;
+      signal = next.find((entry) => entry.id === signal?.id) || signal;
+      render();
+    }).catch((cause: unknown) => { error = String(cause); render(); });
   });
   const poll = setInterval(() => { refresh(); }, 5000);
   const onInterrupt = () => renderer.destroy();
   process.once("SIGINT", onInterrupt);
   try {
+    render();
     signals = await owner.signals();
+    loadingSignals = false;
     if (signals[0]) switchSignal(signals[0]);
-    else render();
+    else { loadingInbox = loadingRadar = false; render(); }
     await closed;
   } finally {
     process.off("SIGINT", onInterrupt);
