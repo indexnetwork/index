@@ -112,6 +112,10 @@ export interface PrincipalMessage {
   summary?: boolean;
   /** Marks a direct reply, distinct from an unrelated note or progress update. */
   reply?: boolean;
+  /** Marks a negotiator's stall, with the turn count it stalled at: a later turn discharges it. */
+  stall?: { turnCount: number };
+  /** The stall entries this question asks about, or this resolution releases, by entry id. */
+  stalls?: string[];
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;

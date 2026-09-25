@@ -4,7 +4,7 @@ import { briefIfMissing } from "./brief.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
 import { summarize } from "./summary.ts";
-import type { ConversationEntry, Decision, Intent, NegotiateResult, NegotiationAction, Opportunity, Stall, WakeAction, WakeResult } from "./types.ts";
+import type { ConversationEntry, Decision, Intent, NegotiateRun, NegotiationAction, Opportunity, StandingStall, WakeAction, WakeResult } from "./types.ts";
 import { wake } from "./wake.ts";
 
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
@@ -14,12 +14,14 @@ export interface Runtime {
   signal?: AbortSignal;
   log?: (line: string) => void;
   /** Open this negotiation now, as soon as its brief and decision are published. */
-  onNegotiate?: (opportunityId: string, decision?: Decision) => void;
+  onNegotiate?: (opportunityId: string) => void;
 }
 
 const BRIEF = "Brief: ";
 const DECISION = "Decision: ";
 const STALL = "Stall: ";
+const RESOLVED = "Resolved: ";
+const TO_ASK = "\n\nTo ask: ";
 const PROGRESS = "Progress: ";
 const WITHDRAWN = "Withdrawn: ";
 /** An opening turn still running after this is no longer held. The rest of the initiation can finish. */
@@ -60,11 +62,12 @@ function textOf(message: ConversationMessage): string {
  * @returns The conversation as a run takes it.
  */
 export function readConversation(messages: ConversationMessage[]): ConversationEntry[] {
-  return messages.filter((message) => !principalOf(message)?.summary).map((message) => {
+  return messages.filter((message) => !principalOf(message)?.summary).map((message): ConversationEntry => {
     const principal = (message as { metadata?: { principalMessage?: Partial<PrincipalMessage> } }).metadata?.principalMessage;
     const opportunity = principal?.matches?.[0]?.opportunityId;
     const counterpart = principal?.matches?.[0]?.counterparty.name ?? undefined;
     const text = textOf(message);
+    const stalls = principal?.stalls?.length ? { stalls: principal.stalls } : {};
 
     if (principal?.reply) return { kind: "reply", text };
     if (message.role === "agent" && text.startsWith(BRIEF)) {
@@ -74,7 +77,14 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
       return { kind: "decision", text: text.slice(DECISION.length), ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
     }
     if (message.role === "agent" && text.startsWith(STALL)) {
-      return { kind: "stall", text: text.slice(STALL.length), ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
+      return {
+        kind: "stall", id: message.id, text: text.slice(STALL.length),
+        ...(principal?.stall ? { turnCount: principal.stall.turnCount } : {}),
+        ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}),
+      };
+    }
+    if (message.role === "agent" && text.startsWith(RESOLVED)) {
+      return { kind: "resolution", text: text.slice(RESOLVED.length), ...stalls, ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
     }
     if (message.role === "agent" && text.startsWith(PROGRESS)) {
       return { kind: "progress", text: text.slice(PROGRESS.length) };
@@ -87,6 +97,7 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
       ...(principal?.scope ? { scope: principal.scope === "match" ? "opportunity" as const : "intent" as const } : {}),
       ...(principal?.questionId ? { questionId: principal.questionId } : {}),
       ...(principal?.options ? { options: principal.options } : {}),
+      ...stalls,
       ...(opportunity ? { opportunity } : {}),
       ...(counterpart ? { counterpart } : {}),
     };
@@ -119,40 +130,120 @@ export function toOpportunity(negotiation: NegotiationDetail, userId: string): O
   };
 }
 
+/** What one opportunity carries into a run from the conversation. */
+export interface Carried {
+  brief?: string;
+  decision?: Decision;
+  stall?: StandingStall;
+  answered?: boolean;
+}
+
 /**
  * What each opportunity carries into this run: its latest brief and decision,
- * a stall still waiting to be answered, and whether the principal has spoken
- * to it since that decision.
+ * the stall it still owes, and whether the principal answered a question
+ * about it since that decision.
  *
- * A stall and an answer stand only until the next decision for that
- * opportunity, which is the reply to both.
+ * A stall is an obligation, not a note: a decision does not erase it, and
+ * neither does the principal saying something unrelated. Only these do:
+ * the answer to the question linked to it, followed by the decision that
+ * carries that answer; a resolution naming it; a decline or stop. A turn or
+ * a settlement discharges it too, but that is the negotiation's record, not
+ * the conversation's — see {@link standing}. A stall written without its turn
+ * count predates obligations and is not one.
  *
  * @param conversation - The signal's conversation, oldest first.
  * @returns The standing brief, decision, stall and answer per opportunity.
  */
-export function latestBriefs(conversation: ConversationEntry[]): Map<string, { brief?: string; decision?: Decision; stall?: Stall; answered?: boolean }> {
-  const perOpportunity = new Map<string, { brief?: string; decision?: Decision; stall?: Stall; answered?: boolean }>();
+export function latestBriefs(conversation: ConversationEntry[]): Map<string, Carried> {
+  const perOpportunity = new Map<string, Carried>();
+  /** The stall ids each question asked about. */
+  const asked = new Map<string, string[]>();
+  /** The turn count of each opportunity's last stall a wake resolved without asking. */
+  const resolvedAt = new Map<string, number>();
+  const of = (opportunityId: string): Carried => {
+    const current = perOpportunity.get(opportunityId) ?? {};
+    perOpportunity.set(opportunityId, current);
+    return current;
+  };
+  const linked = (stallIds: string[] | undefined) =>
+    [...perOpportunity].filter(([, carried]) => carried.stall && stallIds?.includes(carried.stall.id));
+
   for (const entry of conversation) {
-    // An answer names one negotiation; anything else the principal writes
-    // speaks to every negotiation this signal is running.
-    if (entry.kind === "answer" || entry.kind === "user") {
-      for (const [id, carried] of perOpportunity) {
-        if (!entry.opportunity || entry.opportunity === id) carried.answered = true;
+    switch (entry.kind) {
+      case "brief":
+        if (entry.opportunity) of(entry.opportunity).brief = entry.text;
+        break;
+      case "stall": {
+        if (!entry.opportunity || !entry.id || entry.turnCount === undefined) break;
+        const current = of(entry.opportunity);
+        // Two runs stalling on the same turn are one obligation, already linked.
+        if (current.stall && !current.stall.answered && current.stall.turnCount === entry.turnCount) break;
+        const [reason = entry.text, suggestedAsk] = entry.text.split(TO_ASK);
+        current.stall = {
+          id: entry.id,
+          reason,
+          ...(suggestedAsk ? { suggestedAsk } : {}),
+          turnCount: entry.turnCount,
+          ...(resolvedAt.get(entry.opportunity) === entry.turnCount ? { retried: true } : {}),
+        };
+        break;
       }
-      continue;
+      case "question":
+        if (!entry.questionId || !entry.stalls) break;
+        asked.set(entry.questionId, entry.stalls);
+        for (const [, carried] of linked(entry.stalls)) carried.stall!.questionId ??= entry.questionId;
+        break;
+      // A withdrawn question leaves its stall owed and unasked.
+      case "expire":
+        for (const [, carried] of linked(asked.get(entry.questionId ?? ""))) {
+          if (carried.stall!.questionId === entry.questionId && !carried.stall!.answered) delete carried.stall!.questionId;
+        }
+        break;
+      // An answer speaks to the stalls its question asked about and to the
+      // opportunity it names, nothing else. A direct message speaks to none.
+      case "answer": {
+        const stalled = linked(asked.get(entry.questionId ?? ""));
+        for (const [, carried] of stalled) {
+          carried.stall!.answered = true;
+          carried.answered = true;
+        }
+        if (entry.opportunity && perOpportunity.has(entry.opportunity)) of(entry.opportunity).answered = true;
+        break;
+      }
+      case "resolution":
+        for (const [opportunityId, carried] of linked(entry.stalls)) {
+          resolvedAt.set(opportunityId, carried.stall!.turnCount);
+          delete carried.stall;
+        }
+        break;
+      case "decision": {
+        if (!entry.opportunity || !DECISIONS.includes(entry.text)) break;
+        const current = of(entry.opportunity);
+        current.decision = entry.text as Decision;
+        // Continue and accept still need the fact; an answered stall, a
+        // decline and a stop do not.
+        if (current.stall && (current.stall.answered || current.decision === "decline" || current.decision === "stop")) {
+          delete current.stall;
+        }
+        delete current.answered;
+        break;
+      }
+      default:
+        break;
     }
-    if (!entry.opportunity || (entry.kind !== "brief" && entry.kind !== "decision" && entry.kind !== "stall")) continue;
-    const current = perOpportunity.get(entry.opportunity) ?? {};
-    if (entry.kind === "brief") current.brief = entry.text;
-    else if (entry.kind === "stall") current.stall = { reason: entry.text };
-    else if (DECISIONS.includes(entry.text)) {
-      current.decision = entry.text as Decision;
-      delete current.stall;
-      delete current.answered;
-    }
-    perOpportunity.set(entry.opportunity, current);
   }
   return perOpportunity;
+}
+
+/**
+ * @param carried - What the conversation carries for one opportunity.
+ * @param negotiation - Its record, which a turn or a settlement has moved past a stall.
+ * @returns The same state without a stall the negotiation already discharged.
+ */
+export function standing(carried: Carried | undefined, negotiation: Negotiation): Carried {
+  const { stall, ...rest } = carried ?? {};
+  if (!stall || negotiation.settledAt || negotiation.turnCount > stall.turnCount) return rest;
+  return { ...rest, stall };
 }
 
 /**
@@ -180,7 +271,8 @@ function describe(action: WakeAction): string {
   switch (action.type) {
     case "brief": return `brief ${action.opportunityId}: ${action.brief}`;
     case "decision": return `decision ${action.opportunityId}: ${action.decision}`;
-    case "ask": return `ask (${action.scope}${action.opportunityId ? ` ${action.opportunityId}` : ""}): ${action.question} [${action.options.join(" | ")}]`;
+    case "ask": return `ask (${action.scope}${action.opportunityId ? ` ${action.opportunityId}` : ""}): ${action.question} [${action.options.join(" | ")}]${action.stalls ? ` for ${action.stalls.join(", ")}` : ""}`;
+    case "resolve": return `resolve ${action.opportunityId} ${action.stallId}: ${action.reason}`;
     case "note": return `note: ${action.text}`;
     case "reply": return `reply: ${action.text}`;
     case "progress": return `progress: ${action.text}`;
@@ -232,6 +324,9 @@ export async function publishActions(
       case "progress":
         entries.push(entry("message", `${PROGRESS}${action.text}`));
         break;
+      case "resolve":
+        entries.push({ ...entry("message", `${RESOLVED}${action.reason}`, match ? [match] : []), stalls: [action.stallId] });
+        break;
       case "ask": {
         const question = entry("question", action.question, match ? [match] : []);
         entries.push({
@@ -239,6 +334,7 @@ export async function publishActions(
           questionId: question.id,
           scope: action.scope === "opportunity" ? "match" : "intent",
           options: action.options,
+          ...(action.stalls ? { stalls: action.stalls } : {}),
         });
         break;
       }
@@ -284,7 +380,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
 
   const principalConversation = readConversation(inbox.messages);
   const carried = latestBriefs(principalConversation);
-  const opportunities = details.map((detail) => ({ ...toOpportunity(detail, user.id), ...carried.get(detail.opportunityId) }));
+  const opportunities = details.map((detail) => ({ ...toOpportunity(detail, user.id), ...standing(carried.get(detail.opportunityId), detail) }));
   const context: PublishContext = {
     counterparts: counterpartsOf(details),
     questions: questionsAsked(principalConversation),
@@ -311,7 +407,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
     onBrief: async (decided) => {
       await publishActions(client, intent.id, decided, context);
       for (const action of decided) {
-        if (action.type === "decision" && action.decision !== "stop") onNegotiate?.(action.opportunityId, action.decision);
+        if (action.type === "decision" && action.decision !== "stop") onNegotiate?.(action.opportunityId);
       }
     },
     // A newly opened opportunity is this seat's turn at turn zero with no
@@ -329,9 +425,11 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
   await publishActions(
     client,
     intent.id,
-    result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "progress"),
+    result.actions.filter((action) => action.type !== "brief" && action.type !== "decision" && action.type !== "resolve" && action.type !== "progress"),
     context,
   );
+  // What the wake did is kept; what it left owed fails it, so the host retries.
+  if (result.unresolved.length) throw new Error(`Wake left stalls unresolved on ${result.unresolved.join(", ")}.`);
 
   return result;
 }
@@ -460,15 +558,21 @@ export async function closeInitiation(client: Index, intent: Intent, runtime: Ru
  * @param client - Index for this owner.
  * @param opportunityId - The negotiation to work.
  * @param intent - The signal it belongs to.
+ * A stall still standing holds the negotiator here, whatever woke it: its
+ * fact is still missing, so running it would only stall again.
+ *
+ * @param client - Index for this owner.
+ * @param opportunityId - The negotiation to work.
+ * @param intent - The signal it belongs to.
  * @param runtime - Model, clock, and cancellation.
- * @returns The submitted turn, or why this run took none.
+ * @returns The submitted turn, the stall it wrote, or why this run took none.
  */
 export async function runNegotiate(
   client: Index,
   opportunityId: string,
   intent: Intent,
   runtime: Runtime,
-): Promise<NegotiateResult> {
+): Promise<NegotiateRun> {
   const { model, now, signal, log = () => {} } = runtime;
   const [user, detail, inbox] = await Promise.all([
     client.me(),
@@ -479,7 +583,10 @@ export async function runNegotiate(
   if (detail.awaitingUserId !== user.id) return { stall: { reason: "It is not this seat's turn." } };
 
   const principalConversation = readConversation(inbox.messages);
-  const carried = latestBriefs(principalConversation).get(opportunityId) ?? {};
+  const carried = standing(latestBriefs(principalConversation).get(opportunityId), detail);
+  if (carried.stall) {
+    return { held: carried.stall.answered ? "Its stall was answered and waits for a new decision." : "Its stall is still waiting on the principal." };
+  }
   const opportunity: Opportunity = { ...toOpportunity(detail, user.id), ...carried };
   const context: PublishContext = { counterparts: counterpartsOf([detail]), log };
 
@@ -513,8 +620,43 @@ export async function runNegotiate(
   // The stall is this run's whole product, so it goes on the conversation: a
   // wake can then ask the principal for what the brief was missing.
   const text = result.stall.suggestedAsk
-    ? `${result.stall.reason}\n\nTo ask: ${result.stall.suggestedAsk}`
+    ? `${result.stall.reason}${TO_ASK}${result.stall.suggestedAsk}`
     : result.stall.reason;
-  await client.sendPrincipal(intent.id, [entry("message", `${STALL}${text}`, [context.counterparts.get(opportunityId)!])]);
+  await client.sendPrincipal(intent.id, [{
+    ...entry("message", `${STALL}${text}`, [context.counterparts.get(opportunityId)!]),
+    stall: { turnCount: detail.turnCount },
+  }]);
   return result;
+}
+
+/**
+ * What one signal still owes, read from Index alone, so a restarted host or a
+ * failed wake loses nothing: a wake when a stall has no question yet or its
+ * answer has not been decided on, and every negotiation whose turn is this
+ * seat's with nothing holding it. A turn is fenced by its expected count, so
+ * running one that another run already took cannot take it twice.
+ *
+ * @param client - Index for this owner.
+ * @param intent - The signal.
+ * @returns Whether to wake, and the negotiations to run.
+ */
+export async function owedWork(client: Index, intent: Intent): Promise<{ wake: boolean; negotiate: string[] }> {
+  const [user, negotiations, inbox] = await Promise.all([
+    client.me(),
+    client.listIntentNegotiations(intent.id),
+    client.principalInbox(intent.id),
+  ]);
+  const carried = latestBriefs(readConversation(inbox.messages));
+  let wake = false;
+  const negotiate: string[] = [];
+  for (const negotiation of negotiations) {
+    if (negotiation.settledAt) continue;
+    const { stall, decision } = standing(carried.get(negotiation.opportunityId), negotiation);
+    if (stall) {
+      if (!stall.questionId || stall.answered) wake = true;
+    } else if (negotiation.awaitingUserId === user.id && decision !== "stop") {
+      negotiate.push(negotiation.opportunityId);
+    }
+  }
+  return { wake, negotiate };
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0
+
+### Added
+- `PrincipalMessage.stall` marks a negotiator's stall with the turn count it
+  stalled at, and `PrincipalMessage.stalls` names the stall entries a question
+  asks about or a resolution releases, so a stall stays owed until its own
+  question is answered.
+
 ## 0.8.0
 
 ### Changed
