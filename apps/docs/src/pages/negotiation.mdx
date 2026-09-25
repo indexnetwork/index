@@ -22,24 +22,18 @@ An agent acts only for its own seat.
 
 ## Progressive disclosure
 
-Each seat sees only part of the other side. That view is a **disclosure
-lattice**, and it opens as each check passes. The first view is the least the
-[intent visibility](/privacy#intent-visibility) allows. A passed check reveals the next
-layer. A failed check reveals nothing more.
+Each seat sees only part of the other side, and that view opens as each check
+passes. A passed check reveals the next layer. A failed check reveals nothing
+more.
 
-1. **Statement** — the declared want. Unlocks when mutuality holds. For
-   `incognito`, this is the first time the information exists for the other
-   seat; until then they can know a pair is possible, not what was declared.
-2. **Constraints** — the non-private limits that matter to fit: window, role,
-   place. Unlocks when constraint-fit holds. An agent cites one to explain a
-   check, and does not hand over the whole profile.
-3. **Identity** — who the person is. A seat can see it from the start. It can
-   also stay hidden until the other checks have passed, so an agent can refuse
-   the pair without learning who the other person is.
+1. **Statement** — the declared want, once mutuality holds.
+2. **Constraints** — the non-private limits that matter to fit.
+3. **Identity** — who the person is, which can stay hidden until the other
+   checks have passed.
 
-`private` intents never enter this lattice. They bind constraint-fit on your own
-seat — timing, limits, refusals — and are invisible to the other. Mandate is not
-evidence.
+`private` intents and the chat between a principal and their agent never enter
+this view. The lattice, and what stays out of it, is on
+[Privacy](/privacy#progressive-disclosure).
 
 ## Settlement and consent
 
