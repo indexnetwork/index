@@ -690,6 +690,9 @@ def _radar_item(card: dict[str, Any], intent_id: str | None = None) -> dict[str,
         item["intentScopeId"] = intent_id
     if card.get("presentationPending") is True:
         item["presentationPending"] = True
+    score = card.get("score")
+    if isinstance(score, (int, float)) and not isinstance(score, bool):
+        item["score"] = score
     return item
 
 

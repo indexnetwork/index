@@ -3740,11 +3740,7 @@
     }).map(questionCard));
 
     return React.createElement("div", { ref: rootRef, className: "index-dashboard__agent-chat" },
-      React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef },
-        feed.length
-          ? feed
-          : React.createElement(EmptyState, null, "Ask about your matches, share a preference, or give your agent direction for this signal."),
-      ),
+      React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef }, feed),
       // The answer action rides above the composer rather than scrolling away
       // with the question it belongs to, and only once there is an answer to
       // send: a dead button is one more thing to read past.
@@ -3783,6 +3779,76 @@
     );
   }
 
+  /* Counterparty discovery, the mac app's radar while the agent runs its first
+     search: the loading art, then a checklist whose steps tick only when the
+     data says so. Every counter is a number the dashboard actually has. */
+  const DISCOVERY_STEPS = [
+    { key: "reach", label: "mapping reach",
+      done: function (m) { return m.networks != null; },
+      detail: function () { return ""; } },
+    { key: "scan", label: "scanning counterparties",
+      done: function (m) { return m.found != null; },
+      detail: function (m) { return m.found == null ? "" : formatCount(m.found) + " found"; } },
+    { key: "overlap", label: "evaluating overlap",
+      done: function (m) { return m.scored != null; },
+      detail: function (m) { return m.scored == null ? "" : formatCount(m.scored) + " scored"; } },
+    { key: "rank", label: "ranking counterparties",
+      done: function (m) { return m.scored != null; },
+      detail: function (m, isDone) { return isDone ? "ranked" : "ranking"; } },
+    // Holds as the active step while the radar is empty: nobody has advanced.
+    { key: "short", label: "shortlisting",
+      done: function (m) { return m.advanced > 0; },
+      detail: function (m) { return m.advanced == null ? "" : formatCount(m.advanced) + " advanced"; } },
+  ];
+  const DISCOVERY_SPINNER = "\u280B\u2819\u2839\u2838\u283C\u2834\u2826\u2827\u2807\u280F".split("");
+  // The data lands in one go; the checklist walks one row per dwell so each
+  // step reads as its own, and never past what the data supports.
+  const DISCOVERY_STEP_DWELL_MS = 700;
+  // An empty radar stops claiming to search after this long.
+  const DISCOVERY_GIVE_UP_MS = 120000;
+
+  function DiscoveryStages(props) {
+    const metrics = props.metrics;
+    let reached = 0;
+    for (let i = 0; i < DISCOVERY_STEPS.length; i++) {
+      if (!DISCOVERY_STEPS[i].done(metrics)) break;
+      reached += 1;
+    }
+    const walkedState = React.useState(0);
+    const setWalked = walkedState[1];
+    const walked = Math.min(walkedState[0], reached);
+    React.useEffect(function () {
+      if (walked >= reached) return undefined;
+      const timer = setTimeout(function () { setWalked(walked + 1); }, DISCOVERY_STEP_DWELL_MS);
+      return function () { clearTimeout(timer); };
+    }, [walked, reached]);
+    const activeIndex = walked < DISCOVERY_STEPS.length ? walked : -1;
+    const frameState = React.useState(0);
+    const frame = frameState[0];
+    const setFrame = frameState[1];
+    React.useEffect(function () {
+      if (activeIndex === -1) return undefined;
+      const timer = setInterval(function () { setFrame(function (n) { return (n + 1) % DISCOVERY_SPINNER.length; }); }, 100);
+      return function () { clearInterval(timer); };
+    }, [activeIndex === -1]);
+
+    return React.createElement("div", { className: "index-dashboard__discovery" },
+      LOADING_IMAGE()
+        ? React.createElement("img", { className: "index-dashboard__discovery-art", src: LOADING_IMAGE(), alt: "searching" })
+        : null,
+      React.createElement("p", { className: "index-dashboard__discovery-title" }, "hold on, looking for your people"),
+      React.createElement("div", { className: "index-dashboard__discovery-steps", role: "status", "aria-live": "polite" },
+        DISCOVERY_STEPS.map(function (step, i) {
+          const isDone = i < walked;
+          const isActive = i === activeIndex;
+          const state = isDone ? "done" : isActive ? "active" : "pending";
+          return React.createElement("div", { key: step.key, className: "index-dashboard__discovery-step index-dashboard__discovery-step--" + state },
+            React.createElement("span", { className: "index-dashboard__discovery-mark" }, isDone ? "\u2713" : isActive ? DISCOVERY_SPINNER[frame] : "\u00B7"),
+            React.createElement("span", { className: "index-dashboard__discovery-label" }, step.label),
+            React.createElement("span", { className: "index-dashboard__discovery-detail" }, isDone || isActive ? step.detail(metrics, isDone) : ""));
+        })));
+  }
+
   function IntentDetail(props) {
     const intent = props.intent;
     // Opens on the whole radar, like the mac app: the accepted rows sit next to
@@ -3801,6 +3867,21 @@
       const timer = setTimeout(function () { setArmed(false); }, 4000);
       return function () { clearTimeout(timer); };
     }, [armed]);
+    // Discovery gives up per signal, and only while nothing has landed.
+    const expiredState = React.useState(false);
+    const discoveryExpired = expiredState[0];
+    const setDiscoveryExpired = expiredState[1];
+    const shownCount = intent && Array.isArray(intent.opportunities)
+      ? intent.opportunities.filter(function (opp) { return bucketForStatus(opp.status) !== null; }).length
+      : 0;
+    React.useEffect(function () {
+      setDiscoveryExpired(false);
+    }, [intent && intent.id]);
+    React.useEffect(function () {
+      if (shownCount > 0) return undefined;
+      const timer = setTimeout(function () { setDiscoveryExpired(true); }, DISCOVERY_GIVE_UP_MS);
+      return function () { clearTimeout(timer); };
+    }, [intent && intent.id, shownCount]);
     if (!intent) {
       return React.createElement("div", { className: "index-dashboard__detail" },
         React.createElement(EmptyState, null, "Select an intent to see its radar."),
@@ -3815,6 +3896,14 @@
     });
     const radarEmpty = "No matches here yet.";
     const radarLoading = !!props.radarLoading;
+    // Nothing on the radar and not yet given up: the agents are still out.
+    const discovering = shownCount === 0 && !discoveryExpired;
+    const discoveryMetrics = {
+      networks: props.networkCount,
+      found: intent.radarLoaded ? allOpps.length : null,
+      scored: intent.radarLoaded ? allOpps.filter(function (opp) { return typeof opp.score === "number"; }).length : null,
+      advanced: shownCount,
+    };
     const signalHead = React.createElement(SignalHead, {
       title: intent.title || "Untitled intent",
       paused: paused,
@@ -3857,7 +3946,9 @@
         React.createElement(Panel, { title: "radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           props.actionError ? React.createElement("div", { className: "index-dashboard__error" }, props.actionError) : null,
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
-          radarLoading && !allOpps.length
+          discovering
+            ? React.createElement(DiscoveryStages, { key: intent.id, metrics: discoveryMetrics })
+            : radarLoading && !allOpps.length
             ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
             : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onOpenNegotiation: props.onOpenNegotiation, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
@@ -5292,6 +5383,7 @@
       const opps = (detail && detail.opportunities) || [];
       const statusCounts = statusCountsFromOpportunities(opps);
       return Object.assign({}, baseIntent, {
+        radarLoaded: !!(detail && detail.opportunities),
         opportunities: opps,
         opportunityCount: statusCounts.pending || 0,
         totalOpportunityCount: opps.length,
@@ -5878,7 +5970,7 @@
     }
 
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, networkCount: networks && Array.isArray(networks.items) ? networks.items.length : null, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
