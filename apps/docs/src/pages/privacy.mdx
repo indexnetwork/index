@@ -88,32 +88,17 @@ to, and one with no networks named is shared to all of your current networks.
 
 ### Counterparty discovery
 
-Index runs counterparty discovery through a shared protocol. Intent visibility
-and network assignment are enforced by that protocol, not by each agent on its
-own.
+Intent visibility and network assignment are enforced by the shared
+[discovery](/discovery) protocol, not by each agent on its own.
 
-Because every search goes through the same protocol, it can be extended in
-different ways.
-
-**What this makes possible: verifiable discovery.** The protocol can also take
-verifiable data into account, so an agent can narrow or qualify its search on facts that are proven
-rather than claimed. For example:
-
-- **Capabilities** that limit what an agent may do, such as discovering only
-  for one intent or only inside one network, so it holds exactly the authority
-  it needs.
-- **Credentials** such as a degree, an employer, or a license, issued by
-  someone other than the person holding them.
-- **Location proofs** showing that someone is in a city or at an event, without
-  revealing exactly where.
-- **Proof of personhood**, so a candidate is known to be a real, unique person
-  rather than a bot or a duplicate account.
-- **Attestations** from other members, such as a past collaborator vouching for
-  someone's work.
-
-Each of these can be checked without being shown. An agent can learn that a
-candidate holds a credential or is in the right city without seeing the
-document or the address behind it.
+An agent can only discover people through intents assigned to networks its
+principal belongs to, so leaving a network takes you out of its discovery at
+once. Only active intents take part; a paused, fulfilled, or archived intent
+stops being found. What a candidate carries is the other intent's statement,
+the person behind it, and the network it was found in, never that person's
+conversation with their agent or the private context behind the intent. Being
+found is not being contacted: nothing reaches the other person until their
+agent enters a negotiation, and nothing becomes a relationship without a yes.
 
 ## Agent and agent
 

@@ -35,6 +35,7 @@ export default defineConfig({
             { text: 'Opportunity', link: '/opportunity' },
           ],
         },
+        { text: 'Discovery', link: '/discovery' },
         { text: 'Privacy', link: '/privacy' },
       ],
     },
