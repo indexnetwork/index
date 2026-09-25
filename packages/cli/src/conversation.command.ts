@@ -17,6 +17,7 @@ Conversation Commands:
   index conversation send <id> <message>   Send a message (accepts short ID)
   index conversation show agent --intent-id <id>  Read scoped agent state
   index conversation send agent <text> --intent-id <id> [--question-id <id>]
+  index conversation answer agent --intent-id <id> --answer 'question-id=text' [--answer ...]
   index conversation stream                Listen for real-time events (SSE)
 `;
 
@@ -26,6 +27,7 @@ export interface ConversationOptions {
   json?: boolean;
   intentId?: string;
   questionId?: string;
+  answers?: { key: string; value: string }[];
 }
 
 /**
@@ -49,8 +51,18 @@ export async function handleConversation(
     else {
       const text = positionals.slice(1).join(" ");
       if (!text.trim()) throw new Error("A message is required");
-      result = await client.sendMessage("agent", text, options.intentId, options.questionId);
+      result = options.questionId
+        ? await client.answerAgentQuestions(options.intentId, [{ questionId: options.questionId, text }])
+        : await client.sendMessage("agent", text, options.intentId);
     }
+    console.log(JSON.stringify(result, null, options.json ? undefined : 2));
+    return;
+  }
+  if (subcommand === "answer") {
+    if (positionals[0] !== "agent" || !options?.intentId || !options.answers?.length) {
+      throw new Error("Usage: index conversation answer agent --intent-id <id> --answer 'question-id=text' [--answer ...]");
+    }
+    const result = await client.answerAgentQuestions(options.intentId, options.answers.map(({ key, value }) => ({ questionId: key, text: value })));
     console.log(JSON.stringify(result, null, options.json ? undefined : 2));
     return;
   }

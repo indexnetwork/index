@@ -1,0 +1,15 @@
+# Plugins [Use Index from the agent you already run]
+
+Index is harness-agnostic. Plugins let an agent you already use work with your
+intents and opportunities through the same protocol surface. The Claude and
+Codex plugin also works with negotiations; the Hermes plugin has no negotiation
+tools, and its bundled agent sidecar negotiates instead.
+
+- [Claude and Codex plugin](https://github.com/indexnetwork/index/blob/dev/packages/claude-plugin/README.md)
+- [Hermes plugin](https://github.com/indexnetwork/index/blob/dev/packages/hermes-plugin/README.md)
+
+Both authenticate against the API. The Claude and Codex plugin installs and
+drives the [CLI](/use/cli) underneath. The Hermes plugin calls the REST API
+directly and can also register the `/mcp` endpoint.
+
+This page is a stub.

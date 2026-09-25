@@ -138,7 +138,7 @@ export async function handleLogin(
         await store.save({ token, apiUrl: baseUrl, authKind: "session" });
         // A session token may revoke itself, so this login retires the one it
         // replaces instead of leaving it live.
-        if (previousCredentials) await revokeSession(baseUrl, previousCredentials.token);
+        if (previousCredentials) await revokeSession(previousCredentials.apiUrl, previousCredentials.token);
         resolveCallback({ success: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to save CLI credentials.";

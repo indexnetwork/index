@@ -10,12 +10,15 @@
     "packages/claude-plugin",
     "packages/hermes-plugin",
     "packages/agent",
+    "packages/agent-tui",
     "packages/client"
   ],
   "scripts": {
     "dev": "bash scripts/dev.sh",
     "dev:web": "cd apps/web && bun run dev",
     "dev:mac": "cd apps/mac && ./dev.sh",
+    "dev:docs": "cd apps/docs && bun run dev",
+    "agent:tui": "cd packages/agent-tui && bun run start",
     "dev:api": "cd services/api && bun run dev",
     "dev:frontend": "bun run dev:web",
     "dev:backend": "bun run dev:api",

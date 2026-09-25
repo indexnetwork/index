@@ -37,6 +37,7 @@ export default function Footer() {
             <Link to="/">Home</Link>
             <Link to="/blog">Blog</Link>
             <Link to="/about">About</Link>
+            <a href="https://docs.index.network">Docs</a>
             <Link to="/pages/privacy-policy">Privacy</Link>
             <Link to="/pages/terms-of-use">Terms</Link>
           </nav>

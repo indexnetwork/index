@@ -118,6 +118,7 @@ export default function Nav() {
       <div className={`right${menuOpen ? " is-open" : ""}`}>
         <Link className="link" to="/blog" onClick={closeMenu}>Blog</Link>
         <Link className="link" to="/about" onClick={closeMenu}>About</Link>
+        <a className="link" href="https://docs.index.network">Docs</a>
         <GithubStar />
         <button
           type="button"

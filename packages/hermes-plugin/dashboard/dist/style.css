@@ -725,7 +725,6 @@
 
 .index-dashboard__detail-cols > :last-child {
   padding-left: 1.125rem;
-  border-left: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
 }
 
 .index-dashboard__list-cols {
@@ -2213,14 +2212,12 @@
     gap: 1.5rem;
   }
 
-  /* Stacked, the rule would run across the middle of nothing. */
   .index-dashboard__detail-cols > :first-child {
     padding-right: 0;
   }
 
   .index-dashboard__detail-cols > :last-child {
     padding-left: 0;
-    border-left: none;
   }
 }
 
@@ -4278,5 +4275,71 @@
   border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
   font-size: 0.62rem;
   letter-spacing: 0.03em;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+/* ── Radar discovery: the mac app's "hold on, looking for your people". ── */
+.index-dashboard__discovery {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 1.75rem 1.75rem;
+}
+
+/* The art carries a lot of padding, so it is cropped rather than scaled. */
+.index-dashboard__discovery-art {
+  display: block;
+  width: 180px;
+  height: 180px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.index-dashboard .index-dashboard__discovery-title {
+  margin: 0 0 1.35rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-foreground, inherit);
+}
+
+.index-dashboard__discovery-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 24rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8rem;
+}
+
+.index-dashboard__discovery-step {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  color: var(--color-foreground, inherit);
+}
+
+.index-dashboard__discovery-step--active { font-weight: 600; }
+
+.index-dashboard__discovery-step--pending {
+  color: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 60%, transparent);
+}
+
+.index-dashboard__discovery-mark {
+  flex: 0 0 1rem;
+  text-align: center;
+}
+
+.index-dashboard__discovery-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.index-dashboard__discovery-detail {
+  flex: 0 0 auto;
+  font-weight: 400;
+  white-space: nowrap;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }

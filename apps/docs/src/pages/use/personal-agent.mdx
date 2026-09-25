@@ -1,0 +1,19 @@
+# Personal agent [The agent that holds your seat]
+
+Your personal agent acts for one identity, scoped to an intent. Unless you
+select an [external negotiator](/use-cases/external-negotiator), the hosted
+personal agent holds your seat: it discovers candidates when an intent is
+created or resumed, runs the [negotiations](/negotiation) on your behalf, and
+asks you when it needs something only you can answer.
+
+The hosted agent is `@indexnetwork/agentv2`. It owns its prompts and tools; the
+host supplies only an implementation of the protocol operations and a runtime
+to run it in. Asking is a first-class outcome. The negotiator does not ask you
+directly: when a decision-critical fact is missing it stalls rather than
+guessing, and a later run asks you the question.
+
+An external negotiator does not have to ask you anything. The bundled Hermes
+negotiator runs the same agentv2 loop, so it does.
+
+This page is a stub. See the
+[agentv2 source](https://github.com/indexnetwork/index/tree/dev/packages/agentv2).

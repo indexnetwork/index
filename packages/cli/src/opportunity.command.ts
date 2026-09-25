@@ -12,11 +12,13 @@ import * as output from "./output";
 const OPPORTUNITY_HELP = `
 Usage:
   index opportunity list                        List your opportunities
-  index opportunity list --status <s>           Filter by status (pending|accepted|rejected|expired)
+  index opportunity list --intent-id <id> --statuses negotiating,pending,accepted,expired
+  index opportunity list --status <s>           Filter by one settled or actionable status
   index opportunity list --limit <n>            Limit results
   index opportunity show <id>                   Show full opportunity details (accepts short ID)
   index opportunity accept <id>                 Accept an opportunity (accepts short ID)
   index opportunity reject <id>                 Reject an opportunity (accepts short ID)
+  index opportunity start-chat <id>             Open the chat through this opportunity
 `;
 
 /**
@@ -32,6 +34,8 @@ export async function handleOpportunity(
   options: {
     targetId?: string;
     status?: string;
+    statuses?: string;
+    intentId?: string;
     limit?: number;
     json?: boolean;
     positionals?: string[];
@@ -50,7 +54,7 @@ export async function handleOpportunity(
 
   switch (subcommand) {
     case "list":
-      await opportunityList(client, options.status, options.limit, options.json);
+      await opportunityList(client, options.status, options.statuses, options.intentId, options.limit, options.json);
       return;
 
     case "show":
@@ -77,6 +81,13 @@ export async function handleOpportunity(
       await opportunityStatusUpdate(client, options.targetId, "rejected", options.json);
       return;
 
+    case "start-chat": {
+      if (!options.targetId) throw new Error("Usage: index opportunity start-chat <id>");
+      const result = await client.startOpportunityChat(options.targetId);
+      if (options.json) console.log(JSON.stringify(result));
+      else output.success(`Chat opened: ${result.conversationId}`);
+      return;
+    }
 
     default:
       output.error(`Unknown subcommand: ${subcommand}`, 1);
@@ -90,10 +101,12 @@ export async function handleOpportunity(
 async function opportunityList(
   client: ApiClient,
   status?: string,
+  statuses?: string,
+  intentId?: string,
   limit?: number,
   json?: boolean,
 ): Promise<void> {
-  const opportunities = await client.listOpportunities({ status, limit });
+  const opportunities = await client.listOpportunities({ status, statuses, intentId, limit });
   if (json) { console.log(JSON.stringify(opportunities)); return; }
   output.heading("Opportunities");
   output.opportunityTable(opportunities);

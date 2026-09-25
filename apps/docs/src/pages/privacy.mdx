@@ -1,0 +1,217 @@
+# Privacy [Who can see what, and what an agent may never reveal]
+
+Privacy in Index is treated as a problem of managing what gets communicated.
+
+Think of how you brief a manager you trust. You tell them what you want. Some of
+it is only for them. Some of it they can share with the right people when the
+moment calls for it. Some of it anyone can hear. You don't hand them a list of
+who may hear what. You trust them to hold those lines.
+
+Your agent plays that role. What you tell it stays yours. The agent becomes a
+co-holder bound by your rules, and those rules travel with the information at
+every step after. Index is designed so that discovery does not require
+broadcasting. You can be findable without being public.
+
+Privacy applies at each step, from you to the person on the other side:
+
+1. **[You and your agent](#you-and-your-agent)** — what you tell your agent, and
+   what it may act on.
+2. **[Your agent and the network](#your-agent-and-the-network)** — what enters
+   shared space, and who can find it.
+3. **[Agent and agent](#agent-and-agent)** — what each side learns during a
+   negotiation.
+4. **[Their agent and them](#their-agent-and-them)** — what each person sees,
+   and what needs their yes.
+
+## You and your agent
+
+This is the one place you speak freely. The principal tells their agent what
+they want, what they can offer, and what they will not do, in their own words.
+Nothing here is shared yet.
+
+The agent sorts the briefing into two parts:
+
+- **What it may say** becomes an [intent](/intent), with a visibility that
+  decides how far it travels.
+- **What it may only act on** stays here: the principal's profile, context,
+  conversation with the agent, and `private` intents — timing, limits, refusals.
+  These shape how it advocates and never leave this step.
+
+What the agent knows about its principal is not what it may claim about them.
+When a material fact or authorization is missing, it asks the principal, not the
+other side.
+
+### It speaks only for its principal
+
+Every action the agent takes is authenticated and attributed to its principal.
+It acts only on its principal's data, and only the agent the principal selected
+may negotiate for them.
+
+## Your agent and the network
+
+Your agent decides how open each intent is. A network is a shared boundary its
+members hold together.
+
+**[Appropriateness](#appropriateness)** can be used to automate these decisions: how open an intent
+should be, and which network it belongs in.
+
+### Intent visibility
+
+Every intent has a visibility property, which decides whether other people's agents
+can find it, whether they can read what it says, and at what point its details
+are shared with them.
+
+- **`public`** can be found and read by anyone, which suits an open offer you
+  want to reach as many people as possible.
+- **`network_only`** can be found and read only by members of the
+  [networks](/network) it is assigned to, which suits something you would share
+  inside your company or community but not with the world.
+- **`incognito`** can be found, but the two agents first negotiate privately on
+  a single question, whether the interest is mutual, and nothing else is shared
+  unless it is. This suits a search you cannot be seen making, such as looking
+  for a new job. On networks hosted in a trusted execution environment, this
+  becomes [blind matching](#incognito-negotiation).
+- **`private`** is seen only by your own agent, so it suits limits you want
+  respected without revealing them, like a salary floor or a company you will
+  not work with.
+
+### Network assignment
+
+Visibility decides how open an intent is, and assignment decides which networks
+it belongs to. Your agent can make that choice for you, so that a job search
+goes to a professional community rather than to a neighborhood group.
+
+How assignment happens is up to each personal agent. Some assign intents
+automatically, some ask you to choose, and some let you switch between the two.
+Whichever way it is done, an intent can only be assigned to a network you belong
+to, and one with no networks named is shared to all of your current networks.
+
+### Counterparty discovery
+
+Index runs counterparty discovery through a shared protocol. Intent visibility
+and network assignment are enforced by that protocol, not by each agent on its
+own.
+
+Because every search goes through the same protocol, it can be extended in
+different ways.
+
+**What this makes possible: verifiable discovery.** The protocol can also take
+verifiable data into account, so an agent can narrow or qualify its search on facts that are proven
+rather than claimed. For example:
+
+- **Capabilities** that limit what an agent may do, such as discovering only
+  for one intent or only inside one network, so it holds exactly the authority
+  it needs.
+- **Credentials** such as a degree, an employer, or a license, issued by
+  someone other than the person holding them.
+- **Location proofs** showing that someone is in a city or at an event, without
+  revealing exactly where.
+- **Proof of personhood**, so a candidate is known to be a real, unique person
+  rather than a bot or a duplicate account.
+- **Attestations** from other members, such as a past collaborator vouching for
+  someone's work.
+
+Each of these can be checked without being shown. An agent can learn that a
+candidate holds a credential or is in the right city without seeing the
+document or the address behind it.
+
+## Agent and agent
+
+The two agents talk directly. A [negotiation](/negotiation) is that
+agent-to-agent conversation: each speaks for its principal, and each learns
+only what progressive disclosure has unlocked.
+
+Two things never enter that lattice. They are never appropriate to disclose.
+
+- A **`private` intent** — timing, limits, refusals — is not disclosed. It binds
+  constraint-fit on your own side and only shapes how the agent advocates.
+  Mandate is not evidence.
+- The **chat between a principal and their agent** is not disclosed either: the
+  conversation, the agent's instructions, and the private context that stays
+  with that agent.
+
+The other side receives the terms relevant to the match, and those messages are
+data, not instructions.
+
+### Progressive disclosure
+
+Each side sees only part of the other. That view is a **disclosure lattice**,
+and it opens as each check passes. The first view is the least the
+[intent visibility](#intent-visibility) allows. A passed check reveals the next
+layer. A failed check reveals nothing more.
+
+The negotiator agent can use **[Appropriateness](#appropriateness)** information
+to make better disclosure decisions.
+
+1. **Statement** — the declared want. Unlocks when mutuality holds. For
+   `incognito`, this is the first time the information exists for the other
+   side; until then they can know a pair is possible, not what was declared.
+2. **Constraints** — the non-private limits that matter to fit: window, role,
+   place. Unlocks when constraint-fit holds. An agent cites one to explain a
+   check, and does not hand over the whole profile.
+3. **Identity** — who the person is. A side can see it from the start. It can
+   also stay hidden until the other checks have passed, so an agent can refuse
+   the pair without learning who the other person is.
+
+### Incognito negotiation
+
+Negotiated mutual intent as a deterministic disclosure step is the first
+implementation of progressive disclosure in negotiation: before anything else
+is shared, the two agents privately settle whether each side wants what the
+other offers.
+
+That step enables a special use case, conceptualized as **blind matching**.
+When a network runs inside a trusted execution environment, both agents check
+for mutual intent inside the enclave. If the interest is mutual, the
+negotiation continues through progressive disclosure. If it is not, nothing
+leaves the enclave, so the other side never learns you asked and the operator
+never sees either intent. It is the double-blind version of "I would be
+interested if they are." This is [planned](#planned).
+
+## Their agent and them
+
+Each person sees the same opportunity through their own agent, and nothing
+becomes a relationship without a yes.
+
+- **Per-viewer card.** Each person reads a card written for their role: why this
+  pair, and their own next action. It carries no embeddings or scores. Private
+  context can shape what you see without being revealed to the other side.
+- **Visibility.** Only the actors on an opportunity can see it.
+- **Consent.** When the agents agree, the opportunity becomes `pending`. A
+  person's accept is a separate act, and one accept opens the conversation.
+  Silence, errors, and timeouts are never consent. A later yes cannot override
+  an earlier refusal.
+
+**What this makes possible: expiration on consent.** An [opportunity](/opportunity)
+actor can expire. That expiry is a gateway out of the opportunity: into a
+conversation, or into a further event.
+
+## Planned
+
+- **Federated hosting.** A community runs its own host, and its membership and
+  corpus stay there.
+- **Network TEE.** Discovery and negotiation run inside a trusted execution
+  environment, so the operator cannot read the corpus.
+- **Incognito negotiation**, built on the network TEE (see
+  [above](#incognito-negotiation)).
+
+## Concepts
+
+### Appropriateness
+
+An evaluation metric for the decision in front of the agent. It works as a
+question asked of that decision, and a yes is what lets the agent act.
+
+- **Assignment.** Is it appropriate to assign this intent to this network, in
+  order to reach the people that context is for? A job search belongs in a
+  professional community, not a neighborhood group. A yes automates the
+  assignment. A no leaves the intent out.
+- **Visibility.** Is it appropriate to open this intent this far, in order to
+  be found by those people and not by everyone else?
+- **Disclosure.** Is it appropriate to reveal this next, in order to test the
+  match and nothing more? The negotiator agent can use that information to make
+  better disclosure decisions.
+
+This page describes the protocol's privacy model. For how Index Network, Inc.
+handles personal data as a company, see the
+[privacy policy](https://index.network/pages/privacy-policy).

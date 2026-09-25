@@ -10,10 +10,12 @@ export interface ParsedCommand {
   apiUrl?: string;
   /** Override the app URL (frontend, serves /cli-auth). */
   appUrl?: string;
+  /** Named login target. */
+  loginTarget?: "local" | "dev" | "prod";
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete";
+  subcommand?: "me" | "turn" | "confirm-profile" | "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "networks" | "add-to-network" | "remove-from-network" | "search" | "add" | "remove" | "import" | "complete" | "pause" | "resume" | "prepare" | "start-chat" | "answer" | "discover" | "requests" | "request-update" | "request-dismiss";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -44,17 +46,24 @@ export interface ParsedCommand {
   message?: string;
   expectedTurnCount?: number;
   questionId?: string;
+  answers?: { key: string; value: string }[];
+  receipt?: string;
+  name?: string;
+  intro?: string;
+  location?: string;
+  socials?: { label: string; value: string }[];
+  statuses?: string;
 }
 
 const KNOWN_COMMANDS = new Set(["docs", "agent", "login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
 
-const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
+const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject", "start-chat"]);
 
 const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show", "turn"]);
 
-const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite", "update", "delete"]);
+const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite", "update", "delete", "discover", "requests", "request-update", "request-dismiss"]);
 
-const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "stream", "help"]);
+const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "answer", "stream", "help"]);
 
 /**
  * Parse raw CLI arguments into a structured command object.
@@ -127,7 +136,7 @@ export function parseArgs(args: string[]): ParsedCommand {
     if (["--api-url", "--app-url", "--status", "--limit", "--prompt", "-p", "--objective", "--title"].includes(arg)
       && (!args[i + 1] || args[i + 1].startsWith("--"))) throw new Error(`Missing value for ${arg}`);
 
-    if (["--query", "--state", "--action", "--message", "--intent-id", "--question-id", "--expected-turn-count"].includes(arg)) {
+    if (["--query", "--state", "--action", "--message", "--intent-id", "--question-id", "--expected-turn-count", "--receipt", "--name", "--intro", "--location", "--statuses", "--answer", "--social"].includes(arg)) {
       const value = args[i + 1];
       if (value === undefined || value.startsWith("--")) throw new Error(`Missing value for ${arg}`);
       switch (arg) {
@@ -138,6 +147,20 @@ export function parseArgs(args: string[]): ParsedCommand {
         case "--intent-id": result.intentId = value; break;
         case "--question-id": result.questionId = value; break;
         case "--expected-turn-count": result.expectedTurnCount = Number(value); break;
+        case "--receipt": result.receipt = value; break;
+        case "--name": result.name = value; break;
+        case "--intro": result.intro = value; break;
+        case "--location": result.location = value; break;
+        case "--statuses": result.statuses = value; break;
+        case "--answer":
+        case "--social": {
+          const at = value.indexOf("=");
+          if (at < 1 || !value.slice(at + 1).trim()) throw new Error(`${arg} needs key=value`);
+          const pair = { key: value.slice(0, at), value: value.slice(at + 1) };
+          if (arg === "--answer") (result.answers ??= []).push(pair);
+          else (result.socials ??= []).push({ label: pair.key, value: pair.value });
+          break;
+        }
       }
       i += 2;
     } else if (arg === "--api-url") {
@@ -180,7 +203,7 @@ export function parseArgs(args: string[]): ParsedCommand {
     agent: new Set(["me"]),
     opportunity: OPPORTUNITY_SUBCOMMANDS, negotiation: NEGOTIATION_SUBCOMMANDS,
     network: NETWORK_SUBCOMMANDS, conversation: CONVERSATION_SUBCOMMANDS,
-    intent: INTENT_SUBCOMMANDS, profile: new Set(["show", "sync"]),
+    intent: INTENT_SUBCOMMANDS, profile: new Set(["show", "sync", "update"]),
     onboarding: new Set(["confirm-profile", "complete"]),
   };
   const allowed = subcommands[result.command];
@@ -194,6 +217,14 @@ export function parseArgs(args: string[]): ParsedCommand {
   if (result.command === "agent") {
     result.subcommand = positionals[0] as ParsedCommand["subcommand"];
     result.positionals = positionals.slice(1);
+    return result;
+  }
+
+  if (result.command === "login") {
+    if (positionals.length > 1 || (positionals[0] && !["local", "dev", "prod"].includes(positionals[0]))) {
+      throw new Error("Usage: index login [local|dev|prod] [--api-url <origin>] [--app-url <origin>]");
+    }
+    result.loginTarget = positionals[0] as ParsedCommand["loginTarget"];
     return result;
   }
 
@@ -291,7 +322,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   return result;
 }
 
-const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "networks", "add-to-network", "remove-from-network"]);
+const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "prepare", "archive", "pause", "resume", "update", "networks", "add-to-network", "remove-from-network"]);
 
 /**
  * Parse intent-specific positional arguments into subcommand, ID, or content.
@@ -311,10 +342,13 @@ function parseIntentArgs(positionals: string[], result: ParsedCommand): void {
   switch (result.subcommand) {
     case "show":
     case "archive":
+    case "pause":
+    case "resume":
     case "networks":
       result.intentId = rest[0];
       break;
     case "create":
+    case "prepare":
       if (rest.length > 0) {
         result.intentContent = rest.join(" ");
       }
