@@ -60,6 +60,10 @@ if [ -n "$APP_KEYCHAIN_GROUP" ]; then
 fi
 /usr/libexec/PlistBuddy -c "Delete :IndexDeepLinkHost" "${CONTENTS}/Info.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :IndexDeepLinkHost string ${LINK_HOST}" "${CONTENTS}/Info.plist"
+/usr/libexec/PlistBuddy -c "Delete :API_URL" "${CONTENTS}/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :API_URL string https://protocol.${LINK_HOST}" "${CONTENTS}/Info.plist"
+/usr/libexec/PlistBuddy -c "Delete :APP_URL" "${CONTENTS}/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :APP_URL string https://${LINK_HOST}" "${CONTENTS}/Info.plist"
 # Check for Updates compares this against the commit named in the rolling
 # release's notes. Empty outside a git checkout, which the check reports.
 BUILD_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
