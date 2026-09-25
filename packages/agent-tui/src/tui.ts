@@ -14,21 +14,19 @@ export async function runTui(owner: Owner): Promise<void> {
   renderer.root.add(root);
   const header = new TextRenderable(renderer, { height: 2, fg: colors.focus, wrapMode: "word" });
   const banner = new TextRenderable(renderer, { height: 1, fg: colors.question });
-  const tabs = new TextRenderable(renderer, { height: 1, fg: colors.text });
   root.add(header);
   root.add(banner);
-  root.add(tabs);
-  const board = new BoxRenderable(renderer, { flexDirection: "column", flexGrow: 1, minHeight: 0 });
+  const board = new BoxRenderable(renderer, { flexDirection: "row", flexGrow: 1, minHeight: 0, gap: 1 });
   root.add(board);
 
-  function addPane(title: string) {
-    const box = new BoxRenderable(renderer, { title, border: true, borderColor: colors.border, flexDirection: "column", flexGrow: 1, minHeight: 0 });
+  function addPane(title: string, grow: number) {
+    const box = new BoxRenderable(renderer, { title, border: true, borderColor: colors.border, flexDirection: "column", flexGrow: grow, flexBasis: 0, minWidth: 0 });
     const history = new ScrollBoxRenderable(renderer, { flexGrow: 1, minHeight: 0, scrollX: false, scrollY: true, stickyScroll: true, stickyStart: "bottom", contentOptions: { flexDirection: "column" } });
     box.add(history);
     board.add(box);
     return { box, history };
   }
-  const inboxPane = addPane(" YOUR AGENT ");
+  const inboxPane = addPane(" H2A · YOUR AGENT ", 56);
   const questionText = new TextRenderable(renderer, { fg: colors.question, flexShrink: 0, wrapMode: "word" });
   const choicesText = new TextRenderable(renderer, { fg: colors.question, flexShrink: 0, wrapMode: "word" });
   inboxPane.box.add(questionText);
@@ -39,8 +37,14 @@ export async function runTui(owner: Owner): Promise<void> {
     onSubmit: () => { void send(input.plainText); },
   });
   inboxPane.box.add(input);
-  const radarPane = addPane(" RADAR ");
-  const negotiationPane = addPane(" AGENT ↔ AGENT ");
+  const radarPane = addPane(" RADAR · NEGOTIATIONS ", 44);
+  const negotiationPane = addPane(" AGENT ↔ AGENT ", 30);
+  const detailClose = new TextRenderable(renderer, { content: " [×] Close negotiation · Esc", height: 2, fg: colors.focus, onMouseUp: (event) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    closeNegotiation();
+  } });
+  negotiationPane.box.add(detailClose, 0);
   const status = new TextRenderable(renderer, { height: 2, fg: colors.muted, wrapMode: "word" });
   const help = new TextRenderable(renderer, { height: 2, fg: colors.muted, wrapMode: "word" });
   root.add(status);
@@ -62,6 +66,9 @@ export async function runTui(owner: Owner): Promise<void> {
   let inbox: Inbox = { messages: [], questions: [] };
   let people: Person[] = [];
   let negotiation: Negotiation | null = null;
+  let detailPersonId: string | null = null;
+  let negotiationLoading = false;
+  let negotiationFailed = false;
   let focused: Pane = "inbox";
   let selectedPerson = 0;
   let selectedQuestion = 0;
@@ -87,15 +94,49 @@ export async function runTui(owner: Owner): Promise<void> {
       child.destroyRecursively();
     }
   }
-  function line(history: ScrollBoxRenderable, text: string, color = colors.text, id?: string) {
-    history.add(new TextRenderable(renderer, { id, content: text, fg: color, wrapMode: "word", flexShrink: 0, marginBottom: 1 }));
+  function line(history: ScrollBoxRenderable, text: string, color = colors.text, id?: string, onClick?: () => void) {
+    history.add(new TextRenderable(renderer, { id, content: text, fg: color, wrapMode: "word", flexShrink: 0, marginBottom: 1,
+      onMouseUp: onClick ? (event) => {
+        if (event.button !== 0) return;
+        event.stopPropagation();
+        onClick();
+      } : undefined,
+    }));
   }
   function activeQuestion(): Question | undefined { return inbox.questions[selectedQuestion]; }
   function activePerson(): Person | undefined { return people[selectedPerson]; }
-  function focus(pane: Pane) {
-    focused = pane;
+  function detailPerson(): Person | undefined { return people.find((person) => person.id === detailPersonId); }
+  function openNegotiation(personId: string) {
+    const index = people.findIndex((person) => person.id === personId);
+    if (index < 0) return;
+    selectedPerson = index;
+    detailPersonId = personId;
+    negotiation = null;
+    negotiationLoading = true;
+    negotiationFailed = false;
+    error = "";
+    confirmation = null;
+    focused = "negotiation";
+    render();
+    void refreshNegotiation();
+  }
+  function closeNegotiation() {
+    detailPersonId = null;
+    negotiation = null;
+    negotiationLoading = false;
+    ++negotiationRequest;
+    focused = "radar";
     render();
   }
+  function focus(pane: Pane) {
+    focused = pane;
+    confirmation = null;
+    render();
+  }
+  inboxPane.box.onMouseUp = () => focus("inbox");
+  radarPane.box.onMouseUp = () => focus("radar");
+  negotiationPane.box.onMouseUp = () => focus("negotiation");
+
   function switchSignal(next: Signal) {
     generation++;
     signal = next;
@@ -104,6 +145,9 @@ export async function runTui(owner: Owner): Promise<void> {
     loadingInbox = loadingRadar = true;
     inboxFailed = radarFailed = false;
     negotiation = null;
+    detailPersonId = null;
+    negotiationLoading = negotiationFailed = false;
+    focused = "inbox";
     selectedPerson = selectedQuestion = selectedChoice = 0;
     confirmation = null;
     outgoing = null;
@@ -159,8 +203,9 @@ export async function runTui(owner: Owner): Promise<void> {
       people = next;
       loadingRadar = radarFailed = false;
       selectedPerson = Math.max(0, people.findIndex((p) => p.id === oldPerson));
+      if (detailPersonId && !detailPerson()) closeNegotiation();
       render();
-      void refreshNegotiation();
+      if (detailPersonId) void refreshNegotiation();
     } catch (cause) {
       if (generation !== session || radarRequest !== version || renderer.isDestroyed) return;
       loadingRadar = false;
@@ -170,18 +215,22 @@ export async function runTui(owner: Owner): Promise<void> {
     }
   }
   async function refreshNegotiation() {
-    const opportunityId = activePerson()?.id;
+    const opportunityId = detailPersonId;
+    if (!opportunityId || renderer.isDestroyed) return;
     const version = ++negotiationRequest;
     const session = generation;
-    if (!opportunityId) { negotiation = null; render(); return; }
     try {
       const result = await owner.negotiation(opportunityId);
-      if (generation !== session || negotiationRequest !== version || activePerson()?.id !== opportunityId || renderer.isDestroyed) return;
+      if (generation !== session || negotiationRequest !== version || detailPersonId !== opportunityId || renderer.isDestroyed) return;
       negotiation = result;
+      if (negotiationFailed) error = "";
+      negotiationLoading = negotiationFailed = false;
       render();
     } catch (cause) {
-      if (generation !== session || negotiationRequest !== version || activePerson()?.id !== opportunityId || renderer.isDestroyed) return;
+      if (generation !== session || negotiationRequest !== version || detailPersonId !== opportunityId || renderer.isDestroyed) return;
       negotiation = null;
+      negotiationLoading = false;
+      negotiationFailed = true;
       error = cause instanceof Error ? cause.message : String(cause);
       render();
     }
@@ -264,8 +313,14 @@ export async function runTui(owner: Owner): Promise<void> {
     header.content = ` INDEX  /  ${owner.name}  /  ${host}\n Signal: ${title.slice(0, maxTitle)}${title.length > maxTitle ? "…" : ""}`;
     banner.content = loadingSignals ? " ● Loading signals…" : !signal ? " ● No signal · Ctrl+X to choose." : signal.status === "paused" ? " ● PAUSED · Agent on hold · Ctrl+R resume" : " ● ACTIVE · Updates every 5s · Ctrl+R pause";
     banner.fg = signal?.status === "paused" || !signal ? colors.question : colors.success;
-    tabs.content = ` ${focused === "inbox" ? "▶" : " "} Agent    ${focused === "radar" ? "▶" : " "} Radar (${people.length})    ${focused === "negotiation" ? "▶" : " "} Negotiation`;
-    for (const [name, pane] of [["inbox", inboxPane], ["radar", radarPane], ["negotiation", negotiationPane]] as const) pane.box.visible = focused === name;
+    const wide = renderer.terminalWidth >= 115;
+    inboxPane.box.visible = true;
+    radarPane.box.visible = !detailPersonId || wide;
+    negotiationPane.box.visible = !!detailPersonId;
+    inboxPane.box.flexGrow = detailPersonId && wide ? 40 : 56;
+    radarPane.box.flexGrow = detailPersonId && wide ? 30 : 44;
+    negotiationPane.box.flexGrow = detailPersonId && wide ? 30 : 44;
+    for (const [name, pane] of [["inbox", inboxPane], ["radar", radarPane], ["negotiation", negotiationPane]] as const) pane.box.borderColor = focused === name ? colors.focus : colors.border;
     const messages = JSON.stringify([inbox.messages, outgoing, loadingInbox, inboxFailed, signal?.status]);
     if (messages !== renderedInbox) {
       renderedInbox = messages;
@@ -292,19 +347,19 @@ export async function runTui(owner: Owner): Promise<void> {
     if (radar !== renderedRadar) {
       renderedRadar = radar;
       clear(radarPane.history);
-      people.forEach((person, index) => line(radarPane.history, `${index === selectedPerson ? "›" : " "} ${person.name} · ${person.status}${person.score == null ? "" : ` · ${Math.round(person.score * 100)}%`}\n  ${person.blurb}`, index === selectedPerson ? colors.focus : colors.text, `person-${index}`));
+      people.forEach((person, index) => line(radarPane.history, `${index === selectedPerson ? "›" : " "} ${person.name} · ${person.status}${person.score == null ? "" : ` · ${Math.round(person.score * 100)}%`}\n  ${person.blurb}\n  [Negotiation ›]`, index === selectedPerson ? colors.focus : colors.text, `person-${index}`, () => openNegotiation(person.id)));
       if (!people.length) line(radarPane.history, loadingRadar ? "Loading opportunities…" : radarFailed ? "Could not load opportunities. Retrying…" : signal?.status === "paused" ? "No opportunities yet. Discovery is paused; Ctrl+R resumes it." : "No opportunities yet. Your agent's matches will appear here.", colors.muted);
       else radarPane.history.scrollChildIntoView(`person-${selectedPerson}`);
     }
-    const transcript = JSON.stringify([activePerson()?.id, negotiation]);
+    const transcript = JSON.stringify([detailPersonId, detailPerson(), negotiation, negotiationLoading, negotiationFailed]);
     if (transcript !== renderedNegotiation) {
       renderedNegotiation = transcript;
       clear(negotiationPane.history);
-      const person = activePerson();
-      if (person) line(negotiationPane.history, `${person.name} · ${person.status}\n${person.detail || person.blurb}`, colors.focus);
+      const person = detailPerson();
+      if (person) line(negotiationPane.history, `Your agent ↔ ${person.name.split(" ")[0]}'s agent\n${person.detail || person.blurb}`, colors.focus);
       for (const turn of negotiation?.turns || []) line(negotiationPane.history, `${turn.seatUserId === owner.userId ? "your agent" : `${person?.name || "their"}'s agent`} · ${turn.action}\n${turn.message}`);
       if (negotiation?.outcome) line(negotiationPane.history, `Outcome: ${negotiation.outcome}`, colors.question);
-      else if (!negotiation?.turns.length) line(negotiationPane.history, person ? "No negotiation turns yet." : "Select a radar opportunity.", colors.muted);
+      else if (!negotiation?.turns.length) line(negotiationPane.history, negotiationLoading ? "Loading negotiation…" : negotiationFailed ? "Could not load negotiation. Retrying…" : "No negotiation turns yet.", colors.muted);
     }
     let idleStatus = ` ● ${inbox.questions.length} questions · ${people.length} opportunities · ${activePerson()?.name || "no match selected"}`;
     if (focused === "inbox" && inbox.messages.at(-1)?.role === "user") {
@@ -314,10 +369,10 @@ export async function runTui(owner: Owner): Promise<void> {
       : error ? ` ● ${error}` : notice ? ` ● ${notice}` : busy ? " ● Working…" : loadingSignals || loadingInbox || loadingRadar ? " ● Loading live data…" : idleStatus;
     status.fg = confirmation || error ? colors.question : notice ? colors.success : colors.muted;
     help.content = focused === "inbox"
-      ? " Tab views · Ctrl+X signals · Ctrl+C quit\n ←→ questions · ↑↓ options · Enter send"
+      ? " Tab panes · Ctrl+X signals · Ctrl+C quit\n ←→ questions · ↑↓ options · Enter send"
       : focused === "radar"
-        ? " Tab views · Ctrl+X signals · ↑↓ select\n a accept · x pass · Esc cancel · Ctrl+C"
-        : " Tab views · Ctrl+X signals · PgUp/PgDn\n Ctrl+C quit";
+        ? " Tab panes · ↑↓ select · Enter negotiation\n a accept · x pass · Ctrl+C quit"
+        : " Esc close · Tab panes · PgUp/PgDn\n Ctrl+C quit";
     if (selector.visible) selectorList.focus();
     else if (focused === "inbox") input.focus();
     else if (focused === "radar") radarPane.history.focus();
@@ -344,16 +399,22 @@ export async function runTui(owner: Owner): Promise<void> {
       render();
     } else if (key.name === "escape" && confirmation) {
       key.preventDefault(); confirmation = null; render();
+    } else if (key.name === "escape" && detailPersonId && focused === "negotiation") {
+      key.preventDefault(); closeNegotiation();
     } else if (key.name === "r" && key.ctrl) {
       key.preventDefault(); void toggleSignal();
     } else if (key.name === "tab") {
       key.preventDefault();
-      const order: Pane[] = ["inbox", "radar", "negotiation"];
-      focus(order[(order.indexOf(focused) + (key.shift ? 2 : 1)) % 3] || "inbox");
+      const order: Pane[] = ["inbox", ...(!detailPersonId || renderer.terminalWidth >= 115 ? ["radar" as const] : []), ...(detailPersonId ? ["negotiation" as const] : [])];
+      focus(order[(order.indexOf(focused) + (key.shift ? order.length - 1 : 1)) % order.length] || "inbox");
     } else if (focused === "radar" && (key.name === "up" || key.name === "down")) {
       key.preventDefault();
       selectedPerson = Math.max(0, Math.min(people.length - 1, selectedPerson + (key.name === "up" ? -1 : 1)));
-      confirmation = null; negotiation = null; render(); void refreshNegotiation();
+      confirmation = null; render();
+    } else if (focused === "radar" && key.name === "return") {
+      key.preventDefault();
+      const person = activePerson();
+      if (person) openNegotiation(person.id);
     } else if (focused === "radar" && !key.ctrl && !key.meta && (key.name === "a" || key.name === "x")) {
       key.preventDefault(); void review(key.name === "a" ? "accepted" : "rejected");
     } else if (focused === "inbox" && inbox.questions.length > 0 && !input.plainText && (key.name === "left" || key.name === "right")) {
