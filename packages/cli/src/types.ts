@@ -85,44 +85,18 @@ export interface IntentListResult {
 /** Options for listing opportunities. */
 export interface OpportunityListOptions {
   status?: string;
+  statuses?: string;
+  intentId?: string;
   limit?: number;
-}
-
-/** An actor (party) in an opportunity. */
-export interface OpportunityActor {
-  userId: string;
-  name?: string;
-  role?: "agent" | "patient" | "peer";
-  networkId?: string;
-  intent?: string;
-}
-
-/** Interpretation (evaluation) of an opportunity. */
-export interface OpportunityInterpretation {
-  category?: string;
-  reasoning?: string;
-  confidence?: number;
-  signals?: Array<{ type: string; weight: number; detail: string }>;
-}
-
-/** Detection provenance for an opportunity. */
-export interface OpportunityDetection {
-  source?: string;
-  triggeredBy?: string;
-  createdBy?: string;
-  createdByName?: string;
-  timestamp?: string;
 }
 
 /** An opportunity object as returned by the list API (GET /api/opportunities). */
 export interface Opportunity {
-  id: string;
+  opportunityId: string;
   status: string;
-  actors?: OpportunityActor[];
-  interpretation?: OpportunityInterpretation;
-  detection?: OpportunityDetection;
-  presentation?: string;
-  counterpartName?: string;
+  peer: { userId: string; name: string; avatar: string | null };
+  headline?: string;
+  mainText: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -140,10 +114,8 @@ export interface OpportunityParty {
  * Distinct from {@link Opportunity}: the detail endpoint returns a viewer-scoped,
  * presentation-oriented shape rather than the raw actor/interpretation row.
  */
-export interface OpportunityDetail {
+export interface OpportunityDetail extends Opportunity {
   id: string;
-  status: string;
-  presentation?: { title?: string; description?: string; callToAction?: string };
   myRole?: string;
   otherParties?: OpportunityParty[];
   category?: string;

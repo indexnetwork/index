@@ -5,7 +5,7 @@ Command-line interface for [Index Network](https://index.network). Message your 
 ## Installation
 
 ```bash
-npm install -g @indexnetwork/cli@0.26.0
+npm install -g @indexnetwork/cli
 ```
 
 ## Quick Start
@@ -28,7 +28,7 @@ index negotiation list
 # 3. wait for persisted opportunities, then review outcomes
 index opportunity list --status pending
 index opportunity show <opportunity-id>
-index opportunity accept <opportunity-id>
+index opportunity start-chat <opportunity-id>
 ```
 
 Words you will see elsewhere in this doc: **network** = a community you are in; **intent** = your “what I am looking for” post; **opportunity** = a suggested introduction between you and someone else.
@@ -52,11 +52,14 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index profile` | Show your own profile. |
 | `index profile show <user-id>` | Show another user's accessible profile. |
 | `index profile sync` | Research public profile information and return a suggested profile without persisting it. |
+| `index profile update` | Save reviewed name, bio, location, or social links. |
 | `index intent list` | List signals, with optional archived, text-query, and result-limit filters. |
 | `index intent show <id>` | Show one signal. |
-| `index intent create <text>` | Create a signal from its description. |
+| `index intent prepare <text>` | Prepare a draft, optionally answering recovery prompts; returns an admission receipt when ready. |
+| `index intent create <text>` | Create a signal, optionally using the preparation receipt. |
 | `index intent update <id> <text>` | Update and reprocess a signal's description. |
 | `index intent archive <id>` | Archive a signal so it stops participating in discovery. |
+| `index intent pause <id>` / `resume <id>` | Pause or resume its agent without archiving. |
 | `index intent networks <id>` | List the networks a signal is shared in. |
 | `index intent add-to-network <id> <network-id>` | Share a signal in a network. |
 | `index intent remove-from-network <id> <network-id>` | Stop sharing a signal in a network. |
@@ -67,7 +70,10 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index opportunity show <id>` | Show an opportunity's presentation and participants. |
 | `index opportunity accept <id>` | Request acceptance through the server's owner-approval flow. |
 | `index opportunity reject <id>` | Reject an opportunity. |
+| `index opportunity start-chat <id>` | Enter the counterpart chat through the opportunity's consent flow. |
 | `index network list` | List your networks. |
+| `index network discover` | Find public networks you can join. |
+| `index network requests` / `request-update` / `request-dismiss` | Review or revise your early-access creation requests. |
 | `index network create <title>` | Create a network when eligible, or submit an early-access creation request. |
 | `index network show <id>` | Show a network and its members. |
 | `index network update <id> --title <text>` | Change a network's title. |
@@ -78,7 +84,8 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index conversation list` | List your conversations. |
 | `index conversation with <user-id>` | Open or resume a human DM. |
 | `index conversation show <id>` | Read messages; use `agent --intent-id <id>` for the personal agent's scoped messages and pending question. |
-| `index conversation send <id> <text>` | Send a message; for `agent`, supply `--intent-id` and the displayed `--question-id` when answering a question. |
+| `index conversation send <id> <text>` | Send a message; for `agent`, supply `--intent-id` and the displayed `--question-id` when answering one question. |
+| `index conversation answer agent` | Submit several question-ID answers in one batch. |
 | `index conversation stream` | Subscribe to conversation, negotiation, opportunity, and intent events over SSE. |
 | `index conversation help` | Show conversation-specific help. |
 | `index onboarding confirm-profile` | Confirm that the owner has reviewed their profile. |
@@ -140,7 +147,11 @@ index intent list --archived                # Include archived signals
 index intent list --limit 5                 # Limit to 5 results
 index intent list --query "CTO"             # Match description and summary text
 index intent show <id>                      # Show full signal details
-index intent create "Looking for a CTO"     # Create from natural language
+index intent prepare "Looking for a CTO"  # Read feedback / recovery prompts and receipt
+index intent prepare "Looking for a CTO" --answer 'Prompt label=My answer'
+index intent create "<returned payload>" --receipt '<returned preparationReceipt>'
+index intent pause <id>                   # Hold the agent without archiving
+index intent resume <id>                  # Start it again
 index intent update <id> "revised text"     # Update a signal (runs full pipeline)
 index intent archive <id>                   # Archive a signal
 index intent networks <id>                  # List the networks a signal is shared in
@@ -148,7 +159,11 @@ index intent add-to-network <id> <network-id>      # Add a signal to a network
 index intent remove-from-network <id> <network-id> # Remove a signal from a network
 ```
 
-A new signal is shared in every network you belong to. Narrow it afterwards with
+Preparation returns `needs_revision` with recovery field labels or `ready` with a
+`payload` and `preparationReceipt`. Use the exact returned payload with its receipt
+in `create`; `--answer` pairs the displayed recovery **label** with your response.
+You can also create directly: the server prepares the description and rejects an
+unadmitted draft. A new signal is shared in every network you belong to. Narrow it afterwards with
 `remove-from-network`, or widen an existing one with `add-to-network`.
 
 ### `index negotiation`
@@ -174,14 +189,18 @@ Browse and manage discovered opportunities.
 
 ```bash
 index opportunity list                     # List all opportunities
-index opportunity list --status pending    # Filter by status
+index opportunity list --status pending    # Filter by one status
+index opportunity list --intent-id <id> --statuses negotiating,pending,accepted,expired
 index opportunity list --limit 5           # Limit results
 index opportunity show <id>                # Show full details
 index opportunity accept <id>              # Accept an opportunity
 index opportunity reject <id>              # Reject an opportunity
+index opportunity start-chat <id>          # Open its human chat (pending/accepted)
 ```
 
-Status values: `pending`, `accepted`, `rejected`, `expired`.
+`--status` accepts one of `pending`, `accepted`, `rejected`, `expired`;
+`--statuses` accepts a comma-separated radar selection including `negotiating`.
+The signal-scoped radar uses `--intent-id <id>`.
 
 ### `index network`
 
@@ -189,6 +208,10 @@ Manage networks (communities). Network creation is direct for eligible staff; ot
 
 ```bash
 index network list                     # List your networks
+index network discover                 # Find public networks
+index network requests                 # View your creation requests
+index network request-update <id> --title "New Name" --prompt "Purpose"
+index network request-dismiss <id>
 index network create "My Network"  # Create directly when eligible; otherwise submit an early-access request
 index network create "AI" --prompt "AI researchers"  # Create or request with a description
 index network show <id>                # Show details and members
@@ -207,6 +230,7 @@ Read and message the personal agent within a signal, or use human DMs.
 index conversation show agent --intent-id <id> --json
 index conversation send agent "..." --intent-id <id> --json
 index conversation send agent "..." --intent-id <id> --question-id <pending-question-id> --json
+index conversation answer agent --intent-id <id> --answer 'question-id=answer' --answer 'other-id=answer' --json
 index conversation list
 index conversation with <user-id>
 index conversation show <conversation-id> [--limit <n>]
@@ -228,6 +252,9 @@ index onboarding complete [--intent-id <id>] --json
 
 Confirm a profile only after the owner reviews it. Completion uses the server's
 profile-confirmation and first-signal prerequisites; it does not bypass them.
+For a new account: `profile sync` to see suggested facts, `profile update` to save
+what you approve, `onboarding confirm-profile`, `intent prepare` and `intent create`
+with the returned payload and receipt, then `onboarding complete --intent-id <id>`.
 
 ### `index profile`
 
@@ -237,7 +264,12 @@ View user profiles and synchronously enrich your public identity, social, and av
 index profile                       # Show your own profile
 index profile show <user-id>        # Show another user's profile
 index profile sync                  # Run public profile research prefill (does not persist)
+index profile update --name "Name" --intro "Bio" --location "City"
+index profile update --social 'website=https://example.com' --social 'github=https://github.com/me'
 ```
+
+`--social` replaces the full saved social-link list; include every link you want
+to keep. Profile confirmation and onboarding completion remain explicit commands.
 
 ### `index scrape`
 
@@ -290,7 +322,8 @@ index opportunity reject <id>
 | `--api-url <url>`    |       | Override API server (default: `https://protocol.index.network`) |
 | `--app-url <url>`    |       | Override app URL for login (default: `https://index.network`)   |
 | `--archived`         |       | Include archived signals (intent list)                          |
-| `--status <status>`  |       | Filter opportunities by status                                  |
+| `--status <status>`  |       | Filter opportunities by one pending/accepted/rejected/expired status |
+| `--statuses <list>` |       | Comma-separated radar stages, including negotiating             |
 | `--limit <n>`        |       | Positive result limit for intent/opportunity lists or conversation messages |
 | `--prompt <text>`    | `-p`  | Network description (for `network create`)                      |
 | `--title <text>`     |       | Network title (for `network update`)                            |
@@ -302,6 +335,10 @@ index opportunity reject <id>
 | `--message <text>`   |       | Required message for a negotiation turn                         |
 | `--expected-turn-count <n>` | | Required observed nonnegative integer turn count for a negotiation turn |
 | `--question-id <id>` |       | Identify the displayed question when answering the personal agent |
+| `--answer <key=value>` |    | Repeat for recovery prompt labels or agent question IDs          |
+| `--receipt <token>`  |       | Preparation receipt for signal creation                          |
+| `--name`, `--intro`, `--location` | | Profile fields to update                          |
+| `--social <label=value>` |    | Repeat to replace profile social links                  |
 | `--json`             |       | Output raw JSON to stdout                                       |
 | `--help`             | `-h`  | Show help                                                       |
 | `--version`          | `-v`  | Show version                                                    |

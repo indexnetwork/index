@@ -14,11 +14,21 @@ export async function handleProfile(
   client: ApiClient,
   subcommand: string | undefined,
   positionals: string[],
-  options: { json?: boolean } = {},
+  options: { json?: boolean; name?: string; intro?: string; location?: string; socials?: { label: string; value: string }[] } = {},
 ): Promise<void> {
-  if (subcommand === "create" || subcommand === "update" || subcommand === "search") {
+  if (subcommand === "update") {
+    const { name, intro, location, socials } = options;
+    if (name === undefined && intro === undefined && location === undefined && socials === undefined) {
+      throw new Error("Usage: index profile update [--name <text>] [--intro <text>] [--location <text>] [--social label=value]");
+    }
+    const user = await client.updateProfile({ name, intro, location, socials });
+    if (options.json) console.log(JSON.stringify(user));
+    else output.success("Profile updated.");
+    return;
+  }
+  if (subcommand === "create" || subcommand === "search") {
     output.error(
-      `profile ${subcommand} was removed; use "index profile sync" for public research prefill`,
+      `profile ${subcommand} is not available; use "index profile sync" for public research prefill`,
       1,
     );
     return;

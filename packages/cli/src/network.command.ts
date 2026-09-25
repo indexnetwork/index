@@ -11,6 +11,10 @@ import * as output from "./output";
 const NETWORK_HELP = `
 Network Commands:
   index network list                     List your networks
+  index network discover                 Find public networks to join
+  index network requests                 See your network creation requests
+  index network request-update <id> --title <name> [--prompt <purpose>]
+  index network request-dismiss <id>    Dismiss your request
   index network create <name>            Create directly or submit an early-access request
   index network create <name> --prompt   Create directly or request early access with a description
   index network show <id|key>            Show network details and members
@@ -45,6 +49,38 @@ export async function handleNetwork(
     case "list":
       await networkList(client, options.json);
       return;
+    case "discover": {
+      const result = await client.discoverNetworks();
+      if (options.json) console.log(JSON.stringify(result));
+      else {
+        output.heading("Public networks");
+        output.networkTable(result.networks);
+      }
+      return;
+    }
+    case "requests": {
+      const result = await client.listNetworkRequests();
+      if (options.json) console.log(JSON.stringify(result));
+      else {
+        output.heading("Your network requests");
+        for (const request of result.requests) output.dim(`  ${request.id} · ${request.title} · ${request.status}`);
+      }
+      return;
+    }
+    case "request-update": {
+      if (!positionals[0] || !options.title) throw new Error("Usage: index network request-update <id> --title <name> [--prompt <purpose>]");
+      const result = await client.updateNetworkRequest(positionals[0], options.title, options.prompt);
+      if (options.json) console.log(JSON.stringify(result));
+      else output.success("Network request resubmitted.");
+      return;
+    }
+    case "request-dismiss": {
+      if (!positionals[0]) throw new Error("Usage: index network request-dismiss <id>");
+      await client.dismissNetworkRequest(positionals[0]);
+      if (options.json) console.log(JSON.stringify({ success: true }));
+      else output.success("Network request dismissed.");
+      return;
+    }
     case "create":
       await networkCreate(client, positionals[0], options.prompt, options.json);
       return;
