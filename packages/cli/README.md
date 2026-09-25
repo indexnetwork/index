@@ -38,10 +38,7 @@ Words you will see elsewhere in this doc: **network** = a community you are in; 
 ### Command reference
 
 Every exposed CLI command is listed below. Add `--json` for machine-readable
-results; `conversation stream --json` emits one event per line. `agent me`,
-`negotiation`, `onboarding`, `intent prepare`, and the personal-agent
-`conversation show|send|answer agent` commands always print JSON: indented by
-default, compact with `--json`. Command-specific
+results; `conversation stream --json` emits one event per line. Command-specific
 flags are listed in [Options](#options), and examples follow this reference.
 
 | Command | Function |

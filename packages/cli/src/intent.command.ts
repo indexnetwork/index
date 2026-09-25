@@ -87,7 +87,8 @@ export async function handleIntent(
     case "prepare": {
       if (!options.intentContent) throw new Error("Usage: index intent prepare <content> [--answer 'prompt=reply']");
       const prepared = await client.prepareIntent(options.intentContent, (options.answers ?? []).map(({ key, value }) => ({ prompt: key, answer: value })));
-      console.log(JSON.stringify(prepared, null, options.json ? undefined : 2));
+      if (options.json) { console.log(JSON.stringify(prepared)); return; }
+      output.intentPreparation(prepared);
       return;
     }
 

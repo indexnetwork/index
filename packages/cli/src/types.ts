@@ -80,6 +80,21 @@ export interface IntentListResult {
   };
 }
 
+/** One question the preparer asks before a draft can be created. */
+export interface IntentRecoveryField {
+  id: string;
+  /** The prompt; `--answer '<label>=<reply>'` answers it. */
+  label: string;
+  kind: "single" | "multi" | "text";
+  options?: { label: string; description: string }[];
+  placeholder?: string;
+}
+
+/** Result from POST /api/intents/prepare. */
+export type IntentPreparation =
+  | { status: "ready"; payload: string; preparationReceipt: string }
+  | { status: "needs_revision"; payload: string; feedback: string; recovery: IntentRecoveryField[] };
+
 // ── Opportunity types ───────────────────────────────────────────────
 
 /** Options for listing opportunities. */
@@ -215,6 +230,75 @@ export interface ConversationMessage {
   parts: MessagePart[];
   createdAt: string;
   metadata?: Record<string, unknown>;
+}
+
+/** A question the personal agent put to its owner and is still waiting on. */
+export interface AgentQuestion {
+  id: string;
+  question: string;
+  options?: string[];
+  scope: "intent" | "match";
+  matches: { opportunityId: string; counterparty: { id: string; name: string | null } }[];
+}
+
+/** Result from GET /api/conversations/agent/messages?intentId=. */
+export interface AgentConversation {
+  conversationId: string;
+  messages: ConversationMessage[];
+  agent: {
+    /** Who answers on this intent: Index's hosted agent or the owner's external negotiator. */
+    status: "hosted" | "external";
+    /** Unanswered questions, oldest first. */
+    questions: AgentQuestion[];
+  };
+}
+
+/**
+ * An owner answer as persisted by POST /api/conversations/agent/answers.
+ * An answer naming a question that is no longer waiting is kept as a plain
+ * `user` message instead of an `answer`.
+ */
+export interface AgentAnswerMessage extends ConversationMessage {
+  metadata: {
+    intentId: string;
+    principalMessage: { kind: "answer" | "user"; questionId?: string };
+  };
+}
+
+// ── Agent types ─────────────────────────────────────────────────────
+
+/** Result from GET /api/agents/me: the external agent selected to negotiate. */
+export interface SelectedAgent {
+  agent: {
+    id: string;
+    ownerId: string;
+    name: string;
+    description: string | null;
+    type: "external" | "system";
+    status: "active" | "inactive";
+    handleNegotiations: boolean;
+    lastSeenAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  onboardingCompletedAt: string | null;
+  negotiationExecutorFence: true;
+}
+
+// ── Onboarding types ────────────────────────────────────────────────
+
+/** Result from POST /api/auth/onboarding/confirm-profile. */
+export interface ProfileConfirmation {
+  success: true;
+  profileConfirmedAt: string;
+}
+
+/** Result from POST /api/auth/onboarding/complete. */
+export interface OnboardingCompletion {
+  success: true;
+  message: string;
+  completedAt: string;
+  intentId: string;
 }
 
 // ── Negotiation types ────────────────────────────────────────────────

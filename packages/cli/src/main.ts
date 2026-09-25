@@ -230,10 +230,13 @@ async function main(): Promise<void> {
     case "docs":
       await handleDocs(client, args.positionals?.[0], args.json);
       return;
-    case "agent":
+    case "agent": {
       if (args.subcommand !== "me") throw new Error("Usage: index agent me");
-      console.log(JSON.stringify(await client.getAgent(), null, args.json ? undefined : 2));
+      const selected = await client.getAgent();
+      if (args.json) { console.log(JSON.stringify(selected)); return; }
+      output.agentCard(selected);
       return;
+    }
     case "profile":
       await handleProfile(
         client,

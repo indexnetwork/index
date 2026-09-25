@@ -2,12 +2,13 @@
  * Table and card formatters for CLI output.
  *
  * Each formatter handles a specific domain entity: sessions, profiles,
- * intents, opportunities, networks, conversations, and messages.
+ * intents, opportunities, negotiations, networks, conversations, messages,
+ * and the personal agent.
  */
 
-import type { Intent, Opportunity, OpportunityDetail, Conversation, ConversationMessage } from "../types";
+import type { Intent, IntentPreparation, Opportunity, OpportunityDetail, Conversation, ConversationMessage, Negotiation, NegotiationDetail, NegotiationOutcome, NegotiationTurnAction, AgentConversation, SelectedAgent } from "../types";
 
-import { RESET, BOLD, DIM, RED, GREEN, YELLOW, BLUE, CYAN, WHITE, GRAY, AGENT_TEXT, dim, wordWrap, confidenceBar, padTo, stripAnsi } from "./base";
+import { RESET, BOLD, DIM, RED, GREEN, YELLOW, BLUE, CYAN, WHITE, GRAY, AGENT_TEXT, dim, success, wordWrap, confidenceBar, padTo, stripAnsi } from "./base";
 
 // ── Profile card ────────────────────────────────────────────────────
 
@@ -130,6 +131,49 @@ export function intentTable(intents: Intent[]): void {
       `  ${CYAN}${shortId}${RESET}  ${desc.padEnd(descWidth)}  ${sColor}${status}${RESET}  ${GRAY}${source}${RESET}  ${GRAY}${date}${RESET}`,
     );
   }
+}
+
+/**
+ * Print the result of preparing a draft intent: either the ready payload with
+ * the command that creates it, or the feedback and the questions to answer.
+ *
+ * @param prepared - Result from POST /api/intents/prepare.
+ */
+export function intentPreparation(prepared: IntentPreparation): void {
+  if (prepared.status === "ready") {
+    success("Intent is ready to create.");
+    console.log();
+    for (const line of wordWrap(prepared.payload, 72)) console.log(`  ${line}`);
+    console.log();
+    console.log(`  ${BOLD}Create it:${RESET}`);
+    console.log(`  index intent create ${shellQuote(prepared.payload)} --receipt ${shellQuote(prepared.preparationReceipt)}`);
+    console.log();
+    return;
+  }
+
+  console.log();
+  console.log(`  ${BOLD}${YELLOW}Needs revision${RESET}`);
+  for (const line of wordWrap(prepared.feedback, 72)) console.log(`  ${line}`);
+  console.log();
+  console.log(`  ${BOLD}Answer these:${RESET}`);
+  for (const field of prepared.recovery) {
+    console.log(`  ${CYAN}*${RESET} ${field.label}`);
+    for (const option of field.options ?? []) {
+      const description = option.description ? `${GRAY} \u2014 ${option.description}${RESET}` : "";
+      console.log(`      ${option.label}${description}`);
+    }
+    if (field.placeholder) console.log(`      ${GRAY}${field.placeholder}${RESET}`);
+  }
+  console.log();
+  const answerFlags = prepared.recovery.map((field) => `--answer ${shellQuote(`${field.label}=<reply>`)}`);
+  console.log(`  ${BOLD}Then run:${RESET}`);
+  console.log(`  index intent prepare ${shellQuote(prepared.payload)} ${answerFlags.join(" ")}`);
+  console.log();
+}
+
+/** Quote a value for a POSIX shell so a printed command can be pasted as-is. */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 /**
@@ -322,6 +366,223 @@ function statusColor(st: string): string {
       return GRAY;
     default:
       return "";
+  }
+}
+
+// ── Negotiation output ─────────────────────────────────────────────
+
+/** Colors for each negotiation action. */
+const ACTION_COLORS: Record<NegotiationTurnAction, string> = {
+  propose: CYAN,
+  counter: BLUE,
+  accept: GREEN,
+  decline: RED,
+};
+
+/** Short date and time, e.g. "Sep 2, 02:30 PM". */
+function shortDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** The colored outcome; a negotiation that has not settled is "open". */
+function outcomeLabel(outcome: NegotiationOutcome | null): string {
+  switch (outcome) {
+    case "agreed":
+      return `${GREEN}agreed${RESET}`;
+    case "declined":
+      return `${RED}declined${RESET}`;
+    case "closed":
+      return `${GRAY}closed${RESET}`;
+    case null:
+      return `${YELLOW}open${RESET}`;
+  }
+}
+
+/** Whose move it is from the viewer's seat; nobody's once settled. */
+function whoseTurn(negotiation: Negotiation): "you" | "them" | "nobody" {
+  if (negotiation.awaitingUserId === null) return "nobody";
+  return negotiation.awaitingUserId === negotiation.counterparty.userId ? "them" : "you";
+}
+
+function counterpartyName(negotiation: Negotiation): string {
+  return negotiation.counterparty.name ?? "(unnamed)";
+}
+
+/**
+ * Print a table of negotiations.
+ *
+ * @param negotiations - The viewer's negotiations from GET /api/negotiations.
+ */
+export function negotiationTable(negotiations: Negotiation[]): void {
+  if (negotiations.length === 0) {
+    dim("  No negotiations found.");
+    return;
+  }
+
+  const idW = 8;
+  const nameW = 22;
+  const turnsW = 5;
+  const turnW = 10;
+  const outcomeW = 8;
+  const dateW = 12;
+
+  console.log(
+    `  ${BOLD}${"ID".padEnd(idW)}  ${"Counterparty".padEnd(nameW)}  ${"Turns".padEnd(turnsW)}  ${"Whose turn".padEnd(turnW)}  ${"Outcome".padEnd(outcomeW)}  ${"Updated".padEnd(dateW)}${RESET}`,
+  );
+  console.log(
+    `  ${GRAY}${"-".repeat(idW)}  ${"-".repeat(nameW)}  ${"-".repeat(turnsW)}  ${"-".repeat(turnW)}  ${"-".repeat(outcomeW)}  ${"-".repeat(dateW)}${RESET}`,
+  );
+
+  for (const negotiation of negotiations) {
+    const shortId = negotiation.opportunityId.slice(0, idW);
+    const name = counterpartyName(negotiation).slice(0, nameW);
+    const turns = String(negotiation.turnCount);
+    const turn = whoseTurn(negotiation);
+    let turnCell = `${GRAY}${"\u2014".padEnd(turnW)}${RESET}`;
+    if (turn === "you") turnCell = `${YELLOW}${BOLD}${"you".padEnd(turnW)}${RESET}`;
+    if (turn === "them") turnCell = `${GRAY}${"them".padEnd(turnW)}${RESET}`;
+    const outcome = outcomeLabel(negotiation.outcome);
+    const date = new Date(negotiation.updatedAt).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+
+    console.log(
+      `  ${CYAN}${shortId}${RESET}  ${name.padEnd(nameW)}  ${turns.padEnd(turnsW)}  ${turnCell}  ${outcome}${padTo(outcomeW, stripAnsi(outcome))}  ${GRAY}${date}${RESET}`,
+    );
+  }
+}
+
+/**
+ * Print one negotiation: its state, the turn-by-turn transcript, and what the
+ * viewer may do next.
+ *
+ * @param negotiation - The negotiation from GET /api/opportunities/:id/negotiation.
+ */
+export function negotiationCard(negotiation: NegotiationDetail): void {
+  const name = counterpartyName(negotiation);
+  const rule = `  ${GRAY}${"\u2500".repeat(60)}${RESET}`;
+
+  let turnLabel = `${GRAY}\u2014 settled${RESET}`;
+  if (whoseTurn(negotiation) === "you") turnLabel = `${YELLOW}${BOLD}you${RESET}`;
+  if (whoseTurn(negotiation) === "them") turnLabel = name;
+
+  console.log();
+  console.log(`  ${BOLD}${CYAN}Negotiation with ${name}${RESET}`);
+  console.log(rule);
+  console.log(`  ${BOLD}Opportunity${RESET}   ${GRAY}${negotiation.opportunityId}${RESET}`);
+  console.log(`  ${BOLD}Outcome${RESET}       ${outcomeLabel(negotiation.outcome)}`);
+  console.log(`  ${BOLD}Turn${RESET}          ${negotiation.turnCount} of ${negotiation.protocol.maxTurns}`);
+  console.log(`  ${BOLD}Whose turn${RESET}    ${turnLabel}`);
+  const [firstLine, ...moreLines] = wordWrap(negotiation.counterparty.statement, 58);
+  console.log(`  ${BOLD}Their intent${RESET}  ${firstLine}`);
+  for (const line of moreLines) console.log(`                ${line}`);
+
+  console.log();
+  console.log(`  ${BOLD}Transcript${RESET}`);
+  if (negotiation.turns.length === 0) console.log(`  ${GRAY}No turns yet.${RESET}`);
+  for (const turn of negotiation.turns) {
+    const seat = turn.seatUserId === negotiation.counterparty.userId ? name : "You";
+    console.log(
+      `  ${GRAY}${turn.turnIndex + 1}.${RESET} ${BOLD}${seat}${RESET}  ${ACTION_COLORS[turn.action]}${turn.action}${RESET}  ${GRAY}${shortDateTime(turn.createdAt)}${RESET}`,
+    );
+    for (const line of wordWrap(turn.message, 66)) console.log(`     ${line}`);
+  }
+
+  const { availableActions, blockedReason, messageLimit } = negotiation.protocol;
+  console.log();
+  if (availableActions.length > 0) {
+    const actions = availableActions.map((action) => `${ACTION_COLORS[action]}${action}${RESET}`).join(", ");
+    console.log(`  ${BOLD}Available actions:${RESET} ${actions}  ${GRAY}(message up to ${messageLimit} characters)${RESET}`);
+  } else {
+    console.log(`  ${BOLD}Available actions:${RESET} ${GRAY}none${RESET}`);
+  }
+  if (blockedReason) console.log(`  ${BOLD}Blocked:${RESET} ${YELLOW}${blockedReason}${RESET}`);
+  console.log(rule);
+  if (availableActions.length > 0) {
+    dim(`  Reply: index negotiation turn ${negotiation.opportunityId.slice(0, 8)} --action <action> --message <text> --expected-turn-count ${negotiation.turnCount}`);
+  }
+  console.log();
+}
+
+// ── Personal agent output ──────────────────────────────────────────
+
+/**
+ * Print the selected external negotiator from GET /api/agents/me.
+ *
+ * @param selected - The agent holding the negotiation seat and the owner's onboarding state.
+ */
+export function agentCard(selected: SelectedAgent): void {
+  const { agent, onboardingCompletedAt } = selected;
+  const rule = `  ${GRAY}${"\u2500".repeat(50)}${RESET}`;
+
+  console.log();
+  console.log(`  ${BOLD}${CYAN}${agent.name}${RESET}`);
+  console.log(rule);
+  console.log(`  ${BOLD}Seat${RESET}          External negotiator (negotiates instead of Index's hosted agent)`);
+  console.log(`  ${BOLD}Status${RESET}        ${agent.status === "active" ? GREEN : GRAY}${agent.status}${RESET}`);
+  if (agent.description) console.log(`  ${BOLD}Description${RESET}   ${agent.description}`);
+  console.log(`  ${BOLD}Last seen${RESET}     ${GRAY}${agent.lastSeenAt ? shortDateTime(agent.lastSeenAt) : "never"}${RESET}`);
+  const onboarding = onboardingCompletedAt
+    ? `${GREEN}complete${RESET} ${GRAY}(${shortDateTime(onboardingCompletedAt)})${RESET}`
+    : `${YELLOW}not complete${RESET}`;
+  console.log(`  ${BOLD}Onboarding${RESET}    ${onboarding}`);
+  console.log(`  ${BOLD}ID${RESET}            ${GRAY}${agent.id}${RESET}`);
+  console.log(rule);
+  console.log();
+}
+
+/**
+ * Print one intent's personal-agent conversation: who answers, the messages,
+ * and every question still waiting on the owner with the ID needed to answer it.
+ *
+ * @param conversation - Result from GET /api/conversations/agent/messages?intentId=.
+ */
+export function agentConversation(conversation: AgentConversation): void {
+  const seat = conversation.agent.status === "hosted" ? "Index's hosted agent" : "your external negotiator";
+  const rule = `  ${GRAY}${"\u2500".repeat(60)}${RESET}`;
+
+  console.log();
+  console.log(`  ${BOLD}${CYAN}Personal agent${RESET}  ${GRAY}answered by ${seat}${RESET}`);
+  console.log(rule);
+  if (conversation.messages.length === 0) console.log(`  ${GRAY}No messages yet.${RESET}`);
+  for (const message of conversation.messages) {
+    const author = message.role === "user" ? `${BOLD}${CYAN}you${RESET}` : `${BOLD}${BLUE}agent${RESET}`;
+    const text = message.parts
+      .filter((part) => part.kind === "text" && part.text)
+      .map((part) => part.text)
+      .join("\n");
+    console.log(`  ${author}  ${GRAY}${shortDateTime(message.createdAt)}${RESET}`);
+    for (const line of wordWrap(text, 70)) console.log(`  ${line}`);
+    console.log();
+  }
+
+  const { questions } = conversation.agent;
+  if (questions.length === 0) {
+    console.log(`  ${GRAY}No questions waiting for you.${RESET}`);
+    console.log();
+    return;
+  }
+  console.log(`  ${BOLD}${YELLOW}Waiting for your answer (${questions.length})${RESET}`);
+  for (const question of questions) {
+    const [firstLine, ...moreLines] = wordWrap(question.question, 66);
+    console.log(`  ${YELLOW}?${RESET} ${BOLD}${firstLine}${RESET}`);
+    for (const line of moreLines) console.log(`    ${BOLD}${line}${RESET}`);
+    console.log(`    ${GRAY}Question ID${RESET}  ${CYAN}${question.id}${RESET}`);
+    if (question.options?.length) console.log(`    ${GRAY}Options${RESET}      ${question.options.join(" / ")}`);
+    if (question.matches.length > 0) {
+      const about = question.matches
+        .map((match) => `${match.counterparty.name ?? "(unnamed)"} ${GRAY}(${match.opportunityId.slice(0, 8)})${RESET}`)
+        .join(", ");
+      console.log(`    ${GRAY}About${RESET}        ${about}`);
+    }
+    console.log();
   }
 }
 

@@ -54,28 +54,11 @@ In the background, an agent opens an opportunity with a candidate and
 negotiates it with the other side's agent. You can read along, but you don't
 need to start anything.
 
-```bash
-index negotiation list --state open
+```ansi [Terminal]
+// [!include ~/snippets/cli/negotiation-list.ansi]
 ```
 
-```json [Output]
-[
-  {
-    "opportunityId": "a1b2c3d4-…",
-    "intentId": "3f9a1c2e-…",
-    "awaitingUserId": "…",
-    "outcome": null,
-    "turnCount": 2,
-    "counterparty": {
-      "name": "Alex Chen",
-      "statement": "Building federated training for hospitals"
-    }
-  }
-]
-```
-
-Negotiation commands print JSON. See [Negotiation](/negotiation) for turns and
-outcomes.
+See [Negotiation](/negotiation) for turns and outcomes.
 
 ##### Review opportunities
 
@@ -120,8 +103,8 @@ that chat through the opportunity's consent flow while it is `pending` or
 | Edit my profile | `index profile update --intro "<text>"` |
 | Give an agent my context | `index sync --json` |
 
-Intent, opportunity, and conversation commands accept the 8-character short ID
-shown in tables. Negotiation commands need the full opportunity ID.
+Intent, opportunity, negotiation, and conversation commands accept the
+8-character short ID shown in tables.
 
 ## Intents
 
@@ -140,10 +123,9 @@ index intent add-to-network <id> <network-id>
 index intent remove-from-network <id> <network-id>
 ```
 
-`intent prepare` returns `needs_revision` with the labels of the fields to fix,
-or `ready` with a `payload` and a `preparationReceipt`. Answer with
-`--answer 'label=reply'`, then create with the exact payload:
-`index intent create "<payload>" --receipt '<preparationReceipt>'`.
+`intent prepare` either lists the questions to answer, by label, or prints the
+prepared payload with the exact `index intent create '<payload>' --receipt
+'<receipt>'` command that creates it. Answer with `--answer 'label=reply'`.
 
 ```ansi [Terminal]
 // [!include ~/snippets/cli/intent-list.ansi]
@@ -160,8 +142,12 @@ index negotiation turn <opportunity-id> \
   --expected-turn-count <n>
 ```
 
-Before you submit a turn, read `protocol.availableActions` and `turnCount` from
-`negotiation show`. The server rejects a turn whose `--expected-turn-count` is
+```ansi [Terminal]
+// [!include ~/snippets/cli/negotiation-show.ansi]
+```
+
+Before you submit a turn, check the available actions and the turn count that
+`negotiation show` prints. The server rejects a turn whose `--expected-turn-count` is
 stale, and the CLI never retries a rejected or uncertain write. An agreement
 between agents is separate from your own approval of the opportunity.
 
@@ -186,8 +172,9 @@ index conversation answer agent --intent-id <id> \
   --answer '<question-id>=<text>' --answer '<question-id>=<text>'
 ```
 
-An answer must carry the current question ID. If the question has moved on, the
-CLI shows the server's refusal.
+Use the question ID that `conversation show agent` prints. If that question is
+no longer waiting, the server keeps your reply as a plain message to your agent,
+and the CLI says so.
 
 ## Opportunities and conversations
 
@@ -245,9 +232,7 @@ A new account goes through `profile sync`, `profile update`,
 
 Add `--json` to any command. Each run then prints a single result or error on
 stdout, and progress messages go to stderr. A failure exits with a nonzero code
-and prints `{ "error", "status", "response" }`. `agent me`, `negotiation`,
-`onboarding`, `intent prepare`, and the personal-agent conversation commands
-always print JSON.
+and prints `{ "error", "status", "response" }`.
 
 ```bash
 index conversation stream --json     # Live events, one JSON object per line
