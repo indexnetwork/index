@@ -18,7 +18,8 @@ type Page =
   | { path: '/use/mac'; render: 'static' }
   | { path: '/use/personal-agent'; render: 'static' }
   | { path: '/use/plugins'; render: 'static' }
-  | { path: '/use-cases/external-negotiator'; render: 'static' }
+  | { path: '/use-cases/custom-negotiator'; render: 'static' }
+  | { path: '/use-cases/find-someone'; render: 'static' }
   | { path: '/use-cases/introducer-agent'; render: 'static' }
 
 // prettier-ignore
