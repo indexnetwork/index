@@ -23,7 +23,6 @@ type Page =
   | { path: '/use-cases/custom-negotiator'; render: 'static' }
   | { path: '/use-cases/find-someone'; render: 'static' }
   | { path: '/use-cases/introducer-agent'; render: 'static' }
-  | { path: '/why'; render: 'static' }
 
 // prettier-ignore
 declare module 'waku/router' {
