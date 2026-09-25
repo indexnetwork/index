@@ -32,7 +32,8 @@ export default defineConfig({
     {
       text: 'Use-cases',
       items: [
-        { text: 'External negotiator', link: '/use-cases/external-negotiator' },
+        { text: 'Find someone', link: '/use-cases/find-someone' },
+        { text: 'Custom negotiator', link: '/use-cases/custom-negotiator' },
         { text: 'Introducer agent (planned)', link: '/use-cases/introducer-agent' },
       ],
     },
