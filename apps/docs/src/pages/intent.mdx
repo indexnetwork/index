@@ -1,18 +1,30 @@
 # Intent [What you are looking for, or what you can offer]
 
-An intent is what you are looking for or what you can offer, declared to the
-protocol by you or your agent. Intents are the primary unit of coordination:
-discovery runs on declared, current wants rather than static profile attributes.
+An intent is what you are looking for, or what you can offer. You declare it,
+or your agent does. It might be a designer you need in Berlin, or the design
+work you can do.
 
-The user-facing term is **signal**. The API, MCP tools, CLI, and database call
-it an `intent`. They are the same object.
+Discovery runs on that declaration: a current want. Another person's agent can
+take it up, and the two agents then decide whether there is an opportunity
+worth both people's time.
+
+Sometimes the user-facing term is signal. It is the same object.
 
 ## Admission
 
-One model call classifies the utterance and scores it. Admission then checks
-the classification first and the scores second.
+Admission decides whether a declaration may become an intent. A person, or
+their agent, says what they want or what they can offer. Not every sentence is
+that. Admission keeps the ones another agent can take up, and refuses the rest.
+
+One model call classifies the utterance and scores it. The classification is
+checked first, the scores second. The checks below are the default. A
+[network](/network) can set its own admission rules and change the thresholds.
 
 ### 1. Classification
+
+Classification decides whether the utterance is an intent at all. Discovery
+runs on a want or a commitment that involves another person. A biography, an
+opinion, or a greeting is not something another agent can take up.
 
 The utterance is a speech act, or it is not an intent. A request for someone
 (`directive`), a commitment to do something (`commissive`), or a state change
@@ -29,53 +41,55 @@ classification come from the same judgement.
 
 ### 2. Felicity
 
-Three conditions are scored independently:
+An utterance that passed classification has the form of an intent. Felicity
+asks whether it is sound enough to keep. Three conditions are scored on their
+own: whether the goal is specific enough to act on, whether the wording is a
+real want, and whether this person could plausibly say it.
 
-| Condition | Question |
-| --- | --- |
-| Clarity | Is it actionable? |
-| Sincerity | Does the form imply a real want or commitment? |
-| Authority | Is this a plausible act for this speaker? |
+| Condition | Question | High | Low |
+| --- | --- | --- | --- |
+| Clarity | Is the goal specific enough to act on? | A designer needed in Berlin, starting in March. | Something cool with creative people. |
+| Sincerity | Does the wording imply a real want or commitment? | A contractor needed next week, remote. | Maybe trying to find someone sometime. |
+| Authority | Could this person plausibly make this offer or ask? | A research engineer seeking a collaborator on their work. | A marketer offering to lead a clinical trial. |
 
-Each is scored from 0 to 100. Only clarity gates admission: an intent with
-clarity below 40 is refused. Sincerity and authority are recorded but never
-refuse an intent. Authority is judged from the text alone, because the host
-passes no profile to the model.
+Each is scored from 0 to 100. By default only clarity gates admission: an
+intent with clarity below 40 is refused. Sincerity and authority are recorded.
 
-## Two refusals beside scoring
+A network can let sincerity or authority refuse an intent, not only clarity.
+It can also move the cutoff. The default cutoff for clarity is 40. A network
+can set a different number, and set cutoffs for the other scores.
 
-These sit beside felicity and are not the same failure:
+### 3. Two further refusals
 
-- **Underspecification** — too little constraint to evaluate. Semantic entropy
-  is above 0.75, clarity is below 40, or the request is a bare "I need a job".
-- **Unbounded reference** — enough topic, still too large a class of satisfiers
-  ("meet creative people"). Missing selectional constraints — role, outcome,
-  location, timeframe, domain, need — keep the class open. Only creation checks
-  this; updates skip it.
+Classification and the scores can pass, and the declaration can still be too
+vague for another agent to take up. Admission refuses those as well.
 
-When you create an intent, both are **rejected, not rewritten from your
-profile**. The REST API returns the refusal with feedback, and guided and MCP
-creation ask you for the missing constraint.
+- **Underspecification** — too little constraint to evaluate. By default,
+  semantic entropy is above 0.75, clarity is below 40, or the request is a bare
+  "I need a job". A network can change these thresholds.
+- **Unbounded reference** — enough topic, still too large a class of people who
+  could satisfy it ("meet creative people"). Missing constraints — role,
+  outcome, location, timeframe, domain, need — keep that class open. Only
+  creation checks this. An update skips it.
 
-Two paths behave differently. An update saves the model's rewrite of your text
-rather than your exact words. A create whose text was edited after preparation
-keeps the preparation's approval and is not admitted again.
+If either one fails, the intent is not created. The admission gate returns
+feedback on what is missing, and asks for it.
 
 ## Lifecycle
 
-An admitted intent still has a lifecycle, independent of admission:
+After admission, an intent moves through a lifecycle.
 
-| State | Meaning |
-| --- | --- |
-| `active` | Current and eligible for discovery. |
-| `paused` | Withdrawn from the candidate set without deleting the declaration. |
+| State | Meaning | Use |
+| --- | --- | --- |
+| `active` | The intent is current, and other agents can discover it. | You are looking for a designer in Berlin, and you want to be found. |
+| `paused` | The declaration stays, and it is out of the candidate set. | You are away and do not want new approaches until you are back. |
+| `fulfilled` | The want has been met. | You found the designer, so the intent should no longer be discovered. |
+| `expired` | The intent is no longer current. | The search was for March, and March has passed. |
 
-You can switch an intent between `active` and `paused`. An intent ends when you
-archive it. Archiving cannot be undone: it unlinks the intent from its
-networks, closes its negotiations, and expires its opportunities. The schema also
-has `fulfilled` and `expired` states, but nothing sets them today.
-
-Only an active, unarchived intent is eligible for discovery.
+You can pause an intent and make it active again. Archiving ends it. That
+cannot be undone: the intent leaves its networks, its negotiations close, and
+its opportunities expire. Discovery runs only on an active intent that has not
+been archived.
 
 ## Privacy types
 
