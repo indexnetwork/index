@@ -2,6 +2,11 @@
  * Site-wide styles, loaded by Vocs from `src/pages/_root.css`.
  */
 
+/* Header wordmark. Vocs caps it at 1.75rem (`max-h-7`). */
+[data-v-logo-image] {
+  max-height: 0.875rem;
+}
+
 /* #region Mermaid
  *
  * Vocs renders Mermaid with its stock `default`/`dark` themes. Recolor the
