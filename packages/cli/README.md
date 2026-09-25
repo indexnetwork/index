@@ -1,6 +1,6 @@
 # Index CLI
 
-Command-line interface for [Index Network](https://index.network). Message your personal agent, manage signals, and discover opportunities — all from your terminal.
+Command-line interface for [Index Network](https://index.network). Message your personal agent, manage intents, and discover opportunities — all from your terminal.
 
 ## Installation
 
@@ -12,17 +12,17 @@ npm install -g @indexnetwork/cli
 
 Index helps you find the right people—and helps the right people find you—based on what you are actually trying to do, not just a profile headline. The value is grounded intros: suggestions come from communities you share (syndicates, founder groups, firm networks), not from spraying the open web.
 
-The flow below is one complete story—shape a room, invite people, publish an approved signal, let broker agents evaluate in the background, then review a persisted match.
+The flow below is one complete story—create an intent, let agents negotiate in the background, then review a persisted match.
 
 ```bash
 # login + setup
 index login
 index profile
 
-# 1. express intent (signals)
+# 1. express an intent
 index intent create "federated learning collaboration"
 
-# 2. broker agents evaluate approved signals in the background
+# 2. agents negotiate on your intents in the background
 index negotiation list
 
 # 3. wait for persisted opportunities, then review outcomes
@@ -38,7 +38,10 @@ Words you will see elsewhere in this doc: **network** = a community you are in; 
 ### Command reference
 
 Every exposed CLI command is listed below. Add `--json` for machine-readable
-results; `conversation stream --json` emits one event per line. Command-specific
+results; `conversation stream --json` emits one event per line. `agent me`,
+`negotiation`, `onboarding`, `intent prepare`, and the personal-agent
+`conversation show|send|answer agent` commands always print JSON: indented by
+default, compact with `--json`. Command-specific
 flags are listed in [Options](#options), and examples follow this reference.
 
 | Command | Function |
@@ -53,16 +56,16 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index profile show <user-id>` | Show another user's accessible profile. |
 | `index profile sync` | Research public profile information and return a suggested profile without persisting it. |
 | `index profile update` | Save reviewed name, bio, location, or social links. |
-| `index intent list` | List signals, with optional archived, text-query, and result-limit filters. |
-| `index intent show <id>` | Show one signal. |
+| `index intent list` | List intents, with optional archived, text-query, and result-limit filters. |
+| `index intent show <id>` | Show one intent. |
 | `index intent prepare <text>` | Prepare a draft, optionally answering recovery prompts; returns an admission receipt when ready. |
-| `index intent create <text>` | Create a signal, optionally using the preparation receipt. |
-| `index intent update <id> <text>` | Update and reprocess a signal's description. |
-| `index intent archive <id>` | Archive a signal so it stops participating in discovery. |
+| `index intent create <text>` | Create an intent, optionally using the preparation receipt. |
+| `index intent update <id> <text>` | Update and reprocess an intent's description. |
+| `index intent archive <id>` | Archive an intent so it stops participating in discovery. |
 | `index intent pause <id>` / `resume <id>` | Pause or resume its agent without archiving. |
-| `index intent networks <id>` | List the networks a signal is shared in. |
-| `index intent add-to-network <id> <network-id>` | Share a signal in a network. |
-| `index intent remove-from-network <id> <network-id>` | Stop sharing a signal in a network. |
+| `index intent networks <id>` | List the networks an intent is shared in. |
+| `index intent add-to-network <id> <network-id>` | Share an intent in a network. |
+| `index intent remove-from-network <id> <network-id>` | Stop sharing an intent in a network. |
 | `index negotiation list` | List negotiations, optionally filtered by intent or open/settled state. |
 | `index negotiation show <opportunity-id>` | Read the negotiation's turns, current state, and available actions. |
 | `index negotiation turn <opportunity-id> --action <action> --message <text> --expected-turn-count <n>` | Submit one `propose`, `counter`, `accept`, or `decline` turn against the observed turn count. |
@@ -76,7 +79,7 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index network requests` / `request-update` / `request-dismiss` | Review or revise your early-access creation requests. |
 | `index network create <title>` | Create a network when eligible, or submit an early-access creation request. |
 | `index network show <id>` | Show a network and its members. |
-| `index network update <id> --title <text>` | Change a network's title. |
+| `index network update <id> [--title <text>] [--prompt <text>]` | Change a network's title or description. |
 | `index network delete <id>` | Delete a network you own. |
 | `index network join <id>` | Join an open network. |
 | `index network leave <id>` | Leave a network. |
@@ -89,9 +92,9 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index conversation stream` | Subscribe to conversation, negotiation, opportunity, and intent events over SSE. |
 | `index conversation help` | Show conversation-specific help. |
 | `index onboarding confirm-profile` | Confirm that the owner has reviewed their profile. |
-| `index onboarding complete` | Complete onboarding once profile confirmation and first-signal prerequisites are met. |
+| `index onboarding complete` | Complete onboarding once profile confirmation and first-intent prerequisites are met. |
 | `index scrape <url>` | Extract text from a URL, optionally guided by an objective. |
-| `index sync` | Read your profile, networks, and signals into `~/.index/context.json`, or stdout with `--json`. |
+| `index sync` | Read your profile, networks, and intents into `~/.index/context.json`, or stdout with `--json`. |
 
 ### `index login`
 
@@ -142,31 +145,31 @@ index logout
 
 ### `index intent`
 
-Manage your signals (intents). Create signals from natural language, list active signals, view details, and archive signals you no longer need.
+Manage your intents. Create intents from natural language, list active intents, view details, and archive intents you no longer need.
 
 ```bash
-index intent list                           # List active signals
-index intent list --archived                # Include archived signals
+index intent list                           # List active intents
+index intent list --archived                # Include archived intents
 index intent list --limit 5                 # Limit to 5 results
 index intent list --query "CTO"             # Match description and summary text
-index intent show <id>                      # Show full signal details
+index intent show <id>                      # Show full intent details
 index intent prepare "Looking for a CTO"  # Read feedback / recovery prompts and receipt
 index intent prepare "Looking for a CTO" --answer 'Prompt label=My answer'
 index intent create "<returned payload>" --receipt '<returned preparationReceipt>'
 index intent pause <id>                   # Hold the agent without archiving
 index intent resume <id>                  # Start it again
-index intent update <id> "revised text"     # Update a signal (runs full pipeline)
-index intent archive <id>                   # Archive a signal
-index intent networks <id>                  # List the networks a signal is shared in
-index intent add-to-network <id> <network-id>      # Add a signal to a network
-index intent remove-from-network <id> <network-id> # Remove a signal from a network
+index intent update <id> "revised text"     # Update an intent (runs full pipeline)
+index intent archive <id>                   # Archive an intent
+index intent networks <id>                  # List the networks an intent is shared in
+index intent add-to-network <id> <network-id>      # Add an intent to a network
+index intent remove-from-network <id> <network-id> # Remove an intent from a network
 ```
 
 Preparation returns `needs_revision` with recovery field labels or `ready` with a
 `payload` and `preparationReceipt`. Use the exact returned payload with its receipt
 in `create`; `--answer` pairs the displayed recovery **label** with your response.
 You can also create directly: the server prepares the description and rejects an
-unadmitted draft. A new signal is shared in every network you belong to. Narrow it afterwards with
+unadmitted draft. A new intent is shared in every network you belong to. Narrow it afterwards with
 `remove-from-network`, or widen an existing one with `add-to-network`.
 
 ### `index negotiation`
@@ -203,7 +206,7 @@ index opportunity start-chat <id>          # Open its human chat (pending/accept
 
 `--status` accepts one of `pending`, `accepted`, `rejected`, `expired`;
 `--statuses` accepts a comma-separated radar selection including `negotiating`.
-The signal-scoped radar uses `--intent-id <id>`.
+The intent-scoped radar uses `--intent-id <id>`.
 
 ### `index network`
 
@@ -227,7 +230,7 @@ index network invite <id> user@email # Invite directly by email
 
 ### `index conversation`
 
-Read and message the personal agent within a signal, or use human DMs.
+Read and message the personal agent within an intent, or use human DMs.
 
 ```bash
 index conversation show agent --intent-id <id> --json
@@ -254,7 +257,7 @@ index onboarding complete [--intent-id <id>] --json
 ```
 
 Confirm a profile only after the owner reviews it. Completion uses the server's
-profile-confirmation and first-signal prerequisites; it does not bypass them.
+profile-confirmation and first-intent prerequisites; it does not bypass them.
 For a new account: `profile sync` to see suggested facts, `profile update` to save
 what you approve, `onboarding confirm-profile`, `intent prepare` and `intent create`
 with the returned payload and receipt, then `onboarding complete --intent-id <id>`.
@@ -298,7 +301,7 @@ fails, without saving partial context.
 
 ## Examples: Reviewing Opportunities
 
-Approved signals are evaluated in the background. `opportunity list` only reviews persisted results; it does not start evaluation.
+Approved intents are evaluated in the background. `opportunity list` only reviews persisted results; it does not start evaluation.
 
 ### Review and act
 
@@ -323,23 +326,23 @@ index opportunity reject <id>
 | Flag                 | Short | Description                                                     |
 | -------------------- | ----- | --------------------------------------------------------------- |
 | `--api-url <url>`    |       | Override API server (default: `https://protocol.index.network`) |
-| `--app-url <url>`    |       | Override app URL for login (default: `https://index.network`)   |
-| `--archived`         |       | Include archived signals (intent list)                          |
+| `--app-url <url>`    |       | Override the web app URL for login (default: inferred from the API origin) |
+| `--archived`         |       | Include archived intents (intent list)                          |
 | `--status <status>`  |       | Filter opportunities by one pending/accepted/rejected/expired status |
 | `--statuses <list>` |       | Comma-separated radar stages, including negotiating             |
 | `--limit <n>`        |       | Positive result limit for intent/opportunity lists or conversation messages |
-| `--prompt <text>`    | `-p`  | Network description (for `network create`)                      |
+| `--prompt <text>`    | `-p`  | Network description (for `network create` and `network update`) |
 | `--title <text>`     |       | Network title (for `network update`)                            |
 | `--objective <text>` |       | Focus objective (for `scrape`)                                  |
-| `--query <text>`     |       | Match signal description and summary text (intent list)         |
-| `--intent-id <id>`   |       | Filter negotiations, scope agent conversations, or select onboarding's first signal |
+| `--query <text>`     |       | Match intent description and summary text (intent list)         |
+| `--intent-id <id>`   |       | Filter negotiations, scope agent conversations, or select onboarding's first intent |
 | `--state <state>`    |       | Filter negotiations by `open` or `settled`                       |
 | `--action <action>`  |       | Required negotiation turn action: `propose`, `counter`, `accept`, or `decline` |
 | `--message <text>`   |       | Required message for a negotiation turn                         |
 | `--expected-turn-count <n>` | | Required observed nonnegative integer turn count for a negotiation turn |
 | `--question-id <id>` |       | Identify the displayed question when answering the personal agent |
 | `--answer <key=value>` |    | Repeat for recovery prompt labels or agent question IDs          |
-| `--receipt <token>`  |       | Preparation receipt for signal creation                          |
+| `--receipt <token>`  |       | Preparation receipt for intent creation                          |
 | `--name`, `--intro`, `--location` | | Profile fields to update                          |
 | `--social <label=value>` |    | Repeat to replace profile social links                  |
 | `--json`             |       | Output raw JSON to stdout                                       |

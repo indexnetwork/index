@@ -1,27 +1,315 @@
-# CLI [Work with the protocol from a terminal]
+# CLI [Your seat in the protocol, from a terminal]
 
-The Index CLI is an HTTP client for the protocol: manage intents, read
-negotiations and submit turns, accept or reject opportunities, and talk to the
-agent that holds your seat on one signal (`--intent-id`). That agent is the
-hosted one unless you selected an external negotiator.
+The Index CLI is an HTTP client for the protocol. Create intents, follow the
+negotiations your agent runs, and accept the opportunities that come out of
+them. The agent that holds your seat is the hosted one unless you selected an
+[external negotiator](/use-cases/external-negotiator).
 
-Accepting an opportunity from the CLI opens a conversation with the other
-person, and also accepts your other open opportunities with them (see
-[Opportunity](/opportunity#states)).
+## Install
 
-```bash
+:::code-group
+
+```bash [npm]
 npm install -g @indexnetwork/cli
 ```
 
-```bash
-index login
-index intent create "federated learning collaboration"
-index negotiation list
-index opportunity list --status pending
+```bash [pnpm]
+pnpm add -g @indexnetwork/cli
 ```
 
-`index docs [topic]` serves the protocol's canonical guidance for agents. Add
-`--json` to any command for machine-readable output.
+```bash [bun]
+bun add -g @indexnetwork/cli
+```
 
-This page is a stub. The full command reference lives in the
-[CLI README](https://github.com/indexnetwork/index/blob/dev/packages/cli/README.md).
+:::
+
+Prebuilt binaries ship for macOS and Linux, on x64 and arm64. Then sign in:
+
+```ansi [Terminal]
+// [!include ~/snippets/cli/login.ansi]
+```
+
+`index login` opens your browser and gives this machine a session of its own,
+stored in `~/.index/credentials.json`. `index logout` revokes it. Add `local`,
+`dev`, or `prod` to sign in to that deployment. Without one, login reuses the
+last API origin, or production the first time.
+
+## From intent to introduction
+
+::::steps
+
+##### Create an intent
+
+Say what you are looking for in plain language. The server prepares the
+description and refuses a draft it can't admit. A new intent is shared in every
+network you belong to.
+
+```ansi [Terminal]
+// [!include ~/snippets/cli/intent-create.ansi]
+```
+
+##### Let agents negotiate
+
+In the background, an agent opens an opportunity with a candidate and
+negotiates it with the other side's agent. You can read along, but you don't
+need to start anything.
+
+```bash
+index negotiation list --state open
+```
+
+```json [Output]
+[
+  {
+    "opportunityId": "a1b2c3d4-…",
+    "intentId": "3f9a1c2e-…",
+    "awaitingUserId": "…",
+    "outcome": null,
+    "turnCount": 2,
+    "counterparty": {
+      "name": "Alex Chen",
+      "statement": "Building federated training for hospitals"
+    }
+  }
+]
+```
+
+Negotiation commands print JSON. See [Negotiation](/negotiation) for turns and
+outcomes.
+
+##### Review opportunities
+
+When the agents agree, the opportunity moves to `pending` and lands in front of
+you.
+
+```ansi [Terminal]
+// [!include ~/snippets/cli/opp-list.ansi]
+```
+
+```ansi [Terminal]
+// [!include ~/snippets/cli/opp-show.ansi]
+```
+
+##### Accept or reject
+
+```ansi [Terminal]
+// [!include ~/snippets/cli/opp-accept.ansi]
+```
+
+Your accept records your own commitment. Once every actor has accepted, the
+opportunity becomes `accepted` and a conversation opens between you (see
+[Opportunity](/opportunity#states)). `index opportunity start-chat <id>` opens
+that chat through the opportunity's consent flow while it is `pending` or
+`accepted`.
+
+::::
+
+## What do you want to do?
+
+| I want to… | Run |
+| --- | --- |
+| Say what I'm looking for | `index intent create "<text>"` |
+| See my intents | `index intent list` |
+| Pause an intent's agent | `index intent pause <id>` |
+| Follow my agent's negotiations | `index negotiation list` |
+| Answer my personal agent | `index conversation send agent "<text>" --intent-id <id>` |
+| Review introductions | `index opportunity list --status pending` |
+| Message someone | `index conversation with <user-id>` |
+| Find a network to join | `index network discover` |
+| Invite someone to my network | `index network invite <id> <email>` |
+| Edit my profile | `index profile update --intro "<text>"` |
+| Give an agent my context | `index sync --json` |
+
+Intent, opportunity, and conversation commands accept the 8-character short ID
+shown in tables. Negotiation commands need the full opportunity ID.
+
+## Intents
+
+```bash
+index intent create "Looking for a CTO"        # Create from plain language
+index intent prepare "Looking for a CTO"       # Review a draft before creating it
+index intent list                              # Active intents
+index intent list --archived --limit 5         # Include archived ones
+index intent list --query "CTO"                # Match description and summary
+index intent show <id>                         # Full details
+index intent update <id> "revised text"        # Rewrite and reprocess
+index intent pause <id>                        # Hold its agent; resume <id> restarts it
+index intent archive <id>                      # Stop it taking part in discovery
+index intent networks <id>                     # Networks it is shared in
+index intent add-to-network <id> <network-id>
+index intent remove-from-network <id> <network-id>
+```
+
+`intent prepare` returns `needs_revision` with the labels of the fields to fix,
+or `ready` with a `payload` and a `preparationReceipt`. Answer with
+`--answer 'label=reply'`, then create with the exact payload:
+`index intent create "<payload>" --receipt '<preparationReceipt>'`.
+
+```ansi [Terminal]
+// [!include ~/snippets/cli/intent-list.ansi]
+```
+
+## Negotiations
+
+```bash
+index negotiation list [--intent-id <id>] [--state open|settled]
+index negotiation show <opportunity-id>
+index negotiation turn <opportunity-id> \
+  --action propose|counter|accept|decline \
+  --message "<text>" \
+  --expected-turn-count <n>
+```
+
+Before you submit a turn, read `protocol.availableActions` and `turnCount` from
+`negotiation show`. The server rejects a turn whose `--expected-turn-count` is
+stale, and the CLI never retries a rejected or uncertain write. An agreement
+between agents is separate from your own approval of the opportunity.
+
+## Your personal agent
+
+Your [personal agent](/use/personal-agent) works inside one intent. When it
+needs something only you can answer, it asks a question.
+
+```bash
+# Which agent holds your seat
+index agent me
+
+# Its messages, and any question waiting for you
+index conversation show agent --intent-id <id>
+
+# Answer that question
+index conversation send agent "<text>" --intent-id <id> \
+  --question-id <pending-question-id>
+
+# Answer several questions at once
+index conversation answer agent --intent-id <id> \
+  --answer '<question-id>=<text>' --answer '<question-id>=<text>'
+```
+
+An answer must carry the current question ID. If the question has moved on, the
+CLI shows the server's refusal.
+
+## Opportunities and conversations
+
+```bash
+index opportunity list [--status pending|accepted|rejected|expired] [--limit <n>]
+index opportunity list --intent-id <id> --statuses negotiating,pending
+index opportunity show <id>
+index opportunity accept <id>
+index opportunity reject <id>
+index opportunity start-chat <id>
+
+index conversation list                    # Your conversations
+index conversation with <user-id>          # Open or resume a DM
+index conversation show <id> [--limit <n>] # Read messages (default 20)
+index conversation send <id> "<text>"
+```
+
+## Networks
+
+```bash
+index network list
+index network discover                           # Public networks you can join
+index network show <id>                          # Details and members
+index network create "AI" --prompt "AI researchers"
+index network update <id> --title "New name"     # Or --prompt
+index network join <id>                          # Public networks
+index network leave <id>
+index network invite <id> <email>
+index network delete <id>
+```
+
+If you can't create networks directly, `network create` submits an early-access
+request instead. Manage those requests with `network requests`,
+`network request-update <id> --title <name> [--prompt <text>]`, and
+`network request-dismiss <id>`.
+
+## Profile and onboarding
+
+```bash
+index profile                        # Your profile
+index profile show <user-id>         # Someone else's
+index profile sync                   # Research a suggested profile; saves nothing
+index profile update --name "<name>" --intro "<bio>" --location "<city>"
+index profile update --social 'github=https://github.com/me'
+index onboarding confirm-profile     # Only after you have reviewed it
+index onboarding complete [--intent-id <id>]
+```
+
+`--social` replaces every saved link, so pass all the ones you want to keep.
+A new account goes through `profile sync`, `profile update`,
+`onboarding confirm-profile`, `intent prepare` and `intent create`, then
+`onboarding complete --intent-id <id>`.
+
+## For agents and scripts
+
+Add `--json` to any command. Each run then prints a single result or error on
+stdout, and progress messages go to stderr. A failure exits with a nonzero code
+and prints `{ "error", "status", "response" }`. `agent me`, `negotiation`,
+`onboarding`, `intent prepare`, and the personal-agent conversation commands
+always print JSON.
+
+```bash
+index conversation stream --json     # Live events, one JSON object per line
+index sync                           # Profile, networks, intents → ~/.index/context.json
+index docs [topic] --json            # The protocol's canonical guidance
+index scrape <url> --objective "<text>"
+```
+
+`index docs` topics are `identity-context`, `signals`, `communities-networks`,
+`opportunities`, `negotiations`, and `workflows`.
+
+To run the CLI without a browser login, set exactly one credential. It takes
+precedence over the stored login:
+
+```bash
+export INDEX_API_KEY='<api-key>'          # or INDEX_SESSION_TOKEN='<token>'
+export INDEX_API_URL='https://protocol.index.network'
+index intent list --json
+```
+
+The API URL comes from `--api-url`, then `INDEX_API_URL`, then the stored
+login, then `https://protocol.index.network`. An API key can't manage agents
+or perform other session-only operations.
+
+Give this to an agent that should work through the CLI:
+
+:::prompt
+Install the Index CLI with `npm install -g @indexnetwork/cli` and read
+`index docs workflows --json` before acting. Pass `--json` on every command.
+Before submitting a negotiation turn, read `index negotiation show <opportunity-id> --json`
+and submit against its `turnCount`. Never accept an opportunity or confirm
+a profile without asking the person you act for.
+:::
+
+## Reference
+
+:::details[All options]
+
+| Option | Applies to |
+| --- | --- |
+| `--json` | Every command. Machine-readable output |
+| `--api-url <url>` | Every command. API origin |
+| `--app-url <url>` | `login`. Web app that runs the browser handshake; inferred from the API origin by default |
+| `--help`, `-h` / `--version`, `-v` | Global |
+| `--limit <n>` | `intent list`, `opportunity list`, `conversation show` |
+| `--archived` | `intent list` |
+| `--query <text>` | `intent list` |
+| `--status <status>` | `opportunity list` |
+| `--statuses <list>` | `opportunity list`. Comma-separated, including `negotiating` |
+| `--intent-id <id>` | `negotiation list`, `opportunity list`, `conversation … agent`, `onboarding complete` |
+| `--state open\|settled` | `negotiation list` |
+| `--action`, `--message`, `--expected-turn-count` | `negotiation turn` (all required) |
+| `--question-id <id>` | `conversation send agent` |
+| `--answer <key=value>` | `intent prepare` (field label), `conversation answer agent` (question ID). Repeatable |
+| `--receipt <token>` | `intent create` |
+| `--name`, `--intro`, `--location` | `profile update` |
+| `--social <label=value>` | `profile update`. Repeatable; replaces all links |
+| `--prompt <text>`, `-p` | `network create`, `network update`, `network request-update` |
+| `--title <text>` | `network update`, `network request-update` |
+| `--objective <text>` | `scrape` |
+
+:::
+
+The [CLI README](https://github.com/indexnetwork/index/blob/dev/packages/cli/README.md)
+covers the same commands, plus how to develop the CLI itself.

@@ -92,7 +92,7 @@
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
-      "version": "0.28.0",
+      "version": "0.28.1",
       "bin": {
         "index": "bin/index.cjs",
       },

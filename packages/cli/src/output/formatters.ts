@@ -91,13 +91,13 @@ export function profileCard(data: ProfileData): string {
 // ── Intent output ──────────────────────────────────────────────────
 
 /**
- * Print a table of intents (user-facing: "signals").
+ * Print a table of intents.
  *
  * @param intents - Array of intent objects from the API.
  */
 export function intentTable(intents: Intent[]): void {
   if (intents.length === 0) {
-    dim("  No signals found.");
+    dim("  No intents found.");
     return;
   }
 
@@ -108,7 +108,7 @@ export function intentTable(intents: Intent[]): void {
   const dateWidth = 20;
 
   console.log(
-    `  ${BOLD}${"ID".padEnd(idWidth)}  ${"Signal".padEnd(descWidth)}  ${"Status".padEnd(statusWidth)}  ${"Source".padEnd(sourceWidth)}  ${"Created".padEnd(dateWidth)}${RESET}`,
+    `  ${BOLD}${"ID".padEnd(idWidth)}  ${"Intent".padEnd(descWidth)}  ${"Status".padEnd(statusWidth)}  ${"Source".padEnd(sourceWidth)}  ${"Created".padEnd(dateWidth)}${RESET}`,
   );
   console.log(
     `  ${GRAY}${"-".repeat(idWidth)}  ${"-".repeat(descWidth)}  ${"-".repeat(statusWidth)}  ${"-".repeat(sourceWidth)}  ${"-".repeat(dateWidth)}${RESET}`,
@@ -133,13 +133,13 @@ export function intentTable(intents: Intent[]): void {
 }
 
 /**
- * Print a detailed card for a single intent (user-facing: "signal").
+ * Print a detailed card for a single intent.
  *
  * @param intent - The intent object from the API.
  */
 export function intentCard(intent: Intent): void {
   console.log();
-  console.log(`  ${BOLD}${CYAN}Signal Details${RESET}`);
+  console.log(`  ${BOLD}${CYAN}Intent Details${RESET}`);
   console.log(`  ${GRAY}${"─".repeat(50)}${RESET}`);
   console.log(`  ${BOLD}ID${RESET}            ${GRAY}${intent.id}${RESET}`);
   console.log(`  ${BOLD}Status${RESET}        ${intent.status === "ACTIVE" ? GREEN : GRAY}${intent.status}${RESET}`);

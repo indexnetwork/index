@@ -1,5 +1,5 @@
 /**
- * Intent (signal) command handlers for the Index CLI.
+ * Intent command handlers for the Index CLI.
  *
  * Implements: list, show, create, archive subcommands.
  * Follows the same handleX(client, subcommand, positionals, options)
@@ -11,16 +11,16 @@ import * as output from "./output";
 
 const INTENT_HELP = `
 Usage:
-  index intent list [--archived] [--limit <n>] [--query <text>]  List your signals
-  index intent show <id>                        Show signal details (accepts short ID)
+  index intent list [--archived] [--limit <n>] [--query <text>]  List your intents
+  index intent show <id>                        Show intent details (accepts short ID)
   index intent prepare <content> [--answer 'prompt=reply']  Review and repair a draft
-  index intent create <content> [--receipt <token>]         Create an admitted signal
+  index intent create <content> [--receipt <token>]         Create an admitted intent
   index intent pause <id> | resume <id>         Hold or restart its agent
-  index intent update <id> <content>            Update a signal's description
-  index intent archive <id>                     Archive a signal (accepts short ID)
-  index intent networks <id>                    List the networks a signal is shared in
-  index intent add-to-network <id> <network-id>      Add a signal to a network
-  index intent remove-from-network <id> <network-id> Remove a signal from a network
+  index intent update <id> <content>            Update an intent's description
+  index intent archive <id>                     Archive an intent (accepts short ID)
+  index intent networks <id>                    List the networks an intent is shared in
+  index intent add-to-network <id> <network-id>      Add an intent to a network
+  index intent remove-from-network <id> <network-id> Remove an intent from a network
 `;
 
 /**
@@ -62,7 +62,7 @@ export async function handleIntent(
         query: options.query,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
-      output.heading("Signals");
+      output.heading("Intents");
       output.intentTable(result.intents);
       if (result.pagination.totalCount > 0) {
         output.dim(
@@ -75,7 +75,7 @@ export async function handleIntent(
 
     case "show": {
       if (!options.intentId) {
-        output.error("Missing signal ID. Usage: index intent show <id>", 1);
+        output.error("Missing intent ID. Usage: index intent show <id>", 1);
         return;
       }
       const intent = await client.getIntent(options.intentId);
@@ -96,31 +96,31 @@ export async function handleIntent(
         output.error("Missing content. Usage: index intent create <content>", 1);
         return;
       }
-      if (!options.json) output.info("Processing signal...");
+      if (!options.json) output.info("Processing intent...");
       const result = await client.createIntent(
         options.intentContent,
         options.targetId ? [options.targetId] : undefined,
         options.receipt,
       );
       if (options.json) { console.log(JSON.stringify(result)); return; }
-      output.success("Signal created.");
+      output.success("Intent created.");
       output.dim(`  shared in ${result.networkIds.length} network${result.networkIds.length === 1 ? "" : "s"}`);
       return;
     }
 
     case "update": {
       if (!options.intentId) {
-        output.error("Missing signal ID. Usage: index intent update <id> <content>", 1);
+        output.error("Missing intent ID. Usage: index intent update <id> <content>", 1);
         return;
       }
       if (!options.intentContent) {
         output.error("Missing content. Usage: index intent update <id> <content>", 1);
         return;
       }
-      if (!options.json) output.info("Updating signal...");
+      if (!options.json) output.info("Updating intent...");
       const result = await client.updateIntent(options.intentId, options.intentContent);
       if (options.json) { console.log(JSON.stringify(result)); return; }
-      output.success("Signal updated.");
+      output.success("Intent updated.");
       return;
     }
 
@@ -130,18 +130,18 @@ export async function handleIntent(
       const status = subcommand === "pause" ? "PAUSED" : "ACTIVE";
       await client.updateIntentStatus(options.intentId, status);
       if (options.json) console.log(JSON.stringify({ intentId: options.intentId, status }));
-      else output.success(`Signal ${status.toLowerCase()}.`);
+      else output.success(`Intent ${status.toLowerCase()}.`);
       return;
     }
 
     case "archive": {
       if (!options.intentId) {
-        output.error("Missing signal ID. Usage: index intent archive <id>", 1);
+        output.error("Missing intent ID. Usage: index intent archive <id>", 1);
         return;
       }
       await client.archiveIntent(options.intentId);
       if (options.json) { console.log(JSON.stringify({ success: true })); return; }
-      output.success(`Signal ${options.intentId} archived.`);
+      output.success(`Intent ${options.intentId} archived.`);
       return;
     }
 
@@ -165,7 +165,7 @@ export async function handleIntent(
       }
       await client.addIntentToNetwork(options.intentId, options.targetId);
       if (options.json) { console.log(JSON.stringify({ success: true })); return; }
-      output.success("Signal added to network.");
+      output.success("Intent added to network.");
       return;
     }
 
@@ -176,7 +176,7 @@ export async function handleIntent(
       }
       await client.removeIntentFromNetwork(options.intentId, options.targetId);
       if (options.json) { console.log(JSON.stringify({ success: true })); return; }
-      output.success("Signal removed from network.");
+      output.success("Intent removed from network.");
       return;
     }
   }
