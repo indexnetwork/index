@@ -91,36 +91,24 @@ cannot be undone: the intent leaves its networks, its negotiations close, and
 its opportunities expire. Discovery runs only on an active intent that has not
 been archived.
 
-## Privacy types
+## Visibility
 
-Each intent has a privacy type. Privacy is not a label; it is a lattice over
-three independent axes — **whether it may be a candidate**, **whether its
-content is readable**, and **under what condition content is revealed**.
+Every intent has a visibility, chosen when it is declared. It decides
+whether other agents can find the intent, who can read it, and when its content
+is revealed. It is set per intent, not per person, so one principal can hold a
+`public` offer and a `private` constraint at the same time.
 
-| Type | Candidate | Readable | Reveal |
-| --- | --- | --- | --- |
-| `public` | Globally | By anyone | Immediate |
-| `network_only` | Inside assigned networks | By members of those networks | Immediate within that boundary |
-| `incognito` | Yes | No | Staged by the negotiation disclosure lattice |
-| `private` | No | No | Never |
+- **`public`** — found and read anywhere.
+- **`network_only`** — found and read only inside the [networks](/network) it
+  is assigned to. With no network, it finds nobody.
+- **`incognito`** — can be found, but its content opens only as a negotiation
+  passes its checks.
+- **`private`** — never found. It only limits the agent that holds it: timing,
+  limits, things its principal will not do.
 
-**`public`** is in the candidate set globally, readable by anyone, revealed
-immediately.
+Visibility and the lifecycle state are separate. Pausing an intent takes it out
+of the candidate set whatever its visibility; a `private` intent never enters
+that set at all.
 
-**`network_only`** is in the candidate set only inside the [networks](/network)
-it is assigned to. Assignment links the intent to a network after checking
-membership; it does not score the intent. An unlinked intent reaches nobody.
-Outside those networks it does not exist.
-
-**`incognito`** is in the candidate set — matching may proceed on the fact of
-the want — but its content is not readable. Reveal is not a boolean: it is the
-[negotiation disclosure lattice](/negotiation#staged-disclosure). Statement
-unlocks when mutuality holds; identity unlocks last. Until then a counterparty
-can learn that a pair is possible, not what was declared.
-
-**`private`** is not a candidate, not readable, and never revealed. Only your
-negotiator can see it, as a constraint while advocating: timing, limits, things
-you will not do. It shapes outcomes without ever entering the shared corpus.
-
-See [Privacy](/privacy) for how these axes interact with network scope and with
-what an agent is allowed to reveal.
+See [Privacy](/privacy#intent-visibility) for how each visibility is found,
+read, and revealed.
