@@ -1,6 +1,10 @@
 {
   "name": "index-network",
   "description": "Index Network \u2014 find the right people and let them find you.",
-  "version": "0.6.0",
-  "skills": "./skills/"
+  "version": "0.8.0",
+  "skills": "./skills/",
+  "author": {
+    "name": "Index Network",
+    "url": "https://index.network"
+  }
 }
