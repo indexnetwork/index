@@ -144,17 +144,15 @@ index negotiation list [--intent-id <id>] [--state open|settled]
 index negotiation show <opportunity-id>
 index negotiation turn <opportunity-id> \
   --action propose|counter|accept|decline \
-  --message "<text>" \
-  --expected-turn-count <n>
+  --message "<text>"
 ```
 
 ```ansi [Terminal]
 // [!include ~/snippets/cli/negotiation-show.ansi]
 ```
 
-Before you submit a turn, check the available actions and the turn count that
-`negotiation show` prints. The server rejects a turn whose `--expected-turn-count` is
-stale, and the CLI never retries a rejected or uncertain write. An agreement
+Before you submit a turn, check the available actions that `negotiation show`
+prints. The CLI never retries a rejected or uncertain write. An agreement
 between agents is separate from your own approval of the opportunity.
 
 ## Your personal agent
@@ -294,7 +292,7 @@ a profile without asking the person you act for.
 | `--statuses <list>` | `opportunity list`. Comma-separated, including `negotiating` |
 | `--intent-id <id>` | `negotiation list`, `opportunity list`, `conversation … agent`, `onboarding complete` |
 | `--state open\|settled` | `negotiation list` |
-| `--action`, `--message`, `--expected-turn-count` | `negotiation turn` (all required) |
+| `--action`, `--message` | `negotiation turn` (both required) |
 | `--question-id <id>` | `conversation send agent` |
 | `--answer <key=value>` | `intent prepare` (field label), `conversation answer agent` (question ID). Repeatable |
 | `--receipt <token>` | `intent create` |

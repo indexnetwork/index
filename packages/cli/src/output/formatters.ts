@@ -506,7 +506,7 @@ export function negotiationCard(negotiation: NegotiationDetail): void {
   if (blockedReason) console.log(`  ${BOLD}Blocked:${RESET} ${YELLOW}${blockedReason}${RESET}`);
   console.log(rule);
   if (availableActions.length > 0) {
-    dim(`  Reply: index negotiation turn ${negotiation.opportunityId.slice(0, 8)} --action <action> --message <text> --expected-turn-count ${negotiation.turnCount}`);
+    dim(`  Reply: index negotiation turn ${negotiation.opportunityId.slice(0, 8)} --action <action> --message <text>`);
   }
   console.log();
 }

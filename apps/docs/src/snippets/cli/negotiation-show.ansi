@@ -19,4 +19,4 @@
 
   [1mAvailable actions:[0m [34mcounter[0m, [32maccept[0m, [31mdecline[0m  [90m(message up to 2000 characters)[0m
   [90m────────────────────────────────────────────────────────────[0m
-[90m  Reply: index negotiation turn a1b2c3d4 --action <action> --message <text> --expected-turn-count 2[0m
+[90m  Reply: index negotiation turn a1b2c3d4 --action <action> --message <text>[0m
