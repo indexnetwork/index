@@ -13,8 +13,6 @@ from typing import Any, Iterator
 
 _DEFAULT_API = "https://protocol.index.network"
 _INDEX_DOMAIN = "index.network"
-NEGOTIATOR_PROFILE = "negotiator"
-
 
 def hermes_env_path() -> Path:
     """The default Hermes `.env` (overridable for tests via HERMES_ENV_PATH)."""
@@ -22,18 +20,6 @@ def hermes_env_path() -> Path:
     if override:
         return Path(override)
     return Path.home() / ".hermes" / ".env"
-
-
-def negotiator_env_path() -> Path | None:
-    """The negotiator profile `.env`, once that profile directory exists."""
-    try:
-        from hermes_cli.profiles import get_profile_dir
-    except ImportError:
-        return None
-    directory = get_profile_dir(NEGOTIATOR_PROFILE)
-    if not directory.is_dir():
-        return None
-    return directory / ".env"
 
 
 def _matches_env_key(line: str, name: str) -> bool:
@@ -130,21 +116,13 @@ def ensure_negotiator_api_key() -> str:
 
 
 def upsert_index_env(name: str, value: str, path: Path | None = None) -> None:
-    """Write one env var to the gateway Hermes env.
-
-    The negotiator profile is only the model home, so Index credentials stay
-    on the gateway env.
-    """
+    """Write one env var to the gateway Hermes env."""
     upsert_env_file(path or hermes_env_path(), name, value)
 
 
 def remove_index_env(name: str, path: Path | None = None) -> None:
-    """Remove one env var from the gateway Hermes env and a leftover on the negotiator profile."""
+    """Remove one env var from the gateway Hermes env."""
     remove_env_file(path or hermes_env_path(), name)
-    if path is None and name.startswith("INDEX_"):
-        extra = negotiator_env_path()
-        if extra is not None:
-            remove_env_file(extra, name)
 
 
 def api_origin() -> str:

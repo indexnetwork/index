@@ -14,9 +14,13 @@
 - The sidecar mints an Index API key from the device session when
   `INDEX_API_KEY` is missing, so choosing Hermes as negotiator starts the Bun
   process. The key stays on the gateway env.
-- The negotiator profile is only the model home. It no longer keeps the Index
-  MCP server, the Index plugin, or Index env vars. The Bun negotiator does
-  not receive `INDEX_SESSION_TOKEN`; it authenticates with the API key.
+- Negotiator steps use the gateway profile's model and credentials. The
+  separate `negotiator` Hermes profile is gone. It was cloned once, so its key
+  went stale and every step failed with "No LLM provider configured".
+  Negotiation sessions are now recorded in the default profile under a
+  **Negotiations** project (folder `<hermes home>/negotiations`), created on
+  the first recorded step. The Bun negotiator does not receive
+  `INDEX_SESSION_TOKEN`; it authenticates with the API key.
 - The bundled negotiator keeps a stall until its own question is answered, it
   is resolved explicitly, or the negotiation is declined, stopped, or moves on.
   An unrelated message no longer releases every stall on the signal. On
