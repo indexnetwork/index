@@ -4,6 +4,13 @@
 ## Unreleased
 
 ### Fixed
+- The desktop header now shows the negotiator the gateway is running. The
+  dashboard runs in a separate process and used to report its own idle copy as
+  Off, and its Start would have launched a second negotiator. Start and Stop
+  now set a pause flag in `<hermes home>/index-negotiator.json`, which the
+  gateway applies within 5 seconds. The header control is renamed from
+  Sidecar to Negotiator, and its routes are now `/negotiator`,
+  `/negotiator/start`, and `/negotiator/stop`.
 - The sidecar mints an Index API key from the device session when
   `INDEX_API_KEY` is missing, so choosing Hermes as negotiator starts the Bun
   process. The key stays on the gateway env.

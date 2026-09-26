@@ -488,7 +488,7 @@
   cursor: pointer;
 }
 
-.index-dashboard__hdr-sidecar-status {
+.index-dashboard__hdr-negotiator-status {
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -499,11 +499,11 @@
   text-overflow: ellipsis;
 }
 
-.index-dashboard__hdr-sidecar-status--on {
+.index-dashboard__hdr-negotiator-status--on {
   color: var(--color-success, #3d9a5b);
 }
 
-.index-dashboard__hdr-sidecar {
+.index-dashboard__hdr-negotiator {
   display: inline-flex;
   align-items: center;
   height: 1.25rem;
@@ -517,15 +517,15 @@
   cursor: pointer;
 }
 
-.index-dashboard__hdr-sidecar--on {
+.index-dashboard__hdr-negotiator--on {
   color: var(--color-success, #3d9a5b);
 }
 
-.index-dashboard__hdr-sidecar:hover:not(:disabled) {
+.index-dashboard__hdr-negotiator:hover:not(:disabled) {
   color: var(--color-foreground, #f8fafc);
 }
 
-.index-dashboard__hdr-sidecar:disabled {
+.index-dashboard__hdr-negotiator:disabled {
   cursor: default;
   opacity: 0.55;
 }

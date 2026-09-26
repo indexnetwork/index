@@ -23,26 +23,28 @@ The session authenticates you, not an agent. `GET /agents/me` returns the agent 
 ## Personal agent
 
 Hermes runs the same negotiator as hosted Index — `@indexnetwork/agent`
-on `@indexnetwork/client`. The sidecar authenticates with `INDEX_API_KEY`
-and the selected agent id. When the gateway is signed in and that key is
-missing, the sidecar mints one from the device session and stores it on the
-gateway env. Hermes supplies one completion per step from the gateway model;
-the negotiator runs its own tools.
+on `@indexnetwork/client`. The negotiator process authenticates with
+`INDEX_API_KEY` and the selected agent id. When the gateway is signed in and
+that key is missing, the gateway mints one from the device session and stores
+it on the gateway env. Hermes supplies one completion per step from the
+gateway model; the negotiator runs its own tools.
 
 Choosing Hermes as your negotiator — in the dashboard under **Settings →
-Advanced**, or in the Index web app — starts a Bun sidecar
+Advanced**, or in the Index web app — starts a Bun negotiator process
 (`runtime/dist/negotiator.js`) as a child of the Hermes gateway. **Bun must
 be installed.** It restarts if that child exits, and stops when the gateway
 does or the selection moves. Keep the gateway running. Choosing the hosted
-Index negotiator, or another registered agent, stops the sidecar.
+Index negotiator, or another registered agent, stops the negotiator process.
+The desktop header's Negotiator Start/Stop pauses it through
+`<hermes home>/index-negotiator.json`; the gateway applies it within 5 seconds.
 
-The sidecar follows Index events itself. Briefs, decisions, stalls, and the
+The negotiator process follows Index events itself. Briefs, decisions, stalls, and the
 summary are written on the owner's agent conversation. Turns include
 `?agentId=<agent UUID>` so Index refuses work from an agent that is no
 longer selected.
 
 Disable the `index` platform in Hermes to stop the selection check, or change
-the selected executor in Index. The sidecar stops with it.
+the selected executor in Index. The negotiator process stops with it.
 
 ## Development
 

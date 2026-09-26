@@ -27,6 +27,28 @@ BUNDLE = Path(__file__).parent / "runtime" / "dist" / "negotiator.js"
 READY_SECONDS = 30.0
 CALL_SECONDS = 300.0
 RESTART_SECONDS = 1.0
+STATE_FILE = "index-negotiator.json"
+
+
+def read_state(path: Path) -> dict:
+    """@param path - The state file. @returns `{pid, paused}` as last written by either process."""
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    return {"pid": state.get("pid"), "paused": state.get("paused") is True}
+
+
+def write_state(path: Path, **changes) -> None:
+    """Merge `changes` into the state file shared by the gateway and the dashboard.
+
+    @param path - The state file.
+    """
+    state = read_state(path)
+    state.update(changes)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(state), encoding="utf-8")
+    temp.replace(path)
 
 
 def _bun() -> str:
@@ -38,15 +60,18 @@ def _bun() -> str:
 
 
 class Sidecar:
-    """Own one negotiator process and the loopback calls into it."""
+    """Own one negotiator process and the loopback calls into it.
+
+    Its pid and the header's pause live in a state file, because the dashboard
+    runs in a different process from the gateway that owns this child.
+    """
 
     def __init__(self, bridge, home: Path):
         self.bridge = bridge
-        del home
+        self.state_path = Path(home) / STATE_FILE
         self._lock = threading.Lock()
         self._process: subprocess.Popen | None = None
         self._wanted: tuple[str, str] | None = None
-        self._paused = False
         self._agent_id = ""
         self._url = ""
         atexit.register(self.stop)
@@ -62,7 +87,7 @@ class Sidecar:
         @param agent_id - The selected external agent's ID.
         """
         with self._lock:
-            self._paused = False
+            write_state(self.state_path, paused=False)
             self._wanted = (account, agent_id)
             if self._process is not None and self._process.poll() is None:
                 if self._agent_id == agent_id:
@@ -104,6 +129,7 @@ class Sidecar:
                 raise
             self._process, self._agent_id = process, agent_id
             self._url = f"http://127.0.0.1:{port}"
+            write_state(self.state_path, pid=process.pid)
             threading.Thread(
                 target=self._reap, args=(process, account, agent_id),
                 name="index-negotiator-watch", daemon=True,
@@ -117,7 +143,8 @@ class Sidecar:
         header's Stop sets this; losing the selection does not.
         """
         with self._lock:
-            self._paused = paused
+            if paused:
+                write_state(self.state_path, paused=True)
             self._wanted = None
             if self._process is None:
                 return
@@ -137,7 +164,7 @@ class Sidecar:
     @property
     def paused(self) -> bool:
         """@returns Whether Stop is holding the negotiator off while it stays selected."""
-        return self._paused
+        return read_state(self.state_path)["paused"]
 
     def _post(self, path: str, payload: dict) -> dict:
         request = urllib.request.Request(
@@ -172,6 +199,7 @@ class Sidecar:
         with self._lock:
             if self._process is process:
                 self._process, self._url = None, ""
+                write_state(self.state_path, pid=None)
             restart = self._wanted == (account, agent_id)
         if not restart:
             return
@@ -201,6 +229,8 @@ class Sidecar:
     def _terminate(self) -> None:
         process, self._process = self._process, None
         self._agent_id, self._url = "", ""
+        if process is not None:
+            write_state(self.state_path, pid=None)
         if process is None or process.poll() is not None:
             return
         process.terminate()

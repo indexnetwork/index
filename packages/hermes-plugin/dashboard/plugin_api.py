@@ -868,65 +868,59 @@ def _build_dashboard(
     }
 
 
-def _plugin_sidecar():
-    """The negotiator started by the plugin's Index platform, if this process has one."""
-    for name, module in sys.modules.items():
-        if name == "hermes_plugins.index_network" or name.startswith("hermes_plugins.index_network__"):
-            sidecar = getattr(module, "_sidecar", None)
-            if sidecar is not None:
-                return sidecar
-    return None
+negotiator = _load_module(f"{_runtime_package()}.sidecar", _PLUGIN_ROOT / "sidecar.py")
 
 
-@full_router.get("/sidecar")
-def sidecar_status() -> dict[str, Any]:
+def _negotiator_state_path() -> Path:
+    from hermes_constants import get_hermes_home
+
+    return Path(get_hermes_home()) / negotiator.STATE_FILE
+
+
+def _negotiator_status() -> dict[str, Any]:
+    """The gateway's negotiator as recorded in the shared state file."""
+    state = negotiator.read_state(_negotiator_state_path())
+    running = False
+    if isinstance(state["pid"], int):
+        try:
+            os.kill(state["pid"], 0)
+            running = True
+        except OSError:
+            pass
+    status = "Running" if running else "Stopped" if state["paused"] else "Off"
+    return {"success": True, "running": running, "paused": state["paused"], "status": status}
+
+
+@full_router.get("/negotiator")
+def negotiator_status() -> dict[str, Any]:
     """Whether this machine's negotiator process is running."""
-    sidecar = _plugin_sidecar()
-    if sidecar is None:
-        return {"success": True, "running": False, "paused": False, "status": "Unavailable"}
-    if sidecar.running:
-        status = "Running"
-    elif sidecar.paused:
-        status = "Stopped"
-    else:
-        status = "Off"
-    return {"success": True, "running": sidecar.running, "paused": sidecar.paused, "status": status}
+    return _negotiator_status()
 
 
-@full_router.post("/sidecar/start")
-def sidecar_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Start the negotiator while this Hermes agent is the selected executor."""
-    sidecar = _plugin_sidecar()
-    if sidecar is None:
-        return {"success": False, "error": "The Index plugin is not loaded in this process."}
+@full_router.post("/negotiator/start")
+def negotiator_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Lift the pause so the gateway starts the negotiator on its next selection check."""
     try:
         agent = tools.selected_agent()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": str(exc)}
     if not tools.this_install_selected(agent):
         return {"success": False, "error": "This Hermes agent is not the selected negotiator."}
-    owner_id = _text(agent.get("ownerId"))
-    agent_id = _text(agent.get("id"))
-    if not owner_id or not agent_id:
-        return {"success": False, "error": "Index did not name this agent's owner."}
     try:
-        sidecar.start(owner_id, agent_id)
-    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
-        return {"success": False, "running": sidecar.running, "error": str(exc)}
-    return {"success": True, "running": sidecar.running, "paused": False, "status": "Running" if sidecar.running else "Off"}
-
-
-@full_router.post("/sidecar/stop")
-def sidecar_stop(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Stop this machine's negotiator process."""
-    sidecar = _plugin_sidecar()
-    if sidecar is None:
-        return {"success": True, "running": False}
-    try:
-        sidecar.stop(paused=True)
-    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        negotiator.write_state(_negotiator_state_path(), paused=False)
+    except OSError as exc:
         return {"success": False, "error": str(exc)}
-    return {"success": True, "running": sidecar.running, "paused": sidecar.paused}
+    return _negotiator_status()
+
+
+@full_router.post("/negotiator/stop")
+def negotiator_stop(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Pause the negotiator; the gateway stops it on its next selection check."""
+    try:
+        negotiator.write_state(_negotiator_state_path(), paused=True)
+    except OSError as exc:
+        return {"success": False, "error": str(exc)}
+    return _negotiator_status()
 
 
 _ENVIRONMENTS = {
@@ -969,12 +963,6 @@ def _apply_environment(name: str) -> None:
     auth_login.remove_env_var("INDEX_APP_BASE_URL")
     os.environ.pop("INDEX_APP_BASE_URL", None)
     tools.reset_transport()
-    sidecar = _plugin_sidecar()
-    if sidecar is not None and sidecar.running:
-        try:
-            sidecar.stop()
-        except Exception:  # noqa: BLE001 - the switch still stands if the child is stuck.
-            pass
     try:
         mcp = _load_module(f"{_runtime_package()}.mcp", _PLUGIN_ROOT / "mcp.py")
         mcp.sync_index_mcp()
