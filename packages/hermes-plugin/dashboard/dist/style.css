@@ -835,7 +835,8 @@
 }
 
 /* Same height as .index-dashboard__card-header (the Intents column's head) so
-   the two lists start on the same line. */
+   the two lists start on the same line, and the tabs and Create share one
+   centerline with the Intents title and New signal. */
 .index-dashboard__net-head {
   display: flex;
   align-items: flex-end;
@@ -862,9 +863,6 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  /* The tabs beside it hang their underline into the head's padding; match
-     that drop so the action sits on the tab line rather than above it. */
-  margin-bottom: -0.43rem;
 }
 
 /* Create is the same outlined SDK Button as Join on the rows below it, one step
@@ -918,15 +916,13 @@
   min-width: 0;
   gap: 1.25rem;
   padding: 0;
-  /* Lets the active tab's underline hang into the head's bottom padding, so
-     the tab labels sit on the same line as the Intents card title. */
-  margin-bottom: -0.43rem;
   border-bottom: none;
   overflow-x: auto;
 }
 
 .index-dashboard__net-tabs .index-dashboard__profile-tab {
-  padding: 0 0 0.3rem 0;
+  /* Even padding keeps the label on the tab's center, level with Create. */
+  padding: 0.15rem 0;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.75rem;
   font-weight: 500;
@@ -2015,9 +2011,6 @@
 .index-dashboard__signal-head {
   display: grid;
   gap: 0.5rem;
-  padding-bottom: 0.75rem;
-  margin-bottom: 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
 }
 
 .index-dashboard__detail-title-row {
@@ -2058,7 +2051,7 @@
 
 .index-dashboard__card-title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 }
@@ -3467,6 +3460,10 @@
      scroll; turns run right up to it. */
   padding-right: 0;
   scrollbar-gutter: stable;
+  /* The rule under the signal head lives on the scroller itself, so the
+     transcript slides under the line instead of vanishing into a blank band
+     above its top edge. */
+  border-top: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
 }
 
 /* The agent's working notes as the mac app reads them: a discovery run is the
