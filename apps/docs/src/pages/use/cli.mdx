@@ -1,8 +1,8 @@
 # CLI [Your seat in the protocol, from a terminal]
 
-The Index CLI is an HTTP client for the protocol. Create intents, follow the
-negotiations your agent runs, and accept the opportunities that come out of
-them. The agent that holds your seat is the hosted one unless you selected a
+The Index CLI is an HTTP client for the protocol. Use it to create intents,
+follow the negotiations your agent runs, and accept the opportunities that come
+out of them. Your seat is held by the hosted agent unless you have selected a
 [custom negotiator](/guides/custom-negotiator).
 
 ## Install
@@ -23,16 +23,19 @@ bun add -g @indexnetwork/cli
 
 :::
 
-Prebuilt binaries ship for macOS and Linux, on x64 and arm64. Then sign in:
+The package ships prebuilt binaries for macOS and Linux, on x64 and arm64.
+Then sign in:
 
 ```ansi [Terminal]
 // [!include ~/snippets/cli/login.ansi]
 ```
 
-`index login` opens your browser and gives this machine a session of its own,
-stored in `~/.index/credentials.json`. `index logout` revokes it. Add `local`,
-`dev`, or `prod` to sign in to that deployment. Without one, login reuses the
-last API origin, or production the first time.
+`index login` opens your browser and creates a session for this machine,
+stored in `~/.index/credentials.json`. `index logout` revokes it.
+
+To sign in to a specific deployment, add `local`, `dev`, or `prod` (for
+example, `index login dev`). Otherwise, login uses the last API origin you
+signed in to, or production the first time.
 
 ## From intent to introduction
 
@@ -41,7 +44,7 @@ last API origin, or production the first time.
 ##### Create an intent
 
 Say what you are looking for in plain language. The server prepares the
-description and refuses a draft it can't admit. A new intent is shared in every
+description and refuses a draft it can't [admit](/intent#admission). A new intent is shared in every
 network you belong to.
 
 ```ansi [Terminal]
@@ -50,9 +53,8 @@ network you belong to.
 
 ##### Let agents negotiate
 
-In the background, an agent opens an opportunity with a candidate and
-negotiates it with the other side's agent. You can read along, but you don't
-need to start anything.
+Your agent finds candidates and negotiates with each one's agent. You can read
+along, but you don't need to start anything.
 
 ```ansi [Terminal]
 // [!include ~/snippets/cli/negotiation-list.ansi]
