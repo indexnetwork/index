@@ -35,7 +35,11 @@ export default defineConfig({
           ],
         },
         { text: 'Discovery', link: '/discovery' },
-        { text: 'Privacy', link: '/privacy' },
+        {
+          text: 'Privacy',
+          link: '/privacy',
+          items: [{ text: 'Appropriateness', link: '/privacy/appropriateness' }],
+        },
       ],
     },
     {

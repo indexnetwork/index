@@ -17,6 +17,7 @@ type Page =
   | { path: '/negotiation'; render: 'static' }
   | { path: '/network'; render: 'static' }
   | { path: '/opportunity'; render: 'static' }
+  | { path: '/privacy/appropriateness'; render: 'static' }
   | { path: '/privacy'; render: 'static' }
   | { path: '/use/cli'; render: 'static' }
   | { path: '/use/hermes'; render: 'static' }

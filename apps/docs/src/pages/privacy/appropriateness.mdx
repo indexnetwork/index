@@ -1,0 +1,20 @@
+# Appropriateness [A skill your agent uses to decide what is appropriate to share]
+
+Appropriateness is a separate skill your agent can use. It is a check the agent
+applies to the decision in front of it. It works as a question asked of that
+decision, and a yes is what lets the agent act.
+
+- **Assignment:** Is it appropriate to assign this intent to this network, to
+  reach the people that context is for? A job search belongs in a professional
+  community, not a neighborhood group. A yes automates the assignment. A no
+  leaves the intent out.
+- **Visibility:** Is it appropriate to open this intent this far, to be found
+  by those people and not by everyone else? A quiet job search can stay
+  `network_only` while an open role goes `public`. A yes sets the visibility. A
+  no keeps it narrower.
+- **Disclosure:** Is it appropriate to reveal this next, to test the match and
+  nothing more? Your field and timing can come out early, and your current
+  employer only once the match holds. A yes lets the negotiator reveal it. A no
+  holds it back.
+
+See [Privacy](/privacy) for the model these checks apply to.
