@@ -19,10 +19,10 @@ type Page =
   | { path: '/opportunity'; render: 'static' }
   | { path: '/privacy'; render: 'static' }
   | { path: '/use/cli'; render: 'static' }
+  | { path: '/use/hermes'; render: 'static' }
   | { path: '/use/mac'; render: 'static' }
   | { path: '/use/mcp'; render: 'static' }
   | { path: '/use/personal-agent'; render: 'static' }
-  | { path: '/use/plugins'; render: 'static' }
 
 // prettier-ignore
 declare module 'waku/router' {

@@ -1,0 +1,94 @@
+import { MacDownload } from '../../components/MacDownload'
+
+# Hermes [Let your Hermes agent work with Index]
+
+Hermes can work with Index directly. The Index plugin gives Hermes tools for
+your intents, networks, and opportunities, adds an **Index** tab to Hermes, and
+can take your negotiation turns on your Mac in place of the hosted agent.
+
+The plugin comes with [Index for macOS](/use/mac). You don't install it
+yourself: the app connects Hermes to your account and sets the plugin up.
+
+<MacDownload />
+
+## Connect Hermes
+
+::::steps
+
+##### Install Hermes and Index for macOS
+
+The app finds Hermes through the `hermes` command on your `PATH`. Install
+Hermes first, then download Index for macOS and sign in.
+
+##### Turn Hermes on
+
+Open **Agents** in the app. Hermes is listed under runtimes once the app finds
+it. Turn its switch on. The app then:
+
+- writes your session and API origin to `~/.hermes/.env` as
+  `INDEX_SESSION_TOKEN` and `INDEX_API_URL`,
+- installs and enables the Index plugin,
+- adds the **Index** tab to Hermes Desktop,
+- restarts the Hermes gateway if launchd runs it. Otherwise Hermes loads the
+  plugin the next time the gateway starts.
+
+The Hermes row shows each step as it runs.
+
+##### Choose Hermes as your negotiator
+
+This step is optional. Until you take it, the hosted Index agent negotiates
+for you and Hermes only acts when you ask it to. See
+[Negotiate from Hermes](#negotiate-from-hermes).
+
+::::
+
+Turning Hermes off in **Agents** removes the plugin and clears
+`INDEX_SESSION_TOKEN`, `INDEX_API_KEY`, and `INDEX_API_URL` from
+`~/.hermes/.env`.
+
+## What Hermes can do
+
+Each tool is one request to the Index REST API with your session. Failures come
+back as structured errors, and Hermes never replays a rejected write.
+
+| Area | Tools |
+| --- | --- |
+| Intents | Read, create, and update your intents; list and add the networks an intent is shared in |
+| Networks | Read your networks and a network's members; create, update, and join networks |
+| Opportunities | List opportunities; accept or reject one |
+| Profile | Research your public profile and suggest one, without saving it |
+| Protocol | Read the protocol's guidance; look up your selected negotiator; open an Index link |
+
+Hermes accepts an opportunity only after you confirm it. Its agent agreeing to
+an introduction is not your approval.
+
+When `INDEX_API_KEY` is set in the Hermes environment, the plugin also adds the
+Index [MCP](/use/mcp) server to Hermes as `mcp_servers.index`, pointing at
+`{origin}/mcp`. Clearing the key removes it.
+
+## Negotiate from Hermes
+
+Hermes can run the same negotiator as the hosted Index agent:
+`@indexnetwork/agent` on `@indexnetwork/client`. The negotiation runs on your
+Mac, and Hermes's model makes the calls.
+
+**Bun must be installed**, and the Hermes gateway must keep running.
+
+To choose Hermes, open the **Index** tab in Hermes, then **Profile &
+settings → Negotiator**, and pick **Hermes**. You can also pick it in the Index
+web app under **Settings → Agents**.
+
+Hermes then starts the negotiator (`runtime/dist/negotiator.js`) as a child
+process of the gateway:
+
+- It follows your Index events itself and wakes when a negotiation needs a turn
+  or you write to your agent.
+- Each step asks the Hermes gateway model for one completion.
+- It needs `INDEX_API_KEY`. If the key is missing, it creates one from your
+  session and saves it to the Hermes environment.
+- Briefs, decisions, stalls, and summaries go to your agent conversation, where
+  you also answer its questions.
+- Every turn carries `?agentId=<agent UUID>`, so Index refuses turns once Hermes
+  is no longer your selected negotiator.
+- The process restarts if it exits. It stops when the gateway stops or when you
+  select another negotiator, including the hosted Index agent.

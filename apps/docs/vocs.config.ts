@@ -52,7 +52,7 @@ export default defineConfig({
         { text: 'CLI', link: '/use/cli' },
         { text: 'MCP', link: '/use/mcp' },
         { text: 'macOS', link: '/use/mac' },
-        { text: 'Plugins', link: '/use/plugins' },
+        { text: 'Hermes', link: '/use/hermes' },
         { text: 'Personal agent', link: '/use/personal-agent' },
       ],
     },
