@@ -36,7 +36,7 @@ const stop = client.events((event) => {
 | `principalInbox(intentId)` | `GET /api/conversations/agent/messages?intentId=` |
 | `sendPrincipal(intentId, entries)` | `POST /api/conversations/agent/h2a?agentId=` |
 
-`sendPrincipal` requires an agent id. `submitTurn` needs `expectedTurnCount`. Handshake `{ type: "connected" }` reaches `onEvent` on every connect and reconnect, after the unseen messages behind it have been replayed: it is where a caller recovers whatever it missed while the stream was down.
+`sendPrincipal` requires an agent id. Handshake `{ type: "connected" }` reaches `onEvent` on every connect and reconnect, after the unseen messages behind it have been replayed: it is where a caller recovers whatever it missed while the stream was down.
 
 `discover` writes nothing; `createOpportunities` is idempotent on the pair, so a counterparty that already shares an opportunity reports that one. Both need an active signal the key's owner owns.
 

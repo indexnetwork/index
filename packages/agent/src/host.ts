@@ -613,7 +613,7 @@ export async function runNegotiate(
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
   const result = await negotiate({ user, intent, brief, opportunity, model, now, signal });
   if ("turn" in result) {
-    await client.submitTurn(opportunityId, { ...result.turn, expectedTurnCount: detail.turnCount });
+    await client.submitTurn(opportunityId, result.turn);
     return result;
   }
 
