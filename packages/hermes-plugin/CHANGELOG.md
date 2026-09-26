@@ -4,6 +4,23 @@
 ## Unreleased
 
 ### Fixed
+- The desktop header now shows the negotiator the gateway is running. The
+  dashboard runs in a separate process and used to report its own idle copy as
+  Off, and its Start would have launched a second negotiator. Start and Stop
+  now set a pause flag in `<hermes home>/index-negotiator.json`, which the
+  gateway applies within 5 seconds. The header control is renamed from
+  Sidecar to Negotiator, and its routes are now `/negotiator`,
+  `/negotiator/start`, and `/negotiator/stop`.
+- The sidecar mints an Index API key from the device session when
+  `INDEX_API_KEY` is missing, so choosing Hermes as negotiator starts the Bun
+  process. The key stays on the gateway env.
+- Negotiator steps use the gateway profile's model and credentials. The
+  separate `negotiator` Hermes profile is gone. It was cloned once, so its key
+  went stale and every step failed with "No LLM provider configured".
+  Negotiation sessions are now recorded in the default profile under a
+  **Negotiations** project (folder `<hermes home>/negotiations`), created on
+  the first recorded step. The Bun negotiator does not receive
+  `INDEX_SESSION_TOKEN`; it authenticates with the API key.
 - The bundled negotiator keeps a stall until its own question is answered, it
   is resolved explicitly, or the negotiation is declined, stopped, or moves on.
   An unrelated message no longer releases every stall on the signal. On
@@ -11,6 +28,8 @@
   and it retries a failed wake up to three times.
 
 ### Changed
+- The bundled negotiator submits a turn as `{ action, message }`; it no
+  longer sends the expected turn count.
 - The bundled negotiator is now published as `@indexnetwork/agent` (formerly
   `@indexnetwork/agentv2`); behaviour is unchanged.
 

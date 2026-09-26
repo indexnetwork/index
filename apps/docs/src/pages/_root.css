@@ -235,3 +235,49 @@
 }
 
 /* #endregion */
+
+/* #region Hermes install
+ *
+ * The copyable command row under the install card on `/use/hermes`
+ * (src/components/HermesInstall.tsx).
+ */
+
+.hermes-install__command {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--vocs-border-color-primary);
+  border-radius: 10px;
+  background: var(--vocs-background-color-primary);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+.hermes-install__command:hover {
+  border-color: var(--vocs-color-accent);
+}
+
+.hermes-install__command code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  color: var(--vocs-text-color-heading);
+}
+
+.hermes-install__prompt {
+  font-family: var(--vocs-font-family-mono, monospace);
+  color: var(--vocs-color-accent);
+}
+
+.hermes-install__copy {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--vocs-text-color-muted);
+}
+
+/* #endregion */

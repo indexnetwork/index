@@ -65,7 +65,7 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index intent remove-from-network <id> <network-id>` | Stop sharing an intent in a network. |
 | `index negotiation list` | List negotiations, optionally filtered by intent or open/settled state. |
 | `index negotiation show <opportunity-id>` | Read the negotiation's turns, current state, and available actions. |
-| `index negotiation turn <opportunity-id> --action <action> --message <text> --expected-turn-count <n>` | Submit one `propose`, `counter`, `accept`, or `decline` turn against the observed turn count. |
+| `index negotiation turn <opportunity-id> --action <action> --message <text>` | Submit one `propose`, `counter`, `accept`, or `decline` turn. |
 | `index opportunity list` | List persisted opportunities, with optional status and result-limit filters. |
 | `index opportunity show <id>` | Show an opportunity's presentation and participants. |
 | `index opportunity accept <id>` | Request acceptance through the server's owner-approval flow. |
@@ -176,7 +176,7 @@ Read current negotiations and submit structured turns using full opportunity IDs
 ```bash
 index negotiation list [--intent-id <id>] [--state open|settled]
 index negotiation show <opportunity-id> --json
-index negotiation turn <opportunity-id> --action propose --message "..." --expected-turn-count 0 --json
+index negotiation turn <opportunity-id> --action propose --message "..." --json
 ```
 
 Actions are `propose`, `counter`, `accept`, and `decline`. Read the detail's
@@ -336,7 +336,6 @@ index opportunity reject <id>
 | `--state <state>`    |       | Filter negotiations by `open` or `settled`                       |
 | `--action <action>`  |       | Required negotiation turn action: `propose`, `counter`, `accept`, or `decline` |
 | `--message <text>`   |       | Required message for a negotiation turn                         |
-| `--expected-turn-count <n>` | | Required observed nonnegative integer turn count for a negotiation turn |
 | `--question-id <id>` |       | Identify the displayed question when answering the personal agent |
 | `--answer <key=value>` |    | Repeat for recovery prompt labels or agent question IDs          |
 | `--receipt <token>`  |       | Preparation receipt for intent creation                          |

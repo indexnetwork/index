@@ -627,21 +627,21 @@
 
   // React twin of the DOM controls injected into the web dashboard's banner
   // header — rendered inline when no such header exists (desktop host).
-  function sidecarView(payload, busy) {
+  function negotiatorView(payload, busy) {
     const running = payload.running === true;
-    const error = payload.success === false ? (payload.error || "Could not update the sidecar.") : "";
+    const error = payload.success === false ? (payload.error || "Could not update the negotiator.") : "";
     const status = error || payload.status || (running ? "Running" : "Off");
     return { running: running, busy: busy, error: error, status: status };
   }
 
-  function SidecarToggle() {
+  function NegotiatorToggle() {
     const [state, setState] = React.useState({ running: false, busy: false, error: "", status: "Off" });
     const refresh = React.useCallback(function () {
-      fetchPluginJSON(API + "/sidecar", { method: "GET" }).then(function (payload) {
+      fetchPluginJSON(API + "/negotiator", { method: "GET" }).then(function (payload) {
         if (!payload) return;
         setState(function (current) {
           if (current.busy) return current;
-          return sidecarView(payload, false);
+          return negotiatorView(payload, false);
         });
       }).catch(function () { /* status is shown again on the next poll */ });
     }, []);
@@ -650,21 +650,40 @@
       const timer = window.setInterval(refresh, 5000);
       return function () { window.clearInterval(timer); };
     }, [refresh]);
+    // The gateway applies Start/Stop on its next selection check (every 5s),
+    // so wait for the status to flip rather than trusting the POST reply.
+    function settle(wantRunning, triesLeft) {
+      fetchPluginJSON(API + "/negotiator", { method: "GET" }).then(function (payload) {
+        const view = negotiatorView(payload || {}, false);
+        if (view.running === wantRunning || view.error || triesLeft <= 0) {
+          setState(view);
+          return;
+        }
+        window.setTimeout(function () { settle(wantRunning, triesLeft - 1); }, 1000);
+      }).catch(function () {
+        setState(function (current) { return Object.assign({}, current, { busy: false }); });
+      });
+    }
     function toggle() {
-      const path = state.running ? "/sidecar/stop" : "/sidecar/start";
+      const wantRunning = !state.running;
+      const path = wantRunning ? "/negotiator/start" : "/negotiator/stop";
       setState(function (current) { return Object.assign({}, current, { busy: true, error: "" }); });
       fetchPluginJSON(API + path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       }).then(function (payload) {
-        setState(sidecarView(payload || {}, false));
+        if (payload && payload.success === false) {
+          setState(negotiatorView(payload, false));
+          return;
+        }
+        settle(wantRunning, 6);
       }).catch(function (error) {
         setState(function (current) {
           return Object.assign({}, current, {
             busy: false,
-            error: (error && error.message) || "Could not update the sidecar.",
-            status: (error && error.message) || "Could not update the sidecar.",
+            error: (error && error.message) || "Could not update the negotiator.",
+            status: (error && error.message) || "Could not update the negotiator.",
           });
         });
       });
@@ -673,17 +692,17 @@
       ? (state.running ? "Stopping…" : "Starting…")
       : (state.running ? "Stop" : "Start");
     return React.createElement(React.Fragment, null,
-      React.createElement("span", { className: "index-dashboard__hdr-label" }, "SIDECAR"),
+      React.createElement("span", { className: "index-dashboard__hdr-label" }, "NEGOTIATOR"),
       React.createElement("span", {
-        className: "index-dashboard__hdr-sidecar-status" + (state.running ? " index-dashboard__hdr-sidecar-status--on" : ""),
+        className: "index-dashboard__hdr-negotiator-status" + (state.running ? " index-dashboard__hdr-negotiator-status--on" : ""),
         title: state.error || state.status,
       }, state.status),
       React.createElement("button", {
         type: "button",
-        className: "index-dashboard__hdr-sidecar" + (state.running ? " index-dashboard__hdr-sidecar--on" : ""),
+        className: "index-dashboard__hdr-negotiator" + (state.running ? " index-dashboard__hdr-negotiator--on" : ""),
         disabled: state.busy,
-        title: state.error || (state.running ? "Stop sidecar" : "Start sidecar"),
-        "aria-label": state.running ? "Stop sidecar" : "Start sidecar",
+        title: state.error || (state.running ? "Stop negotiator" : "Start negotiator"),
+        "aria-label": state.running ? "Stop negotiator" : "Start negotiator",
         onClick: toggle,
       }, label),
     );
@@ -691,7 +710,7 @@
 
   function InlineHeaderControls(props) {
     return React.createElement("div", { className: "index-dashboard__hdr index-dashboard__hdr--inline" },
-      DESKTOP_ENV ? React.createElement(SidecarToggle) : null,
+      DESKTOP_ENV ? React.createElement(NegotiatorToggle) : null,
       React.createElement("span", { className: "index-dashboard__hdr-label" }, "AUTO-REFRESH"),
       React.createElement("button", {
         type: "button",

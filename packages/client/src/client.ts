@@ -230,12 +230,12 @@ export interface Index {
   getNegotiation(id: string): Promise<NegotiationDetail>;
   /**
    * @param id - Opportunity id.
-   * @param turn - Action, message, and the log length it was decided against.
+   * @param turn - Action and message.
    * @returns The negotiation after the turn.
    */
   submitTurn(
     id: string,
-    turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
+    turn: { action: NegotiationAction; message: string },
   ): Promise<NegotiationDetail>;
   /**
    * Accept one opportunity for this owner. Same write as the MCP `accept_opportunity` tool.
@@ -446,12 +446,12 @@ export class IndexClient implements Index {
 
   /**
    * @param id - Opportunity id.
-   * @param turn - Action, message, and the log length it was decided against.
+   * @param turn - Action and message.
    * @returns The negotiation after the turn.
    */
   async submitTurn(
     id: string,
-    turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
+    turn: { action: NegotiationAction; message: string },
   ): Promise<NegotiationDetail> {
     const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
       "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/turns`), turn,

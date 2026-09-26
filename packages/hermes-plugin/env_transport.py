@@ -13,8 +13,6 @@ from typing import Any, Iterator
 
 _DEFAULT_API = "https://protocol.index.network"
 _INDEX_DOMAIN = "index.network"
-NEGOTIATOR_PROFILE = "negotiator"
-
 
 def hermes_env_path() -> Path:
     """The default Hermes `.env` (overridable for tests via HERMES_ENV_PATH)."""
@@ -22,18 +20,6 @@ def hermes_env_path() -> Path:
     if override:
         return Path(override)
     return Path.home() / ".hermes" / ".env"
-
-
-def negotiator_env_path() -> Path | None:
-    """The negotiator profile `.env`, once that profile directory exists."""
-    try:
-        from hermes_cli.profiles import get_profile_dir
-    except ImportError:
-        return None
-    directory = get_profile_dir(NEGOTIATOR_PROFILE)
-    if not directory.is_dir():
-        return None
-    return directory / ".env"
 
 
 def _matches_env_key(line: str, name: str) -> bool:
@@ -64,22 +50,79 @@ def remove_env_file(path: Path, name: str) -> None:
     path.write_text(("\n".join(kept) + "\n") if kept else "", encoding="utf-8")
 
 
+def _stored_env(name: str) -> str:
+    """One Hermes env value, from the process or the gateway env file."""
+    value = os.environ.get(name, "").strip().strip('"').strip("'")
+    if value:
+        return value
+    path = hermes_env_path()
+    if not path.is_file():
+        return ""
+    prefix = f"{name}="
+    export = f"export {name}="
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(prefix) or stripped.startswith(export):
+            raw = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+            if raw:
+                os.environ[name] = raw
+            return raw
+    return ""
+
+
+def ensure_negotiator_api_key() -> str:
+    """Return `INDEX_API_KEY`, minting one from the device session when it is missing.
+
+    The secret is returned only on create, so it is written to the gateway env
+    before the caller starts the negotiator. It is not copied onto the
+    negotiator profile.
+
+    @returns The API key.
+    @throws RuntimeError when no session is available or the mint fails.
+    """
+    existing = _stored_env("INDEX_API_KEY")
+    if existing:
+        return existing
+    token = _stored_env("INDEX_SESSION_TOKEN")
+    if not token:
+        raise RuntimeError("INDEX_API_KEY is required to run the Index negotiator.")
+    endpoint = api_origin() + "/api/auth/api-key/create"
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps({"name": "Hermes"}).encode(),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Index-Hermes",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:200].strip()
+        raise RuntimeError(f"Could not mint an Index API key ({exc.code}{': ' + detail if detail else ''}).") from exc
+    except Exception as exc:  # noqa: BLE001 - transport, DNS, or a malformed body.
+        raise RuntimeError(f"Could not reach {endpoint}: {exc}") from exc
+    key = payload.get("key") if isinstance(payload, dict) else None
+    if not isinstance(key, str) or not key.strip():
+        raise RuntimeError(f"{endpoint} returned no API key.")
+    key = key.strip()
+    upsert_env_file(hermes_env_path(), "INDEX_API_KEY", key)
+    os.environ["INDEX_API_KEY"] = key
+    return key
+
+
 def upsert_index_env(name: str, value: str, path: Path | None = None) -> None:
-    """Write one env var to the default Hermes env, and Index vars to the negotiator profile too."""
+    """Write one env var to the gateway Hermes env."""
     upsert_env_file(path or hermes_env_path(), name, value)
-    if path is None and name.startswith("INDEX_"):
-        extra = negotiator_env_path()
-        if extra is not None:
-            upsert_env_file(extra, name, value)
 
 
 def remove_index_env(name: str, path: Path | None = None) -> None:
-    """Remove one env var from the default Hermes env, and Index vars from the negotiator profile too."""
+    """Remove one env var from the gateway Hermes env."""
     remove_env_file(path or hermes_env_path(), name)
-    if path is None and name.startswith("INDEX_"):
-        extra = negotiator_env_path()
-        if extra is not None:
-            remove_env_file(extra, name)
 
 
 def api_origin() -> str:

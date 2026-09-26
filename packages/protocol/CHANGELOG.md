@@ -1,5 +1,12 @@
 # Changelog
 
+## 65.0.0
+
+### Breaking changes
+
+- `negotiationTurnSchema` and `NegotiationTurn` no longer carry the expected turn count; a turn is `{ action, message }`.
+- `decideNegotiationTurn` no longer refuses a turn whose observed turn count mismatches the log. `raced` now comes only from host commit conflicts, such as two inserts colliding on the same turn index.
+
 ## 64.0.0
 
 ### Breaking changes

@@ -36,7 +36,7 @@ def _is_ours(entry: dict) -> bool:
 
 
 def sync_index_mcp() -> None:
-    """Upsert `mcp_servers.index` when `INDEX_API_KEY` is set, or remove it when the key is gone.
+    """Upsert `mcp_servers.index` on the gateway profile when `INDEX_API_KEY` is set.
 
     A hand-edited entry, including one set `enabled: false`, is left in place.
     Import and config failures are ignored so plugin load still succeeds.

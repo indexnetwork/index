@@ -1365,7 +1365,7 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
   const result2 = await negotiate({ user, intent, brief, opportunity, model, now, signal });
   if ("turn" in result2) {
-    await client.submitTurn(opportunityId, { ...result2.turn, expectedTurnCount: detail.turnCount });
+    await client.submitTurn(opportunityId, result2.turn);
     return result2;
   }
   const text = result2.stall.suggestedAsk ? `${result2.stall.reason}${TO_ASK}${result2.stall.suggestedAsk}` : result2.stall.reason;

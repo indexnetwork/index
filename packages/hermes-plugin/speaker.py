@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 PLATFORM = "index"
+PROJECT_NAME = "Negotiations"
+PROJECT_FOLDER = "negotiations"
 # How many transcript rows of the current run are already in this Hermes session.
 _written: dict[str, tuple[str, int]] = {}
 
@@ -70,6 +73,23 @@ def _chat(messages: list) -> tuple[str, str] | None:
     return None
 
 
+def _project_folder() -> Path:
+    """@returns The folder of the Negotiations project, creating both when missing.
+
+    Hermes groups a session under a project by its cwd, so every Index session
+    is given this folder.
+    """
+    from hermes_cli import projects_db
+    from hermes_constants import get_hermes_home
+
+    folder = Path(get_hermes_home()) / PROJECT_FOLDER
+    folder.mkdir(parents=True, exist_ok=True)
+    with projects_db.connect_closing() as conn:
+        if projects_db.project_for_path(conn, str(folder)) is None:
+            projects_db.create_project(conn, name=PROJECT_NAME, folders=[str(folder)])
+    return folder
+
+
 def _record(adapter, messages: list, assistant: dict) -> None:
     """Append this step onto the Index session so it shows in the Hermes session list."""
     if adapter is None:
@@ -83,12 +103,9 @@ def _record(adapter, messages: list, assistant: dict) -> None:
         return
     from gateway.session import SessionSource
 
-    from .env_transport import NEGOTIATOR_PROFILE
-
     source = SessionSource(
         platform=adapter.platform, chat_id=chat_id, chat_type="dm", chat_name=title,
         user_id=getattr(adapter, "_owner", None) or "index", user_name="Index",
-        profile=NEGOTIATOR_PROFILE,
     )
     entry = store.get_or_create_session(source)
     session_db = store._db_for_key(entry.session_key) if hasattr(store, "_db_for_key") else None
@@ -103,6 +120,7 @@ def _record(adapter, messages: list, assistant: dict) -> None:
                 break
             except ValueError:
                 continue
+        session_db.update_session_cwd(entry.session_id, str(_project_folder()))
     user = next((_text(message) for message in messages if message.get("role") == "user"), "")
     previous, count = _written.get(chat_id, ("", 0))
     if previous != user:
@@ -129,15 +147,11 @@ def complete(payload: dict, adapter=None) -> dict:
     from agent.auxiliary_client import call_llm
     from agent.secret_scope import build_profile_secret_scope, reset_secret_scope, set_secret_scope
     from gateway.run import _resolve_gateway_model, _resolve_runtime_agent_kwargs
-    from hermes_cli.profiles import get_profile_dir
-    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from hermes_constants import get_hermes_home
 
-    from .env_transport import NEGOTIATOR_PROFILE
-    from .tools import ensure_negotiator_profile
-
-    ensure_negotiator_profile()
-    home = get_profile_dir(NEGOTIATOR_PROFILE)
-    home_token = set_hermes_home_override(home)
+    # The multiplexed gateway reads credentials only inside a profile scope;
+    # this is the gateway's own profile, so the step uses the same model and key.
+    home = get_hermes_home()
     secret_token = set_secret_scope(build_profile_secret_scope(home), profile_home=str(home))
     try:
         runtime = _resolve_runtime_agent_kwargs()
@@ -165,4 +179,3 @@ def complete(payload: dict, adapter=None) -> dict:
         return assistant
     finally:
         reset_secret_scope(secret_token)
-        reset_hermes_home_override(home_token)

@@ -48,17 +48,14 @@ _session: "_LoginSession | None" = None
 
 
 def upsert_env_var(name: str, value: str, path: Path | None = None) -> None:
-    """Insert or update `NAME=value` in the Hermes `.env`, leaving other vars intact.
-
-    Index vars are also written to the negotiator profile when `path` is omitted.
-    """
+    """Insert or update `NAME=value` in the Hermes `.env`, leaving other vars intact."""
     upsert_index_env(name, value, path)
 
 
 def remove_env_var(name: str, path: Path | None = None) -> None:
     """Remove every `NAME=` (or `export NAME=`) entry from the Hermes `.env`.
 
-    Index vars are also removed from the negotiator profile when `path` is omitted.
+    A leftover Index var on the negotiator profile is removed with it.
     """
     remove_index_env(name, path)
 

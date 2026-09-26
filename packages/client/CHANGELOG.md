@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0
+
+### Changed
+- **BREAKING:** `submitTurn` takes `{ action, message }`. The expected turn
+  count is removed from its turn type; TypeScript callers must stop passing it.
+
 ## 0.10.0
 
 ### Added

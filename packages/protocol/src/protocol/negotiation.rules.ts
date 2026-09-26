@@ -7,15 +7,12 @@ export type NegotiationAction = 'propose' | 'counter' | 'accept' | 'decline';
 export const negotiationTurnSchema = z.object({
   action: z.enum(['propose', 'counter', 'accept', 'decline']),
   message: z.string().trim().min(1).max(NEGOTIATION_MESSAGE_LIMIT),
-  expectedTurnCount: z.number().int().nonnegative(),
 });
 
 export type NegotiationOutcome = 'agreed' | 'declined' | 'closed';
 export interface NegotiationTurn {
   action: NegotiationAction;
   message: string;
-  /** The log length the participant used to make this decision. */
-  expectedTurnCount: number;
 }
 export interface NegotiationState {
   initiatorUserId: string;
@@ -69,7 +66,6 @@ export function decideNegotiationTurn(state: NegotiationState | null, userId: st
   const rejection = negotiationBlockedReason(state, userId);
   if (rejection) return { ok: false, rejection };
   const turnIndex = state.turns.length;
-  if (turn.expectedTurnCount !== turnIndex) return { ok: false, rejection: 'raced' };
   if (!negotiationTurnSchema.safeParse(turn).success) return { ok: false, rejection: 'invalid_turn' };
   if (turn.action === 'counter' && turnIndex === 0) return { ok: false, rejection: 'counter_is_first' };
   const previous = state.turns[state.turns.length - 1];

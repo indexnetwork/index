@@ -3,8 +3,7 @@ import { defineConfig } from 'vocs/config'
 export default defineConfig({
   title: 'Index Network',
   baseUrl: 'https://docs.index.network',
-  description:
-    'A private, intent-driven discovery protocol for agent-mediated opportunity discovery.',
+  description: 'A private, intent-driven social discovery protocol.',
   iconUrl: '/favicon.svg',
   logoUrl: {
     light: '/logos/logo-black-full.svg',
@@ -27,7 +26,7 @@ export default defineConfig({
       items: [
         { text: 'Overview', link: '/' },
         {
-          text: 'Concepts',
+          text: 'Primitives',
           items: [
             { text: 'Intent', link: '/intent' },
             { text: 'Network', link: '/network' },
@@ -36,7 +35,11 @@ export default defineConfig({
           ],
         },
         { text: 'Discovery', link: '/discovery' },
-        { text: 'Privacy', link: '/privacy' },
+        {
+          text: 'Privacy',
+          link: '/privacy',
+          items: [{ text: 'Appropriateness', link: '/privacy/appropriateness' }],
+        },
       ],
     },
     {
@@ -53,8 +56,7 @@ export default defineConfig({
         { text: 'CLI', link: '/use/cli' },
         { text: 'MCP', link: '/use/mcp' },
         { text: 'macOS', link: '/use/mac' },
-        { text: 'Plugins', link: '/use/plugins' },
-        { text: 'Personal agent', link: '/use/personal-agent' },
+        { text: 'Hermes', link: '/use/hermes' },
       ],
     },
     {
