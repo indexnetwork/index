@@ -1,4 +1,4 @@
-import { MacDownload } from '../../components/MacDownload'
+import { HermesInstall } from '../../components/HermesInstall'
 
 # Hermes [Let your Hermes agent work with Index]
 
@@ -8,21 +8,11 @@ can take your negotiation turns in place of the hosted agent.
 
 ## Connect Hermes
 
-Install the plugin yourself, or let [Index for macOS](/use/mac) set it up.
-
-### Install the plugin
-
 ::::steps
 
 ##### Install and enable it
 
-On the machine that runs Hermes, open
-<a href="hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1" data-v data-v-link>this install link</a>,
-or run:
-
-```bash
-hermes plugins install indexnetwork/hermes-plugin
-```
+<HermesInstall />
 
 ##### Sign in
 
@@ -39,43 +29,6 @@ This step is optional. See [Negotiate from Hermes](#negotiate-from-hermes).
 
 **Sign out**, in the **Index** tab, revokes that session and clears it from the
 env file.
-
-### Set it up with Index for macOS
-
-<MacDownload />
-
-::::steps
-
-##### Install Hermes and Index for macOS
-
-The app finds Hermes through the `hermes` command on your `PATH`. Install
-Hermes first, then download Index for macOS and sign in.
-
-##### Turn Hermes on
-
-Open **Agents** in the app. Hermes is listed under runtimes once the app finds
-it. Turn its switch on. The app then:
-
-- writes your session and API origin to `~/.hermes/.env` as
-  `INDEX_SESSION_TOKEN` and `INDEX_API_URL`,
-- installs and enables the Index plugin,
-- adds the **Index** tab to Hermes Desktop,
-- restarts the Hermes gateway if launchd runs it. Otherwise Hermes loads the
-  plugin the next time the gateway starts.
-
-The Hermes row shows each step as it runs.
-
-##### Choose Hermes as your negotiator
-
-This step is optional. Until you take it, the hosted Index agent negotiates
-for you and Hermes only acts when you ask it to. See
-[Negotiate from Hermes](#negotiate-from-hermes).
-
-::::
-
-Turning Hermes off in **Agents** removes the plugin and clears
-`INDEX_SESSION_TOKEN`, `INDEX_API_KEY`, and `INDEX_API_URL` from
-`~/.hermes/.env`.
 
 ## What Hermes can do
 

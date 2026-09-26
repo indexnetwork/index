@@ -23,7 +23,6 @@ type Page =
   | { path: '/use/hermes'; render: 'static' }
   | { path: '/use/mac'; render: 'static' }
   | { path: '/use/mcp'; render: 'static' }
-  | { path: '/use/personal-agent'; render: 'static' }
 
 // prettier-ignore
 declare module 'waku/router' {

@@ -57,7 +57,6 @@ export default defineConfig({
         { text: 'MCP', link: '/use/mcp' },
         { text: 'macOS', link: '/use/mac' },
         { text: 'Hermes', link: '/use/hermes' },
-        { text: 'Personal agent', link: '/use/personal-agent' },
       ],
     },
     {
