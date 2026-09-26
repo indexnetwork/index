@@ -128,7 +128,7 @@ export type NegotiationDecision = { ok: false; rejection: NegotiationRejection }
   blockedReason: 'turn_limit' | null;
 };
 
-export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string; expectedTurnCount: number }
+export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string }
 export type SubmitTurnRejection = NegotiationRejection;
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 

@@ -60,7 +60,7 @@ function renderHelp(json?: boolean): void {
   negotiation list [--intent-id <id>] [--state open|settled]
   negotiation show <opportunity-id>
   negotiation turn <opportunity-id> --action propose|counter|accept|decline
-      --message <text> --expected-turn-count <n>
+      --message <text>
   conversation list|with|show|send|answer|stream
   conversation show agent --intent-id <id>
   conversation send agent <text> --intent-id <id> [--question-id <id>]
@@ -284,7 +284,6 @@ async function main(): Promise<void> {
         state: args.state,
         action: args.action,
         message: args.message,
-        expectedTurnCount: args.expectedTurnCount,
         json: args.json,
       });
       return;
