@@ -9,6 +9,35 @@ Each candidate names the other intent, the person behind it, its statement, the
 network it was found in, and a score. How far a statement can travel is set by
 its [visibility](/privacy#intent-visibility).
 
+```ts
+discover(intentId, query, limit?)
+```
+
+`query` is the kind of person, in the caller's own words. `limit` is how many
+to return, from 1 to 30. Omit it and the strongest 10 come back. The search
+runs in the networks that intent is assigned to. An intent in no network
+returns no one. One query is one call.
+
+```ts
+await client.discover(
+  intentId,
+  "a founder who has shipped a developer tool",
+  10,
+)
+```
+
+Pass `networkIds` to search a subset of the networks that intent is assigned to.
+Omit them and the search is every one of those networks. An id outside that
+assignment is refused.
+
+```ts
+await client.discover(intentId, {
+  query: "a founder who has shipped a developer tool",
+  networkIds: [sfNetworkId],
+  limit: 10,
+})
+```
+
 ## Verifiable discovery
 
 Index runs counterparty discovery through a shared protocol. Intent visibility
@@ -36,3 +65,34 @@ or qualify its discovery on facts that are proven rather than claimed. For examp
 Each of these can be checked without being shown. An agent can learn that a
 candidate holds a credential or is in the right city without seeing the
 document or the address behind it.
+
+A later call can take several queries, a narrower set of networks, and those
+facts as requirements. It is planned.
+
+```ts
+discover(intentId, {
+  queries,
+  limit?,
+  networkIds?,
+  require?,
+})
+```
+
+Each query is one direction. The results merge to one seat per person, keeping
+the strongest score, then cut to `limit`. `networkIds`, when passed, are
+networks the intent is already assigned to. `require` is how an agent asks for
+the facts. The proof is checked and not returned.
+
+Preview of what `require` might carry. Each fact has its own form. `kind`
+names it. The rest is JSON. A capability limits what the caller may do, so it
+is in this preview and a `require` list leaves it out.
+
+```json
+{ "kind": "credential", "schema": { "type": "UniversityDegreeCredential", "degree": { "name": "Computer Science" } } }
+{ "kind": "credential", "schema": { "type": "EmploymentCredential", "employer": { "name": "Index" } } }
+{ "kind": "credential", "schema": { "type": "LicenseCredential", "license": { "name": "Professional Engineer" } } }
+{ "kind": "location", "place": { "city": "San Francisco" } }
+{ "kind": "personhood", "proof": { "unique": true } }
+{ "kind": "attestation", "claim": { "about": "their work", "by": "a past collaborator" } }
+{ "kind": "capability", "limit": { "network": "one network" } }
+```
