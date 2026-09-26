@@ -175,26 +175,76 @@ def local_agent_id() -> str:
     return os.environ.get(_LOCAL_AGENT_ENV, "").strip()
 
 
+def quiet_negotiator_profile() -> None:
+    """Drop Index MCP and the Index plugin from the negotiator profile.
+
+    That profile only supplies the model for a completion. Index MCP, the
+    Index plugin, and its plugin entry belong on the gateway profile.
+    """
+    from .env_transport import negotiator_env_path, remove_env_file
+
+    env = negotiator_env_path()
+    if env is None:
+        return
+    # A cloned gateway .env would copy the device session. The model home
+    # does not use it; the gateway process does.
+    remove_env_file(env, "INDEX_SESSION_TOKEN")
+    path = env.parent / "config.yaml"
+    if not path.is_file():
+        return
+    try:
+        import yaml
+        from hermes_cli.config import atomic_config_write
+
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, dict):
+            return
+        changed = False
+        servers = data.get("mcp_servers")
+        if isinstance(servers, dict) and "index" in servers:
+            servers.pop("index")
+            if not servers:
+                data.pop("mcp_servers", None)
+            changed = True
+        plugins = data.get("plugins")
+        if isinstance(plugins, dict):
+            enabled = plugins.get("enabled")
+            if isinstance(enabled, list) and "index-network" in enabled:
+                plugins["enabled"] = [name for name in enabled if name != "index-network"]
+                changed = True
+            entries = plugins.get("entries")
+            if isinstance(entries, dict) and "index-network" in entries:
+                entries.pop("index-network")
+                if not entries:
+                    plugins.pop("entries", None)
+                changed = True
+        if changed:
+            atomic_config_write(path, data)
+    except Exception:  # noqa: BLE001 - a profile tidy must not block negotiation.
+        return
+
+
 def ensure_negotiator_profile() -> None:
     """Create the negotiator Hermes profile, or reuse it when it already exists.
 
     Clones model config and `.env` without messaging channels, so a copied bot
-    token cannot make two gateways fight over one bot.
+    token cannot make two gateways fight over one bot. Index MCP and the Index
+    plugin are then removed: this profile is only the model home.
     """
     from hermes_cli.profiles import create_profile, get_profile_dir
 
     directory = get_profile_dir(NEGOTIATOR_PROFILE)
     identity = ("config.yaml", ".env", "SOUL.md", "profile.yaml", "auth.json", "state.db")
-    if directory.is_dir() and any((directory / name).exists() for name in identity):
-        return
-    try:
-        create_profile(NEGOTIATOR_PROFILE, clone_config=True)
-    except FileExistsError:
-        return
+    if not (directory.is_dir() and any((directory / name).exists() for name in identity)):
+        try:
+            create_profile(NEGOTIATOR_PROFILE, clone_config=True)
+        except FileExistsError:
+            pass
+    quiet_negotiator_profile()
 
 
 def remember_local_agent(agent_id: str) -> None:
-    """Store this install's agent id in the process and both Hermes env files.
+    """Store this install's agent id in the process and the gateway Hermes env.
 
     @param agent_id - The Hermes agent registered by this install.
     """
