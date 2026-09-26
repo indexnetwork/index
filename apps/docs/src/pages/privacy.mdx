@@ -20,8 +20,8 @@ Privacy applies at each step, from you to the person on the other side:
    shared space, and who can find it.
 3. **[Agent and agent](#agent-and-agent)** — what each side learns during a
    negotiation.
-4. **[Their agent and them](#their-agent-and-them)** — what each person sees,
-   and what needs their yes.
+4. **[Each person and their agent](#each-person-and-their-agent)** — what each
+   person sees, and what needs their yes.
 
 ## You and your agent
 
@@ -88,7 +88,7 @@ to, and one with no networks named is shared to all of your current networks.
 
 ### Counterparty discovery
 
-Intent visibility and network assignment are enforced by the shared
+Intent visibility and network scope are enforced by the shared
 [discovery](/discovery) protocol, not by each agent on its own.
 
 An agent can only discover people through intents assigned to networks its
@@ -153,49 +153,51 @@ leaves the enclave, so the other side never learns you asked and the operator
 never sees either intent. It is the double-blind version of "I would be
 interested if they are." This is [planned](#planned).
 
-## Their agent and them
+## Each person and their agent
 
 Each person sees the same opportunity through their own agent, and nothing
-becomes a relationship without a yes.
+becomes a connection without a yes.
 
-- **Per-viewer card.** Each person reads a card written for their role: why this
-  pair, and their own next action. It carries no embeddings or scores. Private
-  context can shape what you see without being revealed to the other side.
-- **Visibility.** Only the actors on an opportunity can see it.
-- **Consent.** When the agents agree, the opportunity becomes `pending`. A
-  person's accept is a separate act, and one accept opens the conversation.
-  Silence, errors, and timeouts are never consent. A later yes cannot override
-  an earlier refusal.
+- **Per-viewer card:** Each person reads a card written for their role: why
+  this pair, and their own next action. The card carries no embeddings or
+  scores. Private context can shape what a person sees without being revealed
+  to the other side.
+- **Access:** Only the actors on an opportunity can see it.
+- **Consent:** When the agents agree, the opportunity becomes `pending`. Each
+  person's accept is a separate act. Silence, errors, and timeouts are never
+  consent, and a later yes cannot override an earlier refusal.
 
-**What this makes possible: expiration on consent.** An [opportunity](/opportunity)
-actor can expire. That expiry is a gateway out of the opportunity: into a
-conversation, or into a further event.
+What this makes possible: expiry on consent. An actor's part in an
+[opportunity](/opportunity) can expire, and that expiry is the way out of the
+opportunity, into a conversation or a further event.
 
 ## Planned
 
-- **Federated hosting.** A community runs its own host, and its membership and
-  corpus stay there.
-- **Network TEE.** Discovery and negotiation run inside a trusted execution
-  environment, so the operator cannot read the corpus.
-- **Incognito negotiation**, built on the network TEE (see
-  [above](#incognito-negotiation)).
+- **Federated hosting:** A community runs its own host, so its membership and
+  corpus stay on infrastructure it controls.
+- **Network TEE:** Discovery and negotiation run inside a trusted execution
+  environment, so whoever operates the host cannot read the corpus.
+- **Incognito negotiation:** Incognito intents are negotiated inside the
+  network TEE, so their content opens only as the negotiation passes its
+  checks. See [Incognito negotiation](/privacy#incognito-negotiation).
 
-## Concepts
+## Appropriateness
 
-### Appropriateness
-
-An evaluation metric for the decision in front of the agent. It works as a
+A check the agent applies to the decision in front of it. It works as a
 question asked of that decision, and a yes is what lets the agent act.
 
-- **Assignment.** Is it appropriate to assign this intent to this network, in
-  order to reach the people that context is for? A job search belongs in a
-  professional community, not a neighborhood group. A yes automates the
-  assignment. A no leaves the intent out.
-- **Visibility.** Is it appropriate to open this intent this far, in order to
-  be found by those people and not by everyone else?
-- **Disclosure.** Is it appropriate to reveal this next, in order to test the
-  match and nothing more? The negotiator agent can use that information to make
-  better disclosure decisions.
+- **Assignment:** Is it appropriate to assign this intent to this network, to
+  reach the people that context is for? A job search belongs in a professional
+  community, not a neighborhood group. A yes automates the assignment. A no
+  leaves the intent out.
+- **Visibility:** Is it appropriate to open this intent this far, to be found
+  by those people and not by everyone else? A quiet job search can stay
+  `network_only` while an open role goes `public`. A yes sets the visibility. A
+  no keeps it narrower.
+- **Disclosure:** Is it appropriate to reveal this next, to test the match and
+  nothing more? Your field and timing can come out early, and your current
+  employer only once the match holds. A yes lets the negotiator reveal it. A no
+  holds it back.
 
 This page describes the protocol's privacy model. For how Index Network, Inc.
 handles personal data as a company, see the

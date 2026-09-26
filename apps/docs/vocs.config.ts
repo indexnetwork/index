@@ -27,7 +27,7 @@ export default defineConfig({
       items: [
         { text: 'Overview', link: '/' },
         {
-          text: 'Concepts',
+          text: 'Primitives',
           items: [
             { text: 'Intent', link: '/intent' },
             { text: 'Network', link: '/network' },

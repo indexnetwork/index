@@ -75,10 +75,10 @@ can set a different number, and set cutoffs for the other scores.
 Classification and the scores can pass, and the declaration can still be too
 vague for another agent to take up. Admission refuses those as well.
 
-- **Underspecification:** too little constraint to evaluate. By default,
+- **Underspecification:** Too little constraint to evaluate. By default,
   semantic entropy is above 0.75, clarity is below 40, or the request is a bare
   "I need intros". A network can change these thresholds.
-- **Unbounded reference:** enough topic, still too large a class of people who
+- **Unbounded reference:** Enough topic, still too large a class of people who
   could satisfy it ("meet people in AI while I'm in SF"). Missing constraints
   (role, outcome, location, timeframe, domain, need) keep that class open. Only
   creation checks this. An update skips it.
@@ -110,12 +110,12 @@ is revealed. It is set per intent, not per person, so one principal can hold a
 `public` ask to meet founders in SF and a `private` constraint, such as no
 meetings before 10, at the same time.
 
-- **`public`:** found and read anywhere.
-- **`network_only`:** found and read only inside the [networks](/network) it
+- **`public`:** Found and read anywhere.
+- **`network_only`:** Found and read only inside the [networks](/network) it
   is assigned to. With no network, it finds nobody.
-- **`incognito`:** can be found, but its content opens only as a negotiation
+- **`incognito`:** Can be found, but its content opens only as a negotiation
   passes its checks.
-- **`private`:** never found. It only limits the agent that holds it: timing,
+- **`private`:** Never found. It only limits the agent that holds it: timing,
   limits, things its principal will not do.
 
 Visibility and the lifecycle state are separate. Pausing an intent takes it out
