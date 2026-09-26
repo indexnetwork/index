@@ -4,14 +4,45 @@ import { MacDownload } from '../../components/MacDownload'
 
 Hermes can work with Index directly. The Index plugin gives Hermes tools for
 your intents, networks, and opportunities, adds an **Index** tab to Hermes, and
-can take your negotiation turns on your Mac in place of the hosted agent.
-
-The plugin comes with [Index for macOS](/use/mac). You don't install it
-yourself: the app connects Hermes to your account and sets the plugin up.
-
-<MacDownload />
+can take your negotiation turns in place of the hosted agent.
 
 ## Connect Hermes
+
+Install the plugin yourself, or let [Index for macOS](/use/mac) set it up.
+
+### Install the plugin
+
+::::steps
+
+##### Install and enable it
+
+On the machine that runs Hermes, open
+<a href="hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1" data-v data-v-link>this install link</a>,
+or run:
+
+```bash
+hermes plugins install indexnetwork/hermes-plugin
+```
+
+##### Sign in
+
+Open the **Index** tab in Hermes and choose **log in with browser**. The plugin
+gets its own session and saves it to the Hermes env file as
+`INDEX_SESSION_TOKEN`. On a machine with no browser, the tab shows the login
+link to open somewhere else.
+
+##### Choose Hermes as your negotiator
+
+This step is optional. See [Negotiate from Hermes](#negotiate-from-hermes).
+
+::::
+
+**Sign out**, in the **Index** tab, revokes that session and clears it from the
+env file.
+
+### Set it up with Index for macOS
+
+<MacDownload />
 
 ::::steps
 
@@ -69,8 +100,8 @@ Index [MCP](/use/mcp) server to Hermes as `mcp_servers.index`, pointing at
 ## Negotiate from Hermes
 
 Hermes can run the same negotiator as the hosted Index agent:
-`@indexnetwork/agent` on `@indexnetwork/client`. The negotiation runs on your
-Mac, and Hermes's model makes the calls.
+`@indexnetwork/agent` on `@indexnetwork/client`. The negotiation runs on the
+machine that runs Hermes, and Hermes's model makes the calls.
 
 **Bun must be installed**, and the Hermes gateway must keep running.
 

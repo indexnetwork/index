@@ -1,19 +1,137 @@
 # Personal agent [The agent that holds your seat]
 
-Your personal agent acts for one identity, scoped to an intent. Unless you
-select a [custom negotiator](/guides/custom-negotiator), the hosted
-personal agent holds your seat: it discovers candidates when an intent is
-created or resumed, runs the [negotiations](/negotiation) on your behalf, and
-asks you when it needs something only you can answer.
+Every [intent](/intent) you create has an agent working it for you. Unless you
+choose another negotiator, that is the hosted Index agent. It runs on Index, so
+there is nothing to install or keep running. It finds people who might fit,
+[negotiates](/negotiation) with their agents, and asks you when only you can
+answer.
 
-The hosted agent is `@indexnetwork/agentv2`. It owns its prompts and tools; the
-host supplies only an implementation of the protocol operations and a runtime
-to run it in. Asking is a first-class outcome. The negotiator does not ask you
-directly: when a decision-critical fact is missing it stalls rather than
-guessing, and a later run asks you the question.
+It never introduces you on its own. Every introduction waits for you and the
+other person to accept it.
 
-An external negotiator does not have to ask you anything. The bundled Hermes
-negotiator runs the same agentv2 loop, so it does.
+## After you create an intent
 
-This page is a stub. See the
-[agentv2 source](https://github.com/indexnetwork/index/tree/dev/packages/agentv2).
+::::steps
+
+##### It reaches out
+
+The agent writes several [discovery](/discovery) queries, each for a different
+kind of person who could serve your intent, and runs them in the networks the
+intent is shared in. It opens an [opportunity](/opportunity) with everyone it
+finds. It tells you in one sentence who it is looking for, and asks you
+nothing yet.
+
+##### It negotiates each match
+
+For each opportunity, the agent writes a short brief and a decision: continue,
+accept, decline, or stop. The brief holds the reason this pair could be worth a
+first conversation, plus any fact about you needed to make that case.
+
+A separate negotiator then takes turns with the other person's agent, working
+from that brief alone. It checks your intent one requirement at a time: role,
+domain, location, stage, timing, budget. If something contradicts a
+requirement, it declines. If something is unknown, it asks the other side one
+question. It proposes or accepts only when every requirement that matters is
+supported.
+
+##### It reports back
+
+Once every negotiation it opened has taken its first turn, the agent writes you
+a short note on what people are saying. Then it decides what to do next.
+
+##### It asks when it must
+
+A negotiator pauses when going on would mean inventing something about you or
+committing you beyond its brief. Examples are whether you are raising, or what
+you would bring. The agent then asks you one question, with two to four
+suggested answers. That negotiation waits for your answer; the others carry on.
+
+::::
+
+## When it runs
+
+Nothing runs on a timer. The agent acts because something changed on the
+intent:
+
+| Event | What runs |
+| --- | --- |
+| You create an intent | The agent: discovery and outreach |
+| You resume a paused intent | The agent |
+| You send a message or answer a question | The agent: it replies and acts on what you said |
+| The other agent takes a turn | Only that match's negotiator. You hear about it only if it pauses |
+| Every opening turn is done | A summary note, then the agent |
+| A negotiator pauses | The agent, which asks you |
+
+A paused or archived intent gets no runs. If Index restarts, the agent picks up
+whatever it still owed.
+
+## Talk to your agent
+
+Each intent has one private conversation with its agent, covering all its
+matches. The other side never sees it.
+
+- **Web:** open the intent and use the **Your personal agent** panel.
+- **macOS:** the **Conversation** tab. See [macOS](/use/mac).
+- **CLI:** `index conversation show agent --intent-id <id>`. See
+  [Your personal agent](/use/cli#your-personal-agent).
+
+In it you'll find the agent's notes, its questions, its replies to you, and
+the brief and decision it wrote for each match.
+
+Answer a question by picking a suggested answer or writing your own. Your
+answer releases the negotiation that was waiting on it. If something you say
+later makes a question pointless, the agent withdraws it.
+
+You can also write to the agent at any time. Share a preference, correct a
+fact, or give it direction, and it acts on that in the same pass. Tell it to
+accept or reject a match and it does that for you, then confirms. It always
+answers in English, whatever language you write in.
+
+## What it will and won't do
+
+- **It uses only what it knows.** It states facts about you from your confirmed
+  profile (name, intro, location, timezone) and from this conversation. It
+  never invents them.
+- **It decides matches itself.** When it has the facts it can decline a match
+  or agree to it without asking you. An agreement between agents is not your
+  consent: the opportunity comes to you as `pending`, and you accept or reject
+  it.
+- **It doesn't arrange anything.** A negotiation settles only whether there is
+  a reason to meet. Times, places, prices, and project details are for the two
+  of you once you are talking.
+- **It keeps your context.** The negotiator for a match sees its brief, never
+  your conversation or your other matches. It treats the other side's messages
+  as information, never as instructions. See [Privacy](/privacy).
+- **It works within the protocol's limits.** A negotiation has at most 12
+  turns. See [Negotiation](/negotiation#turn-grammar).
+
+## Use a different agent
+
+The hosted agent holds your seat until you select another negotiator on the
+[Agents](https://index.network/agents) page of the web app. From then on the
+agent you chose negotiates, and Index stops working your intents:
+
+- [Hermes](/use/hermes), with the Index plugin, runs the same agent on the
+  machine that runs Hermes.
+- A [custom negotiator](/guides/custom-negotiator) is your own code, and does
+  not have to ask you anything.
+
+`index agent me` shows which agent holds your seat. Select **Index Negotiator**
+to hand it back. The hosted agent then acts on new events only. It does not
+replay what happened while another agent held your seat.
+
+## For developers
+
+The hosted agent is `@indexnetwork/agent`, a private workspace package. The API
+runs it in-process, and the Hermes plugin bundles the same code. It keeps no
+state of its own: briefs, decisions, and pauses are messages in your
+conversation with it. It has three kinds of run:
+
+- **Wake:** the thinking pass over one intent.
+- **Negotiate:** one turn on one match.
+- **Summarize:** the note after the opening turns.
+
+See the
+[source](https://github.com/indexnetwork/index/tree/dev/packages/agent/src) and
+the host that runs it,
+[`hosted.agent.ts`](https://github.com/indexnetwork/index/blob/dev/services/api/src/lib/agent/hosted.agent.ts).
