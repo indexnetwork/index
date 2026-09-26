@@ -2,26 +2,9 @@
 
 from __future__ import annotations
 
-import shutil
-from pathlib import Path
-
 from . import schemas, tools
 from .bridge import HermesBridge
 from .sidecar import Sidecar
-
-
-def _install_desktop_plugin():
-    src = Path(__file__).parent / "desktop" / "dist"
-    dest = Path.home() / ".hermes" / "desktop-plugins" / "index-network"
-    try:
-        if not (src / "plugin.js").exists():
-            return
-        if dest.exists() and (dest / "plugin.js").read_bytes() == (src / "plugin.js").read_bytes():
-            return
-        shutil.rmtree(dest, ignore_errors=True)
-        shutil.copytree(src, dest)
-    except Exception:  # noqa: BLE001
-        pass
 
 
 _sidecar: Sidecar | None = None
@@ -29,7 +12,6 @@ _sidecar: Sidecar | None = None
 
 def register(ctx):
     global _sidecar
-    _install_desktop_plugin()
     from hermes_constants import get_hermes_home
     from . import events
 

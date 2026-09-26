@@ -1,6 +1,12 @@
 name: index-network
-version: 0.43.0
+version: 0.47.4
+kind: platform
 description: Index Network Hermes plugin with native tools backed by the Index REST API.
+requires_env:
+  - INDEX_SESSION_TOKEN
+optional_env:
+  - name: INDEX_API_KEY
+    description: Minted from the device session when this install is the selected negotiator. Also authenticates the Index MCP server.
 provides_tools:
   - index_read_intents
   - index_research_profile

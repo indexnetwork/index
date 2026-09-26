@@ -148,8 +148,6 @@ function DesktopPage() {
 
 const DISCOVER_PATH = '/index-network'
 const LAST_PATH_KEY = 'index-network.path'
-// Host stamps this on the contributed sidebar row (`sidebar-nav-${contribution.id}`).
-const DISCOVER_NAV_TOUR = 'sidebar-nav-index-network:nav'
 
 function discoverHref() {
   return ((window.location.hash || '').replace(/^#/, '')).split('#')[0] || ''
@@ -160,15 +158,18 @@ function discoverHash() {
   return path === DISCOVER_PATH || path.startsWith(DISCOVER_PATH + '/')
 }
 
+let pathStorage = null
+
 function readLastDiscoverPath() {
-  try { return window.localStorage.getItem(LAST_PATH_KEY) || '' } catch (e) { return '' }
+  if (!pathStorage || typeof pathStorage.get !== 'function') return ''
+  const value = pathStorage.get(LAST_PATH_KEY, '')
+  return typeof value === 'string' ? value : ''
 }
 
 function writeLastDiscoverPath(path) {
-  try {
-    if (path) window.localStorage.setItem(LAST_PATH_KEY, path)
-    else window.localStorage.removeItem(LAST_PATH_KEY)
-  } catch (e) { /* noop */ }
+  if (!pathStorage) return
+  if (path) pathStorage.set(LAST_PATH_KEY, path)
+  else if (typeof pathStorage.remove === 'function') pathStorage.remove(LAST_PATH_KEY)
 }
 
 // Discover is a workspace-pane route. Hash navigation is a no-op when the
@@ -202,20 +203,13 @@ function onDiscoverHash() {
   onDiscover = on
 }
 
-function onDiscoverNavClick(event) {
-  const t = event.target
-  if (!t || !t.closest) return
-  const labeled = t.closest('[data-tour="' + DISCOVER_NAV_TOUR + '"]')
-  const button = t.closest('button')
-  if (!labeled && !(button && button.querySelector('[data-tour="' + DISCOVER_NAV_TOUR + '"]'))) return
-  showDiscover(DISCOVER_PATH)
-}
-
 export default {
   id: 'index-network',
   name: 'Index Network',
   register: function (ctx) {
     restCall = function (path, opts) { return ctx.rest(path, opts) }
+    pathStorage = ctx.storage
+    if (DESKTOP_ENV) DESKTOP_ENV.storage = ctx.storage
 
     const style = document.createElement('style')
     style.dataset.plugin = 'index-network'
@@ -227,10 +221,8 @@ export default {
     ctx.onDispose(stopNotifications)
 
     window.addEventListener('hashchange', onDiscoverHash)
-    document.addEventListener('click', onDiscoverNavClick)
     ctx.onDispose(function () {
       window.removeEventListener('hashchange', onDiscoverHash)
-      document.removeEventListener('click', onDiscoverNavClick)
     })
 
     ctx.registerMany([

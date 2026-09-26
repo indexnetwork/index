@@ -4,6 +4,15 @@
 ## Unreleased
 
 ### Fixed
+- The desktop half ships as `desktop/plugin.js`. Hermes copies that file into the app itself, so load no longer writes `~/.hermes/desktop-plugins` and the Desktop surface stays opt-in.
+- Discover controls stay inside the Index page. The plugin no longer injects buttons into the app header, listens for clicks on the app sidebar, or writes `window.localStorage` from the desktop bundle.
+
+### Changed
+- `plugin.yaml` is `0.47.4`, declares `kind: platform`, and lists `INDEX_SESSION_TOKEN`. `INDEX_API_KEY` is optional: the negotiator mints it from the device session.
+
+## 0.47.3
+
+### Fixed
 - The desktop header now shows the negotiator the gateway is running. The
   dashboard runs in a separate process and used to report its own idle copy as
   Off, and its Start would have launched a second negotiator. Start and Stop

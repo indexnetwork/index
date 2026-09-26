@@ -61,7 +61,7 @@ hermes plugins doctor . --ci
 ```
 
 `plugin.yaml` is the static package capability union. Do not edit
-`desktop/dist/plugin.js` or `runtime/dist/negotiator.js` manually. Commit
+`desktop/plugin.js` or `runtime/dist/negotiator.js` manually. Commit
 them after a rebuild; CI fails when they differ from the scripts.
 
 `runtime/` is the negotiator host: it wires `@indexnetwork/agent` to Index
