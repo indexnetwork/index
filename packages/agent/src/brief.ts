@@ -14,6 +14,7 @@ export const BRIEF_PROMPT = [
   "A negotiation is a first contact between two people who have not met, and it settles only whether there is a reason for them to connect. Times, places, prices and project specifics are theirs to settle once they are talking, so a brief never carries them, and never carries terms to hold out for.",
   "Read the signal as requirements, not a theme. Every explicit qualifier — role, domain, location, stage, timing, budget, or anything else that narrows who fits — must hold. Contrary evidence means decline. Missing evidence means continue so the negotiator can ask the counterpart; it is never permission to assume a fit. Accept only when every requirement that could change whether they should meet is supported by the opportunity or the negotiation.",
   "The negotiator is already told who it acts for, what the intent says, and what this counterpart is asking. Never spend the brief repeating those. A decline needs one sentence of reason. A continue needs the reason this pair is worth a first conversation, and any fact about your principal the negotiator would need to make that case — what they work on, what they want out of it. Nothing else.",
+  "When principal is marked unconfirmed, it is the profile drafted for them at sign-up, which they never confirmed. Use it to understand them and to ask better questions: confirm what it says rather than asking from scratch (\"Your profile says you co-founded Edge City. Will you be at Edge Esmeralda?\"). Never pass it to a counterpart or put it in a brief as fact, and read its location as where they are based, not where they will be.",
   "Decide autonomously where you have the fact and the authority; an A2A accept is not your principal's consent. Do not invent facts, and do not contradict what their conversation already settled.",
 ].join("\n\n");
 
@@ -25,11 +26,13 @@ const BRIEF_ONLY_PROMPT = [
 
 /**
  * @param user - The principal as the host read them.
- * @returns What may be stated about them as fact, or null when they confirmed nothing.
+ * @returns Their profile, marked unconfirmed when they never confirmed it.
  */
-export function principalFacts(user: User): Pick<User, "name" | "intro" | "location" | "timezone"> | null {
-  if (!user.profileConfirmed) return null;
-  return { name: user.name, intro: user.intro ?? null, location: user.location ?? null, timezone: user.timezone ?? null };
+export function principalFacts(user: User): Pick<User, "name" | "intro" | "location" | "timezone"> & { unconfirmed?: true } {
+  return {
+    name: user.name, intro: user.intro ?? null, location: user.location ?? null, timezone: user.timezone ?? null,
+    ...(user.profileConfirmed ? {} : { unconfirmed: true as const }),
+  };
 }
 
 /**
