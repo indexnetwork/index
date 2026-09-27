@@ -66,7 +66,7 @@
     },
     "packages/agent": {
       "name": "@indexnetwork/agent",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "dependencies": {
         "@indexnetwork/client": "workspace:*",
       },
@@ -116,7 +116,7 @@
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.47.4",
+      "version": "0.47.5",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
