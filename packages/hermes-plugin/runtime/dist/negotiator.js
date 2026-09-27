@@ -455,7 +455,10 @@ async function negotiate(input) {
         additionalProperties: false,
         properties: {
           reason: { type: "string", minLength: 1, description: "The fact the brief does not state, and what the counterpart is waiting on." },
-          suggestedAsk: { type: "string", description: "The question to put to the principal, in the words they would answer." }
+          suggestedAsk: {
+            type: "string",
+            description: `The question to put to the principal, in the words they would answer. When the counterpart needs a standing fact about your principal, such as what they work on or what stage they are at, ask for that fact itself ("What does your startup work on?"), not whether it matches this counterpart: other negotiations may need the same fact, and the reason already says what this one needs. A plan, a date or a place, an approval, or this counterpart's own terms is asked as it is ("Can you be in Lisbon from March?"). Ask for one fact.`
+          }
         },
         required: ["reason", "suggestedAsk"]
       },
