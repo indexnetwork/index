@@ -991,6 +991,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     // page; updates and help are entirely native.
 
     @objc func openSettings(_ sender: Any?) { openView("settings") }
+    @objc func openConversations(_ sender: Any?) { openView("conversations") }
     @objc func openNetworks(_ sender: Any?) { openView("networks") }
     @objc func openNegotiations(_ sender: Any?) { openView("negotiations") }
 
@@ -1107,7 +1108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     /// items stay dimmed until there is one.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(openSettings(_:)), #selector(openNetworks(_:)), #selector(openNegotiations(_:)):
+        case #selector(openSettings(_:)), #selector(openConversations(_:)), #selector(openNetworks(_:)), #selector(openNegotiations(_:)):
             return ownerIsAuthenticated()
         case #selector(checkForUpdates(_:)):
             menuItem.title = stagedUpdate == nil ? "Check for Updates…" : "Restart to Update"

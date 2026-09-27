@@ -38,8 +38,7 @@ function nativeAuthed() {
 // A conversation link (minted by the app's own OS toasts) names a thread
 // rather than a person card. Its provenance carries both the signal the thread
 // belongs to and the opportunity behind it, so the caller can open that signal
-// on the chat, and fall back to a floating chat with a name and face when the
-// signal is no longer on the hub.
+// on the chat, and fall back to the conversations list when there is none.
 async function resolveDeepLinkConversation(route, people) {
   if (!nativeAuthed() || !window.IndexApp) return null;
   const client = window.IndexApp.getClient();
@@ -50,9 +49,7 @@ async function resolveDeepLinkConversation(route, people) {
     const via = conv && Array.isArray(conv.via) ? conv.via[0] : null;
     if (!via) return null;
     const person = await resolveDeepLinkPerson({ route: "card", id: via.opportunityId }, people);
-    return person
-      ? { person, conversationId: route.id, intentId: via.intentId || null }
-      : null;
+    return person ? { person, intentId: via.intentId || null } : null;
   } catch (e) {
     return null;
   }
@@ -184,7 +181,14 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [pendingLink, setPendingLink] = useState(null);   // parsed route, not applied yet
   const [linkedCard, setLinkedCard] = useState(null);     // { person, route } on screen
-  const [linkedChat, setLinkedChat] = useState(null);     // { person, conversationId } on screen
+  // The screens the native menus can open: settings, networks, conversations
+  // and negotiations (null = none, `tab` applies to settings only,
+  // `conversationId` to conversations only). They live up here rather than in
+  // the hub because Index ▸ Settings… and the View menu have to work from a
+  // signal too, and they open over whatever is on screen so neither the hub nor
+  // a live signal session is torn down to show them.
+  const [overlay, setOverlay] = useState(null);
+  const closeOverlay = () => setOverlay(null);
   // Bumped when a question link lands, so the signal's feed scrolls to it even
   // if that signal was already open and nothing else changed.
   const [focusQuestion, setFocusQuestion] = useState(0);
@@ -237,9 +241,9 @@ function App() {
     const link = pendingLink;
     resolvingRef.current = link;
     (async () => {
-      // A conversation belongs to a signal, so open that signal on the thread.
-      // The floating chat is what is left when the signal is gone: the thread
-      // still reads, it just has no session to live in.
+      // A conversation that belongs to a signal on the hub opens on that
+      // signal. Anything else still reads in the conversations list, with the
+      // thread already open.
       if (link.route === "conversation") {
         const target = await resolveDeepLinkConversation(link, peopleRef.current);
         if (resolvingRef.current !== link) return;
@@ -247,10 +251,8 @@ function App() {
         const intent = target && findIntent(target.intentId);
         if (intent) {
           openIntentOn(intent, { kind: "chat", personId: target.person.id });
-        } else if (target) {
-          setLinkedChat(target);
         } else {
-          setNotice("couldn't open that conversation.");
+          setOverlay({ view: "conversations", conversationId: link.id });
         }
         setPendingLink(null);
         return;
@@ -318,7 +320,7 @@ function App() {
         // over the login screen. Clearing resolvingRef makes the in-flight
         // resolve fail its own ownership check and bail when it completes.
         setLinkedCard(null);
-        setLinkedChat(null);
+        setOverlay(null);
         setPendingLink(null);
         resolvingRef.current = null;
         setScreen("login");
@@ -418,13 +420,6 @@ function App() {
     chatOpenRef.current = { signal, open: openFn };
   };
 
-  // The screens the native menus can open: settings, networks and negotiations
-  // (null = none, `tab` applies to settings only). They live up here rather than
-  // in the hub because Index ▸ Settings… and the View menu have to work from a
-  // signal too, and they open over whatever is on screen so neither the hub nor
-  // a live signal session is torn down to show them.
-  const [overlay, setOverlay] = useState(null);
-  const closeOverlay = () => setOverlay(null);
   // Index ▸ Settings… and the View menu call this. Before the hub there is no
   // account behind the screen, which is also why those items are dimmed there.
   useEffect(() => {
@@ -591,13 +586,6 @@ function App() {
             onClose={() => setLinkedCard(null)}
           />
         )}
-        {linkedChat && (
-          <DeepLinkChatWindow
-            person={linkedChat.person}
-            conversationId={linkedChat.conversationId}
-            onClose={() => setLinkedChat(null)}
-          />
-        )}
         {/* These lay over the desktop instead of replacing the screen, so
             leaving one drops you back into the same hub or signal. */}
         {overlay && (
@@ -612,6 +600,9 @@ function App() {
                   if (intent) pickExistingIntent(intent);
                 }}
               />
+            )}
+            {overlay.view === "conversations" && (
+              <Conversations initialConversationId={overlay.conversationId} onClose={closeOverlay}/>
             )}
             {overlay.view === "negotiations" && <NegotiationHistory onClose={closeOverlay}/>}
           </div>

@@ -1,72 +1,216 @@
-function Inbox({ conversations, onOpen, onClose }) {
-  const totalUnread = conversations.reduce((a, c) => a + (c.unread || 0), 0);
-  return (
-    <MacWindow title="messages" onClose={onClose} style={{ minHeight:0 }}>
-      <div style={{ display:"grid", gridTemplateRows:"auto 1fr", flex:1, minHeight:0 }}>
-        {/* header */}
-        <div style={{ padding:"12px 16px", borderBottom:"1px solid #000", background:"#fff" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <span style={{
-              fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1.5,
-              textTransform:"uppercase", color:"#000",
-            }}>your conversations</span>
-            <div style={{ flex:1 }}/>
-            {totalUnread > 0 && (
-              <span style={{
-                fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
-                background:"#FF8A00", color:"#000", border:"1px solid #000", padding:"0 6px",
-              }}>{totalUnread} new</span>
-            )}
-          </div>
-          <h2 style={{
-            margin:"6px 0 0", fontFamily:"var(--amiga-title)", fontWeight:500,
-            fontSize:17, color:"#000", letterSpacing:-0.2,
-          }}>messages</h2>
-        </div>
+/* Every person-to-person thread, whether or not a signal still holds the match
+   behind it. Mirrors the Hermes dashboard's messages panel: the list on the
+   left, the open thread on the right. Agent DMs and negotiations are left out,
+   the same two-users filter the dashboard and web sidebar use. */
+function conversationRow(c, myId) {
+  const others = (c.participants || []).filter(p => p && p.participantId !== myId);
+  const other = others[0] || {};
+  const last = c.lastMessage;
+  return {
+    id: c.id,
+    userId: other.participantId || null,
+    name: other.name || "someone",
+    photo: other.avatar || null,
+    last: last ? apiChatMessage(last, myId).text : "",
+    lastAt: c.lastMessageAt || (last && last.createdAt) || "",
+    unread: c.unreadCount || 0,
+  };
+}
 
-        {/* conversation list */}
-        <div className="mac-scroll" style={{ overflowY:"auto", padding:"10px 12px", display:"grid", gap:8, alignContent:"start" }}>
-          {conversations.length === 0 ? (
-            <div style={{
-              padding:24, textAlign:"center",
-              fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-              border:"1px dashed #000",
-            }}>no conversations yet, open someone from your radar to start one.</div>
-          ) : conversations.map(c => (
-            <button key={c.id} onClick={() => onOpen(c.id)} style={{
-              textAlign:"left", display:"grid", gridTemplateColumns:"auto 1fr auto",
-              gap:12, alignItems:"center", padding:"10px 12px",
-              border:"1px solid #000", background:"#fff", cursor:"pointer",
-              boxShadow: c.unread > 0
-                ? "inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 1px 1px 0 rgba(0,0,0,0.2)"
-                : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3), 1px 1px 0 rgba(0,0,0,0.2)",
+function isPersonThread(c) {
+  const ps = (c && c.participants) || [];
+  return ps.length === 2 && ps.every(p => p && p.participantType === "user");
+}
+
+function Conversations({ initialConversationId, onClose }) {
+  const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
+  const [convs, setConvs] = useState(null);
+  const [activeId, setActiveId] = useState(initialConversationId || null);
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState("");
+  const activeRef = useRef(activeId);
+  activeRef.current = activeId;
+  const scrollRef = useRef(null);
+  const [client] = useState(() => (
+    window.IndexApp && window.IndexApp.isAuthed() ? window.IndexApp.getClient() : null
+  ));
+
+  const loadList = React.useCallback(() => {
+    if (!client) { setConvs([]); return; }
+    client.conversations.list()
+      .then((res) => {
+        const rows = window.IndexApp.normalizeList(res, "conversations")
+          .filter(isPersonThread)
+          .map(c => conversationRow(c, myId));
+        setConvs(rows);
+      })
+      .catch(() => setConvs((prev) => prev || []));
+  }, [client, myId]);
+
+  useEffect(() => { loadList(); }, [loadList]);
+
+  useEffect(() => {
+    setMessages([]);
+    if (!activeId || !client) return;
+    let cancelled = false;
+    client.conversations.messages(activeId)
+      .then((res) => {
+        if (cancelled) return;
+        setMessages(window.IndexApp.normalizeList(res, "messages").map(m => apiChatMessage(m, myId)));
+      })
+      .catch(() => {});
+    setConvs((prev) => prev && prev.map(c => c.id === activeId ? { ...c, unread: 0 } : c));
+    return () => { cancelled = true; };
+  }, [activeId, client, myId]);
+
+  useEffect(() => {
+    const sub = window.IndexApp.streamInbox((event) => {
+      if (!event || event.type !== "message" || !event.message) return;
+      const m = apiChatMessage(event.message, myId);
+      if (event.conversationId === activeRef.current && m.who !== "you") {
+        setMessages((prev) => prev.some(x => x.id === m.id) ? prev : [...prev, m]);
+      }
+      setConvs((prev) => {
+        if (!prev) return prev;
+        if (!prev.some(c => c.id === event.conversationId)) { loadList(); return prev; }
+        return prev.map(c => c.id !== event.conversationId ? c : {
+          ...c,
+          last: m.text,
+          lastAt: m.at || nowISO(),
+          unread: c.id === activeRef.current || m.who === "you" ? c.unread : c.unread + 1,
+        });
+      });
+    });
+    return () => { if (sub && sub.close) sub.close(); };
+  }, [myId, loadList]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages.length]);
+
+  const send = () => {
+    const text = draft.trim();
+    if (!text || !activeId || !client) return;
+    setDraft("");
+    const at = nowISO();
+    setMessages((prev) => [...prev, { id: rid(), who:"you", text, at }]);
+    setConvs((prev) => prev && prev.map(c => c.id === activeId ? { ...c, last: text, lastAt: at } : c));
+    client.conversations.sendMessage(activeId, { parts: [{ text }] }).catch(() => {});
+  };
+
+  const sorted = (convs || []).slice().sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
+  const active = sorted.find(c => c.id === activeId) || null;
+
+  return (
+    <div style={{
+      position:"absolute", inset:0,
+      display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
+      padding:"56px 40px", overflow:"auto",
+    }}>
+      <div style={{ width:860, maxWidth:"100%", height:"min(660px, calc(100vh - 112px))" }}>
+        <MacWindow title="conversations" onClose={onClose} style={{ height:"100%", minHeight:0 }}>
+          <div style={{
+            display:"grid", gridTemplateColumns:"280px minmax(0, 1fr)",
+            flex:1, minHeight:0, background:"#fff",
+          }}>
+            {/* list */}
+            <div className="mac-scroll" style={{
+              borderRight:"2px solid #000", overflowY:"auto", minHeight:0,
             }}>
-              <Avatar id={c.userId || c.id} name={c.name} photo={c.person ? c.person.photo : null} size={32}/>
-              <div style={{ display:"grid", gap:3, minWidth:0 }}>
-                <div style={{ fontFamily:"var(--amiga-title)", fontSize:14, fontWeight:600, color:"#000" }}>
-                  {c.name}
-                </div>
-                <div style={{
-                  fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-2)",
-                  whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+              {convs === null ? (
+                <p style={{ margin:16, fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)" }}>loading…</p>
+              ) : sorted.length === 0 ? (
+                <p style={{ margin:16, fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)" }}>no conversations yet.</p>
+              ) : sorted.map(c => (
+                <button key={c.id} onClick={() => setActiveId(c.id)} style={{
+                  display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
+                  gap:10, alignItems:"center", width:"100%", textAlign:"left",
+                  padding:"10px 12px", border:"none", borderBottom:"1px solid var(--ink-4)",
+                  background: c.id === activeId ? "#F2F0EC" : "#fff", cursor:"pointer",
                 }}>
-                  {c.lastWho === "you" ? "you: " : ""}{c.last}
+                  <Avatar id={c.userId || c.id} name={c.name} photo={c.photo} size={32}/>
+                  <span style={{ display:"grid", gap:3, minWidth:0 }}>
+                    <span style={{ fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000" }}>{c.name}</span>
+                    <span style={{
+                      fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-2)",
+                      whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+                    }}>{c.last}</span>
+                  </span>
+                  {c.unread > 0 && (
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
+                      background:"#FF8A00", color:"#000", border:"1px solid #000", padding:"0 6px",
+                    }}>{c.unread}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* thread */}
+            {activeId ? (
+              <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", minHeight:0, minWidth:0 }}>
+                <div style={{
+                  padding:"12px 16px", borderBottom:"1px solid #000",
+                  display:"flex", gap:12, alignItems:"center",
+                }}>
+                  {active && <Avatar id={active.userId || active.id} name={active.name} photo={active.photo} size={34}/>}
+                  <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
+                    {active ? active.name : ""}
+                  </div>
+                </div>
+                <div ref={scrollRef} className="mac-scroll" style={{
+                  overflowY:"auto", padding:"14px 16px", minHeight:0,
+                  display:"flex", flexDirection:"column", gap:10,
+                }}>
+                  {messages.map(m => <ChatBubble key={m.id} m={m}/>)}
+                </div>
+                <div style={{ borderTop:"1px solid #000", padding:"7px 12px 8px", display:"flex", gap:10, alignItems:"flex-end" }}>
+                  <textarea
+                    rows={1}
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+                    }}
+                    placeholder="write a message…"
+                    aria-label="write a message"
+                    style={{
+                      flex:1, minWidth:0, resize:"none", maxHeight:62, overflowY:"auto",
+                      background:"transparent", border:"none", outline:"none",
+                      color:"#000", fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
+                      padding:"4px 0",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={send}
+                    disabled={!draft.trim()}
+                    aria-label="Send"
+                    title="send"
+                    style={{
+                      display:"grid", placeItems:"center", width:22, height:22, flex:"0 0 auto",
+                      background:"none", border:"none", padding:0, lineHeight:0, marginBottom:2,
+                      color: draft.trim() ? "#111" : "#b9b3a4",
+                      cursor: draft.trim() ? "pointer" : "default",
+                    }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth={2} strokeLinecap="square" strokeLinejoin="miter">
+                      <line x1="12" y1="20" x2="12" y2="5"/>
+                      <polyline points="5,12 12,5 19,12"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
-              {c.unread > 0 ? (
-                <span style={{
-                  fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
-                  background:"#FF8A00", color:"#000", border:"1px solid #000", padding:"0 6px",
-                  flex:"0 0 auto",
-                }}>{c.unread}</span>
-              ) : (
-                <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", flex:"0 0 auto" }}>›</span>
-              )}
-            </button>
-          ))}
-        </div>
+            ) : (
+              <div style={{ display:"grid", placeItems:"center", fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)" }}>
+                pick a conversation.
+              </div>
+            )}
+          </div>
+        </MacWindow>
       </div>
-    </MacWindow>
+    </div>
   );
 }
 
