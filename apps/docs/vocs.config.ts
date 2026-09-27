@@ -45,6 +45,7 @@ export default defineConfig({
         { text: 'Find someone', link: '/guides/find-someone' },
         { text: 'Custom negotiator', link: '/guides/custom-negotiator' },
         { text: 'Introducer agent (planned)', link: '/guides/introducer-agent' },
+        { text: 'Group formation (planned)', link: '/guides/group-formation' },
       ],
     },
     {

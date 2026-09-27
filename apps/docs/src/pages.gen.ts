@@ -8,6 +8,7 @@ type Page =
   | { path: '/discovery'; render: 'static' }
   | { path: '/guides/custom-negotiator'; render: 'static' }
   | { path: '/guides/find-someone'; render: 'static' }
+  | { path: '/guides/group-formation'; render: 'static' }
   | { path: '/guides/introducer-agent'; render: 'static' }
   | { path: '/'; render: 'static' }
   | { path: '/integrate/host'; render: 'static' }
