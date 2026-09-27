@@ -31,8 +31,8 @@ function NetworksRow({ count, pending, onClick }) {
       onClick={onClick}
       style={{
         display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"5px 13px", cursor:"pointer", textAlign:"left",
-        border:"none", background:"#F2F0EC",
+        padding:"3px 6px", cursor:"pointer", textAlign:"left",
+        border:"none", borderTop:"1px solid #DAD8D4", background:"transparent",
       }}>
       <span style={{
         flex:"0 0 auto", width:34, height:34,
@@ -48,7 +48,7 @@ function NetworksRow({ count, pending, onClick }) {
       </span>
       <span style={{
         flex:1, minWidth:0,
-        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
       }}>networks ({count})</span>
       <QCount
         n={pending}
@@ -67,8 +67,8 @@ function ConversationsRow({ onClick }) {
       onClick={onClick}
       style={{
         display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"5px 13px", cursor:"pointer", textAlign:"left",
-        border:"none", background:"#F2F0EC",
+        padding:"3px 6px", cursor:"pointer", textAlign:"left",
+        border:"none", borderTop:"1px solid #DAD8D4", background:"transparent",
       }}>
       <span style={{
         flex:"0 0 auto", width:34, height:34,
@@ -80,7 +80,7 @@ function ConversationsRow({ onClick }) {
       </span>
       <span style={{
         flex:1, minWidth:0,
-        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
       }}>conversations</span>
     </button>
   );
@@ -127,8 +127,8 @@ function AgentsRow({ count, onClick }) {
       onClick={onClick}
       style={{
         display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"5px 13px", cursor:"pointer", textAlign:"left",
-        border:"none", background:"#F2F0EC",
+        padding:"3px 6px", cursor:"pointer", textAlign:"left",
+        border:"none", borderTop:"1px solid #DAD8D4", background:"transparent",
       }}>
       <span style={{
         flex:"0 0 auto", width:34, height:34,
@@ -138,7 +138,7 @@ function AgentsRow({ count, onClick }) {
       </span>
       <span style={{
         flex:1, minWidth:0,
-        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
       }}>agents ({count})</span>
     </button>
   );
@@ -399,9 +399,11 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
 
               {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
-                <ConversationsRow onClick={() => onOpenView && onOpenView("conversations")}/>
-                <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
-                <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
+                <div style={{ borderBottom:"1px solid #DAD8D4" }}>
+                  <ConversationsRow onClick={() => onOpenView && onOpenView("conversations")}/>
+                  <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
+                  <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
+                </div>
                 <UserMenu me={ME} onSelect={onAccountSelect}/>
               </div>
             </div>
