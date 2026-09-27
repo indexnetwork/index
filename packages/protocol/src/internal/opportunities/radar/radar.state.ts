@@ -32,14 +32,12 @@ export interface RadarCardItem {
    * full view. Skeleton cards are never written to the presenter cache.
    */
   presentationPending?: boolean;
-  /** Internal marker: safe deterministic fallback rendered, but must not be cached. */
-  _presentationFallback?: boolean;
   /** Internal: original position in the loaded opportunity list, for stable ordering. */
   _cardIndex: number;
 }
 
 /** Card item as returned in API responses (no internal fields). */
-export type RadarResponseItem = Omit<RadarCardItem, '_cardIndex' | '_presentationFallback'>;
+export type RadarResponseItem = Omit<RadarCardItem, '_cardIndex'>;
 
 /**
  * Radar Graph State (Annotation-based).

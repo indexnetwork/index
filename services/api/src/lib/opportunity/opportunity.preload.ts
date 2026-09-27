@@ -16,7 +16,6 @@ interface PreloadDeps {
       personalizedSummary: string;
       suggestedAction?: string;
       mutualIntentsLabel?: string;
-      isFallback?: boolean;
     }>;
   };
   gatherContext?: typeof gatherPresenterContext;
@@ -61,8 +60,6 @@ export async function preloadOpportunityPresentation(
           { ttl: CHAT_CACHE_TTL },
         );
       }
-
-      if (presented.isFallback) return;
 
       const counterpart = opportunity.actors.find((actor) => actor.userId !== viewerId);
       const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);

@@ -1,4 +1,4 @@
-import { isActionableForViewer, safeFallbackSummary } from '@indexnetwork/protocol';
+import { isActionableForViewer } from '@indexnetwork/protocol';
 
 import type { OpportunityRow, UserIdentity } from '../adapters/database.shared';
 import type { OpportunityDatabaseAdapter } from '../adapters/opportunity.database.adapter';
@@ -9,7 +9,6 @@ import type { UserEvent, UserEventPublisher } from '../lib/user-events';
 const logger = log.service.from('OpportunityEventService');
 
 const OPPORTUNITY_UNKNOWN_COUNTERPART = 'Someone';
-const OPPORTUNITY_EMPTY_SUMMARY = 'A new possibility that might be relevant to you.';
 const OPPORTUNITY_HEADLINE_SUFFIX = 'new possibility';
 const LABEL_MAX_CHARS = 80;
 
@@ -17,11 +16,6 @@ interface OpportunityEventCopy {
   headline: string;
   summary: string;
   counterpartyName: string;
-}
-
-interface OpportunityEventIdentities {
-  viewer: UserIdentity | null;
-  counterpart: UserIdentity | null;
 }
 
 export interface OpportunityEventDependencies {
@@ -52,20 +46,13 @@ function counterpartForRecipient(
   return otherActors[0];
 }
 
-function buildOpportunityEventCopy(
-  opportunity: OpportunityRow,
-  identities: OpportunityEventIdentities,
-): OpportunityEventCopy {
-  const counterpartyName = displayName(identities.counterpart, OPPORTUNITY_UNKNOWN_COUNTERPART);
+function buildOpportunityEventCopy(counterpart: UserIdentity | null): OpportunityEventCopy {
+  const counterpartyName = displayName(counterpart, OPPORTUNITY_UNKNOWN_COUNTERPART);
   return {
     // The person leads the headline so the toast says who showed up, and the
     // suffix keeps it distinct from a message toast, which is the name alone.
     headline: `${counterpartyName} · ${OPPORTUNITY_HEADLINE_SUFFIX}`,
-    summary: safeFallbackSummary(opportunity.interpretation.reasoning, {
-      counterpartName: counterpartyName,
-      viewerName: displayName(identities.viewer, 'you'),
-      emptyText: OPPORTUNITY_EMPTY_SUMMARY,
-    }),
+    summary: '',
     counterpartyName,
   };
 }
@@ -79,14 +66,8 @@ export class OpportunityEventService {
     recipientId: string,
   ): Promise<UserEvent> {
     const counterpart = counterpartForRecipient(opportunity, recipientId);
-    const [viewerIdentity, counterpartIdentity] = await Promise.all([
-      this.deps.getIdentity(recipientId),
-      counterpart ? this.deps.getIdentity(counterpart.userId) : Promise.resolve(null),
-    ]);
-    const copy = buildOpportunityEventCopy(opportunity, {
-      viewer: viewerIdentity,
-      counterpart: counterpartIdentity,
-    });
+    const counterpartIdentity = counterpart ? await this.deps.getIdentity(counterpart.userId) : null;
+    const copy = buildOpportunityEventCopy(counterpartIdentity);
     const recipientActor = opportunity.actors.find(({ userId }) => userId === recipientId);
     return {
       type: 'opportunity.new',

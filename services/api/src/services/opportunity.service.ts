@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { RadarGraphFactory, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import { RadarGraphFactory, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache, OpportunityLogEvent } from '@indexnetwork/protocol';
 import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
 
@@ -24,18 +24,12 @@ const updateStatusLogger = log.service.from("OpportunityService.updateOpportunit
  */
 const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'accepted'];
 
-function sanitizeOpportunityForResponse<T extends Opportunity>(
-  opportunity: T,
-  names: { counterpartName?: string; viewerName?: string } = {},
-): T {
+function sanitizeOpportunityForResponse<T extends Opportunity>(opportunity: T): T {
   return {
     ...opportunity,
     interpretation: {
       ...opportunity.interpretation,
-      reasoning: safeFallbackSummary(opportunity.interpretation.reasoning, {
-        ...names,
-        emptyText: 'Connection opportunity',
-      }),
+      reasoning: '',
     },
   };
 }
@@ -291,19 +285,13 @@ export class OpportunityService {
         avatar: counterpartUser?.avatar ?? null,
       },
       viewerRole: viewerActor?.role,
-      mainText: safeFallbackSummary(opportunity.interpretation?.reasoning, {
-        counterpartName: counterpartUser?.name ?? undefined,
-        emptyText: 'Connection opportunity',
-      }),
+      mainText: '',
       cta: 'Take a look',
-      headline: 'Connection opportunity',
+      headline: '',
       primaryActionLabel: getPrimaryActionLabel(viewerActor?.role ?? 'party'),
       secondaryActionLabel: 'Skip',
       mutualIntentsLabel: '',
-      personalizedSummary: safeFallbackSummary(opportunity.interpretation?.reasoning, {
-        counterpartName: counterpartUser?.name ?? undefined,
-        emptyText: 'Connection opportunity',
-      }),
+      personalizedSummary: '',
       acceptedAt: opportunity.status === 'accepted'
         ? (opportunity.updatedAt instanceof Date
           ? opportunity.updatedAt.toISOString()
@@ -432,12 +420,8 @@ export class OpportunityService {
         avatar: userMap.get(a.userId)?.avatar ?? null,
       }));
       const counterpartInfo = counterpart ? userMap.get(counterpart.userId) : undefined;
-      const viewerInfo = userMap.get(userId);
       return {
-        ...sanitizeOpportunityForResponse(opp, {
-          counterpartName: counterpartInfo?.name ?? undefined,
-          viewerName: viewerInfo?.name ?? undefined,
-        }),
+        ...sanitizeOpportunityForResponse(opp),
         actors: enrichedActors,
         counterpartName: counterpartInfo?.name ?? undefined,
         counterpartAvatar: counterpartInfo?.avatar ?? null,
@@ -826,39 +810,24 @@ export class OpportunityService {
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
           };
-          if (!presented.isFallback) {
-            try {
-              await this.cache.set(
-                buildApiChatCardPresentationCacheKey(opp.id, userId),
-                card,
-                { ttl: CHAT_CACHE_TTL },
-              );
-            } catch {
-              // Cache write failure is non-critical
-            }
+          try {
+            await this.cache.set(
+              buildApiChatCardPresentationCacheKey(opp.id, userId),
+              card,
+              { ttl: CHAT_CACHE_TTL },
+            );
+          } catch {
+            // Cache write failure is non-critical
           }
           return card;
         } catch (err) {
-          logger.warn('getChatContext presenter failed, using fallback', { error: err, opportunityId: opp.id });
-          // Shared sanitization standard — see opportunity.safe-presentation.ts in protocol.
-          const fallbackSummary = safeFallbackSummary(opp.interpretation?.reasoning, {
-            counterpartName: peerUser?.name ?? undefined,
-            emptyText: 'Connection opportunity',
-          });
-          return {
-            opportunityId: opp.id,
-            headline: truncateAtBoundary(fallbackSummary, 79) || 'Connection opportunity',
-            personalizedSummary: fallbackSummary,
-            narratorRemark: '',
-            peerName: peerUser?.name ?? 'Someone',
-            peerAvatar: peerUser?.avatar ?? null,
-            acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
-          };
+          logger.warn('getChatContext presenter failed, skipping card', { error: err, opportunityId: opp.id });
+          return null;
         }
       }),
     );
 
-    return { opportunities: opportunityCards };
+    return { opportunities: opportunityCards.filter((card): card is ChatCardCached => card !== null) };
   }
 
 

@@ -123,28 +123,14 @@ export type {
   PresenterDatabase,
 } from "./internal/opportunities/opportunity.presentation.js";
 export {
-  hasUnsupportedOpportunityClaim,
-  stripUnsupportedOpportunityClaims,
-  stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText,
-} from "./internal/shared/utils/claim-safety.js";
-export {
   getPrimaryActionLabel,
 } from "./internal/opportunities/opportunity.labels.js";
 export {
   buildApiChatCardPresentationCacheKey,
   buildRadarCardPresentationCacheKey,
 } from "./internal/opportunities/opportunity.presentation.js";
-export {
-  presentOpportunity,
-  stripUuids,
-  truncateAtBoundary,
-} from "./internal/opportunities/opportunity.presentation.js";
 export type {
   UserInfo,
-} from "./internal/opportunities/opportunity.presentation.js";
-export {
-  DEFAULT_FALLBACK_HEADLINE,
-  safeFallbackSummary,
 } from "./internal/opportunities/opportunity.presentation.js";
 export {
   canUserSeeOpportunity,

@@ -16,6 +16,10 @@ section before promoting to `main`).
   `@indexnetwork/agent`.
 
 ### Changed
+- Opportunity copy comes only from the LLM presenter. A presenter failure drops
+  the card from opportunity lists and chat context instead of showing copy
+  derived from match reasoning; `interpretation.reasoning` in opportunity
+  responses and the `opportunity.new` event body are now empty.
 - The hosted personal agent groups its initial negotiations into one readable
   summary on the principal conversation instead of displaying the raw negotiation log.
   Direct replies are marked separately from notes and progress updates, with a

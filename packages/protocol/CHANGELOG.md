@@ -1,5 +1,13 @@
 # Changelog
 
+## 66.0.0
+
+### Breaking changes
+
+- Opportunity copy comes only from the LLM presenter. `OpportunityPresenter.present()` and `presentCard()` throw on LLM failure, timeout, or invalid output instead of returning fallback copy; `isFallback` and `fallbackReason` are gone from their results.
+- Remove `presentOpportunity`, `stripUuids`, `truncateAtBoundary`, `safeFallbackSummary`, `DEFAULT_FALLBACK_HEADLINE`, `hasUnsupportedOpportunityClaim`, `stripUnsupportedOpportunityClaims`, and `stripUnsupportedOpportunityClaimsText` from the public entry point. The regex claim-safety guard is deleted; the presenter prompts carry the rule.
+- `readOpportunities` items no longer carry `reasoning`. Radar drops a card when its presenter call fails instead of rendering reasoning-derived fallback copy.
+
 ## 65.0.0
 
 ### Breaking changes

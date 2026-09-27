@@ -20,7 +20,6 @@ import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } 
 import { loadNegotiationContext } from '../negotiation-context.loader.js';
 import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } from '../opportunity.utils.js';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../opportunity.labels.js';
-import { safeFallbackSummary } from '../opportunity.presentation.js';
 import { buildRadarCardPresentationCacheKey } from '../opportunity.presentation.js';
 import type { DebugMetaAgent } from "../../../protocol/core.js";
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
@@ -85,19 +84,17 @@ export const ALL_OPPORTUNITY_STATUSES: OpportunityStatus[] = Object.keys(
 ) as OpportunityStatus[];
 
 const PRESENTATION_CONCURRENCY = 50;
-const MAX_REASONING_SNIPPET_LENGTH = 240;
 const RADAR_CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds
 
-/** Pure cache policy for presenter cards; degraded current-request copy retries later. */
+/** Pure cache policy for presenter cards. */
 export function isRadarPresentationCacheable(
-  card: Pick<RadarCardItem, 'presentationPending' | '_presentationFallback' | 'name'>,
+  card: Pick<RadarCardItem, 'presentationPending' | 'name'>,
   status: OpportunityStatus | undefined,
 ): boolean {
   return Boolean(
     status &&
     status !== 'negotiating' &&
     !card.presentationPending &&
-    !card._presentationFallback &&
     card.name &&
     card.name !== 'Unknown',
   );
@@ -432,7 +429,7 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
   for (let i = 0; i < opportunities.length; i += PRESENTATION_CONCURRENCY) {
     const chunk = opportunities.slice(i, i + PRESENTATION_CONCURRENCY);
     const chunkCards = await Promise.all(
-      chunk.map(async (opportunity, offset) => {
+      chunk.map(async (opportunity, offset): Promise<RadarCardItem | null> => {
         const cardIndex = oppIndexMap.get(opportunity.id) ?? (i + offset);
         const viewerActor = opportunity.actors.find((a) => a.userId === state.userId);
         const viewerRole = viewerActor?.role ?? 'party';
@@ -469,19 +466,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           return null;
         }
         const userAvatar = otherUser?.avatar ?? null;
-        // Shared sanitization standard (UUID strip, viewer-centric rewrite,
-        // boundary truncation) — raw reasoning must never render verbatim.
-        const reasoningSnippet = safeFallbackSummary(
-          typeof opportunity.interpretation?.reasoning === 'string'
-            ? opportunity.interpretation.reasoning
-            : '',
-          {
-            counterpartName: userName !== 'Unknown' ? userName : undefined,
-            maxChars: MAX_REASONING_SNIPPET_LENGTH,
-            emptyText: 'A promising connection.',
-          },
-        );
-
 
         // Skeleton presentation: return an identity-only card without the
         // deps.presenter LLM or negotiation-context load. Name resolution and
@@ -504,23 +488,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             _cardIndex: cardIndex,
           } satisfies RadarCardItem;
         }
-        const fallbackCard = (outcomeReasoning?: string): RadarCardItem => ({
-          opportunityId: opportunity.id,
-          status: opportunity.status,
-          userId: otherActor?.userId ?? '',
-          name: userName,
-          avatar: userAvatar,
-          mainText: outcomeReasoning ?? reasoningSnippet,
-          cta: 'Take a look and decide whether to reach out.',
-          primaryActionLabel: getPrimaryActionLabel(viewerRole),
-          secondaryActionLabel: SECONDARY_ACTION_LABEL,
-          mutualIntentsLabel: 'Shared interests',
-          narratorChip: { name: 'Index', text: 'Worth a look.' },
-          viewerRole,
-          _presentationFallback: true,
-          _cardIndex: cardIndex,
-        });
-
         try {
           const [ctx, negotiationContext] = await Promise.all([
             gatherPresenterContext(
@@ -545,9 +512,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           const _presenterDuration = Date.now() - presenterStart;
           agentTimingsAccum.push({ name: 'opportunity.presenter', durationMs: _presenterDuration });
           _traceEmitterPresenter?.({ type: "agent_end", name: "opportunity-presenter", durationMs: _presenterDuration, summary: `Presented: ${userName}` });
-          if (presentation.isFallback) {
-            return fallbackCard();
-          }
           // Every card is system-discovered now: one narrator.
           const narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } =
             { name: 'Index', text: presentation.narratorRemark };
@@ -569,7 +533,7 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           } satisfies RadarCardItem;
         } catch (e) {
           logger.warn('RadarGraph presenter failed for opportunity', { opportunityId: opportunity.id, error: e });
-          return fallbackCard();
+          return null;
         }
       })
     );
@@ -596,7 +560,7 @@ export async function cachePresenterResultsNode(state: RadarState, deps: RadarGr
       await Promise.all(
         newCards.map((card) => {
           const status = statusById.get(card.opportunityId);
-          // Negotiating, skeleton, fallback, and unresolved-name cards are
+          // Negotiating, skeleton, and unresolved-name cards are
           // safe for the current response but must not become 24h entries.
           if (!status || !isRadarPresentationCacheable(card, status)) return Promise.resolve();
           return deps.cache.set(
@@ -640,7 +604,7 @@ export async function normalizeItemsNode(state: RadarState) {
       state.opportunities.map((opportunity) => [opportunity.id, opportunity.createdAt.toISOString()]),
     );
     const items: RadarResponseItem[] = state.cards.map((card) => {
-      const { _cardIndex, _presentationFallback, ...rest } = card;
+      const { _cardIndex, ...rest } = card;
       return { ...rest, createdAt: createdAtById.get(card.opportunityId) };
     });
     const meta = { totalOpportunities: state.opportunities.length };
