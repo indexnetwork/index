@@ -1,34 +1,52 @@
-# REST & CLI [The protocol's request surface]
+# API [The protocol's HTTP surface]
 
-Every capability is a named REST resource. External clients reach them through
-the [CLI](/use/cli), the [MCP](/use/mcp) endpoint, or `@indexnetwork/client`, the typed
-client the Hermes runtime uses (not published yet).
+The hosted API is `https://protocol.index.network`. Requests and responses are JSON. Every path on these pages is under `/api`.
 
-| Resource | Purpose |
+The [CLI](/use/cli), the [MCP](/use/mcp) server, and `@indexnetwork/client` call this API. Command flags, tool names, and the negotiator loop live on those pages. What an [intent](/intent), [network](/network), [negotiation](/negotiation), or [opportunity](/opportunity) means lives with the primitive.
+
+| Resource | Page |
 | --- | --- |
-| `/api/intents` | Prepare, create, read, update, pause and resume, archive, share and unshare intents; discover candidates, open opportunities with them, and list, accept, reject, or start a chat on an intent's opportunities |
-| `/api/networks` | Memberships, rosters, and the intents shared in a network |
-| `/api/network-requests` | Requests to join a network |
-| `/api/opportunities` | Read opportunities, set their status, and start a chat; read an opportunity's negotiation (`GET /:id/negotiation`) and submit a turn (`POST /:id/negotiation/turns`, with an optional `?agentId=`) |
-| `/api/negotiations` | List your negotiations |
-| `/api/conversations` | Human and agent conversations |
-| `/api/agents` | Register and manage your agents, including an external negotiator |
-| `/api/users` | Public profiles and a user's negotiation history |
-| `/api/auth` | Your account, profile, onboarding, and signed-in devices |
-| `/api/enrichment` | Profile enrichment |
-| `/api/storage` | Avatar and network image uploads |
-| `/api/subscribe` | Newsletter and waitlist sign-up |
-| `/api/scrape` | Read one public page |
-| `/api/docs` | Canonical protocol guidance for agents |
-| `/api/events` | The user's event stream |
+| Profile, agents, and the remaining routes | [Account](/integrate/rest/account) |
+| Intents, discovery, opening opportunities | [Intent](/integrate/rest/intents) |
+| Memberships, rosters, early-access requests | [Network](/integrate/rest/networks) |
+| Listing negotiations and submitting turns | [Negotiations](/integrate/rest/negotiations) |
+| Opportunity cards and owner approval | [Opportunities](/integrate/rest/opportunities) |
+| Human and agent conversations, the event stream | [Conversations](/integrate/rest/conversations) |
 
-Authenticate with a session token (`Authorization: Bearer`, or `?token=`) or an
-API key (`x-api-key`). If a request carries both, the session token is checked
-first and wins; the CLI refuses to send both. An API key does not bypass
-operations that require the owner's own session.
+## Authentication
 
-`GET /api/docs` serves the same canonical guidance an agent reads through
-`index docs`, optionally narrowed with `?topic=`.
+Send one credential.
 
-This page is a stub. See
-[IMPLEMENTATION.md](https://github.com/indexnetwork/index/blob/dev/packages/protocol/IMPLEMENTATION.md).
+A session is `Authorization: Bearer <token>`, or `?token=` on the event stream. The token is the web app's JWT or a device session from `index login`. An API key is the `x-api-key` header. Generate it under [Settings → Access](https://index.network/settings?tab=access) (**Generate Key** — copy it then; it is shown once).
+
+If a request carries both, the session is checked first.
+
+An API key acts as you in the product. These routes accept only a session. A key on them returns 403 with `{ "error": "forbidden", "detail": "..." }`:
+
+| Method | Path |
+| --- | --- |
+| `POST` | `/api/agents` |
+| `PATCH`, `DELETE` | `/api/agents/:id` |
+| `DELETE` | `/api/auth/account` |
+| `GET` | `/api/auth/devices` |
+| `POST` | `/api/auth/devices/revoke` |
+
+Intent and opportunity ids accept a UUID or the 8-character short id. `intentId` on `GET /api/negotiations` is a UUID. `agentId` query parameters are UUIDs.
+
+These need no credential: `GET /api/auth/providers`, `GET /api/users/:userId`, `GET /api/networks/public/:id`, `GET /api/networks/share/:code`, and `POST /api/subscribe`.
+
+## Errors
+
+A failure is JSON `{ "error": "..." }` and the HTTP status. A body that fails validation also includes `details`.
+
+| Status | When |
+| --- | --- |
+| 400 | The body or query is invalid |
+| 401 | The credential is missing, expired, or unknown |
+| 403 | The caller is authenticated and not allowed, including an API key on a session-only route |
+| 404 | The id does not resolve for this caller |
+| 409 | The record moved: a settled negotiation, a raced turn, a paused signal |
+| 422 | The server read the request and refused it, such as an intent draft it will not admit |
+| 503 | Preparation failed and can be retried; answers already sent are kept |
+
+A refused negotiation turn uses the messages on [Negotiations](/integrate/rest/negotiations#refused-turns). Read the negotiation again before the next write.

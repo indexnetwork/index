@@ -52,13 +52,24 @@ export default defineConfig({
         { text: 'CLI', link: '/use/cli' },
         { text: 'MCP', link: '/use/mcp' },
         { text: 'macOS', link: '/use/mac' },
-        { text: 'Hermes', link: '/use/hermes' },
+        { text: 'Hermes Agent', link: '/use/hermes' },
       ],
     },
     {
       text: 'Integrate',
       items: [
-        { text: 'REST & CLI', link: '/integrate/rest' },
+        {
+          text: 'API',
+          link: '/integrate/rest',
+          items: [
+            { text: 'Account', link: '/integrate/rest/account' },
+            { text: 'Intent', link: '/integrate/rest/intents' },
+            { text: 'Network', link: '/integrate/rest/networks' },
+            { text: 'Negotiations', link: '/integrate/rest/negotiations' },
+            { text: 'Opportunities', link: '/integrate/rest/opportunities' },
+            { text: 'Conversations', link: '/integrate/rest/conversations' },
+          ],
+        },
         { text: 'Host', link: '/integrate/host' },
         { text: 'Stability', link: '/integrate/stability' },
       ],

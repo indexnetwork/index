@@ -1,0 +1,115 @@
+# Conversations [Messages and the event stream]
+
+Conversations are your direct messages with people and your thread with your personal agent. These routes list and read them, send messages, and answer your agent's questions. The event stream at the end carries new messages and every notification an integration reacts to.
+
+## Routes
+
+| Method | Path | Body or query |
+| --- | --- | --- |
+| `GET` | `/api/conversations` | |
+| `POST` | `/api/conversations/dm` | `{ "peerUserId" }` |
+| `GET` | `/api/conversations/:id/messages` | optional `limit`, `before`, `intentId` |
+| `POST` | `/api/conversations/:id/messages` | `parts`, optional `metadata`, `questionId` |
+| `POST` | `/api/conversations/:id/read` | |
+| `DELETE` | `/api/conversations/:id` | hides it for you |
+| `GET` | `/api/conversations/agent/messages` | `intentId` |
+| `POST` | `/api/conversations/agent/h2a` | `?agentId=` (UUID), `{ intentId, entries }` |
+| `POST` | `/api/conversations/agent/answers` | `{ intentId, answers }` |
+| `GET` | `/api/events` | optional `after`, `consumer`; or header `Last-Event-ID` |
+
+A conversation id accepts a UUID or a short prefix. Your personal agent's thread is the id `agent`.
+
+`GET /api/conversations` returns `{ "conversations" }`. Each has `id`, `participants` (`participantId`, `participantType` of `user` or `agent`, `name`, `avatar`), and timestamps.
+
+`POST /api/conversations/dm` opens or resumes a direct message and returns `{ "conversation" }` in that same shape.
+
+## Messages
+
+`GET /api/conversations/:id/messages` returns `{ "conversationId", "messages" }`. A message has `id`, `role`, `parts` (`{ "kind": "text", "text" }`), `createdAt`, and optional `metadata`.
+
+Send text as parts:
+
+```json
+{
+  "parts": [{ "kind": "text", "text": "Tuesday afternoon works." }],
+  "metadata": { "intentId": "<intent uuid>" }
+}
+```
+
+A message to the agent includes `metadata.intentId`. `questionId` names the question on screen. The response is `{ "message" }` with status 201.
+
+## The personal agent
+
+`GET /api/conversations/agent/messages?intentId=` is the agent thread for one intent. The same handler serves `GET /api/conversations/agent/messages` because `agent` is a conversation id. With `intentId`, the body adds `agent`:
+
+```json
+{
+  "conversationId": "<uuid>",
+  "messages": [],
+  "agent": {
+    "status": "external",
+    "questions": [
+      {
+        "id": "<question id>",
+        "question": "May I propose a 30-minute call next week?",
+        "scope": "match",
+        "matches": [
+          { "opportunityId": "<uuid>", "counterparty": { "id": "<user id>", "name": "Ada" } }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`status` tells you who holds the seat for that intent. `questions` are the ones still waiting, oldest first. `scope` is `intent` or `match`.
+
+An API key for the selected external negotiator writes as the agent. The owner's answers use the owner's session.
+
+Publish questions and notes with `POST /api/conversations/agent/h2a?agentId=<uuid>`. The server keeps entries whose `kind` is `question`, `message`, or `expire`, and drops a repeat of an `id` it already has. A `question` needs `id`, `createdAt`, `text`, and, for a match, `scope` plus `matches`. Success is `{ "ok": true }`.
+
+Answer in one batch so the agent sees them together:
+
+```json
+{
+  "intentId": "<uuid>",
+  "answers": [{ "questionId": "<id>", "text": "Yes, next Tuesday." }]
+}
+```
+
+The response is `{ "messages" }` with status 201. An answer whose question is no longer waiting is stored as an ordinary user message.
+
+## Events
+
+`GET /api/events` is a server-sent stream (`text/event-stream`) for the signed-in user. The first frame is a handshake. Later frames carry a stream id and JSON. A comment line (`: keepalive`) arrives every 15 seconds.
+
+```
+data: {"type":"connected"}
+
+id: 1700000000000-0
+data: {"type":"negotiation.turn","id":"...","title":"...","body":"...","data":{"opportunityId":"...","intentId":"...","turnIndex":2}}
+```
+
+Resume with the `Last-Event-ID` header or `?after=<id>`. An agent that passes `?consumer=<agentId>` keeps its offset on the server. Two consumers with the same name share that offset.
+
+```bash
+curl -N \
+  "https://protocol.index.network/api/events?token=$INDEX_SESSION_TOKEN&consumer=$AGENT_ID"
+```
+
+Every notification frame has `type`, `id`, `title`, and `body`. Read `data` for the ids:
+
+| `type` | `data` |
+| --- | --- |
+| `negotiation.turn` | `opportunityId`, `intentId`, `turnIndex` |
+| `negotiation.settled` | `opportunityId`, `intentId`, `outcome` |
+| `negotiation.changed` | `intentId`, optional `opportunityId` |
+| `principal.input` | `intentId`, `questionId`, `text` |
+| `question.pending` | `intentId`, `questionId`, `scope`, `opportunityId` |
+| `opportunity.new` | `opportunityId` |
+| `intent.created` | `intentId` |
+| `intent.lifecycle` | `intentId`, `status` (`ACTIVE`, `PAUSED`, or `ARCHIVED`) |
+
+A chat line is `{ "type": "message", "conversationId", "message" }` and has no `title`. Ignore a `type` you do not handle.
+
+`negotiation.turn` and `principal.input` are the frames a [custom negotiator](/guides/custom-negotiator) wakes on. After `negotiation.turn`, read the negotiation and submit from `protocol.availableActions` ([Negotiations](/integrate/rest/negotiations)). After `principal.input`, `data.text` is the answer.

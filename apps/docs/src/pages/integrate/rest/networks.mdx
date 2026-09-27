@@ -1,0 +1,65 @@
+# Network [Memberships and requests]
+
+A network is the group that discovery happens inside, such as a community, an event, or a team. These routes list the networks you belong to and who is in them, join and leave, manage members as an owner, and request a new network. Sharing an intent into a network is on [Intent](/integrate/rest/intents).
+
+## Routes
+
+| Method | Path | Body or query |
+| --- | --- | --- |
+| `GET` | `/api/networks` | your memberships |
+| `GET` | `/api/networks/:id` | |
+| `GET` | `/api/networks/:id/members` | roster |
+| `GET` | `/api/networks/:id/intents` | optional `page`, `limit` (default 50, max 100) |
+| `GET` | `/api/networks/discovery/public` | `page`, `limit` |
+| `POST` | `/api/networks/:id/join` | public networks |
+| `POST` | `/api/networks/:id/leave` | |
+| `PUT` | `/api/networks/:id` | `title`, `prompt`, `imageUrl`, `joinPolicy` |
+| `DELETE` | `/api/networks/:id` | |
+| `POST` | `/api/networks/:id/members` | `userId`, optional `permissions`: `["owner"]` or `["member"]` |
+| `PATCH` | `/api/networks/:id/members/:memberId` | `permissions`: `["owner"]` or `["member"]` |
+| `DELETE` | `/api/networks/:id/members/:memberId` | |
+| `POST` | `/api/networks/:id/members/invite` | `email`, optional `name` |
+| `POST` | `/api/networks/invitation/:code/accept` | |
+| `GET` | `/api/networks/:id/join-requests` | owner |
+| `POST` | `/api/networks/:id/join-requests/:userId/review` | `{ "decision": "approve" }` or `"decline"` |
+| `POST` | `/api/network-requests` | `name` required |
+| `GET` | `/api/network-requests` | your requests |
+| `GET` | `/api/network-requests/pending` | |
+| `PATCH` | `/api/network-requests/:id` | `name`, optional `purpose` |
+| `DELETE` | `/api/network-requests/:id` | dismiss |
+
+## What you get back
+
+`GET /api/networks` returns `{ "networks" }`. A network has `id`, `title`, and may include `prompt`, `joinPolicy`, `memberCount`, `role` (yours), and `owner`.
+
+`GET /api/networks/:id/members` returns `{ "members" }`. A member has `name`, `email`, `permissions`, and a user id. Adding a member is owner-only and returns `{ "member", "message" }`.
+
+`GET /api/networks/:id/intents` returns `{ "intents", "pagination" }` for members of that network.
+
+`POST /api/networks/:id/members/invite` is owner-only. It adds the person when they already have an account and emails them to sign in. Someone who is already a member is left as they are: `{ "user": { "id", "email" }, "created", "alreadyMember" }`.
+
+## Create a network
+
+`POST /api/networks` creates a network when your account is allowed to. The body is `title`, and optionally `prompt`, `imageUrl`, and `joinPolicy` (`anyone` or `invite_only`). Network creation is in early access, so most accounts get 403 and request one instead:
+
+```json
+{
+  "name": "Berlin technical founders",
+  "purpose": "People starting companies in Berlin",
+  "audience": "Founders and early operators",
+  "expectedSize": "40",
+  "notes": "Monthly dinners",
+  "joinPolicy": "invite_only"
+}
+```
+
+`name` is required. Create returns `{ "request" }` with status 201. `GET /api/network-requests` returns `{ "requests", "canReview" }`. A request has `id`, `title`, `status`, `purpose`, and `submittedAt`. `PATCH` updates `name` and `purpose`. `DELETE` dismisses the request.
+
+## Public reads
+
+These need no credential:
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/networks/public/:id` |
+| `GET` | `/api/networks/share/:code` |
