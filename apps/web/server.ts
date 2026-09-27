@@ -29,7 +29,6 @@ function appleAppSiteAssociation(): string {
           // while keeping real web-only routes like `/u/<id>/chat` in-browser.
           // The app only routes 2-segment paths (apps/mac/api/deeplink.mjs).
           components: [
-            { "/": "/c/*" },
             { "/": "/o/*" },
             { "/": "/l/*" },
             {

@@ -20,8 +20,8 @@ from typing import Any
 from .env_transport import TransportError, upsert_index_env
 from .transport import get_transport, reset_transport, set_transport_for_tests
 
-# Universal-link host for Index deep links. The macOS app claims /c/*, /o/*, /u/*
-# and /i/* through its apple-app-site-association file, so the same https URL
+# Universal-link host for Index deep links. The macOS app claims /o/*, /u/* and
+# /i/* through its apple-app-site-association file, so the same https URL
 # opens the app when it is installed and the web handoff when it is not. The
 # plugin never detects app installation: it runs on the agent's host, which is
 # usually not the user's Mac, so the OS decides at click time.

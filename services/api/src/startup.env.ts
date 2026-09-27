@@ -160,7 +160,7 @@ function collectEnvWarnings(): string[] {
     }
   };
 
-  warnMissing('API_URL', 'set the deployed API origin so CLI setup, connect links, and webhooks do not fall back to defaults.');
+  warnMissing('API_URL', 'set the deployed API origin so CLI setup and webhooks do not fall back to defaults.');
   warnMissing('WEB_APP_URL', 'set the deployed web app origin for auth and notifications.');
   warnMissingAny(['REDIS_URL', 'REDIS_HOST'], 'set Railway Redis; otherwise cache/locks/SSE may target localhost or in-memory fallbacks.');
   warnMissing('S3_ENDPOINT', 'set the Railway bucket endpoint when using Tigris/S3-compatible storage.');

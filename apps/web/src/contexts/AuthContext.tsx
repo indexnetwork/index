@@ -155,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isHomePage = pathname === '/';
     const publicPrefixes = [
       '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
-      '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/', '/o/', '/i/', '/waitlist', '/download',
+      '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/o/', '/i/', '/waitlist', '/download',
       '/9db20a5fbe',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));

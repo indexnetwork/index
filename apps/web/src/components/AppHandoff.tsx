@@ -11,7 +11,7 @@ export const DOWNLOAD_PATH = "/download";
 const HERMES_OPEN_URL = "hermes://open/index-network";
 
 /**
- * Web end of a canonical entity link (`/u`, `/i`, `/o`, `/c`).
+ * Web end of a canonical entity link (`/u`, `/i`, `/o`).
  *
  * With the macOS app installed the OS opens these URLs before this renders.
  * Otherwise: a signed-in account with a Hermes session goes to Hermes; other

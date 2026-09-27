@@ -8,13 +8,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
-- **`/u/:id`, `/i/:id`, `/o/:id`, and `/c/:code` share one handoff.** A signed-in
-  account with a Hermes session opens `hermes://open/index-network?user=|intent=|o=`
+- **`/u/:id`, `/i/:id`, and `/o/:id` share one handoff.** A signed-in account
+  with a Hermes session opens `hermes://open/index-network?user=|intent=|o=`
   and sees an "Opened in Hermes" note; other signed-in users get the web page
-  (`/o` and `/c` have none, so they get `/download`); signed-out visitors get
+  (`/o` has none, so it gets `/download`); signed-out visitors get
   one Hermes attempt with the download page underneath. Only links opened from
   outside hand off; in-app navigation stays on the web page. `DeepLinkLanding`
   is removed.
+- **Removed `/c/:code`.** Retired connect links no longer have a web page, a
+  universal-link claim, or a Mac app notice.
 - **`/i/:id` is public**, so signed-out visitors reach the handoff instead of the
   login redirect. `/i/new` stays protected.
 - The Mac app now claims `/i/*` as a universal link (`/i/new` and deeper paths
