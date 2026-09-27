@@ -554,6 +554,102 @@ async function summarize(input) {
   return note;
 }
 
+// ../agent/src/triage.ts
+var TERRITORIES = ["principal", "counterpart", "deferrable"];
+var TRIAGE_PROMPT = `
+You classify one stall. A negotiator acting for its principal stopped because it was missing a piece of information. Decide whose territory that information is in.
+
+Always reason before classifying. Output reasoning first.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+DEFINITIONS
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+
+Territory of information (Kamio, 1997): information belongs to a person's territory when it concerns them \u2014 their circumstances, plans, resources, experience or expertise.
+
+Epistemic status (Heritage, 2012): the party who is K+ on a proposition, the one with knowledge of it, is the one who can answer for it.
+
+The principal is the person the negotiator acts for. The counterpart is the other person in the negotiation. This negotiation only settles whether the two of them should connect; nothing is being arranged yet.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+TERRITORY
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+
+Work through this decision tree in order. Stop at the first matching branch.
+
+IF the information only matters for arranging things once the two decide to connect \u2014 exact dates or times beyond rough availability, venues or addresses finer than a required city, prices, contract or project specifics, meeting logistics \u2014 and it does not bear on whether they should connect. This applies whoever holds it:
+  \u2192 deferrable
+
+  deferrable positive examples:
+  \xB7 "The counterpart asked which Thursday afternoon slot works for a call" \u2192 deferrable (exact time)
+  \xB7 "They want the office address to meet at" \u2192 deferrable (venue finer than a city)
+  \xB7 "They asked what day rate the principal would charge for the contract" \u2192 deferrable (price)
+
+  deferrable negative examples (do NOT classify these as deferrable):
+  \xB7 "The counterpart asked whether the principal is currently raising a seed round" \u2192 principal (their stage decides whether to connect)
+  \xB7 "The signal requires someone in Berlin and we do not know if the counterpart is based there" \u2192 counterpart (a required city bears on the fit)
+
+ELSE IF the information concerns the counterpart \u2014 what they want out of this, their terms, their situation, their reasons, what their claim rests on:
+  \u2192 counterpart
+
+  counterpart positive examples:
+  \xB7 "The counterpart never said what they want from the principal" \u2192 counterpart (their outcome)
+  \xB7 "Their proposal claims prior fintech experience without saying what it was" \u2192 counterpart (what their claim rests on)
+  \xB7 "Unclear whether the counterpart is hiring full-time or looking for a contractor" \u2192 counterpart (their terms)
+
+  counterpart negative examples (do NOT classify these as counterpart):
+  \xB7 "The counterpart asked whether the principal would relocate" \u2192 principal (the principal's own plans)
+  \xB7 "The counterpart asked where exactly to meet" \u2192 deferrable (logistics)
+
+Otherwise \u2014 the information concerns the principal themselves (who they are, their stage, whether they are raising, what they would bring, materials such as a deck, their preferences), it needs their consent to commit them, or it is unclear whose it is:
+  \u2192 principal
+
+  principal positive examples:
+  \xB7 "The counterpart asked what stage the principal's company is at" \u2192 principal (stage)
+  \xB7 "They asked for the principal's pitch deck" \u2192 principal (materials)
+  \xB7 "Accepting would commit the principal to an unpaid pilot the brief does not authorize" \u2192 principal (consent)
+
+  principal negative examples (do NOT classify these as principal):
+  \xB7 "The counterpart asked if the principal is free next Tuesday at 3pm" \u2192 deferrable (exact availability, unless rough availability is decisive)
+  \xB7 "We do not know what the counterpart wants out of the introduction" \u2192 counterpart
+
+Call classify_stall exactly once.
+`.trim();
+async function triageStall(input) {
+  try {
+    const reply = await input.model.complete([
+      { role: "system", content: TRIAGE_PROMPT },
+      {
+        role: "user",
+        content: JSON.stringify({
+          reason: input.stall.reason,
+          suggestedAsk: input.stall.suggestedAsk ?? null,
+          counterpartMessage: input.counterpartMessage
+        })
+      }
+    ], [{
+      type: "function",
+      function: {
+        name: "classify_stall",
+        description: "Record whose territory the stall's missing information is in, reasoning first.",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            reasoning: { type: "string" },
+            territory: { type: "string", enum: TERRITORIES }
+          },
+          required: ["reasoning", "territory"]
+        }
+      }
+    }], input.signal);
+    const { territory } = JSON.parse(reply.tool_calls?.[0]?.function.arguments ?? "{}");
+    return territory && TERRITORIES.includes(territory) ? territory : "principal";
+  } catch {
+    return "principal";
+  }
+}
+
 // ../agent/src/wake.ts
 var WAKE_STEPS = 8;
 var SEARCH_QUERIES = 5;
@@ -956,6 +1052,9 @@ var PROGRESS = "Progress: ";
 var WITHDRAWN = "Withdrawn: ";
 var OPENING_MS = 60000;
 var DECISIONS2 = ["continue", "accept", "decline", "stop"];
+var RERUN = `
+
+What you stalled on is not your principal's to answer. If it is the counterpart's, ask them for it with a counter carrying one focused question. If it is a detail the two of them settle once they talk, leave it open. Take your turn now; do not stall on it.`;
 var PERMITTED = {
   continue: ["propose", "counter", "accept", "decline"],
   accept: ["accept", "propose"],
@@ -1363,7 +1462,14 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
     return { stall: { reason: `Nothing this seat may do now carries out the standing decision to ${decision}.` } };
   }
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
-  const result2 = await negotiate({ user, intent, brief, opportunity, model, now, signal });
+  let result2 = await negotiate({ user, intent, brief, opportunity, model, now, signal });
+  if ("stall" in result2 && result2.stall.suggestedAsk) {
+    const counterpartMessage = opportunity.turns?.filter((turn) => turn.actor === "counterpart").at(-1)?.message ?? null;
+    const territory = await triageStall({ model, stall: result2.stall, counterpartMessage, signal });
+    if (territory !== "principal")
+      result2 = await negotiate({ user, intent, brief: brief + RERUN, opportunity, model, now, signal });
+    log(`  triage ${opportunityId} ${territory} ${territory === "principal" ? "asked" : ("turn" in result2) ? "rerun_turn" : "rerun_stalled"}`);
+  }
   if ("turn" in result2) {
     await client.submitTurn(opportunityId, result2.turn);
     return result2;

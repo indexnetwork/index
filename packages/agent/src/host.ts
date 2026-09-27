@@ -4,6 +4,7 @@ import { briefIfMissing } from "./brief.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
 import { summarize } from "./summary.ts";
+import { triageStall } from "./triage.ts";
 import type { ConversationEntry, Decision, Intent, NegotiateRun, NegotiationAction, Opportunity, StandingStall, WakeAction, WakeResult } from "./types.ts";
 import { wake } from "./wake.ts";
 
@@ -27,6 +28,8 @@ const WITHDRAWN = "Withdrawn: ";
 /** An opening turn still running after this is no longer held. The rest of the initiation can finish. */
 const OPENING_MS = 60_000;
 const DECISIONS: readonly string[] = ["continue", "accept", "decline", "stop"];
+/** Appended to the brief when a negotiator stalled on something its principal need not answer. */
+const RERUN = "\n\nWhat you stalled on is not your principal's to answer. If it is the counterpart's, ask them for it with a counter carrying one focused question. If it is a detail the two of them settle once they talk, leave it open. Take your turn now; do not stall on it.";
 
 /**
  * What each standing decision lets a negotiator do, intersected with whatever
@@ -611,7 +614,14 @@ export async function runNegotiate(
   }
 
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
-  const result = await negotiate({ user, intent, brief, opportunity, model, now, signal });
+  let result = await negotiate({ user, intent, brief, opportunity, model, now, signal });
+  // A stall the principal need not answer gets one more run, told to take its turn.
+  if ("stall" in result && result.stall.suggestedAsk) {
+    const counterpartMessage = opportunity.turns?.filter((turn) => turn.actor === "counterpart").at(-1)?.message ?? null;
+    const territory = await triageStall({ model, stall: result.stall, counterpartMessage, signal });
+    if (territory !== "principal") result = await negotiate({ user, intent, brief: brief + RERUN, opportunity, model, now, signal });
+    log(`  triage ${opportunityId} ${territory} ${territory === "principal" ? "asked" : "turn" in result ? "rerun_turn" : "rerun_stalled"}`);
+  }
   if ("turn" in result) {
     await client.submitTurn(opportunityId, result.turn);
     return result;
