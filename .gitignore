@@ -17,28 +17,28 @@ AGENTS.md
 CLAUDE.md
 CLAUDE.local.md
 GEMINI.md
-.agents/
+.agents
 .aider*
-.claude/
+.claude
 .clinerules
-.codex/
-.continue/
-.cursor/
+.codex
+.continue
+.cursor
 .cursorrules
-.gemini/
+.gemini
 .mcp.json
-.opencode/
-.pi/
-.pi-subagents/
-.roo/
+.opencode
+.pi
+.pi-subagents
+.roo
 .rules
-.superpowers/
-.windsurf/
+.superpowers
+.windsurf
 .windsurfrules
-docs/superpowers/
+docs/superpowers
 
 # Local-only agent/LLM notes and configuration.
-/ignored/
+/ignored
 
 # ===================
 # Dependencies
