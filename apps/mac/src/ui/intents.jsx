@@ -59,6 +59,33 @@ function NetworksRow({ count, pending, onClick }) {
   );
 }
 
+// Every person-to-person thread, including ones whose signal is gone. Same
+// shelf treatment as the networks row below it.
+function ConversationsRow({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display:"flex", alignItems:"center", gap:12, width:"100%",
+        padding:"5px 13px", cursor:"pointer", textAlign:"left",
+        border:"none", background:"#F2F0EC",
+      }}>
+      <span style={{
+        flex:"0 0 auto", width:34, height:34,
+        display:"grid", placeItems:"center",
+      }}>
+        <svg width="22" height="20" viewBox="0 0 22 20" fill="none" stroke="#000" strokeWidth={2.5} strokeLinejoin="miter">
+          <path d="M2 2h18v12H9l-5 4v-4H2z"/>
+        </svg>
+      </span>
+      <span style={{
+        flex:1, minWidth:0,
+        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+      }}>conversations</span>
+    </button>
+  );
+}
+
 // Handing out a link is its own errand, so it gets its own button rather than
 // living inside one network's access tab. It sits under the pitch, not on the
 // shelf: inviting someone is the next thing the copy asks of you, while the
@@ -372,6 +399,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
 
               {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
+                <ConversationsRow onClick={() => onOpenView && onOpenView("conversations")}/>
                 <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
                 <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
                 <UserMenu me={ME} onSelect={onAccountSelect}/>

@@ -39,6 +39,8 @@ func buildMainMenu(target: AppDelegate) -> NSMenu {
     mainMenu.addItem(viewMenuItem)
     let viewMenu = NSMenu(title: "View")
     viewMenuItem.submenu = viewMenu
+    viewMenu.addItem(withTitle: "Conversations", action: #selector(AppDelegate.openConversations(_:)), keyEquivalent: "")
+        .target = target
     viewMenu.addItem(withTitle: "Networks", action: #selector(AppDelegate.openNetworks(_:)), keyEquivalent: "")
         .target = target
     viewMenu.addItem(withTitle: "Agent Negotiations", action: #selector(AppDelegate.openNegotiations(_:)), keyEquivalent: "")
