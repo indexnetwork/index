@@ -37,7 +37,7 @@ const SOCIAL_ICONS: Record<SocialPlatform, React.ReactElement> = {
 
 export default function UserProfilePage() {
   const { id } = useParams();
-  return <AppHandoff hermesQuery={`user=${encodeURIComponent(id ?? "")}`} webPage={<UserProfile />} />;
+  return <AppHandoff kind="u" id={id ?? ""} webPage={<UserProfile />} />;
 }
 
 function UserProfile() {

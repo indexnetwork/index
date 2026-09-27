@@ -167,7 +167,7 @@ function Panel({
  * actions over a Radar panel with a status filter strip. */
 export default function IntentDetailPage() {
   const { intentId } = useParams<{ intentId: string }>();
-  return <AppHandoff hermesQuery={`intent=${encodeURIComponent(intentId ?? "")}`} webPage={<IntentDetail />} />;
+  return <AppHandoff kind="i" id={intentId ?? ""} webPage={<IntentDetail />} />;
 }
 
 function IntentDetail() {

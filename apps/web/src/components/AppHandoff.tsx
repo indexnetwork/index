@@ -4,60 +4,70 @@ import { useLocation } from "react-router";
 import Download from "@/app/download/page";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { authClient } from "@/lib/auth-client";
-import { isHermesUserAgent } from "@/lib/devices";
+import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
 
 export const DOWNLOAD_PATH = "/download";
 
 const HERMES_OPEN_URL = "hermes://open/index-network";
+const HERMES_PARAM = { u: "user", i: "intent", o: "o" } as const;
+
+type Kind = keyof typeof HERMES_PARAM;
+type Target = "mac" | "hermes" | null;
 
 /**
  * Web end of a canonical entity link (`/u`, `/i`, `/o`).
  *
- * With the macOS app installed the OS opens these URLs before this renders.
- * Otherwise: a signed-in account with a Hermes session goes to Hermes; other
- * signed-in users get the web page (`webPage`); signed-out visitors get one
+ * A working universal link opens the macOS app before this renders. Otherwise
+ * a signed-in account opens its Mac app over `index://` (which needs no
+ * associated domain, so it also covers Chrome, pasted links, and other hosts),
+ * then Hermes, then the web page (`webPage`). Signed-out visitors get one
  * Hermes attempt with the download page underneath, since a browser cannot
- * tell whether Hermes is installed.
+ * tell what is installed.
  */
-export default function AppHandoff({ hermesQuery, webPage }: { hermesQuery?: string; webPage?: ReactNode }) {
+export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: string; webPage?: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthContext();
-  const [hasHermes, setHasHermes] = useState<boolean | null>(null);
+  const [target, setTarget] = useState<Target | undefined>(undefined);
   const [showWeb, setShowWeb] = useState(false);
   // Only a link opened from outside hands off; in-app navigation stays on web.
   const { key } = useLocation();
   const [external] = useState(key === "default");
-  const hermesUrl = external && hermesQuery ? `${HERMES_OPEN_URL}?${hermesQuery}` : null;
   const fallback = webPage ?? <Download />;
+  const macUrl = `index://${kind}/${encodeURIComponent(id)}`;
+  const hermesUrl = `${HERMES_OPEN_URL}?${HERMES_PARAM[kind]}=${encodeURIComponent(id)}`;
 
   useEffect(() => {
-    if (!isAuthenticated || !hermesUrl) return;
+    if (!isAuthenticated || !external) return;
     authClient.listSessions().then(
-      ({ data }) => setHasHermes(((data ?? []) as Array<{ userAgent?: string | null }>).some((s) => isHermesUserAgent(s.userAgent))),
-      () => setHasHermes(false),
+      ({ data }) => {
+        const agents = ((data ?? []) as Array<{ userAgent?: string | null }>).map((s) => s.userAgent);
+        setTarget(agents.some(isMacUserAgent) ? "mac" : agents.some(isHermesUserAgent) ? "hermes" : null);
+      },
+      () => setTarget(null),
     );
-  }, [isAuthenticated, hermesUrl]);
+  }, [isAuthenticated, external]);
 
   const route = isLoading
     ? "pending"
-    : !isAuthenticated
-      ? "signed-out"
-      : !hermesUrl
-        ? "web"
-        : hasHermes === null
+    : !external
+      ? "web"
+      : !isAuthenticated
+        ? "signed-out"
+        : target === undefined
           ? "pending"
-          : hasHermes ? "hermes" : "web";
+          : target ?? "web";
 
   useEffect(() => {
-    if (hermesUrl && (route === "signed-out" || route === "hermes")) window.location.href = hermesUrl;
-  }, [route, hermesUrl]);
+    if (route === "mac") window.location.href = macUrl;
+    else if (route === "hermes" || route === "signed-out") window.location.href = hermesUrl;
+  }, [route, macUrl, hermesUrl]);
 
   if (route === "pending") return null;
-  if (route === "signed-out") return external ? <Download /> : <>{fallback}</>;
-  if (route === "hermes" && !showWeb) {
+  if (route === "signed-out") return <Download />;
+  if ((route === "mac" || route === "hermes") && !showWeb) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center max-w-md px-6">
-          <p className="text-gray-900 mb-4">Opened in Hermes.</p>
+          <p className="text-gray-900 mb-4">{route === "mac" ? "Opened in the Index app." : "Opened in Hermes."}</p>
           {webPage && (
             <button onClick={() => setShowWeb(true)} className="text-sm text-gray-500 hover:text-black underline">
               View on web

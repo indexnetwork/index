@@ -8,7 +8,7 @@ import AppHandoff from "@/components/AppHandoff";
  */
 export default function OpportunityLinkPage() {
   const { id } = useParams();
-  return <AppHandoff hermesQuery={`o=${encodeURIComponent(id ?? "")}`} />;
+  return <AppHandoff kind="o" id={id ?? ""} />;
 }
 
 export const Component = OpportunityLinkPage;

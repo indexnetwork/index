@@ -9,8 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 - **`/u/:id`, `/i/:id`, and `/o/:id` share one handoff.** A signed-in account
-  with a Hermes session opens `hermes://open/index-network?user=|intent=|o=`
-  and sees an "Opened in Hermes" note; other signed-in users get the web page
+  with a Mac app session opens `index://<kind>/<id>` ("Opened in the Index
+  app"), so the app opens even when the universal link did not (Chrome, pasted
+  links, another host). Otherwise an account with a Hermes session opens
+  `hermes://open/index-network?user=|intent=|o=` ("Opened in Hermes"); other
+  signed-in users get the web page
   (`/o` has none, so it gets `/download`); signed-out visitors get
   one Hermes attempt with the download page underneath. Only links opened from
   outside hand off; in-app navigation stays on the web page. `DeepLinkLanding`
