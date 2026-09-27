@@ -610,7 +610,7 @@ var WAKE_PROMPT = [
   BRIEF_PROMPT,
   "A signal with nothing open yet is the one case where breadth is the whole job: discover people in several different directions at once, since the kinds of person who could serve it are rarely one kind. Everyone discovered is reached, so how wide you cast is decided entirely by the queries you write \u2014 being thorough once, at the start, is what spares your principal a trickle of one introduction at a time. That wake asks your principal nothing: its briefs are written from their statement and their profile, and everyone it reaches is briefed and proposed to before any answer could arrive. The first thing worth putting to them is whatever a negotiator stalls on.",
   "Do not re-decide an opportunity whose brief and decision still hold. A stall alone is not a reason to decide again \u2014 the stall is what the principal is asked about, and deciding on it would close the negotiation with the fact still missing.",
-  "A stall with no questionId has never been put to your principal, and is settled on this wake: ask them for what it is missing, naming it in stalled, or resolve_stall when their own words already cover it. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is held until then, so leaving it is how a negotiation stops for good. A stall whose question is still waiting is left alone. A stall marked answered is decided on this wake with set_brief, in a brief that carries the answer: that decision is what resumes its negotiator.",
+  "A stall with no questionId has never been put to your principal, and is settled on this wake: ask them for what it is missing, naming it in stalled, link_stall when an open question already asks for that fact, or resolve_stall when their own words already cover it. A question already waiting on your principal about some other fact is not a reason to hold it back, and neither is their silence: the negotiator that stalled is held until then, so leaving it is how a negotiation stops for good. A stall whose question is still waiting is left alone. A stall marked answered is decided on this wake with set_brief, in a brief that carries the answer: that decision is what resumes its negotiator.",
   "Do not re-ask what this conversation already answered. A question standing open is not a reason to expire it either: retire one only when the principal's own words have made its answer unable to change anything.",
   "When unansweredMessage is present, answer that direct message exactly once with reply_principal: briefly and in English, even when they wrote in another language, grounded only in the conversation, opportunities and principal facts. Never invent facts. A bare greeting or acknowledgement gets a short, natural answer. If the message also changes something \u2014 a fact, preference or instruction \u2014 act on it with the other tools as usual. When it accepts or rejects someone in the opportunity list, call accept_opportunity or reject_opportunity for that opportunity, then reply_principal with what the tool returned. Leave everyone else alone. This reply replaces the note for this wake; do not write both unless questions follow.",
   "Before you ask anything, write one note. The note is your voice to your principal, and it covers only what you did on this wake \u2014 the decisions you just made, and why the questions you are about to ask matter. A discovery is not a note: the sentence your principal reads is the plan you pass to reach_counterparties, and the queries are shown on their own. Do not recap who you discovered or reached out to. Say discovered and reaching out, never search or searching. Not a summary of the signal, and never a negotiator's own moves. If you replied to a direct message and must ask a question, the note is still required before ask_principal.",
@@ -670,6 +670,10 @@ async function wake(input) {
   }
   function owed() {
     return opportunities.filter(({ id, stall }) => stall && (stall.answered || !stall.questionId && !asking.has(id))).map(({ id }) => id);
+  }
+  function unasked(opportunityId) {
+    const stall = byId.get(opportunityId)?.stall;
+    return stall && !stall.questionId && !stall.answered && !asking.has(opportunityId) ? stall : undefined;
   }
   const tools = [
     tool({
@@ -793,7 +797,7 @@ async function wake(input) {
     }),
     tool({
       name: "ask_principal",
-      description: "Ask your principal one question, when a missing personal fact or an approval to commit them would change the next move. One question per missing fact: negotiations stalled on the same fact share a single intent-scoped question, and a fact that is one counterpart's own terms \u2014 or any approval \u2014 is opportunity-scoped. A question already waiting on your principal rules out asking for that same fact again, nothing else: a stall whose fact no open question covers still has to be asked, or that negotiation waits on an answer that will never come. Call note_principal first.",
+      description: "Ask your principal one question, when a missing personal fact or an approval to commit them would change the next move. One question per missing fact: negotiations stalled on the same fact share a single intent-scoped question, and a fact that is one counterpart's own terms \u2014 or any approval \u2014 is opportunity-scoped. A question already waiting on your principal rules out asking for that same fact again (link_stall to it instead), nothing else: a stall whose fact no open question covers still has to be asked, or that negotiation waits on an answer that will never come. Call note_principal first.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -822,10 +826,6 @@ async function wake(input) {
             throw new Error(`No opportunity ${argument.opportunityId}. Use one of: ${[...byId.keys()].join(", ") || "none"}.`);
           }
         }
-        const unasked = (opportunityId) => {
-          const stall = byId.get(opportunityId)?.stall;
-          return stall && !stall.questionId && !stall.answered && !asking.has(opportunityId) ? stall : undefined;
-        };
         const stalled = argument.stalled ?? (argument.scope === "opportunity" && unasked(argument.opportunityId) ? [argument.opportunityId] : []);
         const stalls = stalled.map((opportunityId) => {
           const stall = unasked(opportunityId);
@@ -844,6 +844,40 @@ async function wake(input) {
           ...stalls.length ? { stalls } : {}
         });
         return "Question recorded.";
+      }
+    }),
+    tool({
+      name: "link_stall",
+      description: "Attach stalls to a question already waiting on your principal that asks for the same fact, instead of asking it again. Its answer then releases them too.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          questionId: { type: "string" },
+          stalled: {
+            type: "array",
+            minItems: 1,
+            uniqueItems: true,
+            items: { type: "string" },
+            description: "The opportunities whose stall that question already asks for."
+          }
+        },
+        required: ["questionId", "stalled"]
+      },
+      run: ({ questionId, stalled }) => {
+        if (!open.has(questionId)) {
+          throw new Error(`No question ${questionId} is waiting on your principal. Open questions: ${[...open.keys()].join(", ") || "none"}.`);
+        }
+        const stalls = stalled.map((opportunityId) => {
+          const stall = unasked(opportunityId);
+          if (!stall)
+            throw new Error(`${opportunityId} has no stall waiting for a question.`);
+          return stall.id;
+        });
+        for (const opportunityId of stalled)
+          asking.add(opportunityId);
+        actions.push({ type: "link", questionId, stalls });
+        return "Stalls linked to the open question.";
       }
     }),
     tool({
@@ -946,7 +980,7 @@ async function wake(input) {
       ...input.now ? { now: input.now } : {},
       ...input.signal ? { signal: input.signal } : {},
       instructions: [
-        "These negotiations are held on a stall, and this run settles each one. A stall with no questionId: write one note_principal, then ask_principal for what it is missing, naming it in stalled, unless your principal's own words already cover it, in which case resolve_stall. A stall marked answered: set_brief, in a brief that carries the answer. Decline or stop one only when the conversation already says so.",
+        "These negotiations are held on a stall, and this run settles each one. A stall with no questionId: write one note_principal, then ask_principal for what it is missing, naming it in stalled, unless your principal's own words already cover it, in which case resolve_stall, or an open question already asks for that fact, in which case link_stall. A stall marked answered: set_brief, in a brief that carries the answer. Decline or stop one only when the conversation already says so.",
         BRIEF_PROMPT
       ].join(`
 
@@ -957,7 +991,7 @@ async function wake(input) {
         opportunities: opportunities.filter(({ id }) => due.has(id)),
         openQuestions: [...open].map(([questionId, question]) => ({ questionId, question }))
       }),
-      tools: tools.filter((entry) => ["note_principal", "ask_principal", "resolve_stall", "set_brief"].includes(entry.name))
+      tools: tools.filter((entry) => ["note_principal", "ask_principal", "link_stall", "resolve_stall", "set_brief"].includes(entry.name))
     });
   }
   if (unpersisted)
@@ -995,6 +1029,7 @@ var BRIEF = "Brief: ";
 var DECISION = "Decision: ";
 var STALL = "Stall: ";
 var RESOLVED = "Resolved: ";
+var LINKED = "Linked: ";
 var TO_ASK = `
 
 To ask: `;
@@ -1042,6 +1077,9 @@ function readConversation(messages) {
     }
     if (message.role === "agent" && text.startsWith(RESOLVED)) {
       return { kind: "resolution", text: text.slice(RESOLVED.length), ...stalls, ...opportunity ? { opportunity } : {}, ...counterpart ? { counterpart } : {} };
+    }
+    if (message.role === "agent" && text.startsWith(LINKED)) {
+      return { kind: "link", text: text.slice(LINKED.length), ...stalls, ...principal?.questionId ? { questionId: principal.questionId } : {} };
     }
     if (message.role === "agent" && text.startsWith(PROGRESS)) {
       return { kind: "progress", text: text.slice(PROGRESS.length) };
@@ -1115,6 +1153,13 @@ function latestBriefs(conversation) {
         if (!entry.questionId || !entry.stalls)
           break;
         asked.set(entry.questionId, entry.stalls);
+        for (const [, carried] of linked(entry.stalls))
+          carried.stall.questionId ??= entry.questionId;
+        break;
+      case "link":
+        if (!entry.questionId || !entry.stalls)
+          break;
+        asked.set(entry.questionId, [...asked.get(entry.questionId) ?? [], ...entry.stalls]);
         for (const [, carried] of linked(entry.stalls))
           carried.stall.questionId ??= entry.questionId;
         break;
@@ -1192,6 +1237,8 @@ function describe(action) {
       return `progress: ${action.text}`;
     case "expire":
       return `expire ${action.questionId}`;
+    case "link":
+      return `link ${action.questionId} for ${action.stalls.join(", ")}`;
   }
 }
 async function publishActions(client, intentId, actions, context) {
@@ -1218,6 +1265,13 @@ async function publishActions(client, intentId, actions, context) {
         break;
       case "resolve":
         entries.push({ ...entry("message", `${RESOLVED}${action.reason}`, match ? [match] : []), stalls: [action.stallId] });
+        break;
+      case "link":
+        entries.push({
+          ...entry("message", `${LINKED}${questions?.get(action.questionId) ?? "a question already waiting on you."}`),
+          questionId: action.questionId,
+          stalls: action.stalls
+        });
         break;
       case "ask": {
         const question = entry("question", action.question, match ? [match] : []);

@@ -22,6 +22,7 @@ const BRIEF = "Brief: ";
 const DECISION = "Decision: ";
 const STALL = "Stall: ";
 const RESOLVED = "Resolved: ";
+const LINKED = "Linked: ";
 const TO_ASK = "\n\nTo ask: ";
 const PROGRESS = "Progress: ";
 const WITHDRAWN = "Withdrawn: ";
@@ -88,6 +89,9 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
     }
     if (message.role === "agent" && text.startsWith(RESOLVED)) {
       return { kind: "resolution", text: text.slice(RESOLVED.length), ...stalls, ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
+    }
+    if (message.role === "agent" && text.startsWith(LINKED)) {
+      return { kind: "link", text: text.slice(LINKED.length), ...stalls, ...(principal?.questionId ? { questionId: principal.questionId } : {}) };
     }
     if (message.role === "agent" && text.startsWith(PROGRESS)) {
       return { kind: "progress", text: text.slice(PROGRESS.length) };
@@ -196,6 +200,12 @@ export function latestBriefs(conversation: ConversationEntry[]): Map<string, Car
         asked.set(entry.questionId, entry.stalls);
         for (const [, carried] of linked(entry.stalls)) carried.stall!.questionId ??= entry.questionId;
         break;
+      // A stall linked to an open question is asked by it, as if it had asked it.
+      case "link":
+        if (!entry.questionId || !entry.stalls) break;
+        asked.set(entry.questionId, [...(asked.get(entry.questionId) ?? []), ...entry.stalls]);
+        for (const [, carried] of linked(entry.stalls)) carried.stall!.questionId ??= entry.questionId;
+        break;
       // A withdrawn question leaves its stall owed and unasked.
       case "expire":
         for (const [, carried] of linked(asked.get(entry.questionId ?? ""))) {
@@ -280,6 +290,7 @@ function describe(action: WakeAction): string {
     case "reply": return `reply: ${action.text}`;
     case "progress": return `progress: ${action.text}`;
     case "expire": return `expire ${action.questionId}`;
+    case "link": return `link ${action.questionId} for ${action.stalls.join(", ")}`;
   }
 }
 
@@ -287,7 +298,7 @@ function describe(action: WakeAction): string {
 interface PublishContext {
   /** The counterpart to tag each opportunity-scoped entry with. */
   counterparts: Map<string, MatchReference>;
-  /** Questions by id, so a retirement reads as the question it withdrew. */
+  /** Questions by id, so a retirement or a link reads as the question it names. */
   questions?: Map<string, string>;
   log?: (line: string) => void;
 }
@@ -329,6 +340,13 @@ export async function publishActions(
         break;
       case "resolve":
         entries.push({ ...entry("message", `${RESOLVED}${action.reason}`, match ? [match] : []), stalls: [action.stallId] });
+        break;
+      case "link":
+        entries.push({
+          ...entry("message", `${LINKED}${questions?.get(action.questionId) ?? "a question already waiting on you."}`),
+          questionId: action.questionId,
+          stalls: action.stalls,
+        });
         break;
       case "ask": {
         const question = entry("question", action.question, match ? [match] : []);

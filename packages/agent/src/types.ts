@@ -35,13 +35,13 @@ export type Decision = "continue" | "accept" | "decline" | "stop";
  * too: they are how a wake's work persists, and the principal can read them.
  */
 export interface ConversationEntry {
-  kind: "user" | "message" | "reply" | "question" | "answer" | "brief" | "decision" | "stall" | "resolution" | "expire" | "progress";
+  kind: "user" | "message" | "reply" | "question" | "answer" | "brief" | "decision" | "stall" | "resolution" | "expire" | "progress" | "link";
   text: string;
   /** The agent DM row this entry was read from. */
   id?: string;
   /** On a stall, the negotiation's turn count when it stalled. */
   turnCount?: number;
-  /** On a question or a resolution, the stall entries it is about. */
+  /** On a question, a link or a resolution, the stall entries it is about. */
   stalls?: string[];
   scope?: "intent" | "opportunity";
   counterpart?: string;
@@ -143,7 +143,8 @@ export type WakeAction =
   | { type: "note"; text: string }
   | { type: "reply"; text: string }
   | { type: "progress"; text: string }
-  | { type: "expire"; questionId: string };
+  | { type: "expire"; questionId: string }
+  | { type: "link"; questionId: string; stalls: string[] };
 
 export interface WakeResult {
   /** What the host should persist and run. Empty when staying silent was right. */
