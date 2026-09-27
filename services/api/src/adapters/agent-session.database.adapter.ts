@@ -145,6 +145,10 @@ export class AgentSessionDatabaseAdapter {
    * still the selected negotiator. The hosted seat names no agent id and is
    * refused the same way once an external negotiator holds the seat.
    *
+   * Entries sent together usually share one millisecond, and the transcript
+   * sorts by time, so each entry is stamped at least 1 ms after the previous
+   * one in the batch to keep the order the agent sent them in.
+   *
    * @param input - Owner, signal, the selected agent when one is speaking, and question/message entries.
    * @returns The inserted conversation messages.
    * @throws RuntimeConflictError when a named agent is no longer the selected negotiator, or an unnamed caller writes while one is selected.
@@ -171,11 +175,14 @@ export class AgentSessionDatabaseAdapter {
         if (selected) throw new RuntimeConflictError();
       }
       const inserted: Message[] = [];
+      let previousAt = -Infinity;
       for (const entry of input.entries) {
         if (entry.kind !== 'question' && entry.kind !== 'message' && entry.kind !== 'expire') continue;
         const { id, createdAt, text, ...principalMessage } = entry;
+        const sentAt = Math.max(new Date(createdAt).getTime(), previousAt + 1);
+        previousAt = sentAt;
         inserted.push(await conversations.insertMessageWithConversationSession(tx, {
-          id, createdAt: new Date(createdAt), conversationId: conversation.id,
+          id, createdAt: new Date(sentAt), conversationId: conversation.id,
           senderId: SYSTEM_AGENT_ID, role: 'agent',
           parts: [{ kind: 'text', text }], metadata: { intentId: input.intentId, principalMessage }, extensions: null,
         }));

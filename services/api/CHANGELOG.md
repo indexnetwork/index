@@ -66,6 +66,8 @@ section before promoting to `main`).
 - Restore API architecture lint by keeping opportunity presentation and preload
   helpers in `lib/opportunity`, outside the service layer. Runtime behavior is
   unchanged.
+- Agent DM entries sent together keep the order the agent sent them in: a note
+  stays before its questions, and the question queue follows ask order.
 
 ### Removed
 - Removed opportunity outcome-feedback capture, storage, shadow mining, and telemetry.
