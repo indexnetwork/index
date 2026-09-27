@@ -27,6 +27,7 @@ export default defineConfig({
         { text: 'Overview', link: '/' },
         {
           text: 'Primitives',
+          collapsed: true,
           items: [
             { text: 'Intent', link: '/intent' },
             { text: 'Network', link: '/network' },
@@ -60,9 +61,9 @@ export default defineConfig({
       items: [
         {
           text: 'API',
-          link: '/integrate/rest',
+          collapsed: true,
           items: [
-            { text: 'Account', link: '/integrate/rest/account' },
+            { text: 'Overview', link: '/integrate/rest' },
             { text: 'Intent', link: '/integrate/rest/intents' },
             { text: 'Network', link: '/integrate/rest/networks' },
             { text: 'Negotiations', link: '/integrate/rest/negotiations' },

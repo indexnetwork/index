@@ -11,7 +11,6 @@ type Page =
   | { path: '/guides/introducer-agent'; render: 'static' }
   | { path: '/'; render: 'static' }
   | { path: '/integrate/host'; render: 'static' }
-  | { path: '/integrate/rest/account'; render: 'static' }
   | { path: '/integrate/rest/conversations'; render: 'static' }
   | { path: '/integrate/rest/intents'; render: 'static' }
   | { path: '/integrate/rest/negotiations'; render: 'static' }
