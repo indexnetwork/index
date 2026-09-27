@@ -287,7 +287,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
           // A negotiator's stall and the wake's resolution of one are the agent's
           // own bookkeeping. The principal's words stay, whatever they begin with.
           const bookkeeping = m.role === "agent" && provenance.kind === "message"
-            && (text.startsWith("Stall: ") || text.startsWith("Resolved: "));
+            && (text.startsWith("Stall: ") || text.startsWith("Resolved: ") || text.startsWith("Linked: "));
           if (bookkeeping) return null;
           const match = Array.isArray(provenance.matches) ? provenance.matches[0] : null;
           const waiting = provenance.kind === "question" && provenance.questionId && carded[provenance.questionId];

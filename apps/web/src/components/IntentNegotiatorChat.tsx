@@ -134,6 +134,11 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             const content = messageText(message);
             const provenance = message.metadata?.principalMessage as Provenance | undefined;
             if (!content || provenance?.kind === "question" && provenance.questionId && carded.has(provenance.questionId)) return null;
+            // A stall, its resolution and its link to an open question are the agent's
+            // own bookkeeping. The principal's words stay, whatever they begin with.
+            const bookkeeping = message.role === "agent" && provenance?.kind === "message"
+              && ["Stall: ", "Resolved: ", "Linked: "].some((prefix) => content.trim().startsWith(prefix));
+            if (bookkeeping) return null;
             const own = message.role === "user";
             return <div key={message.id} className={cn("flex", own ? "justify-end" : "justify-start")}>
               <article className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-sm", own ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900")}>
