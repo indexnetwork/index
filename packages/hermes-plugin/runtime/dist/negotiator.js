@@ -554,6 +554,52 @@ async function summarize(input) {
   return note;
 }
 
+// ../agent/src/triage.ts
+var TERRITORIES = ["principal", "counterpart", "deferrable"];
+var TRIAGE_PROMPT = [
+  "A negotiator acting for its principal stopped because it was missing one piece of information. Decide who can supply it. The negotiation only settles whether the principal and the counterpart should connect; nothing is being arranged yet.",
+  "Answer deferrable when the information only matters for arranging things once they decide to connect: an exact time, a venue or address, a price, contract details. It does not bear on whether they should connect. For example, which Thursday slot works, or the office address to meet at.",
+  "Otherwise answer counterpart when it concerns the counterpart: what they want, their terms, their situation, what their claim rests on. For example, they said they have a thesis but not what it is.",
+  "Otherwise answer principal: it concerns the principal themselves (their stage, whether they are raising, what they bring, their materials or preferences), it needs their consent, or you are not sure.",
+  "Give a one-sentence reason, then call classify_stall once."
+].join(`
+
+`);
+async function triageStall(input) {
+  try {
+    const reply = await input.model.complete([
+      { role: "system", content: TRIAGE_PROMPT },
+      {
+        role: "user",
+        content: JSON.stringify({
+          reason: input.stall.reason,
+          suggestedAsk: input.stall.suggestedAsk ?? null,
+          counterpartMessage: input.counterpartMessage
+        })
+      }
+    ], [{
+      type: "function",
+      function: {
+        name: "classify_stall",
+        description: "Record who can supply what the stall is missing, with a one-sentence reason first.",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            reasoning: { type: "string" },
+            territory: { type: "string", enum: TERRITORIES }
+          },
+          required: ["reasoning", "territory"]
+        }
+      }
+    }], input.signal);
+    const { territory } = JSON.parse(reply.tool_calls?.[0]?.function.arguments ?? "{}");
+    return territory && TERRITORIES.includes(territory) ? territory : "principal";
+  } catch {
+    return "principal";
+  }
+}
+
 // ../agent/src/wake.ts
 var WAKE_STEPS = 8;
 var SEARCH_QUERIES = 5;
@@ -956,6 +1002,9 @@ var PROGRESS = "Progress: ";
 var WITHDRAWN = "Withdrawn: ";
 var OPENING_MS = 60000;
 var DECISIONS2 = ["continue", "accept", "decline", "stop"];
+var RERUN = `
+
+What you stalled on is not your principal's to answer. If it is the counterpart's, ask them for it with a counter carrying one focused question. If it is a detail the two of them settle once they talk, leave it open. Take your turn now; do not stall on it.`;
 var PERMITTED = {
   continue: ["propose", "counter", "accept", "decline"],
   accept: ["accept", "propose"],
@@ -1363,7 +1412,14 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
     return { stall: { reason: `Nothing this seat may do now carries out the standing decision to ${decision}.` } };
   }
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
-  const result2 = await negotiate({ user, intent, brief, opportunity, model, now, signal });
+  let result2 = await negotiate({ user, intent, brief, opportunity, model, now, signal });
+  if ("stall" in result2 && result2.stall.suggestedAsk) {
+    const counterpartMessage = opportunity.turns?.filter((turn) => turn.actor === "counterpart").at(-1)?.message ?? null;
+    const territory = await triageStall({ model, stall: result2.stall, counterpartMessage, signal });
+    if (territory !== "principal")
+      result2 = await negotiate({ user, intent, brief: brief + RERUN, opportunity, model, now, signal });
+    log(`  triage ${opportunityId} ${territory} ${territory === "principal" ? "asked" : ("turn" in result2) ? "rerun_turn" : "rerun_stalled"}`);
+  }
   if ("turn" in result2) {
     await client.submitTurn(opportunityId, result2.turn);
     return result2;
