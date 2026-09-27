@@ -286,7 +286,7 @@ INDEX_OPEN_APP = {
         "Open an Index Network universal link (https://index.network/...) with the "
         "operating system's default handler. Use this when the user asks to open "
         "Index, an opportunity, or a profile on this machine — for example with the "
-        "appUrl returned on opportunities by index_list_opportunities. The link "
+        "appUrl returned on opportunities, signals, and people. The link "
         "opens the Index macOS app when it is installed and the Index web page "
         "otherwise; only index.network URLs are accepted."
     ),

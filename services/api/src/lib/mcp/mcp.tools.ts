@@ -6,10 +6,13 @@ import { enrichmentService } from '../../services/enrichment.service';
 import { negotiationService } from '../../services/negotiation.service';
 import { opportunityService } from '../../services/opportunity.service';
 import { userService } from '../../services/user.service';
+import { appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpPrincipal } from './mcp.types';
+
+const LINK_HINT = ' When mentioning a person, signal, or opportunity, link its name to its `url`.';
 
 const emptyInputSchema = z.object({}).strict();
 const intentIdSchema = z.object({
@@ -23,6 +26,7 @@ const opportunityActionSchema = z.object({
 function safeProfile(profile: NonNullable<Awaited<ReturnType<typeof userService.findWithGraph>>>) {
   return {
     id: profile.id,
+    url: appLink('u', profile.id),
     email: profile.email,
     name: profile.name,
     intro: profile.intro,
@@ -38,6 +42,7 @@ function safeProfile(profile: NonNullable<Awaited<ReturnType<typeof userService.
 function conciseIntent(intent: Awaited<ReturnType<typeof intentService.listIntents>>['intents'][number]) {
   return {
     id: intent.id,
+    url: appLink('i', intent.id),
     description: intent.payload,
     summary: intent.summary,
     status: intent.status,
@@ -111,7 +116,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'get_my_profile',
     {
-      description: 'Get the authenticated API key owner\'s safe Index profile.',
+      description: 'Get the authenticated API key owner\'s safe Index profile.' + LINK_HINT,
       inputSchema: emptyInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -175,7 +180,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_intents',
     {
-      description: 'List the authenticated owner\'s signals with lifecycle, networks, waiting counts, and pagination.',
+      description: 'List the authenticated owner\'s signals with lifecycle, networks, waiting counts, and pagination.' + LINK_HINT,
       inputSchema: z.object({
         archived: z.boolean().optional(),
         query: z.string().optional(),
@@ -202,7 +207,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'get_intent',
     {
-      description: 'Get one owned signal by UUID or supported short ID prefix, including its associated networks.',
+      description: 'Get one owned signal by UUID or supported short ID prefix, including its associated networks.' + LINK_HINT,
       inputSchema: intentIdSchema,
       annotations: { readOnlyHint: true },
     },
@@ -221,7 +226,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'create_intent',
     {
-      description: 'Prepare and create a signal for the authenticated owner, sharing it only with eligible networks.',
+      description: 'Prepare and create a signal for the authenticated owner, sharing it only with eligible networks.' + LINK_HINT,
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
@@ -252,7 +257,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           networkIds ?? [],
           prepared.preparationReceipt,
         );
-        return mcpSuccess({ intentId: created.id, networkIds: created.networkIds });
+        return mcpSuccess({ intentId: created.id, url: appLink('i', created.id), networkIds: created.networkIds });
       } catch (error) {
         if (error instanceof IntentNetworkMembershipError) {
           return mcpError(error.code, error.message, { networkId: error.networkId });
@@ -348,7 +353,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'list_opportunities',
     {
-      description: 'List compact opportunity cards across the owner\'s Index or within one owned signal. Defaults to active, actionable statuses and never includes negotiation turns.',
+      description: 'List compact opportunity cards across the owner\'s Index or within one owned signal. Defaults to active, actionable statuses and never includes negotiation turns.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1).optional(),
         statuses: z.array(z.enum(['pending', 'negotiating', 'accepted', 'rejected', 'expired'])).min(1).optional(),
@@ -376,11 +381,12 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       return mcpSuccess({
         opportunities: opportunities.map((opportunity) => ({
           id: opportunity.opportunityId,
+          url: appLink('o', opportunity.opportunityId),
           status: opportunity.status,
           negotiating: opportunity.status === 'negotiating',
           createdAt: opportunity.createdAt,
           updatedAt: opportunity.updatedAt,
-          peer: opportunity.peer,
+          peer: { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) },
           viewerRole: opportunity.viewerRole,
           headline: opportunity.headline,
           summary: opportunity.mainText,
@@ -398,7 +404,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'get_opportunity',
     {
-      description: 'Get one visible opportunity by UUID or supported short ID prefix, plus its negotiation when one exists.',
+      description: 'Get one visible opportunity by UUID or supported short ID prefix, plus its negotiation when one exists.' + LINK_HINT,
       inputSchema: z.object({ opportunityId: z.string().trim().min(1) }).strict(),
       annotations: { readOnlyHint: true },
     },
@@ -409,7 +415,15 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       if (!opportunity) return mcpError('opportunity_not_found', 'Opportunity not found.');
       if ('error' in opportunity) return mcpError('opportunity_not_found', 'Opportunity not found.');
       const negotiation = await negotiationService.read(resolved.id, principal.userId);
-      return mcpSuccess({ opportunity, negotiation });
+      return mcpSuccess({
+        opportunity: {
+          ...opportunity,
+          url: appLink('o', opportunity.id),
+          peer: { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) },
+          otherParties: opportunity.otherParties.map((party) => ({ ...party, url: appLink('u', party.id) })),
+        },
+        negotiation,
+      });
     }),
   );
 

@@ -1,14 +1,14 @@
-import DeepLinkLanding from "@/components/DeepLinkLanding";
+import { useParams } from "react-router";
+
+import AppHandoff from "@/components/AppHandoff";
 
 /**
- * Opportunity deep-link landing (`/o/:id`).
- *
- * Canonical deep links delivered by the plugin/digests are ordinary HTTPS
- * URLs; with the macOS app installed the OS opens the app directly. This page
- * is the no-app fallback only — no auth, no API calls.
+ * Opportunity link (`/o/:id`). The web has no opportunity page, so this is
+ * the handoff only: Hermes when connected, otherwise the download page.
  */
 export default function OpportunityLinkPage() {
-  return <DeepLinkLanding />;
+  const { id } = useParams();
+  return <AppHandoff hermesQuery={`o=${encodeURIComponent(id ?? "")}`} />;
 }
 
 export const Component = OpportunityLinkPage;

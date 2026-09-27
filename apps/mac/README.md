@@ -96,6 +96,7 @@ the web view has finished loading (cold launch).
 | --- | --- |
 | `https://index.network/o/<id>` · `index://o/<id>` | that opportunity's card |
 | `https://index.network/u/<id>` · `index://u/<id>` | that person's profile |
+| `https://index.network/i/<id>` · `index://i/<id>` | that signal |
 | `https://index.network/c/<code>` · `index://c/<code>` | nothing — retired connect links get a one-line notice |
 | `index://q/<question-id>` | the signal that owns that pending question |
 | `index://chat/<conversation-id>` | that conversation's chat inside its signal |

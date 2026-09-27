@@ -3,6 +3,11 @@
 
 ## Unreleased
 
+### Added
+- Tool payloads get `appUrl` on signals (`/i/<intentId>`) and people
+  (`/u/<userId>`) as well as opportunities. Objects carrying both `userId` and
+  `intentId` are left alone.
+
 ### Fixed
 - The desktop header now shows the negotiator the gateway is running. The
   dashboard runs in a separate process and used to report its own idle copy as

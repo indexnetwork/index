@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import AuthForm from "@/components/AuthForm";
-import { DOWNLOAD_PATH } from "@/components/DeepLinkLanding";
+import { DOWNLOAD_PATH } from "@/components/AppHandoff";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { APIError } from "@/lib/api";
 import { log } from "@/lib/logger";

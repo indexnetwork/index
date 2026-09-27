@@ -9,6 +9,13 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- MCP tools return a canonical `url` on every user (`/u/<id>`), signal
+  (`/i/<id>`), and opportunity (`/o/<id>`), including profiles, opportunity
+  peers and other parties, and the `create_intent` result. Tool descriptions ask
+  the agent to link names to it. The link opens the Mac app, then Hermes, then
+  the web page, then `/download`.
+
 ### Removed
 - The `agent:tui` development command and `ApiNegotiationHost`, which ran the
   retired stateful `@indexnetwork/agent` negotiator. The API now depends on the

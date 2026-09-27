@@ -1,4 +1,4 @@
-import DeepLinkLanding from "@/components/DeepLinkLanding";
+import AppHandoff from "@/components/AppHandoff";
 
 /**
  * Legacy connect-link landing (`/c/:code`).
@@ -8,7 +8,7 @@ import DeepLinkLanding from "@/components/DeepLinkLanding";
  * installed the OS intercepts the URL before this renders.
  */
 export default function ConnectLinkPage() {
-  return <DeepLinkLanding />;
+  return <AppHandoff />;
 }
 
 export const Component = ConnectLinkPage;
