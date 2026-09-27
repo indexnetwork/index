@@ -221,12 +221,12 @@ export type NetworkMembershipGraphDatabase = Pick<
 >;
 
 /**
- * Database interface for Radar Graph (opportunity radar view).
+ * Database interface for opportunity cards.
  * Load opportunities, enrich with profile/network, and support presenter context.
  *
  * Access layer: UserDatabase (own opportunities and profile)
  */
-export type RadarGraphDatabase = Pick<
+export type OpportunityCardsDatabase = Pick<
   Database,
   | 'getOpportunitiesForUser'
   | 'getOpportunity'

@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import { chatCardToPresentedOpportunity, isOpportunityPresentationCacheable, radarItemToPresentedOpportunity } from './opportunity.presentation';
+import { cardToPresentedOpportunity, chatCardToPresentedOpportunity, isOpportunityPresentationCacheable } from './opportunity.presentation';
 
 describe('presented-opportunity mappers', () => {
-  test('radarItemToPresentedOpportunity maps peer identity and copy fields', () => {
-    const presented = radarItemToPresentedOpportunity({
+  test('cardToPresentedOpportunity maps peer identity and copy fields', () => {
+    const presented = cardToPresentedOpportunity({
       opportunityId: 'opp-1',
       status: 'pending',
       userId: 'user-2',

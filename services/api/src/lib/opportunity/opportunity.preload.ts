@@ -1,5 +1,5 @@
 import type { Opportunity, OpportunityStatus } from '@indexnetwork/protocol';
-import { buildApiChatCardPresentationCacheKey, buildRadarCardPresentationCacheKey, gatherPresenterContext, getPrimaryActionLabel, type PresenterDatabase } from '@indexnetwork/protocol';
+import { buildApiChatCardPresentationCacheKey, buildOpportunityCardCacheKey, gatherPresenterContext, getPrimaryActionLabel, type PresenterDatabase } from '@indexnetwork/protocol';
 
 import { log } from '../log';
 import { isOpportunityPresentationCacheable } from './opportunity.presentation';
@@ -65,7 +65,7 @@ export async function preloadOpportunityPresentation(
       const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);
       const counterpartUser = counterpart ? await deps.db.getUser(counterpart.userId) : null;
       await deps.cache.set(
-        buildRadarCardPresentationCacheKey(opportunity.id, opportunity.status, viewerId, intentId),
+        buildOpportunityCardCacheKey(opportunity.id, opportunity.status, viewerId, intentId),
         {
           opportunityId: opportunity.id,
           status: opportunity.status,

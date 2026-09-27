@@ -33,14 +33,14 @@ export interface UserInfo {
 /** Cache namespace for opportunity presentation copy. Bump to invalidate copy safety changes. */
 export const OPPORTUNITY_PRESENTATION_CACHE_VERSION = "v2";
 
-export function buildRadarCardPresentationCacheKey(
+export function buildOpportunityCardCacheKey(
   opportunityId: string,
   status: string,
   viewerId: string,
   focusedViewerIntentId?: string,
 ): string {
   const scope = focusedViewerIntentId ? `:intent:${focusedViewerIntentId}` : "";
-  return `radar:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${status}:${viewerId}${scope}`;
+  return `card:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:${opportunityId}:${status}:${viewerId}${scope}`;
 }
 
 export function buildApiChatCardPresentationCacheKey(
@@ -510,7 +510,7 @@ export function summarizeSignalsForPresenter(
  * Gather all context needed for the presenter from the database.
  * Fetches viewer profile, viewer intents, other party profile(s), and network in parallel.
  *
- * @param displayCounterpartUserId - When set (e.g. for a radar card), only this counterpart is included in otherPartyContext so the presenter writes about the person on the card.
+ * @param displayCounterpartUserId - When set (e.g. for an opportunity card), only this counterpart is included in otherPartyContext so the presenter writes about the person on the card.
  * @param focusedViewerIntentId - When set, include only that active intent in viewer context.
  */
 export async function gatherPresenterContext(

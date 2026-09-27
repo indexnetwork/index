@@ -20,6 +20,10 @@ section before promoting to `main`).
   the card from opportunity lists and chat context instead of showing copy
   derived from match reasoning; `interpretation.reasoning` in opportunity
   responses and the `opportunity.new` event body are now empty.
+- Opportunity lists and single-opportunity presentation use the protocol's
+  `listOpportunityCards` / `presentOpportunityCard` instead of the radar graph.
+  A single opportunity is presented directly rather than by building the whole
+  list to find it. Presentation cache keys move from `radar:` to `card:`.
 - The hosted personal agent groups its initial negotiations into one readable
   summary on the principal conversation instead of displaying the raw negotiation log.
   Direct replies are marked separately from notes and progress updates, with a

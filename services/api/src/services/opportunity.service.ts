@@ -1,13 +1,13 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { RadarGraphFactory, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
-import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache, OpportunityLogEvent } from '@indexnetwork/protocol';
+import { listOpportunityCards, presentOpportunityCard, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import type { OpportunityControllerDatabase, OpportunityCardsDatabase, Opportunity, OpportunityStatus, OpportunityCache, OpportunityLogEvent } from '@indexnetwork/protocol';
 import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { chatCardToPresentedOpportunity, radarItemToPresentedOpportunity, type PresentedOpportunity, type PresentedOpportunityList, type RadarCardInput } from '../lib/opportunity/opportunity.presentation';
+import { cardToPresentedOpportunity, chatCardToPresentedOpportunity, type PresentedOpportunity, type PresentedOpportunityList } from '../lib/opportunity/opportunity.presentation';
 import { scheduleOpportunityPresentationPreload } from '../lib/opportunity/opportunity.preload';
 
 const logger = log.service.from("OpportunityService");
@@ -146,7 +146,6 @@ export class OpportunityService {
   private presenter: OpportunityPresenter | null = null;
   private readonly presenterDb: PresenterDatabase;
   private readonly gatherPresentationContext: typeof gatherPresenterContext;
-  private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
   /** Closes the negotiation underneath an opportunity the owner has ended. */
@@ -199,8 +198,8 @@ export class OpportunityService {
   }
 
   /**
-   * List opportunities with presenter output for the viewer. Replaces separate
-   * radar and chat-context reads — peerUserId switches to accepted pair scope.
+   * List opportunities with presenter output for the viewer. peerUserId
+   * switches to accepted pair scope (chat context).
    */
   async presentOpportunitiesForViewer(
     userId: string,
@@ -227,45 +226,40 @@ export class OpportunityService {
       };
     }
 
-    const statuses = options?.statuses
-      ?? (options?.status ? [options.status] : DEFAULT_LIST_STATUSES);
-    const radar = await this.getRadarView(userId, {
-      networkId: options?.networkId,
-      intentId: options?.intentId,
-      limit: options?.limit ?? 50,
-      noCache: options?.noCache,
-      statuses,
-      presentation: options?.presentation,
-    });
-    if ('error' in radar) {
-      return { error: radar.error };
+    try {
+      const { cards, totalOpportunities } = await listOpportunityCards(this.getCardsDeps(), {
+        viewerId: userId,
+        statuses: options?.statuses ?? (options?.status ? [options.status] : DEFAULT_LIST_STATUSES),
+        networkId: options?.networkId,
+        intentId: options?.intentId,
+        limit: options?.limit ?? 50,
+        noCache: options?.noCache,
+        skeleton: options?.presentation === 'skeleton',
+      });
+      return {
+        opportunities: cards.map(cardToPresentedOpportunity),
+        meta: { totalOpportunities },
+      };
+    } catch (e) {
+      logger.error('listOpportunityCards failed', { userId, error: e });
+      return { error: 'Failed to load opportunities' };
     }
-
-    return {
-      opportunities: (radar.items as RadarCardInput[]).map(radarItemToPresentedOpportunity),
-      meta: radar.meta,
-    };
   }
 
   /**
-   * Present one stored opportunity for a viewer using the radar presenter path.
+   * Present one stored opportunity for a viewer as a card.
    */
   async presentOpportunityForViewer(
     opportunity: Opportunity,
     viewerId: string,
     intentId?: string,
   ): Promise<PresentedOpportunity> {
-    const radar = await this.getRadarView(viewerId, {
-      intentId,
-      statuses: [opportunity.status],
-      limit: 50,
-    });
-    if (!('error' in radar)) {
-      const match = (radar.items as RadarCardInput[]).find((item) => item.opportunityId === opportunity.id);
-      if (match) {
-        return radarItemToPresentedOpportunity(match);
-      }
-    }
+    const card = await presentOpportunityCard(this.getCardsDeps(), opportunity, viewerId, { intentId })
+      .catch((e) => {
+        logger.warn('presentOpportunityCard failed', { opportunityId: opportunity.id, viewerId, error: e });
+        return null;
+      });
+    if (card) return cardToPresentedOpportunity(card);
 
     const counterpart = resolveCounterpart(opportunity.actors, viewerId);
     const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);
@@ -300,12 +294,12 @@ export class OpportunityService {
     };
   }
 
-  private getRadarGraph(): ReturnType<RadarGraphFactory['createGraph']> {
-    this.radarGraph ??= new RadarGraphFactory(
-      this.db as unknown as RadarGraphDatabase,
-      this.cache,
-    ).createGraph();
-    return this.radarGraph;
+  private getCardsDeps() {
+    return {
+      database: this.db as unknown as OpportunityCardsDatabase,
+      cache: this.cache,
+      presenter: this.getPresenter(),
+    };
   }
 
   /**
@@ -317,39 +311,6 @@ export class OpportunityService {
   ): () => void {
     this.events.on(event, handler);
     return () => this.events.off(event, handler);
-  }
-
-  /**
-   * Get radar view: a flat list of opportunity cards with presenter text,
-   * optionally scoped to one intent. Clients bucket by lifecycle status.
-   */
-  async getRadarView(
-    userId: string,
-    options?: { networkId?: string; intentId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[]; presentation?: 'full' | 'skeleton' }
-  ): Promise<{ items: unknown[]; meta: { totalOpportunities: number } } | { error: string }> {
-    logger.verbose('Getting radar view', { userId, options });
-    try {
-      const radarGraph = this.getRadarGraph();
-      const radarInput = {
-        userId,
-        networkId: options?.networkId,
-        scopeType: options?.intentId ? 'intent' as const : undefined,
-        scopeId: options?.intentId,
-        limit: options?.limit ?? 50,
-        noCache: options?.noCache,
-        statuses: options?.statuses,
-        presentation: options?.presentation,
-      };
-      const result = await radarGraph.invoke(radarInput);
-      if (result.error) {
-        return { error: result.error };
-      }
-      const items = result.items ?? [];
-      return { items, meta: result.meta ?? { totalOpportunities: 0 } };
-    } catch (e) {
-      logger.error('getRadarView failed', { userId, error: e });
-      return { error: 'Failed to load radar view' };
-    }
   }
 
   /**

@@ -31,7 +31,7 @@ export type {
   SystemDatabase,
   OpportunityDatabase,
   OpportunityControllerDatabase,
-  RadarGraphDatabase,
+  OpportunityCardsDatabase,
   IntentGraphDatabase,
   Opportunity,
   OpportunityActor,
@@ -127,7 +127,7 @@ export {
 } from "./internal/opportunities/opportunity.labels.js";
 export {
   buildApiChatCardPresentationCacheKey,
-  buildRadarCardPresentationCacheKey,
+  buildOpportunityCardCacheKey,
 } from "./internal/opportunities/opportunity.presentation.js";
 export type {
   UserInfo,
@@ -136,13 +136,15 @@ export {
   canUserSeeOpportunity,
   classifyOpportunity,
   isActionableForViewer,
-  RADAR_SOFT_TARGETS,
-  selectByComposition,
   validateOpportunityActors,
 } from "./internal/opportunities/opportunity.utils.js";
 export {
-  RadarGraphFactory,
-} from "./internal/opportunities/radar/radar.graph.js";
+  listOpportunityCards,
+  presentOpportunityCard,
+} from "./internal/opportunities/opportunity.cards.js";
+export type {
+  OpportunityCard,
+} from "./internal/opportunities/opportunity.cards.js";
 
 export { readOpportunities } from './internal/opportunities/opportunity.graph.modes.js';
 export { admitOpportunityEvent, projectOpportunity } from './internal/opportunities/opportunity.events.js';

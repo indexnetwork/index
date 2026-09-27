@@ -6,7 +6,9 @@
 
 - Opportunity copy comes only from the LLM presenter. `OpportunityPresenter.present()` and `presentCard()` throw on LLM failure, timeout, or invalid output instead of returning fallback copy; `isFallback` and `fallbackReason` are gone from their results.
 - Remove `presentOpportunity`, `stripUuids`, `truncateAtBoundary`, `safeFallbackSummary`, `DEFAULT_FALLBACK_HEADLINE`, `hasUnsupportedOpportunityClaim`, `stripUnsupportedOpportunityClaims`, and `stripUnsupportedOpportunityClaimsText` from the public entry point. The regex claim-safety guard is deleted; the presenter prompts carry the rule.
-- `readOpportunities` items no longer carry `reasoning`. Radar drops a card when its presenter call fails instead of rendering reasoning-derived fallback copy.
+- `readOpportunities` items no longer carry `reasoning`.
+- Remove `RadarGraphFactory` and the radar graph. Use `listOpportunityCards(deps, { viewerId, statuses, networkId?, intentId?, limit, noCache?, skeleton? })` for a presented card list and `presentOpportunityCard(deps, opportunity, viewerId, { intentId?, skeleton? })` for one card; both return `OpportunityCard`. `statuses` is required, and the list is newest first with one card per counterpart. A card whose presenter call fails is dropped from the list; `presentOpportunityCard` throws.
+- Rename `RadarGraphDatabase` to `OpportunityCardsDatabase` and `buildRadarCardPresentationCacheKey` to `buildOpportunityCardCacheKey` (keys now start with `card:`). Remove `RADAR_SOFT_TARGETS` and `selectByComposition`.
 
 ## 65.0.0
 
