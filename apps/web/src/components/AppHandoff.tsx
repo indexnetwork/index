@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
 
-import Download from "@/app/download/page";
+import Download, { IndexMark } from "@/app/download/page";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { authClient } from "@/lib/auth-client";
 import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
@@ -65,17 +65,56 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
   if (route === "signed-out") return <Download />;
   if ((route === "mac" || route === "hermes") && !showWeb) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center max-w-md px-6">
-          <p className="text-gray-900 mb-4">{route === "mac" ? "Opened in the Index app." : "Opened in Hermes."}</p>
-          {webPage && (
-            <button onClick={() => setShowWeb(true)} className="text-sm text-gray-500 hover:text-black underline">
-              View on web
-            </button>
-          )}
-        </div>
-      </div>
+      <AppLaunch
+        app={route}
+        href={route === "mac" ? macUrl : hermesUrl}
+        onContinue={webPage ? () => setShowWeb(true) : undefined}
+      />
     );
   }
   return <>{fallback}</>;
+}
+
+/**
+ * Shown while the browser hands the link to the app. The page cannot tell
+ * whether the app opened, so it offers a retry and a way on instead of
+ * claiming success.
+ */
+function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: string; onContinue?: () => void }) {
+  const mac = app === "mac";
+  return (
+    <div className="download-page download-page--overlay">
+      <main className="download-page__main">
+        <p className="download-page__kicker">Opening</p>
+        <h1 className="download-page__title">{mac ? "opening index" : "opening hermes"}</h1>
+        <p className="download-page__lede">If nothing happened, open it again below.</p>
+
+        <div className="download-page__offers">
+          <div className="download-page__cards">
+            <section className="download-card">
+              <div className="download-card__body">
+                <span className={mac ? "download-card__icon" : "download-card__icon download-card__icon--outlined"}>
+                  {mac ? <IndexMark /> : <img src="/logos/nous.webp" alt="" aria-hidden="true" />}
+                </span>
+                <h2 className="download-card__name">{mac ? "Index for Mac" : "Hermes"}</h2>
+                <a className="download-btn download-btn--primary" href={href}>
+                  {mac ? "OPEN INDEX →" : "OPEN HERMES →"}
+                </a>
+              </div>
+            </section>
+          </div>
+
+          {onContinue ? (
+            <button type="button" className="download-page__browser" onClick={onContinue}>
+              Continue on web →
+            </button>
+          ) : (
+            <a className="download-page__browser" href={DOWNLOAD_PATH}>
+              Get the app →
+            </a>
+          )}
+        </div>
+      </main>
+    </div>
+  );
 }

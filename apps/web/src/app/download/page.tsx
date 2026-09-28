@@ -73,7 +73,7 @@ export default function Download() {
 }
 
 /** The Index mark, inverted for the card: white tile, background-coloured glyph. */
-function IndexMark() {
+export function IndexMark() {
   return (
     <svg viewBox="0 0 64 64" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
       <rect width="64" height="64" fill="#fff" />

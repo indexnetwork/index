@@ -12,6 +12,14 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* The app launch screen covers the app shell and header it renders inside. */
+.download-page--overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow-y: auto;
+}
+
 /* ---------- hero ---------- */
 
 .download-page__main {
@@ -95,6 +103,12 @@
   font-weight: 600;
   text-align: center;
   text-decoration: none;
+}
+
+button.download-page__browser {
+  width: 100%;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .download-page__browser:hover {
