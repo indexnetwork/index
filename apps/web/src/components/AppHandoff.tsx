@@ -31,7 +31,7 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
   // Only a link opened from outside hands off; in-app navigation stays on web.
   const { key } = useLocation();
   const [external] = useState(key === "default");
-  const fallback = webPage ?? <Download />;
+  const fallback = webPage ?? <Download overlay />;
   const macUrl = `index://${kind}/${encodeURIComponent(id)}`;
   const hermesUrl = `${HERMES_OPEN_URL}?${HERMES_PARAM[kind]}=${encodeURIComponent(id)}`;
 
@@ -62,7 +62,7 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
   }, [route, macUrl, hermesUrl]);
 
   if (route === "pending") return null;
-  if (route === "signed-out") return <Download />;
+  if (route === "signed-out") return <Download overlay />;
   if ((route === "mac" || route === "hermes") && !showWeb) {
     return (
       <AppLaunch
@@ -85,7 +85,6 @@ function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: str
   return (
     <div className="download-page download-page--overlay">
       <main className="download-page__main">
-        <p className="download-page__kicker">Opening</p>
         <h1 className="download-page__title">{mac ? "opening index" : "opening hermes"}</h1>
         <p className="download-page__lede">If nothing happened, open it again below.</p>
 
@@ -110,7 +109,7 @@ function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: str
             </button>
           ) : (
             <a className="download-page__browser" href={DOWNLOAD_PATH}>
-              Get the app →
+              Get the apps →
             </a>
           )}
         </div>

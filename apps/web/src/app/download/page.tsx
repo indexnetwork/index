@@ -10,11 +10,12 @@ export const MAC_APP_REQUIREMENTS = "macOS 13+ · Apple silicon";
 
 /**
  * `/download` — post-invite install page. Centered hero, the two install
- * cards, and a browser link. No app chrome.
+ * cards, and a browser link. No app chrome; `overlay` covers the chrome of a
+ * route that renders it in place.
  */
-export default function Download() {
+export default function Download({ overlay }: { overlay?: boolean }) {
   return (
-    <div className="download-page">
+    <div className={overlay ? "download-page download-page--overlay" : "download-page"}>
       <main className="download-page__main">
         <p className="download-page__step">5</p>
         <p className="download-page__kicker">You&apos;re in</p>
