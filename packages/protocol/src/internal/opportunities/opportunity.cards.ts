@@ -16,7 +16,6 @@ import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from './opportunity.lab
 const logger = protocolLogger('OpportunityCards');
 
 const PRESENTATION_CONCURRENCY = 50;
-const CARD_CACHE_TTL = 24 * 60 * 60;
 
 /** One opportunity with its presenter-driven display contract. */
 export interface OpportunityCard {
@@ -78,7 +77,7 @@ function counterpartUserIds(opportunity: Opportunity, viewerId: string): Set<str
  * @param deps - Database, cache, and presenter.
  * @param opportunity - The opportunity to present.
  * @param viewerId - The viewing user.
- * @param options - `intentId` focuses viewer context on one intent; `skeleton` skips the presenter.
+ * @param options - `intentId` focuses viewer context on one intent; `skeleton` skips the presenter; `noCache` skips the stored-card read.
  * @returns The card, or null when the counterpart's name cannot be resolved.
  * @throws When the presenter fails.
  */
@@ -86,12 +85,23 @@ export async function presentOpportunityCard(
   deps: OpportunityCardsDeps,
   opportunity: Opportunity,
   viewerId: string,
-  options: { intentId?: string; skeleton?: boolean } = {},
+  options: { intentId?: string; skeleton?: boolean; noCache?: boolean } = {},
 ): Promise<OpportunityCard | null> {
   const { database } = deps;
   const viewerRole = opportunity.actors.find((a) => a.userId === viewerId)?.role ?? 'party';
   const counterpart = pickDisplayCounterpartActor(opportunity, viewerId);
   if (!counterpart) return null;
+
+  const cacheable = opportunity.status !== 'negotiating';
+  const cacheKey = buildOpportunityCardCacheKey(opportunity.id, viewerId, options.intentId);
+  if (cacheable && !options.skeleton && !options.noCache) {
+    try {
+      const hit = await deps.cache.get<OpportunityCard>(cacheKey);
+      if (hit) return { ...hit, status: opportunity.status };
+    } catch (error) {
+      logger.warn('card cache read failed, presenting', { opportunityId: opportunity.id, error });
+    }
+  }
 
   const user = await database.getUser(counterpart.userId).catch(() => null);
   let name = user?.name?.trim();
@@ -126,7 +136,7 @@ export async function presentOpportunityCard(
     opportunityStatus: opportunity.status,
     ...(negotiationContext ? { negotiationContext } : {}),
   });
-  return {
+  const card: OpportunityCard = {
     ...identity,
     mainText: presentation.personalizedSummary,
     cta: presentation.suggestedAction,
@@ -134,6 +144,12 @@ export async function presentOpportunityCard(
     mutualIntentsLabel: presentation.mutualIntentsLabel,
     narratorChip: { name: 'Index', text: presentation.narratorRemark },
   };
+  if (cacheable) {
+    await deps.cache.set(cacheKey, card).catch((error) => {
+      logger.warn('card cache write failed', { opportunityId: opportunity.id, error });
+    });
+  }
+  return card;
 }
 
 /**
@@ -181,7 +197,7 @@ export async function listOpportunityCards(
   }).slice(0, input.limit);
 
   const cacheable = (opp: Opportunity) => opp.status !== 'negotiating';
-  const keyFor = (opp: Opportunity) => buildOpportunityCardCacheKey(opp.id, opp.status, viewerId, intentId);
+  const keyFor = (opp: Opportunity) => buildOpportunityCardCacheKey(opp.id, viewerId, intentId);
   const cacheableOpps = input.noCache ? [] : opportunities.filter(cacheable);
   const cached = new Map<string, OpportunityCard>();
   if (cacheableOpps.length > 0) {
@@ -203,9 +219,13 @@ export async function listOpportunityCards(
       const hit = cached.get(opp.id);
       if (hit) return hit;
       try {
-        const card = await presentOpportunityCard(deps, opp, viewerId, { intentId, skeleton: input.skeleton });
+        const card = await presentOpportunityCard(deps, opp, viewerId, {
+          intentId,
+          skeleton: input.skeleton,
+          noCache: input.noCache,
+        });
         if (card && !card.presentationPending && cacheable(opp)) {
-          await deps.cache.set(keyFor(opp), card, { ttl: CARD_CACHE_TTL }).catch((error) => {
+          await deps.cache.set(keyFor(opp), card).catch((error) => {
             logger.warn('card cache write failed', { opportunityId: opp.id, error });
           });
         }

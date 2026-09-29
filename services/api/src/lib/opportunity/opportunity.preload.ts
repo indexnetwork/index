@@ -65,7 +65,7 @@ export async function preloadOpportunityPresentation(
       const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);
       const counterpartUser = counterpart ? await deps.db.getUser(counterpart.userId) : null;
       await deps.cache.set(
-        buildOpportunityCardCacheKey(opportunity.id, opportunity.status, viewerId, intentId),
+        buildOpportunityCardCacheKey(opportunity.id, viewerId, intentId),
         {
           opportunityId: opportunity.id,
           status: opportunity.status,
@@ -83,7 +83,6 @@ export async function preloadOpportunityPresentation(
           mutualIntentsLabel: presented.mutualIntentsLabel ?? '',
           viewerRole: viewerActor?.role,
         },
-        { ttl: CHAT_CACHE_TTL },
       );
     } catch (error) {
       logger.warn('preloadOpportunityPresentation failed for viewer', {
