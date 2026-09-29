@@ -15,6 +15,15 @@ section before promoting to `main`).
   peers and other parties, and the `create_intent` result. Tool descriptions ask
   the agent to link names to it. The link opens the Mac app, then Hermes, then
   the web page, then `/download`.
+- Profile, signal, and opportunity MCP tools lead their result with a markdown
+  summary whose names are already linked (`[Jane Doe](…/u/<id>)`), followed by
+  the JSON block as before. Models keep links they can read more reliably than
+  ones they must build from `url` fields. Signal lines read
+  `[signal](…/i/<id>) — 9 waiting` (plus `(paused)` etc. when not active), with
+  labels cut at 60 characters; opportunity lines lead with the linked person,
+  `[Jane Doe](…/u/<id>) — headline — waiting on you`, using plain-word states
+  (`agents talking`, `connected`, `passed`, `expired`). The tool descriptions
+  ask the agent to keep links on names, never as a separate "link" word.
 
 ### Removed
 - The `agent:tui` development command and `ApiNegotiationHost`, which ran the
