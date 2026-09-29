@@ -118,10 +118,6 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/i/:intentId", () => import("@/app/i/[intentId]/page")),
       },
       {
-        path: "/c/:code",
-        lazy: lazyRoute("/c/:code", () => import("@/app/c/[code]/page")),
-      },
-      {
         path: "/o/:id",
         lazy: lazyRoute("/o/:id", () => import("@/app/o/[id]/page")),
       },

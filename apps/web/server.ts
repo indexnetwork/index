@@ -29,7 +29,6 @@ function appleAppSiteAssociation(): string {
           // while keeping real web-only routes like `/u/<id>/chat` in-browser.
           // The app only routes 2-segment paths (apps/mac/api/deeplink.mjs).
           components: [
-            { "/": "/c/*" },
             { "/": "/o/*" },
             { "/": "/l/*" },
             {
@@ -38,6 +37,17 @@ function appleAppSiteAssociation(): string {
               comment: "Deeper /u/ paths (e.g. /u/<id>/chat) are web-only; do not open the app.",
             },
             { "/": "/u/*" },
+            {
+              "/": "/i/new",
+              exclude: true,
+              comment: "Signal composer is web-only.",
+            },
+            {
+              "/": "/i/*/?*",
+              exclude: true,
+              comment: "Deeper /i/ paths are web-only; do not open the app.",
+            },
+            { "/": "/i/*" },
           ],
         },
       ],

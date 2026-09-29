@@ -8,6 +8,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- **`/u/:id`, `/i/:id`, and `/o/:id` share one handoff.** A signed-in account
+  with a Mac app session opens `index://<kind>/<id>`, so the app opens even when
+  the universal link did not (Chrome, pasted links, another host). Otherwise an
+  account with a Hermes session opens
+  `hermes://open/index-network?user=|intent=|o=`. Either way a full-window launch
+  screen in the `/download` style says the app is opening, with an OPEN button
+  to retry and "Continue on web" (`/u`, `/i`) or "Get the apps" (`/o`). Other
+  signed-in users get the web page
+  (`/o` has none, so it gets `/download`); signed-out visitors get
+  one Hermes attempt with the download page underneath. Only links opened from
+  outside hand off; in-app navigation stays on the web page. `DeepLinkLanding`
+  is removed.
+- **Removed `/c/:code`.** Retired connect links no longer have a web page, a
+  universal-link claim, or a Mac app notice.
+- **`/i/:id` is public**, so signed-out visitors reach the handoff instead of the
+  login redirect. `/i/new` stays protected.
+- The Mac app now claims `/i/*` as a universal link (`/i/new` and deeper paths
+  excluded).
 - **`/download`** shows Index for Mac, the Hermes plugin, and a bordered row
   with centered orange text: "Open Index in the browser →".
 - **`/i/new`** uses prepare → recovery form → summary. One dynamic recovery

@@ -128,26 +128,25 @@ negotiation state and presentation contracts.
 Optional capabilities default to a
 degraded-but-functional mode when omitted.
 
-## Graphs
+## Opportunity cards
 
-A `*GraphFactory` class is exported for each workflow:
+Presented opportunity cards are plain async functions over
+`{ database: OpportunityCardsDatabase, cache: OpportunityCache, presenter: OpportunityPresenter }`:
 
 ```typescript
 import {
-  RadarGraphFactory,
+  listOpportunityCards,
+  presentOpportunityCard,
 } from "@indexnetwork/protocol";
 ```
 
-Each factory takes its typed dependencies in the constructor and exposes a
-`.createGraph()` method that returns a compiled LangGraph ready for `.invoke()`.
+`listOpportunityCards` returns the viewer's opportunities in the requested
+statuses, newest first with one card per counterpart, serving cached cards and
+dropping any whose presenter call fails. `presentOpportunityCard` presents one
+opportunity and throws when the presenter fails.
 
-The intent and community graphs are the exceptions: they are reached through the
-`Intents` and `Networks` module classes rather than factories of their own (see
-[Intents](#intents) and [Networks](#networks) below).
-
-| Factory | Workflow |
-|---|---|
-| `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
+The intent and community graphs are reached through the `Intents` and `Networks`
+module classes (see [Intents](#intents) and [Networks](#networks) below).
 
 ## On-demand discovery
 

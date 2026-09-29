@@ -44,8 +44,6 @@ output with `setLoggerFactory()`. The package does not implement
 | Network | `internal/networks/network.graph.ts` | Manage network CRUD |
 | Network Membership | `internal/networks/membership.graph.ts` | Manage network member join/leave |
 | Intent Indexer | `internal/networks/indexer.graph.ts` | Assign and unassign intents to networks at the owner's request |
-| Radar | `internal/opportunities/radar/radar.graph.ts` | Build the radar view: flat presenter-card list, optionally intent-scoped |
-
 ## Agents
 
 | Agent | File | Used By |
@@ -54,7 +52,7 @@ output with `setLoggerFactory()`. The package does not implement
 | Intent Inferrer | `internal/intents/inference/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
 | Intent Verifier | `internal/intents/verification/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
 | Network Recommender | `internal/networks/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
-| Opportunity Presenter | `internal/opportunities/opportunity.presenter.ts` | Radar graph, opportunity presentation — generates role-appropriate descriptions (Grice's Maxim of Relation) |
+| Opportunity Presenter | `internal/opportunities/opportunity.presenter.ts` | Opportunity cards, opportunity presentation — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 
 ## Core Concepts
 
@@ -129,8 +127,8 @@ membership and broadcast eligibility when atomically opening each pair.
 | `internal/shared/network/metadata.renderer.ts` | Renders network metadata into prompt context |
 | `internal/opportunities/opportunity.presentation.ts` | Pure card text generation for opportunity display |
 | `internal/opportunities/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
-| `internal/opportunities/opportunity.utils.ts` | Opportunity visibility and radar composition helpers |
-| `internal/opportunities/radar/radar.health.ts` | Radar health metrics computation |
+| `internal/opportunities/opportunity.utils.ts` | Opportunity visibility helpers |
+| `internal/opportunities/opportunity.cards.ts` | Presented opportunity cards, as a list or one at a time |
 | `internal/opportunities/opportunity.labels.ts` | Opportunity status and role label constants |
 
 ## Data Model

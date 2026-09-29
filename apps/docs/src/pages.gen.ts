@@ -8,9 +8,16 @@ type Page =
   | { path: '/discovery'; render: 'static' }
   | { path: '/guides/custom-negotiator'; render: 'static' }
   | { path: '/guides/find-someone'; render: 'static' }
+  | { path: '/guides/group-formation'; render: 'static' }
   | { path: '/guides/introducer-agent'; render: 'static' }
   | { path: '/'; render: 'static' }
   | { path: '/integrate/host'; render: 'static' }
+  | { path: '/integrate/rest/conversations'; render: 'static' }
+  | { path: '/integrate/rest/events'; render: 'static' }
+  | { path: '/integrate/rest/intents'; render: 'static' }
+  | { path: '/integrate/rest/negotiations'; render: 'static' }
+  | { path: '/integrate/rest/networks'; render: 'static' }
+  | { path: '/integrate/rest/opportunities'; render: 'static' }
   | { path: '/integrate/rest'; render: 'static' }
   | { path: '/integrate/stability'; render: 'static' }
   | { path: '/intent'; render: 'static' }

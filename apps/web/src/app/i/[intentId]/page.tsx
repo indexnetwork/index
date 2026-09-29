@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { ChevronLeft, LoaderCircle, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 
+import AppHandoff from "@/components/AppHandoff";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -165,6 +166,11 @@ function Panel({
 /** Intent detail view: the signal's header card with Pause/Edit/Archive
  * actions over a Radar panel with a status filter strip. */
 export default function IntentDetailPage() {
+  const { intentId } = useParams<{ intentId: string }>();
+  return <AppHandoff kind="i" id={intentId ?? ""} webPage={<IntentDetail />} />;
+}
+
+function IntentDetail() {
   const navigate = useNavigate();
   const { intentId } = useParams<{ intentId: string }>();
   const intentsService = useIntents();

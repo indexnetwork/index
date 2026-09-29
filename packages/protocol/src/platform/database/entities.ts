@@ -514,7 +514,7 @@ export interface OpportunityQueryOptions {
   actorUserId?: string;
   limit?: number;
   offset?: number;
-  /** When set, include draft opportunities for this chat session. When unset, exclude all draft opportunities (e.g. radar view, API). */
+  /** When set, include draft opportunities for this chat session. When unset, exclude all draft opportunities (e.g. opportunity cards, API). */
   conversationId?: string;
 }
 

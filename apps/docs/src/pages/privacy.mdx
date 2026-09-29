@@ -1,27 +1,31 @@
-# Privacy [Who can see what, and what an agent may never reveal]
+# Privacy [What gets communicated, and how far it travels]
 
 Privacy in Index is treated as a problem of managing what gets communicated.
 
 Think of how you brief a manager you trust. You tell them what you want. Some of
-it is only for them. Some of it they can share with the right people when the
-moment calls for it. Some of it anyone can hear. You don't hand them a list of
-who may hear what. You trust them to hold those lines.
+it is only for them. Some of it they can share when it helps. Some of it is fine
+to say openly. You do not specify every future recipient in advance. Instead,
+you give them enough context to act for you and expect them to preserve the
+boundaries around that context.
 
-Your agent plays that role. What you tell it stays yours. The agent becomes a
-co-holder bound by your rules, and those rules travel with the information at
-every step after. Index is designed so that discovery does not require
-broadcasting. You can be findable without being public.
+Your agent works the same way. It may know more than it is allowed to say. Some
+information can be published as an intent. Some can be shared only inside a
+particular network. Some can be revealed only after the other side has satisfied
+a condition. Some should never leave your agent at all, but can still shape what
+it accepts, rejects, or asks next.
 
-Privacy applies at each step, from you to the person on the other side:
+Index carries those communication rules through the full path from private
+context to another person. At each step, a different amount of information may
+cross the boundary:
 
-1. **[You and your agent](#you-and-your-agent)** — what you tell your agent, and
-   what it may act on.
-2. **[Your agent and the network](#your-agent-and-the-network)** — what enters
-   shared space, and who can find it.
-3. **[Agent and agent](#agent-and-agent)** — what each side learns during a
-   negotiation.
-4. **[Each person and their agent](#each-person-and-their-agent)** — what each
-   person sees, and what needs their yes.
+- **[You and your agent](#you-and-your-agent)** — what the agent may know and
+  what it may act on.
+- **[Your agent and the network](#your-agent-and-the-network)** — what may
+  become discoverable, and to whom.
+- **[Agent and agent](#agent-and-agent)** — what may be disclosed as the
+  negotiation progresses.
+- **[Each person and their agent](#each-person-and-their-agent)** — what reaches
+  the people themselves, and what still requires their consent.
 
 ## You and your agent
 
@@ -66,11 +70,11 @@ are shared with them.
 - **`network_only`** can be found and read only by members of the
   [networks](/network) it is assigned to, which suits something you would share
   inside your company or community but not with the world.
-- **`incognito`** can be found, but the two agents first negotiate privately on
-  a single question, whether the interest is mutual, and nothing else is shared
-  unless it is. This suits a search you cannot be seen making, such as looking
-  for a new job. On networks hosted in a trusted execution environment, this
-  becomes [blind matching](#incognito-negotiation).
+- **`incognito`** can be found only by the network, never by another person's
+  agent. The network privately checks whether the interest is mutual, and
+  nothing is shared with either side unless it is. This suits a search you
+  cannot be seen making, such as looking for a new job. See
+  [double blind matching](#double-blind-matching).
 - **`private`** is seen only by your own agent, so it suits limits you want
   respected without revealing them, like a salary floor or a company you will
   not work with.
@@ -96,9 +100,32 @@ principal belongs to, so leaving a network takes you out of its discovery at
 once. Only active intents take part; a paused, fulfilled, or archived intent
 stops being found. What a candidate carries is the other intent's statement,
 the person behind it, and the network it was found in, never that person's
-conversation with their agent or the private context behind the intent. Being
+conversation with their agent or the private context behind the intent. An
+`incognito` intent is the exception: it is never returned as a candidate, and
+goes through [double blind matching](#double-blind-matching) instead. Being
 found is not being contacted: nothing reaches the other person until their
 agent enters a negotiation, and nothing becomes a relationship without a yes.
+
+### Double blind matching
+
+"I would be interested if they are." When either intent in a pair is
+`incognito`, discovery does not return it as a candidate. The network is the
+trust holder: it reads only the two intent statements and decides whether the
+interest is mutual. Only a verdict comes out.
+
+- **If it is mutual,** the opportunity opens to both agents and the
+  negotiation starts through [progressive disclosure](#progressive-disclosure).
+- **If it is not,** nothing is created that either side can see. The other
+  side never learns you were a candidate, that you asked, or why it did not
+  match. Every non-mutual outcome looks the same.
+
+No agent takes part before the verdict, so neither side can probe the other.
+Private context and `private` intents are not used.
+
+A trusted execution environment is not required. When a network runs inside
+one, the check happens inside the enclave, so the operator cannot read either
+statement, and the guarantee is enforced by hardware rather than by trust in
+the operator. This is [planned](#planned).
 
 ## Agent and agent
 
@@ -126,8 +153,9 @@ and it opens as each check passes. The first view is the least the
 layer. A failed check reveals nothing more.
 
 1. **Statement** — the declared want. Unlocks when mutuality holds. For
-   `incognito`, this is the first time the information exists for the other
-   side; until then they can know a pair is possible, not what was declared.
+   `incognito`, mutuality is settled by
+   [double blind matching](#double-blind-matching) before the negotiation
+   exists, so this is the first time the other side learns of the pair.
 2. **Constraints** — the non-private limits that matter to fit: window, role,
    place. Unlocks when constraint-fit holds. An agent cites one to explain a
    check, and does not hand over the whole profile.
@@ -137,21 +165,6 @@ layer. A failed check reveals nothing more.
 
 The negotiator agent can use **[Appropriateness](/privacy/appropriateness)** information
 to make better disclosure decisions.
-
-### Incognito negotiation
-
-Negotiated mutual intent as a deterministic disclosure step is the first
-implementation of progressive disclosure in negotiation: before anything else
-is shared, the two agents privately settle whether each side wants what the
-other offers.
-
-That step enables a special use case, conceptualized as **blind matching**.
-When a network runs inside a trusted execution environment, both agents check
-for mutual intent inside the enclave. If the interest is mutual, the
-negotiation continues through progressive disclosure. If it is not, nothing
-leaves the enclave, so the other side never learns you asked and the operator
-never sees either intent. It is the double-blind version of "I would be
-interested if they are." This is [planned](#planned).
 
 ## Each person and their agent
 
@@ -173,13 +186,12 @@ opportunity, into a conversation or a further event.
 
 ## Planned
 
-- **Federated hosting:** A community runs its own host, so its membership and
-  corpus stay on infrastructure it controls.
-- **Network TEE:** Discovery and negotiation run inside a trusted execution
-  environment, so whoever operates the host cannot read the corpus.
-- **Incognito negotiation:** Incognito intents are negotiated inside the
-  network TEE, so their content opens only as the negotiation passes its
-  checks. See [Incognito negotiation](/privacy#incognito-negotiation).
+These change what the operator of a host can read. They do not change who may
+discover whom. Scope stays the network.
+
+- **Network TEE:** Discovery, [double blind matching](#double-blind-matching),
+  and negotiation run inside a trusted execution environment, so whoever
+  operates the host cannot read the corpus or either side of a match.
 
 This page describes the protocol's privacy model. For how Index Network, Inc.
 handles personal data as a company, see the

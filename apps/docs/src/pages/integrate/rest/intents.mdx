@@ -1,0 +1,121 @@
+# Intent [Signals over HTTP]
+
+An intent is what you are looking for or can offer, in your own words. These routes create one, share it in your networks, pause or archive it, and search those networks for people to open opportunities with.
+
+## Routes
+
+| Method | Path | Body or query |
+| --- | --- | --- |
+| `POST` | `/api/intents/prepare` | `payload`, optional `answers` |
+| `POST` | `/api/intents` | `description`, optional `networkIds`, optional `preparationReceipt` |
+| `POST` | `/api/intents/list` | optional `q`, `limit`, `page`, `archived` |
+| `GET` | `/api/intents/:id` | |
+| `PATCH` | `/api/intents/:id` | `description` |
+| `PATCH` | `/api/intents/:id/status` | `status`: `ACTIVE` or `PAUSED` |
+| `PATCH` | `/api/intents/:id/archive` | |
+| `GET` | `/api/intents/:id/networks` | |
+| `POST` | `/api/intents/:id/networks` | `networkId` |
+| `DELETE` | `/api/intents/:id/networks/:networkId` | |
+| `POST` | `/api/intents/:id/discover` | `query`, optional `limit` (1–30) |
+| `POST` | `/api/intents/:id/opportunities` | `counterparties`: `{ intentId, networkId }[]`, at most 30 |
+| `GET` | `/api/intents/:id/opportunities` | same query as [listing opportunities](/integrate/rest/opportunities) |
+| `PATCH` | `/api/intents/:id/opportunities/:opportunityId/status` | `status` |
+| `POST` | `/api/intents/:id/opportunities/:opportunityId/start-chat` | |
+
+An intent id in the path accepts a UUID or the 8-character short id. `networkId` values in bodies are UUIDs.
+
+## Prepare and create
+
+`POST /api/intents/prepare` checks a draft before it is saved.
+
+```json
+{ "payload": "Looking for a CTO", "answers": [] }
+```
+
+Each answer is `{ "prompt", "answer" }`. `prompt` is the `label` of a recovery field from the previous response.
+
+A draft that can be saved:
+
+```json
+{
+  "status": "ready",
+  "payload": "Looking for a CTO for a seed-stage company in Berlin",
+  "preparationReceipt": "<receipt>"
+}
+```
+
+A draft that still needs a fact:
+
+```json
+{
+  "status": "needs_revision",
+  "payload": "Looking for a CTO",
+  "feedback": "Name the stage and where the work happens.",
+  "recovery": [
+    { "id": "stage", "label": "Stage", "kind": "single", "options": [{ "label": "Seed", "description": "" }] }
+  ]
+}
+```
+
+`kind` is `single`, `multi`, or `text`. Send the receipt back when you create, using the returned `payload` as `description`:
+
+```json
+{
+  "description": "Looking for a CTO for a seed-stage company in Berlin",
+  "preparationReceipt": "<receipt>"
+}
+```
+
+Omit `networkIds`, or send `[]`, to share the new intent in every network you belong to. Send network UUIDs to share it only in those.
+
+`POST /api/intents` returns `{ "intentId", "networkIds" }`. You can create from a description alone; the server prepares it. A receipt authorizes the draft you already reviewed.
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| 422 | `{ "error": "intent_rejected", "code", "detail" }` | The draft was not admitted |
+| 403 | `{ "error": "invalid_preparation", "detail" }` | The receipt does not match this description or this account |
+| 403 | `{ "error": "forbidden", "code", "detail", "networkId" }` | `networkIds` names a network you are not in |
+| 503 | `{ "error": "preparation_failed", "detail", "retryable": true }` | The model failed; send the same answers again |
+
+## List and update
+
+`POST /api/intents/list` returns `{ "intents", "pagination" }`. `q` matches the description and the summary. `archived: true` includes archived intents. Each intent carries `id`, `payload`, `summary`, `status`, `createdAt`, `updatedAt`, and `archivedAt`.
+
+`PATCH /api/intents/:id` replaces the description. `PATCH …/status` pauses (`PAUSED`) or resumes (`ACTIVE`). An archived intent refuses a status change with 409. `PATCH …/archive` stops the intent taking part in discovery.
+
+`GET /api/intents/:id/networks` returns `{ "networkIds" }`.
+
+## Discover and open
+
+`POST /api/intents/:id/discover` reads ranked counterparties and writes nothing. A paused or archived intent returns 409.
+
+```json
+{ "query": "seed-stage technical co-founder in Berlin" }
+```
+
+```json
+{
+  "counterparties": [
+    {
+      "intentId": "<uuid>",
+      "userId": "<uuid>",
+      "name": "Ada",
+      "statement": "Building a developer-tools company, looking for a technical co-founder",
+      "networkId": "<uuid>",
+      "score": 0.82
+    }
+  ]
+}
+```
+
+`POST /api/intents/:id/opportunities` opens one opportunity per pick. A pair that already has an opportunity returns that one.
+
+```json
+{
+  "counterparties": [
+    { "intentId": "<counterparty intent uuid>", "networkId": "<uuid>" }
+  ]
+}
+```
+
+The response is `{ "opportunities" }`, each with `opportunityId`. Owner approval is on [Opportunities](/integrate/rest/opportunities). Turns are on [Negotiations](/integrate/rest/negotiations).

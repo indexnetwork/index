@@ -1,4 +1,4 @@
-import type { OpportunityStatus } from '@indexnetwork/protocol';
+import type { OpportunityCard, OpportunityStatus } from '@indexnetwork/protocol';
 
 /** Cacheable lifecycle statuses for async presenter preload (not negotiating). */
 export const CACHEABLE_PRESENTATION_STATUSES: OpportunityStatus[] = [
@@ -42,24 +42,6 @@ export interface PresentedOpportunityList {
   meta: { totalOpportunities: number };
 }
 
-export interface RadarCardInput {
-  opportunityId: string;
-  createdAt?: string;
-  status?: OpportunityStatus;
-  userId: string;
-  name: string;
-  avatar: string | null;
-  mainText: string;
-  cta: string;
-  headline?: string;
-  primaryActionLabel: string;
-  secondaryActionLabel: string;
-  mutualIntentsLabel: string;
-  narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
-  viewerRole?: string;
-  presentationPending?: boolean;
-}
-
 export interface ChatContextCardInput {
   opportunityId: string;
   headline: string;
@@ -73,7 +55,7 @@ export interface ChatContextCardInput {
   createdAt?: string;
 }
 
-export function radarItemToPresentedOpportunity(item: RadarCardInput): PresentedOpportunity {
+export function cardToPresentedOpportunity(item: OpportunityCard): PresentedOpportunity {
   return {
     opportunityId: item.opportunityId,
     status: item.status ?? 'pending',

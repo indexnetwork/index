@@ -10,7 +10,6 @@ import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents'];
-const publicRoutes = ['/c'];
 // /l is chrome-free web invite join; /index stays app-only public join.
 const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth'];
 
@@ -33,13 +32,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     );
   }, [pathname, isAuthenticated]);
 
-  const isPublicRoute = useMemo(() => {
-    return publicRoutes.some(route =>
-      pathname === route || pathname?.startsWith(route + '/')
-    );
-  }, [pathname]);
-
-  const showAppShell = isAppRoute && !isPublicRoute && !isBareRoute;
+  const showAppShell = isAppRoute && !isBareRoute;
   const showHeader = !showAppShell && !isBareRoute;
 
   const isLandingOrBlog = useMemo(() =>

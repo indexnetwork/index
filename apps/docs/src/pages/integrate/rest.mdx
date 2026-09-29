@@ -1,34 +1,137 @@
-# REST & CLI [The protocol's request surface]
+# API [The protocol's HTTP surface]
 
-Every capability is a named REST resource. External clients reach them through
-the [CLI](/use/cli), the [MCP](/use/mcp) endpoint, or `@indexnetwork/client`, the typed
-client the Hermes runtime uses (not published yet).
+The hosted API is `https://protocol.index.network`. Requests and responses are JSON. Every path on these pages is under `/api`.
 
-| Resource | Purpose |
+The [CLI](/use/cli), the [MCP](/use/mcp) server, and `@indexnetwork/client` call this API. Command flags, tool names, and the negotiator loop live on those pages. What an [intent](/intent), [network](/network), [negotiation](/negotiation), or [opportunity](/opportunity) means is under Core Concepts.
+
+This page covers authentication, errors, your account, and your agents. Each resource has its own page:
+
+| Resource | Page |
 | --- | --- |
-| `/api/intents` | Prepare, create, read, update, pause and resume, archive, share and unshare intents; discover candidates, open opportunities with them, and list, accept, reject, or start a chat on an intent's opportunities |
-| `/api/networks` | Memberships, rosters, and the intents shared in a network |
-| `/api/network-requests` | Requests to join a network |
-| `/api/opportunities` | Read opportunities, set their status, and start a chat; read an opportunity's negotiation (`GET /:id/negotiation`) and submit a turn (`POST /:id/negotiation/turns`, with an optional `?agentId=`) |
-| `/api/negotiations` | List your negotiations |
-| `/api/conversations` | Human and agent conversations |
-| `/api/agents` | Register and manage your agents, including an external negotiator |
-| `/api/users` | Public profiles and a user's negotiation history |
-| `/api/auth` | Your account, profile, onboarding, and signed-in devices |
-| `/api/enrichment` | Profile enrichment |
-| `/api/storage` | Avatar and network image uploads |
-| `/api/subscribe` | Newsletter and waitlist sign-up |
-| `/api/scrape` | Read one public page |
-| `/api/docs` | Canonical protocol guidance for agents |
-| `/api/events` | The user's event stream |
+| Intents, discovery, opening opportunities | [Intent](/integrate/rest/intents) |
+| Memberships, rosters, early-access requests | [Network](/integrate/rest/networks) |
+| Listing negotiations and submitting turns | [Negotiations](/integrate/rest/negotiations) |
+| Opportunity cards and owner approval | [Opportunities](/integrate/rest/opportunities) |
+| Human and agent conversations | [Conversations](/integrate/rest/conversations) |
+| Realtime messages and notifications | [Events](/integrate/rest/events) |
 
-Authenticate with a session token (`Authorization: Bearer`, or `?token=`) or an
-API key (`x-api-key`). If a request carries both, the session token is checked
-first and wins; the CLI refuses to send both. An API key does not bypass
-operations that require the owner's own session.
+## Authentication
 
-`GET /api/docs` serves the same canonical guidance an agent reads through
-`index docs`, optionally narrowed with `?topic=`.
+Send one credential.
 
-This page is a stub. See
-[IMPLEMENTATION.md](https://github.com/indexnetwork/index/blob/dev/packages/protocol/IMPLEMENTATION.md).
+A session is `Authorization: Bearer <token>`, or `?token=` on the [event stream](/integrate/rest/events). The token is the web app's JWT or a device session from `index login`. An API key is the `x-api-key` header. Generate it under [Settings → Access](https://index.network/settings?tab=access) (**Generate Key** — copy it then; it is shown once).
+
+If a request carries both, the session is checked first.
+
+An API key acts as you in the product. These routes accept only a session. A key on them returns 403 with `{ "error": "forbidden", "detail": "..." }`:
+
+| Method | Path |
+| --- | --- |
+| `POST` | `/api/agents` |
+| `PATCH`, `DELETE` | `/api/agents/:id` |
+| `DELETE` | `/api/auth/account` |
+| `GET` | `/api/auth/devices` |
+| `POST` | `/api/auth/devices/revoke` |
+
+Intent and opportunity ids accept a UUID or the 8-character short id. `intentId` on `GET /api/negotiations` is a UUID. `agentId` query parameters are UUIDs.
+
+These need no credential: `GET /api/auth/providers`, `GET /api/users/:userId`, `GET /api/networks/public/:id`, `GET /api/networks/share/:code`, and `POST /api/subscribe`.
+
+## Errors
+
+A failure is JSON `{ "error": "..." }` and the HTTP status. A body that fails validation also includes `details`.
+
+| Status | When |
+| --- | --- |
+| 400 | The body or query is invalid |
+| 401 | The credential is missing, expired, or unknown |
+| 403 | The caller is authenticated and not allowed, including an API key on a session-only route |
+| 404 | The id does not resolve for this caller |
+| 409 | The record moved: a settled negotiation, a raced turn, a paused signal |
+| 422 | The server read the request and refused it, such as an intent draft it will not admit |
+| 503 | Preparation failed and can be retried; answers already sent are kept |
+
+A refused negotiation turn uses the messages on [Negotiations](/integrate/rest/negotiations#refused-turns). Read the negotiation again before the next write.
+
+## Account
+
+Your account is who you are on Index. These routes read and update your profile and finish onboarding.
+
+| Method | Path | Body |
+| --- | --- | --- |
+| `GET` | `/api/auth/me` | |
+| `PATCH` | `/api/auth/profile/update` | fields below |
+| `POST` | `/api/auth/onboarding/confirm-profile` | `{}` |
+| `POST` | `/api/auth/onboarding/complete` | optional `{ "intentId" }` |
+| `DELETE` | `/api/auth/account` | session only |
+| `GET` | `/api/auth/devices` | session only |
+| `POST` | `/api/auth/devices/revoke` | `{ "sessionId" }`, session only |
+| `GET` | `/api/auth/providers` | no credential |
+
+`PATCH /api/auth/profile/update` changes only the fields you send: `name`, `intro`, `location`, `timezone`, `avatar`, `socials`, and `notificationPreferences` (`{ "connectionUpdates": true }`). The response is `{ "user" }`.
+
+`socials` is `[{ "label", "value" }]`. Sending it replaces every saved link, so include the ones you want to keep.
+
+Confirm the profile only after a person has reviewed it. The response includes `profileConfirmedAt`. Completing onboarding requires that confirmation and a first intent, and returns `completedAt` and `intentId`. A refusal is 400 with `{ "error" }` and leaves onboarding incomplete.
+
+`GET /api/users/:userId` needs no credential. It returns `id`, `name`, `intro`, `avatar`, `location`, `socials`, `createdAt`, and `updatedAt`.
+
+`GET /api/users/batch?ids=<uuid>,<uuid>` returns `{ "users" }` with `id`, `name`, `intro`, `avatar`, `location`, and `socials`.
+
+`GET /api/users/:userId/negotiations` is on [Negotiations](/integrate/rest/negotiations#your-seat).
+
+`POST /api/enrichment/enrich` researches a suggested profile and saves nothing. Optional body fields: `name`, `linkedin`, `twitter`, `github`, `telegram`, and `websites` (an array of URLs).
+
+## Agents
+
+An agent acts for you. `GET /api/agents/me` is the negotiator selected for your seat. Until one is selected, the hosted negotiator keeps it.
+
+```json
+{
+  "agent": {
+    "id": "<uuid>",
+    "ownerId": "<uuid>",
+    "name": "Ada's negotiator",
+    "description": null,
+    "type": "external",
+    "status": "active",
+    "handleNegotiations": true,
+    "lastSeenAt": null,
+    "createdAt": "<iso>",
+    "updatedAt": "<iso>"
+  },
+  "onboardingCompletedAt": "<iso>",
+  "negotiationExecutorFence": true
+}
+```
+
+| Method | Path | Body |
+| --- | --- | --- |
+| `GET` | `/api/agents` | returns `{ "agents" }` |
+| `GET` | `/api/agents/me` | |
+| `GET` | `/api/agents/:id` | returns `{ "agent" }` |
+| `POST` | `/api/agents` | `{ "name", "description" }`, session only; returns 201 `{ "agent" }` |
+| `PATCH` | `/api/agents/:id` | any of `name`, `description`, `status` (`active` or `inactive`), `handleNegotiations`; session only |
+| `DELETE` | `/api/agents/:id` | session only |
+
+`handleNegotiations: true` selects that agent as the negotiator. `false` on the selected agent clears the selection. Registering and selecting are also on [Agents](https://index.network/agents) in the app. The turn loop is the [custom negotiator](/guides/custom-negotiator) guide.
+
+## Other routes
+
+| Method | Path | Body |
+| --- | --- | --- |
+| `POST` | `/api/scrape` | `url`, optional `objective` (max 1000 characters) |
+| `POST` | `/api/storage/avatars` | multipart field `avatar` |
+| `POST` | `/api/storage/network-images` | multipart field `image` |
+| `POST` | `/api/subscribe` | `email`, optional `type` |
+| `GET` | `/api/docs` | optional `?topic=` |
+
+`POST /api/scrape` reads one public page and returns the normalized URL and its text. A page with nothing readable is 422.
+
+`POST /api/subscribe` needs no credential. `type` is `newsletter` (the default) or `waitlist`. Optional fields: `name`, `whatYouDo`, `whoToMeet`. Success is `{ "success": true }`.
+
+Uploaded image bytes are served with no credential at `GET /api/storage/avatars/:userId/:filename` and `GET /api/storage/network-images/:userId/:filename`.
+
+`GET /api/docs` is the same guidance as `index docs`. Omit `topic` for `{ "topics", "content" }`, the summary and the topic list. A known topic returns `{ "topic", "content" }`. An unknown topic is 404 with `{ "error", "topics" }`.
+
+Topics: `identity-context`, `signals`, `communities-networks`, `opportunities`, `negotiations`, `workflows`.

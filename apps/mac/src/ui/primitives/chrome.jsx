@@ -568,8 +568,8 @@ function MacSegmented({ value, onChange, options, size }) {
 }
 
 /* ---------- one-line, non-blocking notice ---------- */
-// For the things the app can only report, not fix: a retired /c/ link, a deep
-// link to a card this account cannot see. It sits at the foot of the desktop,
+// For the things the app can only report, not fix: an unroutable Index link, a
+// deep link to a card this account cannot see. It sits at the foot of the desktop,
 // times out on its own, and never takes the keyboard, so whatever the user was
 // doing keeps working. Anything that needs a decision still gets a MacWindow.
 function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {

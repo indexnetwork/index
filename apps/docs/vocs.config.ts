@@ -14,7 +14,7 @@ export default defineConfig({
     script: [
       {
         async: true,
-        'data-domain': 'docs.index.network',
+        'data-domain': 'index.network',
         src: 'https://plausible.io/js/script.outbound-links.js',
       },
     ],
@@ -27,6 +27,7 @@ export default defineConfig({
         { text: 'Overview', link: '/' },
         {
           text: 'Primitives',
+          collapsed: true,
           items: [
             { text: 'Intent', link: '/intent' },
             { text: 'Network', link: '/network' },
@@ -35,11 +36,7 @@ export default defineConfig({
           ],
         },
         { text: 'Discovery', link: '/discovery' },
-        {
-          text: 'Privacy',
-          link: '/privacy',
-          items: [{ text: 'Appropriateness', link: '/privacy/appropriateness' }],
-        },
+        { text: 'Privacy', link: '/privacy' },
       ],
     },
     {
@@ -48,6 +45,7 @@ export default defineConfig({
         { text: 'Find someone', link: '/guides/find-someone' },
         { text: 'Custom negotiator', link: '/guides/custom-negotiator' },
         { text: 'Introducer agent (planned)', link: '/guides/introducer-agent' },
+        { text: 'Group formation (planned)', link: '/guides/group-formation' },
       ],
     },
     {
@@ -56,13 +54,24 @@ export default defineConfig({
         { text: 'CLI', link: '/use/cli' },
         { text: 'MCP', link: '/use/mcp' },
         { text: 'macOS', link: '/use/mac' },
-        { text: 'Hermes', link: '/use/hermes' },
+        { text: 'Hermes Agent', link: '/use/hermes' },
       ],
     },
     {
       text: 'Integrate',
       items: [
-        { text: 'REST & CLI', link: '/integrate/rest' },
+        {
+          text: 'API',
+          collapsed: true,
+          items: [
+            { text: 'Overview', link: '/integrate/rest' },
+            { text: 'Intent', link: '/integrate/rest/intents' },
+            { text: 'Network', link: '/integrate/rest/networks' },
+            { text: 'Negotiations', link: '/integrate/rest/negotiations' },
+            { text: 'Opportunities', link: '/integrate/rest/opportunities' },
+            { text: 'Conversations', link: '/integrate/rest/conversations' },
+          ],
+        },
         { text: 'Host', link: '/integrate/host' },
         { text: 'Stability', link: '/integrate/stability' },
       ],

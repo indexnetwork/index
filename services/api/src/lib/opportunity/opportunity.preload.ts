@@ -1,5 +1,5 @@
 import type { Opportunity, OpportunityStatus } from '@indexnetwork/protocol';
-import { buildApiChatCardPresentationCacheKey, buildRadarCardPresentationCacheKey, gatherPresenterContext, getPrimaryActionLabel, type PresenterDatabase } from '@indexnetwork/protocol';
+import { buildApiChatCardPresentationCacheKey, buildOpportunityCardCacheKey, gatherPresenterContext, getPrimaryActionLabel, type PresenterDatabase } from '@indexnetwork/protocol';
 
 import { log } from '../log';
 import { isOpportunityPresentationCacheable } from './opportunity.presentation';
@@ -16,7 +16,6 @@ interface PreloadDeps {
       personalizedSummary: string;
       suggestedAction?: string;
       mutualIntentsLabel?: string;
-      isFallback?: boolean;
     }>;
   };
   gatherContext?: typeof gatherPresenterContext;
@@ -62,13 +61,11 @@ export async function preloadOpportunityPresentation(
         );
       }
 
-      if (presented.isFallback) return;
-
       const counterpart = opportunity.actors.find((actor) => actor.userId !== viewerId);
       const viewerActor = opportunity.actors.find((actor) => actor.userId === viewerId);
       const counterpartUser = counterpart ? await deps.db.getUser(counterpart.userId) : null;
       await deps.cache.set(
-        buildRadarCardPresentationCacheKey(opportunity.id, opportunity.status, viewerId, intentId),
+        buildOpportunityCardCacheKey(opportunity.id, opportunity.status, viewerId, intentId),
         {
           opportunityId: opportunity.id,
           status: opportunity.status,

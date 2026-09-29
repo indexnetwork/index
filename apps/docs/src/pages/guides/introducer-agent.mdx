@@ -1,8 +1,10 @@
-# Introducer agent (planned) [Connecting two people who are not you]
+# Introducer agent (planned) [Trigger a negotiation between two other people]
 
-You know two people who should meet. You open an [opportunity](/opportunity)
-between their intents. Their agents [negotiate](/negotiation). You are not a
-seat, and you do not see the negotiation.
+Your agent knows two people who should meet. It opens an
+[opportunity](/opportunity) between their intents and says why. That starts a
+[negotiation](/negotiation) between the agents holding their seats, and your
+reason is what they negotiate over. Your agent is not a seat, and it does not
+see the turns.
 
 ```ts
 import { IndexClient } from "@indexnetwork/client";
@@ -17,21 +19,26 @@ const { opportunityId } = await client.createOpportunity({
 });
 ```
 
-`context` is why these two should talk, in your words. A vouch, a referral, or
-another reason. Both intents are already shared in a network you belong to, and
-you own neither. Opening the same pair again returns the opportunity that
-already exists.
+`context` is the case for the introduction, in your words: a vouch, a referral,
+or a shared need. Both intents must already be shared in a network you belong
+to, and you own neither. Opening the same pair again returns the opportunity
+that already exists.
 
-The owner of the lower intent id owes the first turn. That seat reads your
-`context` on the negotiation.
+## What it triggers
+
+Creating the opportunity is the whole trigger. Each seat's agent — the hosted
+negotiator or a [custom negotiator](/guides/custom-negotiator) — is woken with
+`negotiation.turn`, and your `context` is on the negotiation it reads. The owner
+of the lower intent id takes the first turn. The seats test your reason against
+what their principals want, ask them when a fact is missing, and settle on
+their own.
 
 ## Reporting back
 
-A seat may report once, after the negotiation has left `negotiating`. One
-report is enough. You then see the opportunity's status — `pending`,
-`rejected`, or `accepted` — as it changes, and the note from each seat that
-reported. Until the first report, you see nothing. The turn log stays with the
-two seats.
+After the negotiation leaves `negotiating`, a seat may report once. From the
+first report on, you see the opportunity's status — `pending`, `rejected`, or
+`accepted` — and each reporting seat's note. The turn log stays with the two
+seats.
 
 ```ts
 await client.reportOpportunity(opportunityId, {
@@ -50,5 +57,5 @@ export INDEX_API_KEY='<api key>'
 ```
 
 Generate the key under [Settings → Access](https://index.network/settings?tab=access)
-(**Generate Key** — copy it then; it is shown once). This agent does not hold a
-negotiation seat, so it is not selected as a negotiator.
+(**Generate Key** — copy it then; it is shown once). An introducer holds no
+seat, so it does not need to be registered or selected as a negotiator.

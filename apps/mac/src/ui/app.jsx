@@ -213,11 +213,6 @@ function App() {
         if (ours) setNotice("that link doesn't open in the app — view it on index.network.");
         return;
       }
-      if (route.route === "legacy-connect") {
-        // Connect links were retired; there is nothing left to resolve them to.
-        setNotice("this link is no longer supported — open the opportunity from your radar.");
-        return;
-      }
       setPendingLink(route);
     });
   }, []);

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { Loader2, MessageCircle } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers, useNetworks } from "@/contexts/APIContext";
+import AppHandoff from "@/components/AppHandoff";
 import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import { Link } from "react-router";
@@ -35,6 +36,11 @@ const SOCIAL_ICONS: Record<SocialPlatform, React.ReactElement> = {
 };
 
 export default function UserProfilePage() {
+  const { id } = useParams();
+  return <AppHandoff kind="u" id={id ?? ""} webPage={<UserProfile />} />;
+}
+
+function UserProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();

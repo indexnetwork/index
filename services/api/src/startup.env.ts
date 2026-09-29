@@ -26,7 +26,7 @@ const isDeployment =
   Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME);
 
 // EVAL_MODEL_OVERRIDES is a local-only hook. Gated on `isDeployment`, not on
-// NODE_ENV alone: a deployment may not set NODE_ENV (railway.toml runs the
+// NODE_ENV alone: a deployment may not set NODE_ENV (Railway runs the
 // `start` script, which does not), and in that case the protocol's own
 // NODE_ENV=production guard goes inert and the override would actually be
 // honoured. A value present in a deployed environment means someone believes
@@ -160,7 +160,7 @@ function collectEnvWarnings(): string[] {
     }
   };
 
-  warnMissing('API_URL', 'set the deployed API origin so CLI setup, connect links, and webhooks do not fall back to defaults.');
+  warnMissing('API_URL', 'set the deployed API origin so CLI setup and webhooks do not fall back to defaults.');
   warnMissing('WEB_APP_URL', 'set the deployed web app origin for auth and notifications.');
   warnMissingAny(['REDIS_URL', 'REDIS_HOST'], 'set Railway Redis; otherwise cache/locks/SSE may target localhost or in-memory fallbacks.');
   warnMissing('S3_ENDPOINT', 'set the Railway bucket endpoint when using Tigris/S3-compatible storage.');

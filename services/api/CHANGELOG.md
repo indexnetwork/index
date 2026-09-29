@@ -9,6 +9,13 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- MCP tools return a canonical `url` on every user (`/u/<id>`), signal
+  (`/i/<id>`), and opportunity (`/o/<id>`), including profiles, opportunity
+  peers and other parties, and the `create_intent` result. Tool descriptions ask
+  the agent to link names to it. The link opens the Mac app, then Hermes, then
+  the web page, then `/download`.
+
 ### Removed
 - The `agent:tui` development command and `ApiNegotiationHost`, which ran the
   retired stateful `@indexnetwork/agent` negotiator. The API now depends on the
@@ -16,6 +23,14 @@ section before promoting to `main`).
   `@indexnetwork/agent`.
 
 ### Changed
+- Opportunity copy comes only from the LLM presenter. A presenter failure drops
+  the card from opportunity lists and chat context instead of showing copy
+  derived from match reasoning; `interpretation.reasoning` in opportunity
+  responses and the `opportunity.new` event body are now empty.
+- Opportunity lists and single-opportunity presentation use the protocol's
+  `listOpportunityCards` / `presentOpportunityCard` instead of the radar graph.
+  A single opportunity is presented directly rather than by building the whole
+  list to find it. Presentation cache keys move from `radar:` to `card:`.
 - The hosted personal agent groups its initial negotiations into one readable
   summary on the principal conversation instead of displaying the raw negotiation log.
   Direct replies are marked separately from notes and progress updates, with a

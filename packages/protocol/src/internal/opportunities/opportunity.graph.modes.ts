@@ -12,7 +12,6 @@
 
 import type { Id, OpportunityActor } from '../../platform/database.js';
 import { timed } from '../shared/observability/performance.js';
-import { safeFallbackSummary } from "./opportunity.presentation.js";
 import type { OpportunityDatabase } from '../../platform/database.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
@@ -116,10 +115,6 @@ export async function readOpportunities(
             networkName: networkRecord?.title ?? (actorNetworkId ?? ''),
             connectedWith,
             suggestedBy,
-            reasoning: safeFallbackSummary(opp.interpretation?.reasoning, {
-              counterpartName: connectedWith.join(' and '),
-              emptyText: 'Connection opportunity',
-            }),
             status: opp.status,
             category,
             confidence: confidence != null ? confidence : null,

@@ -31,7 +31,7 @@ export type {
   SystemDatabase,
   OpportunityDatabase,
   OpportunityControllerDatabase,
-  RadarGraphDatabase,
+  OpportunityCardsDatabase,
   IntentGraphDatabase,
   Opportunity,
   OpportunityActor,
@@ -123,40 +123,28 @@ export type {
   PresenterDatabase,
 } from "./internal/opportunities/opportunity.presentation.js";
 export {
-  hasUnsupportedOpportunityClaim,
-  stripUnsupportedOpportunityClaims,
-  stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText,
-} from "./internal/shared/utils/claim-safety.js";
-export {
   getPrimaryActionLabel,
 } from "./internal/opportunities/opportunity.labels.js";
 export {
   buildApiChatCardPresentationCacheKey,
-  buildRadarCardPresentationCacheKey,
-} from "./internal/opportunities/opportunity.presentation.js";
-export {
-  presentOpportunity,
-  stripUuids,
-  truncateAtBoundary,
+  buildOpportunityCardCacheKey,
 } from "./internal/opportunities/opportunity.presentation.js";
 export type {
   UserInfo,
 } from "./internal/opportunities/opportunity.presentation.js";
 export {
-  DEFAULT_FALLBACK_HEADLINE,
-  safeFallbackSummary,
-} from "./internal/opportunities/opportunity.presentation.js";
-export {
   canUserSeeOpportunity,
   classifyOpportunity,
   isActionableForViewer,
-  RADAR_SOFT_TARGETS,
-  selectByComposition,
   validateOpportunityActors,
 } from "./internal/opportunities/opportunity.utils.js";
 export {
-  RadarGraphFactory,
-} from "./internal/opportunities/radar/radar.graph.js";
+  listOpportunityCards,
+  presentOpportunityCard,
+} from "./internal/opportunities/opportunity.cards.js";
+export type {
+  OpportunityCard,
+} from "./internal/opportunities/opportunity.cards.js";
 
 export { readOpportunities } from './internal/opportunities/opportunity.graph.modes.js';
 export { admitOpportunityEvent, projectOpportunity } from './internal/opportunities/opportunity.events.js';

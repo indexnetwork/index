@@ -13,6 +13,12 @@ INSTALL_WORKSPACES=("services/api" "apps/web")
 # no longer reads package-local env files).
 LEGACY_ENV_DIRS=("services/api" "backend" "apps/web" "frontend" "packages/protocol" "packages/cli")
 
+# Gitignored local files that do not depend on the branch: agent harness
+# configuration and local notes. Each is symlinked from the repo root, so every
+# worktree reads and edits the same copy. Build output and node_modules are
+# deliberately absent: they are built per worktree from that branch's source.
+LOCAL_LINKS=("AGENTS.md" "CLAUDE.md" "CLAUDE.local.md" "GEMINI.md" ".agents" ".claude" ".codex" ".cursor" ".mcp.json" ".pi" ".vscode/mcp.json" "ignored" "TODO.md")
+
 if [ -z "${1:-}" ]; then
   echo "Usage: bun run worktree:setup <worktree-name>"
   echo ""
@@ -87,6 +93,21 @@ for legacy_dir in "${LEGACY_ENV_DIRS[@]}"; do
     ln -s "$env_file" "$WORKTREE/$env_name"
     echo "  [legacy:$legacy_dir] $env_name -> linked into worktree root (please migrate this file to the repo root: mv $legacy_dir/$env_name $env_name)"
   done
+done
+
+for local_path in "${LOCAL_LINKS[@]}"; do
+  local_src="$REPO_ROOT/$local_path"
+  local_dst="$WORKTREE/$local_path"
+  [ -e "$local_src" ] || continue
+  if [ -L "$local_dst" ]; then
+    echo "  [local] $local_path already linked"
+  elif [ -e "$local_dst" ]; then
+    echo "  [local] $local_path exists (not a symlink, skipping)"
+  else
+    mkdir -p "$(dirname "$local_dst")"
+    ln -s "$local_src" "$local_dst"
+    echo "  [local] $local_path -> linked"
+  fi
 done
 
 # Configure git hooks path (points to committed scripts/hooks/)

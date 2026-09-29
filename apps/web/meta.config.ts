@@ -49,13 +49,6 @@ const MARKETING: Record<string, PageMeta> = {
  * keeps its real profile-page meta/behavior.)
  */
 const DEEP_LINK_PREFIXES: Record<string, PageMeta> = {
-  "/c/": {
-    title: "Open in the Index app",
-    description:
-      "This Index link opens in the Index macOS app. Install the app or open this link on your Mac.",
-    image: DEFAULT_IMAGE,
-    type: "website",
-  },
   "/o/": {
     title: "Open in the Index app",
     description:

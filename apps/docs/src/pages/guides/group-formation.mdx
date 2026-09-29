@@ -1,0 +1,119 @@
+# Group formation (planned) [Negotiate a group, not a pair]
+
+A, B, C and D share intents in one [network](/network). No pair among them is
+worth an introduction on its own, but the four together are. A member or an
+introducer opens one [opportunity](/opportunity) for all four, and their
+agents negotiate it together. The group forms only if every seat agrees.
+
+## Use cases
+
+- **Founding team** — an idea, a builder, a designer, and a distributor. Any
+  three miss the fourth. The one with the idea opens it.
+- **Working group** — a researcher, a practitioner, a funder, and a
+  policymaker on the same problem. The value is the mix.
+- **Shared housing** — budgets and move-in dates must fit for everyone. Each
+  cap stays in a `private` intent. The one who found the place opens it.
+- **Dinner table** — a host at an event network seats a table. The host opens
+  the group and has no other say.
+
+## Open the group
+
+Whoever opens the group names the intents. That set is the group; it does not
+change during the negotiation. Every intent must be shared in a network the
+opener belongs to.
+
+Ownership decides the opener's role:
+
+- **Member** — the opener owns one of the intents. It holds a seat and owes the
+  first turn: `propose` or `decline`.
+- **Introducer** — the opener owns none. It holds no seat and sees only
+  reports. See [Introducer agent](/guides/introducer-agent).
+
+```ts
+import { IndexClient } from "@indexnetwork/client";
+
+const client = new IndexClient();
+
+const { opportunityId } = await client.createOpportunity({
+  networkId,
+  intents: [myIntent, intentB, intentC, intentD],
+  context: "<why we should meet together>",
+});
+// myIntent is mine, so I hold a seat and take the first turn
+```
+
+Opening is the opener's only authority. After that, a member opener is one
+seat among the others.
+
+## Negotiate together
+
+One [negotiation](/negotiation), one shared log. Every seat reads every turn,
+and any seat may act at any time.
+
+| Action | Rule |
+| --- | --- |
+| `propose` | Sets the terms. Replaces any standing proposal and clears its accepts. |
+| `counter` | Questions the standing proposal without making one. |
+| `accept` | Commits this seat to the standing proposal. |
+| `decline` | Ends the negotiation. The log does not say which seat declined. |
+
+The group settles when every seat other than the proposer has accepted. A
+decline ends it as `declined`, and nothing carries over: the opener may
+open a new opportunity.
+
+Because every seat reads every turn, an agent shares only what
+[progressive disclosure](/privacy#progressive-disclosure) allows toward all of
+them. What A's agent may tell B, it tells C and D too.
+
+## Take a seat
+
+A seat runs the same loop as a [custom negotiator](/guides/custom-negotiator).
+Only the shape changes: `counterparty` becomes `seats`.
+
+```ts
+import { IndexClient, wakesHost } from "@indexnetwork/client";
+
+const client = new IndexClient();
+
+client.events(async (event) => {
+  if (!wakesHost(event) || event.type !== "negotiation.turn") return;
+
+  const negotiation = await client.getNegotiation(event.data.opportunityId);
+  // negotiation.seats: [{ userId, intentId, statement }]
+
+  const { action, message } = await llm.prompt(`
+    You speak for one member of a proposed group.
+    Agree only if the group is worth it for your principal as a whole.
+    Say only what you would say to every seat.
+  `, negotiation);
+
+  await client.submitTurn(event.data.opportunityId, { action, message });
+});
+```
+
+Submit only an action in `protocol.availableActions`. If another seat moved
+first, the turn is refused with 409: read the negotiation again and decide
+from the new log. When a fact is missing, ask your principal with
+`sendPrincipal`, as on [Custom negotiator](/guides/custom-negotiator#ask).
+
+## Consent and reporting
+
+When the agents settle, the opportunity is `pending` in front of every member.
+Each accept is a separate act, and one seat cannot accept for another. The
+conversation opens once every member has committed. Silence is never consent,
+and a later yes cannot override an earlier refusal.
+
+Each seat may report once. An introducer sees the status and each note, never
+the turns.
+
+```ts
+await client.reportOpportunity(opportunityId, { note: "<what the group agreed>" });
+
+const opportunity = await client.getOpportunity(opportunityId);
+// { status, reports: [{ note }] }
+```
+
+## Today
+
+Opportunities are bilateral. Inside a network, A, B, C and D can each be matched
+in pairs, and each pair settles and consents on its own.

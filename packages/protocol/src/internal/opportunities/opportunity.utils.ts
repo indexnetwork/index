@@ -1,8 +1,3 @@
-import { log } from '../shared/observability/log.js';
-
-const logger = log.graph.from('SelectByComposition');
-const dedupeByPersonLog = log.graph.from('DeduplicateByPerson');
-
 /**
  * Validates opportunity actors.
  *
@@ -66,15 +61,6 @@ export function isActionableForViewer(
 /** Feed category for home composition. */
 export type FeedCategory = 'connection' | 'expired';
 
-/** Soft targets for radar composition. */
-export const RADAR_SOFT_TARGETS = {
-  // 3 + 2 in a second category before that category was removed. The slots move to
-  // connections rather than shrinking the feed: the total a radar can hold is
-  // unchanged, and connections are the only kind of card left.
-  connection: 5,
-  expired: 2,
-} as const;
-
 /**
  * Classify an actionable opportunity into a feed category.
  * Assumes the opportunity already passed isActionableForViewer or is expired.
@@ -89,117 +75,4 @@ export function classifyOpportunity(
 ): FeedCategory {
   if (opp.status === 'expired') return 'expired';
   return 'connection';
-}
-
-/**
- * Select opportunities for the radar using soft composition targets.
- * Fills each category up to its target, then redistributes unused slots
- * to categories that have more items available. Preserves input order.
- *
- * @param opportunities - Pre-sorted opportunities (by confidence/recency)
- * @param viewerId - The viewing user's ID
- * @returns Composition-balanced subset
- */
-export function selectByComposition<T extends { actors: Array<{ userId: string; role: string }>; status: string }>(
-  opportunities: T[],
-  viewerId: string
-): T[] {
-  const buckets: Record<FeedCategory, T[]> = { connection: [], expired: [] };
-  for (const opp of opportunities) {
-    buckets[classifyOpportunity(opp, viewerId)].push(opp);
-  }
-
-  const targets: Record<FeedCategory, number> = {
-    connection: RADAR_SOFT_TARGETS.connection,
-    expired: RADAR_SOFT_TARGETS.expired,
-  };
-
-  // First pass: fill each category up to its target.
-  const selected: Record<FeedCategory, T[]> = {
-    connection: buckets.connection.slice(0, targets.connection),
-    expired: buckets.expired.slice(0, targets.expired),
-  };
-
-  // Second pass: redistribute unused slots, connection before expired.
-  let unusedSlots = (targets.connection + targets.expired)
-    - (selected.connection.length + selected.expired.length);
-  for (const category of ['connection', 'expired'] as FeedCategory[]) {
-    if (unusedSlots <= 0) break;
-    const remaining = buckets[category].slice(selected[category].length);
-    const take = Math.min(remaining.length, unusedSlots);
-    selected[category].push(...remaining.slice(0, take));
-    unusedSlots -= take;
-  }
-
-  // Within each category, preserve original input order.
-  const indexMap = new Map(opportunities.map((opp, i) => [opp, i]));
-  const sortByOriginal = (a: T, b: T) => (indexMap.get(a) ?? 0) - (indexMap.get(b) ?? 0);
-  selected.connection.sort(sortByOriginal);
-  selected.expired.sort(sortByOriginal);
-
-  logger.info('Selected opportunities by composition', {
-    input: opportunities.length,
-    buckets: { connection: buckets.connection.length, expired: buckets.expired.length },
-    selected: { connection: selected.connection.length, expired: selected.expired.length },
-  });
-
-  return [...selected.connection, ...selected.expired];
-}
-
-/**
- * Deduplicate opportunities so each counterpart appears at most once.
- * Keeps the opportunity with the highest interpretation.confidence per
- * counterpart userId. On ties, the first encountered wins (stable).
- *
- * Counterpart = first actor whose userId !== viewerId.
- * Opportunities without a derivable counterpart pass through undeduped.
- *
- * @param opportunities - Pre-sorted opportunities (e.g. by confidence/recency)
- * @param viewerId - The viewing user's ID
- * @returns Deduped subset preserving original input order among winners
- */
-export function deduplicateByPerson<T extends {
-  actors: Array<{ userId: string; role: string }>;
-  interpretation?: { confidence?: number } | null;
-}>(opportunities: T[], viewerId: string): T[] {
-  const bestByCounterpart = new Map<string, { opp: T; index: number }>();
-  const noCounterpart: Array<{ opp: T; index: number }> = [];
-
-  for (let i = 0; i < opportunities.length; i++) {
-    const opp = opportunities[i];
-    const counterpart = opp.actors.find(
-      (a) => a.userId !== viewerId,
-    );
-
-    if (!counterpart) {
-      noCounterpart.push({ opp, index: i });
-      continue;
-    }
-
-    const key = counterpart.userId;
-    const existing = bestByCounterpart.get(key);
-
-    if (!existing) {
-      bestByCounterpart.set(key, { opp, index: i });
-      continue;
-    }
-
-    const newConf = opp.interpretation?.confidence ?? -1;
-    const oldConf = existing.opp.interpretation?.confidence ?? -1;
-    if (newConf > oldConf) {
-      bestByCounterpart.set(key, { opp, index: i });
-    }
-  }
-
-  const all = [...bestByCounterpart.values(), ...noCounterpart];
-  all.sort((a, b) => a.index - b.index);
-
-  const result = all.map((entry) => entry.opp);
-  if (result.length < opportunities.length) {
-    dedupeByPersonLog.info('Deduped opportunities by person', {
-      input: opportunities.length,
-      output: result.length,
-    });
-  }
-  return result;
 }

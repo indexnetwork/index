@@ -20,9 +20,9 @@ from typing import Any
 from .env_transport import TransportError, upsert_index_env
 from .transport import get_transport, reset_transport, set_transport_for_tests
 
-# Universal-link host for Index deep links. The macOS app claims /c/*, /o/* and
-# /u/* through its apple-app-site-association file, so the same https URL opens
-# the app when it is installed and the web landing page when it is not. The
+# Universal-link host for Index deep links. The macOS app claims /o/*, /u/* and
+# /i/* through its apple-app-site-association file, so the same https URL
+# opens the app when it is installed and the web handoff when it is not. The
 # plugin never detects app installation: it runs on the agent's host, which is
 # usually not the user's Mac, so the OS decides at click time.
 INDEX_APP_BASE_URL = "https://index.network"
@@ -104,17 +104,26 @@ def _app_base_url() -> str:
 
 
 def _attach_app_urls(value: Any, base_url: str, depth: int = 0) -> None:
-    """Attach `appUrl` to every opportunity-shaped object in a decoded payload.
+    """Attach `appUrl` to every opportunity-, signal-, or user-shaped object.
 
-    An object counts as an opportunity when it carries a non-empty
-    `opportunityId`. Existing `appUrl` values are never overwritten.
+    An object with `opportunityId` links to `/o/`. Otherwise an object with
+    only `intentId` links to `/i/` and one with only `userId` links to `/u/`;
+    an object carrying both (an actor row) is ambiguous and left alone.
+    Existing `appUrl` values are never overwritten.
     """
     if depth > _MAX_APP_URL_WALK_DEPTH:
         return
     if isinstance(value, dict):
         opportunity_id = _clean_string(value.get("opportunityId"))
-        if opportunity_id and not _clean_string(value.get("appUrl")):
-            value["appUrl"] = f"{base_url}/o/{opportunity_id}"
+        intent_id = _clean_string(value.get("intentId"))
+        user_id = _clean_string(value.get("userId"))
+        if not _clean_string(value.get("appUrl")):
+            if opportunity_id:
+                value["appUrl"] = f"{base_url}/o/{opportunity_id}"
+            elif intent_id and not user_id:
+                value["appUrl"] = f"{base_url}/i/{intent_id}"
+            elif user_id and not intent_id:
+                value["appUrl"] = f"{base_url}/u/{user_id}"
         for item in value.values():
             _attach_app_urls(item, base_url, depth + 1)
         return

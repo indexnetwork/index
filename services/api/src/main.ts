@@ -1,8 +1,7 @@
 import './startup.env';
+import './bootstrap';
 
 import * as Sentry from '@sentry/bun';
-
-import { ModelClient } from '@indexnetwork/agent';
 
 import { DebugController } from './controllers/debug.controller';
 import { DocsController } from './controllers/docs.controller';
@@ -23,55 +22,16 @@ import { ConversationController } from './controllers/conversation.controller';
 import { EventsController } from './controllers/events.controller';
 import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
-import { OpportunityEventService } from './services/opportunity-event.service';
-import { HostedAgent } from './lib/agent/hosted.agent';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { SessionRequiredError } from './guards/auth.guard';
-import { log, sanitizeForLog } from './lib/log';
+import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
 import { auth } from './lib/betterauth/auth.instance';
-// Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
+// Bootstrap crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
-import { OpportunityEvents } from './events/opportunity.event';
-import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
-import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
-import { requestContext as hostRequestContext } from './lib/request-context';
-import { publishUserEvent } from './lib/user-events';
 import { authenticateMcpRequest, handleMcpRequest } from './lib/mcp/mcp.server';
-
-// Wire the protocol library's logging into the rich API logger (context colors,
-// emoji, LOG_LEVEL, Sentry, embedding redaction + payload truncation).
-// Protocol loggers are late-bound, so this upgrades loggers created at import time too.
-setLoggerFactory(
-  (context, source) => log.withContext(context as Parameters<typeof log.withContext>[0], source),
-  sanitizeForLog,
-);
-
-setTimingWrapper((name, fn) => traceAppOperation(
-  {
-    name,
-    op: 'protocol.phase',
-    attributes: {
-      subsystem: 'protocol',
-      'code.function': name,
-    },
-  },
-  fn,
-));
-
-setRequestContextStore(hostRequestContext);
-
-const opportunityEventAdapter = new OpportunityDatabaseAdapter();
-const opportunityEventService = new OpportunityEventService({
-  opportunities: opportunityEventAdapter,
-  getIdentity: (userId) => opportunityEventAdapter.getProfile(userId),
-  publish: publishUserEvent,
-});
-
-// Assign callbacks before starting workers to avoid a race with jobs already in Redis.
-OpportunityEvents.onActionable = (payload) => opportunityEventService.publishOpportunityActionable(payload);
 
 opportunityExpirationCron.start();
 
@@ -442,14 +402,9 @@ Bun.serve({
 
 logger.info('Server running', { port: PORT });
 
-// The default seat for owners without an external negotiator.
-const hostedAgent = new HostedAgent(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
-void hostedAgent.start();
-
 // Graceful shutdown
 const shutdown = async () => {
   logger.info('Shutting down...');
-  await hostedAgent.stop();
   await Sentry.close(2000);
   process.exit(0);
 };

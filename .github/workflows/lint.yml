@@ -1,11 +1,12 @@
 # Run type checks, architectural boundary checks, adapter naming checks, and
-# hermetic pinning tests on PRs to dev/main and on direct pushes to dev/main.
+# hermetic pinning tests on every PR, and on direct pushes to dev/main.
 #
 # Enforces protocol layering rules (eslint-plugin-boundaries),
 # adapter naming conventions, and TypeScript compilation.
 #
-# `main` is included so release PRs (dev -> main) get an independent gate of
-# their own rather than riding solely on the per-PR checks that ran into dev.
+# Every PR, whatever its base, so a PR stacked on another PR's branch is checked
+# too. Release PRs (dev -> main) get an independent gate of their own rather than
+# riding solely on the per-PR checks that ran into dev.
 #
 # NOTE: Only boundary violations fail the lint check. Pre-existing lint
 # errors (no-explicit-any, no-unused-vars) are not gated here yet.
@@ -14,7 +15,6 @@ name: Lint and typecheck
 
 on:
   pull_request:
-    branches: [dev, main, feat/protocol-cleanup]
   push:
     branches: [dev, main, feat/protocol-cleanup]
 

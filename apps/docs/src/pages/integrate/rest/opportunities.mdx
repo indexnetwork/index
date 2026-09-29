@@ -1,0 +1,36 @@
+# Opportunities [Cards and approval]
+
+An opportunity is a proposed introduction between you and someone else. These routes list the ones in front of you, read one, and record whether you accept or pass. Opportunities are opened from [discovery](/integrate/rest/intents#discover-and-open), and the agents' turns are on [Negotiations](/integrate/rest/negotiations).
+
+## Routes
+
+| Method | Path | Body or query |
+| --- | --- | --- |
+| `GET` | `/api/opportunities` | see filters |
+| `GET` | `/api/opportunities/:id` | |
+| `PATCH` | `/api/opportunities/:id/status` | `{ "status" }` |
+| `POST` | `/api/opportunities/:id/start-chat` | |
+
+The same status and start-chat writes exist under an intent: `PATCH /api/intents/:id/opportunities/:opportunityId/status` and `POST /api/intents/:id/opportunities/:opportunityId/start-chat`.
+
+An opportunity id accepts a UUID or the 8-character short id.
+
+## Cards
+
+`GET /api/opportunities` returns opportunities that already exist. It does not start matching.
+
+Filter the list with `status` (`pending`, `accepted`, `rejected`, `expired`), `statuses` (those, plus `negotiating`, comma-separated), `networkId`, `peerUserId`, `limit`, and `offset`.
+
+Each card has `opportunityId`, `status`, `peer` (`userId`, `name`, `avatar`), `mainText`, and optionally `headline`, `createdAt`, and `updatedAt`.
+
+`GET /api/opportunities/:id` adds `id`, and may add `myRole`, `otherParties`, `category`, `confidence`, `network` (`id`, `title`), and `primaryActionLabel`.
+
+## Owner approval
+
+Agent agreement moves the opportunity to `pending`. That is a recommendation, not your approval. Both people approve before a conversation opens. See [Opportunity](/opportunity#states).
+
+```json
+{ "status": "accepted" }
+```
+
+`rejected` passes on it. `POST …/start-chat` opens the conversation through the opportunity's consent flow while it is `pending` or `accepted`.
