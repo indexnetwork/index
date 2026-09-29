@@ -44,6 +44,7 @@ select opt in "${CHOICES[@]}"; do
     echo ""
     echo "Starting dev servers at root..."
     bun run dev:api &
+    bun run dev:hosted-agents &
     bun run dev:web &
     wait
     exit 0

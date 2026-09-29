@@ -23,8 +23,11 @@ From the repository root, run these in separate terminals:
 
 ```bash
 bun run dev:api
+bun run dev:hosted-agents
 bun run dev:web
 ```
+
+`bun run dev` at the root starts all three.
 
 The API loads the root `.env.development`. Use the disposable development
 database with the migrations applied. Open the web app, sign in normally, and
@@ -34,8 +37,9 @@ drafts stay attached to the displayed question. Radar keeps its Needs you, Waiti
 Connected, and Closed categories, with an expandable A2A conversation inside
 each match. Pending matches retain Start Chat and Skip.
 
-The API runs no personal-agent session. Its hosted agent is `HostedAgent`, the
-default seat for owners without a selected external negotiator: it runs
+The API runs no personal-agent session. The hosted agent runs in its own process
+(`src/hosted-agents.main.ts`, deployed as the `hosted-agents` Railway service via
+`railway.hosted-agents.toml`). It is `HostedAgent`, the default seat for owners without a selected external negotiator: it runs
 `@indexnetwork/agent` — brief, wake and negotiate — against `HostedIndex`, an
 in-process implementation of the same `Index` protocol an external runner reaches
 over HTTP. Nothing runs on a clock. A counterpart's turn and an opening each move
