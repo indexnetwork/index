@@ -31,7 +31,7 @@ const MONO = "'SF Mono', Menlo, Consolas, monospace";
 const PALETTE = {
   bg: '#FCFEFB',
   cream: '#041729',
-  creamSoft: '#43525D',
+  creamSoft: '#2E3B45',
   creamFaint: '#5E6F7C',
   rule: 'rgba(4, 23, 41, 0.12)',
   ruleStrong: 'rgba(4, 23, 41, 0.3)',
