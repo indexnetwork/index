@@ -1,88 +1,114 @@
+import { useEffect, type ReactNode } from "react";
+import { ensureSiteFonts, SiteFooter, SiteNav } from "@/app/site/SiteLayout";
+import { HERMES_INSTALL_URL, MAC_APP_DOWNLOAD_URL } from "@/app/site/links";
+import "@/app/site/site.css";
 import "./download.css";
 
-const MAC_TAG = import.meta.env.VITE_PROTOCOL_URL?.includes("dev.") ? "mac-dev" : "mac";
-const MAC_APP_DOWNLOAD_URL = `https://github.com/indexnetwork/mac-client/releases/download/${MAC_TAG}/Index.dmg`;
-const HERMES_INSTALL_URL =
-  "hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1";
-
 /** Shown on the Index for Mac card. */
-export const MAC_APP_REQUIREMENTS = "macOS 13+ · Apple silicon";
+export const MAC_APP_REQUIREMENTS = "macOS 13+, Apple silicon";
 
 /**
- * `/download` — post-invite install page. Centered hero, the two install
- * cards, and a browser link. No app chrome; `overlay` covers the chrome of a
- * route that renders it in place.
+ * Single-viewport shell for the install pages: navbar, a vertically centred
+ * `main` that scrolls on its own when the window is short, and the footer.
+ * `overlay` covers the chrome of a route that renders it in place.
  */
-export default function Download({ overlay }: { overlay?: boolean }) {
+export function AppsShell({ overlay, children }: { overlay?: boolean; children: ReactNode }) {
+  useEffect(() => {
+    ensureSiteFonts();
+  }, []);
+
   return (
-    <div className={overlay ? "download-page download-page--overlay" : "download-page"}>
-      <main className="download-page__main">
-        <p className="download-page__step">5</p>
-        <p className="download-page__kicker">You&apos;re in</p>
-        <h1 className="download-page__title">get the apps</h1>
-        <p className="download-page__lede">
-          Install Index on macOS or add the Hermes plugin to stay connected to
-          your networks.
-        </p>
-
-        <div className="download-page__offers">
-          <div className="download-page__cards">
-            <section className="download-card">
-              <div className="download-card__body">
-                <span className="download-card__icon">
-                  <IndexMark />
-                </span>
-                <h2 className="download-card__name">Index for Mac</h2>
-                <p className="download-card__meta">{MAC_APP_REQUIREMENTS}</p>
-
-                <a
-                  className="download-btn download-btn--primary"
-                  href={MAC_APP_DOWNLOAD_URL}
-                  aria-label="Download Index for Mac"
-                >
-                  INSTALL →
-                </a>
-              </div>
-            </section>
-
-            <section className="download-card">
-              <div className="download-card__body">
-                <span className="download-card__icon download-card__icon--outlined">
-                  <img src="/logos/nous.webp" alt="" aria-hidden="true" />
-                </span>
-                <h2 className="download-card__name">Hermes plugin</h2>
-                <p className="download-card__meta">one-line plugin install</p>
-
-                <a
-                  className="download-btn download-btn--ghost"
-                  href={HERMES_INSTALL_URL}
-                  aria-label="Install Hermes plugin"
-                >
-                  INSTALL
-                </a>
-              </div>
-            </section>
-          </div>
-
-          <a className="download-page__browser" href="/">
-            Open Index in the browser →
-          </a>
-        </div>
-      </main>
+    <div className={overlay ? "site apps apps--overlay" : "site apps"}>
+      <div className="apps-col">
+        <SiteNav />
+        <main className="apps-main">{children}</main>
+        <SiteFooter className="site-footer apps-footer" />
+      </div>
     </div>
   );
 }
 
-/** The Index mark, inverted for the card: white tile, background-coloured glyph. */
-export function IndexMark() {
+export function AppCard({
+  icon,
+  label,
+  title,
+  body,
+  action,
+}: {
+  icon: ReactNode;
+  label: string;
+  title: string;
+  body: string;
+  action: ReactNode;
+}) {
   return (
-    <svg viewBox="0 0 64 64" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-      <rect width="64" height="64" fill="#fff" />
-      <path
-        d="M36.5778 18.7058V45.2984H27.7592V18.7058H36.5778L27.8611 10H19V36.5502L36.4716 54H45.3327V27.4498L36.5778 18.7058Z"
-        fill="#0d1a13"
-      />
-    </svg>
+    <section className="apps-card">
+      <div className="apps-card-head">
+        {icon}
+        <span className="apps-card-label">{label}</span>
+      </div>
+      <div className="apps-card-text">
+        <h2 className="site-col-title">{title}</h2>
+        <p className="site-p">{body}</p>
+      </div>
+      {action}
+    </section>
+  );
+}
+
+export function IndexIcon() {
+  return <img className="apps-card-icon" src="/site/index-logo.png" alt="Index" />;
+}
+
+export function HermesIcon() {
+  return <img className="apps-card-icon" src="/site/hermes-logo.png" alt="Hermes" />;
+}
+
+/** `/download` — post-invite install page: Mac app, Hermes plugin, web. */
+export default function Download({ overlay }: { overlay?: boolean }) {
+  return (
+    <AppsShell overlay={overlay}>
+      <div className="apps-intro">
+        <h1 className="site-h1 apps-title">Get the apps</h1>
+        <p className="site-p">
+          Install Index on macOS or add the Hermes plugin to stay connected to your networks.
+        </p>
+      </div>
+
+      <div className="apps-cards">
+        <AppCard
+          icon={<IndexIcon />}
+          label="APP"
+          title="Index for Mac"
+          body={`Our desktop app. ${MAC_APP_REQUIREMENTS}.`}
+          action={
+            <a className="site-btn site-btn--block" href={MAC_APP_DOWNLOAD_URL}>
+              Download .dmg ↓
+            </a>
+          }
+        />
+        <AppCard
+          icon={<HermesIcon />}
+          label="PLUGIN"
+          title="Hermes plugin"
+          body="Already use Hermes? Add Index to the agent you have."
+          action={
+            <a className="site-btn site-btn--secondary site-btn--block" href={HERMES_INSTALL_URL}>
+              Install plugin →
+            </a>
+          }
+        />
+      </div>
+
+      <a className="apps-browser" href="/">
+        <span className="apps-browser-icon" aria-hidden="true">↗</span>
+        <span className="apps-browser-text">
+          <span className="apps-browser-title">Index in the browser</span>
+          <span className="apps-browser-sub">The same app. Nothing to install.</span>
+        </span>
+        <span className="apps-browser-cta">Open Index ↗</span>
+      </a>
+    </AppsShell>
   );
 }
 

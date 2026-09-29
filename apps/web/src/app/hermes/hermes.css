@@ -1,0 +1,78 @@
+/* hermes — plugin landing page; shared pieces live in site.css */
+
+.hermes-shot {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  margin-top: 20px;
+  box-shadow: 0 4px 16px rgba(4, 23, 41, .04);
+}
+
+.site-section:target { scroll-margin-top: 24px; }
+
+/* ---------- conversation ---------- */
+.hermes-demo { padding: 8px 22px; display: flex; flex-direction: column; }
+.hermes-demo-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid #1C3247;
+  transition: opacity .4s;
+  text-wrap: pretty;
+}
+.hermes-demo-row:last-child { border-bottom: 0; }
+.hermes-demo-who { font-size: 11px; letter-spacing: .06em; padding-top: 2px; }
+
+.hermes-spotlight { padding-top: 64px; }
+
+/* ---------- primitives ---------- */
+.hermes-prims { display: flex; flex-direction: column; border-top: 1px solid var(--ink); }
+.hermes-prim {
+  display: grid;
+  grid-template-columns: minmax(110px, 160px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--card-border);
+  align-items: baseline;
+}
+.hermes-prim-k { font-family: var(--mono); font-size: 13px; }
+.hermes-prim-v { font-size: 15px; line-height: 1.6; font-weight: 300; color: var(--body); }
+
+/* ---------- install ---------- */
+.hermes-install-section { padding-bottom: 40px; }
+.hermes-install {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  line-height: 1.6;
+}
+.hermes-install-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.hermes-install-cmd { min-width: 0; overflow-wrap: anywhere; }
+.hermes-install-prompt { color: #9DB3C4; }
+.hermes-install-ok { color: #7FC0E0; }
+.hermes-install-notes { gap: 8px; }
+
+.hermes-closer {
+  margin: 72px 0 0;
+  font-family: var(--serif);
+  font-size: 52px;
+  line-height: 1.08;
+  font-weight: 400;
+  letter-spacing: -.03em;
+  text-wrap: balance;
+  color: var(--ink);
+}
+
+@media (max-width: 520px) {
+  .hermes-closer { font-size: 40px; }
+}

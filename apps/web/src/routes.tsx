@@ -49,6 +49,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/about", () => import("@/app/about/page")),
       },
       {
+        path: "/hermes",
+        lazy: lazyRoute("/hermes", () => import("@/app/hermes/page")),
+      },
+      {
         path: "/waitlist",
         lazy: lazyRoute("/waitlist", () => import("@/app/waitlist/page")),
       },

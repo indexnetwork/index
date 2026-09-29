@@ -1,7 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 
-import { ensureLandingFonts } from '@/app/landing/Nav';
+import { ensureLandingFonts } from '@/app/landing/fonts';
 
 // ── Unlisted document page ─────────────────────────────────────────
 // Renders a finished HTML artifact authored outside the app: the markup is

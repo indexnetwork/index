@@ -4,10 +4,9 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { visit } from "unist-util-visit";
 import type { Root } from "hast";
-import Nav, { ensureLandingFonts } from "@/app/landing/Nav";
-import Footer from "@/app/landing/Footer";
+import SiteLayout from "@/app/site/SiteLayout";
+import { formatEntryDate } from "@/app/site/blog-entries";
 import { type BlogPost, getPostBySlug } from "@/lib/blog";
-import "@/app/landing/landing.css";
 import "../blog.css";
 
 function getAudioType(src: string): string {
@@ -164,10 +163,6 @@ function BlogPostPage() {
   const [state, setState] = useState<PostState>({ kind: "loading" });
 
   useEffect(() => {
-    ensureLandingFonts();
-  }, []);
-
-  useEffect(() => {
     if (!slug) return;
     let cancelled = false;
     getPostBySlug(slug).then((result) => {
@@ -180,16 +175,10 @@ function BlogPostPage() {
   }, [slug]);
 
   return (
-    <div className="landing blog blog-post">
-      <div className="hero h1 page-hero post-nav-only">
-        <div className="canvas-area">
-          <Nav />
-        </div>
-      </div>
-
+    <SiteLayout>
       <article className="post-frame">
-        <Link className="post-back" to="/blog">
-          ← back to all posts
+        <Link className="site-arrow-link post-back" to="/blog">
+          ← All posts
         </Link>
 
         {state.kind === "loading" ? (
@@ -198,15 +187,8 @@ function BlogPostPage() {
           <div className="post-status">post not found.</div>
         ) : (
           <>
-            <div className="post-meta">
-              {new Date(state.post.date).toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-                timeZone: "UTC",
-              })}
-            </div>
-            <h1 className="post-title">{state.post.title}</h1>
+            <div className="site-meta">{formatEntryDate(state.post.date)}</div>
+            <h1 className="site-h1 post-title">{state.post.title}</h1>
             <div className="post-body">
               <ReactMarkdown
                 components={markdownComponents}
@@ -219,9 +201,7 @@ function BlogPostPage() {
           </>
         )}
       </article>
-
-      <Footer />
-    </div>
+    </SiteLayout>
   );
 }
 

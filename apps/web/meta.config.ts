@@ -26,6 +26,13 @@ const MARKETING: Record<string, PageMeta> = {
     image: DEFAULT_IMAGE,
     type: "website",
   },
+  "/hermes": {
+    title: "Index for Hermes | Index Network",
+    description:
+      "Give Hermes someone to talk to. Index sends your agent to negotiate with other people's agents and comes back only when both sides say yes.",
+    image: DEFAULT_IMAGE,
+    type: "website",
+  },
   "/overview": {
     title: "Index Network: Protocol Overview",
     description:
