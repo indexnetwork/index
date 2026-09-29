@@ -2,8 +2,9 @@ import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
 import FeaturedPost from "@/app/site/FeaturedPost";
 import { formatEntryDate, useBlogEntries } from "@/app/site/blog-entries";
-import { CONTACT_EMAIL, DOCS_URL, EARLY_ACCESS_PATH, docsUrl } from "@/app/site/links";
+import { CONTACT_EMAIL, DOCS_URL, docsUrl } from "@/app/site/links";
 import FanCanvas from "./FanCanvas";
+import HeroAccess from "./HeroAccess";
 import Trace from "./Trace";
 import "./home.css";
 
@@ -65,15 +66,7 @@ export default function LandingPage() {
             Now apply that mechanism to finding your people.
           </p>
         </div>
-        <div className="home-access site-divider-top">
-          <p>
-            One of your communities may already be on Index. If not, we&rsquo;re letting early
-            members in now.
-          </p>
-          <div>
-            <Link className="site-btn" to={EARLY_ACCESS_PATH}>Get early access</Link>
-          </div>
-        </div>
+        <HeroAccess />
       </section>
 
       <section className="site-section">

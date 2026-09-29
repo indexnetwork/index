@@ -53,7 +53,7 @@ const STYLES = `
 :root {
   --ink: #041729;
   --bg: #FCFEFB;
-  --body: #43525D;
+  --body: #2E3B45;
   --muted: #5E6F7C;
   --green: #123A00;
   --blue: #4091BB;
@@ -281,7 +281,7 @@ function renderHomeFragment(posts: PostEntry[]): string {
 .nojs { max-width: 836px; margin: 0 auto; padding: 70px 24px; font-family: 'Public Sans', system-ui, sans-serif; color: #041729; background: #FCFEFB; }
 .nojs h1 { font-family: 'Source Serif 4', Georgia, serif; font-weight: 400; font-size: 40px; line-height: 1.2; margin: 0 0 28px; }
 .nojs h2 { font-family: 'SF Mono', Menlo, Consolas, monospace; font-weight: 400; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin: 48px 0 12px; }
-.nojs p, .nojs li { font-size: 15px; line-height: 1.7; font-weight: 300; color: #43525D; }
+.nojs p, .nojs li { font-size: 15px; line-height: 1.7; font-weight: 300; color: #2E3B45; }
 .nojs a { color: #041729; }
 </style>
 <div class="nojs">

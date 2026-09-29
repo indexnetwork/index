@@ -93,11 +93,11 @@
 .site .ovw{min-height:0;background:transparent;}
 .site .ovw .doc{max-width:none;padding:70px 0 10px;}
 .site .ovw h1{font-family:'Source Serif 4',Georgia,serif;font-weight:400;font-size:40px;line-height:1.2;letter-spacing:-.015em;}
-.site .ovw .subtitle{font-size:15px;font-weight:300;color:#43525D;margin-top:14px;}
+.site .ovw .subtitle{font-size:15px;font-weight:300;color:#2E3B45;margin-top:14px;}
 .site .ovw h2{font-family:'Source Serif 4',Georgia,serif;font-weight:400;font-size:28px;line-height:1.25;letter-spacing:-.015em;margin-bottom:14px;}
 .site .ovw h3{font-family:'Source Serif 4',Georgia,serif;font-weight:400;font-size:20px;letter-spacing:-.01em;}
 .site .ovw section{margin-top:56px;}
-.site .ovw p.t,.site .ovw ul.b li,.site .ovw .pt .tx,.site .ovw ol.learn li{font-weight:300;color:#43525D;}
+.site .ovw p.t,.site .ovw ul.b li,.site .ovw .pt .tx,.site .ovw ol.learn li{font-weight:300;color:#2E3B45;}
 .site .ovw b,.site .ovw ul.b li b,.site .ovw .pt .tx b{font-weight:500;color:var(--ink);}
 .site .ovw p.t a:hover{color:#4091BB;}
 .site .ovw .trace{border-radius:10px;}
