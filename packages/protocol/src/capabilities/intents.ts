@@ -25,7 +25,7 @@ import { ExplicitIntentInferrer } from "../internal/intents/intent.inferrer.js";
 import { semanticMetadata } from "../internal/intents/intent.admission.js";
 import { SemanticVerifier } from "../internal/intents/intent.verifier.js";
 
-import type { AdmissionCheck, PrepareInput, PrepareResult, RecoveryField } from "../internal/intents/intent.preparer.js";
+import type { PrepareInput, PrepareResult } from "../internal/intents/intent.preparer.js";
 
 export type { IntentSemanticMetadata } from "../internal/intents/intent.admission.js";
 export type { PreparedIntent } from "../internal/intents/intent.preparer.js";
@@ -33,7 +33,6 @@ export type { PreparedIntent } from "../internal/intents/intent.preparer.js";
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export type {
-  AdmissionCheck,
   PrepareAnswer,
   PrepareInput,
   PrepareResult,
@@ -128,18 +127,6 @@ export class Intents {
   public async prepare(input: PrepareInput): Promise<PrepareResult> {
     this.preparer ??= new IntentPreparer(this.deps.agents?.verifier);
     return this.preparer.invoke(input);
-  }
-
-  /** Jev's pass or the constraints still missing. Does not write questions. */
-  public async check(input: PrepareInput): Promise<AdmissionCheck> {
-    this.preparer ??= new IntentPreparer(this.deps.agents?.verifier);
-    return this.preparer.check(input);
-  }
-
-  /** One recovery field per missing constraint. Does not run Jev. */
-  public async questions(input: PrepareInput, missing: readonly string[]): Promise<RecoveryField[]> {
-    this.preparer ??= new IntentPreparer(this.deps.agents?.verifier);
-    return this.preparer.questions(input, missing);
   }
 
   /**

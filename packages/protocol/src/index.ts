@@ -82,7 +82,6 @@ export type { NetworksDeps } from "./capabilities/networks.js";
 
 export { Intents } from "./capabilities/intents.js";
 export type {
-  AdmissionCheck,
   PrepareAnswer,
   PrepareInput,
   PrepareResult,

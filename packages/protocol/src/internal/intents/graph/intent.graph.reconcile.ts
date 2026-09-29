@@ -48,7 +48,7 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
           agentTimingsAccum.push({ name: 'intent.verifier', durationMs: Date.now() - verifierStart });
           _traceEmitterVerifier?.({ type: "agent_end", name: "intent-verifier", durationMs: Date.now() - verifierStart, summary: `Verified: ${verdict.classification}` });
 
-          const failure = admissionFailure(verdict, isExplicitUpdate);
+          const failure = admissionFailure(description, verdict, isExplicitUpdate);
           if (failure) return { failure };
 
           // Calculate Score
