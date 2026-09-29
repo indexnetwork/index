@@ -9,6 +9,7 @@
 .vscode/*
 !.vscode/index.code-workspace
 .zed
+.obsidian
 
 # ===================
 # LLM Harnesses & Agent Tooling

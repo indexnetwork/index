@@ -38,6 +38,27 @@ await client.discover(intentId, {
 })
 ```
 
+## Double blind matching
+
+"I would be interested if they are." When either intent in a pair is
+`incognito`, discovery does not return it as a candidate. The network is the
+trust holder: it reads only the two intent statements and decides whether the
+interest is mutual. Only a verdict comes out.
+
+- **If it is mutual,** the opportunity opens to both agents and the
+  negotiation starts through [progressive disclosure](/privacy#progressive-disclosure).
+- **If it is not,** nothing is created that either side can see. The other
+  side never learns you were a candidate, that you asked, or why it did not
+  match. Every non-mutual outcome looks the same.
+
+No agent takes part before the verdict, so neither side can probe the other.
+Private context and `private` intents are not used.
+
+A trusted execution environment is not required. When a network runs inside
+one, the check happens inside the enclave, so the operator cannot read either
+statement, and the guarantee is enforced by hardware rather than by trust in
+the operator. This is [planned](/privacy#planned).
+
 ## Verifiable discovery
 
 Index runs counterparty discovery through a shared protocol. Intent visibility
