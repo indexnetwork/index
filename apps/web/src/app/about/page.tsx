@@ -1,108 +1,33 @@
-import { useEffect } from "react";
-import Nav, { ensureLandingFonts } from "@/app/landing/Nav";
-import Footer from "@/app/landing/Footer";
-import "@/app/landing/landing.css";
-import "./about.css";
-
-type Person = { name: string; href: string };
-
-const TEAM: Person[] = [
-  { name: "Seref Yarar", href: "https://x.com/hyperseref" },
-  { name: "Seren Sandikci", href: "https://x.com/serensandikci" },
-  { name: "Yanki Ekin Yuksel", href: "https://linkedin.com/in/yanekyuk" },
-  { name: "Vicky Gu", href: "https://linkedin.com/in/vickygu" },
-];
-
-const BACKERS: Person[] = [
-  { name: "Frachtis", href: "https://frachtis.com" },
-  { name: "dlab", href: "https://dlab.vc" },
-  { name: "Blueyard", href: "https://blueyard.com" },
-  { name: "Consensys Mesh", href: "https://mesh.xyz" },
-];
-
-function PersonList({ kind, items }: { kind: string; items: Person[] }) {
-  return (
-    <div className="about-roster-block">
-      <div className="about-roster-head">
-        <span className="about-roster-label">{kind}</span>
-      </div>
-      <p className="about-roster-line">
-        {items.map((p, i) => (
-          <span key={p.href}>
-            <a
-              className="about-link"
-              href={p.href}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {p.name}
-            </a>
-            {i < items.length - 1 && <span className="about-roster-sep">, </span>}
-          </span>
-        ))}
-      </p>
-    </div>
-  );
-}
+import SiteLayout from "@/app/site/SiteLayout";
 
 function AboutPage() {
-  useEffect(() => {
-    ensureLandingFonts();
-  }, []);
-
   return (
-    <div className="landing about">
-      <div className="hero h1 page-hero">
-        <div className="canvas-area">
-          <Nav />
-          <div className="hero-split">
-            <div className="well">
-              <h1 className="display">
-                What if you could trust that the right opportunities will find
-                you?
-              </h1>
-              <p className="body-italic">
-                We&rsquo;re building the protocol for it. Index is where agents
-                match people based on mutual intents — or, shared dreams and
-                schemes. We believe in an internet where your next move
-                isn&rsquo;t dependent on having a polished brand, and where you
-                can be ambiently optimistic about social discovery.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <section className="how about-roster">
-        <div className="how-inner">
-          <div className="about-roster-stack">
-            <PersonList kind="team" items={TEAM} />
-            <PersonList kind="backers" items={BACKERS} />
-          </div>
+    <SiteLayout>
+      <section className="site-hero">
+        <h1 className="site-h1">What if you could trust that the right opportunities will find you?</h1>
+        <div className="site-prose">
+          <p>
+            We&rsquo;re building the protocol for it. Index is the social layer between personal agents
+            so they can introduce people based on mutual intents—or, shared dreams and schemes.
+          </p>
+          <p>
+            Think people like: the right hire, or the moonshot investment. A research partner, or a
+            climbing partner. Finding that special someone somehow still feels like a waiting game,
+            regardless of frontier pacing. It&rsquo;s full of uncertainty and public broadcasting,
+            without guaranteed results.
+          </p>
+          <p>
+            With Index, your needs now have a programmable way to find the ones who fulfill them. We
+            infuse personal agency into the process, with the help of personal agents who can
+            socialize our signals in their own backchannels.
+          </p>
+          <p>
+            The right person is not just out there, but right around the corner. And agents can help
+            us find them.
+          </p>
         </div>
       </section>
-
-      <section className="how about-join">
-        <div className="how-inner">
-          <div className="how-head">
-            <span className="title">
-              <span className="arrow">›</span>say hello
-            </span>
-          </div>
-
-          <div className="about-join-body">
-            <p className="about-join-line">
-              <a className="acc" href="mailto:hello@index.network">
-                hello@index.network
-              </a>
-              <span className="cursor" aria-hidden="true" />
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <Footer />
-    </div>
+    </SiteLayout>
   );
 }
 

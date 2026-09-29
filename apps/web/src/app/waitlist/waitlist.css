@@ -1,0 +1,52 @@
+/* waitlist — WaitlistForm on the site palette (see site/site.css) */
+
+.waitlist-form { max-width: 440px; padding-top: 20px; border-top: 1px solid var(--divider); }
+
+.waitlist .landing-modal-form { display: flex; flex-direction: column; gap: 8px; }
+.waitlist .landing-modal-label { font-size: 13px; color: var(--ink); }
+.waitlist .landing-modal-req { color: var(--muted); }
+.waitlist .landing-modal-input {
+  height: 36px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  border-radius: 0;
+  outline: none;
+}
+.waitlist .landing-modal-input:focus { border-color: var(--ink); }
+.waitlist .landing-modal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--body);
+}
+.waitlist .landing-modal-toggle input { accent-color: var(--ink); }
+.waitlist .landing-modal-error { margin: 0; font-size: 13px; color: #B3261E; }
+.waitlist .landing-modal-submit {
+  align-self: flex-start;
+  height: 32px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--ink);
+  color: var(--bg);
+  border: 0;
+  cursor: pointer;
+}
+.waitlist .landing-modal-submit:hover { background: var(--blue); }
+.waitlist .landing-modal-submit:disabled { opacity: .6; cursor: default; }
+
+.waitlist .landing-modal-title {
+  margin: 0 0 8px;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--ink);
+}
+.waitlist .landing-modal-lede { margin: 0; font-size: 15px; line-height: 1.7; font-weight: 300; color: var(--body); }
