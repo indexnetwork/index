@@ -9,10 +9,15 @@ const logger = log.server.from('mcp');
 
 type JsonObject = Record<string, unknown>;
 
-/** Return one successful MCP tool result as JSON text. */
-export function mcpSuccess(result: JsonObject = {}): CallToolResult {
+/**
+ * Return one successful MCP tool result as JSON text, led by an optional
+ * markdown summary. Models copy links they can read far more reliably than
+ * they assemble them from JSON fields, so entity names arrive pre-linked.
+ */
+export function mcpSuccess(result: JsonObject = {}, summary?: string): CallToolResult {
+  const json = { type: 'text' as const, text: JSON.stringify({ success: true, ...result }) };
   return {
-    content: [{ type: 'text', text: JSON.stringify({ success: true, ...result }) }],
+    content: summary ? [{ type: 'text', text: summary }, json] : [json],
   };
 }
 
