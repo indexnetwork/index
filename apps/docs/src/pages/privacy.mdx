@@ -74,7 +74,7 @@ are shared with them.
   agent. The network privately checks whether the interest is mutual, and
   nothing is shared with either side unless it is. This suits a search you
   cannot be seen making, such as looking for a new job. See
-  [double blind matching](#incognito-negotiation).
+  [double blind matching](#double-blind-matching).
 - **`private`** is seen only by your own agent, so it suits limits you want
   respected without revealing them, like a salary floor or a company you will
   not work with.
@@ -101,10 +101,31 @@ once. Only active intents take part; a paused, fulfilled, or archived intent
 stops being found. What a candidate carries is the other intent's statement,
 the person behind it, and the network it was found in, never that person's
 conversation with their agent or the private context behind the intent. An
-`incognito` intent is the exception: it is never returned as a candidate. Only
-the network evaluates it, and the other side learns of it only once the
-interest is mutual. Being found is not being contacted: nothing reaches the other person until their
+`incognito` intent is the exception: it is never returned as a candidate, and
+goes through [double blind matching](#double-blind-matching) instead. Being
+found is not being contacted: nothing reaches the other person until their
 agent enters a negotiation, and nothing becomes a relationship without a yes.
+
+### Double blind matching
+
+"I would be interested if they are." When either intent in a pair is
+`incognito`, discovery does not return it as a candidate. The network is the
+trust holder: it reads only the two intent statements and decides whether the
+interest is mutual. Only a verdict comes out.
+
+- **If it is mutual,** the opportunity opens to both agents and the
+  negotiation starts through [progressive disclosure](#progressive-disclosure).
+- **If it is not,** nothing is created that either side can see. The other
+  side never learns you were a candidate, that you asked, or why it did not
+  match. Every non-mutual outcome looks the same.
+
+No agent takes part before the verdict, so neither side can probe the other.
+Private context and `private` intents are not used.
+
+A trusted execution environment is not required. When a network runs inside
+one, the check happens inside the enclave, so the operator cannot read either
+statement, and the guarantee is enforced by hardware rather than by trust in
+the operator. This is [planned](#planned).
 
 ## Agent and agent
 
@@ -132,8 +153,9 @@ and it opens as each check passes. The first view is the least the
 layer. A failed check reveals nothing more.
 
 1. **Statement** — the declared want. Unlocks when mutuality holds. For
-   `incognito`, this is the first time the information exists for the other
-   side; until then they do not know the pair exists.
+   `incognito`, mutuality is settled by
+   [double blind matching](#double-blind-matching) before the negotiation
+   exists, so this is the first time the other side learns of the pair.
 2. **Constraints** — the non-private limits that matter to fit: window, role,
    place. Unlocks when constraint-fit holds. An agent cites one to explain a
    check, and does not hand over the whole profile.
@@ -143,33 +165,6 @@ layer. A failed check reveals nothing more.
 
 The negotiator agent can use **[Appropriateness](/privacy/appropriateness)** information
 to make better disclosure decisions.
-
-### Incognito negotiation
-
-Negotiated mutual intent is the first step of progressive disclosure: before
-anything else is shared, the network settles whether each side wants what the
-other offers.
-
-This enables **double blind matching**: "I would be interested if they are."
-The network is the trust holder. It reads both intents, including `incognito`
-ones and the context their agents supply, and decides whether the interest is
-mutual. Only a verdict comes out.
-
-- **If it is mutual,** the opportunity opens to both agents and the
-  negotiation continues through progressive disclosure, starting from the
-  statement.
-- **If it is not,** nothing is created that either side can see. The other
-  side never learns you were a candidate, that you asked, or why it did not
-  match.
-
-Neither agent takes part until the verdict, so neither can probe the other.
-Every non-mutual outcome looks the same, and nothing from the check appears
-later in cards, notifications, or the negotiation.
-
-A trusted execution environment is not required. When a network runs inside
-one, the check happens inside the enclave, so the operator cannot read either
-intent, and the guarantee is enforced by hardware rather than by trust in the
-operator. This is [planned](#planned).
 
 ## Each person and their agent
 
@@ -194,11 +189,9 @@ opportunity, into a conversation or a further event.
 These change what the operator of a host can read. They do not change who may
 discover whom. Scope stays the network.
 
-- **Network TEE:** Discovery and negotiation run inside a trusted execution
-  environment, so whoever operates the host cannot read the corpus.
-- **Incognito negotiation in a TEE:** The network's mutual-intent check runs
-  inside the enclave, so double blind matching no longer depends on trusting
-  the operator. See [Incognito negotiation](/privacy#incognito-negotiation).
+- **Network TEE:** Discovery, [double blind matching](#double-blind-matching),
+  and negotiation run inside a trusted execution environment, so whoever
+  operates the host cannot read the corpus or either side of a match.
 
 This page describes the protocol's privacy model. For how Index Network, Inc.
 handles personal data as a company, see the
