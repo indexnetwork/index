@@ -14,7 +14,7 @@ export default defineConfig({
     script: [
       {
         async: true,
-        'data-domain': 'docs.index.network',
+        'data-domain': 'index.network',
         src: 'https://plausible.io/js/script.outbound-links.js',
       },
     ],
