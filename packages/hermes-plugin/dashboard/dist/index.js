@@ -753,7 +753,6 @@
   // View state is query on that path — never a bare `#intent=` fragment, which
   // misses the plugin route and the host's `*` catch-all sends you to new chat.
   const PAGE_PATH = "/index-network";
-  const LAST_PATH_KEY = "index-network.path";
 
   function pageSearchParams() {
     const hash = window.location.hash || "";
@@ -802,12 +801,6 @@
     return window.location.pathname + window.location.search;
   }
 
-  function rememberPagePath(path) {
-    try {
-      if (path && path.split("?")[0] === PAGE_PATH) window.localStorage.setItem(LAST_PATH_KEY, path);
-    } catch (e) { /* noop */ }
-  }
-
   function onPagePath() {
     const path = currentPageHref().split("?")[0];
     return path === PAGE_PATH || path.startsWith(PAGE_PATH + "/");
@@ -815,7 +808,6 @@
 
   function writeView(view, force) {
     const target = viewPath(view);
-    rememberPagePath(target);
     if (currentPageHref() === target) return;
     if (!force && !onPagePath()) return;
     if (DESKTOP_ENV && DESKTOP_ENV.navigate) {
@@ -2738,20 +2730,18 @@
           if (!aliveRef.current) return;
           payloadRef.current = result.payload;
           setDescription(result.payload);
-          // No approval step: a ready draft is created as it stands. After the
-          // one recovery form it is created regardless, and the server's own
-          // preparation has the last word.
+          // No approval step: a ready draft is created as it stands. Anything
+          // else goes back to the questions, since create needs the ready receipt.
           if (result.status === "ready") {
             receiptRef.current = result.preparationReceipt;
             create(result.payload);
-          } else if (!recoveryUsedRef.current) {
+          } else {
+            const fields = Array.isArray(result.recovery) ? result.recovery : [];
+            receiptRef.current = "";
             recoveryUsedRef.current = true;
             setFeedback(result.feedback || "");
-            setRecoveryFields(Array.isArray(result.recovery) ? result.recovery : []);
-            setStage("recovery");
-          } else {
-            receiptRef.current = "";
-            create(result.payload);
+            setRecoveryFields(fields);
+            setStage(fields.length ? "recovery" : "summary");
           }
         })
         .catch(function () { if (aliveRef.current) setStage("retry"); })
@@ -2780,6 +2770,7 @@
         .then(function (created) { if (aliveRef.current) props.onDone(created.intentId, description); })
         .catch(function (err) {
           if (!aliveRef.current) return;
+          receiptRef.current = "";
           setCreating(false);
           setStage("summary");
           setFeedback("that didn't go through — " + ((err && err.message) || "try again."));
@@ -4010,6 +4001,15 @@
   // The caller can hand it its own lines: the profile fetch and the public
   // research pass both wait behind this card, and saying the same three things
   // twice would read as the loader repeating rather than as two pieces of work.
+  // Desktop fetches the art through the plugin backend, so it can arrive a
+  // beat after mount; hold the space empty rather than flash a second loader.
+  function HeroLoader() {
+    const src = LOADING_IMAGE();
+    return React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+      src ? React.createElement("img", { className: "index-dashboard__loading-anim", src: src, alt: "Loading", loading: "eager" }) : null,
+    );
+  }
+
   function SettingUpScreen(props) {
     // Indeterminate bar + staggered status lines while enrichment runs.
     // No brand mark, loading gif, or live-dot — keep the Hermes card quiet.
@@ -6083,11 +6083,7 @@
       auth === "needsLogin"
         ? React.createElement(LoginScreen, { onAuthed: enterDashboard })
         : (auth === "checking"
-          ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
-            LOADING_IMAGE()
-              ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
-              : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
-          )
+          ? React.createElement(HeroLoader)
           : (needsOnboarding
             ? React.createElement(ProfilePanel, {
               gettingStarted: true,
@@ -6097,11 +6093,7 @@
               },
             })
             : (loading && !summary
-              ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
-                LOADING_IMAGE()
-                  ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
-                  : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
-              )
+              ? React.createElement(HeroLoader)
               : React.createElement("div", { className: "index-dashboard__body" }, intentsView)))),
     );
   }
