@@ -1,8 +1,8 @@
 ---
-title: "Building a Discovery Protocol"
-date: "2025-07-29"
-description: "Hear from Seref Yarar, Index Network Co-Founder in conversation with Chad Fowler, BlueYard Capital GP & CTO."
-image: "chad-seref.png"
+title: Building a Discovery Protocol
+date: 2025-07-29
+description: Hear from Seref Yarar, Index Network Co-Founder in conversation with Chad Fowler, BlueYard Capital GP & CTO
+image: chad-seref.png
 ---
 [youtube](https://www.youtube.com/watch?v=oFFs9jeBBy4)
 
