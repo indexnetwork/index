@@ -1,149 +1,90 @@
-/* blog — list + post styling on the landing palette */
-
-.landing.blog { min-height: 100vh; background: var(--bg); }
-
-/* Blog hero — text only, text takes 2/3 width, no divider */
-.landing.blog .h1 .hero-split { grid-template-columns: 2fr 1fr; }
-.landing.blog .h1 .well { border-right: 0; }
-.landing.blog .h1 .display { max-width: none; }
-
-.blog-list-section { border-top: 0; padding-top: 80px; }
-
-.blog-cta-row {
-  margin-top: 36px;
-  display: flex;
-  justify-content: flex-start;
-}
-
-/* ============================================================
-   POST PAGE
-============================================================ */
-.blog-post {
-  min-height: 100vh;
-  background: var(--bg);
-}
+/* blog post — article typography on the site palette (see site/site.css) */
 
 .post-frame {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 80px 32px 96px;
+  padding: 70px 0 10px;
+  display: flex;
+  flex-direction: column;
 }
 
-.post-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--cream-soft);
-  text-decoration: none;
-  margin-bottom: 40px;
-}
-.post-back:hover { color: var(--cream); }
-
-.post-meta {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--cream-faint);
-  margin-bottom: 18px;
-}
-
-.post-title {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  font-size: 40px;
-  line-height: 1.08;
-  color: var(--cream);
-  margin: 0 0 48px;
-}
+.site .post-back { margin-bottom: 40px; }
+.post-frame > .site-meta { margin-bottom: 14px; }
+.post-title.site-h1 { margin-bottom: 40px; }
 
 .post-body {
-  font-family: 'Public Sans', sans-serif;
-  font-size: 17px;
-  line-height: 1.7;
-  color: var(--cream-soft);
+  font-size: 16px;
+  line-height: 1.75;
+  font-weight: 300;
+  color: var(--body);
 }
-.post-body p { margin: 0 0 22px; }
-.post-body strong { color: var(--cream); font-weight: 600; }
+.post-body p { margin: 0 0 22px; text-wrap: pretty; }
+.post-body strong { color: var(--ink); font-weight: 500; }
 .post-body em { font-style: italic; }
 
 .post-body h2 {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  font-size: 22px;
-  color: var(--cream);
-  margin: 44px 0 14px;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.25;
+  letter-spacing: -.015em;
+  color: var(--ink);
+  margin: 48px 0 16px;
+  text-wrap: balance;
 }
 .post-body h3 {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-weight: 600;
-  font-size: 17px;
-  letter-spacing: 0.01em;
-  color: var(--cream);
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.3;
+  letter-spacing: -.01em;
+  color: var(--ink);
   margin: 36px 0 12px;
 }
 
-.post-body a {
-  color: var(--cream);
-  text-decoration: none;
-  border-bottom: 1px solid var(--rule-strong);
-  transition: border-color 120ms ease;
-}
-.post-body a:hover { border-bottom-color: var(--cream); }
-
 .post-body ul,
-.post-body ol {
-  margin: 0 0 22px;
-  padding-left: 22px;
-}
+.post-body ol { margin: 0 0 22px; padding-left: 22px; }
+.post-body ul { list-style: disc; }
+.post-body ol { list-style: decimal; }
 .post-body li { margin-bottom: 8px; }
 
 .post-body code {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--mono);
   font-size: 13px;
-  background: rgba(244, 251, 246, 0.08);
-  color: var(--cream);
+  background: var(--tag-bg);
+  color: var(--tag-ink);
   padding: 2px 6px;
-  border-radius: 2px;
 }
 .post-body pre {
-  background: var(--bg-deep);
-  border: 1px solid var(--rule);
-  padding: 18px 20px;
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 8px;
+  padding: 18px 22px;
   overflow-x: auto;
   margin: 0 0 24px;
   font-size: 13px;
   line-height: 1.6;
 }
-.post-body pre code {
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
-}
+.post-body pre code { background: transparent; color: inherit; padding: 0; }
 
 .post-body blockquote {
-  border-left: 2px solid var(--rule-strong);
+  border-left: 2px solid var(--ink);
   padding: 4px 0 4px 18px;
   margin: 0 0 24px;
-  color: var(--cream);
+  font-family: var(--serif);
+  font-size: 18px;
   font-style: italic;
+  color: var(--ink);
 }
 
 .post-body img {
   width: 100%;
   height: auto;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
   margin: 8px 0 24px;
 }
 
 /* ------------------------------------------------------------
-   DATA TABLES — text-based ledgers on the landing palette
+   DATA TABLES
 ------------------------------------------------------------ */
 .post-body .post-table {
   margin: 10px 0 30px;
@@ -154,38 +95,39 @@
 .post-body table {
   width: 100%;
   border-collapse: collapse;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--mono);
   font-size: 12.5px;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
-  color: var(--cream-soft);
+  font-weight: 400;
+  color: var(--body);
 }
 
 .post-body thead th {
-  font-weight: 600;
-  font-size: 10px;
-  letter-spacing: 0.16em;
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: .06em;
   text-transform: uppercase;
-  color: var(--cream-faint);
+  color: var(--muted);
   text-align: left;
   white-space: nowrap;
   padding: 0 18px 10px 0;
-  border-bottom: 1px solid var(--rule-strong);
+  border-bottom: 1px solid var(--ink);
 }
 
 .post-body tbody td {
   padding: 12px 18px 12px 0;
-  border-bottom: 1px dashed var(--rule);
+  border-bottom: 1px solid var(--card-border);
   vertical-align: baseline;
 }
 .post-body tbody tr:last-child td { border-bottom: 0; }
-.post-body tbody tr:hover td { color: var(--cream); }
+.post-body tbody tr:hover td { color: var(--ink); }
 
 .post-body thead th:last-child,
 .post-body tbody td:last-child { padding-right: 0; }
 
 /* the row label carries the emphasis, the figures stay quiet */
-.post-body tbody td:first-child { color: var(--cream); }
+.post-body tbody td:first-child { color: var(--ink); }
 
 /* block-glyph cells are bar charts, drawn from the author's glyph count */
 .post-body td.cell-bar {
@@ -198,39 +140,41 @@
   height: 9px;
   width: calc(var(--bar-units, 0) * 5px);
   min-width: 2px;
-  background: var(--cream-soft);
+  background: var(--muted);
 }
-.post-body tbody tr:hover td.cell-bar .bar { background: var(--cream); }
+.post-body tbody tr:hover td.cell-bar .bar { background: var(--blue); }
 
 .post-body .embed-audio,
 .post-body .embed-video,
-.post-body .embed-youtube {
-  margin: 24px 0;
-}
+.post-body .embed-youtube { margin: 24px 0; }
 .post-body .embed-audio audio { width: 100%; }
-.post-body .embed-video video { width: 100%; height: auto; border: 1px solid var(--rule); }
+.post-body .embed-video video {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+}
 .post-body .embed-youtube { aspect-ratio: 16 / 9; }
 .post-body .embed-youtube iframe {
   width: 100%;
   height: 100%;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
 }
 
 .post-status {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 60vh;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  color: var(--cream-soft);
+  min-height: 50vh;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
 }
 
-@media (max-width: 720px) {
-  .post-frame { padding: 56px 22px 72px; }
-  .post-title { font-size: 30px; }
+@media (max-width: 520px) {
   .post-body table { font-size: 11.5px; }
-  .post-body thead th { padding-right: 14px; }
+  .post-body thead th,
   .post-body tbody td { padding-right: 14px; }
   .post-body td.cell-bar .bar { width: calc(var(--bar-units, 0) * 4px); }
 }

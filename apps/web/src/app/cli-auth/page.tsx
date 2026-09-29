@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
 import AuthForm from "@/components/AuthForm";
-import { ensureLandingFonts } from "@/app/landing/Nav";
+import { ensureLandingFonts } from "@/app/landing/fonts";
 import { buildCliDeviceCodeCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequest, DEVICE_CLIENT_ID, type CliAuthRequest } from "@/lib/cli-auth";
 
 import "./cli-auth.css";

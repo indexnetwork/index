@@ -1,16 +1,6 @@
-import { useEffect, type ReactNode } from "react";
-import Nav, { ensureLandingFonts } from "@/app/landing/Nav";
-import Footer from "@/app/landing/Footer";
-import "@/app/landing/landing.css";
-import "@/app/pages/privacy-policy/legal.css";
+import LegalPage, { type LegalSection } from "@/app/pages/LegalPage";
 
-type Section = {
-  id: string;
-  title: string;
-  body: ReactNode;
-};
-
-const SECTIONS: Section[] = [
+const SECTIONS: LegalSection[] = [
   {
     id: "acceptance",
     title: "acceptance of terms",
@@ -186,55 +176,12 @@ const SECTIONS: Section[] = [
 ];
 
 export default function TermsOfUsePage() {
-  useEffect(() => {
-    ensureLandingFonts();
-  }, []);
-
   return (
-    <div className="landing legal">
-      <div className="hero h1 page-hero">
-        <div className="canvas-area">
-          <Nav />
-          <div className="hero-split">
-            <div className="well">
-              <h1 className="display">Terms of Use</h1>
-              <p className="body-italic">
-                The agreement between you and Index — how the services may be
-                used and the limits that apply.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <section className="how legal-toc">
-        <div className="how-inner">
-          <ol className="legal-toc-list">
-            {SECTIONS.map((s, i) => (
-              <li key={s.id}>
-                <a href={`#${s.id}`}>
-                  <span className="legal-toc-num">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span className="legal-toc-title">{s.title}</span>
-                </a>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </section>
-
-      {SECTIONS.map((s) => (
-        <section key={s.id} id={s.id} className="how legal-section">
-          <div className="how-inner">
-            <h2 className="legal-section-title">{s.title}</h2>
-            <div className="legal-body">{s.body}</div>
-          </div>
-        </section>
-      ))}
-
-      <Footer />
-    </div>
+    <LegalPage
+      title="Terms of Use"
+      lede="The agreement between you and Index — how the services may be used and the limits that apply."
+      sections={SECTIONS}
+    />
   );
 }
 

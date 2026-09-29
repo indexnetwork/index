@@ -1,247 +1,95 @@
-/* IBM Plex Mono is already imported once in app/globals.css (400/500/600/700),
-   so this sheet uses it without pulling a second webfont request. */
+/* get the apps — one viewport, no page scroll; `main` scrolls if too short */
 
-.download-page {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  background: #0d1a13;
-  color: #fff;
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  -webkit-font-smoothing: antialiased;
-}
+.site.apps { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
 
 /* The app launch screen covers the app shell and header it renders inside. */
-.download-page--overlay {
+.site.apps--overlay {
   position: fixed;
   inset: 0;
   z-index: 50;
-  overflow-y: auto;
 }
 
-/* ---------- hero ---------- */
-
-.download-page__main {
-  flex: 1;
+.apps-col {
+  height: 100%;
+  max-width: 836px;
+  margin: 0 auto;
+  padding: 0 24px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 48px 60px;
+}
+.apps .site-nav { padding: clamp(16px, 3vh, 26px) 0; }
+
+.apps-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  gap: clamp(14px, 3vh, 36px);
+  padding: clamp(8px, 2vh, 24px) 0;
+  scrollbar-width: none;
 }
 
-.download-page__step {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
-  color: #e8873d;
-}
+.apps-footer.site-footer { max-width: none; margin: 0; padding: clamp(14px, 3vh, 24px) 0; }
 
-.download-page__kicker {
-  margin: 18px 0 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: #e8873d;
-}
-
-.download-page__title {
-  margin: 36px 0 16px;
-  font-size: 52px;
-  font-weight: 600;
-  line-height: 1.1;
-  color: #fff;
-}
-
-.download-page__lede {
-  margin: 0;
-  max-width: 460px;
-  font-size: 14px;
-  line-height: 1.7;
-  text-align: center;
-  text-wrap: pretty;
-  color: #9db3a4;
-}
+.apps-intro { display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+.apps-title.site-h1 { font-size: clamp(30px, 6vh, 40px); }
 
 /* ---------- cards ---------- */
-
-.download-page__offers {
-  width: min(1060px, 100%);
-  margin-top: 56px;
+.apps-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: clamp(20px, 3vw, 40px);
+}
+.apps-card {
   display: flex;
   flex-direction: column;
-  gap: 40px;
+  gap: 16px;
+  border-top: 1px solid var(--ink);
+  padding-top: clamp(16px, 3vh, 24px);
+  min-width: 0;
 }
+.apps-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.apps-card-icon {
+  width: 56px;
+  height: 56px;
+  display: block;
+  border: 1px solid var(--card-border);
+  object-fit: cover;
+}
+.apps-card-label { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--green); }
+.apps-card-text { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 
-.download-page__cards {
+/* ---------- browser row ---------- */
+.site .apps-browser {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 40px;
-}
-
-.download-card {
-  flex: 1 1 320px;
-  width: auto;
-  max-width: 510px;
-  display: flex;
-  flex-direction: column;
-  background: #122019;
-  border: 1px solid #2b4234;
-}
-
-.download-page__browser {
-  display: block;
-  padding: 28px 22px;
-  border: 1px solid #2b4234;
-  background: #122019;
-  color: #e8873d;
-  font-size: 16px;
-  font-weight: 600;
-  text-align: center;
-  text-decoration: none;
-}
-
-button.download-page__browser {
-  width: 100%;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.download-page__browser:hover {
-  border-color: #e8873d;
-  color: #f09a55;
-}
-
-/* Even top and bottom padding now that the header bar is gone: the 36px top was
-   sized against a bar sitting above it, and without one the icon looked pushed
-   down inside the card. */
-.download-card__body {
-  flex: 1;
-  padding: 40px 30px 36px;
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
-}
-
-.download-card__icon {
-  position: relative;
-  width: 68px;
-  height: 68px;
-  margin-bottom: 18px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-}
-
-/* The Index mark is a full-bleed tile, so it fills the box. */
-.download-card__icon svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-/* The Hermes logo is a supplied raster with its own aspect ratio (121x173), so
-   it is bounded rather than stretched, and object-fit letterboxes it.
-
-   Positioned rather than sized with percentages: as a centred grid item both
-   height:100% and max-height:100% resolved against an indefinite area and were
-   ignored, so the logo rendered 66x94 and broke out of the 68px box. inset:0
-   gives it a definite containing block, which percentages can resolve against. */
-.download-card__icon img {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-/* The Hermes mark is a supplied logo rather than a full-bleed tile, so it gets
-   the outline the Index tile does not need. */
-.download-card__icon--outlined {
-  border: 1px solid #3a5443;
-  box-sizing: border-box;
-}
-
-.download-card__name {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: #fff;
-}
-
-.download-card__meta {
-  margin: 0;
-  font-size: 12px;
-  color: #9db3a4;
-}
-
-.download-card__note {
-  margin: 12px 0 0;
-  font-size: 11px;
-  color: #5d7466;
-}
-
-/* ---------- buttons ---------- */
-
-.download-btn {
-  margin-top: 26px;
-  display: inline-block;
-  font-family: inherit;
-  font-size: 12px;
-  letter-spacing: 0.16em;
+  gap: 14px;
+  padding: clamp(8px, 1.6vh, 14px) 16px;
+  border: 1px solid var(--card-border);
   text-decoration: none;
-  border-radius: 0;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-}
-
-.download-btn--primary {
-  padding: 13px 34px;
-  border: none;
-  background: #e8873d;
-  color: #0d1a13;
-  font-weight: 700;
-}
-
-.download-btn--primary:hover {
-  background: #f09a55;
-  color: #0d1a13;
-}
-
-.download-btn--ghost {
-  padding: 12px 33px;
-  border: 1px solid #3a5443;
+  color: var(--ink);
   background: transparent;
-  color: #fff;
-  font-weight: 600;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
 }
-
-.download-btn--ghost:hover {
-  border-color: #e8873d;
-  color: #e8873d;
+.site .apps-browser:hover { border-color: var(--ink); color: var(--ink); }
+.apps-browser-icon {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 14px;
 }
-
-/* ---------- responsive ---------- */
-
-/* The handoff wraps the cards to one centred column here; the gutters come in
-   to match, and the 52px title would otherwise overflow a phone. */
-@media (max-width: 760px) {
-  .download-page__main {
-    padding: 10px 24px 48px;
-  }
-
-  .download-page__title {
-    font-size: 38px;
-  }
-
-  .download-card {
-    flex-basis: 100%;
-    max-width: 510px;
-  }
-}
+.apps-browser-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
+.apps-browser-title { font-size: 15px; line-height: 1.4; font-weight: 500; }
+.apps-browser-sub { font-size: 14px; line-height: 1.5; font-weight: 300; color: var(--body); }
+.apps-browser-cta { font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+.site .apps-browser:hover .apps-browser-cta { color: var(--blue); }

@@ -14,7 +14,7 @@ const OUTPUT_DIR = join(PUBLIC_DIR, "blog");
 const DEFAULT_IMAGE = `${ORIGIN}/link-preview.png`;
 
 const FONTS_HREF =
-  "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Public+Sans:wght@300;400;500;600&display=swap";
+  "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400&display=swap";
 
 /** Non-markdown entries the blog index lists alongside the posts. */
 const EXTERNAL_ENTRIES = [
@@ -22,13 +22,7 @@ const EXTERNAL_ENTRIES = [
 ];
 
 /** Step headlines mirrored from the landing page, for the no-JS home fragment. */
-const HOME_STEPS = [
-  "You share what you're working toward",
-  "Your agent reads it and fills in the gaps",
-  "Agents negotiate across the network",
-  "The right people surface",
-  "Your next opportunity arrives ambiently",
-];
+const HOME_STEPS = ["Intent creation", "Discovery + negotiation", "Outcome + learning"];
 
 interface PostEntry {
   slug: string;
@@ -54,177 +48,126 @@ function formatListDate(iso: string): string {
     .toUpperCase();
 }
 
-function formatPostDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
+/** Mirrors src/app/site/site.css and src/app/blog/blog.css for the no-JS pages. */
 const STYLES = `
 :root {
-  --bg: #14241f;
-  --bg-deep: #0b1612;
-  --cream: #F4FBF6;
-  --cream-soft: rgba(244, 251, 246, 0.78);
-  --cream-faint: rgba(244, 251, 246, 0.5);
-  --rule: rgba(244, 251, 246, 0.22);
-  --rule-strong: rgba(244, 251, 246, 0.45);
-  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ink: #041729;
+  --bg: #FCFEFB;
+  --body: #2E3B45;
+  --muted: #5E6F7C;
+  --green: #123A00;
+  --blue: #4091BB;
+  --tag-bg: #ECEEEC;
+  --tag-ink: #3F4C56;
+  --card-border: #DCE7D7;
+  --divider: rgba(4, 23, 41, .12);
+  --serif: 'Source Serif 4', Georgia, serif;
+  --mono: 'SF Mono', Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
 body {
-  margin: 0;
   background: var(--bg);
-  color: var(--cream);
+  color: var(--ink);
   font-family: 'Public Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
-img { display: block; max-width: 100%; }
-a { color: inherit; }
-.nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 22px 56px;
-  border-bottom: 1px solid var(--rule);
-  font-family: var(--mono);
+::selection { background: var(--blue); color: var(--bg); }
+a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+a:hover { color: var(--blue); }
+@keyframes blink { 0%, 49% { opacity: 1 } 50%, 100% { opacity: 0 } }
+.col { max-width: 836px; margin: 0 auto; padding: 0 24px; }
+.nav { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 26px 0; }
+.nav-logo { display: flex; align-items: center; text-decoration: none; }
+.nav-logo img { height: 14px; width: auto; display: block; }
+.nav-links { display: flex; gap: 18px; align-items: center; font-size: 13px; }
+.nav-links a { text-decoration: none; color: var(--green); }
+.nav-links a.btn {
+  background: var(--ink); color: var(--bg); display: inline-flex; align-items: center;
+  height: 32px; line-height: 1; padding: 0 12px; margin: -8px 0;
 }
-.nav img { height: 20px; width: auto; }
-.nav-links { display: flex; gap: 26px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
-.nav-links a { text-decoration: none; color: var(--cream-soft); }
-.nav-links a:hover { color: var(--cream); }
-.frame { max-width: 720px; margin: 0 auto; padding: 72px 32px 96px; }
-.back {
-  display: inline-block;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--cream-soft);
-  text-decoration: none;
-  margin-bottom: 40px;
-}
+.nav-links a:hover { color: var(--blue); }
+.nav-links a.btn:hover { background: var(--blue); color: var(--bg); }
+.frame { padding: 70px 0 10px; display: flex; flex-direction: column; }
 .display, .post-title {
-  font-family: var(--mono);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  font-size: 40px;
-  line-height: 1.08;
-  margin: 0 0 48px;
+  margin: 0; font-family: var(--serif); font-size: 40px; line-height: 1.2;
+  letter-spacing: -.015em; font-weight: 400; text-wrap: balance;
 }
-.post-meta {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--cream-faint);
-  margin-bottom: 18px;
-}
-.post-body { font-size: 17px; line-height: 1.7; color: var(--cream-soft); }
+.lede { margin: 28px 0 0; font-size: 15px; line-height: 1.7; font-weight: 300; color: var(--body); }
+.meta, .row-date { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--muted); }
+.back { align-self: flex-start; font-size: 12px; margin-bottom: 40px; }
+.frame .meta { margin-bottom: 14px; }
+.post-title { margin-bottom: 40px; }
+.post-body { font-size: 16px; line-height: 1.75; font-weight: 300; color: var(--body); }
 .post-body p { margin: 0 0 22px; }
-.post-body strong { color: var(--cream); font-weight: 600; }
-.post-body h2 { font-family: var(--mono); font-size: 22px; color: var(--cream); margin: 44px 0 14px; }
-.post-body h3 { font-family: var(--mono); font-size: 17px; color: var(--cream); margin: 36px 0 12px; }
-.post-body a { color: var(--cream); text-decoration: none; border-bottom: 1px solid var(--rule-strong); }
+.post-body strong { color: var(--ink); font-weight: 500; }
+.post-body h2 { font-family: var(--serif); font-weight: 400; font-size: 28px; line-height: 1.25; letter-spacing: -.015em; color: var(--ink); margin: 48px 0 16px; }
+.post-body h3 { font-family: var(--serif); font-weight: 400; font-size: 20px; line-height: 1.3; color: var(--ink); margin: 36px 0 12px; }
 .post-body ul, .post-body ol { margin: 0 0 22px; padding-left: 22px; }
 .post-body li { margin-bottom: 8px; }
-.post-body img { width: 100%; height: auto; border: 1px solid var(--rule); margin: 8px 0 24px; }
+.post-body hr { display: none; }
 .post-body blockquote {
-  border-left: 2px solid var(--rule-strong);
-  padding: 4px 0 4px 18px;
-  margin: 0 0 24px;
-  color: var(--cream);
-  font-style: italic;
+  border-left: 2px solid var(--ink); padding: 4px 0 4px 18px; margin: 0 0 24px;
+  font-family: var(--serif); font-size: 18px; font-style: italic; color: var(--ink);
 }
-.post-body code {
-  font-family: var(--mono);
-  font-size: 13px;
-  background: rgba(244, 251, 246, 0.08);
-  color: var(--cream);
-  padding: 2px 6px;
-}
-.post-body pre {
-  background: var(--bg-deep);
-  border: 1px solid var(--rule);
-  padding: 18px 20px;
-  overflow-x: auto;
-  margin: 0 0 24px;
-  font-size: 13px;
-}
-.post-body pre code { background: transparent; padding: 0; }
+.post-body code { font-family: var(--mono); font-size: 13px; background: var(--tag-bg); color: var(--tag-ink); padding: 2px 6px; }
+.post-body pre { background: var(--ink); color: var(--bg); border-radius: 8px; padding: 18px 22px; overflow-x: auto; margin: 0 0 24px; font-size: 13px; line-height: 1.6; }
+.post-body pre code { background: transparent; color: inherit; padding: 0; }
+.post-body img { width: 100%; height: auto; border: 1px solid var(--card-border); border-radius: 10px; margin: 8px 0 24px; }
 .post-body table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--cream-soft);
-  margin: 0 0 26px;
+  width: 100%; border-collapse: collapse; margin: 10px 0 30px; font-family: var(--mono);
+  font-size: 12.5px; line-height: 1.5; font-variant-numeric: tabular-nums; font-weight: 400;
 }
 .post-body th {
-  text-align: left;
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--cream-faint);
-  padding: 0 18px 10px 0;
-  border-bottom: 1px solid var(--rule-strong);
+  font-weight: 400; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  text-align: left; padding: 0 18px 10px 0; border-bottom: 1px solid var(--ink);
 }
-.post-body td { padding: 12px 18px 12px 0; border-bottom: 1px dashed var(--rule); }
-.rows { border-top: 1px solid var(--rule); }
+.post-body td { padding: 12px 18px 12px 0; border-bottom: 1px solid var(--card-border); vertical-align: baseline; }
+.rows { display: flex; flex-direction: column; border-top: 1px solid var(--divider); margin-top: 40px; }
 .row {
-  display: flex;
-  align-items: baseline;
-  gap: 20px;
-  padding: 18px 0;
-  border-bottom: 1px solid var(--rule);
-  font-family: var(--mono);
-  text-decoration: none;
+  display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 20px; align-items: baseline;
+  padding: 18px 0; border-bottom: 1px solid var(--divider); text-decoration: none; color: var(--ink);
 }
-.row-date { font-size: 11px; letter-spacing: 0.12em; color: var(--cream-faint); white-space: nowrap; }
-.row-title { font-size: 15px; color: var(--cream); }
-.row-arrow { margin-left: auto; color: var(--cream-faint); }
+.row:hover, .row:hover .row-date { color: var(--blue); }
+.row-title { font-family: var(--serif); font-size: 20px; line-height: 1.3; letter-spacing: -.01em; }
+.row-arrow { font-size: 13px; }
 .foot {
-  border-top: 1px solid var(--rule);
-  padding: 28px 56px 40px;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--cream-faint);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  justify-content: space-between;
+  max-width: 836px; margin: 0 auto; padding: 60px 24px 24px; display: flex; flex-wrap: wrap;
+  gap: 18px; font-family: var(--mono); font-size: 11px; color: var(--green);
 }
-.foot a { color: var(--cream-soft); text-decoration: none; margin-right: 18px; }
-@media (max-width: 720px) {
-  .nav, .foot { padding-left: 22px; padding-right: 22px; }
-  .frame { padding: 48px 22px 72px; }
-  .display, .post-title { font-size: 30px; }
+.foot a { font-family: 'Public Sans', system-ui, sans-serif; font-size: 12px; color: var(--green); }
+.foot a:hover { color: var(--blue); }
+.foot-copy { margin-left: auto; }
+.foot-copy span { animation: blink 1.2s step-end infinite; }
+@media (max-width: 520px) {
+  .display, .post-title { font-size: 34px; }
+  .row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; }
+  .row-date { grid-column: 1 / -1; }
 }
 `.trim();
 
 const NAV = `
+<div class="col">
 <header class="nav">
-  <a href="/" aria-label="Index Network"><img src="/landing/index-wordmark.svg" alt="Index Network" /></a>
+  <a class="nav-logo" href="/" aria-label="Index Network"><img src="/site/index-logo.svg" alt="Index Network" /></a>
   <nav class="nav-links">
-    <a href="/blog">Blog</a>
-    <a href="/about">About</a>
+    <a href="/hermes">hermes</a>
+    <a href="/blog">blog</a>
+    <a href="/about">about</a>
+    <a class="btn" href="/download">Get early access</a>
   </nav>
 </header>`.trim();
 
 const FOOT = `
+</div>
 <footer class="foot">
-  <div>
-    <a href="/">Home</a><a href="/blog">Blog</a><a href="/about">About</a><a href="/pages/privacy-policy">Privacy</a><a href="/pages/terms-of-use">Terms</a>
-  </div>
-  <div>
-    <a href="https://github.com/indexnetwork/index">GitHub</a><a href="mailto:hello@index.network">hello@index.network</a>
-  </div>
+  <a href="mailto:founders@index.network">founders@index.network</a>
+  <a href="https://github.com/indexnetwork/index">GitHub</a>
+  <a href="https://x.com/indexnetwork_">X</a>
+  <a href="/pages/privacy-policy">Privacy</a>
+  <a href="/pages/terms-of-use">Terms</a>
+  <span class="foot-copy">&copy; ${new Date().getFullYear()}<span>&#9646;</span></span>
 </footer>`.trim();
 
 function renderDocument(options: {
@@ -302,8 +245,8 @@ function renderPostPage(post: PostEntry, markdown: string): string {
     image: post.image ? `${ORIGIN}${post.image}` : DEFAULT_IMAGE,
     type: "article",
     body: `<main class="frame">
-      <a class="back" href="/blog">&larr; back to all posts</a>
-      <div class="post-meta">${escapeHtml(formatPostDate(post.date))}</div>
+      <a class="back" href="/blog">&larr; All posts</a>
+      <div class="meta">${escapeHtml(formatListDate(post.date))}</div>
       <h1 class="post-title">${escapeHtml(post.title)}</h1>
       <div class="post-body">${body}</div>
     </main>`,
@@ -319,6 +262,7 @@ function renderIndexPage(posts: PostEntry[]): string {
     type: "website",
     body: `<main class="frame">
       <h1 class="display">Field notes from Index</h1>
+      <p class="lede">Writing on intent-driven discovery, agents, and finding your others.</p>
       <div class="rows">
 ${renderRows(listEntries(posts))}
       </div>
@@ -334,28 +278,30 @@ function renderHomeFragment(posts: PostEntry[]): string {
   const latest = listEntries(posts).slice(0, 3);
 
   return `<style>
-.nojs { max-width: 720px; margin: 0 auto; padding: 64px 24px; font-family: 'Public Sans', system-ui, sans-serif; color: #14241f; }
-.nojs h1 { font-size: 34px; line-height: 1.1; margin: 0 0 16px; }
-.nojs h2 { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; margin: 40px 0 12px; }
-.nojs p { font-size: 17px; line-height: 1.6; }
-.nojs li { margin-bottom: 8px; line-height: 1.5; }
+.nojs { max-width: 836px; margin: 0 auto; padding: 70px 24px; font-family: 'Public Sans', system-ui, sans-serif; color: #041729; background: #FCFEFB; }
+.nojs h1 { font-family: 'Source Serif 4', Georgia, serif; font-weight: 400; font-size: 40px; line-height: 1.2; margin: 0 0 28px; }
+.nojs h2 { font-family: 'SF Mono', Menlo, Consolas, monospace; font-weight: 400; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin: 48px 0 12px; }
+.nojs p, .nojs li { font-size: 15px; line-height: 1.7; font-weight: 300; color: #2E3B45; }
+.nojs a { color: #041729; }
 </style>
 <div class="nojs">
-  <h1>Wake up to your next idea partner</h1>
-  <p>Have your agent surface the right people for you, before you even think to look.</p>
+  <h1>Give your agent someone to talk to</h1>
+  <p>Index is the social layer between personal agents. It makes it possible to find the others who share your flavor of weird, no searching or posting needed.</p>
+  <p><a href="/download">Get early access</a></p>
   <h2>How it works</h2>
   <ol>
 ${HOME_STEPS.map((step) => `    <li>${escapeHtml(step)}</li>`).join("\n")}
   </ol>
-  <h2>Field notes</h2>
+  <h2>Blog</h2>
   <ul>
 ${latest.map((entry) => `    <li><a href="${entry.href}">${escapeHtml(entry.title)}</a></li>`).join("\n")}
   </ul>
   <p>
+    <a href="/hermes">Hermes</a> &middot;
     <a href="/blog">All posts</a> &middot;
     <a href="/about">About</a> &middot;
     <a href="https://github.com/indexnetwork/index">GitHub</a> &middot;
-    <a href="mailto:hello@index.network">hello@index.network</a>
+    <a href="mailto:founders@index.network">founders@index.network</a>
   </p>
 </div>`;
 }
