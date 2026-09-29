@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
+import SiteLayout from '@/app/site/SiteLayout';
 import overviewBodyHtml from './overview-body.html?raw';
 import './overview.css';
 
@@ -10,6 +11,7 @@ import './overview.css';
 // header/sidebar — registered in ClientWrapper `bareRoutes`): the article
 // markup is imported raw and injected inline, and its stylesheet is scoped
 // under `.ovw` so it cannot collide with the app's Tailwind/global styles.
+// It sits inside the shared site shell (navbar, column, footer).
 // Meta is set here for client-side navigation; server.ts/meta.config.ts
 // inject the same tags for crawlers.
 
@@ -92,7 +94,11 @@ export function OverviewArticle({
     };
   }, []);
 
-  return <div ref={rootRef} className="ovw" dangerouslySetInnerHTML={{ __html: bodyHtml }} />;
+  return (
+    <SiteLayout>
+      <div ref={rootRef} className="ovw" dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+    </SiteLayout>
+  );
 }
 
 export default function OverviewPage() {

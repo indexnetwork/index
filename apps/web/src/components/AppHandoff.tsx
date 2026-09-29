@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
 
-import Download, { IndexMark } from "@/app/download/page";
+import Download, { AppCard, AppsShell, HermesIcon, IndexIcon } from "@/app/download/page";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { authClient } from "@/lib/auth-client";
 import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
@@ -83,37 +83,45 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
 function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: string; onContinue?: () => void }) {
   const mac = app === "mac";
   return (
-    <div className="download-page download-page--overlay">
-      <main className="download-page__main">
-        <h1 className="download-page__title">{mac ? "opening index" : "opening hermes"}</h1>
-        <p className="download-page__lede">If nothing happened, open it again below.</p>
+    <AppsShell overlay>
+      <div className="apps-intro">
+        <h1 className="site-h1 apps-title">{mac ? "Opening Index" : "Opening Hermes"}</h1>
+        <p className="site-p">If nothing happened, open it again below.</p>
+      </div>
 
-        <div className="download-page__offers">
-          <div className="download-page__cards">
-            <section className="download-card">
-              <div className="download-card__body">
-                <span className={mac ? "download-card__icon" : "download-card__icon download-card__icon--outlined"}>
-                  {mac ? <IndexMark /> : <img src="/logos/nous.webp" alt="" aria-hidden="true" />}
-                </span>
-                <h2 className="download-card__name">{mac ? "Index for Mac" : "Hermes"}</h2>
-                <a className="download-btn download-btn--primary" href={href}>
-                  {mac ? "OPEN INDEX →" : "OPEN HERMES →"}
-                </a>
-              </div>
-            </section>
-          </div>
-
-          {onContinue ? (
-            <button type="button" className="download-page__browser" onClick={onContinue}>
-              Continue on web →
-            </button>
-          ) : (
-            <a className="download-page__browser" href={DOWNLOAD_PATH}>
-              Get the apps →
+      <div className="apps-cards">
+        <AppCard
+          icon={mac ? <IndexIcon /> : <HermesIcon />}
+          label={mac ? "APP" : "PLUGIN"}
+          title={mac ? "Index for Mac" : "Hermes"}
+          body={mac ? "Open this link in the Index app." : "Open this link in Hermes."}
+          action={
+            <a className="site-btn site-btn--block" href={href}>
+              {mac ? "Open Index →" : "Open Hermes →"}
             </a>
-          )}
-        </div>
-      </main>
-    </div>
+          }
+        />
+      </div>
+
+      {onContinue ? (
+        <button type="button" className="apps-browser" onClick={onContinue}>
+          <span className="apps-browser-icon" aria-hidden="true">↗</span>
+          <span className="apps-browser-text">
+            <span className="apps-browser-title">Continue on web</span>
+            <span className="apps-browser-sub">Open this page in the browser instead.</span>
+          </span>
+          <span className="apps-browser-cta">Continue →</span>
+        </button>
+      ) : (
+        <a className="apps-browser" href={DOWNLOAD_PATH}>
+          <span className="apps-browser-icon" aria-hidden="true">↓</span>
+          <span className="apps-browser-text">
+            <span className="apps-browser-title">Don&apos;t have it yet?</span>
+            <span className="apps-browser-sub">Install Index on macOS or add the Hermes plugin.</span>
+          </span>
+          <span className="apps-browser-cta">Get the apps →</span>
+        </a>
+      )}
+    </AppsShell>
   );
 }

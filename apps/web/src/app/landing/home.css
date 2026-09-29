@@ -1,0 +1,76 @@
+/* home — sections unique to the landing page; shared pieces live in site.css */
+
+.home-access {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 20px;
+  font-size: 15px;
+  line-height: 1.6;
+  font-weight: 300;
+  color: var(--body);
+}
+.home-access p { margin: 0; }
+
+.home-fan {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1080 / 620;
+  display: block;
+}
+
+/* ---------- trace ---------- */
+.home-trace-section { padding-top: 48px; }
+.home-trace {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: linear-gradient(to bottom, rgba(64, 145, 187, .1) 75%, rgba(64, 145, 187, 0));
+  border-radius: 10px;
+  padding: 22px 24px 34px;
+}
+.home-trace-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.home-trace-title { font-size: 18px; line-height: 1.4; }
+.home-trace-clock,
+.home-trace-time {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--green);
+}
+.home-trace-log {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.home-trace-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 3px 0;
+  transition: opacity .3s;
+}
+.home-trace-time { font-size: 11.5px; letter-spacing: 0; }
+
+/* ---------- where index runs ---------- */
+.home-runs-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 16px;
+  font-size: 13px;
+}
+
+/* ---------- blog ---------- */
+.home-posts { display: flex; flex-direction: column; }
+.home-all-posts { font-size: 14px; }
