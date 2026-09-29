@@ -3,7 +3,6 @@ import { ChevronLeft, Loader2, Send } from "lucide-react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useNotifications } from "@/contexts/NotificationContext";
 import { RecoveryForm } from "@/app/i/new/RecoveryForm";
 import { signalService, type PrepareAnswer, type RecoveryField } from "@/services/signals";
 
@@ -20,16 +19,13 @@ const OPENING_OPTIONS = [
 
 type Stage = "opening" | "recovery" | "summary" | "retry";
 
-/** Prepare the complete draft before offering an editable final review. */
+/** Prepare the draft, asking follow-ups until it's ready, then create it. */
 export default function NewSignalPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthContext();
-  const { error: showError } = useNotifications();
-
   const [stage, setStage] = useState<Stage>("opening");
   const [payload, setPayload] = useState("");
   const [recoveryFields, setRecoveryFields] = useState<RecoveryField[]>([]);
-  const [recoveryUsed, setRecoveryUsed] = useState(false);
   const [preparationReceipt, setPreparationReceipt] = useState("");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,20 +36,17 @@ export default function NewSignalPage() {
     try {
       const result = await signalService.prepare(text, answers);
       setPayload(result.payload);
+      // No approval step: a ready draft is created as it stands. Anything else
+      // goes back to the questions, since create needs the ready receipt.
       if (result.status === "ready") {
         setPreparationReceipt(result.preparationReceipt);
-        setFeedback("");
-        setStage("summary");
+        void create(result.payload, result.preparationReceipt);
         return;
       }
+      setPreparationReceipt("");
       setFeedback(result.feedback);
-      if (!recoveryUsed) {
-        setRecoveryFields(result.recovery);
-        setRecoveryUsed(true);
-        setStage("recovery");
-        return;
-      }
-      setStage("summary");
+      setRecoveryFields(result.recovery);
+      setStage(result.recovery.length ? "recovery" : "summary");
     } catch {
       setStage("retry");
     } finally {
@@ -74,14 +67,16 @@ export default function NewSignalPage() {
     await runPrepare(payload);
   };
 
-  const create = async () => {
-    if (creating || !payload.trim() || payload.length > 65_536 || !preparationReceipt) return;
+  const create = async (description = payload, receipt = preparationReceipt) => {
+    if (creating || !description.trim() || description.length > 65_536 || !receipt) return;
     setCreating(true);
     try {
-      const created = await signalService.create(payload, preparationReceipt);
+      const created = await signalService.create(description, receipt);
       navigate(`/i/${created.intentId}`);
-    } catch {
-      showError("Couldn't create this signal. Try again.");
+    } catch (error) {
+      setPreparationReceipt("");
+      setFeedback(`That didn't go through — ${error instanceof Error ? error.message : "try again."}`);
+      setStage("summary");
       setCreating(false);
     }
   };
@@ -114,7 +109,7 @@ export default function NewSignalPage() {
           ))}
         </div>
 
-        {busy ? (
+        {busy || creating ? (
           <div role="status" className="mt-14 flex items-center gap-3 text-sm text-gray-500">
             <Loader2 className="h-4 w-4 animate-spin" /> Taking that in…
           </div>
