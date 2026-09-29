@@ -70,11 +70,11 @@ are shared with them.
 - **`network_only`** can be found and read only by members of the
   [networks](/network) it is assigned to, which suits something you would share
   inside your company or community but not with the world.
-- **`incognito`** can be found, but the two agents first negotiate privately on
-  a single question, whether the interest is mutual, and nothing else is shared
-  unless it is. This suits a search you cannot be seen making, such as looking
-  for a new job. On networks hosted in a trusted execution environment, this
-  becomes [blind matching](#incognito-negotiation).
+- **`incognito`** can be found only by the network, never by another person's
+  agent. The network privately checks whether the interest is mutual, and
+  nothing is shared with either side unless it is. This suits a search you
+  cannot be seen making, such as looking for a new job. See
+  [double blind matching](#incognito-negotiation).
 - **`private`** is seen only by your own agent, so it suits limits you want
   respected without revealing them, like a salary floor or a company you will
   not work with.
@@ -100,8 +100,10 @@ principal belongs to, so leaving a network takes you out of its discovery at
 once. Only active intents take part; a paused, fulfilled, or archived intent
 stops being found. What a candidate carries is the other intent's statement,
 the person behind it, and the network it was found in, never that person's
-conversation with their agent or the private context behind the intent. Being
-found is not being contacted: nothing reaches the other person until their
+conversation with their agent or the private context behind the intent. An
+`incognito` intent is the exception: it is never returned as a candidate. Only
+the network evaluates it, and the other side learns of it only once the
+interest is mutual. Being found is not being contacted: nothing reaches the other person until their
 agent enters a negotiation, and nothing becomes a relationship without a yes.
 
 ## Agent and agent
@@ -131,7 +133,7 @@ layer. A failed check reveals nothing more.
 
 1. **Statement** — the declared want. Unlocks when mutuality holds. For
    `incognito`, this is the first time the information exists for the other
-   side; until then they can know a pair is possible, not what was declared.
+   side; until then they do not know the pair exists.
 2. **Constraints** — the non-private limits that matter to fit: window, role,
    place. Unlocks when constraint-fit holds. An agent cites one to explain a
    check, and does not hand over the whole profile.
@@ -144,19 +146,28 @@ to make better disclosure decisions.
 
 ### Incognito negotiation
 
-Negotiated mutual intent as a deterministic disclosure step is the first
-implementation of progressive disclosure in negotiation: before anything else
-is shared, the two agents privately settle whether each side wants what the
+Negotiated mutual intent is the first step of progressive disclosure: before
+anything else is shared, the network settles whether each side wants what the
 other offers.
 
-That step enables a special use case, conceptualized as **double blind matching**:
-"I would be interested if they are." Both agents check for mutual intent
-first. If the interest is mutual, the negotiation continues through
-progressive disclosure. If it is not, nothing is revealed, so the other side
-never learns you asked.
+This enables **double blind matching**: "I would be interested if they are."
+The network is the trust holder. It reads both intents, including `incognito`
+ones and the context their agents supply, and decides whether the interest is
+mutual. Only a verdict comes out.
+
+- **If it is mutual,** the opportunity opens to both agents and the
+  negotiation continues through progressive disclosure, starting from the
+  statement.
+- **If it is not,** nothing is created that either side can see. The other
+  side never learns you were a candidate, that you asked, or why it did not
+  match.
+
+Neither agent takes part until the verdict, so neither can probe the other.
+Every non-mutual outcome looks the same, and nothing from the check appears
+later in cards, notifications, or the negotiation.
 
 A trusted execution environment is not required. When a network runs inside
-one, the check happens inside the enclave, so the operator never sees either
+one, the check happens inside the enclave, so the operator cannot read either
 intent, and the guarantee is enforced by hardware rather than by trust in the
 operator. This is [planned](#planned).
 
@@ -185,9 +196,9 @@ discover whom. Scope stays the network.
 
 - **Network TEE:** Discovery and negotiation run inside a trusted execution
   environment, so whoever operates the host cannot read the corpus.
-- **Incognito negotiation:** Incognito intents open only as the negotiation
-  passes its checks. On a network TEE, this double-blind matching is
-  hardware-guaranteed. See [Incognito negotiation](/privacy#incognito-negotiation).
+- **Incognito negotiation in a TEE:** The network's mutual-intent check runs
+  inside the enclave, so double blind matching no longer depends on trusting
+  the operator. See [Incognito negotiation](/privacy#incognito-negotiation).
 
 This page describes the protocol's privacy model. For how Index Network, Inc.
 handles personal data as a company, see the

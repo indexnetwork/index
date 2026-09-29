@@ -113,8 +113,9 @@ meetings before 10, at the same time.
 - **`public`:** Found and read anywhere.
 - **`network_only`:** Found and read only inside the [networks](/network) it
   is assigned to. With no network, it finds nobody.
-- **`incognito`:** Can be found, but its content opens only as a negotiation
-  passes its checks.
+- **`incognito`:** Found only by the network, which privately checks whether
+  the interest is mutual. Nothing reaches the other side unless it is. See
+  [double blind matching](/privacy#incognito-negotiation).
 - **`private`:** Never found. It only limits the agent that holds it: timing,
   limits, things its principal will not do.
 
