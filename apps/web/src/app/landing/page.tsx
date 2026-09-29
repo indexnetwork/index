@@ -67,6 +67,7 @@ export default function LandingPage() {
           </p>
         </div>
         <HeroAccess />
+        <FanCanvas />
       </section>
 
       <section className="site-section">
@@ -82,7 +83,6 @@ export default function LandingPage() {
 
       <section className="site-section site-section--wide">
         <h2 className="site-tag">How it works</h2>
-        <FanCanvas />
         <div className="site-grid">
           {STEPS.map((s) => (
             <div key={s.title}>
