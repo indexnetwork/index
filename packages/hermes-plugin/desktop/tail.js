@@ -148,8 +148,10 @@ function DesktopPage() {
 
 const DISCOVER_PATH = '/index-network'
 const LAST_PATH_KEY = 'index-network.path'
-// Host stamps this on the contributed sidebar row (`sidebar-nav-${contribution.id}`).
-const DISCOVER_NAV_TOUR = 'sidebar-nav-index-network:nav'
+// Until the route below registers, Hermes reads `#/index-network` as a session
+// id. Resuming it 404s and the host moves the window to a new chat, then clears
+// the selection. That selection edge is the one boot redirect to undo.
+const PHANTOM_SESSION = DISCOVER_PATH.slice(1)
 
 function discoverHref() {
   return ((window.location.hash || '').replace(/^#/, '')).split('#')[0] || ''
@@ -160,55 +162,61 @@ function discoverHash() {
   return path === DISCOVER_PATH || path.startsWith(DISCOVER_PATH + '/')
 }
 
-function readLastDiscoverPath() {
-  try { return window.localStorage.getItem(LAST_PATH_KEY) || '' } catch (e) { return '' }
+// Written on unload, read once on register: the view a reload comes back to.
+let bootPath = ''
+
+function takeBootPath() {
+  try {
+    bootPath = window.localStorage.getItem(LAST_PATH_KEY) || ''
+    window.localStorage.removeItem(LAST_PATH_KEY)
+  } catch (e) { bootPath = '' }
 }
 
-function writeLastDiscoverPath(path) {
+function rememberDiscover() {
   try {
-    if (path) window.localStorage.setItem(LAST_PATH_KEY, path)
-    else window.localStorage.removeItem(LAST_PATH_KEY)
+    if (discoverHash()) window.localStorage.setItem(LAST_PATH_KEY, discoverHref())
   } catch (e) { /* noop */ }
 }
 
-// Discover is a workspace-pane route. Hash navigation is a no-op when the
-// workspace already holds the zone (a chat or another page), and a focused
-// session tile keeps the page behind it. Front the tab when entering Discover
-// — not on query-only hash changes (profile/messages/user overlays). Those
-// rewrite `#/index-network?…`; remounting here reloads the page behind the modal.
-let onDiscover = false
-
-function showDiscover(to) {
-  onDiscover = true
-  if (to) host.navigate(to)
-  else if (!discoverHash()) host.navigate(DISCOVER_PATH)
-  if (typeof host.openWorkspace !== 'function') return
-  try {
-    host.openWorkspace('index-network', {
-      title: 'Discover',
-      render: function () { return React.createElement(DesktopPage) }
-    })
-  } catch (e) { /* older hosts without the door */ }
+function restoreDiscover() {
+  if (bootPath && !discoverHash()) host.navigate(bootPath)
 }
 
-function onDiscoverHash() {
-  const on = discoverHash()
-  if (on) {
-    writeLastDiscoverPath(discoverHref())
-    if (!onDiscover) showDiscover()
-  } else {
-    writeLastDiscoverPath('')
-  }
-  onDiscover = on
+function watchPhantomResume() {
+  const focused = host.state && host.state.focusedStoredSessionId
+  if (!focused || typeof focused.subscribe !== 'function') return function () {}
+  let phantom = false
+  return focused.subscribe(function (id) {
+    if (id === PHANTOM_SESSION) phantom = true
+    else if (phantom) {
+      phantom = false
+      if (id === null) restoreDiscover()
+    }
+  })
 }
 
-function onDiscoverNavClick(event) {
-  const t = event.target
-  if (!t || !t.closest) return
-  const labeled = t.closest('[data-tour="' + DISCOVER_NAV_TOUR + '"]')
-  const button = t.closest('button')
-  if (!labeled && !(button && button.querySelector('[data-tour="' + DISCOVER_NAV_TOUR + '"]'))) return
-  showDiscover(DISCOVER_PATH)
+const INDEX_LINK_HOSTS = ['index.network', 'dev.index.network']
+const INDEX_LINK_PARAM = { u: 'user', i: 'intent', o: 'o' }
+
+function openIndexEntity(kind, id) {
+  host.navigate(DISCOVER_PATH + '?' + INDEX_LINK_PARAM[kind] + '=' + encodeURIComponent(id))
+}
+
+// An Index entity link clicked inside Hermes (a chat message, a tool result)
+// opens its Discover view here instead of the browser handoff. Capture phase,
+// so it runs before the host's own external-link handler.
+function onIndexLinkClick(event) {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  const anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null
+  if (!anchor) return
+  let url
+  try { url = new URL(anchor.href) } catch (e) { return }
+  if (url.protocol !== 'https:' || INDEX_LINK_HOSTS.indexOf(url.hostname) < 0) return
+  const match = /^\/(u|i|o)\/([^/]+)\/?$/.exec(url.pathname)
+  if (!match) return
+  event.preventDefault()
+  event.stopPropagation()
+  openIndexEntity(match[1], decodeURIComponent(match[2]))
 }
 
 export default {
@@ -216,6 +224,7 @@ export default {
   name: 'Index Network',
   register: function (ctx) {
     restCall = function (path, opts) { return ctx.rest(path, opts) }
+    ensureAssets()
 
     const style = document.createElement('style')
     style.dataset.plugin = 'index-network'
@@ -226,11 +235,14 @@ export default {
     const stopNotifications = startDesktopNotifications(ctx)
     ctx.onDispose(stopNotifications)
 
-    window.addEventListener('hashchange', onDiscoverHash)
-    document.addEventListener('click', onDiscoverNavClick)
+    takeBootPath()
+    const stopPhantomWatch = watchPhantomResume()
+    window.addEventListener('pagehide', rememberDiscover)
+    window.addEventListener('click', onIndexLinkClick, true)
     ctx.onDispose(function () {
-      window.removeEventListener('hashchange', onDiscoverHash)
-      document.removeEventListener('click', onDiscoverNavClick)
+      stopPhantomWatch()
+      window.removeEventListener('pagehide', rememberDiscover)
+      window.removeEventListener('click', onIndexLinkClick, true)
     })
 
     ctx.registerMany([
@@ -253,15 +265,13 @@ export default {
           id: 'index-network.open',
           label: 'Open Index Network',
           keywords: ['index', 'network', 'intents', 'opportunities', 'onboarding', 'getting started', 'profile'],
-          run: function () { showDiscover(DISCOVER_PATH) }
+          run: function () { host.navigate(DISCOVER_PATH) }
         }
       }
     ])
 
-    // Register the route first. Hermes's `*` catch-all rewrites unknown paths
-    // (including `#/index-network` before this plugin mounts) to new chat.
-    // Restore the last Discover path after the route exists so reload stays here.
-    if (discoverHash()) onDiscoverHash()
-    else if (readLastDiscoverPath()) showDiscover(readLastDiscoverPath())
+    // A redirect that finished before this plugin loaded already left the
+    // window on new chat.
+    restoreDiscover()
   }
 }

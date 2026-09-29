@@ -12,7 +12,7 @@ import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpPrincipal } from './mcp.types';
 
-const LINK_HINT = ' The result starts with a markdown summary whose names are already linked; keep those links (or each item\'s `url`) when mentioning a person, signal, or opportunity.';
+const LINK_HINT = ' The result starts with a markdown summary whose names are already linked. Reuse those lines; when you rephrase, put the link on the person, signal, or opportunity name itself, never as a separate "link" word.';
 
 const emptyInputSchema = z.object({}).strict();
 const intentIdSchema = z.object({
@@ -30,11 +30,24 @@ function mdLink(label: string, url: string): string {
 function signalLabel(text: string | null | undefined): string {
   const flat = (text ?? '').replace(/\s+/g, ' ').trim();
   if (!flat) return 'Untitled signal';
-  return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
+  return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
 }
 
 function intentLine(intent: ReturnType<typeof conciseIntent>): string {
-  return `${mdLink(signalLabel(intent.summary ?? intent.description), intent.url)} — ${intent.status}`;
+  const state = intent.status === 'ACTIVE' ? '' : ` (${intent.status.toLowerCase()})`;
+  return `${mdLink(signalLabel(intent.summary ?? intent.description), intent.url)} — ${intent.waitingOpportunityCount} waiting${state}`;
+}
+
+const OPPORTUNITY_STATE: Record<string, string> = {
+  pending: 'waiting on you',
+  negotiating: 'agents talking',
+  accepted: 'connected',
+  rejected: 'passed',
+  expired: 'expired',
+};
+
+function opportunityState(status: string): string {
+  return OPPORTUNITY_STATE[status] ?? status;
 }
 
 function safeProfile(profile: NonNullable<Awaited<ReturnType<typeof userService.findWithGraph>>>) {
@@ -417,7 +430,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         cta: opportunity.cta,
       }));
       const lines = opportunities.map((opportunity) =>
-        `- ${mdLink(opportunity.headline || 'Opportunity', opportunity.url)} with ${mdLink(opportunity.peer.name, opportunity.peer.url)} — ${opportunity.status}`);
+        `- ${mdLink(opportunity.peer.name, opportunity.peer.url)} — ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status)}`);
       return mcpSuccess({
         opportunities,
         pagination: {
@@ -454,7 +467,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           otherParties,
         },
         negotiation,
-      }, `Opportunity: ${mdLink(opportunity.headline || 'Opportunity', url)}${people ? ` with ${people}` : ''} — ${opportunity.status}`);
+      }, `Opportunity${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status)}`);
     }),
   );
 
