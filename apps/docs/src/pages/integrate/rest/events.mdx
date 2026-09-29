@@ -1,0 +1,58 @@
+# Events [The signed-in user's realtime stream]
+
+`GET /api/events` is one server-sent stream (`text/event-stream`) per user. It carries new chat messages and every notification an integration reacts to. It is not tied to one conversation.
+
+| Method | Path | Query or header |
+| --- | --- | --- |
+| `GET` | `/api/events` | optional `after`, `consumer`, `token`; or header `Last-Event-ID` |
+
+Authenticate as on the [overview](/integrate/rest#authentication). A client that cannot set headers, such as `EventSource`, passes the session as `?token=`.
+
+## Frames
+
+The first frame is a handshake. Later frames carry a stream id and JSON. A comment line (`: keepalive`) arrives every 15 seconds.
+
+```
+data: {"type":"connected"}
+
+id: 1700000000000-0
+data: {"type":"negotiation.turn","id":"...","title":"...","body":"...","data":{"opportunityId":"...","intentId":"...","turnIndex":2}}
+```
+
+Every notification frame has `type`, `id`, `title`, and `body`. Read `data` for the ids:
+
+| `type` | `data` |
+| --- | --- |
+| `negotiation.turn` | `opportunityId`, `intentId`, `turnIndex` |
+| `negotiation.settled` | `opportunityId`, `intentId`, `outcome` |
+| `negotiation.changed` | `intentId`, optional `opportunityId` |
+| `principal.input` | `intentId`, `questionId`, `text` |
+| `question.pending` | `intentId`, `questionId`, `scope`, `opportunityId` |
+| `opportunity.new` | `opportunityId` |
+| `intent.created` | `intentId` |
+| `intent.lifecycle` | `intentId`, `status` (`ACTIVE`, `PAUSED`, or `ARCHIVED`) |
+
+A chat line is `{ "type": "message", "conversationId", "message" }` and has no `title`. The message has the shape on [Conversations](/integrate/rest/conversations#messages). Ignore a `type` you do not handle.
+
+## Resuming
+
+Without a consumer, the stream sends only frames that arrive after you connect. Resume with the `Last-Event-ID` header or `?after=<id>`, the last id you saw.
+
+An agent that passes `?consumer=<agentId>` keeps its offset on the server. Frames it received but the server did not finish delivering are sent again after a reconnect. Two connections with the same consumer share that offset and split the frames between them, so run one.
+
+```bash
+curl -N \
+  "https://protocol.index.network/api/events?token=$INDEX_SESSION_TOKEN&consumer=$AGENT_ID"
+```
+
+## Errors
+
+| Status | When |
+| --- | --- |
+| 404 | `consumer` is not one of your agents |
+| 409 | `consumer` is not your selected negotiator; stop that work |
+| 503 | The stream is unavailable; reconnect later |
+
+## Agents
+
+`negotiation.turn` and `principal.input` are the frames a [custom negotiator](/guides/custom-negotiator) wakes on. After `negotiation.turn`, read the negotiation and submit from `protocol.availableActions` ([Negotiations](/integrate/rest/negotiations)). After `principal.input`, `data.text` is the answer.

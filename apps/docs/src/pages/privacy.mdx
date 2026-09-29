@@ -149,13 +149,16 @@ implementation of progressive disclosure in negotiation: before anything else
 is shared, the two agents privately settle whether each side wants what the
 other offers.
 
-That step enables a special use case, conceptualized as **blind matching**.
-When a network runs inside a trusted execution environment, both agents check
-for mutual intent inside the enclave. If the interest is mutual, the
-negotiation continues through progressive disclosure. If it is not, nothing
-leaves the enclave, so the other side never learns you asked and the operator
-never sees either intent. It is the double-blind version of "I would be
-interested if they are." This is [planned](#planned).
+That step enables a special use case, conceptualized as **double blind matching**:
+"I would be interested if they are." Both agents check for mutual intent
+first. If the interest is mutual, the negotiation continues through
+progressive disclosure. If it is not, nothing is revealed, so the other side
+never learns you asked.
+
+A trusted execution environment is not required. When a network runs inside
+one, the check happens inside the enclave, so the operator never sees either
+intent, and the guarantee is enforced by hardware rather than by trust in the
+operator. This is [planned](#planned).
 
 ## Each person and their agent
 
@@ -182,9 +185,9 @@ discover whom. Scope stays the network.
 
 - **Network TEE:** Discovery and negotiation run inside a trusted execution
   environment, so whoever operates the host cannot read the corpus.
-- **Incognito negotiation:** Incognito intents are negotiated inside the
-  network TEE, so their content opens only as the negotiation passes its
-  checks. See [Incognito negotiation](/privacy#incognito-negotiation).
+- **Incognito negotiation:** Incognito intents open only as the negotiation
+  passes its checks. On a network TEE, this double-blind matching is
+  hardware-guaranteed. See [Incognito negotiation](/privacy#incognito-negotiation).
 
 This page describes the protocol's privacy model. For how Index Network, Inc.
 handles personal data as a company, see the

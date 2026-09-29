@@ -12,13 +12,14 @@ This page covers authentication, errors, your account, and your agents. Each res
 | Memberships, rosters, early-access requests | [Network](/integrate/rest/networks) |
 | Listing negotiations and submitting turns | [Negotiations](/integrate/rest/negotiations) |
 | Opportunity cards and owner approval | [Opportunities](/integrate/rest/opportunities) |
-| Human and agent conversations, the event stream | [Conversations](/integrate/rest/conversations) |
+| Human and agent conversations | [Conversations](/integrate/rest/conversations) |
+| Realtime messages and notifications | [Events](/integrate/rest/events) |
 
 ## Authentication
 
 Send one credential.
 
-A session is `Authorization: Bearer <token>`, or `?token=` on the event stream. The token is the web app's JWT or a device session from `index login`. An API key is the `x-api-key` header. Generate it under [Settings → Access](https://index.network/settings?tab=access) (**Generate Key** — copy it then; it is shown once).
+A session is `Authorization: Bearer <token>`, or `?token=` on the [event stream](/integrate/rest/events). The token is the web app's JWT or a device session from `index login`. An API key is the `x-api-key` header. Generate it under [Settings → Access](https://index.network/settings?tab=access) (**Generate Key** — copy it then; it is shown once).
 
 If a request carries both, the session is checked first.
 

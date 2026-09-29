@@ -1,6 +1,6 @@
-# Conversations [Messages and the event stream]
+# Conversations [Direct messages and your agent's thread]
 
-Conversations are your direct messages with people and your thread with your personal agent. These routes list and read them, send messages, and answer your agent's questions. The event stream at the end carries new messages and every notification an integration reacts to.
+Conversations are your direct messages with people and your thread with your personal agent. These routes list and read them, send messages, and answer your agent's questions.
 
 ## Routes
 
@@ -15,7 +15,6 @@ Conversations are your direct messages with people and your thread with your per
 | `GET` | `/api/conversations/agent/messages` | `intentId` |
 | `POST` | `/api/conversations/agent/h2a` | `?agentId=` (UUID), `{ intentId, entries }` |
 | `POST` | `/api/conversations/agent/answers` | `{ intentId, answers }` |
-| `GET` | `/api/events` | optional `after`, `consumer`; or header `Last-Event-ID` |
 
 A conversation id accepts a UUID or a short prefix. Your personal agent's thread is the id `agent`.
 
@@ -79,37 +78,4 @@ Answer in one batch so the agent sees them together:
 
 The response is `{ "messages" }` with status 201. An answer whose question is no longer waiting is stored as an ordinary user message.
 
-## Events
-
-`GET /api/events` is a server-sent stream (`text/event-stream`) for the signed-in user. The first frame is a handshake. Later frames carry a stream id and JSON. A comment line (`: keepalive`) arrives every 15 seconds.
-
-```
-data: {"type":"connected"}
-
-id: 1700000000000-0
-data: {"type":"negotiation.turn","id":"...","title":"...","body":"...","data":{"opportunityId":"...","intentId":"...","turnIndex":2}}
-```
-
-Resume with the `Last-Event-ID` header or `?after=<id>`. An agent that passes `?consumer=<agentId>` keeps its offset on the server. Two consumers with the same name share that offset.
-
-```bash
-curl -N \
-  "https://protocol.index.network/api/events?token=$INDEX_SESSION_TOKEN&consumer=$AGENT_ID"
-```
-
-Every notification frame has `type`, `id`, `title`, and `body`. Read `data` for the ids:
-
-| `type` | `data` |
-| --- | --- |
-| `negotiation.turn` | `opportunityId`, `intentId`, `turnIndex` |
-| `negotiation.settled` | `opportunityId`, `intentId`, `outcome` |
-| `negotiation.changed` | `intentId`, optional `opportunityId` |
-| `principal.input` | `intentId`, `questionId`, `text` |
-| `question.pending` | `intentId`, `questionId`, `scope`, `opportunityId` |
-| `opportunity.new` | `opportunityId` |
-| `intent.created` | `intentId` |
-| `intent.lifecycle` | `intentId`, `status` (`ACTIVE`, `PAUSED`, or `ARCHIVED`) |
-
-A chat line is `{ "type": "message", "conversationId", "message" }` and has no `title`. Ignore a `type` you do not handle.
-
-`negotiation.turn` and `principal.input` are the frames a [custom negotiator](/guides/custom-negotiator) wakes on. After `negotiation.turn`, read the negotiation and submit from `protocol.availableActions` ([Negotiations](/integrate/rest/negotiations)). After `principal.input`, `data.text` is the answer.
+New messages arrive on the [event stream](/integrate/rest/events).

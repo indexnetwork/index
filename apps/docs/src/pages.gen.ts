@@ -13,6 +13,7 @@ type Page =
   | { path: '/'; render: 'static' }
   | { path: '/integrate/host'; render: 'static' }
   | { path: '/integrate/rest/conversations'; render: 'static' }
+  | { path: '/integrate/rest/events'; render: 'static' }
   | { path: '/integrate/rest/intents'; render: 'static' }
   | { path: '/integrate/rest/negotiations'; render: 'static' }
   | { path: '/integrate/rest/networks'; render: 'static' }
