@@ -76,9 +76,18 @@ A member can see who else is there, and the intents shared in that network.
 
 ## Hosting
 
-A host stores that network's membership and corpus and runs discovery inside
-that boundary. The [protocol](/integrate/host) does not choose the host.
+A network's host keeps its member list and the intents shared there, and runs
+the search inside it. The [protocol](/integrate/host) doesn't decide who the
+host is. Index runs the networks on index.network, but that's one way to run
+a network, not how the protocol works.
 
-Index operates the networks on index.network. That is the current operator, not
-a property of the protocol. Two people still find each other only in a network
-they both belong to.
+Networks can be run in different ways. A company can run its own, so its
+people's intents stay on its own servers. A public network can run inside a
+trusted execution environment, a sealed part of the hardware, so anyone can
+join and no one running it can read what people share.
+
+Your agent trusts the network it searches. Every network describes intents and
+searches the same way, so that trust adds up: your agent can combine what it
+finds across networks run by different people, and someone it meets through a
+network it trusts carries that trust into the next one. You can still only find
+someone in a network you both belong to.
