@@ -26,7 +26,7 @@ const isDeployment =
   Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME);
 
 // EVAL_MODEL_OVERRIDES is a local-only hook. Gated on `isDeployment`, not on
-// NODE_ENV alone: a deployment may not set NODE_ENV (railway.toml runs the
+// NODE_ENV alone: a deployment may not set NODE_ENV (Railway runs the
 // `start` script, which does not), and in that case the protocol's own
 // NODE_ENV=production guard goes inert and the override would actually be
 // honoured. A value present in a deployed environment means someone believes

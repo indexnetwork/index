@@ -38,8 +38,8 @@ Connected, and Closed categories, with an expandable A2A conversation inside
 each match. Pending matches retain Start Chat and Skip.
 
 The API runs no personal-agent session. The hosted agent runs in its own process
-(`src/hosted-agents.main.ts`, deployed as the `hosted-agents` Railway service via
-`railway.hosted-agents.toml`). It is `HostedAgent`, the default seat for owners without a selected external negotiator: it runs
+(`src/hosted-agents.main.ts`, deployed as the `hosted-agents` Railway service, whose
+start command `bun run start:hosted-agents` is set in its Railway service settings). It is `HostedAgent`, the default seat for owners without a selected external negotiator: it runs
 `@indexnetwork/agent` — brief, wake and negotiate — against `HostedIndex`, an
 in-process implementation of the same `Index` protocol an external runner reaches
 over HTTP. Nothing runs on a clock. A counterpart's turn and an opening each move
