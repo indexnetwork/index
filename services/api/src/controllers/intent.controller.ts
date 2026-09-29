@@ -15,12 +15,16 @@ const CreateSchema = z.object({
   preparationReceipt: z.string().min(1).max(65_536).optional(),
   networkIds: z.array(z.string().uuid('networkIds must be UUIDs')).default([]),
 }).strict();
+const AnswerSchema = z.object({
+  prompt: z.string().trim().min(1),
+  answer: z.string().trim().min(1),
+});
 const PrepareSchema = z.object({
   payload: z.string().trim().min(1, 'payload is required').max(65_536),
-  answers: z.array(z.object({
-    prompt: z.string().trim().min(1),
-    answer: z.string().trim().min(1),
-  })).default([]),
+  answers: z.array(AnswerSchema).default([]),
+}).strict();
+const QuestionsSchema = PrepareSchema.extend({
+  missing: z.array(z.enum(['role', 'outcome', 'location', 'timeframe', 'domain', 'concrete_need'])).min(1).max(6),
 }).strict();
 const StatusSchema = z.object({
   status: z.enum(['ACTIVE', 'PAUSED']),
@@ -80,12 +84,42 @@ export class IntentController {
   }
 
   /**
-   * Prepare a draft signal for creation admission.
-   *
-   * @param req - Current payload and recovery answers not yet folded into it.
-   * @param user - Authenticated owner.
-   * @returns An admitted draft with a receipt, or repairable feedback and a recovery form.
+   * Ask Jev whether the current rows would pass. No questions, no receipt.
    */
+  @Post('/admission')
+  @UseGuards(AuthGuard)
+  async admission(req: Request, user: AuthenticatedUser) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = PrepareSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+    }
+    try {
+      return Response.json(await intentService.admit(parsed.data));
+    } catch (error) {
+      logger.error('Intent admission check failed', { userId: user.id, error });
+      return Response.json({ error: 'admission_failed', detail: 'Could not check this signal. Your answers are kept; try again.', retryable: true }, { status: 503 });
+    }
+  }
+
+  /** Write one recovery field per missing constraint. */
+  @Post('/questions')
+  @UseGuards(AuthGuard)
+  async questions(req: Request, user: AuthenticatedUser) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = QuestionsSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+    }
+    try {
+      return Response.json(await intentService.questions(parsed.data));
+    } catch (error) {
+      logger.error('Intent question generation failed', { userId: user.id, error });
+      return Response.json({ error: 'questions_failed', detail: 'Could not write the next question. Your answers are kept; try again.', retryable: true }, { status: 503 });
+    }
+  }
+
+  /** Fold the rows and mint a receipt once admission has passed. */
   @Post('/prepare')
   @UseGuards(AuthGuard)
   async prepare(req: Request, user: AuthenticatedUser) {

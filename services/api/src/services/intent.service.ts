@@ -162,6 +162,26 @@ export class IntentService {
     return { status: result.status, payload: result.payload, preparationReceipt };
   }
 
+  /** Jev pass/fail for the live page. A model failure is retryable. */
+  async admit(input: PrepareInput) {
+    try {
+      return await this.intents.check(input);
+    } catch (error) {
+      logger.error('Intent admission check failed', { error });
+      throw new IntentPreparationFailedError();
+    }
+  }
+
+  /** Recovery fields for constraints the check still marks missing. */
+  async questions(input: PrepareInput & { missing: string[] }) {
+    try {
+      return { recovery: await this.intents.questions(input, input.missing) };
+    } catch (error) {
+      logger.error('Intent question generation failed', { error });
+      throw new IntentPreparationFailedError();
+    }
+  }
+
   private async runPrepare(input: PrepareInput) {
     try {
       return await this.intents.prepare(input);
