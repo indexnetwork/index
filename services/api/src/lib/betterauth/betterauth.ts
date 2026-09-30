@@ -2,6 +2,8 @@ import { betterAuth } from "better-auth";
 import { magicLink, bearer, jwt, deviceAuthorization } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
+import { edgeCity } from "./edge-city.plugin";
+
 export const API_URL =
   process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`;
 
@@ -38,6 +40,8 @@ export interface AuthDeps {
    * built-in in-memory store.
    */
   secondaryStorage?: AuthSecondaryStorage;
+  /** Runs after every successful Edge City sign-in (e.g. network auto-join). */
+  onEdgeCitySignIn?: (userId: string) => Promise<void>;
 }
 
 /**
@@ -49,7 +53,7 @@ export interface AuthDeps {
  * and social OAuth are available.
  */
 export function createAuth(deps: AuthDeps) {
-  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage } = deps;
+  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage, onEdgeCitySignIn } = deps;
 
   return betterAuth({
     baseURL: API_URL,
@@ -139,7 +143,15 @@ export function createAuth(deps: AuthDeps) {
           }),
         },
       }),
-
+      ...(process.env.EDGEOS_TENANT_ID
+        ? [
+            edgeCity({
+              apiBase: process.env.EDGEOS_API_BASE || "https://api.edgeos.world/api/v1",
+              tenantId: process.env.EDGEOS_TENANT_ID,
+              onSignIn: onEdgeCitySignIn,
+            }),
+          ]
+        : []),
     ],
     advanced: {
       // Cookie attributes must match the scheme the API is actually served on.
