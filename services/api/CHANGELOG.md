@@ -14,9 +14,7 @@ section before promoting to `main`).
   wants to meet, find, hire, fund, collaborate with, or be introduced to people;
   check `list_intents` before `create_intent`; accept or pass only after asking;
   archive only after an explicit yes. `create_intent` and `list_opportunities`
-  descriptions carry the same triggers. A contract test checks that the
-  instructions, the plugin skill, and the docs agent callout name only
-  registered tools and state those gates.
+  descriptions carry the same triggers.
 - MCP tools return a canonical `url` on every user (`/u/<id>`), signal
   (`/i/<id>`), and opportunity (`/o/<id>`), including profiles, opportunity
   peers and other parties, and the `create_intent` result. Tool descriptions ask
