@@ -13,11 +13,15 @@ type JsonObject = Record<string, unknown>;
  * Return one successful MCP tool result as JSON text, led by an optional
  * markdown summary. Models copy links they can read far more reliably than
  * they assemble them from JSON fields, so entity names arrive pre-linked.
+ *
+ * Summary and JSON share one content item so hosts that only surface the first
+ * (or only) text block still deliver the links together with the structured
+ * payload.
  */
 export function mcpSuccess(result: JsonObject = {}, summary?: string): CallToolResult {
-  const json = { type: 'text' as const, text: JSON.stringify({ success: true, ...result }) };
+  const payload = JSON.stringify({ success: true, ...result });
   return {
-    content: summary ? [{ type: 'text', text: summary }, json] : [json],
+    content: [{ type: 'text', text: summary ? `${summary}\n\n${payload}` : payload }],
   };
 }
 

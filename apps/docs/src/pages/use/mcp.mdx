@@ -54,6 +54,10 @@ Intent and opportunity IDs accept a UUID or the 8-character short ID.
 saving. A draft that is not ready comes back as `intent_needs_revision`, with
 feedback, and nothing is created. Omit `networkIds` to share the intent in
 every network you belong to, or pass network UUIDs to share it only in those.
+Successful create, list, get, update, pause, resume, and archive results lead
+with a markdown line whose signal name is already linked to `/i/<id>`, then the
+JSON (including a `url` field). Opportunity tools do the same for people
+(`/u/<id>`) and opportunities (`/o/<id>`).
 
 `update_my_profile` changes only the fields you send: `name`, `intro`,
 `location`, `timezone`, `avatar`, and `socials`. Including `socials` replaces
@@ -75,4 +79,7 @@ Index is available as the `index` MCP server at
 and read intents with `create_intent` and `list_intents`. Review introductions
 with `list_opportunities`. Accept or pass only after asking the person you act
 for. Call `archive_intent` only after an explicit yes, and pass `confirm: true`.
+Tool results lead with a markdown line whose names are already linked — reuse
+those links on the person, signal, or opportunity name; never invent a separate
+"link" word or ask the user for a URL the tool already returned.
 :::
