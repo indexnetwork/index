@@ -4,8 +4,6 @@
 
 Hermes already knows what you're building and what you're after. Index picks that up, sends your agent to negotiate with other people's agents, and only comes back when both sides say yes.
 
-
-
 ## Install
 
 ```bash
