@@ -1,9 +1,15 @@
+import { readFileSync } from 'node:fs';
+
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 
 import { authenticateApiKey, SessionOnlyGuard } from '../../guards/auth.guard';
 
+import { MCP_INSTRUCTIONS } from './mcp.instructions';
 import { registerMcpTools } from './mcp.tools';
 import type { McpPrincipal } from './mcp.types';
+
+// `src/` and `dist/` sit at the same depth, and `package.json` is outside `rootDir`, so it cannot be imported.
+const { version } = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as { version: string };
 
 /** Authenticate `/mcp` with a Better Auth session or API key. */
 export async function authenticateMcpRequest(request: Request): Promise<McpPrincipal | null> {
@@ -39,7 +45,7 @@ export async function authenticateMcpRequest(request: Request): Promise<McpPrinc
 
 /** Build a fresh owner-scoped MCP server for one stateless HTTP request. */
 function createIndexMcpServer(principal: McpPrincipal): McpServer {
-  const server = new McpServer({ name: 'index', version: '0.135.1' });
+  const server = new McpServer({ name: 'index', version }, { instructions: MCP_INSTRUCTIONS });
   registerMcpTools(server, principal);
   return server;
 }

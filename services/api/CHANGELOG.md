@@ -10,6 +10,13 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- The MCP server sends `instructions` at initialize: use Index when the owner
+  wants to meet, find, hire, fund, collaborate with, or be introduced to people;
+  check `list_intents` before `create_intent`; accept or pass only after asking;
+  archive only after an explicit yes. `create_intent` and `list_opportunities`
+  descriptions carry the same triggers. A contract test checks that the
+  instructions, the plugin skill, and the docs agent callout name only
+  registered tools and state those gates.
 - MCP tools return a canonical `url` on every user (`/u/<id>`), signal
   (`/i/<id>`), and opportunity (`/o/<id>`), including profiles, opportunity
   peers and other parties, and the `create_intent` result. Tool descriptions ask
@@ -56,6 +63,8 @@ section before promoting to `main`).
   and spaces activations 5–10 seconds apart (was 10–30).
 
 ### Fixed
+- The MCP server reports the API package version instead of a hardcoded
+  `0.135.1`.
 - The hosted personal agent keeps a negotiator's stall until its own question
   is answered, the wake resolves it explicitly, or the negotiation is declined,
   stopped, or moves on. Re-deciding `continue` or an unrelated principal message
