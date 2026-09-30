@@ -1,15 +1,5 @@
 /* hermes — plugin landing page; shared pieces live in site.css */
 
-.hermes-shot {
-  width: 100%;
-  height: auto;
-  display: block;
-  border: 1px solid var(--card-border);
-  border-radius: 10px;
-  margin-top: 20px;
-  box-shadow: 0 4px 16px rgba(4, 23, 41, .04);
-}
-
 .site-section:target { scroll-margin-top: 24px; }
 
 /* ---------- conversation ---------- */

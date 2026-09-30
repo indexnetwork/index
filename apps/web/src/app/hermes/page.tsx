@@ -85,11 +85,6 @@ function HermesPage() {
           <a className="site-btn" href="#install">Add Index to Hermes →</a>
           <a className="site-btn site-btn--secondary" href="#how">How it works</a>
         </div>
-        <img
-          className="hermes-shot"
-          src="/site/hermes-radar.png"
-          alt="Index plugin inside Hermes: signal, agent update, and radar"
-        />
       </section>
 
       <section id="how" className="site-section">

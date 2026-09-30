@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { log } from '../lib/log';
 import { listOpportunityCards, presentOpportunityCard, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityCardsDatabase, Opportunity, OpportunityStatus, OpportunityCache, OpportunityLogEvent } from '@indexnetwork/protocol';
+import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
@@ -558,6 +559,9 @@ export class OpportunityService {
     if (applied.status === 'accepted' || applied.status === 'rejected' || applied.status === 'expired') {
       await this.negotiations.closeForOpportunities([opportunityId]);
     }
+    if (applied.status !== opp.status) {
+      emitOpportunityTransitionBestEffort({ id: opportunityId, status: applied.status });
+    }
 
     const presented = await this.presentOpportunityForViewer(updated, userId, options?.intentId);
     this.schedulePresentationPreload(updated, updated.actors.map((actor) => actor.userId), options?.intentId);
@@ -682,6 +686,9 @@ export class OpportunityService {
 
     const applied = await recordOpportunityEvent(opportunityId, { type: 'committed', actorUserId: userId });
     if (!applied.ok) return { error: applied.error, status: 409 };
+    if (applied.status !== opp.status) {
+      emitOpportunityTransitionBestEffort({ id: opportunityId, status: applied.status });
+    }
     const updated = await this.db.getOpportunity(opportunityId);
     if (!updated) return { error: 'Failed to accept opportunity', status: 500 };
     this.schedulePresentationPreload(updated, updated.actors.map((actor) => actor.userId), options?.intentId);

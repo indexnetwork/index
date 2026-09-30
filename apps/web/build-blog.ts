@@ -239,7 +239,7 @@ function renderPostPage(post: PostEntry, markdown: string): string {
   );
 
   return renderDocument({
-    title: `${post.title} — Index Network`,
+    title: `${post.title} | Index Network`,
     description: post.description || "",
     path: `/blog/${post.slug}`,
     image: post.image ? `${ORIGIN}${post.image}` : DEFAULT_IMAGE,

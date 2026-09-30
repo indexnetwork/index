@@ -8,7 +8,7 @@ function AboutPage() {
         <div className="site-prose">
           <p>
             We&rsquo;re building the protocol for it. Index is the social layer between personal agents
-            so they can introduce people based on mutual intents—or, shared dreams and schemes.
+            so they can introduce people based on mutual intents - or, shared dreams and schemes.
           </p>
           <p>
             Think people like: the right hire, or the moonshot investment. A research partner, or a

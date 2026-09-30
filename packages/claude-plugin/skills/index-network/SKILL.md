@@ -1,7 +1,13 @@
 ---
 name: index-network
-description: Use Index Network to manage signals, inspect opportunities and negotiations, or converse with the personal agent through the Index CLI.
+description: Use Index Network when the user wants to meet, find, hire, get hired by, fund, raise from, collaborate with, or be introduced to people, or asks who they should talk to. Manages signals, opportunities, negotiations, and the personal agent. Not for general web or people lookup.
 ---
+
+## MCP first
+
+If the `index` MCP server is connected, prefer its tools for profile, signals, and opportunities: `list_intents` before `create_intent` to avoid duplicates, then `list_opportunities` and `get_opportunity`. Call `accept_opportunity` or `reject_opportunity` only after asking the user. Call `archive_intent` only after an explicit yes, with `confirm: true`. Tool results lead with already-linked names; reuse those links and never ask for a URL a tool returned. Use the CLI below for everything else, or when MCP is not connected.
+
+## CLI
 
 Use the installed Index CLI as an HTTP client. If `index` is missing, run this plugin's `scripts/install.sh`, then authenticate with `index login`. Pass `--json` for machine-readable output.
 

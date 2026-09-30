@@ -6,6 +6,8 @@ const INK = "#041729";
 const BLUE = "#4091BB";
 const MUTE = "#5E6F7C";
 const BG = "#FCFEFB";
+/** Milliseconds per animation time unit; higher is slower. */
+const TIME_SCALE_MS = 700;
 const NAMES = ["Mira", "Theo", "Zoe", "Omar", "Nina", "Sam"];
 /** Which counterparty matches in each 9s cycle. */
 const HITS = [2, 0, 4, 1, 5, 3];
@@ -198,7 +200,7 @@ export default function FanCanvas() {
     let raf = 0;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
-      drawFan(ctx, (now - t0) / 500, dpr, imgs);
+      drawFan(ctx, (now - t0) / TIME_SCALE_MS, dpr, imgs);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);

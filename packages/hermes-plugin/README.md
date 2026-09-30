@@ -1,56 +1,74 @@
-# Index Network Hermes Plugin
+# Index for Hermes
 
-The Index plugin connects Hermes to Index over plain HTTPS against the Index REST API, authenticated with this device's own Index session.
+**Give Hermes someone to talk to.**
 
-## Connect
+Hermes already knows what you're building and what you're after. Index picks that up, sends your agent to negotiate with other people's agents, and only comes back when both sides say yes.
+
+## Install
 
 ```bash
 hermes plugins install indexnetwork/hermes-plugin
 ```
 
-Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The web page runs the device authorization grant against your browser session and returns a short-lived device code, which the plugin exchanges for its own session token and persists as `INDEX_SESSION_TOKEN` in the Hermes env file. There is no approval prompt. **Sign out** revokes that session server-side and clears the local file. On a headless host the dashboard shows the login link to open elsewhere.
+Or [install in one click](https://docs.index.network/use/hermes) on the machine that runs Hermes.
 
-When `INDEX_API_KEY` is set on the gateway profile, the plugin registers the Index MCP server in Hermes as `mcp_servers.index` (`{origin}/mcp`, `x-api-key: ${INDEX_API_KEY}`). Clearing that key removes the entry.
+Then open the **Discover** tab in the Hermes dashboard and pick **Log in with browser**. That's it. On a headless box, the dashboard shows a link you can open anywhere.
 
-Optional overrides: `INDEX_API_URL` (the bare API origin, without `/api`; defaults to `https://protocol.index.network`). Browser login pairs with the configured API environment (`INDEX_APP_BASE_URL` wins, else derived from `INDEX_API_URL`).
+New to Hermes? [Get Hermes](https://hermes-agent.nousresearch.com/).
 
-Every declared function is one request against a named REST resource
-(`/intents`, `/networks`, `/opportunities`, `/docs`). Failures remain structured;
-rejected writes are never replayed.
+## What it feels like
 
-The session authenticates you, not an agent. `GET /agents/me` returns the agent you selected as your negotiator in the web app; pick one there before expecting an answer.
+```text
+YOU     I'm in SF next month, who should I meet?
+INDEX   Picks the intent out of the conversation.
+INDEX   Sends it to 128 agents in your networks. 47 open a negotiation.
+INDEX   Your agent negotiates with each in parallel. Most end in a no.
+HERMES  Three people, both agents agreed. Want intros?
+```
 
-## Personal agent
+## Things to ask Hermes
 
-Hermes runs the same negotiator as hosted Index — `@indexnetwork/agent`
-on `@indexnetwork/client`. The negotiator process authenticates with
-`INDEX_API_KEY` and the selected agent id. When the gateway is signed in and
-that key is missing, the gateway mints one from the device session and stores
-it on the gateway env. Hermes supplies one completion per step from the
-gateway model; the negotiator runs its own tools. Each negotiation is
-recorded as a session in the **Negotiations** project; group the Hermes
-sidebar by workspace to see them together.
+- "I'm hiring a founding engineer. Keep an eye out."
+- "Who in my networks is working on agent infra?"
+- "Any new opportunities today?"
+- "Join the Edge Esmeralda network."
+- "Stop looking for investors, I closed the round."
 
-Choosing Hermes as your negotiator — in the dashboard under **Settings →
-Advanced**, or in the Index web app — starts a Bun negotiator process
-(`runtime/dist/negotiator.js`) as a child of the Hermes gateway. **Bun must
-be installed.** It restarts if that child exits, and stops when the gateway
-does or the selection moves. Keep the gateway running. Choosing the hosted
-Index negotiator, or another registered agent, stops the negotiator process.
-The desktop header's Negotiator Start/Stop pauses it through
-`<hermes home>/index-negotiator.json`; the gateway applies it within 5 seconds.
+## How it works
 
-The negotiator process follows Index events itself. Briefs, decisions, stalls, and the
-summary are written on the owner's agent conversation. Turns include
-`?agentId=<agent UUID>` so Index refuses work from an agent that is no
-longer selected.
+- **Intent**: what you want or offer. Hermes picks these up from the conversation.
+- **Network**: where your intent is allowed to travel.
+- **Negotiation**: your agent and another agent test whether you're a fit.
+- **Opportunity**: a match that both people get to accept or pass on.
 
-Disable the `index` platform in Hermes to stop the selection check, or change
-the selected executor in Index. The negotiator process stops with it.
+Your agent runs inside Hermes and uses your Hermes model. Every negotiation shows up as a session in the **Negotiations** project.
+
+## Privacy and control
+
+- Your context stays on your machine unless a negotiation needs it, and then only the parts you've allowed are shared.
+- Nothing reaches you until both agents agree.
+- Pause the negotiator from the Negotiator Start/Stop control in the header. You can also switch negotiators in **Settings → Advanced** or in the Index app.
+- **Sign out** in the Discover tab revokes the session on the server.
+
+## Requirements
+
+- Hermes, with the gateway running
+- [Bun](https://bun.sh), which runs the negotiator
+- An Index account; logging in with the browser creates one
+
+## Under the hood
+
+<details>
+<summary>For the curious</summary>
+
+- The plugin calls the Index REST API (`/intents`, `/networks`, `/opportunities`, `/docs`) with this device's own session, which is saved as `INDEX_SESSION_TOKEN` in the Hermes env file. Rejected writes are never replayed.
+- When `INDEX_API_KEY` is set, the Index MCP server is registered as `mcp_servers.index`.
+- When Hermes is your selected negotiator, the gateway starts `runtime/dist/negotiator.js` (`@indexnetwork/agent`) as a child process and restarts it if it exits. It stops when the gateway stops or when you select another negotiator.
+- Overrides: `INDEX_API_URL` (default `https://protocol.index.network`) and `INDEX_APP_BASE_URL`.
+
+</details>
 
 ## Development
-
-Build generated output only through its scripts:
 
 ```bash
 cd packages/hermes-plugin
@@ -60,12 +78,10 @@ python3 -m compileall -q .
 hermes plugins doctor . --ci
 ```
 
-`plugin.yaml` is the static package capability union. Do not edit
-`desktop/dist/plugin.js` or `runtime/dist/negotiator.js` manually. Commit
-them after a rebuild; CI fails when they differ from the scripts.
+Do not hand-edit `desktop/dist/plugin.js` or `runtime/dist/negotiator.js`. Rebuild them and commit the output, because CI fails on drift. Negotiation behaviour lives in `packages/agent`.
 
-`runtime/` is the negotiator host: it wires `@indexnetwork/agent` to Index
-through `@indexnetwork/client` and asks Hermes for each model step. It is
-bundled into `runtime/dist/negotiator.js` so the published plugin carries no
-npm dependency on the monorepo. Negotiation behaviour is never changed here —
-change `packages/agent` and rebuild.
+---
+
+Index is an open protocol. [Read the protocol](https://index.network/protocol) · [GitHub](https://github.com/indexnetwork/index)
+
+**Have your agent call my agent.**

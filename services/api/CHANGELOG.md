@@ -10,6 +10,21 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- **`GET /api/events` frames carry server time and a stream id.** Each stored
+  frame has `at` (ISO time from the API clock). SSE and `GET /api/events/log`
+  add `eventId`, the Redis stream id, which increases on every frame for that
+  user. The handshake is `{ "type": "connected", "at" }` and has no `eventId`.
+  Frames are kept for 7 days (`MINID`), replacing the unstated cap of about
+  1000. `GET /api/events/log?after=&limit=` pages the same feed, oldest first,
+  without joining a consumer group. `opportunity.status` is published to each
+  actor when an opportunity's status changes (`negotiating`, `pending`,
+  `accepted`, `rejected`, `expired`), including owner accept/reject/expire,
+  a negotiation that leaves `negotiating`, and enrichment expiry.
+- The MCP server sends `instructions` at initialize: use Index when the owner
+  wants to meet, find, hire, fund, collaborate with, or be introduced to people;
+  check `list_intents` before `create_intent`; accept or pass only after asking;
+  archive only after an explicit yes. `create_intent` and `list_opportunities`
+  descriptions carry the same triggers.
 - Login with Edge City: `POST /api/auth/sign-in/edge-city { token }` exchanges an
   EdgeOS bearer (verified via EdgeOS `/humans/me`) for a Better Auth session,
   creating or linking the user under provider `edge-city`. Signed-in users are
@@ -61,6 +76,8 @@ section before promoting to `main`).
   and spaces activations 5–10 seconds apart (was 10–30).
 
 ### Fixed
+- The MCP server reports the API package version instead of a hardcoded
+  `0.135.1`.
 - The hosted personal agent keeps a negotiator's stall until its own question
   is answered, the wake resolves it explicitly, or the negotiation is declined,
   stopped, or moves on. Re-deciding `continue` or an unrelated principal message

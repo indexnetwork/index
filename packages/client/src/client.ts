@@ -151,10 +151,13 @@ export interface ConversationMessage {
 
 export type IntentLifecycleWireStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
 
-export type ConnectedEvent = { type: "connected" };
+export type ConnectedEvent = { type: "connected"; at?: string };
 
-export type UserEvent =
+type FrameStamp = { eventId?: string; at?: string };
+
+export type UserEvent = FrameStamp & (
   | { type: "opportunity.new"; id: string; title: string; body: string; link?: string; data?: { opportunityId: string } }
+  | { type: "opportunity.status"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string | null; status: string } }
   | { type: "negotiation.turn"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; turnIndex: number } }
   | { type: "negotiation.settled"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string; outcome: string } }
   | { type: "negotiation.changed"; id: string; title: string; body: string; data: { intentId: string; opportunityId?: string } }
@@ -162,7 +165,8 @@ export type UserEvent =
   | { type: "intent.lifecycle"; id: string; title: string; body: string; link?: string; data: { intentId: string; status: IntentLifecycleWireStatus } }
   | { type: "question.pending"; id: string; title: string; body: string; data: { intentId: string; questionId: string; scope: string; opportunityId: string | null } }
   | { type: "principal.input"; id: string; title: string; body: string; data: { intentId: string; questionId: string | null; text: string } }
-  | { type: "message"; conversationId: string; message: ConversationMessage };
+  | { type: "message"; conversationId: string; message: ConversationMessage }
+);
 
 const WAKE_TYPES = ["negotiation.turn", "principal.input"] as const;
 
@@ -179,6 +183,7 @@ function parseUserEvent(raw: unknown): UserEvent | undefined {
   const type = (raw as { type?: unknown }).type;
   switch (type) {
     case "opportunity.new":
+    case "opportunity.status":
     case "negotiation.turn":
     case "negotiation.settled":
     case "negotiation.changed":
@@ -272,6 +277,13 @@ export interface Index {
    * @returns Stop handle.
    */
   events(onEvent: (event: UserEvent | ConnectedEvent) => void): () => void;
+  /**
+   * One page of the event feed, oldest first. Same frames as {@link events}.
+   *
+   * @param options - `after` is the last `eventId` already seen. `limit` defaults to 100.
+   * @returns The page and the cursor for the next one, or null at the end.
+   */
+  listEvents(options?: { after?: string; limit?: number }): Promise<{ events: UserEvent[]; next: string | null }>;
 }
 
 /**
@@ -566,7 +578,8 @@ export class IndexClient implements Index {
               if ((parsed as { type?: string })?.type === "connected") {
                 delay = 1000;
                 await catchUp();
-                onEvent({ type: "connected" });
+                const at = (parsed as { at?: unknown }).at;
+                onEvent({ type: "connected", ...(typeof at === "string" ? { at } : {}) });
                 continue;
               }
               const event = parseUserEvent(parsed);
@@ -602,5 +615,24 @@ export class IndexClient implements Index {
       stopped = true;
       abort.abort();
     };
+  }
+
+  /**
+   * One page of the event feed, oldest first. Same frames as {@link events}.
+   *
+   * @param options - `after` is the last `eventId` already seen. `limit` defaults to 100.
+   * @returns The page and the cursor for the next one, or null at the end.
+   */
+  async listEvents(options?: { after?: string; limit?: number }): Promise<{ events: UserEvent[]; next: string | null }> {
+    const params = new URLSearchParams();
+    if (options?.after) params.set("after", options.after);
+    if (options?.limit != null) params.set("limit", String(options.limit));
+    const query = params.toString();
+    const page = await this.request<{ events?: unknown[]; next?: string | null }>("GET", query ? `/events/log?${query}` : "/events/log");
+    const events = (page.events ?? []).flatMap((raw) => {
+      const event = parseUserEvent(raw);
+      return event ? [event] : [];
+    });
+    return { events, next: page.next ?? null };
   }
 }

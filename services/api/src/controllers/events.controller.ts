@@ -1,5 +1,6 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
+import { presentUserEvent, readUserEventPage } from '../lib/user-events';
 import { AgentConversationError, ConversationService } from '../services/conversation.service';
 
 /**
@@ -13,6 +14,31 @@ import { AgentConversationError, ConversationService } from '../services/convers
 @Controller('/events')
 export class EventsController {
   constructor(private readonly conversationService: ConversationService) {}
+
+  /**
+   * GET /events/log — one page of the same feed, oldest first.
+   *
+   * Does not join a consumer group and does not acknowledge. `after` is the
+   * last `eventId` the caller has. `limit` defaults to 100 and stops at 100.
+   *
+   * @param req - The HTTP request, read for `after` and `limit`
+   * @param user - Authenticated user from AuthGuard
+   * @returns `{ events, next }`. `next` is the last id when the page is full.
+   */
+  @Get('/log')
+  @UseGuards(AuthGuard)
+  async log(req: Request, user: AuthenticatedUser) {
+    const params = new URL(req.url).searchParams;
+    const after = params.get('after') || undefined;
+    const raw = params.get('limit');
+    const parsed = raw == null ? 100 : Number(raw);
+    const limit = Number.isInteger(parsed) && parsed >= 1 ? Math.min(parsed, 100) : 100;
+    try {
+      return Response.json(await readUserEventPage(user.id, after, limit));
+    } catch {
+      return Response.json({ error: 'Event stream is temporarily unavailable' }, { status: 503 });
+    }
+  }
 
   /**
    * GET /events — open the user's SSE channel.
@@ -48,11 +74,11 @@ export class EventsController {
 
     const readableStream = new ReadableStream({
       start(controller) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected' })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected', at: new Date().toISOString() })}\n\n`));
 
         subscription.onMessage(({ id, data }) => {
           try {
-            controller.enqueue(encoder.encode(`id: ${id}\ndata: ${data}\n\n`));
+            controller.enqueue(encoder.encode(`id: ${id}\ndata: ${presentUserEvent(id, data)}\n\n`));
           } catch { /* stream closed */ }
         });
 
