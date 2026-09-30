@@ -164,7 +164,7 @@ test("createOpportunities posts the picks and returns the opportunities", async 
 
 test("listEvents reads one page and keeps opportunity status", async () => {
   const frame = {
-    eventId: "1-0", at: "2026-09-30T00:00:00.000Z", type: "opportunity.status",
+    eventId: "1-0", at: "2026-09-30T00:00:00.000Z", type: "opportunity.status" as const,
     id: "o1", title: "", body: "", data: { opportunityId: "o1", intentId: "i1", status: "pending" },
   };
   const server = Bun.serve({

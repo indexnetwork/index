@@ -208,7 +208,8 @@ class IndexClient {
               if (parsed?.type === "connected") {
                 delay = 1000;
                 await catchUp();
-                onEvent({ type: "connected", ...typeof parsed.at === "string" ? { at: parsed.at } : {} });
+                const at = parsed.at;
+                onEvent({ type: "connected", ...typeof at === "string" ? { at } : {} });
                 continue;
               }
               const event = parseUserEvent(parsed);
