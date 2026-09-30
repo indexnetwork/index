@@ -61,6 +61,8 @@ INDEX_READ_INTENTS = {
 INDEX_CREATE_INTENT = {
     "name": "index_create_intent",
     "description": (
+        "Use when the user wants to meet, find, hire, fund, collaborate with, or "
+        "be introduced to people. "
         "Create one Index Network signal from the user's own words. The signal "
         "is shared in every community the caller belongs to unless networkIds "
         "narrows it. Only create a signal the user actually asked for."
@@ -198,6 +200,8 @@ INDEX_JOIN_NETWORK = {
 INDEX_LIST_OPPORTUNITIES = {
     "name": "index_list_opportunities",
     "description": (
+        "Use when the user asks who they should meet or what introductions are "
+        "waiting. "
         "Read the opportunities already discovered for the caller. This reviews "
         "persisted results; it does not start discovery."
     ),
