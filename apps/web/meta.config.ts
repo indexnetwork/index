@@ -87,7 +87,7 @@ export function buildMetaMap(distDir: string): Record<string, PageMeta> {
 
     for (const p of posts) {
       map[`/blog/${p.slug}`] = {
-        title: `${p.title} — Index Network`,
+        title: `${p.title} | Index Network`,
         description: p.description || "",
         image: p.image ? `${ORIGIN}${p.image}` : DEFAULT_IMAGE,
         type: "article",

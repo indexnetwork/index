@@ -30,7 +30,7 @@ export default function HeroAccess() {
 
   return (
     <div className="home-access">
-      <p>The early network is invitation only.</p>
+      <p>The early network is invitation only - we&rsquo;ll open up public access soon.</p>
 
       <div className="home-available">
         <span className="home-available-label">AVAILABLE ON</span>
@@ -62,7 +62,7 @@ export default function HeroAccess() {
             required
           />
           <button type="submit" className="site-btn" disabled={status === "loading"}>
-            {status === "loading" ? "Sending…" : "Request invitation"}
+            {status === "loading" ? "Sending…" : "Request your invite →"}
           </button>
         </form>
       )}

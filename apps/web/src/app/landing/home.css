@@ -118,3 +118,6 @@
 /* ---------- blog ---------- */
 .home-posts { display: flex; flex-direction: column; }
 .home-all-posts { font-size: 14px; }
+
+/* extra breathing room between the hero CTA and the animation below it */
+.site-hero .home-fan { margin-top: 24px; }

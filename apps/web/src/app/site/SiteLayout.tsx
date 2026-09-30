@@ -83,7 +83,7 @@ export default function SiteLayout({
         <img
           className="site-banner"
           src="/site/banner-v3.jpg"
-          alt="Gridded valley meeting the mountains — after Superstudio"
+          alt="Gridded valley meeting the mountains - after Superstudio"
         />
       )}
     </div>
