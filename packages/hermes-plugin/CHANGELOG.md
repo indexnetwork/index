@@ -4,6 +4,9 @@
 ## Unreleased
 
 ### Added
+- `index_create_intent` and `index_list_opportunities` descriptions say when to
+  reach for them: meeting, finding, hiring, funding, collaborating with, or
+  being introduced to people, and asking who to meet.
 - Tool payloads get `appUrl` on signals (`/i/<intentId>`) and people
   (`/u/<userId>`) as well as opportunities. Objects carrying both `userId` and
   `intentId` are left alone.
@@ -12,6 +15,7 @@
   instead of the browser. Modified clicks still open the browser.
 
 ### Fixed
+- `plugin.yaml` reports the package version (was stuck at 0.43.0).
 - The desktop header now shows the negotiator the gateway is running. The
   dashboard runs in a separate process and used to report its own idle copy as
   Off, and its Start would have launched a second negotiator. Start and Stop
