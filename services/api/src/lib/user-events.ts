@@ -8,7 +8,8 @@ import { log } from './log';
  * separates the audiences: an agent-bound key resolves to its owner, so the
  * agent reads the same stream the owner's app is already reading and
  * each side ignores the types it does not recognise. `opportunity.new`,
- * `question.pending` and `message` are the human's; the rest are the agent's.
+ * `opportunity.status`, `question.pending` and `message` are the human's; the
+ * rest are the agent's.
  *
  * The agent types come in two scopes. `negotiation.turn` and
  * `negotiation.settled` point at one negotiation and carry a pointer rather
@@ -33,6 +34,7 @@ import { log } from './log';
  */
 export type UserEventType =
   | 'opportunity.new'
+  | 'opportunity.status'
   | 'question.pending'
   | 'principal.input'
   | 'negotiation.turn'
@@ -112,11 +114,8 @@ interface ConversationEventMessage {
 
 const STREAM_PREFIX = 'events:user:';
 const STREAM_FIELD = 'data';
-/**
- * Entries a consumer can still resume from. An offset older than this is gone:
- * the consumer falls back to live frames and reconciles over REST.
- */
-const STREAM_MAXLEN = 1000;
+/** Frames older than this are trimmed. An older cursor resumes at what remains. */
+const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const READ_COUNT = 100;
 
 export function userEventStream(userId: string): string {
@@ -160,10 +159,88 @@ function toRecords(reply: unknown): UserEventRecord[] {
   return records;
 }
 
-/** Appends one frame to a user's stream. */
+/**
+ * Puts the stream id on a stored frame so SSE and the paged read match.
+ * `at` is filled from the id only when an older entry was stored without one.
+ *
+ * @param id - Redis stream id.
+ * @param data - Stored frame JSON.
+ * @returns The same JSON with `eventId`, or the original text when it is not an object.
+ */
+export function presentUserEvent(id: string, data: string): string {
+  try {
+    const parsed: unknown = JSON.parse(data);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return data;
+    const frame = parsed as Record<string, unknown>;
+    frame.eventId = id;
+    if (typeof frame.at !== 'string') {
+      const ms = Number(id.split('-')[0]);
+      if (Number.isFinite(ms)) frame.at = new Date(ms).toISOString();
+    }
+    return JSON.stringify(frame);
+  } catch {
+    return data;
+  }
+}
+
+/** One page of a user's stream, oldest first. */
+export interface UserEventPage {
+  events: unknown[];
+  /** Last id when the page is full; null when this page is the end. */
+  next: string | null;
+}
+
+/**
+ * Reads a page of one user's stream without consuming or acknowledging it.
+ *
+ * @param userId - Owner whose stream to read.
+ * @param after - Last id the caller has. Exclusive. Omitted starts at the oldest frame still kept.
+ * @param limit - Page size, clamped to 1..100. Defaults to 100.
+ * @returns Frames in stream order, each carrying `eventId`.
+ */
+export async function readUserEventPage(
+  userId: string,
+  after: string | undefined,
+  limit = READ_COUNT,
+): Promise<UserEventPage> {
+  const count = Math.min(READ_COUNT, Math.max(1, Math.floor(limit)));
+  const reply = await getRedisClient().xrange(
+    userEventStream(userId), after ? `(${after}` : '-', '+', 'COUNT', count,
+  );
+  const events: unknown[] = [];
+  if (Array.isArray(reply)) {
+    for (const entry of reply) {
+      if (!Array.isArray(entry)) continue;
+      const [id, fields] = entry as [unknown, unknown];
+      if (typeof id !== 'string' || !Array.isArray(fields)) continue;
+      const at = fields.indexOf(STREAM_FIELD);
+      const data = at === -1 ? undefined : fields[at + 1];
+      if (typeof data !== 'string') continue;
+      try {
+        events.push(JSON.parse(presentUserEvent(id, data)));
+      } catch { /* not a frame */ }
+    }
+  }
+  const last = events.at(-1);
+  const eventId = last && typeof last === 'object' && 'eventId' in last && typeof (last as { eventId?: unknown }).eventId === 'string'
+    ? (last as { eventId: string }).eventId
+    : undefined;
+  return { events, next: events.length === count && eventId ? eventId : null };
+}
+
+/** Appends one frame to a user's stream, stamped with server time and trimmed to the retention window. */
 async function append(userId: string, payload: string): Promise<void> {
+  let body = payload;
+  try {
+    const parsed: unknown = JSON.parse(payload);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      (parsed as Record<string, unknown>).at = new Date().toISOString();
+      body = JSON.stringify(parsed);
+    }
+  } catch { /* stored as given */ }
+  const minId = `${Date.now() - RETENTION_MS}-0`;
   await getRedisClient().xadd(
-    userEventStream(userId), 'MAXLEN', '~', STREAM_MAXLEN, '*', STREAM_FIELD, payload,
+    userEventStream(userId), 'MINID', '~', minId, '*', STREAM_FIELD, body,
   );
 }
 

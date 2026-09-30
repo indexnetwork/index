@@ -39,3 +39,4 @@ const opportunityEventService = new OpportunityEventService({
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
 OpportunityEvents.onActionable = (payload) => opportunityEventService.publishOpportunityActionable(payload);
+OpportunityEvents.onTransition = (payload) => opportunityEventService.publishOpportunityStatus(payload);

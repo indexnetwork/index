@@ -59,6 +59,7 @@ function index(messages: ConversationMessage[] = []) {
     principalInbox: async () => ({ conversationId: "conversation-1", messages }),
     sendPrincipal: async (_intentId: string, entries: PrincipalMessage[]) => { sent.push(entries); },
     events: () => { throw new Error("Unexpected event subscription"); },
+    listEvents: async () => { throw new Error("Unexpected event page"); },
   };
   return { client, sent };
 }

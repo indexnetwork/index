@@ -2,7 +2,7 @@ import { isActionableForViewer } from '@indexnetwork/protocol';
 
 import type { OpportunityRow, UserIdentity } from '../adapters/database.shared';
 import type { OpportunityDatabaseAdapter } from '../adapters/opportunity.database.adapter';
-import type { OpportunityActionablePayload } from '../events/opportunity.event';
+import type { OpportunityActionablePayload, OpportunityTransitionPayload } from '../events/opportunity.event';
 import { log } from '../lib/log';
 import type { UserEvent, UserEventPublisher } from '../lib/user-events';
 
@@ -106,6 +106,49 @@ export class OpportunityEventService {
       }));
     } catch (error) {
       logger.error('Failed to publish opportunity event', {
+        opportunityId: payload.opportunity.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Publish `opportunity.status` to every actor after a committed status change.
+   * Best-effort: a failed recipient is logged and never fails the others.
+   *
+   * @param payload - The transition, carrying the opportunity id and its new status.
+   */
+  async publishOpportunityStatus(payload: OpportunityTransitionPayload): Promise<void> {
+    try {
+      const opportunity = await this.deps.opportunities.getOpportunity(payload.opportunity.id);
+      if (!opportunity) return;
+      const status = payload.opportunity.status;
+      const recipients = [...new Set(opportunity.actors.map(({ userId }) => userId))].filter(Boolean);
+
+      await Promise.all(recipients.map(async (recipientId) => {
+        try {
+          const recipientActor = opportunity.actors.find(({ userId }) => userId === recipientId);
+          await this.deps.publish(recipientId, {
+            type: 'opportunity.status',
+            id: opportunity.id,
+            title: '',
+            body: '',
+            data: {
+              opportunityId: opportunity.id,
+              intentId: recipientActor?.intent ?? null,
+              status,
+            },
+          });
+        } catch (error) {
+          logger.error('Failed to publish opportunity status to recipient', {
+            opportunityId: opportunity.id,
+            recipientId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }));
+    } catch (error) {
+      logger.error('Failed to publish opportunity status', {
         opportunityId: payload.opportunity.id,
         error: error instanceof Error ? error.message : String(error),
       });

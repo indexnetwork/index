@@ -384,7 +384,10 @@ export class OpportunityDatabaseAdapter {
       return { created: toOpportunityRow(inserted), expired };
     });
 
-    if (result && 'created' in result && result.created) emitOpportunityLifecycleBestEffort(result.created);
+    if (result && 'created' in result && result.created) {
+      emitOpportunityLifecycleBestEffort(result.created);
+      for (const row of result.expired) emitOpportunityTransitionBestEffort({ id: row.id, status: row.status });
+    }
     return result;
   }
 
@@ -801,6 +804,7 @@ export class OpportunityDatabaseAdapter {
     }),
     );
     emitOpportunityLifecycleBestEffort(result.created);
+    for (const row of result.expired) emitOpportunityTransitionBestEffort({ id: row.id, status: row.status });
     return result;
   }
 
@@ -883,7 +887,10 @@ export class OpportunityDatabaseAdapter {
       const expired = await expireEnrichmentSupersededIds(tx, expireIds);
       return { created: toOpportunityRow(inserted), expired };
     });
-    if (result) emitOpportunityLifecycleBestEffort(result.created);
+    if (result) {
+      emitOpportunityLifecycleBestEffort(result.created);
+      for (const row of result.expired) emitOpportunityTransitionBestEffort({ id: row.id, status: row.status });
+    }
     return result;
   }
 

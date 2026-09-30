@@ -162,6 +162,24 @@ test("createOpportunities posts the picks and returns the opportunities", async 
   server.stop(true);
 });
 
+test("listEvents reads one page and keeps opportunity status", async () => {
+  const frame = {
+    eventId: "1-0", at: "2026-09-30T00:00:00.000Z", type: "opportunity.status",
+    id: "o1", title: "", body: "", data: { opportunityId: "o1", intentId: "i1", status: "pending" },
+  };
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      const url = new URL(req.url);
+      if (url.pathname !== "/api/events/log") return new Response("no", { status: 404 });
+      return Response.json({ events: [frame, { type: "nope" }], next: url.searchParams.get("after") === "0-0" && url.searchParams.get("limit") === "10" ? "1-0" : null });
+    },
+  });
+  const client = new IndexClient({ baseUrl: `http://127.0.0.1:${server.port}`, apiKey: "k" });
+  expect(await client.listEvents({ after: "0-0", limit: 10 })).toEqual({ events: [frame], next: "1-0" });
+  server.stop(true);
+});
+
 test("wakesHost is true only for turn and principal.input", () => {
   const turn = { type: "negotiation.turn" as const, id: "2", title: "", body: "", data: { opportunityId: "o", intentId: "i", turnIndex: 1 } };
   const input = { type: "principal.input" as const, id: "3", title: "", body: "", data: { intentId: "i", questionId: null, text: "ok" } };

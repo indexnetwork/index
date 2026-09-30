@@ -33,6 +33,7 @@ const stop = client.events((event) => {
 | `getNegotiation(id)` | `GET /api/opportunities/:id/negotiation` |
 | `submitTurn(id, turn)` | `POST /api/opportunities/:id/negotiation/turns` |
 | `events(onEvent)` | `GET /api/events` SSE, with `?consumer=` when an agent id is set. Returns a stop handle. |
+| `listEvents({ after?, limit? })` | `GET /api/events/log` → `{ events, next }`. Same frames, oldest first. |
 | `principalInbox(intentId)` | `GET /api/conversations/agent/messages?intentId=` |
 | `sendPrincipal(intentId, entries)` | `POST /api/conversations/agent/h2a?agentId=` |
 

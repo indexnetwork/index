@@ -10,6 +10,7 @@
 import type { ConnectedEvent, ConversationMessage, Counterparty, CounterpartyPick, Index, IntentStatus, IntentSummary, Me, Negotiation, NegotiationAction, NegotiationDetail, PrincipalMessage, UserEvent } from '@indexnetwork/client';
 
 import { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
+import { readUserEventPage } from '../user-events';
 import { UserDatabaseAdapter } from '../../adapters/user.database.adapter';
 import { ConversationService } from '../../services/conversation.service';
 import { intentService } from '../../services/intent.service';
@@ -221,5 +222,20 @@ export class HostedIndex implements Index {
    */
   events(_onEvent: (event: UserEvent | ConnectedEvent) => void): () => void {
     throw new Error('The hosted agent reads user events directly, not through Index.');
+  }
+
+  /**
+   * One page of this owner's event feed. The hosted seat reads the stream in
+   * process, so this does not open an HTTP connection.
+   *
+   * @param options - `after` is the last id already seen. `limit` defaults to 100.
+   * @returns The page and the cursor for the next one, or null at the end.
+   */
+  async listEvents(options?: { after?: string; limit?: number }): Promise<{ events: UserEvent[]; next: string | null }> {
+    const page = await readUserEventPage(this.userId, options?.after, options?.limit);
+    const events = page.events.flatMap((raw) => (
+      raw && typeof raw === 'object' && typeof (raw as { type?: unknown }).type === 'string' ? [raw as UserEvent] : []
+    ));
+    return { events, next: page.next };
   }
 }

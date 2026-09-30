@@ -16,6 +16,7 @@ function parseUserEvent(raw) {
   const type = raw.type;
   switch (type) {
     case "opportunity.new":
+    case "opportunity.status":
     case "negotiation.turn":
     case "negotiation.settled":
     case "negotiation.changed":
@@ -207,7 +208,7 @@ class IndexClient {
               if (parsed?.type === "connected") {
                 delay = 1000;
                 await catchUp();
-                onEvent({ type: "connected" });
+                onEvent({ type: "connected", ...typeof parsed.at === "string" ? { at: parsed.at } : {} });
                 continue;
               }
               const event = parseUserEvent(parsed);
@@ -246,6 +247,20 @@ class IndexClient {
       stopped = true;
       abort.abort();
     };
+  }
+  async listEvents(options) {
+    const params = new URLSearchParams;
+    if (options?.after)
+      params.set("after", options.after);
+    if (options?.limit != null)
+      params.set("limit", String(options.limit));
+    const query = params.toString();
+    const page = await this.request("GET", query ? `/events/log?${query}` : "/events/log");
+    const events = (page.events ?? []).flatMap((raw) => {
+      const event = parseUserEvent(raw);
+      return event ? [event] : [];
+    });
+    return { events, next: page.next ?? null };
   }
 }
 // ../agent/src/tool.ts
@@ -1563,6 +1578,12 @@ function startRunner(options) {
       case "intent.lifecycle":
         log(`event ${event.type}: ${event.data.intentId} is ${event.data.status}`);
         refresh().catch(onError);
+        break;
+      case "opportunity.status":
+        if (!event.data.intentId)
+          break;
+        log(`event ${event.type}: ${event.data.opportunityId} is ${event.data.status}`);
+        startWake(event.data.intentId);
         break;
       default:
         log(`event ${event.type} (no wake)`);
