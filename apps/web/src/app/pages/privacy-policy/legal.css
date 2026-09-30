@@ -1,73 +1,53 @@
-/* legal — privacy & terms shared styling on the landing palette */
+/* legal — privacy & terms on the site palette (see site/site.css) */
 
-.landing.legal { min-height: 100vh; background: var(--bg); }
-
-.landing.legal .h1 .hero-split { grid-template-columns: 2fr 1fr; }
-.landing.legal .h1 .well { border-right: 0; }
-.landing.legal .h1 .display { max-width: none; }
-
-/* table of contents */
-.landing.legal .legal-toc-list {
+.legal-toc-list {
   list-style: none;
   padding: 0;
-  margin: 0;
+  margin: 12px 0 0;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0;
-  border-top: 1px dashed var(--rule);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  column-gap: 32px;
+  border-top: 1px solid var(--divider);
 }
-.landing.legal .legal-toc-list li {
-  border-bottom: 1px dashed var(--rule);
-}
-.landing.legal .legal-toc-list li:nth-child(odd) {
-  border-right: 1px dashed var(--rule);
-}
-.landing.legal .legal-toc-list a {
+.legal-toc-list li { border-bottom: 1px solid var(--divider); }
+.site .legal-toc-list a {
   display: flex;
   align-items: baseline;
   gap: 16px;
-  padding: 14px 18px;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  color: var(--cream);
+  padding: 12px 0;
+  font-size: 14px;
   text-decoration: none;
-  transition: background 120ms ease;
+  color: var(--ink);
 }
-.landing.legal .legal-toc-list a:hover {
-  background: rgba(244, 251, 246, 0.04);
-}
-.landing.legal .legal-toc-num {
-  color: var(--cream-faint);
+.site .legal-toc-list a:hover,
+.site .legal-toc-list a:hover .legal-toc-num { color: var(--blue); }
+.legal-toc-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.landing.legal .legal-toc-title { color: var(--cream); }
 
-/* body prose */
-.landing.legal .legal-section { scroll-margin-top: 32px; }
-.landing.legal .legal-section + .legal-section { padding-top: 64px; }
+.legal-section {
+  padding-top: 56px;
+  scroll-margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 
-.landing.legal .legal-body {
-  font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
-  font-size: 16px;
+.legal-body {
+  font-size: 15px;
   line-height: 1.7;
-  color: var(--cream-soft);
-  max-width: 70ch;
+  font-weight: 300;
+  color: var(--body);
 }
-.landing.legal .legal-body p { margin: 0; }
-.landing.legal .legal-body p + p { margin-top: 14px; }
-.landing.legal .legal-body strong {
-  color: var(--cream);
-  font-weight: 600;
-}
-.landing.legal .legal-body a {
-  color: var(--cream);
-  text-decoration: none;
-  border-bottom: 1px solid var(--rule-strong);
-  transition: border-color 120ms ease;
-}
-.landing.legal .legal-body a:hover { border-bottom-color: var(--cream); }
+.legal-body p { margin: 0; }
+.legal-body p + p { margin-top: 14px; }
+.legal-body strong { color: var(--ink); font-weight: 500; }
 
-.landing.legal .legal-list {
+.legal-list {
   list-style: none;
   padding: 0;
   margin: 14px 0 0;
@@ -75,27 +55,18 @@
   flex-direction: column;
   gap: 10px;
 }
-.landing.legal .legal-list li {
-  position: relative;
-  padding-left: 22px;
-}
-.landing.legal .legal-list li::before {
-  content: "›";
+.legal-list li { position: relative; padding-left: 22px; }
+.legal-list li::before {
+  content: "→";
   position: absolute;
   left: 0;
   top: 0;
-  color: var(--cream-faint);
+  color: var(--muted);
 }
 
-.landing.legal .legal-caps {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  color: var(--cream-soft);
-  text-transform: none;
-}
-
-@media (max-width: 720px) {
-  .landing.legal .legal-toc-list { grid-template-columns: 1fr; }
-  .landing.legal .legal-toc-list li:nth-child(odd) { border-right: 0; }
+.legal-caps {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .04em;
+  color: var(--body);
 }

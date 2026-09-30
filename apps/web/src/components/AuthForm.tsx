@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth-client';
-import { ensureLandingFonts } from '@/app/landing/Nav';
+import { ensureLandingFonts } from '@/app/landing/fonts';
 import './AuthModal.css';
 
 const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';

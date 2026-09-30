@@ -1,5 +1,5 @@
-// NewIntent — opening → prepare → recovery (once) → create. The summary only
-// returns when a create fails, to edit and retry.
+// NewIntent — opening → prepare → recovery (until ready) → create. The summary
+// only shows when a create fails or there are no questions left to ask.
 
 const INTENT_STEP = {
   id: "intent",
@@ -56,26 +56,20 @@ function NewIntent({ onDone, onBack }) {
       if (cancelledRef.current) return;
       payloadRef.current = result.payload;
       setFinalDescription(result.payload);
-      // No approval step: a ready draft is created as it stands. After the one
-      // recovery form it is created regardless, and the server's own
-      // preparation has the last word.
+      // No approval step: a ready draft is created as it stands. Anything else
+      // goes back to the questions, since create needs the ready receipt.
       if (result.status === "ready") {
         preparationReceiptRef.current = result.preparationReceipt;
         setThinking(false);
         void create(result.payload);
         return;
       }
-      if (!recoveryUsed) {
-        setFeedback(result.feedback);
-        setRecoveryFields(result.recovery ?? []);
-        setRecoveryUsed(true);
-        setStage("recovery");
-        setThinking(false);
-        return;
-      }
       preparationReceiptRef.current = "";
+      setFeedback(result.feedback);
+      setRecoveryFields(result.recovery ?? []);
+      setRecoveryUsed(true);
+      setStage(result.recovery?.length ? "recovery" : "summary");
       setThinking(false);
-      void create(result.payload);
     } catch (_e) {
       if (cancelledRef.current) return;
       setStage("retry");
@@ -105,6 +99,7 @@ function NewIntent({ onDone, onBack }) {
       onDone({ intent: description }, true, created.intentId);
     } catch (_e) {
       if (cancelledRef.current) return;
+      preparationReceiptRef.current = "";
       setCalibrating(false);
       setStage("summary");
       setFeedback(`that didn't go through — ${(_e && _e.message) || "try again."}`);

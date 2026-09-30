@@ -35,12 +35,11 @@ export const OPPORTUNITY_PRESENTATION_CACHE_VERSION = "v2";
 
 export function buildOpportunityCardCacheKey(
   opportunityId: string,
-  status: string,
   viewerId: string,
   focusedViewerIntentId?: string,
 ): string {
   const scope = focusedViewerIntentId ? `:intent:${focusedViewerIntentId}` : "";
-  return `card:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:${opportunityId}:${status}:${viewerId}${scope}`;
+  return `card:${opportunityId}:${viewerId}${scope}`;
 }
 
 export function buildApiChatCardPresentationCacheKey(

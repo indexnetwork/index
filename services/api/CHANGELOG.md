@@ -10,11 +10,27 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- Login with Edge City: `POST /api/auth/sign-in/edge-city { token }` exchanges an
+  EdgeOS bearer (verified via EdgeOS `/humans/me`) for a Better Auth session,
+  creating or linking the user under provider `edge-city`. Signed-in users are
+  auto-joined to `EDGE_CITY_NETWORK_ID`. Enabled when `EDGEOS_TENANT_ID` is set;
+  `/api/auth/providers` lists `edge-city`.
 - MCP tools return a canonical `url` on every user (`/u/<id>`), signal
   (`/i/<id>`), and opportunity (`/o/<id>`), including profiles, opportunity
   peers and other parties, and the `create_intent` result. Tool descriptions ask
   the agent to link names to it. The link opens the Mac app, then Hermes, then
   the web page, then `/download`.
+- Profile, signal, and opportunity MCP tools lead their result with a markdown
+  summary whose names are already linked (`[Jane Doe](…/u/<id>)`), followed by
+  the JSON in the same text block. Models keep links they can read more reliably
+  than ones they must build from `url` fields. Signal lines read
+  `[signal](…/i/<id>) — 9 waiting` (plus `(paused)` etc. when not active), with
+  labels cut at 60 characters; opportunity lines lead with the linked person,
+  `[Jane Doe](…/u/<id>) — headline — waiting on you`, using plain-word states
+  (`agents talking`, `connected`, `passed`, `expired`). Create/pause/resume/
+  archive/accept/reject use the same linked-name-first form so the agent always
+  has a copyable entity link without asking. The tool descriptions ask the agent
+  to keep links on names, never as a separate "link" word.
 
 ### Removed
 - The `agent:tui` development command and `ApiNegotiationHost`, which ran the

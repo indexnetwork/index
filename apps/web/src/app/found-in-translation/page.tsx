@@ -1,9 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import Nav, { ensureLandingFonts } from '@/app/landing/Nav';
-import Footer from '@/app/landing/Footer';
-import '@/app/landing/landing.css';
-import { apiUrl } from '@/lib/api';
+import { ensureSiteFonts, SiteFooter, SiteNav } from '@/app/site/SiteLayout';
+import '@/app/site/site.css';
 
 // ── Found in Translation -1: Superstudio / Continuous Monument ──
 // Inspired by Superstudio's 1969 Continuous Monument: a white megastructure
@@ -26,15 +24,17 @@ const KF = `
 `;
 
 const SANS = "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif";
-const MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const SERIF = "'Source Serif 4', Georgia, serif";
+const MONO = "'SF Mono', Menlo, Consolas, monospace";
 
+// Site palette (see site/site.css); names kept from the original dark essay.
 const PALETTE = {
-  bg: '#0b1612',
-  cream: '#F4FBF6',
-  creamSoft: 'rgba(244, 251, 246, 0.78)',
-  creamFaint: 'rgba(244, 251, 246, 0.5)',
-  rule: 'rgba(244, 251, 246, 0.22)',
-  ruleStrong: 'rgba(244, 251, 246, 0.45)',
+  bg: '#FCFEFB',
+  cream: '#041729',
+  creamSoft: '#2E3B45',
+  creamFaint: '#5E6F7C',
+  rule: 'rgba(4, 23, 41, 0.12)',
+  ruleStrong: 'rgba(4, 23, 41, 0.3)',
 };
 
 function useScrollProgress() {
@@ -93,7 +93,7 @@ function useFadeIn(ref: React.RefObject<HTMLElement | null>) {
 // ── FIG 03: CLI ERA ──────────────────────────────────────────────
 function InterfaceEvolutionFig() {
   return (
-    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '1px solid #DCE7D7', borderRadius: 10, overflow: 'hidden' }}>
       <img src="/found-in-translation/CLI.png" alt="CLI era terminal" style={{ display: 'block', width: '100%', height: 'auto' }} />
     </figure>
   );
@@ -102,7 +102,7 @@ function InterfaceEvolutionFig() {
 // ── FIG 04: GUI ERA ──────────────────────────────────────────────
 function GuiEraFig() {
   return (
-    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '1px solid #DCE7D7', borderRadius: 10, overflow: 'hidden' }}>
       <img src="/found-in-translation/GUI.jpg" alt="GUI era interface" style={{ display: 'block', width: '100%', height: 'auto' }} />
     </figure>
   );
@@ -111,7 +111,7 @@ function GuiEraFig() {
 // ── FIG 05: BEFORE / AFTER ──────────────────────────────────────
 function BeforeAfterFig() {
   return (
-    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', background: '#fff', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '1px solid #DCE7D7', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
       <svg viewBox="0 0 800 260" width="100%" style={{ display: 'block' }} aria-label="Before and after: keyword search vs expressive intent">
         {/* backgrounds first */}
         <rect x="0" y="0" width="400" height="260" fill="#fff" />
@@ -173,40 +173,6 @@ export default function FoundInTranslationPage() {
   const progress = useScrollProgress();
   useFadeIn(pageRef as React.RefObject<HTMLElement>);
 
-  const [isWaitlistOpen, setIsWaitlistOpen] = useState(false);
-  const [waitlistForm, setWaitlistForm] = useState({ name: '', email: '', whatYouDo: '', whoToMeet: '' });
-  const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isWaitlistOpen && waitlistStatus !== 'loading') setIsWaitlistOpen(false);
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isWaitlistOpen, waitlistStatus]);
-
-  useEffect(() => {
-    const open = () => setIsWaitlistOpen(true);
-    window.addEventListener('openWaitlistModal', open);
-    return () => window.removeEventListener('openWaitlistModal', open);
-  }, []);
-
-  const handleWaitlistSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!waitlistForm.email || !waitlistForm.name) return;
-    setWaitlistStatus('loading');
-    try {
-      const res = await fetch(apiUrl('/api/subscribe'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: waitlistForm.email, type: 'waitlist', name: waitlistForm.name, whatYouDo: waitlistForm.whatYouDo, whoToMeet: waitlistForm.whoToMeet }),
-      });
-      setWaitlistStatus(res.ok ? 'success' : 'error');
-    } catch {
-      setWaitlistStatus('error');
-    }
-  };
-
   useEffect(() => {
     const prevTitle = document.title;
     document.title = 'Found in Translation | Index Network';
@@ -245,132 +211,26 @@ export default function FoundInTranslationPage() {
 
   const P: React.CSSProperties = {
     fontFamily: SANS,
-    fontSize: 'max(18px, 1.2rem)', lineHeight: 1.5, color: PALETTE.creamSoft, marginBottom: '0.8rem',
+    fontSize: 16, fontWeight: 300, lineHeight: 1.75, color: PALETTE.creamSoft, margin: '0 0 22px',
   };
-  const WRAP: React.CSSProperties = { maxWidth: 720, margin: '0 auto', padding: '0 2rem' };
+  const WRAP: React.CSSProperties = { maxWidth: 836, margin: '0 auto', padding: '0 24px' };
 
   useEffect(() => {
-    ensureLandingFonts();
+    ensureSiteFonts();
   }, []);
 
   return (
-    <div ref={pageRef} className="landing" style={{ background: PALETTE.bg, color: PALETTE.cream, minHeight: '100vh', overflowX: 'hidden', fontFamily: SANS }}>
+    <div ref={pageRef} className="site" style={{ background: PALETTE.bg, color: PALETTE.cream, minHeight: '100vh', overflowX: 'hidden', fontFamily: SANS }}>
       <style>{KF}</style>
-
-      {isWaitlistOpen && (
-        <div
-          className="landing-modal"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => waitlistStatus !== 'loading' && setIsWaitlistOpen(false)}
-        >
-          <div className="landing-modal-backdrop" aria-hidden="true" />
-          <div className="landing-modal-card" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              className="landing-modal-close"
-              onClick={() => setIsWaitlistOpen(false)}
-              disabled={waitlistStatus === 'loading'}
-              aria-label="Close"
-            >
-              ×
-            </button>
-            {waitlistStatus === 'success' ? (
-              <div className="landing-modal-success">
-                <h3 className="landing-modal-title">you&apos;re on the list</h3>
-                <p className="landing-modal-lede">Check your inbox for your welcome email.</p>
-                <button
-                  type="button"
-                  className="landing-modal-submit"
-                  onClick={() => { setIsWaitlistOpen(false); setWaitlistStatus('idle'); setWaitlistForm({ name: '', email: '', whatYouDo: '', whoToMeet: '' }); }}
-                >
-                  Close
-                </button>
-              </div>
-            ) : (
-              <>
-                <h3 className="landing-modal-title">join the waitlist</h3>
-                <p className="landing-modal-lede">
-                  Tell us a bit about yourself — we&rsquo;ll let you know when we&rsquo;re live and keep you posted on updates.
-                </p>
-                <form onSubmit={handleWaitlistSubmit} className="landing-modal-form">
-                  <label className="landing-modal-label" htmlFor="fit-waitlist-name">
-                    Name<span className="landing-modal-req">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    id="fit-waitlist-name"
-                    className="landing-modal-input"
-                    value={waitlistForm.name}
-                    onChange={(e) => setWaitlistForm({ ...waitlistForm, name: e.target.value })}
-                    required
-                    disabled={waitlistStatus === 'loading'}
-                  />
-
-                  <label className="landing-modal-label" htmlFor="fit-waitlist-email" style={{ marginTop: 10 }}>
-                    Email<span className="landing-modal-req">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    id="fit-waitlist-email"
-                    className="landing-modal-input"
-                    value={waitlistForm.email}
-                    onChange={(e) => setWaitlistForm({ ...waitlistForm, email: e.target.value })}
-                    required
-                    disabled={waitlistStatus === 'loading'}
-                  />
-
-                  <label className="landing-modal-label" htmlFor="fit-waitlist-whatYouDo" style={{ marginTop: 10 }}>
-                    What do you do?
-                  </label>
-                  <input
-                    type="text"
-                    id="fit-waitlist-whatYouDo"
-                    className="landing-modal-input"
-                    value={waitlistForm.whatYouDo}
-                    onChange={(e) => setWaitlistForm({ ...waitlistForm, whatYouDo: e.target.value })}
-                    disabled={waitlistStatus === 'loading'}
-                  />
-
-                  <label className="landing-modal-label" htmlFor="fit-waitlist-whoToMeet" style={{ marginTop: 10 }}>
-                    Who do you want to meet?
-                  </label>
-                  <textarea
-                    id="fit-waitlist-whoToMeet"
-                    className="landing-modal-input"
-                    style={{ resize: 'vertical', minHeight: 80 }}
-                    value={waitlistForm.whoToMeet}
-                    onChange={(e) => setWaitlistForm({ ...waitlistForm, whoToMeet: e.target.value })}
-                    rows={3}
-                    disabled={waitlistStatus === 'loading'}
-                  />
-
-                  {waitlistStatus === 'error' && (
-                    <p className="landing-modal-error">Something went wrong. Please try again.</p>
-                  )}
-
-                  <button
-                    type="submit"
-                    className="landing-modal-submit"
-                    disabled={waitlistStatus === 'loading'}
-                  >
-                    {waitlistStatus === 'loading' ? 'Submitting…' : 'Join the waitlist'}
-                  </button>
-                </form>
-              </>
-            )}
-          </div>
-        </div>
-      )}
 
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 3, zIndex: 100, background: PALETTE.rule }}>
         <div style={{ height: '100%', width: `${progress * 100}%`, background: PALETTE.cream, transition: 'width 0.1s linear' }} />
       </div>
 
-      <section style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden', borderBottom: `1px solid ${PALETTE.ruleStrong}`, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
-          <Nav />
-        </div>
+      <div className="site-col">
+        <SiteNav />
+      </div>
+      <section style={{ position: 'relative', height: 'min(78vh, 760px)', overflow: 'hidden', borderTop: `1px solid ${PALETTE.rule}`, borderBottom: `1px solid ${PALETTE.rule}`, display: 'flex', flexDirection: 'column' }}>
         <img
           src="/found-in-translation/found-in-translation-1-hero.png"
           alt="Monumental grid-plane emerging across a city skyline at dusk"
@@ -392,15 +252,15 @@ export default function FoundInTranslationPage() {
 
 
 
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, borderTop: `1px solid ${PALETTE.rule}`, height: 36, background: 'rgba(11, 22, 18, 0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', padding: '0 1.5rem', gap: '2rem', zIndex: 5 }}>
-          <span style={{ fontFamily: MONO, fontSize: '0.48rem', letterSpacing: '0.14em', color: PALETTE.creamFaint }}>NEW YORK 2026</span>
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, borderTop: `1px solid ${PALETTE.rule}`, height: 36, background: 'rgba(252, 254, 251, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', padding: '0 1.5rem', gap: '2rem', zIndex: 5 }}>
+          <span style={{ fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.14em', color: PALETTE.creamFaint }}>NEW YORK 2026</span>
           <div style={{ flex: 1, height: 1, background: PALETTE.rule }} />
-          <span style={{ fontFamily: MONO, fontSize: '0.48rem', letterSpacing: '0.14em', color: PALETTE.creamFaint }}>INDEX NETWORK · FOUND IN TRANSLATION</span>
+          <span style={{ fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.14em', color: PALETTE.creamFaint }}>INDEX NETWORK · FOUND IN TRANSLATION</span>
         </div>
       </section>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 1rem' }}>
-        <p data-fade style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(2.2rem,5vw,4.8rem)', lineHeight: 0.95, letterSpacing: '-0.04em', color: PALETTE.cream, marginBottom: '1.75rem' }}>
+        <p data-fade style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 'clamp(2.5rem,6vw,3.25rem)', lineHeight: 1.1, letterSpacing: '-0.02em', color: PALETTE.cream, marginBottom: '1.75rem' }}>
           Found in Translation
         </p>
         <p data-fade style={{ ...P, marginBottom: 0 }}>
@@ -412,7 +272,7 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ ...WRAP, padding: '0 2rem' }}>
-        <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', background: '#fff', overflow: 'hidden' }}>
+        <figure data-fade style={{ margin: '2rem 0', border: '1px solid #DCE7D7', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
           <img
             src="/found-in-translation/diagram1.jpeg"
             alt="Two people in conversation diagram"
@@ -428,7 +288,7 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 1rem' }}>
-        <h2 style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: PALETTE.cream, margin: 0 }}>
+        <h2 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 'clamp(1.75rem,4vw,2rem)', lineHeight: 1.2, letterSpacing: '-0.015em', textWrap: 'balance', color: PALETTE.cream, margin: 0 }}>
           Somewhere along the way, we got lost in translation
         </h2>
       </div>
@@ -439,7 +299,7 @@ export default function FoundInTranslationPage() {
         <p data-fade style={P}>Of course, we try. We build and inhabit semantic structures together to achieve our goals. Or, we use our words.</p>
       </div>
       <div data-fade style={{ maxWidth: 1000, margin: '0 auto', padding: '0.2rem 2rem 1rem', textAlign: 'center' }}>
-        <p style={{ fontFamily: SANS, fontStyle: 'italic', fontWeight: 300, fontSize: 'clamp(1rem,2vw,1.5rem)', color: PALETTE.cream, lineHeight: 1.4, letterSpacing: '-0.01em', margin: '0 auto' }}>
+        <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontWeight: 400, fontSize: 'clamp(1.15rem,2vw,1.4rem)', color: PALETTE.cream, lineHeight: 1.4, letterSpacing: '-0.01em', margin: '0 auto' }}>
           &ldquo;When we say that meanings materialize, we mean that sensemaking is, importantly, an issue of language, talk, and communication. Situations, organizations, and environments are talked into existence.&rdquo;
         </p>
         <div style={{ fontFamily: MONO, fontSize: '0.72rem', letterSpacing: '0.06em', color: PALETTE.creamFaint, margin: '0.75rem 0 0', lineHeight: 1.7, whiteSpace: 'nowrap', textTransform: 'uppercase' }}>Andrew Hinton, Understanding Context: Environment, Language, and Information Architecture (2014)</div>
@@ -470,7 +330,7 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 1rem' }}>
-        <h2 style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: PALETTE.cream, margin: 0 }}>
+        <h2 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 'clamp(1.75rem,4vw,2rem)', lineHeight: 1.2, letterSpacing: '-0.015em', textWrap: 'balance', color: PALETTE.cream, margin: 0 }}>
           Language is the new interface
         </h2>
       </div>
@@ -496,16 +356,16 @@ export default function FoundInTranslationPage() {
 
       <div>
         <div style={{ ...WRAP, padding: '4rem 2rem 0' }}>
-          <h2 data-fade style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: PALETTE.cream, marginBottom: '2rem' }}>
+          <h2 data-fade style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 'clamp(1.75rem,4vw,2rem)', lineHeight: 1.2, letterSpacing: '-0.015em', textWrap: 'balance', color: PALETTE.cream, marginBottom: '2rem' }}>
             The emerging model of social coordination
           </h2>
 
           <div style={{ margin: '2rem 0' }}>
             {FLOW.map((step, i) => (
-              <div key={i} data-fade data-delay={String(i * 50)} style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', padding: '0.6rem 0', borderBottom: i < FLOW.length - 1 ? `1px dashed ${PALETTE.rule}` : 'none' }}>
+              <div key={i} data-fade data-delay={String(i * 50)} style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', padding: '0.6rem 0', borderBottom: i < FLOW.length - 1 ? `1px solid ${PALETTE.rule}` : 'none' }}>
                 <span style={{ fontFamily: MONO, fontSize: '0.7rem', color: PALETTE.creamFaint, letterSpacing: '0.1em', flexShrink: 0, paddingTop: '0.15rem' }}>{String(i + 1).padStart(2, '0')}</span>
-                <p style={{ fontFamily: SANS, fontSize: 'clamp(0.95rem,1.5vw,1.05rem)', color: PALETTE.cream, lineHeight: 1.6, margin: 0 }}>
-                  {step.t}<span style={{ color: PALETTE.creamSoft }}> — {step.d}</span>
+                <p style={{ fontFamily: SANS, fontSize: 15, fontWeight: 400, color: PALETTE.cream, lineHeight: 1.6, margin: 0 }}>
+                  {step.t}<span style={{ color: PALETTE.creamSoft, fontWeight: 300 }}> — {step.d}</span>
                 </p>
               </div>
             ))}
@@ -519,7 +379,7 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 4rem' }}>
-        <h2 data-fade style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: PALETTE.cream, marginBottom: '1.5rem' }}>
+        <h2 data-fade style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 'clamp(1.75rem,4vw,2rem)', lineHeight: 1.2, letterSpacing: '-0.015em', textWrap: 'balance', color: PALETTE.cream, marginBottom: '1.5rem' }}>
           Entering ambient optimism
         </h2>
         <p data-fade style={P}>So that coffee shop moment—when you ask someone at the next table over for the wifi password, who then becomes your next idea partner—becomes possible online.</p>
@@ -531,7 +391,7 @@ export default function FoundInTranslationPage() {
       <div style={{ position: 'relative' }}>
         <img src="/found-in-translation/ambient.png" alt="Ambient" style={{ display: 'block', width: '100%', height: 'auto', opacity: 0.92 }} />
       </div>
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }

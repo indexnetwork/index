@@ -7,6 +7,9 @@
 - Tool payloads get `appUrl` on signals (`/i/<intentId>`) and people
   (`/u/<userId>`) as well as opportunities. Objects carrying both `userId` and
   `intentId` are left alone.
+- Clicking an `https://index.network` (or `dev.index.network`) `/u/<id>`,
+  `/i/<id>`, or `/o/<id>` link inside Hermes Desktop opens it in Discover
+  instead of the browser. Modified clicks still open the browser.
 
 ### Fixed
 - The desktop header now shows the negotiator the gateway is running. The
