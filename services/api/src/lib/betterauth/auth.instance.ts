@@ -1,5 +1,6 @@
 import { AuthDatabaseAdapter } from '../../adapters/auth.adapter';
 import { getRedisClient } from '../../adapters/cache.adapter';
+import { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
 import { getTrustedOrigins } from '../cors';
 import { sendMagicLinkEmail } from '../email/magic-link.handler';
 import { isRedisConfigured } from '../redis-env';
@@ -35,9 +36,17 @@ const secondaryStorage: AuthSecondaryStorage | undefined = isRedisConfigured()
     }
   : undefined;
 
+const edgeCityNetworkId = process.env.EDGE_CITY_NETWORK_ID;
+const networkDb = new ChatDatabaseAdapter();
+
 export const auth = createAuth({
   authDb,
   getTrustedOrigins,
   sendMagicLinkEmail,
   secondaryStorage,
+  onEdgeCitySignIn: edgeCityNetworkId
+    ? async (userId) => {
+        await networkDb.addMemberToNetwork(edgeCityNetworkId, userId, 'member');
+      }
+    : undefined,
 });

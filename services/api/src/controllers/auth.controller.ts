@@ -45,6 +45,9 @@ export class AuthController {
     if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       providers.push('google');
     }
+    if (process.env.EDGEOS_TENANT_ID) {
+      providers.push('edge-city');
+    }
     return Response.json({ providers, emailPassword: process.env.NODE_ENV !== 'production' });
   }
 
