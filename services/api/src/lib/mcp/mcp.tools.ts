@@ -50,6 +50,17 @@ function opportunityState(status: string): string {
   return OPPORTUNITY_STATE[status] ?? status;
 }
 
+function opportunityLine(peerName: string, peerUrl: string, headline: string | undefined, status: string): string {
+  return `${mdLink(peerName, peerUrl)} — ${headline || 'New match'} — ${opportunityState(status)}`;
+}
+
+async function linkedIntent(intentId: string, userId: string): Promise<{ url: string; link: string }> {
+  const url = appLink('i', intentId);
+  const intent = await intentService.getById(intentId, userId);
+  const label = intent ? signalLabel(intent.summary ?? intent.payload) : 'signal';
+  return { url, link: mdLink(label, url) };
+}
+
 function safeProfile(profile: NonNullable<Awaited<ReturnType<typeof userService.findWithGraph>>>) {
   return {
     id: profile.id,
@@ -151,14 +162,14 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       const profile = await userService.findWithGraph(principal.userId);
       if (!profile) return mcpError('profile_not_found', 'Profile not found.');
       const safe = safeProfile(profile);
-      return mcpSuccess({ profile: safe }, `Profile: ${mdLink(safe.name || 'Your profile', safe.url)}`);
+      return mcpSuccess({ profile: safe }, `${mdLink(safe.name || 'Your profile', safe.url)} — profile`);
     }),
   );
 
   server.registerTool(
     'update_my_profile',
     {
-      description: 'Update only the supplied fields on the authenticated API key owner\'s profile.',
+      description: 'Update only the supplied fields on the authenticated API key owner\'s profile.' + LINK_HINT,
       inputSchema: z.object({
         name: z.string().optional(),
         intro: z.string().optional(),
@@ -182,7 +193,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       const profile = await userService.findWithGraph(principal.userId);
       if (!profile) return mcpError('profile_not_found', 'Profile not found.');
       const safe = safeProfile(profile);
-      return mcpSuccess({ profile: safe }, `Updated profile: ${mdLink(safe.name || 'Your profile', safe.url)}`);
+      return mcpSuccess({ profile: safe }, `${mdLink(safe.name || 'Your profile', safe.url)} — updated`);
     }),
   );
 
@@ -289,9 +300,10 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           prepared.preparationReceipt,
         );
         const url = appLink('i', created.id);
+        const label = signalLabel(prepared.payload);
         return mcpSuccess(
           { intentId: created.id, url, networkIds: created.networkIds },
-          `Created signal ${mdLink(signalLabel(prepared.payload), url)}.`,
+          `${mdLink(label, url)} — created`,
         );
       } catch (error) {
         if (error instanceof IntentNetworkMembershipError) {
@@ -314,7 +326,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'update_intent',
     {
-      description: 'Change only the description of one owned, non-archived signal.',
+      description: 'Change only the description of one owned, non-archived signal.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         description: z.string().trim().min(1).max(65_536),
@@ -329,9 +341,10 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       if (outcome.kind === 'rejected') return mcpError('intent_rejected', outcome.detail);
       const intent = await intentService.getById(resolved.id, principal.userId);
       const concise = intent ? conciseIntent(intent) : null;
+      const fallbackUrl = appLink('i', resolved.id);
       return mcpSuccess(
-        { intent: concise ?? { id: resolved.id, url: appLink('i', resolved.id), description } },
-        `Updated signal ${concise ? intentLine(concise) : mdLink(signalLabel(description), appLink('i', resolved.id))}`,
+        { intent: concise ?? { id: resolved.id, url: fallbackUrl, description } },
+        concise ? intentLine(concise) : `${mdLink(signalLabel(description), fallbackUrl)} — updated`,
       );
     }),
   );
@@ -339,7 +352,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'pause_intent',
     {
-      description: 'Pause one owned signal. Pausing an already paused signal succeeds without changing it.',
+      description: 'Pause one owned signal. Pausing an already paused signal succeeds without changing it.' + LINK_HINT,
       inputSchema: intentIdSchema,
     },
     ({ intentId }) => runTool('pause_intent', principal, async () => {
@@ -347,14 +360,18 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       if ('error' in resolved) return resolved.error;
       const outcome = await intentService.transitionStatus(resolved.id, principal.userId, 'PAUSED');
       if (outcome.kind !== 'success') return intentTransitionError(outcome)!;
-      return mcpSuccess({ intentId: outcome.id, status: outcome.status, changed: outcome.changed });
+      const { url, link } = await linkedIntent(outcome.id, principal.userId);
+      return mcpSuccess(
+        { intentId: outcome.id, url, status: outcome.status, changed: outcome.changed },
+        `${link} — paused`,
+      );
     }),
   );
 
   server.registerTool(
     'resume_intent',
     {
-      description: 'Resume one owned signal. Resuming an already active signal succeeds; archived signals stay archived.',
+      description: 'Resume one owned signal. Resuming an already active signal succeeds; archived signals stay archived.' + LINK_HINT,
       inputSchema: intentIdSchema,
     },
     ({ intentId }) => runTool('resume_intent', principal, async () => {
@@ -362,14 +379,18 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       if ('error' in resolved) return resolved.error;
       const outcome = await intentService.transitionStatus(resolved.id, principal.userId, 'ACTIVE');
       if (outcome.kind !== 'success') return intentTransitionError(outcome)!;
-      return mcpSuccess({ intentId: outcome.id, status: outcome.status, changed: outcome.changed });
+      const { url, link } = await linkedIntent(outcome.id, principal.userId);
+      return mcpSuccess(
+        { intentId: outcome.id, url, status: outcome.status, changed: outcome.changed },
+        `${link} — resumed`,
+      );
     }),
   );
 
   server.registerTool(
     'archive_intent',
     {
-      description: 'Permanently archive one owned signal. This cannot currently be reversed, removes network associations, and expires related opportunities.',
+      description: 'Permanently archive one owned signal. This cannot currently be reversed, removes network associations, and expires related opportunities.' + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
         confirm: z.literal(true),
@@ -379,13 +400,15 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     ({ intentId }) => runTool('archive_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
+      const { url, link } = await linkedIntent(resolved.id, principal.userId);
       const result = await intentService.archive(resolved.id, principal.userId);
       if (!result.success) return mcpError('intent_not_found', result.error ?? 'Intent not found.');
       return mcpSuccess({
         intentId: resolved.id,
+        url,
         archived: true,
         message: 'Archiving cannot currently be reversed; network associations were removed and related opportunities were expired.',
-      });
+      }, `${link} — archived`);
     }),
   );
 
@@ -430,7 +453,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         cta: opportunity.cta,
       }));
       const lines = opportunities.map((opportunity) =>
-        `- ${mdLink(opportunity.peer.name, opportunity.peer.url)} — ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status)}`);
+        `- ${opportunityLine(opportunity.peer.name, opportunity.peer.url, opportunity.headline, opportunity.status)}`);
       return mcpSuccess({
         opportunities,
         pagination: {
@@ -457,17 +480,18 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       if ('error' in opportunity) return mcpError('opportunity_not_found', 'Opportunity not found.');
       const negotiation = await negotiationService.read(resolved.id, principal.userId);
       const url = appLink('o', opportunity.id);
+      const peer = { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) };
       const otherParties = opportunity.otherParties.map((party) => ({ ...party, url: appLink('u', party.id) }));
       const people = otherParties.map((party) => mdLink(party.name, party.url)).join(', ');
       return mcpSuccess({
         opportunity: {
           ...opportunity,
           url,
-          peer: { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) },
+          peer,
           otherParties,
         },
         negotiation,
-      }, `Opportunity${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status)}`);
+      }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status)}`);
     }),
   );
 
@@ -476,9 +500,9 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     server.registerTool(
       name,
       {
-        description: accepted
+        description: (accepted
           ? 'Accept one visible opportunity for the authenticated owner, optionally scoped to an owned signal.'
-          : 'Pass on one visible opportunity for the authenticated owner, optionally scoped to an owned signal. This is the Mac app\'s Pass action and may close the associated negotiation.',
+          : 'Pass on one visible opportunity for the authenticated owner, optionally scoped to an owned signal. This is the Mac app\'s Pass action and may close the associated negotiation.') + LINK_HINT,
         inputSchema: opportunityActionSchema,
         annotations: { destructiveHint: !accepted },
       },
@@ -507,12 +531,16 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
                 : 'opportunity_update_failed';
           return mcpError(code, result.error);
         }
+        const url = appLink('o', result.opportunity.opportunityId);
+        const peer = { ...result.opportunity.peer, url: appLink('u', result.opportunity.peer.userId) };
+        const opportunity = { ...result.opportunity, id: result.opportunity.opportunityId, url, peer };
         return mcpSuccess({
           ...result,
+          opportunity,
           message: accepted
             ? 'Opportunity accepted.'
             : 'Opportunity passed; its associated negotiation may have been closed.',
-        });
+        }, `${opportunityLine(peer.name, peer.url, opportunity.headline, opportunity.status)} — ${accepted ? 'accepted' : 'passed'}`);
       }),
     );
   };
