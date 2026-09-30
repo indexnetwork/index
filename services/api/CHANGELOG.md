@@ -10,6 +10,11 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- The MCP server sends `instructions` at initialize: use Index when the owner
+  wants to meet, find, hire, fund, collaborate with, or be introduced to people;
+  check `list_intents` before `create_intent`; accept or pass only after asking;
+  archive only after an explicit yes. `create_intent` and `list_opportunities`
+  descriptions carry the same triggers.
 - Login with Edge City: `POST /api/auth/sign-in/edge-city { token }` exchanges an
   EdgeOS bearer (verified via EdgeOS `/humans/me`) for a Better Auth session,
   creating or linking the user under provider `edge-city`. Signed-in users are
@@ -61,6 +66,8 @@ section before promoting to `main`).
   and spaces activations 5–10 seconds apart (was 10–30).
 
 ### Fixed
+- The MCP server reports the API package version instead of a hardcoded
+  `0.135.1`.
 - The hosted personal agent keeps a negotiator's stall until its own question
   is answered, the wake resolves it explicitly, or the negotiation is declined,
   stopped, or moves on. Re-deciding `continue` or an unrelated principal message
