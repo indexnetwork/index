@@ -10,6 +10,16 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- **`GET /api/events` frames carry server time and a stream id.** Each stored
+  frame has `at` (ISO time from the API clock). SSE and `GET /api/events/log`
+  add `eventId`, the Redis stream id, which increases on every frame for that
+  user. The handshake is `{ "type": "connected", "at" }` and has no `eventId`.
+  Frames are kept for 7 days (`MINID`), replacing the unstated cap of about
+  1000. `GET /api/events/log?after=&limit=` pages the same feed, oldest first,
+  without joining a consumer group. `opportunity.status` is published to each
+  actor when an opportunity's status changes (`negotiating`, `pending`,
+  `accepted`, `rejected`, `expired`), including owner accept/reject/expire,
+  a negotiation that leaves `negotiating`, and enrichment expiry.
 - The MCP server sends `instructions` at initialize: use Index when the owner
   wants to meet, find, hire, fund, collaborate with, or be introduced to people;
   check `list_intents` before `create_intent`; accept or pass only after asking;

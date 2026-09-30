@@ -1,5 +1,6 @@
 import { Negotiations, observeNegotiation, type NegotiationTurn } from '@indexnetwork/protocol';
 
+import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { log } from '../lib/log';
 import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter, type NegotiationDetail as StoredNegotiationDetail, type NegotiationExecution, type NegotiationScanRecord, type NegotiationTurnAction, type NegotiationView, type SubmitTurnRejection } from '../adapters/negotiation.database.adapter';
 import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
@@ -90,6 +91,9 @@ export class NegotiationService {
     });
     const result = await capability.execute(opportunityId, callerUserId, turn);
     if (!result.ok) return { rejection: result.rejection };
+    if (result.opportunityStatus === 'pending' || result.opportunityStatus === 'rejected') {
+      emitOpportunityTransitionBestEffort({ id: opportunityId, status: result.opportunityStatus });
+    }
     const record = (await this.read(opportunityId, callerUserId))!;
     const seats = [{ userId: callerUserId, intentId: record.intentId }, { userId: record.counterparty.userId, intentId: record.counterparty.intentId }];
     await publishNegotiationChange(seats, opportunityId);

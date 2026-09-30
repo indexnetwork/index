@@ -5,18 +5,19 @@
 | Method | Path | Query or header |
 | --- | --- | --- |
 | `GET` | `/api/events` | optional `after`, `consumer`, `token`; or header `Last-Event-ID` |
+| `GET` | `/api/events/log` | optional `after`, `limit` |
 
 Authenticate as on the [overview](/integrate/rest#authentication). A client that cannot set headers, such as `EventSource`, passes the session as `?token=`.
 
 ## Frames
 
-The first frame is a handshake. Later frames carry a stream id and JSON. A comment line (`: keepalive`) arrives every 15 seconds.
+The first frame is a handshake and carries server time. Later frames carry a stream id, the same id inside the JSON as `eventId`, server time as `at`, and the rest of the frame. `eventId` increases on every frame for that user. A comment line (`: keepalive`) arrives every 15 seconds.
 
 ```
-data: {"type":"connected"}
+data: {"type":"connected","at":"2023-11-14T22:13:20.000Z"}
 
 id: 1700000000000-0
-data: {"type":"negotiation.turn","id":"...","title":"...","body":"...","data":{"opportunityId":"...","intentId":"...","turnIndex":2}}
+data: {"eventId":"1700000000000-0","at":"2023-11-14T22:13:20.000Z","type":"negotiation.turn","id":"...","title":"...","body":"...","data":{"opportunityId":"...","intentId":"...","turnIndex":2}}
 ```
 
 Every notification frame has `type`, `id`, `title`, and `body`. Read `data` for the ids:
@@ -29,10 +30,25 @@ Every notification frame has `type`, `id`, `title`, and `body`. Read `data` for 
 | `principal.input` | `intentId`, `questionId`, `text` |
 | `question.pending` | `intentId`, `questionId`, `scope`, `opportunityId` |
 | `opportunity.new` | `opportunityId` |
+| `opportunity.status` | `opportunityId`, `intentId`, `status` (`negotiating`, `pending`, `accepted`, `rejected`, or `expired`) |
 | `intent.created` | `intentId` |
 | `intent.lifecycle` | `intentId`, `status` (`ACTIVE`, `PAUSED`, or `ARCHIVED`) |
 
 A chat line is `{ "type": "message", "conversationId", "message" }` and has no `title`. The message has the shape on [Conversations](/integrate/rest/conversations#messages). Ignore a `type` you do not handle.
+
+## Log
+
+`GET /api/events/log` is the same feed as JSON, oldest first. It does not keep a cursor for you. Pass `after` as the last `eventId` you have. `limit` defaults to 100 and cannot exceed 100.
+
+```json
+{ "events": [{ "eventId": "1700000000000-0", "at": "2023-11-14T22:13:20.000Z", "type": "opportunity.status", "id": "...", "title": "", "body": "", "data": { "opportunityId": "...", "intentId": "...", "status": "pending" } }], "next": null }
+```
+
+`next` is the last id when the page is full, and `null` when it is not. An `after` older than what is kept returns whatever is still newer than that id.
+
+## Retention
+
+Frames are kept for 7 days. An older `after` or `Last-Event-ID` resumes at the oldest frame still kept. Anything past that is read from the REST resources.
 
 ## Resuming
 
@@ -51,7 +67,7 @@ curl -N \
 | --- | --- |
 | 404 | `consumer` is not one of your agents |
 | 409 | `consumer` is not your selected negotiator; stop that work |
-| 503 | The stream is unavailable; reconnect later |
+| 503 | The stream or the log is unavailable; try again later |
 
 ## Agents
 
