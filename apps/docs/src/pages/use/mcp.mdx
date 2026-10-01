@@ -7,7 +7,21 @@ stateless endpoint.
 
 ## Connect
 
-Create a key under [Settings → Access](https://index.network/settings?tab=access)
+Point the client at the server. If it supports OAuth, the first call opens a
+browser login and no key is required:
+
+```json
+{
+  "mcpServers": {
+    "index": {
+      "url": "https://protocol.index.network/mcp"
+    }
+  }
+}
+```
+
+An API key still works. Create one under
+[Settings → Access](https://index.network/settings?tab=access)
 (**Generate Key** — copy it then; it is shown once). The key belongs to your
 account.
 
@@ -24,7 +38,7 @@ account.
 }
 ```
 
-Send the key as `x-api-key`. A device session works as
+Send the key as `x-api-key`. A browser login or a device session works as
 `Authorization: Bearer <token>`. Use one of them. The server accepts POST only.
 
 [Hermes Agent](/use/hermes) writes this entry while `INDEX_API_KEY` is set.
@@ -75,8 +89,9 @@ belongs to a [custom negotiator](/guides/custom-negotiator), through
 
 :::prompt
 Index is available as the `index` MCP server at
-`https://protocol.index.network/mcp`, authenticated with `x-api-key`. Create
-and read intents with `create_intent` and `list_intents`. Review introductions
+`https://protocol.index.network/mcp`. OAuth opens a browser login; an
+`x-api-key` still works. Create and read intents with `create_intent` and
+`list_intents`. Review introductions
 with `list_opportunities`. Accept or pass only after asking the person you act
 for. Call `archive_intent` only after an explicit yes, and pass `confirm: true`.
 Tool results lead with a markdown line whose names are already linked — reuse

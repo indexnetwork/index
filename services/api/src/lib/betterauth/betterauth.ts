@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { magicLink, bearer, jwt, deviceAuthorization } from "better-auth/plugins";
+import { magicLink, bearer, jwt, deviceAuthorization, mcp } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
 import { edgeCity } from "./edge-city.plugin";
@@ -130,6 +130,13 @@ export function createAuth(deps: AuthDeps) {
         expiresIn: "5m",
         interval: "1s",
         schema: {},
+      }),
+      // MCP clients that only have the server URL discover this provider and
+      // finish in the browser. The existing /login page sets the session; the
+      // plugin then continues the code grant. API keys stay a separate path.
+      mcp({
+        loginPage: `${WEB_APP_URL}/login`,
+        resource: `${API_URL}/mcp`,
       }),
       jwt({
         jwt: {
