@@ -3114,6 +3114,11 @@
   function withoutSupersededLooking(entries) {
     const traces = entries.map(function (entry) { return entry.kind === "progress" ? parseDiscoveryProgress(entry.text) : null; });
     return entries.filter(function (entry, index) {
+      if (entry.kind === "progress" && entry.text === "Working out who to reach") {
+        return !traces.some(function (other, otherIndex) {
+          return otherIndex > index && other && typeof other.discovered === "number";
+        });
+      }
       const trace = traces[index];
       if (!trace || typeof trace.discovered === "number") return true;
       return !traces.some(function (other, otherIndex) {

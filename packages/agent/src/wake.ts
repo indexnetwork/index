@@ -347,21 +347,20 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         required: ["plan", "queries"],
       },
       run: async ({ plan, queries }: { plan: string; queries: string[] }) => {
-        // The plan and queries are known before anyone is found. Publish them
-        // first so the principal sees the search while it runs. A failure is
-        // kept for the caller, same as the counted write below.
-        const report = async (discovered?: number, reached?: number) => {
+        // The call itself is the loading line. The plan follows once people
+        // are found. A failure is kept for the caller, same as the counted write.
+        try {
+          await input.onProgress?.("Working out who to reach");
+        } catch (cause) {
+          unpersisted ??= cause;
+        }
+        const report = async (discovered: number, reached: number) => {
           try {
-            await input.onProgress?.(JSON.stringify({
-              plan,
-              queries,
-              ...(discovered === undefined ? {} : { discovered, reached }),
-            }));
+            await input.onProgress?.(JSON.stringify({ plan, queries, discovered, reached }));
           } catch (cause) {
             unpersisted ??= cause;
           }
         };
-        await report();
         // Each angle asks for as many as one call may open, so a single query is
         // never the reason only a handful are reached. People are what a signal
         // needs, so a person holding several matching signals keeps one seat.
