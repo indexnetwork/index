@@ -766,6 +766,38 @@
     return params;
   }
 
+  // HashRouter commits with history.pushState / replaceState. Those do not
+  // fire hashchange, so a deep link onto an already-open Discover page never
+  // reached the view. One watch turns every URL write into one event.
+  const LOCATION_EVENT = "index-network-location";
+  if (!window.__indexNetworkLocationWatch) {
+    window.__indexNetworkLocationWatch = true;
+    const emitLocation = function () {
+      window.dispatchEvent(new Event(LOCATION_EVENT));
+    };
+    window.addEventListener("hashchange", emitLocation);
+    window.addEventListener("popstate", emitLocation);
+    const pushState = history.pushState;
+    const replaceState = history.replaceState;
+    history.pushState = function () {
+      const before = window.location.href;
+      const result = pushState.apply(this, arguments);
+      if (window.location.href !== before) emitLocation();
+      return result;
+    };
+    history.replaceState = function () {
+      const before = window.location.href;
+      const result = replaceState.apply(this, arguments);
+      if (window.location.href !== before) emitLocation();
+      return result;
+    };
+  }
+
+  function onLocation(handler) {
+    window.addEventListener(LOCATION_EVENT, handler);
+    return function () { window.removeEventListener(LOCATION_EVENT, handler); };
+  }
+
   function parseView() {
     const params = pageSearchParams();
     const chat = params.get("chat");
@@ -4801,8 +4833,8 @@
         ? React.createElement("div", { className: "index-dashboard__profile-body" },
           React.createElement(NegotiatorSettings),
         )
-        : (loading || (!form && !panelError)
-          ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
+        : (loading || !form
+          ? (panelError ? null : React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…"))
           : React.createElement("div", { className: "index-dashboard__profile-body" },
             readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
           )),
@@ -5886,12 +5918,7 @@
         setProfileOpen(view.profileOpen);
         setViewUserId(view.viewUserId);
       }
-      window.addEventListener("hashchange", applyView);
-      window.addEventListener("popstate", applyView);
-      return function () {
-        window.removeEventListener("hashchange", applyView);
-        window.removeEventListener("popstate", applyView);
-      };
+      return onLocation(applyView);
     }, []);
 
     useEffect(function () {
@@ -5936,12 +5963,7 @@
         }
       }
       applyFocus();
-      window.addEventListener("hashchange", applyFocus);
-      window.addEventListener("popstate", applyFocus);
-      return function () {
-        window.removeEventListener("hashchange", applyFocus);
-        window.removeEventListener("popstate", applyFocus);
-      };
+      return onLocation(applyFocus);
     }, [auth]);
 
     const intents = (summary && summary.intents) || [];

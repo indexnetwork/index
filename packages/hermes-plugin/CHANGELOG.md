@@ -15,6 +15,13 @@
   instead of the browser. Modified clicks still open the browser.
 
 ### Fixed
+- A failed profile load no longer crashes Discover. The panel rendered
+  `form.avatar` while `form` was still null, and the page error boundary
+  replaced the signal.
+- A `hermes://open/index-network?intent=` link opens that signal's detail
+  while Discover is already showing. Hermes writes the hash with
+  `history.pushState`, which does not fire `hashchange`, so the open page
+  never read `?intent=`.
 - `plugin.yaml` reports the package version (was stuck at 0.43.0).
 - The desktop header now shows the negotiator the gateway is running. The
   dashboard runs in a separate process and used to report its own idle copy as
