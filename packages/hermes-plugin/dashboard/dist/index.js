@@ -6122,7 +6122,7 @@
             count: intents.length,
             action: React.createElement(Button, {
               type: "button", outlined: true, size: "sm",
-              className: "index-dashboard__net-create-btn",
+              className: "index-dashboard__net-create-btn index-dashboard__new-signal-btn",
               onClick: function () { setNewSignalOpen(true); },
             }, ICON_PLUS(), "New signal"),
           },
