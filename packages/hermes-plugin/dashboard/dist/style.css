@@ -519,11 +519,23 @@
 }
 
 .index-agent-header .index-dashboard__back-pill {
-  border-color: #E4E0D9;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 15px;
+  gap: 8px;
+}
+
+.index-agent-header .index-dashboard__back-pill svg {
+  width: 20px;
+  height: 20px;
 }
 
 .index-agent-header .index-dashboard__back-pill:hover {
-  background: #FAF8F5;
+  background: transparent;
 }
 
 .index-agent-header__switcher,

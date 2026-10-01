@@ -1461,7 +1461,7 @@
           "find your others",
         ),
         React.createElement("p", { className: "index-dashboard__pitch-text" },
-          "tell index what you're after. agents negotiate quietly in the background, and let you know if there's an alignment.",
+          "start a signal by talking to your agent. it negotiates it with the other agents and makes an intro when both sides are interested.",
         ),
       ),
     );
@@ -2819,7 +2819,7 @@
     );
   }
 
-  const NEW_SIGNAL_PROMPT = "who are you trying to meet right now?";
+  const NEW_SIGNAL_PROMPT = "what are you looking for right now?";
   const NEW_SIGNAL_EXAMPLES = [
     "traveling soon, want to meet cool people in ai",
     "building something, want honest feedback on it",
@@ -2831,10 +2831,10 @@
   ];
   const SIGNAL_MAX = 65536;
   const SIGNAL_CALIBRATING = [
-    "compressing your edges into a signal…",
+    "structuring your inputs into signals…",
     "reaching out across the network…",
-    "filtering people you'd rather not see…",
-    "opening the field.",
+    "filtering through options…",
+    "coming back around",
   ];
 
   function WorkingDots() {
@@ -2996,7 +2996,7 @@
             value: draft,
             maxLength: SIGNAL_MAX,
             rows: 3,
-            placeholder: "type what you're looking for…",
+            placeholder: "type what you're thinking about or tinkering on…",
             "aria-label": "What you're looking for",
             onChange: function (e) { setDraft(e.target.value); },
             onKeyDown: function (e) {
@@ -3035,7 +3035,7 @@
             : null,
           current)),
       React.createElement("aside", { className: "index-dashboard__signal-new-field" },
-        React.createElement("p", { className: "index-dashboard__signal-new-field-title" }, "the field, warming"),
+        React.createElement("p", { className: "index-dashboard__signal-new-field-title" }, "warming up"),
         previewLines.map(function (line, i) {
           return React.createElement("p", {
             key: i,
@@ -4188,7 +4188,7 @@
     const lines = (props && props.lines) || [
       "Getting a sense of you…",
       "Working out what you're into…",
-      "Almost there.",
+      "Almost there",
     ];
     return React.createElement("div", { className: "index-dashboard__setting-up" },
       React.createElement("div", { className: "index-dashboard__setting-up-card" },
@@ -5024,7 +5024,7 @@
           lines: [
             "Looking you up…",
             "Reading what's already public…",
-            "Almost there.",
+            "Almost there",
           ],
         }));
       }
