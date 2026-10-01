@@ -899,7 +899,7 @@ def negotiator_status() -> dict[str, Any]:
 
 @full_router.post("/negotiator/start")
 def negotiator_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Lift the pause so the gateway starts the negotiator on its next selection check."""
+    """Lift the pause. The gateway starts the negotiator when this file changes."""
     try:
         agent = tools.selected_agent()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
@@ -915,7 +915,7 @@ def negotiator_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[
 
 @full_router.post("/negotiator/stop")
 def negotiator_stop(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Pause the negotiator; the gateway stops it on its next selection check."""
+    """Pause the negotiator. The gateway stops it when this file changes."""
     try:
         negotiator.write_state(_negotiator_state_path(), paused=True)
     except OSError as exc:
@@ -2293,8 +2293,8 @@ def update_agent(
 
     `handleNegotiations: false` is how the hosted Index negotiator is chosen:
     the API clears the owner's binding rather than naming a hosted agent.
-    The selection check follows `GET /agents/me` and starts or stops the sidecar
-    from that selection.
+    The gateway follows `agent.configuration` on `GET /events` and reads
+    `GET /agents/me` to start or stop the sidecar.
     """
     agent_id = _text(agent_id)
     if not agent_id:

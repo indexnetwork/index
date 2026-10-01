@@ -50,6 +50,20 @@
 - The plugin no longer registers an Index gateway platform. The gateway
   process watches the selected negotiator and records sessions in the
   Negotiations project. Pause, or choosing another negotiator, still stops it.
+- Negotiator selection follows the Index event stream (`agent.configuration`
+  on `GET /events`). Start and Stop follow the pause file as it is written.
+  The 5-second selection poll is gone.
+- Discover no longer has an auto-refresh switch. The page refreshes on its own.
+- The desktop header's negotiator control is a switcher. It shows the
+  selected agent and its status, and choosing another agent in the dialog
+  makes that agent the negotiator.
+- On desktop, home puts the pitch on the left of that header and the
+  negotiator, messages, and profile on the right. A signal puts Back on the
+  left and the same controls on the right.
+- Hermes stays pending, in orange, while it is the selected negotiator and
+  the process is not running yet. It turns running once the process is up.
+  A failed selection read no longer stops that process, which left the header
+  pending after the event stream dropped.
 - The bundled negotiator submits a turn as `{ action, message }`; it no
   longer sends the expected turn count.
 - The bundled negotiator is now published as `@indexnetwork/agent` (formerly

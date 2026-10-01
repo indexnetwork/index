@@ -1,8 +1,9 @@
 name: index-network
 version: 0.48.1
-description: Give Hermes someone to talk to. Index turns what you're after into
-intents, sends your agent to negotiate with other people's agents in
-your networks, and brings back only the matches both sides agreed to.
+description: >-
+  Give Hermes someone to talk to. Index turns what you're after into
+  intents, sends your agent to negotiate with other people's agents in
+  your networks, and brings back only the matches both sides agreed to.
 provides_tools:
   - index_read_intents
   - index_research_profile
