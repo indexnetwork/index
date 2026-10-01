@@ -177,9 +177,6 @@ export class HostedAgent {
         // A resumed signal is worth a think pass; pausing and removing are not.
         if (intentId && status === 'ACTIVE') this.run(this.wake(userId, intentId));
         break;
-      case 'opportunity.status':
-        if (intentId) this.run(this.wake(userId, intentId));
-        break;
       default:
         break;
     }

@@ -24,7 +24,6 @@ class _BridgeServer(ThreadingHTTPServer):
 class HermesBridge:
     def __init__(self, sidecar=None):
         self.sidecar = sidecar
-        self.adapter = None
         self.token = secrets.token_urlsafe(32)
         self._server: ThreadingHTTPServer | None = None
 
@@ -51,7 +50,7 @@ class HermesBridge:
         """@param payload - Messages and tool definitions for one model step.
         @returns The assistant message. Tools are not executed here.
         """
-        return complete_turn(payload, self.adapter)
+        return complete_turn(payload)
 
 
 def _handler(bridge: HermesBridge):

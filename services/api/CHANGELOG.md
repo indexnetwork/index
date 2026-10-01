@@ -9,6 +9,9 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Fixed
+- Opportunity status frames no longer wake the hosted agent; they remain available to clients.
+
 ### Added
 - **`GET /api/events` frames carry server time and a stream id.** Each stored
   frame has `at` (ISO time from the API clock). SSE and `GET /api/events/log`

@@ -3,7 +3,7 @@
 The negotiator is `@indexnetwork/agent` on `@indexnetwork/client`, bundled
 into `runtime/dist/negotiator.js`. This module starts it while this machine is
 the owner's selected negotiator, keeps that child alive for the gateway
-process, and stops it when the platform disconnects or the selection moves
+process, and stops it when the gateway exits or the selection moves
 elsewhere. It holds no negotiation state.
 """
 

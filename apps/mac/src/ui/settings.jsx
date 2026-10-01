@@ -354,12 +354,12 @@ function DangerZone() {
 /* ---------- pane 2 · notifications ---------- */
 
 const NOTIFY_OPTIONS = [
-  { id:"alignment", title:"an alignment surfaces",
-    blurb:"index found someone worth meeting and wants to hand them over." },
+  { id:"alignment", title:"an opportunity surfaces",
+    blurb:"your agent found someone who meets your signals and wants you to review." },
   { id:"accepted",  title:"an intro is accepted",
-    blurb:"someone said yes. the chat opens on both sides." },
+    blurb:"both of you said yes, and the chat opens on both sides." },
   { id:"messages",  title:"a message arrives",
-    blurb:"someone you're connected with wrote to you while index was in the background." },
+    blurb:"a connection wrote to you." },
   { id:"digest",    title:"daily digest",
     blurb:"one quiet summary each morning instead of live pings." },
 ];

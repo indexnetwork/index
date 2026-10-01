@@ -113,6 +113,24 @@
   background: color-mix(in srgb, var(--color-primary, #4fd1c5) 12%, transparent);
 }
 
+.index-network-desktop-page .index-dashboard__intent-list {
+  gap: 0.75rem;
+}
+
+/* Borderless: content sits flush with the panel heading, while the negative
+   margin lets the hover/selected fill bleed past it. */
+.index-network-desktop-page .index-dashboard__intent-row {
+  border-color: transparent;
+  padding: 0.625rem 0.5rem;
+  margin: 0 -0.5rem;
+  width: calc(100% + 1rem);
+}
+
+.index-network-desktop-page .index-dashboard__intent-row:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 8%, var(--background-base, #041c1c));
+}
+
 .index-network-desktop-page .index-dashboard__badge[tone="success"] {
   color: var(--color-success, #16a34a);
   border-color: color-mix(in srgb, var(--color-success, #16a34a) 45%, transparent);
@@ -219,6 +237,18 @@
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+
+.index-network-desktop-page .index-dashboard__new-signal-btn.idx-btn {
+  color: #fff;
+  border-color: var(--color-success, #3d9a5b);
+  background: var(--color-success, #3d9a5b);
+}
+
+.index-network-desktop-page .index-dashboard__new-signal-btn.idx-btn:hover:not(:disabled) {
+  color: #fff;
+  border-color: color-mix(in srgb, var(--color-success, #3d9a5b) 85%, #000);
+  background: color-mix(in srgb, var(--color-success, #3d9a5b) 85%, #000);
 }
 
 /* The desktop app keeps the header pause/archive pill a step larger than the
