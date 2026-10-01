@@ -226,7 +226,7 @@ Bun.serve({
       // The trailing slash matters — a bare `/api/auth/device` prefix would also
       // swallow our own /api/auth/devices list.
       '/api/auth/device/',
-      // MCP OAuth: authorize, token, and dynamic client registration.
+      // MCP OAuth: authorize, token, dynamic registration, and consent actions.
       '/api/auth/mcp/',
     ];
     // The grant's claim step is the bare `/api/auth/device` with a user_code

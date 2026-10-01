@@ -1,0 +1,37 @@
+.mcp-consent {
+  min-height: 100vh;
+  background: #f5f4ed;
+  color: #14231b;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.mcp-consent__nav { padding: 28px 40px; }
+.mcp-consent__nav img { width: 110px; }
+.mcp-consent__card {
+  width: min(600px, calc(100% - 36px));
+  margin: 8vh auto;
+  padding: 36px;
+  border: 1px solid #d5d9d0;
+  border-radius: 16px;
+  background: #fff;
+  box-sizing: border-box;
+}
+.mcp-consent__eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+.mcp-consent__card h1 { font-size: 30px; line-height: 1.15; margin: 16px 0 28px; }
+.mcp-consent__client { font-size: 24px; font-weight: 700; overflow-wrap: anywhere; }
+.mcp-consent__warning { line-height: 1.6; }
+.mcp-consent__label { font-weight: 600; margin-top: 30px; }
+.mcp-consent__destination {
+  padding: 14px;
+  border: 1px solid #d5d9d0;
+  border-radius: 8px;
+  background: #f5f4ed;
+  font-family: monospace;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.mcp-consent__actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 32px; }
+.mcp-consent__actions button { padding: 12px 24px; border: 1px solid #14231b; border-radius: 8px; cursor: pointer; }
+.mcp-consent__actions button:last-child { background: #14231b; color: white; }
+.mcp-consent__actions button:disabled { opacity: .5; cursor: wait; }
+.mcp-consent__error { color: #a32929; margin-top: 20px; }
