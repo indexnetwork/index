@@ -1583,12 +1583,6 @@ function startRunner(options) {
         log(`event ${event.type}: ${event.data.intentId} is ${event.data.status}`);
         refresh().catch(onError);
         break;
-      case "opportunity.status":
-        if (!event.data.intentId)
-          break;
-        log(`event ${event.type}: ${event.data.opportunityId} is ${event.data.status}`);
-        startWake(event.data.intentId);
-        break;
       default:
         log(`event ${event.type} (no wake)`);
         break;

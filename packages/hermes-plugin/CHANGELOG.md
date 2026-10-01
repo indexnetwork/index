@@ -15,6 +15,7 @@
   instead of the browser. Modified clicks still open the browser.
 
 ### Fixed
+- Opportunity status frames no longer wake the bundled negotiator.
 - A failed profile load no longer crashes Discover. The panel rendered
   `form.avatar` while `form` was still null, and the page error boundary
   replaced the signal.
