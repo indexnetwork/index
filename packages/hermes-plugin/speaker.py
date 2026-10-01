@@ -90,22 +90,36 @@ def _project_folder() -> Path:
     return folder
 
 
-def _record(adapter, messages: list, assistant: dict) -> None:
+class _IndexOrigin:
+    """Session key label. Hermes groups a session by this value; it is not a connected platform."""
+
+    value = PLATFORM
+
+
+def _session_store():
+    """The gateway's session store, present only in the gateway process."""
+    import sys
+
+    run = sys.modules.get("gateway.run")
+    ref = getattr(run, "_gateway_runner_ref", None) if run is not None else None
+    runner = ref() if ref is not None else None
+    return getattr(runner, "session_store", None) if runner is not None else None
+
+
+def _record(messages: list, assistant: dict) -> None:
     """Append this step onto the Index session so it shows in the Hermes session list."""
-    if adapter is None:
-        return
     located = _chat(messages)
     if located is None:
         return
-    chat_id, title = located
-    store = getattr(adapter, "_session_store", None)
+    store = _session_store()
     if store is None:
         return
+    chat_id, title = located
     from gateway.session import SessionSource
 
     source = SessionSource(
-        platform=adapter.platform, chat_id=chat_id, chat_type="dm", chat_name=title,
-        user_id=getattr(adapter, "_owner", None) or "index", user_name="Index",
+        platform=_IndexOrigin(), chat_id=chat_id, chat_type="dm", chat_name=title,
+        user_id="index", user_name="Index",
     )
     entry = store.get_or_create_session(source)
     session_db = store._db_for_key(entry.session_key) if hasattr(store, "_db_for_key") else None
@@ -140,7 +154,7 @@ def _record(adapter, messages: list, assistant: dict) -> None:
     _written[chat_id] = (user, len(messages) + 1)
 
 
-def complete(payload: dict, adapter=None) -> dict:
+def complete(payload: dict) -> dict:
     """@param payload - `messages` and `tools` for one step.
     @returns The assistant message. @throws When Hermes has no model or the call fails.
     """
@@ -173,7 +187,7 @@ def complete(payload: dict, adapter=None) -> dict:
             raise RuntimeError("Hermes returned no completion.")
         assistant = _message(choices[0].message)
         try:
-            _record(adapter, payload.get("messages") or [], assistant)
+            _record(payload.get("messages") or [], assistant)
         except Exception as error:  # noqa: BLE001 - a session-list write must not drop the turn
             logger.warning("Index session was not recorded: %s", error)
         return assistant

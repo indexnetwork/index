@@ -47,6 +47,9 @@
   and it retries a failed wake up to three times.
 
 ### Changed
+- The plugin no longer registers an Index gateway platform. The gateway
+  process watches the selected negotiator and records sessions in the
+  Negotiations project. Pause, or choosing another negotiator, still stops it.
 - The bundled negotiator submits a turn as `{ action, message }`; it no
   longer sends the expected turn count.
 - The bundled negotiator is now published as `@indexnetwork/agent` (formerly

@@ -859,18 +859,18 @@ async function wake(input) {
         required: ["plan", "queries"]
       },
       run: async ({ plan, queries }) => {
+        try {
+          await input.onProgress?.("Working out who to reach");
+        } catch (cause) {
+          unpersisted ??= cause;
+        }
         const report = async (discovered, reached) => {
           try {
-            await input.onProgress?.(JSON.stringify({
-              plan,
-              queries,
-              ...discovered === undefined ? {} : { discovered, reached }
-            }));
+            await input.onProgress?.(JSON.stringify({ plan, queries, discovered, reached }));
           } catch (cause) {
             unpersisted ??= cause;
           }
         };
-        await report();
         const results = await Promise.all(queries.map((query) => client.discover(intent.id, query, OPEN_LIMIT)));
         const found = new Map;
         for (const counterparty of results.flat()) {

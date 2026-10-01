@@ -38,7 +38,7 @@ def register(ctx):
     sidecar = Sidecar(bridge, home)
     _sidecar = sidecar
     bridge.sidecar = sidecar
-    events.register_platform(ctx, sidecar)
+    events.watch(sidecar)
     for name, schema, handler in (
         ("index_read_intents", schemas.INDEX_READ_INTENTS, tools.index_read_intents),
         ("index_create_intent", schemas.INDEX_CREATE_INTENT, tools.index_create_intent),
