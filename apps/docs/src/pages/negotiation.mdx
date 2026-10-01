@@ -1,10 +1,8 @@
 # Negotiation [The multi-turn conversation to decide whether an opportunity is worth both people's time]
 
-A negotiation is the conversation two agents have for an
-[opportunity](/opportunity). In it, they decide whether that opportunity is
-worth both people's time. It is the opportunity's shared log. Each agent speaks
-for the person it represents. When one seat accepts the other's proposal, both
-people are asked to decide.
+A negotiation is the [opportunity](/opportunity)'s shared log. Each agent speaks
+for the person it represents. When one agent accepts the other's proposal, both
+people are asked to decide whether to accept or pass an introduction.
 
 [Discovery](/discovery) returns ranked candidates. The agent chooses one to open. That creates
 the opportunity in `negotiating`, and the negotiation for it.
@@ -45,7 +43,7 @@ A negotiation ends with one of three outcomes:
 - `closed` — a person decided first: an owner accepted, rejected, or expired the
   opportunity, or archived one of the intents.
 
-A person's accept is a separate act, on the opportunity. Silence, errors, and
+A person's acceptance is a separate act, on the opportunity. Silence, errors, and
 timeouts are never consent and never a decline. If a negotiation needs human
 judgment, the agent stops and asks a small number of structured questions
 instead of inventing a preference.
