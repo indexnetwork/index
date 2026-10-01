@@ -11,7 +11,25 @@ import type { McpPrincipal } from './mcp.types';
 // `src/` and `dist/` sit at the same depth, and `package.json` is outside `rootDir`, so it cannot be imported.
 const { version } = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as { version: string };
 
-/** Authenticate `/mcp` with a Better Auth session or API key. */
+/**
+ * An MCP OAuth access token is an opaque string, so a failed session check
+ * still has to look it up. Expired rows are rejected so the client refreshes.
+ */
+async function authenticateMcpOAuthToken(request: Request): Promise<McpPrincipal | null> {
+  try {
+    const { auth } = await import('../betterauth/auth.instance');
+    const session = await auth.api.getMcpSession({ headers: request.headers });
+    if (!session?.userId) return null;
+    const expiresAt = new Date(session.accessTokenExpiresAt).getTime();
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
+    return { userId: session.userId, authKind: 'session' };
+  } catch {
+    // Do not attach the SDK error: authentication failures must never carry a raw token into logs or Sentry.
+    throw new Error('Session verification failed');
+  }
+}
+
+/** Authenticate `/mcp` with a Better Auth session, an MCP OAuth access token, or an API key. */
 export async function authenticateMcpRequest(request: Request): Promise<McpPrincipal | null> {
   const authorization = request.headers.get('Authorization');
   if (authorization?.startsWith('Bearer ')) {
@@ -22,7 +40,7 @@ export async function authenticateMcpRequest(request: Request): Promise<McpPrinc
       if (error instanceof Error && (
         error.message === 'Access token required'
         || error.message === 'Invalid or expired access token'
-      )) return null;
+      )) return authenticateMcpOAuthToken(request);
       // Do not attach the SDK error: authentication failures must never carry a raw token into logs or Sentry.
       // eslint-disable-next-line preserve-caught-error
       throw new Error('Session verification failed');
