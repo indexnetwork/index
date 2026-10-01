@@ -207,8 +207,7 @@ function NegotiatorProfile({ agent, runtimeLabel }) {
           margin:"0 0 8px", maxWidth:560,
           fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
         }}>
-          this is how your agent appears wherever it speaks for you, asking you
-          a question, sending an update, negotiating with someone else's.
+          how your agent appears wherever it represents you.
         </p>
         <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
           <MyAgentAvatar size={54}/>
@@ -458,8 +457,7 @@ function Agents({ onClose }) {
               margin:"10px 0 0", maxWidth:560,
               fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
             }}>
-              agents on this mac can act for you. add and remove them in the
-              web app; this is what's running here.
+              customize how agents on your mac can run for you.
             </p>
           </div>
 
@@ -475,7 +473,8 @@ function Agents({ onClose }) {
               margin:"8px 0 10px", maxWidth:560,
               fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
             }}>
-              connected agents can create signals and negotiate for you.
+              turn any agent connection on or off. connected agents can create
+              signals and negotiate with other agents for you.
             </p>
 
             {/* one framed block; rows divide it, so it reads as a single
@@ -513,7 +512,7 @@ function Agents({ onClose }) {
               margin:"8px 0 12px",
               fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
             }}>
-              one agent speaks for you in the network. pick which runtime carries it.
+              one agent represents you in the network. pick which runtime carries it.
             </p>
 
             <NegotiatorProfile

@@ -42,7 +42,7 @@ function SignInButton({ children, primary, onClick, disabled }) {
 function BuildingProfile({ onDone, title = "setting up", lines = [
   "getting a sense of you…",
   "working out what you're into…",
-  "almost there.",
+  "almost there",
 ] }) {
   useEffect(() => {
     const t = setTimeout(() => onDone && onDone(), 2400);
