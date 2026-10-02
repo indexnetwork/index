@@ -62,6 +62,7 @@
 .apps-card-text { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 
 /* ---------- browser row ---------- */
+.apps-exits { display: flex; flex-direction: column; gap: 10px; }
 .site .apps-browser {
   display: flex;
   flex-wrap: wrap;
