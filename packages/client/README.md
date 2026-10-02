@@ -26,7 +26,7 @@ const stop = client.events((event) => {
 | Method | HTTP |
 |---|---|
 | `me()` | `GET /api/auth/me` → `{ id, name, intro, location, timezone, profileConfirmed }` (memoized) |
-| `listIntents(limit?)` | `POST /api/intents/list` → `{ id, statement, status }[]` |
+| `listIntents(limit?)` | `POST /api/intents/list` → `{ id, statement, status }[]`. `status` is `active`, `paused`, or `archived` (`archived` when `archivedAt` is set). |
 | `discover(intentId, query)` | `POST /api/intents/:id/discover` → `{ intentId, userId, name, statement, networkId, score }[]` |
 | `createOpportunities(intentId, counterparties)` | `POST /api/intents/:id/opportunities` → `{ opportunityId }[]` |
 | `listNegotiations()` | `GET /api/negotiations?state=open` |

@@ -23,7 +23,7 @@ const PrepareSchema = z.object({
   })).default([]),
 }).strict();
 const StatusSchema = z.object({
-  status: z.enum(['ACTIVE', 'PAUSED']),
+  status: z.enum(['active', 'paused']),
 });
 const UpdateSchema = z.object({
   description: z.string().trim().min(1, 'description is required').max(65_536),
@@ -382,7 +382,7 @@ export class IntentController {
   /**
    * Pause or resume an intent by UUID or short prefix.
    *
-   * @param req - Request with body `{ status: 'ACTIVE' | 'PAUSED' }`.
+   * @param req - Request with body `{ status: 'active' | 'paused' }`.
    * @param user - Authenticated owner.
    * @param params - Route parameters containing the intent identifier.
    * @returns Idempotent lifecycle transition result.

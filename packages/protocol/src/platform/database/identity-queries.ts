@@ -146,7 +146,7 @@ export interface DatabaseIdentityQueries {
   archiveIntent(intentId: string): Promise<ArchiveResult>;
 
   /**
-   * Atomically transition an owned intent between ACTIVE and PAUSED.
+   * Atomically transition an owned intent between active and paused.
    * Terminal/archived intents and out-of-scope requests are rejected.
    * Idempotent: re-requesting the current status reports `changed: false`.
    *
@@ -155,12 +155,12 @@ export interface DatabaseIdentityQueries {
   transitionIntentLifecycle(input: {
     intentId: string;
     userId: string;
-    status: 'ACTIVE' | 'PAUSED';
+    status: 'active' | 'paused';
     networkScopeId?: string | null;
   }): Promise<TransitionLifecycleResult>;
 
   /**
-   * Compare-and-set a resume back to PAUSED when its discovery-enqueue
+   * Compare-and-set a resume back to paused when its discovery-enqueue
    * acknowledgement failed. A concurrent lifecycle write is never overwritten.
    */
   compensateFailedResume(input: {

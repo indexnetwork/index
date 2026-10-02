@@ -126,7 +126,7 @@ export function intentTable(intents: Intent[]): void {
       day: "numeric",
     });
 
-    const sColor = intent.status === "ACTIVE" ? GREEN : GRAY;
+    const sColor = intent.status === "active" ? GREEN : GRAY;
     console.log(
       `  ${CYAN}${shortId}${RESET}  ${desc.padEnd(descWidth)}  ${sColor}${status}${RESET}  ${GRAY}${source}${RESET}  ${GRAY}${date}${RESET}`,
     );
@@ -186,7 +186,7 @@ export function intentCard(intent: Intent): void {
   console.log(`  ${BOLD}${CYAN}Intent Details${RESET}`);
   console.log(`  ${GRAY}${"─".repeat(50)}${RESET}`);
   console.log(`  ${BOLD}ID${RESET}            ${GRAY}${intent.id}${RESET}`);
-  console.log(`  ${BOLD}Status${RESET}        ${intent.status === "ACTIVE" ? GREEN : GRAY}${intent.status}${RESET}`);
+  console.log(`  ${BOLD}Status${RESET}        ${intent.status === "active" ? GREEN : GRAY}${intent.status}${RESET}`);
 
   if (intent.summary) {
     console.log(`  ${BOLD}Summary${RESET}       ${intent.summary}`);

@@ -61,7 +61,7 @@ export function mapIntent(intent) {
     : [];
 
   const archived = Boolean(intent.archivedAt);
-  const paused = !archived && String(intent.status || '').toUpperCase() === 'PAUSED';
+  const paused = !archived && String(intent.status || '') === 'paused';
 
   return {
     id: intent.id,

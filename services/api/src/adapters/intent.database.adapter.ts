@@ -9,9 +9,9 @@ import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 
 
 const LIFECYCLE_WIRE_COPY: Record<IntentLifecycleWireStatus, { title: string; body: string }> = {
-  ACTIVE: { title: 'Signal resumed', body: 'Discovery is running for this signal again.' },
-  PAUSED: { title: 'Signal paused', body: 'Discovery and negotiations are on hold.' },
-  ARCHIVED: { title: 'Signal removed', body: 'This signal is no longer active.' },
+  active: { title: 'Signal resumed', body: 'Discovery is running for this signal again.' },
+  paused: { title: 'Signal paused', body: 'Discovery and negotiations are on hold.' },
+  archived: { title: 'Signal removed', body: 'This signal is no longer active.' },
 };
 
 /**
@@ -217,7 +217,7 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Atomically transition an owned intent between ACTIVE and PAUSED.
+   * Atomically transition an owned intent between active and paused.
    * The row is locked for the transaction, terminal/archived records are
    * rejected, and an optional network scope is enforced again in the UPDATE.
    * Idempotent calls preserve `updatedAt`; real transitions advance it
@@ -229,11 +229,11 @@ export class IntentDatabaseAdapter {
   async transitionIntentLifecycle(input: {
     intentId: string;
     userId: string;
-    status: 'ACTIVE' | 'PAUSED';
+    status: 'active' | 'paused';
     networkScopeId?: string | null;
     expectedUpdatedAtMs?: number;
   }): Promise<
-    | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
+    | { kind: 'success'; id: string; status: 'active' | 'paused'; changed: boolean; lifecycleVersionMs: number }
     | { kind: 'not_found' }
     | { kind: 'scope_violation' }
     | { kind: 'stale' }
@@ -273,7 +273,7 @@ export class IntentDatabaseAdapter {
         if (scoped.length === 0) return { kind: 'scope_violation' } as const;
       }
 
-      if (current.archivedAt || current.status === 'FULFILLED' || current.status === 'EXPIRED') {
+      if (current.archivedAt) {
         return {
           kind: 'conflict',
           status: current.status,
@@ -281,7 +281,7 @@ export class IntentDatabaseAdapter {
         } as const;
       }
 
-      const normalizedCurrent = current.status ?? 'ACTIVE';
+      const normalizedCurrent = current.status ?? 'active';
       if (normalizedCurrent === input.status) {
         return {
           kind: 'success',
@@ -322,7 +322,7 @@ export class IntentDatabaseAdapter {
       return {
         kind: 'success',
         id: updated.id,
-        status: updated.status as 'ACTIVE' | 'PAUSED',
+        status: updated.status as 'active' | 'paused',
         changed: true,
         lifecycleVersionMs: updated.updatedAt.getTime(),
       } as const;
@@ -335,7 +335,7 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Compare-and-set a resume made by this request back to PAUSED when its
+   * Compare-and-set a resume made by this request back to paused when its
    * enqueue acknowledgement fails. The lifecycle version makes this a narrow
    * compensation: a concurrent lifecycle write is never overwritten.
    *
@@ -359,11 +359,11 @@ export class IntentDatabaseAdapter {
     const compensatedAt = new Date(Math.max(Date.now(), input.lifecycleVersionMs + 1));
     const [compensated] = await db
       .update(schema.intents)
-      .set({ status: 'PAUSED', updatedAt: compensatedAt })
+      .set({ status: 'paused', updatedAt: compensatedAt })
       .where(and(
         eq(schema.intents.id, input.intentId),
         eq(schema.intents.userId, input.userId),
-        eq(schema.intents.status, 'ACTIVE'),
+        eq(schema.intents.status, 'active'),
         isNull(schema.intents.archivedAt),
         eq(schema.intents.updatedAt, expectedUpdatedAt),
         scopeCondition,
@@ -374,7 +374,7 @@ export class IntentDatabaseAdapter {
       });
     if (compensated) {
       const lifecycleVersionMs = compensated.updatedAt.getTime();
-      await publishIntentLifecycle(input.userId, input.intentId, 'PAUSED', lifecycleVersionMs);
+      await publishIntentLifecycle(input.userId, input.intentId, 'paused', lifecycleVersionMs);
       return {
         status: compensated.status as IntentLifecycleStatus,
         lifecycleVersionMs,
@@ -392,7 +392,7 @@ export class IntentDatabaseAdapter {
       .limit(1);
     if (!current) return null;
     return {
-      status: current.status ?? 'ACTIVE',
+      status: current.status ?? 'active',
       lifecycleVersionMs: current.updatedAt.getTime(),
     };
   }
@@ -408,7 +408,7 @@ export class IntentDatabaseAdapter {
           updatedAt: schema.intents.updatedAt,
         });
       if (!archived) return { success: false, error: 'Intent not found' };
-      await publishIntentLifecycle(archived.userId, archived.id, 'ARCHIVED', archived.updatedAt.getTime());
+      await publishIntentLifecycle(archived.userId, archived.id, 'archived', archived.updatedAt.getTime());
       return { success: true };
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.archiveIntent error', { error: error instanceof Error ? error.message : String(error) });

@@ -50,12 +50,10 @@ export type UserEventType =
 /**
  * The effective state of a signal as agents see it.
  *
- * `ARCHIVED` is a wire value, not a column: removal sets `archived_at` rather
- * than a status, and an agent only needs to know the signal is gone. The
- * `FULFILLED` and `EXPIRED` members of the database enum are read as guards but
- * never written, so they never reach the wire.
+ * `archived` is a wire value, not a column: removal sets `archived_at` rather
+ * than a status, and an agent only needs to know the signal is gone.
  */
-export type IntentLifecycleWireStatus = 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+export type IntentLifecycleWireStatus = 'active' | 'paused' | 'archived';
 
 /**
  * Every frame except `message`: a pointer at the record that moved, plus copy

@@ -21,6 +21,6 @@ export interface IntentFollowUp {
   onIntentSaved(data: { intentId: string; userId: string } & IntentFollowUpScope): Promise<unknown>;
   /** Schedule cleanup of matching artifacts after archival. */
   onIntentArchived(data: { intentId: string }): Promise<unknown>;
-  /** Start discovery for an intent resumed from PAUSED back to ACTIVE. */
+  /** Start discovery for an intent resumed from paused back to active. */
   onIntentResumed(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown>;
 }

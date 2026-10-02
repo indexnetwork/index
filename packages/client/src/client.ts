@@ -58,7 +58,7 @@ export interface NegotiationDetail extends Negotiation {
   };
 }
 
-export type IntentStatus = "ACTIVE" | "PAUSED" | "FULFILLED" | "EXPIRED" | "ARCHIVED";
+export type IntentStatus = "active" | "paused" | "archived";
 
 /** One of the owner's signals, as an agent working it needs to see it. */
 export interface IntentSummary {
@@ -149,7 +149,7 @@ export interface ConversationMessage {
   metadata?: unknown;
 }
 
-export type IntentLifecycleWireStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
+export type IntentLifecycleWireStatus = "active" | "paused" | "archived";
 
 export type ConnectedEvent = { type: "connected"; at?: string };
 
@@ -378,7 +378,7 @@ export class IndexClient implements Index {
 
   /**
    * @param limit - How many signals to read. Defaults to 100.
-   * @returns The owner's signals. `ARCHIVED` is derived from `archivedAt`, which is how removal is recorded.
+   * @returns The owner's signals. `archived` is derived from `archivedAt`, which is how removal is recorded.
    */
   async listIntents(limit = 100): Promise<IntentSummary[]> {
     const { intents } = await this.request<{
@@ -387,7 +387,7 @@ export class IndexClient implements Index {
     return intents.map((intent) => ({
       id: intent.id,
       statement: intent.payload,
-      status: (intent.archivedAt ? "ARCHIVED" : intent.status ?? "ACTIVE") as IntentStatus,
+      status: (intent.archivedAt ? "archived" : intent.status ?? "active") as IntentStatus,
     }));
   }
 

@@ -625,7 +625,7 @@ final class NativeAPIRequestBridge {
                     && optionalString(item, "preparationReceipt", maximum: 65_536)
             }
         case let value where value.range(of: #"^/intents/[^/?]+/status$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["ACTIVE", "PAUSED"]) }
+            return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["active", "paused"]) }
         case let value where value.range(of: #"^/intents/[^/?]+/opportunities/[^/?]+/status$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["accepted", "rejected"]) }
         case let value where value.range(of: #"^/opportunities/[^/?]+/status$"#, options: .regularExpression) != nil:

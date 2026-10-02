@@ -32,7 +32,7 @@ Every notification frame has `type`, `id`, `title`, and `body`. Read `data` for 
 | `opportunity.new` | `opportunityId` |
 | `opportunity.status` | `opportunityId`, `intentId`, `status` (`negotiating`, `pending`, `accepted`, `rejected`, or `expired`) |
 | `intent.created` | `intentId` |
-| `intent.lifecycle` | `intentId`, `status` (`ACTIVE`, `PAUSED`, or `ARCHIVED`) |
+| `intent.lifecycle` | `intentId`, `status` (`active`, `paused`, or `archived`). `archived` is derived from `archivedAt` and is not the stored status. |
 
 A chat line is `{ "type": "message", "conversationId", "message" }` and has no `title`. The message has the shape on [Conversations](/integrate/rest/conversations#messages). Ignore a `type` you do not handle.
 

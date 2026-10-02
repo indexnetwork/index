@@ -107,12 +107,12 @@ export type IntentNetworkLinkOutcome =
 
 /** The `transition` action's outcome, as reported on `intentGraph`'s `transitionResult` field. */
 export type IntentTransitionOutcome =
-  | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
+  | { kind: 'success'; id: string; status: 'active' | 'paused'; changed: boolean; lifecycleVersionMs: number }
   | { kind: 'not_found' }
   | { kind: 'scope_violation' }
   | { kind: 'stale' }
-  | { kind: 'conflict'; status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED' | null; archived: boolean }
-  | { kind: 'enqueue_failed'; id: string; status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED'; lifecycleVersionMs: number };
+  | { kind: 'conflict'; status: 'active' | 'paused' | null; archived: boolean }
+  | { kind: 'enqueue_failed'; id: string; status: 'active' | 'paused'; lifecycleVersionMs: number };
 
 /**
  * IntentService
@@ -357,7 +357,7 @@ export class IntentService {
     return {
       intents: rows.map((intent) => ({
         ...intent,
-        status: intent.status ?? 'ACTIVE' as const,
+        status: intent.status ?? 'active' as const,
       })),
       totalWaitingOpportunities,
       pagination: {
@@ -400,7 +400,7 @@ export class IntentService {
     logger.verbose('Getting intent by ID', { intentId, userId });
 
     const intent = await this.adapter.getIntentById(intentId, userId);
-    return intent ? { ...intent, status: intent.status ?? 'ACTIVE' as const } : null;
+    return intent ? { ...intent, status: intent.status ?? 'active' as const } : null;
   }
 
   /**
@@ -427,7 +427,7 @@ export class IntentService {
   ): Promise<IntentDiscoverOutcome> {
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
-    if (intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) return { kind: 'inactive' };
+    if (intent.archivedAt || (intent.status != null && intent.status !== 'active')) return { kind: 'inactive' };
 
     const networkScope = await chatDatabaseAdapter.getNetworkIdsForIntent(intentId);
     if (networkScope.length === 0) return { kind: 'ok', counterparties: [] };
@@ -495,7 +495,7 @@ export class IntentService {
   ): Promise<CreateOpportunitiesOutcome> {
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
-    if (intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) return { kind: 'inactive' };
+    if (intent.archivedAt || (intent.status != null && intent.status !== 'active')) return { kind: 'inactive' };
 
     logger.verbose('Creating opportunities from picked counterparties', { intentId, userId, count: picks.length });
 
@@ -542,7 +542,7 @@ export class IntentService {
 
   /**
    * Pause or resume an owned intent via the Intent Graph's `transition` action.
-   * The graph enqueues resume discovery and compensates back to PAUSED if that
+   * The graph enqueues resume discovery and compensates back to paused if that
    * enqueue fails; ownership and lifecycle rules are enforced by the adapter's
    * atomic transition under the graph.
    *
@@ -554,7 +554,7 @@ export class IntentService {
   async transitionStatus(
     intentId: string,
     userId: string,
-    status: 'ACTIVE' | 'PAUSED',
+    status: 'active' | 'paused',
   ): Promise<IntentTransitionOutcome> {
     logger.verbose('Transitioning intent lifecycle', { intentId, userId, status });
 
