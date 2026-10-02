@@ -905,14 +905,6 @@ export class ChatDatabaseAdapter {
   // The Intent Graph's archive/transition/confirm actions reach these through
   // this composite adapter; delegate straight to IntentDatabaseAdapter, the
   // single implementation of each.
-  deleteIntentNetworkAssociations(intentId: string): ReturnType<IntentDatabaseAdapter['deleteIntentNetworkAssociations']> {
-    return this.intentAdapter.deleteIntentNetworkAssociations(intentId);
-  }
-
-  expireOpportunitiesByIntentActor(intentId: string): ReturnType<IntentDatabaseAdapter['expireOpportunitiesByIntentActor']> {
-    return this.intentAdapter.expireOpportunitiesByIntentActor(intentId);
-  }
-
   transitionIntentLifecycle(
     input: Parameters<IntentDatabaseAdapter['transitionIntentLifecycle']>[0],
   ): ReturnType<IntentDatabaseAdapter['transitionIntentLifecycle']> {

@@ -142,24 +142,8 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             intentId: expireAction.id,
             error: result.error
           });
-          logger.verbose('Archived intent', { intentId: expireAction.id });
           if (result.success) {
-            try {
-              await deps.database.deleteIntentNetworkAssociations(expireAction.id);
-            } catch (err) {
-              logger.error('Failed to delete intent-network associations', { intentId: expireAction.id, error: err });
-            }
-            try {
-              const expiredCount = await deps.database.expireOpportunitiesByIntentActor(expireAction.id);
-              if (expiredCount > 0) {
-                logger.verbose('Expired opportunities referencing intent', { intentId: expireAction.id, expiredCount });
-              }
-            } catch (err) {
-              logger.error('Failed to expire opportunities', { intentId: expireAction.id, error: err });
-            }
-            deps.intentFollowUp?.onIntentArchived({ intentId: expireAction.id }).catch((err) =>
-              logger.error('Failed to run intent archive follow-up', { intentId: expireAction.id, error: err })
-            );
+            logger.verbose('Archived intent', { intentId: expireAction.id });
           }
 
         } else if (actionType === 'transition') {
