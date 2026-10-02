@@ -7,10 +7,10 @@ An intent is what you are looking for or can offer, in your own words. These rou
 | Method | Path | Body or query |
 | --- | --- | --- |
 | `POST` | `/api/intents/prepare` | `payload`, optional `answers` |
-| `POST` | `/api/intents` | `description`, optional `networkIds`, optional `preparationReceipt` |
-| `POST` | `/api/intents/list` | optional `q`, `limit`, `page`, `archived` |
+| `POST` | `/api/intents` | `description`, optional `networkIds`, `preparationReceipt`, `sourceType`, `sourceId` |
+| `POST` | `/api/intents/list` | optional `q`, `limit`, `page`, `archived`, `sourceType` |
 | `GET` | `/api/intents/:id` | |
-| `PATCH` | `/api/intents/:id` | `description` |
+| `PATCH` | `/api/intents/:id` | one or more of `description`, `sourceType`, `sourceId` |
 | `PATCH` | `/api/intents/:id/status` | `status`: `active` or `paused` |
 | `PATCH` | `/api/intents/:id/archive` | |
 | `GET` | `/api/intents/:id/networks` | |
@@ -68,7 +68,11 @@ A draft that still needs a fact:
 
 Omit `networkIds`, or send `[]`, to share the new intent in every network you belong to. Send network UUIDs to share it only in those.
 
-`POST /api/intents` returns `{ "intentId", "networkIds" }`. You can create from a description alone; the server prepares it. A receipt authorizes the draft you already reviewed.
+`POST /api/intents` returns `{ "intentId", "networkIds", "sourceType", "sourceId" }`. You can create from a description alone; the server prepares it. A receipt authorizes the draft you already reviewed.
+
+### Source fields
+
+`sourceType` and `sourceId` are optional strings of up to 1024 characters that you own. Index stores them and returns them unchanged on create, update, list, and get, and does not interpret them. Use them to map your own records to a published intent. For example, an agent that inferred an ambient intent can send its local id as `sourceId` when the owner approves publishing it, then match the intent back by that value.
 
 | Status | Body | Meaning |
 | --- | --- | --- |
@@ -79,9 +83,9 @@ Omit `networkIds`, or send `[]`, to share the new intent in every network you be
 
 ## List and update
 
-`POST /api/intents/list` returns `{ "intents", "pagination" }`. `q` matches the description and the summary. `archived: true` includes archived intents. Each intent carries `id`, `payload`, `summary`, `status`, `createdAt`, `updatedAt`, and `archivedAt`. `status` is `active` or `paused`. A missing status means `active`. Removal sets `archivedAt` and leaves `status` as it was.
+`POST /api/intents/list` returns `{ "intents", "pagination" }`. `q` matches the description and the summary. `archived: true` includes archived intents. `sourceType` keeps intents with exactly that value. Each intent carries `id`, `payload`, `summary`, `status`, `sourceType`, `sourceId`, `createdAt`, `updatedAt`, and `archivedAt`. `status` is `active` or `paused`. A missing status means `active`. Removal sets `archivedAt` and leaves `status` as it was.
 
-`PATCH /api/intents/:id` replaces the description. `PATCH …/status` pauses (`paused`) or resumes (`active`). An archived intent refuses a status change with 409. `PATCH …/archive` sets `archivedAt`. The lifecycle event then sends `archived`; the list payload does not.
+`PATCH /api/intents/:id` replaces the description, the source fields, or both, and returns `{ "intentId", "description", "sourceType", "sourceId" }`. A new description is prepared again; a source-only change is written as sent. Omit a field to keep it; send `null` to clear a source field. `PATCH …/status` pauses (`paused`) or resumes (`active`). An archived intent refuses a status change with 409. `PATCH …/archive` sets `archivedAt`. The lifecycle event then sends `archived`; the list payload does not.
 
 `GET /api/intents/:id/networks` returns `{ "networkIds" }`.
 

@@ -42,7 +42,10 @@ export interface Intent {
   payload: string;
   summary: string | null;
   status: string;
+  /** Client-owned label, returned as the client set it. */
   sourceType: string | null;
+  /** Client-owned reference, returned as the client set it. */
+  sourceId: string | null;
   confidence?: number;
   inferenceType?: string;
   intentMode?: string;
@@ -53,6 +56,12 @@ export interface Intent {
   updatedAt: string;
   archivedAt: string | null;
   networks?: Array<{ id: string; title: string; relevancyScore?: number }>;
+}
+
+/** Client-owned source fields. Undefined leaves a field unchanged; null clears it. */
+export interface IntentSource {
+  sourceType?: string | null;
+  sourceId?: string | null;
 }
 
 /** Options for listing intents. */

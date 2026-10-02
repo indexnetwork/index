@@ -10,10 +10,13 @@ import { parseListOpportunitiesQuery } from '../services/opportunity.list-query'
 
 const logger = log.controller.from('intent');
 
+const SourceFieldSchema = z.string().max(1024).nullable().optional();
 const CreateSchema = z.object({
   description: z.string().max(65_536).refine((text) => text.trim().length > 0, 'description is required'),
   preparationReceipt: z.string().min(1).max(65_536).optional(),
   networkIds: z.array(z.string().uuid('networkIds must be UUIDs')).default([]),
+  sourceType: SourceFieldSchema,
+  sourceId: SourceFieldSchema,
 }).strict();
 const PrepareSchema = z.object({
   payload: z.string().trim().min(1, 'payload is required').max(65_536),
@@ -26,8 +29,13 @@ const StatusSchema = z.object({
   status: z.enum(['active', 'paused']),
 });
 const UpdateSchema = z.object({
-  description: z.string().trim().min(1, 'description is required').max(65_536),
-}).strict();
+  description: z.string().trim().min(1, 'description is required').max(65_536).optional(),
+  sourceType: SourceFieldSchema,
+  sourceId: SourceFieldSchema,
+}).strict().refine(
+  (body) => body.description !== undefined || body.sourceType !== undefined || body.sourceId !== undefined,
+  'description, sourceType, or sourceId is required',
+);
 const LinkSchema = z.object({
   networkId: z.string().uuid('networkId must be a UUID'),
 }).strict();
@@ -124,11 +132,11 @@ export class IntentController {
         { status: 400 },
       );
     }
-    const { description, networkIds, preparationReceipt } = parsed.data;
+    const { description, networkIds, preparationReceipt, sourceType = null, sourceId = null } = parsed.data;
 
     try {
-      const created = await intentService.create(user.id, description, networkIds, preparationReceipt);
-      return Response.json({ intentId: created.id, networkIds: created.networkIds });
+      const created = await intentService.create(user.id, description, networkIds, preparationReceipt, { sourceType, sourceId });
+      return Response.json({ intentId: created.id, networkIds: created.networkIds, sourceType, sourceId });
     } catch (err) {
       if (err instanceof IntentPreparationReceiptError) {
         return Response.json({ error: 'invalid_preparation', detail: err.message }, { status: 403 });
@@ -445,12 +453,12 @@ export class IntentController {
   }
 
   /**
-   * Rewrite an owned signal's description by ID or short prefix.
+   * Rewrite an owned signal's description or source fields by ID or short prefix.
    *
-   * @param req - Request with body `{ description: string }`.
+   * @param req - Request with body `{ description?: string; sourceType?: string | null; sourceId?: string | null }`.
    * @param user - Authenticated owner.
    * @param params - Route parameters containing the intent identifier.
-   * @returns The intent id and the description now stored.
+   * @returns The intent id, description, and source fields now stored.
    */
   @Patch('/:id')
   @UseGuards(AuthGuard)
@@ -469,7 +477,8 @@ export class IntentController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const result = await intentService.update(resolved.id, user.id, parsed.data.description);
+    const { description, sourceType, sourceId } = parsed.data;
+    const result = await intentService.update(resolved.id, user.id, description, { sourceType, sourceId });
     if (result.kind === 'not_found') {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
     }
@@ -480,7 +489,13 @@ export class IntentController {
       return Response.json({ error: 'intent_rejected', code: 'intent_rejected', detail: result.detail }, { status: 422 });
     }
 
-    return Response.json({ intentId: resolved.id, description: parsed.data.description });
+    const intent = await intentService.getById(resolved.id, user.id);
+    return Response.json({
+      intentId: resolved.id,
+      description: intent?.payload ?? description,
+      sourceType: intent?.sourceType ?? null,
+      sourceId: intent?.sourceId ?? null,
+    });
   }
 
   /**

@@ -20,7 +20,6 @@ interface HomeIntent {
   payload: string;
   summary?: string | null;
   createdAt: string;
-  sourceType?: "integration" | "discovery_form" | "enrichment";
   waitingOpportunityCount?: number;
   status?: string;
   warming?: boolean;

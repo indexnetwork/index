@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Calendar, ExternalLink, Slack, MessageSquare, Handshake } from 'lucide-react';
+import { Calendar, Handshake } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -8,11 +8,6 @@ interface BaseIntent {
   payload: string;
   summary?: string | null;
   createdAt: string;
-  sourceType?: 'integration' | 'discovery_form' | 'enrichment';
-  sourceId?: string;
-  sourceName?: string;
-  sourceValue?: string | null;
-  sourceMeta?: string | null;
   /** Whether this fresh intent is still awaiting its first discovery run. */
   warming?: boolean;
   /** Networks this intent is currently registered to. */
@@ -48,7 +43,6 @@ interface IntentListProps<T extends BaseIntent> {
   emptyMessage?: string;
   onArchiveIntent?: (intent: T) => void;
   onRemoveIntent?: (intent: T) => void;
-  onOpenIntentSource?: (intent: T) => void;
   onIntentClick?: (intent: T) => void;
   newIntentIds?: Set<string>;
   selectedIntentIds?: Set<string>;
@@ -60,7 +54,6 @@ export default function IntentList<T extends BaseIntent>({
   intents,
   isLoading = false,
   emptyMessage = 'No signals yet',
-  onOpenIntentSource,
   onIntentClick,
   newIntentIds = new Set(),
   selectedIntentIds = new Set(),
@@ -75,13 +68,6 @@ export default function IntentList<T extends BaseIntent>({
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [intents]);
-
-  const getSourceIcon = (type?: string) => {
-    switch (type) {
-      case 'integration': return <Slack className="w-3 h-3" />;
-      default: return <MessageSquare className="w-3 h-3" />;
-    }
-  };
 
   if (isLoading) {
     return (
@@ -110,7 +96,6 @@ export default function IntentList<T extends BaseIntent>({
         });
         const isFresh = newIntentIds.has(intent.id);
         const isSelectedSource = selectedIntentIds.has(intent.id);
-        const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
         // active (or the schema default / unset) means the intent is live and
         // being worked in the background.
         const isActive = !intent.status || intent.status === 'active';
@@ -187,15 +172,6 @@ export default function IntentList<T extends BaseIntent>({
                     </div>
                   )}
 
-                  {/* Source Badge — external origins only (a user's own
-                      directly-created signals carry no meaningful source tag) */}
-                  {intent.sourceType && intent.sourceType === 'integration' && (
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-gray-100/50 border border-gray-100">
-                      {getSourceIcon(intent.sourceType)}
-                      <span className="capitalize">{intent.sourceType}</span>
-                    </div>
-                  )}
-
                   {/* New Badge */}
                   {isFresh && !isSelectedSource && (
                     <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] tracking-wide font-ibm-plex-mono font-medium uppercase border border-green-200">
@@ -205,23 +181,6 @@ export default function IntentList<T extends BaseIntent>({
 
                   <StatusBadge status={intent.status} />
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                {/* Open source (link-sourced signals only) */}
-                {onOpenIntentSource && canOpenSource && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onOpenIntentSource(intent);
-                    }}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-black hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-all"
-                    title="Open Source"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
-                )}
               </div>
             </div>
           </div>

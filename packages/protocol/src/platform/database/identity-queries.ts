@@ -98,7 +98,6 @@ export interface DatabaseIdentityQueries {
    *   payload: action.payload,
    *   confidence: action.score / 100,
    *   inferenceType: 'explicit',
-   *   sourceType: 'discovery_form'
    * });
    * ```
    */

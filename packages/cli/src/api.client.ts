@@ -5,7 +5,7 @@
  * common error patterns (401, network errors).
  */
 
-import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, IntentPreparation, AgentConversation, AgentAnswerMessage, SelectedAgent, ProfileConfirmation, OnboardingCompletion, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationDetail, NegotiationTurnAction, NegotiationListOptions, EnrichmentResult } from "./types";
+import type { UserProfile, UserData, Intent, IntentSource, ListIntentsOptions, IntentListResult, IntentPreparation, AgentConversation, AgentAnswerMessage, SelectedAgent, ProfileConfirmation, OnboardingCompletion, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationDetail, NegotiationTurnAction, NegotiationListOptions, EnrichmentResult } from "./types";
 
 export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult } from "./types";
 
@@ -159,13 +159,14 @@ export class ApiClient {
    * @returns The created signal id and the networks it was linked to.
    * @throws Error on auth failure, a refused description, or network error.
    */
-  async createIntent(description: string, networkIds?: string[], preparationReceipt?: string): Promise<{ intentId: string; networkIds: string[] }> {
+  async createIntent(description: string, networkIds?: string[], preparationReceipt?: string, source: IntentSource = {}): Promise<{ intentId: string; networkIds: string[] } & Required<IntentSource>> {
     const res = await this.post("/api/intents", {
       description,
       ...(networkIds?.length ? { networkIds } : {}),
       ...(preparationReceipt ? { preparationReceipt } : {}),
+      ...source,
     });
-    return (await res.json()) as { intentId: string; networkIds: string[] };
+    return (await res.json()) as { intentId: string; networkIds: string[] } & Required<IntentSource>;
   }
 
   /** Prepare the same draft and recovery answers used by the macOS intake. */
@@ -180,15 +181,19 @@ export class ApiClient {
   }
 
   /**
-   * Rewrite a signal's description.
+   * Rewrite a signal's description, its source fields, or both.
    *
    * @param intentId - Full UUID or short prefix.
-   * @param description - The rewritten text.
+   * @param description - The rewritten text, or undefined to keep it.
+   * @param source - Source fields to set; null clears one.
    * @throws Error on auth failure, a refused description, or network error.
    */
-  async updateIntent(intentId: string, description: string): Promise<{ intentId: string; description: string }> {
-    const res = await this.patch(`/api/intents/${encodeURIComponent(intentId)}`, { description });
-    return (await res.json()) as { intentId: string; description: string };
+  async updateIntent(intentId: string, description?: string, source: IntentSource = {}): Promise<{ intentId: string; description: string } & Required<IntentSource>> {
+    const res = await this.patch(`/api/intents/${encodeURIComponent(intentId)}`, {
+      ...(description !== undefined ? { description } : {}),
+      ...source,
+    });
+    return (await res.json()) as { intentId: string; description: string } & Required<IntentSource>;
   }
 
   /**

@@ -47,6 +47,8 @@ export interface ParsedCommand {
   questionId?: string;
   answers?: { key: string; value: string }[];
   receipt?: string;
+  sourceType?: string;
+  sourceId?: string;
   name?: string;
   intro?: string;
   location?: string;
@@ -135,7 +137,7 @@ export function parseArgs(args: string[]): ParsedCommand {
     if (["--api-url", "--app-url", "--status", "--limit", "--prompt", "-p", "--objective", "--title"].includes(arg)
       && (!args[i + 1] || args[i + 1].startsWith("--"))) throw new Error(`Missing value for ${arg}`);
 
-    if (["--query", "--state", "--action", "--message", "--intent-id", "--question-id", "--receipt", "--name", "--intro", "--location", "--statuses", "--answer", "--social"].includes(arg)) {
+    if (["--query", "--state", "--action", "--message", "--intent-id", "--question-id", "--receipt", "--source-type", "--source-id", "--name", "--intro", "--location", "--statuses", "--answer", "--social"].includes(arg)) {
       const value = args[i + 1];
       if (value === undefined || value.startsWith("--")) throw new Error(`Missing value for ${arg}`);
       switch (arg) {
@@ -146,6 +148,8 @@ export function parseArgs(args: string[]): ParsedCommand {
         case "--intent-id": result.intentId = value; break;
         case "--question-id": result.questionId = value; break;
         case "--receipt": result.receipt = value; break;
+        case "--source-type": result.sourceType = value; break;
+        case "--source-id": result.sourceId = value; break;
         case "--name": result.name = value; break;
         case "--intro": result.intro = value; break;
         case "--location": result.location = value; break;

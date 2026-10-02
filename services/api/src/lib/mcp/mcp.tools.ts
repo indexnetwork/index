@@ -90,8 +90,13 @@ function conciseIntent(intent: Awaited<ReturnType<typeof intentService.listInten
     updatedAt: intent.updatedAt,
     networks: intent.networks,
     waitingOpportunityCount: intent.waitingOpportunityCount,
+    sourceType: intent.sourceType,
+    sourceId: intent.sourceId,
   };
 }
+
+const SOURCE_FIELDS_HINT = ' Optional sourceType and sourceId are client-owned strings Index stores and returns unchanged, for mapping your own records (such as an inferred ambient intent) to this signal.';
+const sourceFieldSchema = z.string().max(1024).nullable().optional();
 
 async function resolveIntent(intentId: string, principal: McpPrincipal) {
   const resolved = await intentService.resolveId(intentId, principal.userId);
@@ -269,14 +274,16 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'create_intent',
     {
-      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create a signal for the authenticated owner, sharing it only with eligible networks.' + LINK_HINT,
+      description: 'Use when the owner wants to meet, find, hire, fund, collaborate with, or be introduced to people. Prepare and create a signal for the authenticated owner, sharing it only with eligible networks.' + SOURCE_FIELDS_HINT + LINK_HINT,
       inputSchema: z.object({
         description: z.string().max(65_536).refine((value) => value.trim().length > 0, 'description is required'),
         networkIds: z.array(z.string().uuid()).optional(),
+        sourceType: sourceFieldSchema,
+        sourceId: sourceFieldSchema,
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    ({ description, networkIds }) => runTool('create_intent', principal, async () => {
+    ({ description, networkIds, sourceType = null, sourceId = null }) => runTool('create_intent', principal, async () => {
       let prepared;
       try {
         prepared = await intentService.prepare(principal.userId, { payload: description });
@@ -300,11 +307,12 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           prepared.payload,
           networkIds ?? [],
           prepared.preparationReceipt,
+          { sourceType, sourceId },
         );
         const url = appLink('i', created.id);
         const label = signalLabel(prepared.payload);
         return mcpSuccess(
-          { intentId: created.id, url, networkIds: created.networkIds },
+          { intentId: created.id, url, networkIds: created.networkIds, sourceType, sourceId },
           `${mdLink(label, url)} — created`,
         );
       } catch (error) {
@@ -328,17 +336,22 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'update_intent',
     {
-      description: 'Change only the description of one owned, non-archived signal.' + LINK_HINT,
+      description: 'Change the description or source fields of one owned, non-archived signal. Omitted fields stay as they are; null clears a source field.' + SOURCE_FIELDS_HINT + LINK_HINT,
       inputSchema: z.object({
         intentId: z.string().trim().min(1),
-        description: z.string().trim().min(1).max(65_536),
+        description: z.string().trim().min(1).max(65_536).optional(),
+        sourceType: sourceFieldSchema,
+        sourceId: sourceFieldSchema,
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    ({ intentId, description }) => runTool('update_intent', principal, async () => {
+    ({ intentId, description, sourceType, sourceId }) => runTool('update_intent', principal, async () => {
+      if (description === undefined && sourceType === undefined && sourceId === undefined) {
+        return mcpError('invalid_input', 'description, sourceType, or sourceId is required.');
+      }
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
-      const outcome = await intentService.update(resolved.id, principal.userId, description);
+      const outcome = await intentService.update(resolved.id, principal.userId, description, { sourceType, sourceId });
       if (outcome.kind === 'not_found') return mcpError('intent_not_found', 'Intent not found.');
       if (outcome.kind === 'archived') return mcpError('intent_archived', 'Archived intents cannot be updated.');
       if (outcome.kind === 'rejected') return mcpError('intent_rejected', outcome.detail);
@@ -347,7 +360,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       const fallbackUrl = appLink('i', resolved.id);
       return mcpSuccess(
         { intent: concise ?? { id: resolved.id, url: fallbackUrl, description } },
-        concise ? intentLine(concise) : `${mdLink(signalLabel(description), fallbackUrl)} — updated`,
+        concise ? intentLine(concise) : `${mdLink(signalLabel(description ?? 'Signal'), fallbackUrl)} — updated`,
       );
     }),
   );

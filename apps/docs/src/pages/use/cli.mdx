@@ -118,6 +118,7 @@ index intent list --archived --limit 5         # Include archived ones
 index intent list --query "CTO"                # Match description and summary
 index intent show <id>                         # Full details
 index intent update <id> "revised text"        # Rewrite and reprocess
+index intent update <id> --source-id <ref>     # Set a client-owned source field
 index intent pause <id>                        # Hold its agent; resume <id> restarts it
 index intent archive <id>                      # Stop it taking part in discovery
 index intent networks <id>                     # Networks it is shared in
@@ -128,6 +129,11 @@ index intent remove-from-network <id> <network-id>
 `intent prepare` either lists the questions to answer, by label, or prints the
 prepared payload with the exact `index intent create '<payload>' --receipt
 '<receipt>'` command that creates it. Answer with `--answer 'label=reply'`.
+
+`--source-type` and `--source-id` are optional strings you own. Index stores
+and returns them unchanged, so a client can map its own records, such as an
+inferred ambient intent, to the published intent. Pass an empty value on
+`intent update` to clear one.
 
 ```ansi [Terminal]
 // [!include ~/snippets/cli/intent-prepare.ansi]
@@ -296,6 +302,7 @@ a profile without asking the person you act for.
 | `--question-id <id>` | `conversation send agent` |
 | `--answer <key=value>` | `intent prepare` (field label), `conversation answer agent` (question ID). Repeatable |
 | `--receipt <token>` | `intent create` |
+| `--source-type <s>`, `--source-id <s>` | `intent create`, `intent update`. Optional client-owned strings |
 | `--name`, `--intro`, `--location` | `profile update` |
 | `--social <label=value>` | `profile update`. Repeatable; replaces all links |
 | `--prompt <text>`, `-p` | `network create`, `network update`, `network request-update` |

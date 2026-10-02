@@ -48,7 +48,8 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             payload,
             confidence: 1.0,
             inferenceType: 'explicit',
-            sourceType: 'discovery_form',
+            sourceType: state.sourceType ?? null,
+            sourceId: state.sourceId ?? null,
             embedding: flatEmbedding,
             semanticEntropy: metadata?.semanticEntropy ?? null,
             referentialAnchor: metadata?.referentialAnchor ?? null,
@@ -110,6 +111,8 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             felicityClarity: matchedVerifiedIntent?.verification?.felicity_scores.clarity ?? null,
             intentMode: updateAction.intentMode ?? null,
             speechActType: toSpeechActType(matchedVerifiedIntent?.verification?.classification),
+            ...(state.sourceType !== undefined ? { sourceType: state.sourceType } : {}),
+            ...(state.sourceId !== undefined ? { sourceId: state.sourceId } : {}),
             ...(state.expectedIntentFingerprint !== undefined ? {
               expectedIntentFingerprint: state.expectedIntentFingerprint,
               expectedIntentUserId: state.userId,

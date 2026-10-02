@@ -69,6 +69,13 @@ Intent and opportunity IDs accept a UUID or the 8-character short ID.
 saving. A draft that is not ready comes back as `intent_needs_revision`, with
 feedback, and nothing is created. Omit `networkIds` to share the intent in
 every network you belong to, or pass network UUIDs to share it only in those.
+
+`create_intent` and `update_intent` also take optional `sourceType` and
+`sourceId` strings that you own. Index stores and returns them unchanged on
+intent results, so a client can map its own records, such as an inferred
+ambient intent, to the published intent. `update_intent` can change them
+without a new description; `null` clears one.
+
 Successful create, list, get, update, pause, resume, and archive results lead
 with a markdown line whose signal name is already linked to `/i/<id>`, then the
 JSON (including a `url` field). Opportunity tools do the same for people
