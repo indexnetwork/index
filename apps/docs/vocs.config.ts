@@ -51,11 +51,11 @@ export default defineConfig({
     {
       text: 'Use',
       items: [
-        { text: 'CLI', link: '/use/cli' },
-        { text: 'MCP', link: '/use/mcp' },
-        { text: 'ChatGPT', link: '/use/chatgpt' },
         { text: 'macOS', link: '/use/mac' },
-        { text: 'Hermes Agent', link: '/use/hermes' },
+        { text: 'ChatGPT', link: '/use/chatgpt' },
+        { text: 'Hermes', link: '/use/hermes' },
+        { text: 'MCP', link: '/use/mcp' },
+        { text: 'CLI', link: '/use/cli' },
       ],
     },
     {
