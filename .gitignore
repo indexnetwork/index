@@ -28,6 +28,7 @@ GEMINI.md
 .cursorrules
 .gemini
 .mcp.json
+!packages/claude-plugin/.mcp.json
 .opencode
 .pi
 .pi-subagents

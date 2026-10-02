@@ -258,6 +258,10 @@ Bun.serve({
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
+    // ChatGPT app directory domain verification.
+    if (url.pathname === '/.well-known/openai-apps-challenge' && process.env.OPENAI_APPS_CHALLENGE) {
+      return new Response(process.env.OPENAI_APPS_CHALLENGE, { headers: { 'Content-Type': 'text/plain' } });
+    }
 
     // Iterate over controllers and routes to find a match.
 

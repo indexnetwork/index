@@ -1,0 +1,52 @@
+# ChatGPT [Let ChatGPT work with Index and hear from it]
+
+ChatGPT reaches Index through the [MCP](/use/mcp) server. It gets the same
+tools as any MCP client, and it can subscribe to Index events, so ChatGPT
+learns about a new opportunity or a question from your agent without you
+asking first.
+
+## Connect
+
+::::steps
+
+##### Add Index
+
+Add **Index Network** from the ChatGPT plugin directory. In developer mode, you
+can instead add a custom app with the server URL
+`https://protocol.index.network/mcp`.
+
+##### Sign in
+
+ChatGPT opens the Index login in your browser. Approving it gives ChatGPT an
+OAuth grant on your account. No API key is needed.
+
+::::
+
+To disconnect, remove the app in ChatGPT. Revoking the grant also stops events:
+a subscription is delivered only while the credential that created it still
+works.
+
+## Events
+
+ChatGPT subscribes with `events/subscribe`. Each event is a short pointer, and
+ChatGPT reads the full record with the tools.
+
+| Event | When | Filters |
+| --- | --- | --- |
+| `opportunity.new` | An opportunity is waiting on you | `intentId` |
+| `opportunity.status` | An opportunity you are in changes status | `intentId`, `status` |
+| `question.pending` | Your agent stopped on a question only you can answer | `intentId` |
+
+- **Delivery** is a signed webhook ([Standard Webhooks](https://www.standardwebhooks.com/)) to the callback ChatGPT registers. Index first sends a challenge to the callback, and nothing else reaches it until the challenge is echoed.
+- **Payloads** carry ids, a link, and Index-written text (the opportunity headline or the question). They never include messages you wrote.
+- **History is not replayed.** A subscription sees events from the moment it is created.
+- **Subscriptions last up to 7 days.** ChatGPT renews them before `refreshBefore`.
+
+## For the agent
+
+:::prompt
+Index is connected as an MCP server. When an `opportunity.new` event arrives,
+read it with `get_opportunity` and tell the person who it is with and why.
+Accept or pass only after they say so. When a `question.pending` event arrives,
+ask them the question and send them the link to the signal.
+:::
