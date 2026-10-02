@@ -402,7 +402,12 @@ function withoutSupersededLooking(messages) {
     if (closed) drop.add(index);
   });
   messages.forEach((message, index) => {
-    if (message.kind !== "progress" || message.text !== "Working out who to reach") return;
+    if (message.kind !== "progress") return;
+    if (message.text === "Warming up") {
+      if (messages.some((other, otherIndex) => otherIndex > index && other.kind === "progress")) drop.add(index);
+      return;
+    }
+    if (message.text !== "Working out who to reach") return;
     if (traces.some((other, otherIndex) => otherIndex > index && other)) drop.add(index);
   });
   if (!drop.size) return messages;
