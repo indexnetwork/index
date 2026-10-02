@@ -1,6 +1,9 @@
 import LegalPage, { type LegalSection } from "@/app/pages/LegalPage";
 
-const SECTIONS: LegalSection[] = [
+export const TITLE = "Terms of Use";
+export const LEDE = "The agreement between you and Index — how the services may be used and the limits that apply.";
+
+export const SECTIONS: LegalSection[] = [
   {
     id: "acceptance",
     title: "acceptance of terms",
@@ -177,11 +180,7 @@ const SECTIONS: LegalSection[] = [
 
 export default function TermsOfUsePage() {
   return (
-    <LegalPage
-      title="Terms of Use"
-      lede="The agreement between you and Index — how the services may be used and the limits that apply."
-      sections={SECTIONS}
-    />
+    <LegalPage title={TITLE} lede={LEDE} sections={SECTIONS} />
   );
 }
 

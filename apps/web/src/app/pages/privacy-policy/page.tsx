@@ -1,6 +1,9 @@
 import LegalPage, { type LegalSection } from "@/app/pages/LegalPage";
 
-const SECTIONS: LegalSection[] = [
+export const TITLE = "Privacy Policy";
+export const LEDE = "How Index Network handles personal information — what we collect, why, and what choices you have.";
+
+export const SECTIONS: LegalSection[] = [
   {
     id: "overview",
     title: "overview & scope",
@@ -193,11 +196,7 @@ const SECTIONS: LegalSection[] = [
 
 export default function PrivacyPolicyPage() {
   return (
-    <LegalPage
-      title="Privacy Policy"
-      lede="How Index Network handles personal information — what we collect, why, and what choices you have."
-      sections={SECTIONS}
-    />
+    <LegalPage title={TITLE} lede={LEDE} sections={SECTIONS} />
   );
 }
 

@@ -82,9 +82,15 @@ function injectMeta(template: string, meta: PageMeta, pathname: string): string 
   return html;
 }
 
-// The root route also renders the signed-in app, so the marketing copy cannot
-// be prerendered into `#root` the way the blog pages are.
-function injectHomeNoscript(html: string, fragment: string): string {
+// These routes render inside the SPA (the root also renders the signed-in app),
+// so their copy cannot be prerendered into `#root` the way the blog pages are.
+const NOSCRIPT_FRAGMENTS: Record<string, string> = {
+  "/": "noscript-home.html",
+  "/pages/privacy-policy": "noscript-privacy-policy.html",
+  "/pages/terms-of-use": "noscript-terms-of-use.html",
+};
+
+function injectNoscript(html: string, fragment: string): string {
   return html.replace(
     '<div id="root"></div>',
     `<div id="root"></div>\n    <noscript>${fragment}</noscript>`,
@@ -130,10 +136,12 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
   const distDir = options.distDir ?? DEFAULT_DIST;
   const template = options.template ?? readFileSync(join(distDir, "index.html"), "utf-8");
   const metaMap = options.metaMap ?? buildMetaMap(distDir);
-  const homeNoscriptPath = join(distDir, "noscript-home.html");
-  const homeNoscript = existsSync(homeNoscriptPath)
-    ? readFileSync(homeNoscriptPath, "utf-8")
-    : "";
+  const noscript = Object.fromEntries(
+    Object.entries(NOSCRIPT_FRAGMENTS).flatMap(([route, file]) => {
+      const path = join(distDir, file);
+      return existsSync(path) ? [[route, readFileSync(path, "utf-8")]] : [];
+    }),
+  );
 
   return (req: Request): Response => {
     const reqUrl = new URL(req.url);
@@ -188,7 +196,7 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
 
     const meta = resolvePageMeta(metaMap, pathname);
     let html = meta ? injectMeta(template, meta, pathname) : template;
-    if (pathname === "/" && homeNoscript) html = injectHomeNoscript(html, homeNoscript);
+    if (noscript[pathname]) html = injectNoscript(html, noscript[pathname]);
     if (suppressPreview) html = stripPreviewSurface(html);
 
     return new Response(req.method === "HEAD" ? null : html, {

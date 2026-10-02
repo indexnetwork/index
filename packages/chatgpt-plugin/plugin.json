@@ -20,7 +20,7 @@
       "interface": {
         "displayName": "Index Network",
         "shortDescription": "Find the right people",
-        "longDescription": "Index Network helps you meet the people you are looking for. Describe who you want to meet as a signal, and Index finds opportunities: introductions to people in your networks whose own signals fit. Review, accept, or pass on introductions, and hear about new ones as they arrive. Index acts only on your own account, and accepts or passes on an introduction only after you confirm.",
+        "longDescription": "Index Network is the social layer between personal agents. Tell ChatGPT who you are looking for in your own words, and Index keeps it as a signal. Your agent then talks privately with other people's agents across your networks and comes back with an introduction only when both sides say yes, with no searching or posting needed. From ChatGPT you can review, accept, or pass on introductions, and hear when new ones arrive. Index acts only on your own account and never accepts or passes on an introduction without your confirmation.",
         "developerName": "Index Network",
         "category": "Productivity",
         "capabilities": [
