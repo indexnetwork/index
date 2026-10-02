@@ -24,10 +24,7 @@ const VAGUE_SIGNAL = "I want a job.";
 /** In-memory host implementing the ports the intent graph uses. No profile text reaches the model. */
 class FakeIntentHost {
   readonly intents: Array<CreatedIntent & { archivedAt: Date | null; embedding?: number[] }> = [];
-  readonly followUpJobs: Array<
-    | { kind: "generate"; data: Parameters<IntentFollowUp["onIntentSaved"]>[0] }
-    | { kind: "delete"; data: Parameters<IntentFollowUp["onIntentArchived"]>[0] }
-  > = [];
+  readonly followUpJobs: Array<{ kind: "generate"; data: Parameters<IntentFollowUp["onIntentSaved"]>[0] }> = [];
   readonly embedded: string[] = [];
   readonly links: Array<{ intentId: string; networkId: string }> = [];
   private idCounter = 0;
@@ -69,9 +66,12 @@ class FakeIntentHost {
       return intent;
     },
     archiveIntent: async (id: string) => {
-      const intent = this.intents.find((candidate) => candidate.id === id && !candidate.archivedAt);
+      const intent = this.intents.find((candidate) => candidate.id === id);
       if (!intent) return { success: false, error: "Intent not found" };
-      intent.archivedAt = new Date();
+      intent.archivedAt ??= new Date();
+      for (let i = this.links.length - 1; i >= 0; i--) {
+        if (this.links[i].intentId === id) this.links.splice(i, 1);
+      }
       return { success: true };
     },
     assignIntentToNetworkIfMember: async (_userId: string, intentId: string, networkId: string) => {
@@ -79,8 +79,6 @@ class FakeIntentHost {
       this.links.push({ intentId, networkId });
       return { kind: "assigned" as const };
     },
-    deleteIntentNetworkAssociations: async () => {},
-    expireOpportunitiesByIntentActor: async () => 0,
   } as unknown as IntentGraphDatabase;
 
   readonly embedder: EmbeddingGenerator = {
@@ -94,7 +92,6 @@ class FakeIntentHost {
     scoreIntent: async () => {},
     onIntentResumed: async () => {},
     onIntentSaved: async (data) => { this.followUpJobs.push({ kind: "generate", data }); },
-    onIntentArchived: async (data) => { this.followUpJobs.push({ kind: "delete", data }); },
   };
 
   graph() {
@@ -179,10 +176,11 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
 
     // Delete: expire without inference or verification.
     const deleted = await graph.invoke({ ...scoped, archive: true, targetIntentIds: ["intent-1"] });
-    show("delete intent-1", "(no content; explicit target)", { executionResults: deleted.executionResults, followUpJob: host.followUpJobs.at(-1) });
+    show("delete intent-1", "(no content; explicit target)", { executionResults: deleted.executionResults, links: host.links });
     expect(deleted.executionResults).toEqual([{ actionType: "expire", success: true, intentId: "intent-1", error: undefined }]);
     expect(host.intents[0].archivedAt).toBeInstanceOf(Date);
-    expect(host.followUpJobs.at(-1)).toEqual({ kind: "delete", data: { intentId: "intent-1" } });
+    expect(host.links).toEqual([]);
+    expect(host.followUpJobs).toHaveLength(2);
 
     const readAfterDelete = await graph.invoke({ ...scoped });
     show("read after delete", `network ${NETWORK_ID}`, { intents: readAfterDelete.readResult?.intents });

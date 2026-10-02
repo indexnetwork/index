@@ -76,7 +76,7 @@ export interface UserDatabase {
   /** Update an intent owned by the authenticated user. */
   updateIntent(intentId: string, data: UpdateIntentData): Promise<CreatedIntent | null>;
 
-  /** Archive an intent owned by the authenticated user. */
+  /** Atomically archive an owned intent and its associations, live opportunities, and open negotiations. See Database.archiveIntent. */
   archiveIntent(intentId: string): Promise<ArchiveResult>;
 
   /** Find similar intents among the user's own intents (for deduplication). */

@@ -1,10 +1,10 @@
-import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, or, ownIntentsListWhere, sql } from './database.shared';
+import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, or, ownIntentsListWhere, asc, sql } from './database.shared';
 
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { publishUserEvent, publishUserInvalidation, type IntentLifecycleWireStatus } from '../lib/user-events';
-import { recordOpportunityEvent } from '../lib/opportunity/opportunity.command';
+import { applyOpportunityEvent } from '../lib/opportunity/opportunity.command';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 
 
@@ -397,51 +397,61 @@ export class IntentDatabaseAdapter {
     };
   }
 
+  /**
+   * Archive a signal and end its live opportunities in one transaction.
+   * @param intentId - Signal to archive; ownership is enforced by the caller.
+   * @returns Success only after all required writes commit, or an error after rollback.
+   */
   async archiveIntent(intentId: string): Promise<ArchiveResultShape> {
+    let committed;
     try {
-      const [archived] = await db.update(schema.intents)
-        .set({ archivedAt: new Date(), updatedAt: new Date() })
-        .where(eq(schema.intents.id, intentId))
-        .returning({
-          id: schema.intents.id,
-          userId: schema.intents.userId,
-          updatedAt: schema.intents.updatedAt,
-        });
-      if (!archived) return { success: false, error: 'Intent not found' };
-      await publishIntentLifecycle(archived.userId, archived.id, 'ARCHIVED', archived.updatedAt.getTime());
-      return { success: true };
+      committed = await db.transaction(async (tx) => {
+        const [intent] = await tx.select().from(schema.intents)
+          .where(eq(schema.intents.id, intentId)).for('update');
+        if (!intent) return null;
+
+        const now = new Date(Math.max(Date.now(), intent.updatedAt.getTime() + 1));
+        const [archived] = await tx.update(schema.intents)
+          .set({ archivedAt: intent.archivedAt ?? now, updatedAt: intent.archivedAt ? intent.updatedAt : now })
+          .where(eq(schema.intents.id, intentId))
+          .returning({ id: schema.intents.id, userId: schema.intents.userId, updatedAt: schema.intents.updatedAt });
+        if (!archived) throw new Error('Intent disappeared during archival');
+        await tx.delete(schema.intentNetworks).where(eq(schema.intentNetworks.intentId, intentId));
+
+        const candidates = await tx.select({ id: schema.opportunities.id }).from(schema.opportunities)
+          .where(sql`${schema.opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`)
+          .orderBy(asc(schema.opportunities.id));
+        const candidateIds = candidates.map((row) => row.id);
+        const expiredIds: string[] = [];
+        if (candidateIds.length > 0) {
+          // Negotiation turns use the same intent → negotiation → opportunity order.
+          await tx.select({ id: schema.negotiations.id }).from(schema.negotiations)
+            .where(inArray(schema.negotiations.opportunityId, candidateIds))
+            .orderBy(asc(schema.negotiations.id)).for('update');
+          for (const { id } of candidates) {
+            const [current] = await tx.select({ status: schema.opportunities.status }).from(schema.opportunities)
+              .where(eq(schema.opportunities.id, id)).for('update');
+            if (!current || (current.status !== 'negotiating' && current.status !== 'pending')) continue;
+            const applied = await applyOpportunityEvent(tx, id, { type: 'expired', actorUserId: null });
+            if (!applied.ok) throw new Error(applied.error);
+            expiredIds.push(id);
+          }
+          await negotiationDatabaseAdapter.closeInTransaction(tx, expiredIds);
+        }
+        return { archived, expiredIds };
+      });
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.archiveIntent error', { error: error instanceof Error ? error.message : String(error) });
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
-  }
+    if (!committed) return { success: false, error: 'Intent not found' };
 
-  async deleteIntentNetworkAssociations(intentId: string): Promise<void> {
-    await db.delete(schema.intentNetworks)
-      .where(eq(schema.intentNetworks.intentId, intentId));
-  }
-
-  /**
-   * Expires all non-expired opportunities where the given intent appears in the actors JSONB array.
-   * @param intentId - The intent ID to match inside actors[].intent
-   * @returns The number of opportunities expired
-   */
-  async expireOpportunitiesByIntentActor(intentId: string): Promise<number> {
-    const rows = await db
-      .select({ id: schema.opportunities.id })
-      .from(schema.opportunities)
-      .where(and(
-        sql`${schema.opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`,
-        inArray(schema.opportunities.status, ['negotiating', 'pending']),
-      ));
-    const expiredIds: string[] = [];
-    for (const row of rows) {
-      const applied = await recordOpportunityEvent(row.id, { type: 'expired', actorUserId: null });
-      if (applied.ok) expiredIds.push(row.id);
-    }
-    await negotiationDatabaseAdapter.closeForOpportunities(expiredIds);
+    // Delivery happens only after commit and outside the rollback error boundary.
+    const { archived, expiredIds } = committed;
+    await publishIntentLifecycle(archived.userId, archived.id, 'ARCHIVED', archived.updatedAt.getTime());
+    await negotiationDatabaseAdapter.notifyOpportunities(expiredIds);
     for (const id of expiredIds) emitOpportunityTransitionBestEffort({ id, status: 'expired' });
-    return expiredIds.length;
+    return { success: true };
   }
 
   async getIntentsInNetworkForMember(userId: string, networkNameOrId: string): Promise<ActiveIntentRow[]> {

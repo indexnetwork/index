@@ -562,7 +562,7 @@ export class IntentController {
     const result = await intentService.archive(resolved.id, user.id);
 
     if (!result.success) {
-      return Response.json({ error: result.error }, { status: 404 });
+      return Response.json({ error: result.error }, { status: result.status ?? 500 });
     }
 
     return Response.json({ success: true });
