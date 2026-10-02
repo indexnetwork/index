@@ -91,7 +91,7 @@ export interface ArchiveResultShape {
   success: boolean;
   error?: string;
 }
-export type IntentLifecycleStatus = 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
+export type IntentLifecycleStatus = 'active' | 'paused';
 
 export interface IntentListRow {
   id: string;
@@ -210,14 +210,14 @@ export async function persistProfileIdentityToUser(userId: string, profile: User
 
 /**
  * Canonical lifecycle predicate for intents eligible to drive discovery.
- * Legacy null status remains discoverable alongside explicit `ACTIVE` rows.
+ * Legacy null status remains discoverable alongside explicit `active` rows.
  *
  * @returns A Drizzle predicate matching active lifecycle states.
  */
 export function activeIntentLifecycleWhere() {
   return or(
     isNull(schema.intents.status),
-    eq(schema.intents.status, 'ACTIVE'),
+    eq(schema.intents.status, 'active'),
   );
 }
 

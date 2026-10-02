@@ -77,11 +77,21 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
 
 /**
  * Shown while the browser hands the link to the app. The page cannot tell
- * whether the app opened, so it offers a retry and a way on instead of
- * claiming success.
+ * whether the app opened, so it offers a retry plus both ways on: install, or
+ * the web page (`onContinue`). A link with no web page continues at `/`.
  */
 function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: string; onContinue?: () => void }) {
   const mac = app === "mac";
+  const continueBody = (
+    <>
+      <span className="apps-browser-icon" aria-hidden="true">↗</span>
+      <span className="apps-browser-text">
+        <span className="apps-browser-title">Continue on web</span>
+        <span className="apps-browser-sub">Open this page in the browser instead.</span>
+      </span>
+      <span className="apps-browser-cta">Continue →</span>
+    </>
+  );
   return (
     <AppsShell overlay>
       <div className="apps-intro">
@@ -103,16 +113,7 @@ function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: str
         />
       </div>
 
-      {onContinue ? (
-        <button type="button" className="apps-browser" onClick={onContinue}>
-          <span className="apps-browser-icon" aria-hidden="true">↗</span>
-          <span className="apps-browser-text">
-            <span className="apps-browser-title">Continue on web</span>
-            <span className="apps-browser-sub">Open this page in the browser instead.</span>
-          </span>
-          <span className="apps-browser-cta">Continue →</span>
-        </button>
-      ) : (
+      <div className="apps-exits">
         <a className="apps-browser" href={DOWNLOAD_PATH}>
           <span className="apps-browser-icon" aria-hidden="true">↓</span>
           <span className="apps-browser-text">
@@ -121,7 +122,16 @@ function AppLaunch({ app, href, onContinue }: { app: "mac" | "hermes"; href: str
           </span>
           <span className="apps-browser-cta">Get the apps →</span>
         </a>
-      )}
+        {onContinue ? (
+          <button type="button" className="apps-browser" onClick={onContinue}>
+            {continueBody}
+          </button>
+        ) : (
+          <a className="apps-browser" href="/">
+            {continueBody}
+          </a>
+        )}
+      </div>
     </AppsShell>
   );
 }

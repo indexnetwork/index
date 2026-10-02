@@ -10,7 +10,7 @@ import type { Id } from '../types/common.types';
 export const sourceType = pgEnum('source_type', ['integration', 'discovery_form', 'enrichment']);
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
-export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
+export const intentStatusEnum = pgEnum('intent_status', ['active', 'paused']);
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
@@ -406,7 +406,7 @@ export const intents = pgTable('intents', {
   felicityAuthority: integer('felicity_authority'),
   felicitySincerity: integer('felicity_sincerity'),
   felicityClarity: integer('felicity_clarity'),
-  status: intentStatusEnum('status').default('ACTIVE'),
+  status: intentStatusEnum('status').default('active'),
 }, (table) => [
   index('embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
 ]);

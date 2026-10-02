@@ -30,7 +30,7 @@ index opportunity accept &lt;opportunity-id&gt;</code></pre>
 
 <span class="cli-title">Signal Details</span>
 <span class="cli-dim">────────────────────────────────────────</span>
-Status          <span class="cli-green">ACTIVE</span>
+Status          <span class="cli-green">active</span>
 Summary         Build a secure identity layer for autonomous agents
 Confidence      <span class="cli-green">########</span><span class="cli-dim">-- 82%</span>
 
@@ -44,7 +44,7 @@ Confidence      <span class="cli-green">########</span><span class="cli-dim">-- 
 <span class="cli-title">Negotiation Details</span>
 <span class="cli-dim">────────────────────────────────────────</span>
 Counterparty    Alex Chen
-Outcome         <span class="cli-green">opportunity</span>
+Outcome         <span class="cli-green">agreed</span>
 Your Role       <span class="cli-green">helper</span>
 Turns           <span class="cli-dim">3</span>
 

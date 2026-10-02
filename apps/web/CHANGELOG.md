@@ -14,7 +14,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   account with a Hermes session opens
   `hermes://open/index-network?user=|intent=|o=`. Either way a full-window launch
   screen in the `/download` style says the app is opening, with an OPEN button
-  to retry and "Continue on web" (`/u`, `/i`) or "Get the apps" (`/o`). Other
+  to retry, then "Don't have it yet?" (to `/download`) and "Continue on web".
+  Continue stays on the page for `/u` and `/i`; `/o` has no page, so Continue
+  opens `/`. Other
   signed-in users get the web page
   (`/o` has none, so it gets `/download`); signed-out visitors get
   one Hermes attempt with the download page underneath. Only links opened from

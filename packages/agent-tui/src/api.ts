@@ -54,7 +54,7 @@ export async function connectOwner() {
       parts: [{ kind: "text", text }], metadata: { intentId },
     }),
     sendAnswer: (intentId: string, questionId: string, text: string) => client.conversations.sendAnswers(intentId, [{ questionId, text }]),
-    setSignalStatus: (intentId: string, status: "ACTIVE" | "PAUSED") => client.intents.updateStatus(intentId, status),
+    setSignalStatus: (intentId: string, status: "active" | "paused") => client.intents.updateStatus(intentId, status),
     setOpportunityStatus: (intentId: string, opportunityId: string, status: "accepted" | "rejected") =>
       client.opportunities.updateStatusForIntent(opportunityId, status, intentId),
     events(onEvent: (event: Event) => void): () => void {

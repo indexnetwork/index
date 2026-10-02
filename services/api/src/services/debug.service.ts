@@ -10,7 +10,7 @@ export interface DiscoveryPreflight {
     text: string;
     hasEmbedding: boolean;
     isArchived: boolean;
-    status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
+    status: 'active' | 'paused';
     assignedToNetworks: Array<{ networkId: string; title: string | null }>;
   };
   userNetworks: Array<{ networkId: string; title: string | null }>;
@@ -59,9 +59,9 @@ export interface DiscoveryResult {
 
 /** Raised when the debug runner is asked to discover from an inactive intent. */
 export class DebugIntentDiscoveryBlockedError extends Error {
-  readonly status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
+  readonly status: 'active' | 'paused';
 
-  constructor(status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED') {
+  constructor(status: 'active' | 'paused') {
     super(`Debug discovery requires an active, non-archived intent (current status: ${status})`);
     this.name = 'DebugIntentDiscoveryBlockedError';
     this.status = status;
@@ -72,12 +72,12 @@ export class DebugIntentDiscoveryBlockedError extends Error {
  * Apply production lifecycle admission to debug discovery.
  * @param intent - Intent ownership and lifecycle data.
  * @param userId - Authenticated user requesting discovery.
- * @returns True only for owned, non-archived ACTIVE/legacy-null intents.
+ * @returns True only for owned, non-archived active/legacy-null intents.
  */
 export function isDebugDiscoveryIntentActive(
   intent: {
     userId: string;
-    status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED' | null;
+    status: 'active' | 'paused' | null;
     archivedAt: Date | null;
   } | null,
   userId: string,
@@ -86,7 +86,7 @@ export function isDebugDiscoveryIntentActive(
     intent
     && intent.userId === userId
     && !intent.archivedAt
-    && (intent.status == null || intent.status === 'ACTIVE'),
+    && (intent.status == null || intent.status === 'active'),
   );
 }
 
@@ -202,7 +202,7 @@ export class DebugService {
           text: intent.payload?.slice(0, 120),
           hasEmbedding: intent.hasEmbedding,
           isArchived: !!intent.archivedAt,
-          status: intent.status ?? 'ACTIVE',
+          status: intent.status ?? 'active',
           assignedToNetworks: intentNetworkRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         },
         userNetworks: userNetworkRows.map((r) => ({ networkId: r.networkId, title: r.title })),

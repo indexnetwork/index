@@ -218,9 +218,9 @@ export function startRunner(options: RunnerOptions): Runner {
   async function refresh(): Promise<void> {
     const rows = await client.listIntents();
     const active = new Set<string>();
-    log(`read ${rows.length} signals, ${rows.filter((row) => row.status === "ACTIVE").length} active`);
+    log(`read ${rows.length} signals, ${rows.filter((row) => row.status === "active").length} active`);
     for (const row of rows) {
-      if (row.status !== "ACTIVE") continue;
+      if (row.status !== "active") continue;
       active.add(row.id);
       const known = intents.has(row.id);
       intents.set(row.id, { id: row.id, statement: row.statement });

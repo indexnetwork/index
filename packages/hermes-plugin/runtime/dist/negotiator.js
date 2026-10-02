@@ -98,7 +98,7 @@ class IndexClient {
     return intents.map((intent) => ({
       id: intent.id,
       statement: intent.payload,
-      status: intent.archivedAt ? "ARCHIVED" : intent.status ?? "ACTIVE"
+      status: intent.archivedAt ? "archived" : intent.status ?? "active"
     }));
   }
   async discover(intentId, query, limit) {
@@ -1540,9 +1540,9 @@ function startRunner(options) {
   async function refresh() {
     const rows = await client.listIntents();
     const active = new Set;
-    log(`read ${rows.length} signals, ${rows.filter((row) => row.status === "ACTIVE").length} active`);
+    log(`read ${rows.length} signals, ${rows.filter((row) => row.status === "active").length} active`);
     for (const row of rows) {
-      if (row.status !== "ACTIVE")
+      if (row.status !== "active")
         continue;
       active.add(row.id);
       const known = intents.has(row.id);

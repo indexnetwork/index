@@ -34,7 +34,7 @@ function signalLabel(text: string | null | undefined): string {
 }
 
 function intentLine(intent: ReturnType<typeof conciseIntent>): string {
-  const state = intent.status === 'ACTIVE' ? '' : ` (${intent.status.toLowerCase()})`;
+  const state = intent.status === 'active' ? '' : ` (${intent.status.toLowerCase()})`;
   return `${mdLink(signalLabel(intent.summary ?? intent.description), intent.url)} — ${intent.waitingOpportunityCount} waiting${state}`;
 }
 
@@ -362,7 +362,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     ({ intentId }) => runTool('pause_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
-      const outcome = await intentService.transitionStatus(resolved.id, principal.userId, 'PAUSED');
+      const outcome = await intentService.transitionStatus(resolved.id, principal.userId, 'paused');
       if (outcome.kind !== 'success') return intentTransitionError(outcome)!;
       const { url, link } = await linkedIntent(outcome.id, principal.userId);
       return mcpSuccess(
@@ -382,7 +382,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
     ({ intentId }) => runTool('resume_intent', principal, async () => {
       const resolved = await resolveIntent(intentId, principal);
       if ('error' in resolved) return resolved.error;
-      const outcome = await intentService.transitionStatus(resolved.id, principal.userId, 'ACTIVE');
+      const outcome = await intentService.transitionStatus(resolved.id, principal.userId, 'active');
       if (outcome.kind !== 'success') return intentTransitionError(outcome)!;
       const { url, link } = await linkedIntent(outcome.id, principal.userId);
       return mcpSuccess(

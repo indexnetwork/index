@@ -175,7 +175,7 @@ export class ApiClient {
   }
 
   /** Pause or resume without archiving the signal. */
-  async updateIntentStatus(id: string, status: "ACTIVE" | "PAUSED"): Promise<void> {
+  async updateIntentStatus(id: string, status: "active" | "paused"): Promise<void> {
     await this.patch(`/api/intents/${encodeURIComponent(id)}/status`, { status });
   }
 

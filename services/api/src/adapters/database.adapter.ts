@@ -293,7 +293,7 @@ export function createSystemDatabase(
         .filter((pair): pair is { r: (typeof results)[0]; intent: NonNullable<(typeof intents)[0]> } =>
           pair.intent != null &&
           !pair.intent.archivedAt &&
-          (pair.intent.status == null || pair.intent.status === 'ACTIVE')
+          (pair.intent.status == null || pair.intent.status === 'active')
         )
         .map(({ r, intent }): SimilarIntent => ({
           id: intent.id,

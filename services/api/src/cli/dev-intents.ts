@@ -63,8 +63,8 @@ export async function readResetCounts(sql: postgres.Sql | postgres.TransactionSq
       )) AS agent_conversations,
       (SELECT count(*)::int FROM conversation_metadata WHERE metadata ? 'matchProvenance') AS match_provenance,
       (SELECT count(*)::int FROM intents WHERE archived_at IS NULL
-        AND (status IS NULL OR status IN ('ACTIVE', 'PAUSED'))
-        AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL)
+        AND (status IS NULL OR status IN ('active', 'paused'))
+        AND (status IS DISTINCT FROM 'paused' OR first_discovery_succeeded_at IS NOT NULL)
       ) AS intents_to_reset
   `;
   return row as Counts;
@@ -76,10 +76,10 @@ export async function resetReplay(sql: postgres.Sql): Promise<void> {
     await acquireLock(tx, RESET_LOCK);
     await acquireLock(tx, REPLAY_LOCK);
     const before = await readResetCounts(tx);
-    await tx`UPDATE intents SET status = 'PAUSED', first_discovery_succeeded_at = NULL,
+    await tx`UPDATE intents SET status = 'paused', first_discovery_succeeded_at = NULL,
       updated_at = greatest(now(), updated_at + interval '1 millisecond')
-      WHERE archived_at IS NULL AND (status IS NULL OR status IN ('ACTIVE', 'PAUSED'))
-        AND (status IS DISTINCT FROM 'PAUSED' OR first_discovery_succeeded_at IS NOT NULL)`;
+      WHERE archived_at IS NULL AND (status IS NULL OR status IN ('active', 'paused'))
+        AND (status IS DISTINCT FROM 'paused' OR first_discovery_succeeded_at IS NOT NULL)`;
     await tx`DELETE FROM agent_sessions`;
     await tx`DELETE FROM conversations c WHERE EXISTS (
       SELECT 1 FROM conversation_participants p WHERE p.conversation_id = c.id AND p.participant_type = 'agent'
@@ -104,7 +104,7 @@ export interface ReplayIntent { id: string; userId: string }
 export async function replayCandidates(sql: postgres.Sql | postgres.TransactionSql): Promise<ReplayIntent[]> {
   const candidates = await sql<ReplayIntent[]>`
     SELECT i.id, i.user_id AS "userId" FROM intents i
-    WHERE i.status = 'PAUSED' AND i.archived_at IS NULL AND EXISTS (
+    WHERE i.status = 'paused' AND i.archived_at IS NULL AND EXISTS (
       SELECT 1 FROM intent_networks a
       JOIN networks n ON n.id = a.network_id AND n.deleted_at IS NULL
       JOIN network_members m ON m.network_id = n.id AND m.user_id = i.user_id AND m.deleted_at IS NULL
@@ -112,7 +112,7 @@ export async function replayCandidates(sql: postgres.Sql | postgres.TransactionS
     ) ORDER BY i.id`;
   const [counts] = await sql`SELECT count(*)::int AS total,
     count(*) FILTER (WHERE archived_at IS NOT NULL)::int AS archived,
-    count(*) FILTER (WHERE status = 'PAUSED' AND archived_at IS NULL)::int AS paused FROM intents`;
+    count(*) FILTER (WHERE status = 'paused' AND archived_at IS NULL)::int AS paused FROM intents`;
   console.log('[dev-intents] Cohort:', JSON.stringify({ ...counts, eligible: candidates.length, withoutNetwork: counts.paused - candidates.length }));
   return candidates;
 }
@@ -204,7 +204,7 @@ export async function resumeReplay(limit: number): Promise<void> {
       ]);
       const graph = new Intents({ database: intentDatabaseAdapter, followUp: intentIndexing }).createGraph();
       const service = new IntentService({ intentGraph: graph });
-      const result = await runReplay(candidates, limit, ({ id, userId }) => service.transitionStatus(id, userId, 'ACTIVE'), stop.signal);
+      const result = await runReplay(candidates, limit, ({ id, userId }) => service.transitionStatus(id, userId, 'active'), stop.signal);
       const remaining = connectionLost ? null : (await replayCandidates(control)).length;
       console.log('[dev-intents] Replay result:', JSON.stringify({ ...result, remaining, interrupted: stop.signal.aborted }));
       if (connectionLost) throw new Error('Replay lost its control connection; remaining intents were not activated.');

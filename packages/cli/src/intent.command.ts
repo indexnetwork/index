@@ -128,7 +128,7 @@ export async function handleIntent(
     case "pause":
     case "resume": {
       if (!options.intentId) throw new Error(`Usage: index intent ${subcommand} <id>`);
-      const status = subcommand === "pause" ? "PAUSED" : "ACTIVE";
+      const status = subcommand === "pause" ? "paused" : "active";
       await client.updateIntentStatus(options.intentId, status);
       if (options.json) console.log(JSON.stringify({ intentId: options.intentId, status }));
       else output.success(`Intent ${status.toLowerCase()}.`);

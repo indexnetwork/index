@@ -11,7 +11,7 @@ An intent is what you are looking for or can offer, in your own words. These rou
 | `POST` | `/api/intents/list` | optional `q`, `limit`, `page`, `archived` |
 | `GET` | `/api/intents/:id` | |
 | `PATCH` | `/api/intents/:id` | `description` |
-| `PATCH` | `/api/intents/:id/status` | `status`: `ACTIVE` or `PAUSED` |
+| `PATCH` | `/api/intents/:id/status` | `status`: `active` or `paused` |
 | `PATCH` | `/api/intents/:id/archive` | |
 | `GET` | `/api/intents/:id/networks` | |
 | `POST` | `/api/intents/:id/networks` | `networkId` |
@@ -79,9 +79,9 @@ Omit `networkIds`, or send `[]`, to share the new intent in every network you be
 
 ## List and update
 
-`POST /api/intents/list` returns `{ "intents", "pagination" }`. `q` matches the description and the summary. `archived: true` includes archived intents. Each intent carries `id`, `payload`, `summary`, `status`, `createdAt`, `updatedAt`, and `archivedAt`.
+`POST /api/intents/list` returns `{ "intents", "pagination" }`. `q` matches the description and the summary. `archived: true` includes archived intents. Each intent carries `id`, `payload`, `summary`, `status`, `createdAt`, `updatedAt`, and `archivedAt`. `status` is `active` or `paused`. A missing status means `active`. Removal sets `archivedAt` and leaves `status` as it was.
 
-`PATCH /api/intents/:id` replaces the description. `PATCH …/status` pauses (`PAUSED`) or resumes (`ACTIVE`). An archived intent refuses a status change with 409. `PATCH …/archive` stops the intent taking part in discovery.
+`PATCH /api/intents/:id` replaces the description. `PATCH …/status` pauses (`paused`) or resumes (`active`). An archived intent refuses a status change with 409. `PATCH …/archive` sets `archivedAt`. The lifecycle event then sends `archived`; the list payload does not.
 
 `GET /api/intents/:id/networks` returns `{ "networkIds" }`.
 

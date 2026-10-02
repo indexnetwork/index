@@ -96,7 +96,7 @@ $ index intent show <intent-id>
 
 Signal Details
 ────────────────────────────────────────
-Status          ACTIVE
+Status          active
 Summary         Build a secure identity layer for autonomous agents
 Confidence      ########-- 82%
 
@@ -113,7 +113,7 @@ $ index negotiation show <negotiation-id>
 Negotiation Details
 ────────────────────────────────────────
 Counterparty    Alex Chen
-Outcome         opportunity
+Outcome         agreed
 Your Role       helper
 Turns           3
 

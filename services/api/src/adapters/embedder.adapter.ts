@@ -187,7 +187,7 @@ export class EmbedderAdapter {
       inArray(intentNetworks.networkId, filter.networkScope),
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
       isNull(intents.archivedAt),
-      or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
+      or(isNull(intents.status), eq(intents.status, 'active')),
       isNull(schema.users.deletedAt),
       isNull(schema.networkMembers.deletedAt),
       isNull(schema.networks.deletedAt),
@@ -247,7 +247,7 @@ export class EmbedderAdapter {
 
     const baseConditions = [
       isNull(intents.archivedAt),
-      or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
+      or(isNull(intents.status), eq(intents.status, 'active')),
       isNull(schema.users.deletedAt),
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];

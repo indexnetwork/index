@@ -555,7 +555,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const next = !paused;
     setPaused(next);
     if (live && client && intentId) {
-      client.intents.updateStatus(intentId, next ? "PAUSED" : "ACTIVE")
+      client.intents.updateStatus(intentId, next ? "paused" : "active")
         .then(() => {
           if (patchIntentStatus) patchIntentStatus(intentId, next ? "paused" : "active");
         })

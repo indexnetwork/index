@@ -270,8 +270,8 @@ export interface IntentRecord extends CreatedIntent {
   sourceType?: string | null;
   /** Source ID for provenance */
   sourceId?: string | null;
-  /** Lifecycle admission state; null is a legacy ACTIVE row. */
-  status?: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED' | null;
+  /** Lifecycle admission state; null is a legacy active row. */
+  status?: 'active' | 'paused' | null;
 }
 
 /**
@@ -292,14 +292,14 @@ export interface ArchiveResult {
   error?: string;
 }
 
-/** An intent's admission lifecycle status; null/legacy rows are ACTIVE. */
-export type IntentLifecycleStatus = 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
+/** An intent's admission lifecycle status; null/legacy rows are active. */
+export type IntentLifecycleStatus = 'active' | 'paused';
 
 /**
- * Result of an atomic ACTIVE/PAUSED lifecycle transition.
+ * Result of an atomic active/paused lifecycle transition.
  */
 export type TransitionLifecycleResult =
-  | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
+  | { kind: 'success'; id: string; status: 'active' | 'paused'; changed: boolean; lifecycleVersionMs: number }
   | { kind: 'not_found' }
   | { kind: 'scope_violation' }
   | { kind: 'stale' }
