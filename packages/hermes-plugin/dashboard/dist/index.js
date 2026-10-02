@@ -5756,7 +5756,7 @@
           intents: prev.intents.map(function (intent) {
             if (intent.id !== intentId) return intent;
             const counts = intent.statusCounts || {};
-            const status = lifecycle === "PAUSED" ? "paused"
+            const status = lifecycle === "paused" ? "paused"
               : counts.accepted ? "matched"
                 : counts.negotiating ? "negotiating" : "live";
             return Object.assign({}, intent, { lifecycleStatus: lifecycle, status: status });
@@ -5768,11 +5768,11 @@
     function togglePauseIntent(intentId, paused) {
       if (!intentId) return;
       setActionError(null);
-      applyIntentLifecycle(intentId, paused ? "ACTIVE" : "PAUSED");
+      applyIntentLifecycle(intentId, paused ? "active" : "paused");
       fetchPluginJSON(API + "/intents/" + encodeURIComponent(intentId) + "/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: paused ? "ACTIVE" : "PAUSED" }),
+        body: JSON.stringify({ status: paused ? "active" : "paused" }),
       })
         .then(function (payload) {
           if (!payload || payload.success === false) {
@@ -5781,7 +5781,7 @@
           load();
         })
         .catch(function (err) {
-          applyIntentLifecycle(intentId, paused ? "PAUSED" : "ACTIVE");
+          applyIntentLifecycle(intentId, paused ? "paused" : "active");
           setActionError(err && err.message ? err.message : String(err));
         });
     }
@@ -6098,7 +6098,7 @@
       setSummary(function (prev) {
         if (!prev) return prev;
         const rest = (prev.intents || []).filter(function (intent) { return intent.id !== intentId; });
-        const row = { id: intentId, title: description, lifecycleStatus: "ACTIVE", status: "live", pendingCount: 0 };
+        const row = { id: intentId, title: description, lifecycleStatus: "active", status: "live", pendingCount: 0 };
         return Object.assign({}, prev, { intents: [row].concat(rest) });
       });
       selectIntent(intentId);

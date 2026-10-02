@@ -175,7 +175,7 @@ export class HostedAgent {
         break;
       case 'intent.lifecycle':
         // A resumed signal is worth a think pass; pausing and removing are not.
-        if (intentId && status === 'ACTIVE') this.run(this.wake(userId, intentId));
+        if (intentId && status === 'active') this.run(this.wake(userId, intentId));
         break;
       default:
         break;
@@ -206,7 +206,7 @@ export class HostedAgent {
    */
   private async activeIntent(userId: string, intentId: string): Promise<Intent | null> {
     const intent = await intentService.getById(intentId, userId);
-    if (!intent || intent.archivedAt || intent.status !== 'ACTIVE') return null;
+    if (!intent || intent.archivedAt || intent.status !== 'active') return null;
     return { id: intent.id, statement: intent.payload };
   }
 

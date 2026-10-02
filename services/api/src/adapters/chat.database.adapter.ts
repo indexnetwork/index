@@ -1306,7 +1306,7 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * List the current member's ACTIVE (non-archived) intents assigned to a
+   * List the current member's active (non-archived) intents assigned to a
    * network, for the /networks overview tab. Unlike getNetworkIntentsForMember
    * (network-wide, capped at 50, then filtered by the caller in JS, so a member
    * in a busy network can lose their own intents past the cap), this is an
@@ -2501,7 +2501,7 @@ export class ChatDatabaseAdapter {
         updatedAt: schema.intents.updatedAt,
       }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
       if (!before || before.userId !== userId) return { kind: 'not_found' as const };
-      if (before.archivedAt || before.status === 'FULFILLED' || before.status === 'EXPIRED' || before.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      if (before.archivedAt || before.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
         return { kind: 'stale' as const };
       }
       const updatedAt = new Date(Math.max(Date.now(), before.updatedAt.getTime() + 1));
@@ -2596,7 +2596,7 @@ export class ChatDatabaseAdapter {
         AND i.user_id != ${excludeUserId}
         AND nm.deleted_at IS NULL
         AND n.deleted_at IS NULL
-        AND (i.status = 'ACTIVE' OR i.status IS NULL)
+        AND (i.status = 'active' OR i.status IS NULL)
         AND i.archived_at IS NULL
         AND i.embedding IS NOT NULL
         AND u.deleted_at IS NULL

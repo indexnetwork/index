@@ -149,7 +149,7 @@ function isUniqueViolation(error: unknown): boolean {
 function liveIntentWhere() {
   return and(
     isNull(intents.archivedAt),
-    or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
+    or(isNull(intents.status), eq(intents.status, 'active')),
   );
 }
 

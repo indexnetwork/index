@@ -165,7 +165,7 @@ auth_login = _load_module(f"{_runtime_package()}.dashboard_auth_login", _DASHBOA
 def _call_read_intents() -> dict[str, Any]:
     """Fetch all of the caller's non-archived intents across pages over REST `POST /intents/list`.
 
-    This is the Mac app's intent source: it includes PAUSED intents and carries each intent's
+    This is the Mac app's intent source: it includes paused intents and carries each intent's
     lifecycle `status`, which the pause/resume control needs.
     """
     all_intents: list[dict[str, Any]] = []
@@ -656,12 +656,12 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
         or _text(intent.get("summary"))
         or "Untitled intent"
     )
-    lifecycle = _text(intent.get("status"), "ACTIVE").upper()
+    lifecycle = _text(intent.get("status"), "active").lower()
     return {
         "id": intent_id,
         "title": title,
         "lifecycleStatus": lifecycle,
-        "status": "paused" if lifecycle == "PAUSED" else "live",
+        "status": "paused" if lifecycle == "paused" else "live",
         "pendingCount": _count(intent.get("waitingOpportunityCount")),
     }
 
@@ -709,7 +709,7 @@ def _bootstrap_payload() -> dict[str, Any]:
         for intent in raw_intents
         if isinstance(intent, dict) and _text(intent.get("id"))
     ]
-    intents.sort(key=lambda item: item["lifecycleStatus"] == "PAUSED")
+    intents.sort(key=lambda item: item["lifecycleStatus"] == "paused")
     errors: dict[str, str] = {}
     intents_error = _section_error(intents_payload)
     if intents_error:
@@ -745,7 +745,7 @@ def _build_dashboard(
                 "opportunities": [],
                 "networks": [],
                 "statusCounts": _empty_status_counts(),
-                "lifecycleStatus": "ACTIVE",
+                "lifecycleStatus": "active",
                 "pendingCount": 0,
             }
             intents[intent_id] = existing
@@ -768,7 +768,7 @@ def _build_dashboard(
             or "Untitled intent"
         )
         obj = ensure(intent_id, title)
-        obj["lifecycleStatus"] = _text(intent.get("status"), "ACTIVE").upper()
+        obj["lifecycleStatus"] = _text(intent.get("status"), "active").lower()
         # Row badge: opportunities awaiting the user, taken verbatim from the
         # server list count so every surface (Hermes web/desktop, mac app, web
         # app) shows the same number.
@@ -842,7 +842,7 @@ def _build_dashboard(
         # (apps/mac/api/mappers.mjs) hardcodes matches/pipeline to zero, so the
         # "matched"/"negotiating" branches of signalStatus never fire outside
         # demo data — real rows are only ever paused or live.
-        intent["status"] = "paused" if intent["lifecycleStatus"] == "PAUSED" else "live"
+        intent["status"] = "paused" if intent["lifecycleStatus"] == "paused" else "live"
         totals["intents"] += 1
         totals["opportunities"] += actionable_opportunity_count
         totals["totalOpportunities"] += total_opportunity_count
@@ -852,7 +852,7 @@ def _build_dashboard(
 
     # Mac-app shelf order: active signals first, paused sink to the bottom
     # (stable, so server order is kept within each group).
-    ordered_intents.sort(key=lambda item: item["lifecycleStatus"] == "PAUSED")
+    ordered_intents.sort(key=lambda item: item["lifecycleStatus"] == "paused")
 
     return {
         "intents": ordered_intents,
@@ -1584,7 +1584,7 @@ def start_chat(
     return result
 
 
-_INTENT_STATUSES = {"ACTIVE", "PAUSED"}
+_INTENT_STATUSES = {"active", "paused"}
 
 
 @full_router.post("/intents/{intent_id}/status")
@@ -1596,9 +1596,9 @@ def set_intent_status(
     intent_id = _text(intent_id)
     if not intent_id:
         return {"success": False, "error": "An intent id is required."}
-    status = _text(body.get("status")).upper() if isinstance(body, dict) else ""
+    status = _text(body.get("status")).lower() if isinstance(body, dict) else ""
     if status not in _INTENT_STATUSES:
-        return {"success": False, "error": "status must be one of: ACTIVE, PAUSED."}
+        return {"success": False, "error": "status must be one of: active, paused."}
     payload = tools._api_request("PATCH", f"/intents/{quote(intent_id, safe='')}/status", {"status": status})
     if payload.get("success") is False:
         return payload

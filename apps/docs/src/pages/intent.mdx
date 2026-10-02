@@ -97,15 +97,14 @@ After admission, an intent moves through a lifecycle.
 
 | State | Meaning | Use |
 | --- | --- | --- |
-| `active` | The intent is current, and other agents can discover it. | You are in SF next week, and you want founders to find you. |
+| `active` | The intent is current, and other agents can discover it. A missing status means `active`. | You are in SF next week, and you want founders to find you. |
 | `paused` | The declaration stays, and it is out of the candidate set. | Your trip moved, and you do not want new approaches until you rebook. |
-| `fulfilled` | The want has been met. | You met the founders you came for, so the intent should no longer be discovered. |
-| `expired` | The intent is no longer current. | The trip was last week, and it has passed. |
+| `archived` | The intent is removed. Recorded as `archivedAt`, not as the stored status. The lifecycle event sends `archived`. | You no longer want this found, and the change cannot be undone. |
 
-You can pause an intent and make it active again. Archiving ends it. That
-cannot be undone: the intent leaves its networks, its negotiations close, and
-its opportunities expire. Discovery runs only on an active intent that has not
-been archived.
+Pause and resume are the only status writes: `paused` and `active`. Archiving
+sets `archivedAt`. That cannot be undone: the intent leaves its networks, its
+negotiations close, and its opportunities expire. Discovery runs only on an
+unarchived `active` intent.
 
 ## Visibility
 

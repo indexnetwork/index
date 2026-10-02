@@ -54,7 +54,7 @@ export interface ExecutionResult {
 export interface TransitionIntentAction {
   type: 'transition';
   id: string;
-  status: 'ACTIVE' | 'PAUSED';
+  status: 'active' | 'paused';
 }
 
 /** Every action kind the executor can carry out. */
@@ -66,7 +66,7 @@ export type IntentGraphAction =
 
 /** Outcome of a `transition` action, mirroring the adapter's discriminated result plus the enqueue-failure compensation case. */
 export type TransitionOutcome =
-  | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
+  | { kind: 'success'; id: string; status: 'active' | 'paused'; changed: boolean; lifecycleVersionMs: number }
   | { kind: 'not_found' }
   | { kind: 'scope_violation' }
   | { kind: 'stale' }
@@ -135,7 +135,7 @@ export const IntentGraphState = Annotation.Root({
   }),
 
   /** Transition route: pause/resume the single id in `targetIntentIds`. Requires `targetIntentIds`. */
-  status: Annotation<'ACTIVE' | 'PAUSED' | undefined>({
+  status: Annotation<'active' | 'paused' | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

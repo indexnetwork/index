@@ -172,7 +172,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
           });
 
           let outcome: TransitionOutcome;
-          if (dbResult.kind !== 'success' || dbResult.status === 'PAUSED') {
+          if (dbResult.kind !== 'success' || dbResult.status === 'paused') {
             outcome = dbResult;
           } else {
             try {
@@ -192,7 +192,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
               if (!dbResult.changed) {
                 outcome = { kind: 'enqueue_failed', id: dbResult.id, status: dbResult.status, lifecycleVersionMs: dbResult.lifecycleVersionMs };
               } else {
-                let authoritative: { status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED'; lifecycleVersionMs: number } | null = null;
+                let authoritative: { status: 'active' | 'paused'; lifecycleVersionMs: number } | null = null;
                 try {
                   authoritative = await deps.database.compensateFailedResume({
                     intentId: transitionAction.id,
@@ -210,7 +210,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
                 outcome = {
                   kind: 'enqueue_failed',
                   id: dbResult.id,
-                  status: (authoritative?.status ?? dbResult.status) as 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED',
+                  status: authoritative?.status ?? dbResult.status,
                   lifecycleVersionMs: authoritative?.lifecycleVersionMs ?? dbResult.lifecycleVersionMs,
                 };
               }

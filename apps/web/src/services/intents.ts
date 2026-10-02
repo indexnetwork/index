@@ -1,7 +1,7 @@
 import type { Intent, PaginatedResponse, APIResponse } from '../types';
 
-export type IntentLifecycleStatus = 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
-export type MutableIntentLifecycleStatus = Extract<IntentLifecycleStatus, 'ACTIVE' | 'PAUSED'>;
+export type IntentLifecycleStatus = 'active' | 'paused';
+export type MutableIntentLifecycleStatus = Extract<IntentLifecycleStatus, 'active' | 'paused'>;
 export type IntentDetail = Intent & { warming?: boolean; networks?: Array<{ id: string; title: string }> };
 
 export interface IntentStatusResult {
@@ -12,7 +12,7 @@ export interface IntentStatusResult {
 }
 
 function isMutableIntentLifecycleStatus(value: unknown): value is MutableIntentLifecycleStatus {
-  return value === 'ACTIVE' || value === 'PAUSED';
+  return value === 'active' || value === 'paused';
 }
 
 function parseIntentStatusResponse(value: unknown): IntentStatusResult {

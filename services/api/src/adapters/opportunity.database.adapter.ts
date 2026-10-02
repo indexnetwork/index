@@ -170,7 +170,7 @@ export class OpportunityDatabaseAdapter {
             eq(schema.intents.id, eligibility.triggerIntentId),
             eq(schema.intents.userId, eligibility.ownerUserId),
             isNull(schema.intents.archivedAt),
-            or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+            or(isNull(schema.intents.status), eq(schema.intents.status, 'active')),
           ))
           .for('share');
         if (!ownedIntent) return null;
@@ -313,7 +313,7 @@ export class OpportunityDatabaseAdapter {
             eq(schema.intentNetworks.networkId, binding.networkId),
           ))),
           isNull(schema.intents.archivedAt),
-          eq(schema.intents.status, 'ACTIVE'),
+          eq(schema.intents.status, 'active'),
         ))
         .for('share');
       const activeAssignedIntentKeys = new Set(activeAssignedIntents.map((intent) =>
@@ -441,7 +441,7 @@ export class OpportunityDatabaseAdapter {
               eq(schema.intents.id, eligibility.triggerIntentId),
               eq(schema.intents.userId, eligibility.ownerUserId),
               isNull(schema.intents.archivedAt),
-              or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+              or(isNull(schema.intents.status), eq(schema.intents.status, 'active')),
             ))
             .for('share');
           if (!ownedIntent) return false;
@@ -834,7 +834,7 @@ export class OpportunityDatabaseAdapter {
             eq(schema.intents.id, eligibility.triggerIntentId),
             eq(schema.intents.userId, eligibility.ownerUserId),
             isNull(schema.intents.archivedAt),
-            or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+            or(isNull(schema.intents.status), eq(schema.intents.status, 'active')),
           ))
           .for('share');
         if (!ownedIntent) return null;

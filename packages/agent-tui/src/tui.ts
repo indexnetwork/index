@@ -267,13 +267,13 @@ export async function runTui(owner: Owner): Promise<void> {
   async function toggleSignal() {
     if (!signal || busy) return;
     const current = signal;
-    const next = current.status === "paused" ? "ACTIVE" : "PAUSED";
+    const next = current.status === "paused" ? "active" : "paused";
     busy = true; notice = `Updating signal…`; error = ""; render();
     try {
       await owner.setSignalStatus(current.id, next);
       if (signal?.id !== current.id) return;
-      current.status = next === "ACTIVE" ? "active" : "paused";
-      notice = next === "ACTIVE" ? "Signal resumed. Discovery can continue." : "Signal paused. Discovery is on hold.";
+      current.status = next;
+      notice = next === "active" ? "Signal resumed. Discovery can continue." : "Signal paused. Discovery is on hold.";
       signals = signals.map((entry) => entry.id === current.id ? current : entry);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause);
@@ -311,7 +311,7 @@ export async function runTui(owner: Owner): Promise<void> {
     const title = signal?.title || "No signal selected";
     const maxTitle = Math.max(12, renderer.terminalWidth - 12);
     header.content = ` INDEX  /  ${owner.name}  /  ${host}\n Signal: ${title.slice(0, maxTitle)}${title.length > maxTitle ? "…" : ""}`;
-    banner.content = loadingSignals ? " ● Loading signals…" : !signal ? " ● No signal · Ctrl+X to choose." : signal.status === "paused" ? " ● PAUSED · Agent on hold · Ctrl+R resume" : " ● ACTIVE · Updates every 5s · Ctrl+R pause";
+    banner.content = loadingSignals ? " ● Loading signals…" : !signal ? " ● No signal · Ctrl+X to choose." : signal.status === "paused" ? " ● paused · Agent on hold · Ctrl+R resume" : " ● active · Updates every 5s · Ctrl+R pause";
     banner.fg = signal?.status === "paused" || !signal ? colors.question : colors.success;
     const wide = renderer.terminalWidth >= 115;
     inboxPane.box.visible = true;

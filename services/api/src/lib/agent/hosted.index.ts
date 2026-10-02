@@ -107,14 +107,14 @@ export class HostedIndex implements Index {
 
   /**
    * @param limit - How many signals to read.
-   * @returns The owner's signals. `ARCHIVED` is derived from `archivedAt`, which is how removal is recorded.
+   * @returns The owner's signals. `archived` is derived from `archivedAt`, which is how removal is recorded.
    */
   async listIntents(limit = INTENT_LIMIT): Promise<IntentSummary[]> {
     const { intents } = await intentService.listIntents(this.userId, { limit });
     return intents.map((intent) => ({
       id: intent.id,
       statement: intent.payload,
-      status: (intent.archivedAt ? 'ARCHIVED' : intent.status ?? 'ACTIVE') as IntentStatus,
+      status: (intent.archivedAt ? 'archived' : intent.status ?? 'active') as IntentStatus,
     }));
   }
 

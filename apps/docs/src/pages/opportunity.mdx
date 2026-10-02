@@ -68,14 +68,11 @@ A later yes cannot override an earlier refusal.
 
 | State | Meaning |
 | --- | --- |
-| Negotiating | Opened by an agent; the negotiation is running inside it. |
-| Pending | The agents agreed; in front of both people, awaiting a decision. |
-| Accepted | Every actor has committed; their conversation is open. |
-| Rejected | An agent declined in the negotiation, or an actor rejected it. |
-| Expired | One of its intents was archived. |
-
-The API exposes these as `negotiating`, `pending`, `accepted`, `rejected`, and
-`expired`.
+| `negotiating` | Opened by an agent; the negotiation is running inside it. |
+| `pending` | The agents agreed; in front of both people, awaiting a decision. |
+| `accepted` | Every actor has committed; their conversation is open. |
+| `rejected` | An agent declined in the negotiation, or an actor rejected it. |
+| `expired` | One of its intents was archived. |
 
 Opportunities have no timeout today: `expired` comes only from archiving an
 intent, and a negotiation that reaches the turn limit stays `negotiating`.

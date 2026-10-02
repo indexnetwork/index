@@ -23,20 +23,18 @@ interface BaseIntent {
    */
   waitingOpportunityCount?: number;
   /**
-   * Lifecycle status (ACTIVE|PAUSED|FULFILLED|EXPIRED). A badge renders only for
-   * non-default (non-ACTIVE) values; undefined or ACTIVE renders nothing — the
-   * enum is vestigial today, so this is forward-looking. See EDG-53.
+   * Lifecycle status (`active` or `paused`). A badge renders only for
+   * `paused`. Undefined or `active` renders nothing.
    */
   status?: string;
 }
 
 /**
  * Renders an intent's lifecycle status as a badge, but only when it is a
- * non-default value. ACTIVE (the schema default) and undefined render nothing,
- * so today this is invisible and purely forward-looking. See EDG-53.
+ * `paused`. `active` (the schema default) and undefined render nothing.
  */
 function StatusBadge({ status }: { status?: string }) {
-  if (!status || status.toUpperCase() === 'ACTIVE') return null;
+  if (!status || status === 'active') return null;
   return (
     <span className="flex items-center gap-1 text-xs text-purple-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-purple-50 border border-purple-100 capitalize">
       {status.toLowerCase()}
@@ -70,7 +68,7 @@ export default function IntentList<T extends BaseIntent>({
 }: IntentListProps<T>) {
   // Live (active) signals first, then newest-first within each group.
   const sortedIntents = useMemo(() => {
-    const isLive = (i: T) => !i.status || i.status.toUpperCase() === 'ACTIVE';
+    const isLive = (i: T) => !i.status || i.status === 'active';
     return [...intents].sort((a, b) => {
       const liveDiff = Number(isLive(b)) - Number(isLive(a));
       if (liveDiff !== 0) return liveDiff;
@@ -113,9 +111,9 @@ export default function IntentList<T extends BaseIntent>({
         const isFresh = newIntentIds.has(intent.id);
         const isSelectedSource = selectedIntentIds.has(intent.id);
         const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
-        // ACTIVE (or the schema default / unset) means the intent is live and
+        // active (or the schema default / unset) means the intent is live and
         // being worked in the background.
-        const isActive = !intent.status || intent.status.toUpperCase() === 'ACTIVE';
+        const isActive = !intent.status || intent.status === 'active';
 
         return (
           <div

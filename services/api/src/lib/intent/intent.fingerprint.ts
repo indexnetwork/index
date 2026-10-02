@@ -43,7 +43,7 @@ export function canApplyExpectedIntentUpdate(
   return Boolean(expectedIntentUserId)
     && intent.userId === expectedIntentUserId
     && intent.archivedAt === null
-    && (intent.status === null || intent.status === 'ACTIVE')
+    && (intent.status === null || intent.status === 'active')
     && computeIntentFingerprint(intent.payload, intent.summary) === expectedIntentFingerprint;
 }
 

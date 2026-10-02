@@ -26,14 +26,8 @@ const RADAR_BUCKETS: Array<{ key: RadarBucket; label: string }> = [
 ];
 
 function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus {
-  if (
-    status === "PAUSED" ||
-    status === "FULFILLED" ||
-    status === "EXPIRED"
-  ) {
-    return status;
-  }
-  return "ACTIVE";
+  if (status === "paused") return status;
+  return "active";
 }
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
@@ -373,7 +367,7 @@ function IntentDetail() {
       } catch {
         if (!isCurrentRequest()) return;
         showError(
-          status === "PAUSED"
+          status === "paused"
             ? "Failed to pause signal"
             : "Failed to resume signal",
         );
@@ -484,7 +478,7 @@ function IntentDetail() {
                     {title}
                   </h1>
                   <div className="flex shrink-0 items-center gap-0.5">
-                    {lifecycleStatus === "ACTIVE" && (
+                    {lifecycleStatus === "active" && (
                       <ActionChip
                         icon={
                           lifecycleBusy
@@ -493,12 +487,12 @@ function IntentDetail() {
                         }
                         title="Pause"
                         tone="text-amber-500 hover:text-amber-600 hover:bg-amber-50"
-                        onClick={() => void handleSetIntentStatus("PAUSED")}
+                        onClick={() => void handleSetIntentStatus("paused")}
                         disabled={lifecycleBusy}
                         busy={lifecycleBusy}
                       />
                     )}
-                    {lifecycleStatus === "PAUSED" && (
+                    {lifecycleStatus === "paused" && (
                       <ActionChip
                         icon={
                           lifecycleBusy
@@ -507,7 +501,7 @@ function IntentDetail() {
                         }
                         title="Resume"
                         tone="text-green-600 hover:text-green-700 hover:bg-green-50"
-                        onClick={() => void handleSetIntentStatus("ACTIVE")}
+                        onClick={() => void handleSetIntentStatus("active")}
                         disabled={lifecycleBusy}
                         busy={lifecycleBusy}
                       />
@@ -526,7 +520,7 @@ function IntentDetail() {
                   </div>
                 </div>
                 <div className="mt-2.5 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
-                  {lifecycleStatus === "ACTIVE" && (
+                  {lifecycleStatus === "active" && (
                     <>
                       <span className="inline-flex items-center gap-1.5 rounded border border-green-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-green-600">
                         <span className="relative flex h-1.5 w-1.5">
@@ -538,7 +532,7 @@ function IntentDetail() {
                       <span>background matching on — new matches appear in Radar below</span>
                     </>
                   )}
-                  {lifecycleStatus === "PAUSED" && (
+                  {lifecycleStatus === "paused" && (
                     <>
                       <span className="inline-flex items-center rounded border border-amber-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-amber-600">
                         paused
@@ -547,22 +541,6 @@ function IntentDetail() {
                         background discovery is paused; existing Radar matches
                         remain available
                       </span>
-                    </>
-                  )}
-                  {lifecycleStatus === "FULFILLED" && (
-                    <>
-                      <span className="inline-flex items-center rounded border border-gray-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-gray-600">
-                        fulfilled
-                      </span>
-                      <span>this signal has been fulfilled</span>
-                    </>
-                  )}
-                  {lifecycleStatus === "EXPIRED" && (
-                    <>
-                      <span className="inline-flex items-center rounded border border-gray-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-gray-600">
-                        expired
-                      </span>
-                      <span>this signal has expired</span>
                     </>
                   )}
                 </div>
