@@ -103,7 +103,7 @@ The package defines interfaces — your application provides the concrete implem
 | `Embedder` | Vector embeddings for semantic search |
 | `Scraper` | Web content extraction |
 | `Cache` / `OpportunityCache` | Presentation/result caching |
-| `IntentFollowUp` | Lifecycle follow-up (`scoreIntent`, `onIntentSaved`, `onIntentArchived`, `onIntentResumed`) |
+| `IntentFollowUp` | Lifecycle follow-up (`scoreIntent`, `onIntentSaved`, `onIntentResumed`) |
 | `ProfileEnricher` | Enrich profiles from external sources |
 | `NegotiationDatabase` | Current negotiation state and atomic commit with the supplied protocol decision function |
 | `NegotiationContextDatabase` | Read-only negotiation turn log, for opportunity presentation (folded into `CompositeDatabase`) |
@@ -163,9 +163,9 @@ existing host transaction. Network/broadcast scope remains a protocol rule
 exposed through `resolveDiscoveryNetworkScope`, with context permissions handled
 by `renderDiscoveryNetworkContext`.
 
-`IntentFollowUp` therefore has no matching work to schedule: `onIntentSaved`,
-`onIntentArchived`, and `onIntentResumed` exist for hosts that want them and may
-do nothing. `scoreIntent` remains independent metadata work.
+`IntentFollowUp` therefore has no matching work to schedule: `onIntentSaved`
+and `onIntentResumed` exist for hosts that want them and may do nothing.
+`scoreIntent` remains independent metadata work.
 
 ## Intents
 
@@ -210,6 +210,20 @@ must run scoring as best-effort background work, apply only metadata while the
 owner and payload still match, and leave the saved record usable on negative
 verdicts or failures. Authentication, nonempty text, length limits, and network
 membership remain the host's responsibility.
+
+### Atomic archival host contract
+
+`Database.archiveIntent` must atomically archive the intent, delete its
+network associations, expire referencing negotiating/pending opportunities, and
+close their open negotiations. Accepted, rejected, and expired outcomes remain
+unchanged. Inspect locked current state and serialize conflicting actions with
+database transactions and row locks, not request arrival order or archive priority.
+Any required write failure must roll back the whole operation and return failure
+or throw, allowing retry. Repeating a successful archive must be safe.
+Notifications run only after commit; delivery failures must not report rollback.
+Expired opportunities stay hidden from normal lists but remain explicitly readable
+through existing reads. The graph no longer orchestrates separate cleanup, and
+there is no `onIntentArchived` follow-up hook.
 
 ## Networks
 

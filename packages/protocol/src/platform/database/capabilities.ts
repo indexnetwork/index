@@ -32,8 +32,6 @@ export type CompositeDatabase = Pick<
   | 'createIntent'
   | 'updateIntent'
   | 'archiveIntent'
-  | 'deleteIntentNetworkAssociations'
-  | 'expireOpportunitiesByIntentActor'
   | 'transitionIntentLifecycle'
   | 'compensateFailedResume'
   // Opportunity lifecycle requirements (getProfile already included)
@@ -151,9 +149,6 @@ export type IntentGraphDatabase = Pick<
   | 'getUser'
   // Create action links the new intent to exactly the networks the caller named.
   | 'assignIntentToNetworkIfMember'
-  // Archive action's full cleanup (network associations, referencing opportunities)
-  | 'deleteIntentNetworkAssociations'
-  | 'expireOpportunitiesByIntentActor'
   // Status transition action (pause/resume)
   | 'transitionIntentLifecycle'
   | 'compensateFailedResume'

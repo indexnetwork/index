@@ -34,11 +34,6 @@ export class IntentIndexing implements IntentFollowUp {
     return Promise.resolve();
   }
 
-  /** @returns Immediately. There are no per-signal search artifacts to clean up. */
-  onIntentArchived(): Promise<unknown> {
-    return Promise.resolve();
-  }
-
   /** @returns Immediately. A resumed signal is searched on demand, not on resume. */
   onIntentResumed(): Promise<unknown> {
     return Promise.resolve();

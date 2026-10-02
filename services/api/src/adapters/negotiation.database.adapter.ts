@@ -486,6 +486,17 @@ export class NegotiationDatabaseAdapter {
           ));
           if (selected) throw new RuntimeConflictError();
         }
+        // Match archival's order: intents, negotiation, then opportunity.
+        // Read only the immutable seat bindings before taking any row locks.
+        const [seats] = await tx.select({
+          initiatorIntentId: negotiations.initiatorIntentId,
+          responderIntentId: negotiations.responderIntentId,
+        }).from(negotiations).where(eq(negotiations.opportunityId, opportunityId)).limit(1);
+        if (seats) {
+          await tx.select({ id: intents.id }).from(intents)
+            .where(inArray(intents.id, [seats.initiatorIntentId, seats.responderIntentId]))
+            .orderBy(asc(intents.id)).for('share');
+        }
         const [negotiation] = await tx.select().from(negotiations)
           .where(eq(negotiations.opportunityId, opportunityId)).limit(1).for('update');
         if (execution && 'intentId' in execution && negotiation && (negotiation.initiatorUserId === callerUserId ? negotiation.initiatorIntentId : negotiation.responderIntentId) !== execution.intentId) throw new Error('Execution belongs to another intent.');
@@ -591,21 +602,51 @@ export class NegotiationDatabaseAdapter {
    */
   async closeForOpportunities(opportunityIds: string[]): Promise<void> {
     if (opportunityIds.length === 0) return;
-    await db.update(negotiations)
-      .set({ outcome: 'closed', settledAt: new Date(), awaitingUserId: null, updatedAt: new Date() })
+    await db.transaction((tx) => this.closeInTransaction(tx, opportunityIds));
+    await this.notifyOpportunities(opportunityIds);
+  }
+
+  /**
+   * Durably close open negotiations in the caller's transaction, preserving settlements.
+   * @param tx - Transaction holding the affected negotiation locks before opportunity locks.
+   * @param opportunityIds - Opportunities ending underneath these negotiations.
+   * @returns After the closure write, without publishing notifications.
+   */
+  async closeInTransaction(tx: Transaction, opportunityIds: string[]): Promise<void> {
+    if (opportunityIds.length === 0) return;
+    // Standalone bulk closure and archival acquire negotiation locks identically.
+    await tx.select({ id: negotiations.id }).from(negotiations)
+      .where(inArray(negotiations.opportunityId, opportunityIds))
+      .orderBy(asc(negotiations.id)).for('update');
+    const now = new Date();
+    await tx.update(negotiations)
+      .set({ outcome: 'closed', settledAt: now, awaitingUserId: null, updatedAt: now })
       .where(and(
         inArray(negotiations.opportunityId, opportunityIds),
         isNull(negotiations.settledAt),
       ));
-    const affected = await db.select({
-      opportunityId: negotiations.opportunityId,
-      initiatorUserId: negotiations.initiatorUserId, initiatorIntentId: negotiations.initiatorIntentId,
-      responderUserId: negotiations.responderUserId, responderIntentId: negotiations.responderIntentId,
-    }).from(negotiations).where(inArray(negotiations.opportunityId, opportunityIds));
-    await Promise.all(affected.map((row) => publishNegotiationChange([
-      { userId: row.initiatorUserId, intentId: row.initiatorIntentId },
-      { userId: row.responderUserId, intentId: row.responderIntentId },
-    ], row.opportunityId)));
+  }
+
+  /**
+   * Refresh both seats after commit; delivery errors never represent failed writes.
+   * @param opportunityIds - Opportunities whose changes committed.
+   * @returns After best-effort delivery.
+   */
+  async notifyOpportunities(opportunityIds: string[]): Promise<void> {
+    if (opportunityIds.length === 0) return;
+    try {
+      const affected = await db.select({
+        opportunityId: negotiations.opportunityId,
+        initiatorUserId: negotiations.initiatorUserId, initiatorIntentId: negotiations.initiatorIntentId,
+        responderUserId: negotiations.responderUserId, responderIntentId: negotiations.responderIntentId,
+      }).from(negotiations).where(inArray(negotiations.opportunityId, opportunityIds));
+      await Promise.all(affected.map((row) => publishNegotiationChange([
+        { userId: row.initiatorUserId, intentId: row.initiatorIntentId },
+        { userId: row.responderUserId, intentId: row.responderIntentId },
+      ], row.opportunityId)));
+    } catch (error: unknown) {
+      logger.error('Failed to notify negotiations after opportunity changes', { opportunityIds, error: String(error) });
+    }
   }
 
   /** Resolve each row into the shape its reader's seat is allowed to see. */
