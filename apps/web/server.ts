@@ -82,18 +82,22 @@ function injectMeta(template: string, meta: PageMeta, pathname: string): string 
   return html;
 }
 
-// These routes render inside the SPA (the root also renders the signed-in app),
-// so their copy cannot be prerendered into `#root` the way the blog pages are.
+// Static copy for SPA routes, for readers that do not run JavaScript.
 const NOSCRIPT_FRAGMENTS: Record<string, string> = {
   "/": "noscript-home.html",
   "/pages/privacy-policy": "noscript-privacy-policy.html",
   "/pages/terms-of-use": "noscript-terms-of-use.html",
 };
 
-function injectNoscript(html: string, fragment: string): string {
+// Legal text goes inside `#root`, which `createRoot` clears on mount, so text
+// extractors that drop `<noscript>` still read it. The root stays `<noscript>`:
+// signed-in users must not see marketing copy flash before the app renders.
+function injectFragment(html: string, fragment: string, pathname: string): string {
   return html.replace(
     '<div id="root"></div>',
-    `<div id="root"></div>\n    <noscript>${fragment}</noscript>`,
+    pathname === "/"
+      ? `<div id="root"></div>\n    <noscript>${fragment}</noscript>`
+      : `<div id="root">${fragment}</div>`,
   );
 }
 
@@ -196,7 +200,7 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
 
     const meta = resolvePageMeta(metaMap, pathname);
     let html = meta ? injectMeta(template, meta, pathname) : template;
-    if (noscript[pathname]) html = injectNoscript(html, noscript[pathname]);
+    if (noscript[pathname]) html = injectFragment(html, noscript[pathname], pathname);
     if (suppressPreview) html = stripPreviewSurface(html);
 
     return new Response(req.method === "HEAD" ? null : html, {
