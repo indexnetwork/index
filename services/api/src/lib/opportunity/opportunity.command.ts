@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 
 import { admitOpportunityEvent, type OpportunityLogEvent } from '@indexnetwork/protocol';
 
@@ -36,7 +36,16 @@ export async function applyOpportunityEvent(
   const stored = await tx.select({ type: opportunityEvents.type, actorUserId: opportunityEvents.actorUserId })
     .from(opportunityEvents)
     .where(eq(opportunityEvents.opportunityId, opportunityId))
-    .orderBy(asc(opportunityEvents.at), asc(opportunityEvents.id));
+    .orderBy(
+      sql`case ${opportunityEvents.type}
+        when 'opened' then 0
+        when 'agreed' then 1
+        when 'committed' then 2
+        else 3
+      end`,
+      asc(opportunityEvents.at),
+      asc(opportunityEvents.id),
+    );
   const events: OpportunityLogEvent[] = stored.map((row) => ({
     type: row.type,
     actorUserId: row.actorUserId,
