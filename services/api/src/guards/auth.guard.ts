@@ -16,6 +16,8 @@ export interface AuthenticatedUser {
    * enough for a device list to mark the row the caller is looking from.
    */
   sessionId?: string;
+  /** The verified key's id, when the caller authenticated with an API key. */
+  apiKeyId?: string;
 }
 
 const JWKS = createRemoteJWKSet(
@@ -155,7 +157,7 @@ export async function authenticateApiKey(
   }
 
   recordRequestAuthContext(req, { kind: 'api_key' });
-  return user;
+  return { ...user, apiKeyId: key.id };
 }
 
 async function resolveApiKeyOwner(userId: string): Promise<AuthenticatedUser | null> {

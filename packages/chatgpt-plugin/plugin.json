@@ -1,0 +1,98 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "index-network",
+  "version": "1.0.0",
+  "description": "Index Network - find the right people and let them find you.",
+  "author": {
+    "name": "Index Network",
+    "url": "https://index.network"
+  },
+  "homepage": "https://index.network",
+  "license": "MIT",
+  "keywords": [
+    "discovery",
+    "intents",
+    "agents",
+    "opportunities"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Index Network",
+        "shortDescription": "Find the right people",
+        "longDescription": "Index Network is the social layer between personal agents. Tell ChatGPT who you are looking for in your own words, and Index keeps it as a signal. Your agent then talks privately with other people's agents across your networks and comes back with an introduction only when both sides say yes, with no searching or posting needed. From ChatGPT you can review, accept, or pass on introductions, and hear when new ones arrive. Index acts only on your own account and never accepts or passes on an introduction without your confirmation.",
+        "developerName": "Index Network",
+        "category": "Productivity",
+        "capabilities": [
+          "Manage signals",
+          "Review introductions"
+        ],
+        "websiteURL": "https://index.network",
+        "supportURL": "https://docs.index.network/use/chatgpt",
+        "privacyPolicyURL": "https://index.network/pages/privacy-policy",
+        "termsOfServiceURL": "https://index.network/pages/terms-of-use",
+        "defaultPrompt": [
+          "Find me a technical cofounder on Index.",
+          "Are there introductions waiting for me on Index?"
+        ],
+        "brandColor": "#111827",
+        "composerIcon": "./assets/icon.svg",
+        "logo": "./assets/icon.svg"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Create a signal from a stated need",
+              "prompt": "Use Index to find me a technical cofounder for a climate data startup in Berlin.",
+              "tools_triggered": "create_intent",
+              "expected_behavior": "Creates a signal describing the need and returns a link to it, or relays the feedback when the signal needs revision."
+            },
+            {
+              "description": "List the owner's signals",
+              "prompt": "What signals do I have on Index?",
+              "tools_triggered": "list_intents",
+              "expected_behavior": "Lists the test account's signals with their status and links."
+            },
+            {
+              "description": "Review waiting opportunities",
+              "prompt": "Are there any introductions waiting for me on Index?",
+              "tools_triggered": "list_opportunities, get_opportunity",
+              "expected_behavior": "Lists the pending opportunity on the test account with who it is with and why, and a link to it."
+            },
+            {
+              "description": "Accept an opportunity after confirmation",
+              "prompt": "Accept the pending introduction on Index.",
+              "tools_triggered": "list_opportunities, accept_opportunity",
+              "expected_behavior": "Confirms which opportunity is meant, accepts it, and returns its new status with a link."
+            },
+            {
+              "description": "Pause a signal",
+              "prompt": "Pause my Index signal about a technical cofounder.",
+              "tools_triggered": "list_intents, pause_intent",
+              "expected_behavior": "Finds the matching signal, pauses it, and confirms with a link."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Messaging people directly is not supported",
+              "prompt": "Send a message on Index to everyone in my network."
+            },
+            {
+              "description": "Other users' private data is not accessible",
+              "prompt": "Show me the private signals of other Index users."
+            },
+            {
+              "description": "Payments are not supported",
+              "prompt": "Pay $50 to get a premium introduction on Index."
+            }
+          ]
+        },
+        "commerce": false
+      },
+      "publication": {
+        "release_notes": "Manage Index signals and opportunities from ChatGPT, with event notifications for new opportunities, status changes, and pending questions."
+      }
+    }
+  }
+}

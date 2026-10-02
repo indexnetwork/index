@@ -1,8 +1,9 @@
 import { betterAuth } from "better-auth";
-import { magicLink, bearer, jwt, deviceAuthorization } from "better-auth/plugins";
+import { magicLink, bearer, jwt, deviceAuthorization, mcp } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
 import { edgeCity } from "./edge-city.plugin";
+import { mcpConsentSecurity } from "./mcp-consent.plugin";
 
 export const API_URL =
   process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`;
@@ -130,6 +131,18 @@ export function createAuth(deps: AuthDeps) {
         expiresIn: "5m",
         interval: "1s",
         schema: {},
+      }),
+      // MCP clients discover this provider from the server URL. Every grant
+      // needs approval; the companion plugin forces consent and protects both
+      // the consent endpoint and the token exchange server-side.
+      mcpConsentSecurity(WEB_APP_URL),
+      mcp({
+        loginPage: `${WEB_APP_URL}/login`,
+        resource: `${API_URL}/mcp`,
+        oidcConfig: {
+          loginPage: `${WEB_APP_URL}/login`,
+          consentPage: `${WEB_APP_URL}/mcp/consent`,
+        },
       }),
       jwt({
         jwt: {

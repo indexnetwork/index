@@ -384,15 +384,15 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
                   fontSize:34, lineHeight:1.05, letterSpacing:-0.6,
                   margin:0, color:"#000",
                 }}>
-                  find your others.
+                  find your others
                 </h1>
                 <p style={{
                   marginTop:12, color:"#000",
                   fontSize:13, lineHeight:1.5, maxWidth:540,
                   fontFamily:"var(--mac-sans)",
                 }}>
-                  start a signal. your agent takes it to other agents. when both
-                  sides want it, you get the intro.
+                  start a signal by talking to your agent. it negotiates it with the
+                  other agents and makes an intro when both sides are interested.
                 </p>
                 <InviteButton onClick={() => setShowInvite(true)}/>
               </div>

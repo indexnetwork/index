@@ -29,6 +29,7 @@ import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
 import { auth } from './lib/betterauth/auth.instance';
+import { API_URL } from './lib/betterauth/betterauth';
 // Bootstrap crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
 import { authenticateMcpRequest, handleMcpRequest } from './lib/mcp/mcp.server';
@@ -167,7 +168,13 @@ Bun.serve({
         setSpanHttpStatus(401);
         return Response.json(
           { error: 'Unauthorized' },
-          { status: 401, headers: corsHeaders },
+          {
+            status: 401,
+            headers: {
+              ...corsHeaders,
+              'WWW-Authenticate': `Bearer resource_metadata="${API_URL}/.well-known/oauth-protected-resource"`,
+            },
+          },
         );
       }
 
@@ -219,20 +226,30 @@ Bun.serve({
       // The trailing slash matters — a bare `/api/auth/device` prefix would also
       // swallow our own /api/auth/devices list.
       '/api/auth/device/',
+      // MCP OAuth: authorize, token, dynamic registration, and consent actions.
+      '/api/auth/mcp/',
     ];
     // The grant's claim step is the bare `/api/auth/device` with a user_code
     // query, so it is matched exactly rather than by prefix.
+    const isMcpOAuthDiscovery = url.pathname === '/.well-known/oauth-authorization-server'
+      || url.pathname === '/.well-known/oauth-protected-resource'
+      || url.pathname === '/.well-known/oauth-protected-resource/mcp';
     const isBetterAuthRoute = betterAuthPaths.some(p => url.pathname.startsWith(p))
-      || url.pathname === '/api/auth/device';
+      || url.pathname === '/api/auth/device'
+      || isMcpOAuthDiscovery;
     if (isBetterAuthRoute) {
       // better-call strips basePath via `pathname.split(basePath)`, which only works
       // for paths that contain the basePath string. Root-level /.well-known/* paths
       // don't contain "/api/auth" so the split yields a 1-element array → empty path → 404.
       // Rewriting to /api/auth/.well-known/* makes the split work correctly.
+      // Clients append /mcp to the protected-resource path; the plugin serves one document.
       let handlerReq = req;
       if (url.pathname.startsWith('/.well-known/')) {
         const rewritten = new URL(req.url);
-        rewritten.pathname = `/api/auth${url.pathname}`;
+        const discoveryPath = url.pathname === '/.well-known/oauth-protected-resource/mcp'
+          ? '/.well-known/oauth-protected-resource'
+          : url.pathname;
+        rewritten.pathname = `/api/auth${discoveryPath}`;
         handlerReq = new Request(rewritten.toString(), req);
       }
       const res = await auth.handler(handlerReq);
@@ -241,6 +258,10 @@ Bun.serve({
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
+    // ChatGPT app directory domain verification.
+    if (url.pathname === '/.well-known/openai-apps-challenge' && process.env.OPENAI_APPS_CHALLENGE) {
+      return new Response(process.env.OPENAI_APPS_CHALLENGE, { headers: { 'Content-Type': 'text/plain' } });
+    }
 
     // Iterate over controllers and routes to find a match.
 

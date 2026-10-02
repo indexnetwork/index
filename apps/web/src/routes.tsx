@@ -190,6 +190,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/login", () => import("@/app/login/page")),
       },
       {
+        path: "/mcp/consent",
+        lazy: lazyRoute("/mcp/consent", () => import("@/app/mcp/consent/page")),
+      },
+      {
         path: "*",
         lazy: lazyRoute("*", () => import("@/app/not-found")),
       },

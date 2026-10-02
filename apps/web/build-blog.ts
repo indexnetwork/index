@@ -6,6 +6,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { ORIGIN } from "./meta.config";
+import type { LegalSection } from "./src/app/pages/LegalPage";
+import * as privacyPolicy from "./src/app/pages/privacy-policy/page";
+import * as termsOfUse from "./src/app/pages/terms-of-use/page";
 import { parseFrontmatter, transformAssetPaths } from "./src/lib/blog";
 
 const CONTENT_DIR = join(import.meta.dir, "content/blog");
@@ -270,6 +273,21 @@ ${renderRows(listEntries(posts))}
   });
 }
 
+/** Legal page text for the SPA shell's `<noscript>`, so readers without JavaScript see the policy. */
+function renderLegalFragment({ TITLE, LEDE, SECTIONS }: { TITLE: string; LEDE: string; SECTIONS: LegalSection[] }): string {
+  return renderToStaticMarkup(
+    createElement(
+      "div",
+      { className: "nojs" },
+      createElement("h1", null, TITLE),
+      createElement("p", null, LEDE),
+      ...SECTIONS.map((section) =>
+        createElement("section", { key: section.id, id: section.id }, createElement("h2", null, section.title), section.body),
+      ),
+    ),
+  );
+}
+
 /**
  * Marketing fragment injected into the SPA shell's `<noscript>` on `/`. The
  * root route also renders the signed-in app, so this cannot be a static page.
@@ -363,4 +381,6 @@ posts.sort((a, b) => {
 writeFileSync(join(OUTPUT_DIR, "posts.json"), JSON.stringify(posts, null, 2));
 writeFileSync(join(OUTPUT_DIR, "index.html"), renderIndexPage(posts));
 writeFileSync(join(PUBLIC_DIR, "noscript-home.html"), renderHomeFragment(posts));
+writeFileSync(join(PUBLIC_DIR, "noscript-privacy-policy.html"), renderLegalFragment(privacyPolicy));
+writeFileSync(join(PUBLIC_DIR, "noscript-terms-of-use.html"), renderLegalFragment(termsOfUse));
 console.log(`Built ${posts.length} blog posts to ${OUTPUT_DIR}`);

@@ -9,6 +9,27 @@ export const authClient = createAuthClient({
   plugins: [magicLinkClient(), jwtClient(), apiKeyClient(), deviceAuthorizationClient()],
 });
 
+const authBaseURL = `${import.meta.env.VITE_PROTOCOL_URL || ''}/api/auth`;
+
+export async function getMcpConsentDetails(code: string): Promise<{ clientName: string; redirectURI: string }> {
+  const url = `${authBaseURL}/mcp/consent-details?${new URLSearchParams({ consent_code: code })}`;
+  const response = await fetch(url, { credentials: 'include' });
+  if (!response.ok) throw new Error('This authorization request is no longer available for this account.');
+  return response.json();
+}
+
+export async function decideMcpConsent(code: string, accept: boolean): Promise<string> {
+  const response = await fetch(`${authBaseURL}/mcp/consent`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ consent_code: code, accept }),
+  });
+  if (!response.ok) throw new Error('Could not complete authorization. Please try again.');
+  const result = await response.json() as { redirectURI: string };
+  return result.redirectURI;
+}
+
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 

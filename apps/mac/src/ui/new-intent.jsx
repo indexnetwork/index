@@ -4,8 +4,8 @@
 const INTENT_STEP = {
   id: "intent",
   kind: "ask",
-  prompt: "who are you trying to meet right now?",
-  placeholder: "type what you're looking for…",
+  prompt: "what are you looking for right now?",
+  placeholder: "type what you're thinking about or tinkering on…",
   examples: [
     "traveling soon, want to meet cool people in ai",
     "building something, want honest feedback on it",
@@ -227,7 +227,7 @@ function NewIntent({ onDone, onBack }) {
           </div>
         </MacWindow>
 
-        <MacWindow title="the field, warming">
+        <MacWindow title="warming up">
           <NewIntentFieldPreview turns={turns} stepIdx={stepIdx}/>
         </MacWindow>
       </div>
@@ -522,10 +522,10 @@ function FieldGlyph() {
 
 function Calibrating() {
   const lines = [
-    "compressing your edges into a signal…",
+    "structuring your inputs into signals…",
     "reaching out across the network…",
-    "filtering people you'd rather not see…",
-    "opening the field.",
+    "filtering through options…",
+    "coming back around",
   ];
   return (
     <div style={{ position:"absolute", inset:0, display:"grid", placeItems:"center", gridTemplateColumns:"minmax(0, 1fr)" }}>

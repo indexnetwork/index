@@ -177,7 +177,6 @@
     }, []);
     return schemeState[0];
   }
-  const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
   const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const MESSAGES_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
   // Web frontend's index-network wordmark (same paths as apps/mac and the
@@ -627,125 +626,260 @@
 
   // React twin of the DOM controls injected into the web dashboard's banner
   // header — rendered inline when no such header exists (desktop host).
-  function negotiatorView(payload, busy) {
-    const running = payload.running === true;
-    const error = payload.success === false ? (payload.error || "Could not update the negotiator.") : "";
-    const status = error || payload.status || (running ? "Running" : "Off");
-    return { running: running, busy: busy, error: error, status: status };
+  function headerIcon(paths) {
+    return React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg", width: 20, height: 20, viewBox: "0 0 24 24",
+      fill: "none", stroke: "#1C1B19", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round",
+      "aria-hidden": "true",
+    }, paths.map(function (d, index) { return React.createElement("path", { key: index, d: d }); }));
   }
 
-  function NegotiatorToggle() {
-    const [state, setState] = React.useState({ running: false, busy: false, error: "", status: "Off" });
-    const refresh = React.useCallback(function () {
-      fetchPluginJSON(API + "/negotiator", { method: "GET" }).then(function (payload) {
-        if (!payload) return;
-        setState(function (current) {
-          if (current.busy) return current;
-          return negotiatorView(payload, false);
-        });
-      }).catch(function () { /* status is shown again on the next poll */ });
-    }, []);
-    React.useEffect(function () {
+  function AgentHeader(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
+    const agentsState = useState([]);
+    const agents = agentsState[0];
+    const setAgents = agentsState[1];
+    const localState = useState("stopped");
+    const local = localState[0];
+    const setLocal = localState[1];
+    const openState = useState(false);
+    const open = openState[0];
+    const setOpen = openState[1];
+    const busyState = useState(false);
+    const busy = busyState[0];
+    const setBusy = busyState[1];
+    const errorState = useState("");
+    const error = errorState[0];
+    const setError = errorState[1];
+    const knownState = useState(false);
+    const known = knownState[0];
+    const setKnown = knownState[1];
+    const dialogRef = useRef(null);
+    const returnRef = useRef(null);
+
+    function refresh() {
+      fetchPluginJSON(API + "/negotiator").then(function (payload) {
+        if (!payload || payload.success === false) return;
+        setLocal(payload.running ? "running" : payload.paused ? "paused" : "stopped");
+      }).catch(function () { /* the tag keeps the last status */ });
+      fetchPluginJSON(API + "/agents").then(function (payload) {
+        if (!payload || payload.success === false || !Array.isArray(payload.agents)) return;
+        setAgents(payload.agents);
+        setKnown(true);
+      }).catch(function () { /* the list stays as last loaded */ });
+    }
+
+    useEffect(function () {
       refresh();
       const timer = window.setInterval(refresh, 5000);
       return function () { window.clearInterval(timer); };
-    }, [refresh]);
-    // The gateway applies Start/Stop on its next selection check (every 5s),
-    // so wait for the status to flip rather than trusting the POST reply.
-    function settle(wantRunning, triesLeft) {
-      fetchPluginJSON(API + "/negotiator", { method: "GET" }).then(function (payload) {
-        const view = negotiatorView(payload || {}, false);
-        if (view.running === wantRunning || view.error || triesLeft <= 0) {
-          setState(view);
-          return;
-        }
-        window.setTimeout(function () { settle(wantRunning, triesLeft - 1); }, 1000);
-      }).catch(function () {
-        setState(function (current) { return Object.assign({}, current, { busy: false }); });
-      });
-    }
-    function toggle() {
-      const wantRunning = !state.running;
-      const path = wantRunning ? "/negotiator/start" : "/negotiator/stop";
-      setState(function (current) { return Object.assign({}, current, { busy: true, error: "" }); });
-      fetchPluginJSON(API + path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }).then(function (payload) {
-        if (payload && payload.success === false) {
-          setState(negotiatorView(payload, false));
-          return;
-        }
-        settle(wantRunning, 6);
-      }).catch(function (error) {
-        setState(function (current) {
-          return Object.assign({}, current, {
-            busy: false,
-            error: (error && error.message) || "Could not update the negotiator.",
-            status: (error && error.message) || "Could not update the negotiator.",
-          });
-        });
-      });
-    }
-    const label = state.busy
-      ? (state.running ? "Stopping…" : "Starting…")
-      : (state.running ? "Stop" : "Start");
-    return React.createElement(React.Fragment, null,
-      React.createElement("span", { className: "index-dashboard__hdr-label" }, "NEGOTIATOR"),
-      React.createElement("span", {
-        className: "index-dashboard__hdr-negotiator-status" + (state.running ? " index-dashboard__hdr-negotiator-status--on" : ""),
-        title: state.error || state.status,
-      }, state.status),
-      React.createElement("button", {
-        type: "button",
-        className: "index-dashboard__hdr-negotiator" + (state.running ? " index-dashboard__hdr-negotiator--on" : ""),
-        disabled: state.busy,
-        title: state.error || (state.running ? "Stop negotiator" : "Start negotiator"),
-        "aria-label": state.running ? "Stop negotiator" : "Start negotiator",
-        onClick: toggle,
-      }, label),
-    );
-  }
+    }, []);
 
-  function InlineHeaderControls(props) {
-    return React.createElement("div", { className: "index-dashboard__hdr index-dashboard__hdr--inline" },
-      DESKTOP_ENV ? React.createElement(NegotiatorToggle) : null,
-      React.createElement("span", { className: "index-dashboard__hdr-label" }, "AUTO-REFRESH"),
-      React.createElement("button", {
-        type: "button",
-        className: "index-dashboard__switch" + (props.autoRefresh ? " index-dashboard__switch--on" : ""),
-        role: "switch",
-        "aria-checked": props.autoRefresh ? "true" : "false",
-        "aria-label": "Auto-refresh",
-        onClick: props.onToggle,
-      }, React.createElement("span", { className: "index-dashboard__switch-knob" })),
-      props.autoRefresh ? null : React.createElement("button", {
-        type: "button",
-        className: "index-dashboard__header-refresh",
-        "aria-label": "Refresh",
-        title: "Refresh",
-        disabled: props.loading,
-        "data-busy": props.loading ? "true" : undefined,
-        onClick: props.onRefresh,
-        dangerouslySetInnerHTML: { __html: REFRESH_ICON_SVG },
-      }),
-      React.createElement("button", {
-        type: "button",
-        className: "index-dashboard__hdr-account" + (props.hasUnread ? " index-dashboard__hdr-account--dot" : ""),
-        "aria-label": "Messages",
-        title: "Messages",
-        onClick: props.onMessages,
-        dangerouslySetInnerHTML: { __html: MESSAGES_ICON_SVG },
-      }),
-      React.createElement("button", {
-        type: "button",
-        className: "index-dashboard__hdr-account",
-        "aria-label": "Profile & settings",
-        title: "Profile & settings",
-        onClick: props.onAccount,
-        dangerouslySetInnerHTML: { __html: ACCOUNT_ICON_SVG },
-      }),
+    useEffect(function () {
+      if (!open) return undefined;
+      returnRef.current = document.activeElement;
+      const node = dialogRef.current;
+      function focusable() {
+        return node ? node.querySelectorAll("button, [href], [tabindex]:not([tabindex='-1'])") : [];
+      }
+      const first = focusable()[0];
+      if (first) first.focus();
+      function onKey(event) {
+        if (event.key === "Escape") {
+          setOpen(false);
+          return;
+        }
+        if (event.key !== "Tab") return;
+        const items = focusable();
+        if (!items.length) return;
+        const start = items[0];
+        const end = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === start) {
+          event.preventDefault();
+          end.focus();
+        } else if (!event.shiftKey && document.activeElement === end) {
+          event.preventDefault();
+          start.focus();
+        }
+      }
+      document.addEventListener("keydown", onKey);
+      return function () {
+        document.removeEventListener("keydown", onKey);
+        if (returnRef.current && returnRef.current.focus) returnRef.current.focus();
+      };
+    }, [open]);
+
+    const named = agents.some(function (agent) {
+      return String(agent.name || "").toLowerCase() === "hermes";
+    });
+    const options = named ? agents : agents.concat([{ id: "", name: "Hermes", handleNegotiations: false }]);
+    const selected = agents.filter(function (agent) { return agent.handleNegotiations; })[0] || null;
+    const rows = [{ id: "hosted", name: "Index Negotiator", meta: "hosted", agent: null }].concat(options.map(function (agent) {
+      const here = String(agent.name || "").toLowerCase() === "hermes";
+      return {
+        id: agent.id || ("new-" + agent.name),
+        name: agent.name,
+        meta: here ? "this machine" : (agent.description || "registered"),
+        agent: agent,
+      };
+    }));
+    function rowStatus(row) {
+      const active = row.agent ? !!row.agent.handleNegotiations : !selected;
+      if (!active) return "stopped";
+      if (row.agent && String(row.agent.name || "").toLowerCase() === "hermes") {
+        if (local === "running") return "running";
+        if (local === "paused") return "paused";
+        return "pending";
+      }
+      return "running";
+    }
+    const active = rows.filter(function (row) { return rowStatus(row) !== "stopped" || (row.agent ? row.agent.handleNegotiations : !selected); })[0] || rows[0];
+    const activeId = selected
+      ? ((rows.filter(function (row) { return row.agent && row.agent.id === selected.id; })[0] || rows[0]).id)
+      : "hosted";
+    const current = rows.filter(function (row) { return row.id === activeId; })[0] || active;
+    const shownName = known ? current.name : "Hermes";
+    const shownStatus = known ? rowStatus(current) : local;
+
+    function bind(agentId, handle) {
+      return fetchPluginJSON(API + "/agents/" + encodeURIComponent(agentId), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handleNegotiations: handle }),
+      });
+    }
+
+    function choose(row) {
+      if (busy) return;
+      setBusy(true);
+      setError("");
+      let step;
+      if (!row.agent) {
+        step = selected ? bind(selected.id, false) : Promise.resolve({ success: true });
+      } else if (row.agent.id) {
+        step = bind(row.agent.id, true);
+      } else {
+        step = fetchPluginJSON(API + "/agents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: row.agent.name }),
+        }).then(function (payload) {
+          const created = (payload && payload.agent) || {};
+          if (!payload || payload.success === false || !created.id) {
+            throw new Error((payload && payload.error) || (row.name + " could not be registered."));
+          }
+          return bind(created.id, true);
+        });
+      }
+      const hermes = row.agent && String(row.agent.name || "").toLowerCase() === "hermes";
+      step.then(function (payload) {
+        if (!payload || payload.success === false) {
+          throw new Error((payload && payload.error) || "The negotiator could not be changed.");
+        }
+        if (!hermes) return null;
+        return fetchPluginJSON(API + "/negotiator/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+      }).then(function () {
+        setOpen(false);
+        refresh();
+      }).catch(function (err) {
+        setError(err && err.message ? err.message : String(err));
+      }).finally(function () { setBusy(false); });
+    }
+
+    function tag(status, tall) {
+      return React.createElement("span", {
+        className: "index-agent-header__tag" + (tall ? " index-agent-header__tag--row" : ""),
+        "data-status": status,
+      }, React.createElement("span", { className: "index-agent-header__dot" }), status);
+    }
+
+    return React.createElement("header", { className: "index-agent-header" },
+      props.leading || null,
+      React.createElement("div", { className: "index-agent-header__group" },
+        React.createElement("button", {
+          type: "button",
+          className: "index-agent-header__switcher",
+          role: "button",
+          "aria-haspopup": "dialog",
+          "aria-expanded": open ? "true" : "false",
+          onClick: function () { setError(""); setOpen(true); refresh(); },
+        },
+          React.createElement("span", { className: "index-agent-header__label" },
+            React.createElement("span", { className: "index-agent-header__eyebrow" }, "NEGOTIATOR"),
+            React.createElement("span", { className: "index-agent-header__name" }, shownName),
+          ),
+          tag(shownStatus, false),
+          React.createElement("svg", {
+            width: 10, height: 10, viewBox: "0 0 10 10", fill: "none",
+            stroke: "#8A867F", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round",
+            "aria-hidden": "true",
+          },
+            React.createElement("path", { d: "M2 3.5 5 1.2 8 3.5" }),
+            React.createElement("path", { d: "M2 6.5 5 8.8 8 6.5" }),
+          ),
+        ),
+        React.createElement("button", {
+          type: "button",
+          className: "index-agent-header__icon" + (props.hasUnread ? " index-agent-header__icon--dot" : ""),
+          "aria-label": "Messages",
+          onClick: props.onChat,
+        }, headerIcon(["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"])),
+        React.createElement("button", {
+          type: "button",
+          className: "index-agent-header__icon",
+          "aria-label": "Profile & settings",
+          onClick: props.onProfile,
+        }, headerIcon(["M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2", "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8"])),
+      ),
+      open ? React.createElement("div", {
+        className: "index-agent-header__scrim",
+        onClick: function () { setOpen(false); },
+      }, React.createElement("div", {
+        className: "index-agent-header__dialog",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-labelledby": "index-agent-negotiator-title",
+        ref: dialogRef,
+        onClick: function (event) { event.stopPropagation(); },
+      },
+        React.createElement("div", { className: "index-agent-header__dialog-head" },
+          React.createElement("span", { id: "index-agent-negotiator-title", className: "index-agent-header__dialog-eyebrow" }, "CHANGE NEGOTIATOR"),
+          React.createElement("button", {
+            type: "button",
+            className: "index-agent-header__close",
+            "aria-label": "Close",
+            onClick: function () { setOpen(false); },
+          }, "\u00d7"),
+        ),
+        error ? React.createElement("div", { className: "index-agent-header__dialog-error" }, error) : null,
+        React.createElement("div", { className: "index-agent-header__list" },
+          rows.map(function (row) {
+            const on = row.id === activeId;
+            return React.createElement("button", {
+              type: "button",
+              key: row.id,
+              className: "index-agent-header__row" + (on ? " index-agent-header__row--on" : ""),
+              disabled: busy,
+              onClick: function () { choose(row); },
+            },
+              React.createElement("span", { className: "index-agent-header__row-copy" },
+                React.createElement("span", { className: "index-agent-header__row-name" }, row.name),
+                React.createElement("span", { className: "index-agent-header__row-meta" }, row.meta),
+              ),
+              React.createElement("span", { className: "index-agent-header__row-side" },
+                tag(rowStatus(row), true),
+                on ? React.createElement("span", { className: "index-agent-header__check", "aria-hidden": "true" }, "\u2713") : null,
+              ),
+            );
+          }),
+        ),
+      )) : null,
     );
   }
 
@@ -764,6 +898,38 @@
       });
     }
     return params;
+  }
+
+  // HashRouter commits with history.pushState / replaceState. Those do not
+  // fire hashchange, so a deep link onto an already-open Discover page never
+  // reached the view. One watch turns every URL write into one event.
+  const LOCATION_EVENT = "index-network-location";
+  if (!window.__indexNetworkLocationWatch) {
+    window.__indexNetworkLocationWatch = true;
+    const emitLocation = function () {
+      window.dispatchEvent(new Event(LOCATION_EVENT));
+    };
+    window.addEventListener("hashchange", emitLocation);
+    window.addEventListener("popstate", emitLocation);
+    const pushState = history.pushState;
+    const replaceState = history.replaceState;
+    history.pushState = function () {
+      const before = window.location.href;
+      const result = pushState.apply(this, arguments);
+      if (window.location.href !== before) emitLocation();
+      return result;
+    };
+    history.replaceState = function () {
+      const before = window.location.href;
+      const result = replaceState.apply(this, arguments);
+      if (window.location.href !== before) emitLocation();
+      return result;
+    };
+  }
+
+  function onLocation(handler) {
+    window.addEventListener(LOCATION_EVENT, handler);
+    return function () { window.removeEventListener(LOCATION_EVENT, handler); };
   }
 
   function parseView() {
@@ -1225,7 +1391,7 @@
 
   const ENVIRONMENTS = ["main", "dev", "local"];
 
-  function IntentPitch() {
+  function IntentPitch(props) {
     const menuState = React.useState(null);
     const menu = menuState[0];
     const setMenu = menuState[1];
@@ -1270,10 +1436,11 @@
       }).catch(function () {});
     }
 
+    const pitchImage = props.onLight ? assetSrc("pitch-light") : PITCH_IMAGE();
     return React.createElement("aside", { className: "index-dashboard__pitch" },
-      PITCH_IMAGE() ? React.createElement("div", {
+      pitchImage ? React.createElement("div", {
         className: "index-dashboard__pitch-media",
-        style: { backgroundImage: "url(" + JSON.stringify(PITCH_IMAGE()) + ")" },
+        style: { backgroundImage: "url(" + JSON.stringify(pitchImage) + ")" },
         "aria-hidden": "true",
         onDoubleClick: openEnvironmentMenu,
       }) : null,
@@ -1294,7 +1461,7 @@
           "find your others",
         ),
         React.createElement("p", { className: "index-dashboard__pitch-text" },
-          "tell index what you're after. agents negotiate quietly in the background, and let you know if there's an alignment.",
+          "start a signal by talking to your agent. it negotiates it with the other agents and makes an intro when both sides are interested.",
         ),
       ),
     );
@@ -2652,7 +2819,7 @@
     );
   }
 
-  const NEW_SIGNAL_PROMPT = "who are you trying to meet right now?";
+  const NEW_SIGNAL_PROMPT = "what are you looking for right now?";
   const NEW_SIGNAL_EXAMPLES = [
     "traveling soon, want to meet cool people in ai",
     "building something, want honest feedback on it",
@@ -2664,10 +2831,10 @@
   ];
   const SIGNAL_MAX = 65536;
   const SIGNAL_CALIBRATING = [
-    "compressing your edges into a signal…",
+    "structuring your inputs into signals…",
     "reaching out across the network…",
-    "filtering people you'd rather not see…",
-    "opening the field.",
+    "filtering through options…",
+    "coming back around",
   ];
 
   function WorkingDots() {
@@ -2829,7 +2996,7 @@
             value: draft,
             maxLength: SIGNAL_MAX,
             rows: 3,
-            placeholder: "type what you're looking for…",
+            placeholder: "type what you're thinking about or tinkering on…",
             "aria-label": "What you're looking for",
             onChange: function (e) { setDraft(e.target.value); },
             onKeyDown: function (e) {
@@ -2868,7 +3035,7 @@
             : null,
           current)),
       React.createElement("aside", { className: "index-dashboard__signal-new-field" },
-        React.createElement("p", { className: "index-dashboard__signal-new-field-title" }, "the field, warming"),
+        React.createElement("p", { className: "index-dashboard__signal-new-field-title" }, "warming up"),
         previewLines.map(function (line, i) {
           return React.createElement("p", {
             key: i,
@@ -3082,6 +3249,11 @@
   function withoutSupersededLooking(entries) {
     const traces = entries.map(function (entry) { return entry.kind === "progress" ? parseDiscoveryProgress(entry.text) : null; });
     return entries.filter(function (entry, index) {
+      if (entry.kind === "progress" && entry.text === "Working out who to reach") {
+        return !traces.some(function (other, otherIndex) {
+          return otherIndex > index && other && typeof other.discovered === "number";
+        });
+      }
       const trace = traces[index];
       if (!trace || typeof trace.discovered === "number") return true;
       return !traces.some(function (other, otherIndex) {
@@ -3944,7 +4116,7 @@
       })(),
     });
     return React.createElement("div", { className: "index-dashboard__detail" },
-      props.onBack
+      props.onBack && !props.backInHeader
         ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: props.onBack }, ICON_ARROW_LEFT(), "Back")
         : null,
       // signal | radar, the two windows the mac app puts side by side.
@@ -4016,7 +4188,7 @@
     const lines = (props && props.lines) || [
       "Getting a sense of you…",
       "Working out what you're into…",
-      "Almost there.",
+      "Almost there",
     ];
     return React.createElement("div", { className: "index-dashboard__setting-up" },
       React.createElement("div", { className: "index-dashboard__setting-up-card" },
@@ -4801,8 +4973,8 @@
         ? React.createElement("div", { className: "index-dashboard__profile-body" },
           React.createElement(NegotiatorSettings),
         )
-        : (loading || (!form && !panelError)
-          ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
+        : (loading || !form
+          ? (panelError ? null : React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…"))
           : React.createElement("div", { className: "index-dashboard__profile-body" },
             readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
           )),
@@ -4852,7 +5024,7 @@
           lines: [
             "Looking you up…",
             "Reading what's already public…",
-            "Almost there.",
+            "Almost there",
           ],
         }));
       }
@@ -5341,9 +5513,6 @@
     const selectedState = useState(initial.intentId);
     const selectedId = selectedState[0];
     const setSelectedId = selectedState[1];
-    const autoState = useState(true);
-    const autoRefresh = autoState[0];
-    const setAutoRefresh = autoState[1];
     const profileOpenState = useState(!!initial.profileOpen);
     const profileOpen = profileOpenState[0];
     const setProfileOpen = profileOpenState[1];
@@ -5783,32 +5952,6 @@
       const wrap = document.createElement("div");
       wrap.className = "index-dashboard__hdr";
 
-      const label = document.createElement("span");
-      label.className = "index-dashboard__hdr-label";
-      label.textContent = "AUTO-REFRESH";
-
-      const sw = document.createElement("button");
-      sw.type = "button";
-      sw.className = "index-dashboard__switch";
-      sw.setAttribute("role", "switch");
-      sw.setAttribute("aria-label", "Auto-refresh");
-      sw.appendChild(document.createElement("span")).className = "index-dashboard__switch-knob";
-      const onToggle = function () {
-        setAutoRefresh(function (v) { return !v; });
-      };
-      sw.addEventListener("click", onToggle);
-
-      const refresh = document.createElement("button");
-      refresh.type = "button";
-      refresh.className = "index-dashboard__header-refresh";
-      refresh.setAttribute("aria-label", "Refresh");
-      refresh.title = "Refresh";
-      refresh.innerHTML = REFRESH_ICON_SVG;
-      const onRefresh = function () {
-        if (loadRef.current) loadRef.current();
-      };
-      refresh.addEventListener("click", onRefresh);
-
       const messages = document.createElement("button");
       messages.type = "button";
       messages.className = "index-dashboard__hdr-account";
@@ -5831,17 +5974,12 @@
       };
       account.addEventListener("click", onAccount);
 
-      wrap.appendChild(label);
-      wrap.appendChild(sw);
-      wrap.appendChild(refresh);
       wrap.appendChild(messages);
       wrap.appendChild(account);
       container.appendChild(wrap);
-      headerCtlRef.current = { sw: sw, refresh: refresh, account: account, messages: messages };
+      headerCtlRef.current = { account: account, messages: messages };
 
       return function () {
-        sw.removeEventListener("click", onToggle);
-        refresh.removeEventListener("click", onRefresh);
         messages.removeEventListener("click", onMessages);
         account.removeEventListener("click", onAccount);
         wrap.remove();
@@ -5850,21 +5988,10 @@
     }, []);
 
     useEffect(function () {
-      const ctl = headerCtlRef.current;
-      if (!ctl) return;
-      ctl.sw.setAttribute("aria-checked", autoRefresh ? "true" : "false");
-      ctl.sw.classList.toggle("index-dashboard__switch--on", autoRefresh);
-      ctl.refresh.style.display = autoRefresh ? "none" : "inline-flex";
-      ctl.refresh.disabled = loading;
-      if (loading) ctl.refresh.setAttribute("data-busy", "true");
-      else ctl.refresh.removeAttribute("data-busy");
-    }, [autoRefresh, loading]);
-
-    useEffect(function () {
       // Only poll once signed in: firing bootstrap while the login gate (or the
       // initial auth check) is showing produces 401s that can land after the
       // login transition and clobber the fresh state, forcing a manual reload.
-      if (!autoRefresh || auth !== "authed") return undefined;
+      if (auth !== "authed") return undefined;
       const id = setInterval(function () {
         if (loadRef.current) {
           loadRef.current().then(function () {
@@ -5875,7 +6002,7 @@
         }
       }, 5000);
       return function () { clearInterval(id); };
-    }, [autoRefresh, auth]);
+    }, [auth]);
 
     useEffect(function () {
       function applyView() {
@@ -5886,12 +6013,7 @@
         setProfileOpen(view.profileOpen);
         setViewUserId(view.viewUserId);
       }
-      window.addEventListener("hashchange", applyView);
-      window.addEventListener("popstate", applyView);
-      return function () {
-        window.removeEventListener("hashchange", applyView);
-        window.removeEventListener("popstate", applyView);
-      };
+      return onLocation(applyView);
     }, []);
 
     useEffect(function () {
@@ -5936,12 +6058,7 @@
         }
       }
       applyFocus();
-      window.addEventListener("hashchange", applyFocus);
-      window.addEventListener("popstate", applyFocus);
-      return function () {
-        window.removeEventListener("hashchange", applyFocus);
-        window.removeEventListener("popstate", applyFocus);
-      };
+      return onLocation(applyFocus);
     }, [auth]);
 
     const intents = (summary && summary.intents) || [];
@@ -5988,10 +6105,16 @@
       load();
     }
 
+    const pageReady = auth === "authed" && !needsOnboarding && !(loading && !summary);
+    const headerLead = !inlineHdr || !pageReady
+      ? null
+      : selectedIntent
+        ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: goBack }, ICON_ARROW_LEFT(), "Back")
+        : React.createElement(IntentPitch, { onLight: true });
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, networkCount: networks && Array.isArray(networks.items) ? networks.items.length : null, radarLoading: radarLoading, actionError: actionError, onBack: goBack, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, networkCount: networks && Array.isArray(networks.items) ? networks.items.length : null, radarLoading: radarLoading, actionError: actionError, onBack: goBack, backInHeader: inlineHdr, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
       : React.createElement("div", { className: "index-dashboard__list-page" },
-        React.createElement(IntentPitch, null),
+        inlineHdr ? null : React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
           React.createElement(Panel, {
             icon: ICON_SPARKLES(),
@@ -5999,7 +6122,7 @@
             count: intents.length,
             action: React.createElement(Button, {
               type: "button", outlined: true, size: "sm",
-              className: "index-dashboard__net-create-btn",
+              className: "index-dashboard__net-create-btn index-dashboard__new-signal-btn",
               onClick: function () { setNewSignalOpen(true); },
             }, ICON_PLUS(), "New signal"),
           },
@@ -6048,14 +6171,11 @@
 
     return React.createElement("div", { className: "index-dashboard", ref: rootRef, "data-scheme": scheme },
       inlineHdr
-        ? React.createElement(InlineHeaderControls, {
-          autoRefresh: autoRefresh,
-          loading: loading,
+        ? React.createElement(AgentHeader, {
+          leading: headerLead,
           hasUnread: hasUnread,
-          onToggle: function () { setAutoRefresh(function (v) { return !v; }); },
-          onRefresh: function () { if (loadRef.current) loadRef.current(); },
-          onMessages: function () { if (openMessagesRef.current) openMessagesRef.current(null); },
-          onAccount: function () { if (toggleProfileRef.current) toggleProfileRef.current(); },
+          onChat: function () { if (openMessagesRef.current) openMessagesRef.current(null); },
+          onProfile: function () { if (toggleProfileRef.current) toggleProfileRef.current(); },
         })
         : null,
       negotiation

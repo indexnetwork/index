@@ -10,9 +10,37 @@ import { cn } from "@/lib/utils";
 
 type Provenance = { kind?: string; questionId?: string; scope?: string; matches?: PrincipalQuestion["matches"] };
 
+const REACHING = "Working out who to reach";
+
 function messageText(message: ConversationMessage): string {
   return (message.parts as { kind?: string; text?: string }[])
     .filter((part) => part?.kind === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
+}
+
+function progressBody(text: string): string | null {
+  return text.startsWith("Progress: ") ? text.slice("Progress: ".length) : null;
+}
+
+/** The loading line drops once a later progress message has a count. */
+function supersededReaching(messages: ConversationMessage[]): Set<string> {
+  const hide = new Set<string>();
+  let counted = false;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const body = progressBody(messageText(messages[index]!));
+    if (!body) continue;
+    if (countedDiscovery(body)) counted = true;
+    else if (body === REACHING && counted) hide.add(messages[index]!.id);
+  }
+  return hide;
+}
+
+function countedDiscovery(text: string): boolean {
+  try {
+    const data = JSON.parse(text) as { queries?: unknown; discovered?: unknown };
+    return Array.isArray(data.queries) && typeof data.discovered === "number";
+  } catch {
+    return false;
+  }
 }
 
 /** One private intent conversation; every open question is answered in a single submit. */
@@ -110,6 +138,8 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     setSelections((current) => ({ ...current, [questionId]: current[questionId] === text ? "" : text }));
   };
 
+  const hiddenReaching = supersededReaching(messages);
+
   const references = (scope?: string, matches?: PrincipalQuestion["matches"]) => (
     <div className="mb-1 flex flex-wrap items-center gap-1 text-xs">
       {scope && <span className="opacity-70">{scope === "match" ? "For this match" : "For this intent"}</span>}
@@ -134,6 +164,14 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             const content = messageText(message);
             const provenance = message.metadata?.principalMessage as Provenance | undefined;
             if (!content || provenance?.kind === "question" && provenance.questionId && carded.has(provenance.questionId)) return null;
+            const progress = progressBody(content);
+            if (progress === REACHING) {
+              if (hiddenReaching.has(message.id)) return null;
+              return <p key={message.id} role="status" className="flex items-center gap-2 font-mono text-[11px] text-gray-500">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-900" aria-hidden="true" />
+                {REACHING}
+              </p>;
+            }
             const own = message.role === "user";
             return <div key={message.id} className={cn("flex", own ? "justify-end" : "justify-start")}>
               <article className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-sm", own ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900")}>

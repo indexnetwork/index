@@ -19,6 +19,7 @@ CLAUDE.md
 CLAUDE.local.md
 GEMINI.md
 .agents
+!packages/codex-plugin/.agents
 .aider*
 .claude
 .clinerules

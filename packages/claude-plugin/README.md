@@ -1,19 +1,12 @@
-# Index Network — Claude and Codex Plugin
+# Index Network — Claude Code Plugin
 
-Use Index Network from Claude Code or Codex through the Index HTTP CLI. The plugin ships one skill, `index-network`; it does not bundle the CLI.
+Use Index Network from Claude Code through the Index HTTP CLI. The plugin ships one skill, `index-network`; it does not bundle the CLI. The same skill ships for Codex in [codex-plugin](https://github.com/indexnetwork/codex-plugin).
 
 ## Install
 
-Add the plugin to your agent:
-
 ```sh
-# Claude Code
 claude plugin marketplace add indexnetwork/claude-plugin
 claude plugin install index-network@indexnetwork-claude-plugin
-
-# Codex
-codex plugin marketplace add indexnetwork/claude-plugin
-codex plugin add index-network@indexnetwork-claude-plugin
 ```
 
 Then install the CLI and sign in:

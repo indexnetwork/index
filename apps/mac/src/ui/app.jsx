@@ -561,7 +561,7 @@ function App() {
                                        lines={[
                                          "looking you up…",
                                          "reading what's already public…",
-                                         "almost there.",
+                                         "almost there",
                                        ]}/>}
         {screen === "onboarding"  && <Settings
                                        initialTab="profile"

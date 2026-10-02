@@ -9,7 +9,20 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Fixed
+- Opportunity status frames no longer wake the hosted agent; they remain available to clients.
+
 ### Added
+- **MCP Events for ChatGPT.** `/mcp` advertises `capabilities.events` and
+  serves `events/list`, `events/subscribe`, and `events/unsubscribe` for
+  `opportunity.new`, `opportunity.status`, and `question.pending`. Delivery is
+  a Standard Webhooks-signed POST to a public HTTPS callback, which must first
+  echo a challenge. Subscriptions live in Redis for at most 7 days and are
+  delivered only while the creating OAuth grant, API key, or device session is
+  live. The hosted-agents worker delivers them from the `mcp-events` consumer
+  group. Every MCP tool now declares `readOnlyHint`, `destructiveHint`, and
+  `openWorldHint`. `GET /.well-known/openai-apps-challenge` returns
+  `OPENAI_APPS_CHALLENGE` for ChatGPT directory verification.
 - **`GET /api/events` frames carry server time and a stream id.** Each stored
   frame has `at` (ISO time from the API clock). SSE and `GET /api/events/log`
   add `eventId`, the Redis stream id, which increases on every frame for that

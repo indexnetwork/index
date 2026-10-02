@@ -7,16 +7,20 @@ import { ModelClient } from '@indexnetwork/agent';
 
 import { HostedAgent } from './lib/agent/hosted.agent';
 import { log } from './lib/log';
+import { McpEventDispatcher } from './lib/mcp/mcp-events.dispatcher';
 
 const logger = log.agent.from('hosted-agents.main');
 
 // The default seat for owners without an external negotiator.
 const hostedAgent = new HostedAgent(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
 void hostedAgent.start();
+const mcpEventDispatcher = new McpEventDispatcher();
+mcpEventDispatcher.start();
 logger.info('Hosted agents running');
 
 const shutdown = async () => {
   logger.info('Shutting down...');
+  mcpEventDispatcher.stop();
   await hostedAgent.stop();
   await Sentry.close(2000);
   process.exit(0);

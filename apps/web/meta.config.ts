@@ -40,6 +40,18 @@ const MARKETING: Record<string, PageMeta> = {
     image: DEFAULT_IMAGE,
     type: "website",
   },
+  "/pages/privacy-policy": {
+    title: "Privacy Policy | Index Network",
+    description: "How Index Network handles personal information — what we collect, why, and what choices you have.",
+    image: DEFAULT_IMAGE,
+    type: "website",
+  },
+  "/pages/terms-of-use": {
+    title: "Terms of Use | Index Network",
+    description: "The agreement between you and Index — how the services may be used and the limits that apply.",
+    image: DEFAULT_IMAGE,
+    type: "website",
+  },
   "/protocol": {
     title: "Index Network: Protocol Overview",
     description:
