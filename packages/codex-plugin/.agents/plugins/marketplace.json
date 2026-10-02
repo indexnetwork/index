@@ -1,0 +1,17 @@
+{
+  "name": "indexnetwork-codex-plugin",
+  "interface": {
+    "displayName": "Index Network"
+  },
+  "plugins": [
+    {
+      "name": "index-network",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/indexnetwork/codex-plugin.git",
+        "ref": "main"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

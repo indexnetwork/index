@@ -1,0 +1,36 @@
+{
+  "name": "index-network",
+  "version": "0.10.0",
+  "description": "Index Network - find the right people and let them find you.",
+  "author": {
+    "name": "Index Network",
+    "url": "https://index.network"
+  },
+  "homepage": "https://index.network",
+  "repository": "https://github.com/indexnetwork/codex-plugin",
+  "license": "MIT",
+  "keywords": [
+    "discovery",
+    "intents",
+    "agents",
+    "opportunities"
+  ],
+  "interface": {
+    "displayName": "Index Network",
+    "shortDescription": "Find relevant people, signals, and opportunities.",
+    "longDescription": "Index Network helps manage signals, discover opportunities, and connect people through shared communities.",
+    "developerName": "Index Network",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://index.network",
+    "defaultPrompt": [
+      "Use Index Network to find relevant people for this signal.",
+      "Use Index Network to see what is on my radar."
+    ],
+    "brandColor": "#111827"
+  },
+  "skills": "./skills/"
+}

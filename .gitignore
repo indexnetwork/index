@@ -19,6 +19,7 @@ CLAUDE.md
 CLAUDE.local.md
 GEMINI.md
 .agents
+!packages/codex-plugin/.agents
 .aider*
 .claude
 .clinerules
@@ -28,7 +29,6 @@ GEMINI.md
 .cursorrules
 .gemini
 .mcp.json
-!packages/claude-plugin/.mcp.json
 .opencode
 .pi
 .pi-subagents

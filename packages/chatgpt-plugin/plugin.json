@@ -1,13 +1,13 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "index-network",
-  "version": "0.10.0",
+  "version": "1.0.0",
   "description": "Index Network - find the right people and let them find you.",
   "author": {
     "name": "Index Network",
     "url": "https://index.network"
   },
   "homepage": "https://index.network",
-  "repository": "https://github.com/indexnetwork/claude-plugin",
   "license": "MIT",
   "keywords": [
     "discovery",
@@ -15,32 +15,30 @@
     "agents",
     "opportunities"
   ],
-  "interface": {
-    "displayName": "Index Network",
-    "shortDescription": "Find relevant people, signals, and opportunities.",
-    "longDescription": "Index Network helps manage signals, discover opportunities, and connect people through shared communities.",
-    "developerName": "Index Network",
-    "category": "Productivity",
-    "capabilities": [
-      "Read",
-      "Write"
-    ],
-    "websiteURL": "https://index.network",
-    "supportURL": "https://docs.index.network/use/chatgpt",
-    "privacyPolicyURL": "https://index.network/pages/privacy-policy",
-    "termsOfServiceURL": "https://index.network/pages/terms-of-use",
-    "defaultPrompt": [
-      "Use Index Network to find relevant people for this signal.",
-      "Use Index Network to see what is on my radar."
-    ],
-    "brandColor": "#111827",
-    "composerIcon": "./assets/icon.svg",
-    "logo": "./assets/icon.svg"
-  },
-  "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
   "extensions": {
     "com.openai": {
+      "interface": {
+        "displayName": "Index Network",
+        "shortDescription": "Find the right people",
+        "longDescription": "Index Network helps you meet the people you are looking for. Describe who you want to meet as a signal, and Index finds opportunities: introductions to people in your networks whose own signals fit. Review, accept, or pass on introductions, and hear about new ones as they arrive. Index acts only on your own account, and accepts or passes on an introduction only after you confirm.",
+        "developerName": "Index Network",
+        "category": "Productivity",
+        "capabilities": [
+          "Manage signals",
+          "Review introductions"
+        ],
+        "websiteURL": "https://index.network",
+        "supportURL": "https://docs.index.network/use/chatgpt",
+        "privacyPolicyURL": "https://index.network/pages/privacy-policy",
+        "termsOfServiceURL": "https://index.network/pages/terms-of-use",
+        "defaultPrompt": [
+          "Find me a technical cofounder on Index.",
+          "Are there introductions waiting for me on Index?"
+        ],
+        "brandColor": "#111827",
+        "composerIcon": "./assets/icon.svg",
+        "logo": "./assets/icon.svg"
+      },
       "review": {
         "test_cases": {
           "positive": [
