@@ -20,6 +20,11 @@ export async function listHostedOwners(): Promise<MorningOwner[]> {
         and ${schema.agents.handleNegotiations} = true
         and ${schema.agents.deletedAt} is null
     )`,
+    sql`not exists (
+      select 1 from ${schema.userNotificationSettings}
+      where ${schema.userNotificationSettings.userId} = ${schema.users.id}
+        and coalesce(${schema.userNotificationSettings.preferences}->>'morningBrief', 'true') = 'false'
+    )`,
   ));
 }
 

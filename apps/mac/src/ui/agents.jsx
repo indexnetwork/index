@@ -236,12 +236,8 @@ function Frame({ children, dim }) {
 // Shown when a connected agent is expanded. The switch turns the runtime on;
 // these tick what it is allowed to do. Nightly indexing has no field yet.
 const AGENT_OPTIONS = [
-  { key:"notifyOnOpportunity", title:"connection updates",
-    blurb:"tells this agent when an opportunity is accepted or someone reaches out." },
   { key:"indexing", title:"nightly indexing",
     blurb:"turns what this agent learned today into signals, overnight. off means discovery only knows what you've told it." },
-  { key:"dailySummaryEnabled", title:"daily brief",
-    blurb:"one message at 08:00 with new overlaps and anything waiting on you." },
 ];
 
 function RosterRow({ name, badge, detail, id, aside, last, onClick, expanded, onToggle }) {

@@ -15,6 +15,7 @@ import threading
 import time
 from pathlib import Path
 
+from .morning import sync_morning_cron
 from .sidecar import read_state
 from .tools import selected_agent, this_install_selected
 
@@ -87,13 +88,17 @@ def _apply(sidecar) -> None:
     except Exception as error:
         logger.warning("Index negotiator selection check failed: %s", error)
         return
+    home = Path(sidecar.state_path).parent
     if not this_install_selected(agent):
         sidecar.stop()
+        sync_morning_cron(home, False)
         return
     if sidecar.paused:
         sidecar.stop()
+        sync_morning_cron(home, False)
         return
     sidecar.start(agent["ownerId"], agent["id"])
+    sync_morning_cron(home, True)
 
 
 def _apply_current() -> None:

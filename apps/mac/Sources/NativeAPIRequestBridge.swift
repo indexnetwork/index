@@ -575,7 +575,7 @@ final class NativeAPIRequestBridge {
                     && optionalString(item, "location", maximum: 512) && optionalString(item, "timezone", maximum: 128)
                     && optionalString(item, "avatar", maximum: 2_048)
                     && (item["socials"] == nil || validSocials(item["socials"]))
-                    && (item["notificationPreferences"] == nil || exactTypedObject(item["notificationPreferences"], optional: ["connectionUpdates", "weeklyNewsletter"]) { prefs in optionalBool(prefs, "connectionUpdates") && optionalBool(prefs, "weeklyNewsletter") })
+                    && (item["notificationPreferences"] == nil || exactTypedObject(item["notificationPreferences"], optional: ["connectionUpdates", "weeklyNewsletter", "morningBrief"]) { prefs in optionalBool(prefs, "connectionUpdates") && optionalBool(prefs, "weeklyNewsletter") && optionalBool(prefs, "morningBrief") })
             }
         case "/networks":
             return exactTypedObject(body, required: ["title"], optional: ["prompt", "imageUrl", "joinPolicy"]) { item in

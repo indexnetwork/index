@@ -20,14 +20,15 @@ export interface RunnerOptions {
 export interface Runner {
   /** Wake one signal now, for whatever reason the host has. */
   wake: (intentId: string) => void;
+  /** The morning wake for one signal. The host calls these one after another. */
+  morning: (intentId: string) => Promise<void>;
   /** Abort in-flight runs and the event stream. There is no restart. */
   stop: () => void;
 }
 
 /**
- * Work every active signal this owner has. Nothing runs on a clock: a wake
- * happens because something changed on the signal, or because the host asked
- * for one.
+ * Work every active signal this owner has. A wake happens because something
+ * changed on the signal, and once each local morning when the host asks.
  *
  * A counterpart's turn is the passive trigger: it briefs that one opportunity
  * if it needs briefing and takes its turn. No sibling is decided. When the
@@ -187,6 +188,32 @@ export function startRunner(options: RunnerOptions): Runner {
   }
 
   /**
+   * One morning wake. Same tools as an event wake. The signal id stays here,
+   * so a person it opens takes the negotiator this runner already starts.
+   *
+   * @param intentId - The signal.
+   */
+  async function morning(intentId: string): Promise<void> {
+    if (stopped) return;
+    let intent = intents.get(intentId);
+    if (!intent) {
+      const rows = await client.listIntents();
+      for (const row of rows) {
+        if (row.status !== "active") continue;
+        intents.set(row.id, { id: row.id, statement: row.statement });
+      }
+      intent = intents.get(intentId);
+    }
+    if (!intent) return;
+    log(`morning ${intent.statement}`);
+    await runWake(client, intent, {
+      ...runtime(),
+      reason: "morning",
+      onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId),
+    });
+  }
+
+  /**
    * Work one negotiation, whether a decision authorised it or a counterpart
    * just moved it. A stall still standing on the conversation holds it inside
    * {@link runNegotiate}, so no runtime state can release it early.
@@ -273,6 +300,7 @@ export function startRunner(options: RunnerOptions): Runner {
 
   return {
     wake: startWake,
+    morning,
     stop: () => {
       stopped = true;
       stopStream();

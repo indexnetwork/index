@@ -60,6 +60,8 @@ export type NetworkRequestStatus = 'pending' | 'needs_changes';
 
 export interface NotificationPreferences {
   connectionUpdates: boolean;
+  /** Absent means the morning wake is on. */
+  morningBrief?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

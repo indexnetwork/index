@@ -337,6 +337,7 @@ export interface UserWithGraph {
   hasProfile: boolean;
   notificationPreferences: {
     connectionUpdates: boolean;
+    morningBrief?: boolean;
   };
 }
 
