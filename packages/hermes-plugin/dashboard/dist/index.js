@@ -1439,7 +1439,7 @@
 
   const ENVIRONMENTS = ["main", "dev", "local"];
 
-  function IntentPitch(props) {
+  function bindEnvironmentMenu() {
     const menuState = React.useState(null);
     const menu = menuState[0];
     const setMenu = menuState[1];
@@ -1454,7 +1454,7 @@
       return function () { window.removeEventListener("mousedown", close); };
     }, [menu]);
 
-    function openEnvironmentMenu(event) {
+    function open(event) {
       event.preventDefault();
       event.stopPropagation();
       setMenu({ x: event.clientX, y: event.clientY });
@@ -1463,7 +1463,7 @@
       }).catch(function () {});
     }
 
-    function chooseEnvironment(name, event) {
+    function choose(name, event) {
       event.preventDefault();
       event.stopPropagation();
       setMenu(null);
@@ -1484,26 +1484,32 @@
       }).catch(function () {});
     }
 
+    const node = menu ? React.createElement("div", {
+      className: "index-dashboard__env-menu",
+      style: { left: menu.x, top: menu.y },
+      onMouseDown: function (event) { event.stopPropagation(); },
+    }, ENVIRONMENTS.map(function (name) {
+      return React.createElement("button", {
+        key: name,
+        type: "button",
+        className: "index-dashboard__env-item" + (name === environment ? " index-dashboard__env-item--on" : ""),
+        onMouseDown: function (event) { choose(name, event); },
+      }, name);
+    })) : null;
+    return { open: open, node: node };
+  }
+
+  function IntentPitch(props) {
+    const envMenu = bindEnvironmentMenu();
     const pitchImage = props.onLight ? assetSrc("pitch-light") : PITCH_IMAGE();
     return React.createElement("aside", { className: "index-dashboard__pitch" },
       pitchImage ? React.createElement("div", {
         className: "index-dashboard__pitch-media",
         style: { backgroundImage: "url(" + JSON.stringify(pitchImage) + ")" },
         "aria-hidden": "true",
-        onDoubleClick: openEnvironmentMenu,
+        onDoubleClick: envMenu.open,
       }) : null,
-      menu ? React.createElement("div", {
-        className: "index-dashboard__env-menu",
-        style: { left: menu.x, top: menu.y },
-        onMouseDown: function (event) { event.stopPropagation(); },
-      }, ENVIRONMENTS.map(function (name) {
-        return React.createElement("button", {
-          key: name,
-          type: "button",
-          className: "index-dashboard__env-item" + (name === environment ? " index-dashboard__env-item--on" : ""),
-          onMouseDown: function (event) { chooseEnvironment(name, event); },
-        }, name);
-      })) : null,
+      envMenu.node,
       React.createElement("div", { className: "index-dashboard__pitch-body" },
         React.createElement("h2", { className: "index-dashboard__pitch-title" },
           "find your others",
@@ -4279,6 +4285,7 @@
     const manualLink = linkState[0];
     const setManualLink = linkState[1];
     const pollRef = useRef(null);
+    const envMenu = bindEnvironmentMenu();
 
     function stopPolling() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -4331,10 +4338,12 @@
     }
 
     return React.createElement("div", { className: "index-dashboard__login" },
+      envMenu.node,
       React.createElement("div", { className: "index-dashboard__login-card" },
         React.createElement("h1", {
           className: "index-dashboard__login-brand",
           dangerouslySetInnerHTML: { __html: INDEX_WORDMARK_SVG },
+          onDoubleClick: envMenu.open,
         }),
         React.createElement("p", { className: "index-dashboard__login-copy" },
           "index finds the right people for you, before you even think to look."),
