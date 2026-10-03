@@ -6802,7 +6802,7 @@ export default {
         area: SIDEBAR_NAV_AREA,
         data: {
           path: DISCOVER_PATH,
-          label: n > 0 ? 'Discover ' + n : 'Discover',
+          label: n > 0 ? 'Discover (' + n + ')' : 'Discover',
           codicon: 'sparkle'
         }
       })
