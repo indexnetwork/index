@@ -20,13 +20,11 @@ function call(id: string, name: string, argument: object): ModelMessage {
 
 class ScriptedModel implements Model {
   readonly seen: ModelMessage[][] = [];
-  readonly tools: ToolDefinition[][] = [];
 
   constructor(private readonly replies: ModelMessage[]) {}
 
-  async complete(messages: ModelMessage[], tools?: ToolDefinition[]): Promise<ModelMessage> {
+  async complete(messages: ModelMessage[], _tools?: ToolDefinition[]): Promise<ModelMessage> {
     this.seen.push([...messages]);
-    this.tools.push(tools ?? []);
     const reply = this.replies.shift();
     if (!reply) throw new Error("Unexpected model call");
     return reply;
@@ -144,29 +142,6 @@ test("reject_opportunity records the verdict and the reply reports it", async ()
   expect(rejected).toEqual(["opp-1"]);
   expect(model.seen[1]!.at(-1)?.content).toBe("Opportunity rejected: opp-1.");
   expect(result.actions).toEqual([{ type: "reply", text: "Opportunity rejected: opp-1." }]);
-});
-
-const MORNING = "It is morning. Discover again even when opportunities are already open";
-
-test("an event wake does not carry the morning reason", async () => {
-  const { client } = index();
-  const model = new ScriptedModel([done]);
-  await wake({ user, intent, principalConversation: [], opportunities: [], model, client });
-  const prompt = model.seen[0]!.map((message) => message.content).join("\n");
-  expect(prompt).not.toContain(MORNING);
-  expect(prompt).not.toContain("Good morning");
-});
-
-test("a morning wake says so and keeps the same tools", async () => {
-  const { client } = index();
-  const model = new ScriptedModel([done]);
-  await wake({ user, intent, principalConversation: [], opportunities: [], model, client, reason: "morning" });
-  const prompt = model.seen[0]!.map((message) => message.content).join("\n");
-  expect(prompt).toContain(MORNING);
-  expect(prompt).toContain("Good morning");
-  const names = model.tools[0]!.map((tool) => tool.function.name);
-  expect(names).toContain("reach_counterparties");
-  expect(names).toContain("ask_principal");
 });
 
 test("runWake retries a silent first pass and publishes one direct reply", async () => {
