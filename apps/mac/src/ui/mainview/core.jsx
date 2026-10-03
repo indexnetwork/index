@@ -27,7 +27,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // landing. Deliberately not tied to having just created the signal, because
   // reopening a young signal lands in exactly the same empty state and "no one
   // here right now" is the wrong thing to say while the agents are still out.
-  const [discoveryMetrics, setDiscoveryMetrics] = useState({});
   // A signal can legitimately match nobody, so discovery is not allowed to spin
   // forever: past this it gives up and the ordinary empty state takes over.
   const [discoveryExpired, setDiscoveryExpired] = useState(false);
@@ -184,12 +183,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         if (skeleton && prev.length > 0) return prev;
         return apply(prev, mapped);
       });
-      setDiscoveryMetrics((prev) => ({
-        ...prev,
-        found: items.length,
-        scored: items.filter((it) => typeof (it && it.score) === "number").length,
-        advanced: mapped.filter((p) => opportunityBucket(p) !== null).length,
-      }));
     };
 
     const skeletonR = await client.opportunities
@@ -231,7 +224,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // good: the give-up state only exists for the empty case.
   useEffect(() => {
     setDiscoveryExpired(false);
-    setDiscoveryMetrics({});
   }, [intentId]);
 
   useEffect(() => {
@@ -239,21 +231,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const t = setTimeout(() => setDiscoveryExpired(true), DISCOVERY_GIVE_UP_MS);
     return () => clearTimeout(t);
   }, [live, shownPeople.length]);
-
-  // Reach is the one stage number that does not come from the radar, so it is
-  // asked for once while discovery is on screen.
-  useEffect(() => {
-    if (!live || !client || !discovering) return;
-    let alive = true;
-    client.networks.list()
-      .then((r) => {
-        if (!alive) return;
-        const networks = window.IndexApp.normalizeList(r, "networks");
-        setDiscoveryMetrics((prev) => ({ ...prev, networks: networks.length }));
-      })
-      .catch(() => { /* the line stays unlit rather than showing a guess */ });
-    return () => { alive = false; };
-  }, [live, client, discovering]);
 
   useEffect(() => {
     if (!live) return;
@@ -467,7 +444,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       client.opportunities.updateStatusForIntent(personId, "accepted", intentId)
         .then(() => {
           setPeople(prev => prev.map(p =>
-            p.id === personId ? { ...p, status: "accepted" } : p));
+            p.id === personId ? { ...p, status: "accepted", waitingOnThem: true } : p));
           openChat(personId);
           setTimeout(refreshRadar, 1500);
         })
@@ -475,7 +452,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       return;
     }
     setPeople(prev => prev.map(p =>
-      p.id === personId ? { ...p, status: "accepted" } : p));
+      p.id === personId ? { ...p, status: "accepted", waitingOnThem: true } : p));
     openChat(personId);
   };
   // Pass is the other half of the ready-stage decision, decline the intro
@@ -710,7 +687,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             unread={unread}
             chatIds={chatIds}
             discovering={discovering}
-            discoveryMetrics={discoveryMetrics}
           />
         </MacWindow>
         )}

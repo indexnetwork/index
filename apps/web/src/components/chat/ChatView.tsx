@@ -150,6 +150,13 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
+  // The conversation is open once the DM exists. Land in the composer then,
+  // including after accept navigates here (autoFocus alone loses that race).
+  useEffect(() => {
+    if (contextLoading) return;
+    inputRef.current?.focus();
+  }, [contextLoading, userId]);
+
   // Auto-resize textarea (handles both typing and prefilled values)
   useEffect(() => {
     const el = inputRef.current;

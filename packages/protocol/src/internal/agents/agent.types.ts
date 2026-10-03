@@ -11,7 +11,6 @@ export interface AgentRecord {
   id: string;
   ownerId: string;
   name: string;
-  description: string | null;
   type: 'external' | 'system';
   status: 'active' | 'inactive';
   metadata: Record<string, unknown>;
@@ -22,7 +21,6 @@ export interface AgentRecord {
 export interface CreateAgentInput {
   ownerId: string;
   name: string;
-  description?: string;
   type: 'external' | 'system';
   metadata?: Record<string, unknown>;
 }

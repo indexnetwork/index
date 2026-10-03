@@ -507,6 +507,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             else if action == "setProtocolServer" {
                 setProtocolServer(body?["value"] as? String ?? "", admittedGeneration: admittedGeneration)
             }
+            else if action == "setDockBadge" {
+                setDockBadge(body?["value"])
+            }
             return
         }
         if message.name == "indexNotify" {
@@ -924,6 +927,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }.resume()
     }
 
+    /// Dock tile badge: the hub's waiting total. Nil clears it. Capped so a
+    /// runaway count cannot paint an unbounded string on the icon.
+    private func setDockBadge(_ value: Any?) {
+        let raw = (value as? NSNumber)?.intValue ?? 0
+        let count = min(max(raw, 0), 999)
+        NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
+    }
+
     private func logout(admittedGeneration: UInt64) {
         // Reject new work and cancel in-flight tasks before the credential goes
         // away. The drain is empty on purpose: deletion below must not wait for
@@ -947,6 +958,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             return
         }
         if let credential { revokeSession(credential.credential) }
+        setDockBadge(0)
         notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
     }
 

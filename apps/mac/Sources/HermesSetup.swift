@@ -69,25 +69,8 @@ enum HermesSetup {
         if status != 0 {
             return ["ok": false, "error": "hermes \(args.joined(separator: " ")): \(String(output.suffix(300)))"]
         }
-        // Point Hermes Desktop at the plugin's desktop/dist without waiting
-        // for gateway register() to copy it (see plugin __init__.py).
-        progress("linking the Hermes desktop tab")
-        linkDesktopPlugin()
         restartGatewayIfRunning(hermes, progress: progress)
         return ["ok": true]
-    }
-
-    /// ~/.hermes/desktop-plugins/index-network → plugins/index-network/desktop/dist
-    private static func linkDesktopPlugin() {
-        let home = NSHomeDirectory() + "/.hermes"
-        let dest = home + "/desktop-plugins/index-network"
-        let src = home + "/plugins/index-network/desktop/dist"
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: src + "/plugin.js") else { return }
-        try? fm.createDirectory(
-            atPath: home + "/desktop-plugins", withIntermediateDirectories: true)
-        try? fm.removeItem(atPath: dest)
-        try? fm.createSymbolicLink(atPath: dest, withDestinationPath: src)
     }
 
     /// Plugins only load at gateway startup. Bounce a launchd-supervised
@@ -116,7 +99,7 @@ enum HermesSetup {
     /// caller; this only cleans the local runtime.
     static func teardown(progress: (String) -> Void = { _ in }) -> [String: Any] {
         let home = NSHomeDirectory() + "/.hermes"
-        progress("unlinking the desktop plugin")
+        progress("removing the desktop plugin")
         try? FileManager.default.removeItem(atPath: home + "/desktop-plugins/index-network")
 
         let pluginPath = home + "/plugins/index-network"

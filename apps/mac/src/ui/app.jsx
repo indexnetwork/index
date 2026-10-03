@@ -22,6 +22,7 @@ function useIndexEnv() {
     refreshNetworks: () => {},
     refreshIntents: () => {},
     patchIntentStatus: () => {},
+    chatUnread: 0,
   };
 }
 
@@ -116,6 +117,9 @@ function App() {
   const live = snapshot !== null;
   const data = snapshot || {};
   const { PEOPLE = [], POOL = [], FIELD_EVENTS = [], INTENTS = [] } = data;
+  // Unread person-to-person threads. The conversations shelf shows this, and
+  // the Dock badge adds it to the signal and network counts.
+  const [chatUnread, setChatUnread] = useState(0);
 
   const refreshNetworks = React.useCallback(async () => {
     if (!nativeAuthed() || !window.IndexApp) return;
@@ -286,6 +290,58 @@ function App() {
       setPendingLink(null);
     })();
   }, [pendingLink, screen]);
+
+  // Dock tile: questions and opportunities waiting on a signal, plus the
+  // shelf counts we can actually read (unread conversations, join requests).
+  // The tile is a sum of the in-memory snapshot. That snapshot only reloaded
+  // when the hub mounted or this app archived a signal, so a change made
+  // anywhere else sat on the icon until the next relaunch.
+  const overlayView = overlay && overlay.view;
+  const refreshChatUnread = React.useCallback(() => {
+    if (!live || !window.IndexApp || !window.IndexApp.getClient) {
+      setChatUnread(0);
+      return;
+    }
+    const client = window.IndexApp.getClient();
+    if (!client || !client.conversations || !client.conversations.list) return;
+    client.conversations.list()
+      .then((res) => {
+        const rows = window.IndexApp.normalizeList(res, "conversations");
+        const n = rows.reduce((sum, c) => {
+          const people = ((c && c.participants) || []).filter((p) => p && p.participantType === "user");
+          if (people.length !== 2 || (c.participants || []).length !== 2) return sum;
+          return sum + (Number(c.unreadCount) || 0);
+        }, 0);
+        setChatUnread(n);
+      })
+      .catch(() => {});
+  }, [live]);
+  useEffect(() => {
+    refreshChatUnread();
+  }, [refreshChatUnread, screen, overlayView]);
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(() => {
+      refreshIntents();
+      refreshNetworks();
+      refreshChatUnread();
+    }, 5000);
+    return () => clearInterval(t);
+  }, [live, refreshIntents, refreshNetworks, refreshChatUnread]);
+
+  useEffect(() => {
+    if (!window.IndexApp || !window.IndexApp.setDockBadge) return;
+    if (!live) {
+      window.IndexApp.setDockBadge(0);
+      return;
+    }
+    const signals = (INTENTS || []).reduce((sum, intent) => {
+      if (!intent || intent.status !== "active") return sum;
+      return sum + (Number(intent.pending) || 0);
+    }, 0);
+    const joins = (networks || []).reduce((sum, net) => sum + (Number(net.pendingJoinCount) || 0), 0);
+    window.IndexApp.setDockBadge(signals + joins + chatUnread);
+  }, [live, INTENTS, networks, chatUnread]);
 
   // Desktop notification pipeline: runs app-wide while signed in. The native
   // side never toasts while the app is frontmost, so this can stay up across
@@ -533,7 +589,7 @@ function App() {
   };
 
   return (
-    <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks, refreshIntents, patchIntentStatus }}>
+    <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks, refreshIntents, patchIntentStatus, chatUnread }}>
       <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",
@@ -597,7 +653,7 @@ function App() {
               />
             )}
             {overlay.view === "conversations" && (
-              <Conversations initialConversationId={overlay.conversationId} onClose={closeOverlay}/>
+              <Conversations initialConversationId={overlay.conversationId} onClose={closeOverlay} onRead={refreshChatUnread}/>
             )}
             {overlay.view === "negotiations" && <NegotiationHistory onClose={closeOverlay}/>}
           </div>

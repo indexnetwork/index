@@ -42,6 +42,8 @@ export interface OpportunityCardData {
   score?: number;
   /** Opportunity status at the time the card was created. */
   status?: string;
+  /** This viewer already committed. Status can still be pending until the other person accepts. */
+  viewerCommitted?: boolean;
   /**
    * True for cards from a skeleton-presentation fetch: identity fields are
    * real but mainText/cta are empty. The body renders a shimmer until a full
@@ -195,9 +197,11 @@ export default function OpportunityCard({
 
   // Use currentStatus if provided (fetched from server), otherwise fall back to card.status
   const effectiveStatus = currentStatus ?? card.status;
+  const waitingOnThem = !!card.viewerCommitted && effectiveStatus === "pending";
 
   // Check if the opportunity status allows actions
-  const canTakeAction = isActionableStatus(effectiveStatus)
+  const canTakeAction = !waitingOnThem
+    && isActionableStatus(effectiveStatus)
     && (effectiveStatus !== "pending" || pendingActionable);
   const statusMessage = getStatusMessage(effectiveStatus);
 
@@ -263,8 +267,12 @@ export default function OpportunityCard({
     );
   }
 
+  const openChat = () => {
+    if (card.userId) navigate(`/u/${card.userId}/chat`);
+  };
+  const showWaiting = (waitingOnThem || actionTaken === "accepted") && effectiveStatus !== "accepted";
   const hasActions = !actionTaken && canTakeAction && (onPrimaryAction || onSecondaryAction);
-  const showResolvedStatus = !canTakeAction && statusMessage;
+  const showResolvedStatus = !showWaiting && actionTaken !== "rejected" && !canTakeAction && !!statusMessage;
 
   return (
     <div className={cn("rounded-md p-4", getCardWrapperClass(effectiveStatus))}>
@@ -325,18 +333,39 @@ export default function OpportunityCard({
             )}
           </div>
         )}
-        {actionTaken && (
+        {actionTaken === "rejected" && (
           <div className="flex items-center gap-1.5 shrink-0 text-sm text-gray-500">
             <Check className="w-4 h-4 text-green-600 shrink-0" />
-            <span>{actionTaken === "accepted" ? "Sent" : "Dismissed"}</span>
+            <span>Dismissed</span>
           </div>
         )}
-        {!actionTaken && showResolvedStatus && (
+        {showWaiting && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[11px] text-gray-500">Waiting for {card.name || "them"}</span>
+            <button
+              type="button"
+              className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors"
+              onClick={openChat}
+            >
+              Open chat
+            </button>
+          </div>
+        )}
+        {showResolvedStatus && (
           <div className="shrink-0">
             {effectiveStatus === "accepted" && (
-              <span className="inline-flex items-center gap-1.5 text-green-600 text-xs font-semibold font-mono">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                Connected
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 text-green-600 text-xs font-semibold font-mono">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  Connected
+                </span>
+                <button
+                  type="button"
+                  className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors"
+                  onClick={openChat}
+                >
+                  Open chat
+                </button>
               </span>
             )}
             {effectiveStatus === "rejected" && (

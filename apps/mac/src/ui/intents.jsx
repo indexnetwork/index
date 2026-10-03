@@ -13,6 +13,16 @@ const SHELF_VISIBLE_ROWS = 6;
 
 /* ---------- account shelf ---------- */
 
+// Plain tally on the right of a shelf row. Not the orange waiting badge.
+function ShelfCount({ n }) {
+  return (
+    <span style={{
+      flex:"0 0 auto",
+      fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
+    }}>{n}</span>
+  );
+}
+
 // Account shelf avatar — same bauhaus fallback as everywhere else.
 function InitialsTile({ id, name, size = 46, photo }) {
   return (
@@ -22,59 +32,53 @@ function InitialsTile({ id, name, size = 46, photo }) {
 
 // The communities you belong to. Intentionally quiet, no border or shadow, so
 // it reads as a shelf item rather than competing with the account row below it.
-// The glyph occupies the same 34px block as the account tile and the label uses
-// the same size and weight, so the two rows line up even though their fills
-// differ on purpose.
-function NetworksRow({ count, pending, onClick }) {
+// The label uses the same size and weight as the account row, so the two line up.
+function NetworksRow({ count, onClick }) {
   return (
     <button
       onClick={onClick}
       style={{
-        display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"3px 6px", cursor:"pointer", textAlign:"left",
+        display:"flex", alignItems:"center", gap:8.4, width:"100%",
+        padding:"3px 0", cursor:"pointer", textAlign:"left",
         border:"none", borderTop:"1px solid #DAD8D4", background:"transparent",
       }}>
       <span style={{
-        flex:"0 0 auto", width:34, height:34,
+        flex:"0 0 auto", width:20.8, height:34,
         display:"flex", flexDirection:"column",
-        alignItems:"center", justifyContent:"center", gap:5,
+        alignItems:"flex-start", justifyContent:"center", gap:4,
       }}>
         {[0, 1].map(r => (
-          <span key={r} style={{ display:"flex", gap:4, alignItems:"center" }}>
-            <span style={{ width:4, height:4, background:"#000" }}/>
-            <span style={{ width:13, height:4, background:"#000" }}/>
+          <span key={r} style={{ display:"flex", gap:3.2, alignItems:"center" }}>
+            <span style={{ width:3.2, height:3.2, background:"#000" }}/>
+            <span style={{ width:10.4, height:3.2, background:"#000" }}/>
           </span>
         ))}
       </span>
       <span style={{
         flex:1, minWidth:0,
         fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
-      }}>networks ({count})</span>
-      <QCount
-        n={pending}
-        muted={!pending}
-        title={`${pending} waiting on you — people asking to join`}
-      />
+      }}>networks</span>
+      <ShelfCount n={count}/>
     </button>
   );
 }
 
 // Every person-to-person thread, including ones whose signal is gone. Same
 // shelf treatment as the networks row below it.
-function ConversationsRow({ onClick }) {
+function ConversationsRow({ unread = 0, onClick }) {
   return (
     <button
       onClick={onClick}
       style={{
-        display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"3px 6px", cursor:"pointer", textAlign:"left",
-        border:"none", borderTop:"1px solid #DAD8D4", background:"transparent",
+        display:"flex", alignItems:"center", gap:8.4, width:"100%",
+        padding:"3px 0", cursor:"pointer", textAlign:"left",
+        border:"none", background:"transparent",
       }}>
       <span style={{
-        flex:"0 0 auto", width:34, height:34,
-        display:"grid", placeItems:"center",
+        flex:"0 0 auto", width:20.8, height:34,
+        display:"grid", placeItems:"center start",
       }}>
-        <svg width="22" height="20" viewBox="0 0 22 20" fill="none" stroke="#000" strokeWidth={2.5} strokeLinejoin="miter">
+        <svg width="17.6" height="16" viewBox="0 0 22 20" fill="none" stroke="#000" strokeWidth={2.5} strokeLinejoin="miter">
           <path d="M2 2h18v12H9l-5 4v-4H2z"/>
         </svg>
       </span>
@@ -82,6 +86,11 @@ function ConversationsRow({ onClick }) {
         flex:1, minWidth:0,
         fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
       }}>conversations</span>
+      <QCount
+        n={unread}
+        muted={!unread}
+        title={`${unread} unread`}
+      />
     </button>
   );
 }
@@ -126,20 +135,21 @@ function AgentsRow({ count, onClick }) {
     <button
       onClick={onClick}
       style={{
-        display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"3px 6px", cursor:"pointer", textAlign:"left",
+        display:"flex", alignItems:"center", gap:8.4, width:"100%",
+        padding:"3px 0", cursor:"pointer", textAlign:"left",
         border:"none", borderTop:"1px solid #DAD8D4", background:"transparent",
       }}>
       <span style={{
-        flex:"0 0 auto", width:34, height:34,
-        display:"grid", placeItems:"center",
+        flex:"0 0 auto", width:20.8, height:34,
+        display:"grid", placeItems:"center start",
       }}>
-        <AgentGlyph size={26}/>
+        <AgentGlyph size={20.8}/>
       </span>
       <span style={{
         flex:1, minWidth:0,
         fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
-      }}>agents ({count})</span>
+      }}>agents</span>
+      <ShelfCount n={count}/>
     </button>
   );
 }
@@ -215,7 +225,7 @@ function UserMenu({ me, onSelect }) {
       </button>
 
       {open && (
-        <div role="menu" className="fade-up" style={{
+        <div role="menu" style={{
           position:"absolute", bottom:"calc(100% + 6px)", left:0, zIndex:40,
           minWidth:200, width:"100%", background:"#fff",
           border:"1px solid #000", boxShadow:"3px 3px 0 rgba(0,0,0,0.22)",
@@ -253,7 +263,6 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
   const NETWORKS = env.networks || [];
   const AGENTS = [];
   const joinedCount = NETWORKS.filter(n => n.joined !== false).length;
-  const pendingJoins = NETWORKS.reduce((sum, n) => sum + (n.pendingJoinCount || 0), 0);
   const agentCount  = 1 + AGENTS.filter(a => a.state === "connected").length;
 
   useEffect(() => {
@@ -399,9 +408,9 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
 
               {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
-                <div style={{ borderBottom:"1px solid #DAD8D4" }}>
-                  <ConversationsRow onClick={() => onOpenView && onOpenView("conversations")}/>
-                  <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
+                <div>
+                  <ConversationsRow unread={env.chatUnread || 0} onClick={() => onOpenView && onOpenView("conversations")}/>
+                  <NetworksRow count={joinedCount} onClick={() => onOpenView && onOpenView("networks")}/>
                   <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
                 </div>
                 <UserMenu me={ME} onSelect={onAccountSelect}/>
@@ -497,8 +506,8 @@ function signalStatus(intent) {
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  // Opportunities awaiting you (same number as the Hermes and web dashboards).
-  const pending = intent.pending ?? 0;
+  // Unanswered questions plus opportunities awaiting you, on a live signal.
+  const pending = intent.status === "active" ? (intent.pending ?? 0) : 0;
   const hasQ = pending > 0;
   const statusLabel = signalStatus(intent);
   // the blink is the signal working. only the states that are actually running
@@ -550,7 +559,7 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
         </span>
       </div>
 
-      {/* awaiting opportunities, the hero */}
+      {/* questions and opportunities waiting on you */}
       <QCount n={pending} muted={!hasQ}/>
     </button>
   );

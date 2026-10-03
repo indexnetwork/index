@@ -416,6 +416,7 @@ function IntentDetail() {
     (item: RadarCardItem) =>
       radarBucketForOpportunity(
         (opportunityStatusMap[item.opportunityId] as OpportunityLifecycleStatus | undefined) ?? item.status,
+        item.viewerCommitted,
       ),
     [opportunityStatusMap],
   );

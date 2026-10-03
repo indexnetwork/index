@@ -420,6 +420,13 @@ window.IndexApp = (function () {
     return post("setOpenAtLogin", { value: !!enabled });
   }
 
+  // The Dock icon shows the same waiting total as the hub. Zero clears it.
+  // No-op in browser preview, where there is no Dock tile.
+  function setDockBadge(count) {
+    const n = Number(count);
+    return post("setDockBadge", { value: Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 999) : 0 });
+  }
+
   // Current notification preferences: the in-session edit (mirrored onto ME by
   // the settings save) wins over the durable native store; null means default
   // (everything on) and is how notificationEventAllowed fails open.
@@ -527,6 +534,7 @@ window.IndexApp = (function () {
     setProtocolServer,
     openAtLogin,
     setOpenAtLogin,
+    setDockBadge,
     onOpenAtLoginChanged,
     startDesktopNotifications,
     confirmOnboardingProfile,

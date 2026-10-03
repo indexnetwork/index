@@ -860,7 +860,7 @@ async function wake(input) {
       },
       run: async ({ plan, queries }) => {
         try {
-          await input.onProgress?.("Working out who to reach");
+          await input.onProgress?.("Working out who to reach.");
         } catch (cause) {
           unpersisted ??= cause;
         }
@@ -1238,10 +1238,12 @@ async function runWake(client, intent, runtime) {
     log(`    ${opportunity.id} ${opportunity.counterpart}: ${opportunity.status}, awaiting ${opportunity.awaiting}, ${opportunity.turnCount} turns${opportunity.brief ? ", briefed" : ""}${opportunity.decision ? `, ${opportunity.decision}` : ""}`);
   }
   log("  thinking");
-  try {
-    await publishActions(client, intent.id, [{ type: "progress", text: "Warming up" }], context);
-  } catch (cause) {
-    log(`  progress failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+  if (!principalConversation.some((entry2) => entry2.kind === "progress" && (entry2.text === "Warming up" || entry2.text === "Warming up."))) {
+    try {
+      await publishActions(client, intent.id, [{ type: "progress", text: "Warming up." }], context);
+    } catch (cause) {
+      log(`  progress failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
   }
   const result2 = await wake({
     user,

@@ -231,7 +231,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
             ) : inboxFeed.map((it) => {
               if (it.kind === "user") return <UserLine key={it.id}>{it.text}</UserLine>;
               if (it.kind === "discovery") return (
-                <DiscoveryTrace key={it.id} plan={it.plan} queries={it.queries} discovered={it.discovered} reached={it.reached} progress={it.progress} items={it.items}/>
+                <DiscoveryTrace key={it.id} plan={it.plan} queries={it.queries} discovered={it.discovered} reached={it.reached} progress={it.progress} items={it.items} loading={it.loading}/>
               );
               if (it.kind === "decisions") return <DecisionGroup key={it.id} items={it.items}/>;
               if (it.kind === "answered-question") return <AnsweredQuestion key={it.id} item={it}/>;
@@ -241,6 +241,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
                   selections={selections} setSelections={setSelections}
                   writing={writing} setWriting={setWriting}/>
               );
+              if (it.kind === "loading") return <LoadingTrace key={it.id} lines={it.lines}/>;
               if (it.kind === "progress") return <ProgressLine key={it.id} text={it.text}/>;
               return <AgentNote key={it.id} item={it}/>;
             })}
@@ -403,12 +404,10 @@ function withoutSupersededLooking(messages) {
   });
   messages.forEach((message, index) => {
     if (message.kind !== "progress") return;
-    if (message.text === "Warming up") {
-      if (messages.some((other, otherIndex) => otherIndex > index && other.kind === "progress")) drop.add(index);
-      return;
-    }
-    if (message.text !== "Working out who to reach") return;
-    if (traces.some((other, otherIndex) => otherIndex > index && other)) drop.add(index);
+    if (!loadingLine(message.text)) return;
+    const first = messages.findIndex((other) => other.kind === "progress" && other.text === message.text);
+    // Temporary: keep these lines after discovery starts so their style can be edited. Revert to also dropping them once a later progress has a numeric discovered.
+    if (index !== first) drop.add(index);
   });
   if (!drop.size) return messages;
   return messages.filter((_, index) => !drop.has(index));
@@ -423,7 +422,7 @@ function buildInboxFeed(messages) {
   const planNote = new Map();
   let runId = "before-discovery";
   messages.forEach((message, index) => {
-    if (message.kind === "progress") {
+    if (message.kind === "progress" && !loadingLine(message.text)) {
       runId = message.id;
       progress.set(runId, message.text);
     }
@@ -443,7 +442,7 @@ function buildInboxFeed(messages) {
     if (message.kind === "question-history" && message.questionId) questions.set(message.questionId, { ...message, at:index });
     if (message.kind === "answer-history" && message.questionId) answers.set(message.questionId, message);
   });
-  if (!decisionRuns.size && !answers.size) return messages;
+  if (!decisionRuns.size && !answers.size) return foldLoading(messages);
 
   const insertions = new Map();
   decisionRuns.forEach((run) => {
@@ -485,12 +484,61 @@ function buildInboxFeed(messages) {
       return;
     }
     if (planIndexes.has(index)) return;
+    if (message.kind === "progress" && loadingLine(message.text)) {
+      feed.push(message);
+      return;
+    }
     if (message.kind === "progress") {
       feed.push(message);
       return;
     }
     if (message.kind !== "brief" && message.kind !== "decision"
         && message.kind !== "question-history" && message.kind !== "answer-history") feed.push(message);
+  });
+  return foldLoading(feed);
+}
+
+function loadingLine(text) {
+  const line = typeof text === "string" && text.endsWith(".") ? text.slice(0, -1) : text;
+  return line === "Warming up" || line === "Working out who to reach";
+}
+
+function loadingSentence(text) {
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
+function foldLoading(entries) {
+  const feed = [];
+  let block = null;
+  entries.forEach((entry) => {
+    if (entry.kind === "loading" || (entry.kind === "progress" && loadingLine(entry.text))) {
+      const lines = entry.kind === "loading" ? entry.lines : [entry.text];
+      if (!block) {
+        block = { kind:"discovery", id:entry.id, loading:[], plan:"", queries:[], discovered:null, reached:null, progress:"", items:[] };
+        feed.push(block);
+      }
+      lines.forEach((line) => block.loading.push(line));
+      return;
+    }
+    const trace = entry.kind === "discovery" ? entry : (entry.kind === "progress" ? parseDiscoveryProgress(entry.text) : null);
+    if (trace && (entry.kind === "discovery" || trace.plan || (trace.queries && trace.queries.length))) {
+      if (block && !block.plan && !block.queries.length) {
+        block.plan = trace.plan || "";
+        block.queries = trace.queries || [];
+        block.discovered = trace.discovered;
+        block.reached = trace.reached;
+        block.progress = entry.kind === "discovery" ? entry.progress : "";
+        block.items = entry.kind === "discovery" ? entry.items : [];
+        return;
+      }
+      if (entry.kind === "discovery") feed.push(entry);
+      else feed.push({
+        kind:"discovery", id:entry.id, loading:[], plan:trace.plan || "", queries:trace.queries || [],
+        discovered:trace.discovered, reached:trace.reached, progress:"", items:[],
+      });
+      return;
+    }
+    feed.push(entry);
   });
   return feed;
 }
@@ -539,7 +587,7 @@ const discoveryRail = {
   display:"flex", flexDirection:"column", gap:9,
 };
 
-function DiscoveryTrace({ plan, queries = [], discovered, reached, progress, items }) {
+function DiscoveryTrace({ plan, queries = [], discovered, reached, progress, items, loading = [] }) {
   const [queriesOpen, setQueriesOpen] = useState(true);
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [queryHover, setQueryHover] = useState(false);
@@ -557,6 +605,11 @@ function DiscoveryTrace({ plan, queries = [], discovered, reached, progress, ite
           marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:11,
           color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
         }}>your agent</div>
+        {(loading.length && !loading.includes("Warming up") && !loading.includes("Warming up.") ? ["Warming up.", ...loading] : loading).map((line) => (
+          <p key={line} style={{
+            margin:"0 0 8px", fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55, color:"#5A5548",
+          }}>{loadingSentence(line)}</p>
+        ))}
         {plan ? (
           <p style={{
             margin:"0 0 10px", fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55,
@@ -692,6 +745,27 @@ function DecisionGroup({ items }) {
         ))}
       </div>
     </details>
+  );
+}
+
+function LoadingTrace({ lines }) {
+  return (
+    <section className="fade-up" style={{ display:"flex", gap:12 }}>
+      <MyAgentAvatar size={30} style={{ marginTop:2 }}/>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{
+          marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:11,
+          color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
+        }}>your agent</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {lines.map((line) => (
+            <p key={line} style={{
+              margin:0, fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55, color:"#5A5548",
+            }}>{loadingSentence(line)}</p>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 

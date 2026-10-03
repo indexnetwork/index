@@ -245,6 +245,36 @@ export default {
       window.removeEventListener('click', onIndexLinkClick, true)
     })
 
+    // Sidebar row is the dock item we can badge. Hermes has no numeric badge
+    // field on nav contributions, so the count rides the label, and only
+    // changes when the total does.
+    let discoverCount = -1
+    let navDispose = null
+    function setDiscoverCount(count) {
+      const n = Math.max(0, Math.min(999, Math.floor(Number(count) || 0)))
+      if (n === discoverCount) return
+      discoverCount = n
+      if (navDispose) navDispose()
+      navDispose = ctx.register({
+        id: 'nav',
+        area: SIDEBAR_NAV_AREA,
+        data: {
+          path: DISCOVER_PATH,
+          label: n > 0 ? 'Discover ' + n : 'Discover',
+          codicon: 'sparkle'
+        }
+      })
+    }
+    function onAttention(event) {
+      setDiscoverCount(event && event.detail)
+    }
+    setDiscoverCount(0)
+    window.addEventListener('index-network-attention', onAttention)
+    ctx.onDispose(function () {
+      window.removeEventListener('index-network-attention', onAttention)
+      if (navDispose) navDispose()
+    })
+
     ctx.registerMany([
       {
         id: 'page',
@@ -252,11 +282,6 @@ export default {
         title: 'Discover',
         data: { path: DISCOVER_PATH },
         render: function () { return React.createElement(DesktopPage) }
-      },
-      {
-        id: 'nav',
-        area: SIDEBAR_NAV_AREA,
-        data: { path: DISCOVER_PATH, label: 'Discover', codicon: 'sparkle' }
       },
       {
         id: 'open',

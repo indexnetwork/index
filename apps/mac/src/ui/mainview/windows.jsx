@@ -197,6 +197,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose }) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, draftMax)}px`;
   }, [draft, draftMax]);
+  useEffect(() => { if (draftRef.current) draftRef.current.focus(); }, [person.id]);
   return (
     <MacWindow title="chat" onClose={onClose} dismiss style={{ minHeight:0 }}>
         <div style={{

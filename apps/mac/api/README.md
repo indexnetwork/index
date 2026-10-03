@@ -50,4 +50,4 @@ Matches the web app's lazy contract:
 | **Networks** (`loadNetworks`) | `GET /networks` | Background after boot; updates `env.networks` and `window.INDEX_DATA.NETWORKS` |
 | **Intent open** (`refreshRadar`) | `GET /intents/:id/opportunities` (skeleton then full) | Per selected intent; same `RADAR_STATUSES` as web |
 
-Intent row badges use server `waitingOpportunityCount`. Deep links to opportunities fall back to `GET /opportunities/:id` when the card is not yet in loaded radar.
+Intent row badges sum server `pendingQuestionCount` and `waitingOpportunityCount`. Deep links to opportunities fall back to `GET /opportunities/:id` when the card is not yet in loaded radar.

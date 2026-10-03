@@ -47,7 +47,6 @@ export default function AgentsPage() {
   const [creating, setCreating] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [newAgentName, setNewAgentName] = useState('');
-  const [newAgentDescription, setNewAgentDescription] = useState('');
   const [selecting, setSelecting] = useState(false);
 
   useEffect(() => {
@@ -105,9 +104,8 @@ export default function AgentsPage() {
 
     setCreating(true);
     try {
-      await agentsService.create(newAgentName.trim(), newAgentDescription.trim() || undefined);
+      await agentsService.create(newAgentName.trim());
       setNewAgentName('');
-      setNewAgentDescription('');
       setRegisterOpen(false);
       await refreshAgents();
       success('Agent created');
@@ -201,12 +199,6 @@ export default function AgentsPage() {
                       placeholder="Agent name"
                       disabled={creating}
                     />
-                    <Input
-                      value={newAgentDescription}
-                      onChange={(e) => setNewAgentDescription(e.target.value)}
-                      placeholder="Description (optional)"
-                      disabled={creating}
-                    />
                     <div className="flex gap-2">
                       <Button size="sm" onClick={handleCreateAgent} disabled={creating || !newAgentName.trim()}>
                         {creating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
@@ -279,9 +271,6 @@ export default function AgentsPage() {
                               {agent.name}
                             </Link>
                             <span className="ml-2 text-xs text-gray-400 font-ibm-plex-mono">{agent.status}</span>
-                            {agent.description ? (
-                              <p className="text-xs text-gray-400 font-ibm-plex-mono mt-0.5">{agent.description}</p>
-                            ) : null}
                           </td>
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-1">

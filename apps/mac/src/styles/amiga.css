@@ -362,7 +362,8 @@
      in the row: hovering reveals it without the bubble moving. */
   .mac-chat-time{ opacity:0; transition: opacity .12s ease; }
   .mac-chat-row:hover .mac-chat-time,
-  .mac-chat-row:focus-within .mac-chat-time{ opacity:1; }
+  .mac-chat-row:focus-within .mac-chat-time,
+  .mac-chat-dated .mac-chat-time{ opacity:1; }
   @media (prefers-reduced-motion: reduce){
     .mac-chat-time{ transition:none }
   }

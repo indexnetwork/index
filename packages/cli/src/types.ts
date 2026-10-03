@@ -282,7 +282,6 @@ export interface SelectedAgent {
     id: string;
     ownerId: string;
     name: string;
-    description: string | null;
     type: "external" | "system";
     status: "active" | "inactive";
     handleNegotiations: boolean;

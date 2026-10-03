@@ -100,12 +100,6 @@ function AgentOverview({
             <dt className="text-xs text-gray-400 uppercase tracking-wide">Name</dt>
             <dd className="text-sm font-medium text-gray-900">{agent.name}</dd>
           </div>
-          {agent.description && (
-            <div>
-              <dt className="text-xs text-gray-400 uppercase tracking-wide">Description</dt>
-              <dd className="text-sm text-gray-700">{agent.description}</dd>
-            </div>
-          )}
           <div>
             <dt className="text-xs text-gray-400 uppercase tracking-wide">Type</dt>
             <dd>

@@ -563,18 +563,19 @@ export class IntentDatabaseAdapter {
 
   /**
    * Enrich a page of intent list rows with their registered networks, the
-   * per-intent waiting-opportunity count the UI surfaces and the fresh-intent
-   * discovery state. Runs the grouped queries in parallel and joins in memory,
-   * so it stays O(1) round-trips regardless of page size.
+   * per-intent waiting-opportunity and unanswered-question counts the shelf
+   * badge sums, and the fresh-intent discovery state. Runs the grouped queries
+   * in parallel and joins in memory, so it stays O(1) round-trips regardless
+   * of page size.
    *
    * @param rows - The paginated base intent rows to enrich.
    * @param userId - Owner, used to scope the waiting-opportunity actor match.
-   * @returns The rows with `networks` and `waitingOpportunityCount` populated
-   *   (empty/zero when none), plus a deduplicated total of waiting
-   *   opportunities across the page's signals.
+   * @returns The rows with `networks`, `waitingOpportunityCount`, and
+   *   `pendingQuestionCount` populated (empty/zero when none), plus a
+   *   deduplicated total of waiting opportunities across the page's signals.
    */
   private async attachIntentExtras(
-    rows: (Omit<IntentListRow, 'networks' | 'waitingOpportunityCount' | 'warming'> & {
+    rows: (Omit<IntentListRow, 'networks' | 'waitingOpportunityCount' | 'pendingQuestionCount' | 'warming'> & {
       /** Stamped by the discovery queue on first successful discovery (IND-482). */
       firstDiscoverySucceededAt: Date | null;
     })[],
@@ -583,15 +584,17 @@ export class IntentDatabaseAdapter {
     if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0 };
     const intentIds = rows.map(r => r.id);
     const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [networks, countResult] = await Promise.all([
+    const [networks, countResult, questions] = await Promise.all([
       this.networksByIntent(intentIds),
       this.countsByIntent(intentIds, userId),
+      this.pendingQuestionsByIntent(intentIds, userId),
     ]);
     return {
       rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
         ...r,
         networks: networks.get(r.id) ?? [],
         waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
+        pendingQuestionCount: questions.get(r.id) ?? 0,
         warming: r.createdAt > warmingCutoff
           && firstDiscoverySucceededAt == null,
       })),
@@ -680,6 +683,47 @@ export class IntentDatabaseAdapter {
       if (entry) entry.opportunities = Number(r.cnt);
     }
     return { byIntent, totalWaitingOpportunities };
+  }
+
+  /**
+   * Unanswered agent questions on each signal, matching the agent-DM queue:
+   * a question stays open until a later answer or expire names it.
+   *
+   * @param intentIds - Signals on this page.
+   * @param userId - Owner, whose single agent DM holds every signal's questions.
+   * @returns A count for every requested id, zero when none are open.
+   */
+  private async pendingQuestionsByIntent(intentIds: string[], userId: string): Promise<Map<string, number>> {
+    const byIntent = new Map<string, number>();
+    for (const id of intentIds) byIntent.set(id, 0);
+    if (intentIds.length === 0) return byIntent;
+    const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
+    const rows = await db.execute(sql`
+      SELECT asked.metadata->>'intentId' AS intent_id, COUNT(*)::int AS cnt
+      FROM ${schema.messages} AS asked
+      INNER JOIN ${schema.conversations} AS dm
+        ON dm.id = asked.conversation_id
+      WHERE dm.dm_pair = ${`agent-dm:${userId}`}
+        AND asked.metadata->>'intentId' IN (${idList})
+        AND asked.metadata->'principalMessage'->>'kind' = 'question'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${schema.messages} AS retired
+          WHERE retired.conversation_id = asked.conversation_id
+            AND retired.metadata->>'intentId' = asked.metadata->>'intentId'
+            AND retired.metadata->'principalMessage'->>'kind' IN ('answer', 'expire')
+            AND retired.metadata->'principalMessage'->>'questionId' = COALESCE(
+              asked.metadata->'principalMessage'->>'questionId',
+              asked.id
+            )
+            AND (retired.created_at, retired.id) > (asked.created_at, asked.id)
+        )
+      GROUP BY intent_id
+    `) as unknown as Array<{ intent_id: string; cnt: number }>;
+    for (const row of rows) {
+      if (byIntent.has(row.intent_id)) byIntent.set(row.intent_id, Number(row.cnt));
+    }
+    return byIntent;
   }
 
   async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {

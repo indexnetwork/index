@@ -131,7 +131,7 @@ function QCount({ n, muted, title }) {
   }
   return (
     <span
-      title={title || `${n} waiting on you — pending opportunities`}
+      title={title || `${n} waiting on you`}
       style={{
         display:"flex", alignItems:"baseline", justifyContent:"center",
         padding:"3px 8px",
@@ -246,17 +246,69 @@ function useNarrow(ref, max) {
   return narrow;
 }
 
-/* ---------- PipelineFunnel: Amiga gadget strip ---------- */
-// Label first, then its count in a badge. The tabs share the row equally so the
-// strip fills the window width and always stays one row deep; a tab too narrow
-// for its label truncates it ("negotiati…") rather than letting the text spill
-// over its neighbours. The count never truncates, it is the part you read.
-function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "all" }) {
+/* ---------- NegotiationSquare: lights up beside the negotiating count -------
+   `pulse` goes up once per increase in the count. Each one lights the square
+   at full opacity, with a short pop, and fades it out over 10s. */
+const FUNNEL_HOT = "#F26B1D";
+
+function NegotiationSquare({ pulse }) {
+  const box = useRef(null);
+  const heard = useRef(pulse);
+  useEffect(() => {
+    if (pulse === heard.current) return;
+    heard.current = pulse;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const struck = performance.now();
+    let frame = 0;
+    const draw = (now) => {
+      const dt = (now - struck) / 1000;
+      const E = Math.max(0, (Math.exp(-4.6 * dt / 10) - 0.01) / 0.99);
+      const scale = still || dt >= 0.5 ? 1 : 1 + 0.22 * Math.exp(-12 * dt) * Math.cos(16 * dt);
+      box.current.style.opacity = E;
+      box.current.style.transform = `scale(${scale})`;
+      if (E > 0) frame = requestAnimationFrame(draw);
+    };
+    draw(struck);
+    return () => cancelAnimationFrame(frame);
+  }, [pulse]);
+  return (
+    <span ref={box} aria-hidden="true" style={{
+      position:"absolute", left:"100%", top:"50%", marginLeft:7, marginTop:-5,
+      width:10, height:10, background:FUNNEL_HOT, opacity:0, zIndex:1,
+      willChange:"transform, opacity",
+    }}/>
+  );
+}
+
+/* ---------- PipelineFunnel: count-hero tab strip ---------- */
+// Four equal tabs across the whole column. Labels share one size, shrunk only
+// until the widest ("awaiting you") fits its tab, so none of them truncate.
+function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "all", negotiationPulse }) {
   const clickable = !!onClickStage;
   const allActive = activeStage === "all";
+  const rowRef = useRef(null);
+  const [labelPx, setLabelPx] = useState(10);
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const fit = () => {
+      const labels = [...row.querySelectorAll("[data-funnel-label]")];
+      let size = 10;
+      const clipped = (px) => labels.some((el) => {
+        el.style.fontSize = px + "px";
+        return el.scrollWidth > el.clientWidth + 1;
+      });
+      while (clipped(size) && size > 8) size -= 0.5;
+      setLabelPx((prev) => (prev === size ? prev : size));
+    };
+    fit();
+    const watch = new ResizeObserver(fit);
+    watch.observe(row);
+    return () => watch.disconnect();
+  }, [stages.length]);
   return (
-    <div style={{
-      display:"grid",
+    <div ref={rowRef} style={{
+      display:"grid", height:"100%",
       gridTemplateColumns:`repeat(${stages.length}, minmax(0, 1fr))`,
       fontFamily:"var(--mac-mono)",
     }}>
@@ -275,32 +327,36 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
             disabled={!clickable}
             title={`${s.label} · ${s.count}`}
             style={{
-              minWidth:0, overflow:"hidden",
-              display:"flex", alignItems:"center", justifyContent:"center", gap:4,
-              // tight sides: in a squeezed column every pixel here is a
-              // character of the label that survives the truncation
-              padding:"7px 5px",
-              background: isActive ? A.fg : "transparent",
-              color: isActive ? A.paper : A.fg,
+              position:"relative", minWidth:0,
+              display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4,
+              padding:"0 5px",
+              background:"transparent", color:"#111",
               opacity: dim ? 0.45 : 1,
               cursor: clickable ? "pointer" : "default",
-              border:"none",
-              borderRight: last ? "none" : `1px solid ${A.fg}`,
-              borderRadius:0,
+              border:"none", borderRadius:0,
               whiteSpace:"nowrap",
               fontFamily:"var(--mac-mono)",
             }}>
             <span style={{
-              fontSize:10, letterSpacing:0.4, textTransform:"uppercase",
-              minWidth:0, overflow:"hidden", textOverflow:"ellipsis",
+              position:"relative",
+              fontSize:18, fontWeight:500, lineHeight:1,
+              color: accent ? FUNNEL_HOT : "#111",
+            }}>
+              {s.count}
+              {s.label === "negotiating" && negotiationPulse != null && (
+                <NegotiationSquare pulse={negotiationPulse}/>
+              )}
+            </span>
+            <span data-funnel-label style={{
+              display:"block", alignSelf:"stretch", width:"100%", overflow:"hidden", textAlign:"center",
+              fontSize:labelPx, letterSpacing:"0.06em", textTransform:"uppercase",
+              whiteSpace:"nowrap", lineHeight:1,
             }}>{s.label}</span>
-            <span style={{
-              fontSize:10, fontWeight:700, lineHeight:1,
-              padding:"3px 3px", minWidth:12, textAlign:"center", flex:"0 0 auto",
-              border:`1px solid ${isActive ? A.paper : A.fg}`,
-              background: accent ? A.accent : "transparent",
-              color: accent ? A.fg : (isActive ? A.paper : A.fg),
-            }}>{s.count}</span>
+            {!last && (
+              <span aria-hidden="true" style={{
+                position:"absolute", right:0, top:12, bottom:12, width:1.5, background:"#111",
+              }}/>
+            )}
           </button>
         );
       })}

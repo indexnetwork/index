@@ -4,7 +4,6 @@ export interface Agent {
   id: string;
   ownerId: string;
   name: string;
-  description: string | null;
   type: 'external' | 'system';
   status: 'active' | 'inactive';
   notifyOnOpportunity: boolean;
@@ -30,14 +29,14 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
     return response.agent;
   },
 
-  create: async (name: string, description?: string): Promise<Agent> => {
-    const response = await api.post<{ agent: Agent }>('/agents', { name, description });
+  create: async (name: string): Promise<Agent> => {
+    const response = await api.post<{ agent: Agent }>('/agents', { name });
     return response.agent;
   },
 
   update: async (
     agentId: string,
-    updates: { name?: string; description?: string | null; status?: 'active' | 'inactive'; notifyOnOpportunity?: boolean; dailySummaryEnabled?: boolean; handleNegotiations?: boolean },
+    updates: { name?: string; status?: 'active' | 'inactive'; notifyOnOpportunity?: boolean; dailySummaryEnabled?: boolean; handleNegotiations?: boolean },
   ): Promise<Agent> => {
     const response = await api.patch<{ agent: Agent }>(`/agents/${agentId}`, updates);
     return response.agent;

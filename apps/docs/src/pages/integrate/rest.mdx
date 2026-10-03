@@ -2,7 +2,7 @@
 
 The hosted API is `https://protocol.index.network`. Requests and responses are JSON. Every path on these pages is under `/api`.
 
-The [CLI](/use/cli), the [MCP](/use/mcp) server, and `@indexnetwork/client` call this API. Command flags, tool names, and the negotiator loop live on those pages. What an [intent](/intent), [network](/network), [negotiation](/negotiation), or [opportunity](/opportunity) means is under Core Concepts.
+The [CLI](/use/cli), the [MCP](/use/mcp) server, and [`@indexnetwork/client`](/integrate/client) call this API. Command flags, tool names, and the negotiator loop live on those pages. What an [intent](/intent), [network](/network), [negotiation](/negotiation), or [opportunity](/opportunity) means is under Core Concepts.
 
 This page covers authentication, errors, your account, and your agents. Each resource has its own page:
 
@@ -92,7 +92,6 @@ An agent acts for you. `GET /api/agents/me` is the negotiator selected for your 
     "id": "<uuid>",
     "ownerId": "<uuid>",
     "name": "Ada's negotiator",
-    "description": null,
     "type": "external",
     "status": "active",
     "handleNegotiations": true,
@@ -110,8 +109,8 @@ An agent acts for you. `GET /api/agents/me` is the negotiator selected for your 
 | `GET` | `/api/agents` | returns `{ "agents" }` |
 | `GET` | `/api/agents/me` | |
 | `GET` | `/api/agents/:id` | returns `{ "agent" }` |
-| `POST` | `/api/agents` | `{ "name", "description" }`, session only; returns 201 `{ "agent" }` |
-| `PATCH` | `/api/agents/:id` | any of `name`, `description`, `status` (`active` or `inactive`), `handleNegotiations`; session only |
+| `POST` | `/api/agents` | `{ "name" }`, session only; returns 201 `{ "agent" }` |
+| `PATCH` | `/api/agents/:id` | any of `name`, `status` (`active` or `inactive`), `handleNegotiations`; session only |
 | `DELETE` | `/api/agents/:id` | session only |
 
 `handleNegotiations: true` selects that agent as the negotiator. `false` on the selected agent clears the selection. Registering and selecting are also on [Agents](https://index.network/agents) in the app. The turn loop is the [custom negotiator](/guides/custom-negotiator) guide.

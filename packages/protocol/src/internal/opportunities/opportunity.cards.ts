@@ -10,7 +10,7 @@ import type { OpportunityCache } from '../../platform/discovery/cache.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { OpportunityPresenter, buildOpportunityCardCacheKey, gatherPresenterContext } from './opportunity.presentation.js';
 import { loadNegotiationContext } from './negotiation-context.loader.js';
-import { canUserSeeOpportunity, isActionableForViewer } from './opportunity.utils.js';
+import { canUserSeeOpportunity } from './opportunity.utils.js';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from './opportunity.labels.js';
 
 const logger = protocolLogger('OpportunityCards');
@@ -35,6 +35,8 @@ export interface OpportunityCard {
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   /** Viewer's role in this opportunity (e.g. 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;
+  /** This viewer already committed. Status can still be pending until the other person accepts. */
+  viewerCommitted?: boolean;
   /**
    * True for a skeleton card: identity fields are real but mainText/cta are
    * empty because the presenter was skipped. Never cached.
@@ -71,6 +73,14 @@ function counterpartUserIds(opportunity: Opportunity, viewerId: string): Set<str
   return new Set(opportunity.actors.map((a) => a.userId).filter((id) => id && id !== viewerId));
 }
 
+function viewerHasCommitted(opportunity: Opportunity, viewerId: string): boolean {
+  return (opportunity.committedActorIds ?? []).includes(viewerId);
+}
+
+function stampViewerCommitted(card: OpportunityCard, viewerCommitted: boolean): OpportunityCard {
+  return { ...card, viewerCommitted };
+}
+
 /**
  * Present one opportunity as a card for the viewer.
  *
@@ -92,12 +102,13 @@ export async function presentOpportunityCard(
   const counterpart = pickDisplayCounterpartActor(opportunity, viewerId);
   if (!counterpart) return null;
 
+  const viewerCommitted = viewerHasCommitted(opportunity, viewerId);
   const cacheable = opportunity.status !== 'negotiating';
   const cacheKey = buildOpportunityCardCacheKey(opportunity.id, viewerId, options.intentId);
   if (cacheable && !options.skeleton && !options.noCache) {
     try {
       const hit = await deps.cache.get<OpportunityCard>(cacheKey);
-      if (hit) return { ...hit, status: opportunity.status };
+      if (hit) return stampViewerCommitted({ ...hit, status: opportunity.status }, viewerCommitted);
     } catch (error) {
       logger.warn('card cache read failed, presenting', { opportunityId: opportunity.id, error });
     }
@@ -124,7 +135,10 @@ export async function presentOpportunityCard(
   };
 
   if (options.skeleton) {
-    return { ...identity, mainText: '', cta: '', mutualIntentsLabel: 'Shared interests', presentationPending: true };
+    return stampViewerCommitted(
+      { ...identity, mainText: '', cta: '', mutualIntentsLabel: 'Shared interests', presentationPending: true },
+      viewerCommitted,
+    );
   }
 
   const [context, negotiationContext] = await Promise.all([
@@ -136,14 +150,14 @@ export async function presentOpportunityCard(
     opportunityStatus: opportunity.status,
     ...(negotiationContext ? { negotiationContext } : {}),
   });
-  const card: OpportunityCard = {
+  const card: OpportunityCard = stampViewerCommitted({
     ...identity,
     mainText: presentation.personalizedSummary,
     cta: presentation.suggestedAction,
     headline: presentation.headline,
     mutualIntentsLabel: presentation.mutualIntentsLabel,
     narratorChip: { name: 'Index', text: presentation.narratorRemark },
-  };
+  }, viewerCommitted);
   if (cacheable) {
     await deps.cache.set(cacheKey, card).catch((error) => {
       logger.warn('card cache write failed', { opportunityId: opportunity.id, error });
@@ -184,8 +198,6 @@ export async function listOpportunityCards(
   const requested = new Set(input.statuses);
   const visible = raw
     .filter((opp) => requested.has(opp.status) && canUserSeeOpportunity(opp.actors, opp.status, viewerId))
-    .filter((opp) => opp.status !== 'pending'
-      || isActionableForViewer(opp.actors, opp.status, viewerId, opp.committedActorIds ?? []))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
   const seen = new Set<string>();
@@ -205,7 +217,7 @@ export async function listOpportunityCards(
       const hits = await deps.cache.mget<OpportunityCard>(cacheableOpps.map(keyFor));
       cacheableOpps.forEach((opp, i) => {
         const hit = hits[i];
-        if (hit) cached.set(opp.id, { ...hit, status: opp.status });
+        if (hit) cached.set(opp.id, stampViewerCommitted({ ...hit, status: opp.status }, viewerHasCommitted(opp, viewerId)));
       });
     } catch (error) {
       logger.warn('card cache read failed, presenting all', { error });

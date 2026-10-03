@@ -75,9 +75,11 @@ export function mapIntent(intent) {
     matches: 0,
     connected: 0,
     inConversations: 0,
-    // Row badge: opportunities awaiting the user, straight from the server
-    // list count so it matches the Hermes and web dashboards.
-    pending: count(intent.waitingOpportunityCount),
+    // Row and Dock badge: unanswered questions plus opportunities awaiting you,
+    // on active signals only. Paused and archived rows stay listed without a count.
+    pending: !archived && !paused
+      ? count(intent.pendingQuestionCount) + count(intent.waitingOpportunityCount)
+      : 0,
     inbound: [],
     source: intent,
   };
@@ -140,7 +142,10 @@ export function mapPersonFromRadarCard(card) {
     overlap: compact([card.headline]),
     // the presenter card carries a 0-1 match score; it was being dropped
     score: typeof card.score === 'number' ? card.score : null,
-    status: mapOpportunityStatusToPrototype(card.status),
+    status: card.viewerCommitted === true && card.status === 'pending'
+      ? 'accepted'
+      : mapOpportunityStatusToPrototype(card.status),
+    waitingOnThem: card.viewerCommitted === true && card.status === 'pending',
     pitchFromAgent: card.narratorChip?.text || card.mainText || '',
     introVia: card.narratorChip?.name || card.cta || '',
     ...mapCounterpartProfile(card),

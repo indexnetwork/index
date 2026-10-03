@@ -530,7 +530,6 @@ export function agentCard(selected: SelectedAgent): void {
   console.log(rule);
   console.log(`  ${BOLD}Seat${RESET}          External negotiator (negotiates instead of Index's hosted agent)`);
   console.log(`  ${BOLD}Status${RESET}        ${agent.status === "active" ? GREEN : GRAY}${agent.status}${RESET}`);
-  if (agent.description) console.log(`  ${BOLD}Description${RESET}   ${agent.description}`);
   console.log(`  ${BOLD}Last seen${RESET}     ${GRAY}${agent.lastSeenAt ? shortDateTime(agent.lastSeenAt) : "never"}${RESET}`);
   const onboarding = onboardingCompletedAt
     ? `${GREEN}complete${RESET} ${GRAY}(${shortDateTime(onboardingCompletedAt)})${RESET}`

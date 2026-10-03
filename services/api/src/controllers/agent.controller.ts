@@ -12,13 +12,11 @@ type RouteParams = Record<string, string>;
 
 const createAgentSchema = z.object({
   name: z.string().trim().min(1, 'name is required'),
-  description: z.string().optional(),
 });
 
 const updateAgentSchema = z
   .object({
     name: z.string().optional(),
-    description: z.string().nullable().optional(),
     status: z.enum(['active', 'inactive']).optional(),
     notifyOnOpportunity: z.boolean().optional(),
     dailySummaryEnabled: z.boolean().optional(),
@@ -97,7 +95,7 @@ export class AgentController {
     }
 
     try {
-      const agent = await this.agents.create(user.id, body.name, body.description);
+      const agent = await this.agents.create(user.id, body.name);
       return Response.json({ agent }, { status: 201 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
