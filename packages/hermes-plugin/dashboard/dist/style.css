@@ -592,7 +592,7 @@
 }
 
 .index-agent-header__name {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1;
 }
@@ -732,7 +732,7 @@
 }
 
 .index-agent-header__row-name {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-sans);
   font-size: 17px;
   line-height: 1.1;
 }

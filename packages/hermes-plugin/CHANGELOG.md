@@ -48,6 +48,7 @@
   and it retries a failed wake up to three times.
 
 ### Changed
+- The negotiator name uses Public Sans, the same face as the rest of the plugin.
 - The desktop sidebar unread count sits in parentheses: `Discover (3)`.
 - The plugin no longer registers an Index gateway platform. The gateway
   process watches the selected negotiator and records sessions in the
