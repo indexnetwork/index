@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { ensureLandingFonts } from '@/app/landing/fonts';
+import { protocolOrigin } from '@/lib/protocol-origin';
 import './AuthModal.css';
 
-const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';
+const PROTOCOL_BASE = protocolOrigin();
 const API_BASE = `${PROTOCOL_BASE}/api`;
 
 interface AuthFormProps {

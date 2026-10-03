@@ -6,13 +6,20 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import UserAvatar from "@/components/UserAvatar";
 import { validateFiles } from "@/lib/file-validation";
 import ClientLayout from "@/components/ClientLayout";
-import { ConfirmWindow, Stage, Window } from "@/components/workbench/Workbench";
+import { ConfirmWindow, RuleLabel, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import DevicesSection from "@/components/settings/DevicesSection";
 import SettingsTabs from "@/components/settings/SettingsTabs";
 import { parseSocial } from "@/lib/socials";
+import { forgetProtocolOrigin, isProtocolOrigin, rememberProtocolOrigin, visibleProtocolOrigin } from "@/lib/protocol-origin";
 
-const SETTINGS_TABS = ["profile", "notifications", "access"] as const;
+const SETTINGS_TABS = ["profile", "notifications", "access", "advanced"] as const;
+
+const PROTOCOL_PRESETS = [
+  { value: "main", label: "main", url: "https://protocol.index.network", web: "https://index.network" },
+  { value: "dev", label: "dev", url: "https://protocol.dev.index.network", web: "https://dev.index.network" },
+  { value: "local", label: "local", url: "http://localhost:3001", web: "http://localhost:3000" },
+] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 function isSettingsTab(v: string | null): v is SettingsTab {
@@ -170,20 +177,15 @@ export default function ProfilePage() {
           <div className="space-y-10">
 
             {/* Identity header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <button type="button" onClick={() => fileInputRef.current?.click()} style={{ padding: 0, border: "1px solid #000", background: "#fff", cursor: "pointer", lineHeight: 0 }}>
-                {avatarPreview ? (
-                  <img src={avatarPreview} alt="" width={72} height={72} style={{ width: 72, height: 72, objectFit: "cover", display: "block" }} />
-                ) : (
-                  <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={72} />
-                )}
-              </button>
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
-              <div>
-                <div style={{ fontFamily: "var(--mac-mono)", fontSize: 14, fontWeight: 700 }}>{name || "your name"}</div>
-                <button type="button" onClick={() => fileInputRef.current?.click()} style={{ marginTop: 4, background: "none", border: "none", padding: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", cursor: "pointer", textDecoration: "underline" }}>change photo</button>
-              </div>
-            </div>
+            <PhotoPicker
+              name={name || user?.name || ""}
+              preview={avatarPreview}
+              userId={user?.id}
+              userName={user?.name}
+              avatar={user?.avatar}
+              onPick={() => fileInputRef.current?.click()}
+            />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
             {avatarError && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-warn)" }}>{avatarError}</p>}
 
             <div className="space-y-4 pt-2">
@@ -280,6 +282,8 @@ export default function ProfilePage() {
               </div>
           )}
 
+          {activeTab === "advanced" && <AdvancedPane signOut={signOut} />}
+
           {activeTab === "notifications" && (
               <div className="space-y-10">
                 <div className="space-y-4">
@@ -344,6 +348,105 @@ export default function ProfilePage() {
         </ConfirmWindow>
       )}
       </ClientLayout>
+  );
+}
+
+function PhotoPicker({ name, preview, userId, userName, avatar, onPick }: {
+  name: string;
+  preview: string | null;
+  userId?: string;
+  userName?: string;
+  avatar?: string | null;
+  onPick: () => void;
+}) {
+  const [hot, setHot] = useState(false);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <span
+        role="button"
+        tabIndex={0}
+        aria-label="change photo"
+        title="change photo"
+        onClick={onPick}
+        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onPick(); } }}
+        onMouseEnter={() => setHot(true)}
+        onMouseLeave={() => setHot(false)}
+        onFocus={() => setHot(true)}
+        onBlur={() => setHot(false)}
+        style={{ position: "relative", width: 54, height: 54, flex: "0 0 auto", display: "block", cursor: "pointer", outline: "none" }}
+      >
+        {preview ? (
+          <img src={preview} alt="" width={54} height={54} style={{ width: 54, height: 54, objectFit: "cover", display: "block", borderRadius: 0 }} />
+        ) : (
+          <UserAvatar id={userId} name={userName} avatar={avatar} size={54} />
+        )}
+        <span aria-hidden style={{
+          position: "absolute", right: -1, bottom: -1, width: 16, height: 16,
+          border: "1px solid #000", background: hot ? "#FF8A00" : "#000", color: hot ? "#000" : "#fff",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 10, lineHeight: 1, pointerEvents: "none", borderRadius: 0,
+        }}>✎</span>
+      </span>
+      <div style={{ fontFamily: "var(--mac-mono)", fontSize: 17, fontWeight: 700 }}>{name}</div>
+    </div>
+  );
+}
+
+function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
+  const active = visibleProtocolOrigin();
+  const preset = PROTOCOL_PRESETS.find((item) => item.url === active);
+  const [choice, setChoice] = useState<string>(preset ? preset.value : "custom");
+  const [custom, setCustom] = useState(preset ? "" : active);
+
+  const apply = async (url: string) => {
+    const next = url.trim().replace(/\/+$/, "");
+    if (!isProtocolOrigin(next) || next === active) return;
+    try { await signOut(); } catch { /* leaving this server is the point */ }
+    const target = PROTOCOL_PRESETS.find((item) => item.url === next);
+    if (target) {
+      forgetProtocolOrigin();
+      if (target.web !== window.location.origin) {
+        window.location.assign(target.web);
+        return;
+      }
+    } else {
+      rememberProtocolOrigin(next);
+    }
+    window.location.reload();
+  };
+
+  return (
+    <div>
+      <RuleLabel>protocol server</RuleLabel>
+      <p style={{ margin: "12px 0", maxWidth: 520, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
+        requests go to <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{active}</span>.
+        switching signs you out — a session belongs to the server it was made on.
+      </p>
+      <Segmented
+        value={choice}
+        onChange={(value) => {
+          setChoice(value);
+          const next = PROTOCOL_PRESETS.find((item) => item.value === value);
+          if (next) void apply(next.url);
+        }}
+        options={[...PROTOCOL_PRESETS.map((item) => ({ value: item.value, label: item.label })), { value: "custom", label: "custom" }]}
+      />
+      {choice === "custom" && (
+        <div style={{ marginTop: 12, maxWidth: 360 }}>
+          <div style={{ marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>origin</div>
+          <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff", padding: "7px 10px" }}>
+            <input
+              value={custom}
+              placeholder="https://protocol.example.com"
+              onChange={(event) => setCustom(event.target.value)}
+              onBlur={() => void apply(custom)}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void apply(custom); } }}
+              style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13 }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

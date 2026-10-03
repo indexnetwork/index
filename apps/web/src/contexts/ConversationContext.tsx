@@ -6,10 +6,11 @@ import { useConversations } from '@/contexts/APIContext';
 import type { ConversationSummary, ConversationMessage } from '@/services/conversation';
 import type { NegotiationSummary } from '@/services/negotiations';
 import { log } from '@/lib/logger';
+import { protocolOrigin } from '@/lib/protocol-origin';
 
 const logger = log.context.from('ConversationContext');
 
-const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';
+const PROTOCOL_BASE = protocolOrigin();
 const SSE_URL = `${PROTOCOL_BASE}/api/events`;
 
 interface ConversationSessionHistoryState {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
+import { protocolOrigin } from "@/lib/protocol-origin";
 import AuthModal from "@/components/AuthModal";
 
 /** Browser login, returning the owner to the app. */
@@ -9,7 +10,7 @@ function LoginPage() {
   // The MCP plugin passes the original authorize query to /login. The API
   // validates it again; no client-provided redirect URL is navigated to here.
   const isMcpLogin = new URLSearchParams(window.location.search).has('client_id');
-  const authorizeURL = `${import.meta.env.VITE_PROTOCOL_URL || window.location.origin}/api/auth/mcp/authorize${window.location.search}`;
+  const authorizeURL = `${protocolOrigin() || window.location.origin}/api/auth/mcp/authorize${window.location.search}`;
   const finishLogin = () => window.location.replace(isMcpLogin ? authorizeURL : '/');
 
   useEffect(() => {
