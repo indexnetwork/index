@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Avatar from 'boring-avatars';
+import UserAvatar from '@/components/UserAvatar';
 import { resolveNetworkImageSrc } from '@/lib/network-image';
 
 interface NetworkAvatarProps {
@@ -11,15 +11,7 @@ interface NetworkAvatarProps {
 }
 
 function BoringFallback({ id, title, size, className }: { id?: string; title?: string; size: number; className?: string }) {
-  const seed = id || title || 'default';
-  return (
-    <div
-      className={`overflow-hidden shrink-0 ${className || ''}`}
-      style={{ width: size, height: size }}
-    >
-      <Avatar size={size} name={seed} variant="bauhaus" />
-    </div>
-  );
+  return <UserAvatar id={id} name={title} size={size} className={className} />;
 }
 
 /**
