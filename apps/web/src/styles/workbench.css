@@ -538,15 +538,32 @@
 .wb-auth input {
   width: 100%;
   border: 1px solid #000;
+  border-radius: 0;
   background: #fff;
   padding: 8px 10px;
+  font-family: var(--mac-sans);
   font-size: 13px;
+  outline: none;
   box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
+}
+.wb-auth input:focus {
+  outline: none;
+  border-color: #000;
+}
+.wb-auth input::-webkit-contacts-auto-fill-button {
+  visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
 }
 .wb-auth .wb-btn {
   width: 100%;
   margin-top: 14px;
   padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 .wb-auth .av-form { display: flex; flex-direction: column; }
 .wb-auth .av-divider {
