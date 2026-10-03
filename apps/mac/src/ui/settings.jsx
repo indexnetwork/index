@@ -360,8 +360,8 @@ const NOTIFY_OPTIONS = [
     blurb:"both of you said yes, and the chat opens on both sides." },
   { id:"messages",  title:"a message arrives",
     blurb:"a connection wrote to you." },
-  { id:"digest",    title:"daily digest",
-    blurb:"one quiet summary each morning instead of live pings." },
+  { id:"morningBrief", title:"daily brief",
+    blurb:"your agent looks again at 08:00, and speaks only when it has something new." },
 ];
 
 function NotificationsPane({ notify, toggle }) {
@@ -835,10 +835,15 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   // In-session edits (ME.notify) win over the durable native store; the
   // defaults only apply on a truly fresh install. `messages` predates neither:
   // older saves without it fall back to on, matching notificationEventAllowed.
-  const [notify, setNotify] = useState({
-    alignment: true, accepted: true, digest: false, messages: true,
+  const localNotify = {
     ...((window.INDEX_NATIVE && window.INDEX_NATIVE.notifyPrefs) || {}),
     ...(ME.notify || {}),
+  };
+  const [notify, setNotify] = useState({
+    alignment: localNotify.alignment !== false,
+    accepted: localNotify.accepted !== false,
+    messages: localNotify.messages !== false,
+    morningBrief: (ME.notificationPreferences || {}).morningBrief !== false,
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -876,16 +881,25 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       websites: (form.websites || []).filter((w) => String(w || "").trim()),
       photo,
       notify,
+      notificationPreferences: {
+        ...(ME.notificationPreferences || {}),
+        morningBrief: !!notify.morningBrief,
+      },
     });
-    // Notification toggles gate real OS toasts now; keep them across relaunch
-    // (UserDefaults via Swift — file:// localStorage would forget them).
-    if (window.IndexApp && window.IndexApp.setNotifyPrefs) window.IndexApp.setNotifyPrefs(notify);
+    // Toast toggles stay on this Mac. The morning brief is the account setting.
+    const toast = {
+      alignment: notify.alignment,
+      accepted: notify.accepted,
+      messages: notify.messages,
+    };
+    if (window.IndexApp && window.IndexApp.setNotifyPrefs) window.IndexApp.setNotifyPrefs(toast);
     if (live && client) {
       await client.auth.updateProfile({
         name: form.name,
         intro: form.intro,
         location: form.location,
         socials,
+        notificationPreferences: { morningBrief: !!notify.morningBrief },
         ...(avatarKey ? { avatar: avatarKey } : {}),
       }).catch(() => {});
       if (firstRun && window.IndexApp && window.IndexApp.confirmOnboardingProfile) {

@@ -12,68 +12,12 @@ const SYSTEM_AGENT_IDS = {
   negotiator: "00000000-0000-0000-0000-000000000002",
 } as const;
 
-function NotificationsSection({
-  agent,
-  onChange,
-  disabled,
-}: {
-  agent: Agent;
-  onChange: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled">>) => void;
-  disabled: boolean;
-}) {
-  if (agent.type !== "external") return null;
-
-  return (
-    <div style={{ border: "1px solid #000", padding: 16, background: "#fff" }}>
-      <div className="flex items-center gap-2 mb-3">
-        <h3 style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" }}>
-          notifications
-        </h3>
-      </div>
-      <div className="space-y-4">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={agent.notifyOnOpportunity}
-            disabled={disabled}
-            onChange={(e) => onChange({ notifyOnOpportunity: e.target.checked })}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-gray-900 disabled:opacity-50"
-          />
-          <span>
-            <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>connection updates</span>
-            <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>tells this agent when an opportunity is accepted or someone reaches out.</span>
-          </span>
-        </label>
-
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={agent.dailySummaryEnabled}
-            disabled={disabled}
-            onChange={(e) => onChange({ dailySummaryEnabled: e.target.checked })}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-gray-900 disabled:opacity-50"
-          />
-          <span>
-            <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>daily brief</span>
-            <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>one message at 08:00 with new overlaps and anything waiting on you.</span>
-          </span>
-        </label>
-
-      </div>
-    </div>
-  );
-}
-
 function AgentOverview({
   agent,
   userId,
-  onPatch,
-  isSaving,
 }: {
   agent: Agent;
   userId: string;
-  onPatch: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled">>) => void;
-  isSaving: boolean;
 }) {
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
@@ -88,8 +32,6 @@ function AgentOverview({
         <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 14 }}>{agent.name}</p>
         <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-mono)", fontSize: 11 }}>{agent.type} · {agent.status}</p>
       </div>
-
-      <NotificationsSection agent={agent} onChange={onPatch} disabled={isSaving} />
     </div>
   );
 }
@@ -103,7 +45,6 @@ export default function AgentDetailPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -134,21 +75,6 @@ export default function AgentDetailPage() {
       cancelled = true;
     };
   }, [id, agentsService, isAuthenticated, error, navigate]);
-
-  async function handlePatch(
-    patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled">>,
-  ) {
-    if (!agent) return;
-    setIsSaving(true);
-    try {
-      const updated = await agentsService.update(agent.id, patch);
-      setAgent(updated);
-    } catch (err) {
-      error("Failed to save setting", err instanceof Error ? err.message : undefined);
-    } finally {
-      setIsSaving(false);
-    }
-  }
 
   if (authLoading || !isAuthenticated || loading) {
     return (
@@ -181,7 +107,7 @@ export default function AgentDetailPage() {
             <p style={{ margin: "6px 0 16px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
               {agent.type === "system" ? "hosted by index" : agent.status}
             </p>
-            <AgentOverview agent={agent} userId={user?.id ?? ""} onPatch={handlePatch} isSaving={isSaving} />
+            <AgentOverview agent={agent} userId={user?.id ?? ""} />
             {isNegotiator && <NegotiationHistory userId={user?.id ?? ""} />}
           </div>
         </Window>

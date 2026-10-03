@@ -31,12 +31,17 @@ STATE_FILE = "index-negotiator.json"
 
 
 def read_state(path: Path) -> dict:
-    """@param path - The state file. @returns `{pid, paused}` as last written by either process."""
+    """@param path - The state file. @returns `{pid, paused, url, token}` as last written."""
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         state = {}
-    return {"pid": state.get("pid"), "paused": state.get("paused") is True}
+    return {
+        "pid": state.get("pid"),
+        "paused": state.get("paused") is True,
+        "url": state.get("url") or "",
+        "token": state.get("token") or "",
+    }
 
 
 def write_state(path: Path, **changes) -> None:
@@ -129,7 +134,7 @@ class Sidecar:
                 raise
             self._process, self._agent_id = process, agent_id
             self._url = f"http://127.0.0.1:{port}"
-            write_state(self.state_path, pid=process.pid)
+            write_state(self.state_path, pid=process.pid, url=self._url, token=self.bridge.token)
             threading.Thread(
                 target=self._reap, args=(process, account, agent_id),
                 name="index-negotiator-watch", daemon=True,
@@ -199,7 +204,7 @@ class Sidecar:
         with self._lock:
             if self._process is process:
                 self._process, self._url = None, ""
-                write_state(self.state_path, pid=None)
+                write_state(self.state_path, pid=None, url="", token="")
             restart = self._wanted == (account, agent_id)
         if not restart:
             return
@@ -230,7 +235,7 @@ class Sidecar:
         process, self._process = self._process, None
         self._agent_id, self._url = "", ""
         if process is not None:
-            write_state(self.state_path, pid=None)
+            write_state(self.state_path, pid=None, url="", token="")
         if process is None or process.poll() is not None:
             return
         process.terminate()

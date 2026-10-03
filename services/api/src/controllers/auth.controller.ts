@@ -23,6 +23,7 @@ const updateProfileSchema = z.object({
   ).optional(),
   notificationPreferences: z.object({
     connectionUpdates: z.boolean().optional(),
+    morningBrief: z.boolean().optional(),
   }).optional(),
 });
 
