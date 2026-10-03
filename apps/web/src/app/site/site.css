@@ -67,6 +67,50 @@
 .site .site-nav-link:hover { color: var(--blue); }
 .site-nav .site-btn { margin: -8px 0; }
 
+/* Menu button, shown below 640px: two bars that cross into an X when open. */
+.site .site-nav-toggle {
+  display: none;
+  position: relative;
+  width: 32px;
+  height: 32px;
+  margin: -9px -6px -9px 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.site-nav-toggle-bar {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  height: 1.5px;
+  background: var(--ink);
+  transition: transform .18s ease, top .18s ease;
+}
+.site-nav-toggle-bar:first-child { top: 12px; }
+.site-nav-toggle-bar:last-child { top: 19px; }
+.site-nav--open .site-nav-toggle-bar:first-child { top: 15.5px; transform: rotate(45deg); }
+.site-nav--open .site-nav-toggle-bar:last-child { top: 15.5px; transform: rotate(-45deg); }
+
+@media (max-width: 640px) {
+  .site .site-nav-toggle { display: block; }
+  .site-nav-links {
+    display: none;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-top: 14px;
+    font-size: 15px;
+  }
+  .site-nav--open .site-nav-links { display: flex; }
+  .site .site-nav-link {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--divider);
+  }
+  .site .site-nav .site-btn { margin: 18px 0 0; height: 42px; }
+}
+
 
 /* ---------- footer ---------- */
 .site-footer {
