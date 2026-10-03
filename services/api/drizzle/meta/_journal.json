@@ -78,6 +78,13 @@
       "when": 1791200000000,
       "tag": "0010_drop_agent_description",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791300000000,
+      "tag": "0011_user_last_morning_brief_at",
+      "breakpoints": true
     }
   ]
 }

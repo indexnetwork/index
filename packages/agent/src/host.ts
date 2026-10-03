@@ -367,8 +367,8 @@ function counterpartsOf(details: NegotiationDetail[]): Map<string, MatchReferenc
  * @param runtime - Model, clock, cancellation, and where to open negotiations.
  * @returns The wake's actions.
  */
-export async function runWake(client: Index, intent: Intent, runtime: Runtime): Promise<WakeResult> {
-  const { model, now, signal, log = () => {}, onNegotiate } = runtime;
+export async function runWake(client: Index, intent: Intent, runtime: Runtime & { reason?: "morning" }): Promise<WakeResult> {
+  const { model, now, signal, log = () => {}, onNegotiate, reason } = runtime;
   const [user, negotiations, inbox] = await Promise.all([
     client.me(),
     client.listIntentNegotiations(intent.id),
@@ -428,6 +428,7 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
       for (const opportunityId of opportunityIds) onNegotiate?.(opportunityId);
     },
     onProgress: (text) => publishActions(client, intent.id, [{ type: "progress", text }], context),
+    ...(reason ? { reason } : {}),
   });
 
   if (!result.actions.length) log("  silent");

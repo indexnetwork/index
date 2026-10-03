@@ -27,6 +27,10 @@ const WAKE_PROMPT = [
   "Do not invent facts. Do not contradict what your principal's conversation already settled. You never take a negotiation turn yourself.",
 ].join("\n\n");
 
+/** The line a morning wake adds. */
+const MORNING =
+  "It is morning. Discover again even when opportunities are already open: the communities may have grown, or the earlier queries were too narrow. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+
 /**
  * The questions still waiting on the principal, mirroring how the host reads
  * the same transcript: an answer or an expiry retires one, a later question
@@ -396,9 +400,11 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
     maxSteps: WAKE_STEPS,
     ...(input.now ? { now: input.now } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
-    instructions: WAKE_PROMPT,
+    instructions: input.reason === "morning" ? `${WAKE_PROMPT}\n\n${MORNING}` : WAKE_PROMPT,
     prompt:
-      "Something happened on this signal. Work out what it changes, act only there, and stop.\n" +
+      (input.reason === "morning"
+        ? MORNING
+        : "Something happened on this signal. Work out what it changes, act only there, and stop.") + "\n" +
       JSON.stringify({
         principal: principalFacts(user),
         conversation,
