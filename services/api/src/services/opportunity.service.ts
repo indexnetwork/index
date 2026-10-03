@@ -286,6 +286,7 @@ export class OpportunityService {
       primaryActionLabel: getPrimaryActionLabel(viewerActor?.role ?? 'party'),
       secondaryActionLabel: 'Skip',
       mutualIntentsLabel: '',
+      viewerCommitted: (opportunity.committedActorIds ?? []).includes(viewerId),
       personalizedSummary: '',
       acceptedAt: opportunity.status === 'accepted'
         ? (opportunity.updatedAt instanceof Date
@@ -581,36 +582,16 @@ export class OpportunityService {
   }
 
   /**
-   * Transition a pending opportunity to `accepted` and surface the
-   * h2h conversation to navigate to. Used by the frontend's "Start Chat"
-   * button.
+   * Record this viewer's accept and open their direct chat.
    *
-   * **Step ordering is failure-safe, not wrapped in a single transaction.**
-   * The four writes run in an order chosen so a partial failure never leaves
-   * the user in a permanent dead end:
-   *
-   * 1. `getOrCreateDM` — resolves the pair's conversation. DM existence is
-   *    independent of opportunity state (dmPair unique column handles
-   *    concurrency); if it throws, the opp is still at its original status
-   *    and the button re-appears, so a retry recovers.
-   * 2. `updateOpportunityStatus` → `accepted` — only happens once the DM is
-   *    known, so we never flip status without a destination to navigate to.
-   * 3. `acceptSiblingOpportunities` — matches the PATCH /status='accepted'
-   *    side effect; already transactional internally.
-   *
-   * Step 3 is best-effort after the status flip: its failure must
-   * not block the user from reaching the chat (the opp is already accepted
-   * and the conversation already resolved). Errors are logged for later
-   * reconciliation.
-   *
-   * Does NOT insert a seed system message — IND-237 renders the accepted
-   * opportunity inline in the chat timeline, so a seed would duplicate it.
+   * The opportunity stays `pending` until the other person accepts. A second
+   * call from someone who already committed does not append another event; it
+   * returns the same conversation. The negotiation closes only when this
+   * commit is the one that completes the set.
    *
    * @param opportunityId - The opportunity to accept and navigate from
    * @param userId - The authenticated user (must be an actor)
    * @returns `{ conversationId, counterpartUserId, opportunity }` on success, or `{ error, status }` on failure.
-   * @throws Does not throw for business-logic failures — every failure path
-   *   returns an `{ error, status }` tuple so controllers can map to HTTP.
    */
   async startChat(
     opportunityId: string,
@@ -684,24 +665,24 @@ export class OpportunityService {
       return { error: 'Opportunity has no counterpart to chat with', status: 400 };
     }
 
-    const applied = await recordOpportunityEvent(opportunityId, { type: 'committed', actorUserId: userId });
+    const alreadyCommitted = (opp.committedActorIds ?? []).includes(userId);
+    const applied = alreadyCommitted
+      ? { ok: true as const, status: opp.status, introduction: false }
+      : await recordOpportunityEvent(opportunityId, { type: 'committed', actorUserId: userId });
     if (!applied.ok) return { error: applied.error, status: 409 };
     if (applied.status !== opp.status) {
       emitOpportunityTransitionBestEffort({ id: opportunityId, status: applied.status });
     }
-    const updated = await this.db.getOpportunity(opportunityId);
+    const updated = alreadyCommitted ? opp : await this.db.getOpportunity(opportunityId);
     if (!updated) return { error: 'Failed to accept opportunity', status: 500 };
     this.schedulePresentationPreload(updated, updated.actors.map((actor) => actor.userId), options?.intentId);
     const opportunity = await this.presentOpportunityForViewer(updated, userId, options?.intentId);
-    if (!applied.introduction) {
-      return { counterpartUserId: counterpart.userId, opportunity };
-    }
 
     let conversation: { id: string };
     try {
       conversation = await this.db.getOrCreateDM(userId, counterpart.userId);
     } catch (err) {
-      startChatLogger.error('getOrCreateDM failed after the set committed', {
+      startChatLogger.error('getOrCreateDM failed after the caller committed', {
         opportunityId, userId, counterpartUserId: counterpart.userId, error: err,
       });
       return { error: 'Failed to resolve conversation for this opportunity', status: 500 };
@@ -716,9 +697,11 @@ export class OpportunityService {
         conversationId: conversation.id, userId, error: err,
       });
     });
-    await this.negotiations.closeForOpportunities([opportunityId]).catch((err) => {
-      startChatLogger.error('closeForOpportunities failed (non-blocking)', { opportunityId, userId, error: err });
-    });
+    if (applied.introduction) {
+      await this.negotiations.closeForOpportunities([opportunityId]).catch((err) => {
+        startChatLogger.error('closeForOpportunities failed (non-blocking)', { opportunityId, userId, error: err });
+      });
+    }
     return { conversationId: conversation.id, counterpartUserId: counterpart.userId, opportunity };
   }
 

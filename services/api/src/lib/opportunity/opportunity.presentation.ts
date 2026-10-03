@@ -32,6 +32,8 @@ export interface PresentedOpportunity {
   mutualIntentsLabel: string;
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   presentationPending?: boolean;
+  /** This viewer already committed. Status can still be pending until the other person accepts. */
+  viewerCommitted?: boolean;
   personalizedSummary?: string;
   narratorRemark?: string;
   acceptedAt?: string | null;
@@ -74,6 +76,7 @@ export function cardToPresentedOpportunity(item: OpportunityCard): PresentedOppo
     mutualIntentsLabel: item.mutualIntentsLabel,
     narratorChip: item.narratorChip,
     presentationPending: item.presentationPending,
+    viewerCommitted: item.viewerCommitted === true,
     personalizedSummary: item.mainText,
     narratorRemark: item.narratorChip?.text ?? '',
   };
