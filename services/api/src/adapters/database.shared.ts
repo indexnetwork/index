@@ -336,7 +336,9 @@ export interface UserWithGraph {
   /** True when the user has been enriched into a global user_context row (the user_profiles replacement). */
   hasProfile: boolean;
   notificationPreferences: {
-    connectionUpdates: boolean;
+    opportunity?: boolean;
+    accepted?: boolean;
+    messages?: boolean;
     morningBrief?: boolean;
   };
 }
@@ -349,7 +351,10 @@ export interface NewsletterUserData {
   timezone: string | null;
   lastSent: Date | null;
   prefs: {
-    connectionUpdates?: boolean;
+    opportunity?: boolean;
+    accepted?: boolean;
+    messages?: boolean;
+    morningBrief?: boolean;
   } | null;
   unsubscribeToken: string | null;
   onboarding: {

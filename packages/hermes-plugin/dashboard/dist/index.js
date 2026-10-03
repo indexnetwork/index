@@ -4615,7 +4615,7 @@
         context: p.context || "",
         timezone: p.timezone || defaultTimezone(),
         socials: Array.isArray(p.socials) ? p.socials.slice() : [],
-        notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
+        notificationPreferences: p.notificationPreferences || {},
       };
       // The stored rows are bucketed by what each value resolves to, not by the
       // label it arrived under, so a linkedin URL stored as 'custom' still edits
@@ -4940,27 +4940,23 @@
             return React.createElement("option", { key: tz, value: tz }, tz.replace(/_/g, " "));
           })),
         ),
-        React.createElement(ProfileField, { label: "Email" },
+        React.createElement(ProfileField, { label: "Notifications" },
           React.createElement("div", { className: "index-dashboard__profile-checks" },
-          [["connectionUpdates", "Connection updates", "Email when someone connects with you"], ["weeklyNewsletter", "Weekly newsletter", "Weekly summary of new connections"]].map(function (row) {
+          [
+            ["opportunity", "an opportunity surfaces", "your agent found someone who meets your signals and wants you to review."],
+            ["accepted", "an intro is accepted", "both of you said yes, and the chat opens on both sides."],
+            ["messages", "a message arrives", "a connection wrote to you."],
+            ["morningBrief", "daily brief", "your agent looks again at 08:00, and speaks only when it has something new."],
+          ].map(function (row) {
             const key = row[0];
             return React.createElement("label", { key: key, className: "index-dashboard__profile-check" },
               React.createElement("div", null,
                 React.createElement("p", { className: "index-dashboard__profile-check-label" }, row[1]),
                 React.createElement("p", { className: "index-dashboard__profile-check-desc" }, row[2]),
               ),
-              React.createElement("input", { type: "checkbox", checked: !!prefs[key], onChange: function (e) { setPref(key, e.target.checked); } }),
+              React.createElement("input", { type: "checkbox", checked: prefs[key] !== false, onChange: function (e) { setPref(key, e.target.checked); } }),
             );
           }),
-          ),
-        ),
-        React.createElement(ProfileField, { label: "Daily brief" },
-          React.createElement("label", { className: "index-dashboard__profile-check" },
-            React.createElement("div", null,
-              React.createElement("p", { className: "index-dashboard__profile-check-label" }, "Daily brief"),
-              React.createElement("p", { className: "index-dashboard__profile-check-desc" }, "Your agent looks again at 08:00, and speaks only when it has something new."),
-            ),
-            React.createElement("input", { type: "checkbox", checked: prefs.morningBrief !== false, onChange: function (e) { setPref("morningBrief", e.target.checked); } }),
           ),
         ),
       );

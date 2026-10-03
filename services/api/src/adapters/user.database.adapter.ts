@@ -161,11 +161,7 @@ export class UserDatabaseAdapter {
       ...user,
       socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
       hasProfile,
-      notificationPreferences: settings?.preferences as {
-        connectionUpdates: boolean;
-      } || {
-        connectionUpdates: true,
-      }
+      notificationPreferences: (settings?.preferences as NotificationPreferences | undefined) ?? {},
     };
   }
 
@@ -305,9 +301,7 @@ export class UserDatabaseAdapter {
     await db.insert(userNotificationSettings)
       .values({
         userId,
-        preferences: {
-          connectionUpdates: true,
-        }
+        preferences: {},
       })
       .onConflictDoNothing();
   }
@@ -319,9 +313,7 @@ export class UserDatabaseAdapter {
     const [upsertedSettings] = await db.insert(userNotificationSettings)
       .values({
         userId,
-        preferences: {
-          connectionUpdates: true,
-        }
+        preferences: {},
       })
       .onConflictDoUpdate({
         target: userNotificationSettings.userId,
@@ -341,7 +333,7 @@ export class UserDatabaseAdapter {
    */
   async updateNotificationPreferences(userId: string, preferences: Partial<NotificationPreferences>): Promise<void> {
     const [existing] = await db.select().from(userNotificationSettings).where(eq(userNotificationSettings.userId, userId)).limit(1);
-    const current = (existing?.preferences ?? { connectionUpdates: true }) as NotificationPreferences;
+    const current = (existing?.preferences ?? {}) as NotificationPreferences;
     const next = { ...current, ...preferences };
     if (existing) {
       await db.update(userNotificationSettings)

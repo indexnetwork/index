@@ -52,11 +52,11 @@ export default function ProfilePage() {
   const customSocials = socials.filter(s => !['linkedin', 'twitter', 'github', 'telegram'].includes(s.label));
 
   const [notificationPreferences, setNotificationPreferences] = useState<{
-    connectionUpdates: boolean;
+    opportunity?: boolean;
+    accepted?: boolean;
+    messages?: boolean;
     morningBrief?: boolean;
-  }>({
-    connectionUpdates: true,
-  });
+  }>({});
 
   const tabParam = searchParams.get("tab");
   const activeTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "profile";
@@ -82,9 +82,7 @@ export default function ProfilePage() {
     setLocation(u.location || "");
     setTimezone(u.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
     setSocials((u.socials ?? []).map((s: { label: string; value: string }) => ({ label: s.label, value: s.value })));
-    setNotificationPreferences(
-      u.notificationPreferences || { connectionUpdates: true }
-    );
+    setNotificationPreferences(u.notificationPreferences || {});
     setAvatarFile(null);
     setAvatarPreview(null);
     setAvatarError(null);
@@ -126,7 +124,7 @@ export default function ProfilePage() {
         intro: intro || undefined,
         location: location || undefined,
         avatar: avatarFilename || undefined,
-                      Timezone: timezone || undefined,
+        timezone: timezone || undefined,
         socials: socialsPayload,
         notificationPreferences,
       });
@@ -298,10 +296,24 @@ export default function ProfilePage() {
                   </select>
                   <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
                     <span>
+                      <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>an opportunity surfaces</span>
+                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>your agent found someone who meets your signals and wants you to review.</span>
+                    </span>
+                    <input type="checkbox" checked={notificationPreferences.opportunity !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, opportunity: e.target.checked })); mark(); }} />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
+                    <span>
                       <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>an intro is accepted</span>
                       <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>both of you said yes, and the chat opens on both sides.</span>
                     </span>
-                    <input type="checkbox" checked={notificationPreferences.connectionUpdates} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, connectionUpdates: e.target.checked })); mark(); }} />
+                    <input type="checkbox" checked={notificationPreferences.accepted !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, accepted: e.target.checked })); mark(); }} />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
+                    <span>
+                      <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>a message arrives</span>
+                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>a connection wrote to you.</span>
+                    </span>
+                    <input type="checkbox" checked={notificationPreferences.messages !== false} onChange={(e) => { setNotificationPreferences((prev) => ({ ...prev, messages: e.target.checked })); mark(); }} />
                   </label>
                   <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
                     <span>

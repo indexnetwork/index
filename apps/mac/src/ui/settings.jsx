@@ -354,7 +354,7 @@ function DangerZone() {
 /* ---------- pane 2 · notifications ---------- */
 
 const NOTIFY_OPTIONS = [
-  { id:"alignment", title:"an opportunity surfaces",
+  { id:"opportunity", title:"an opportunity surfaces",
     blurb:"your agent found someone who meets your signals and wants you to review." },
   { id:"accepted",  title:"an intro is accepted",
     blurb:"both of you said yes, and the chat opens on both sides." },
@@ -364,7 +364,8 @@ const NOTIFY_OPTIONS = [
     blurb:"your agent looks again at 08:00, and speaks only when it has something new." },
 ];
 
-function NotificationsPane({ notify, toggle }) {
+function NotificationsPane({ notify, toggle, timezone, onTimezone }) {
+  const zones = typeof Intl !== "undefined" && Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : [];
   return (
     <div>
       <p style={{
@@ -373,6 +374,17 @@ function NotificationsPane({ notify, toggle }) {
       }}>
         index works in the background. choose what's worth interrupting you for.
       </p>
+      <label htmlFor="timezone" style={{ display:"block", marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:11, fontWeight:600 }}>timezone</label>
+      <select
+        id="timezone"
+        value={timezone}
+        onChange={(e) => onTimezone(e.target.value)}
+        style={{ width:"100%", boxSizing:"border-box", border:"1px solid #000", background:"#fff", padding:"8px 10px", fontFamily:"var(--mac-sans)", fontSize:13, marginBottom:9 }}
+      >
+        {zones.map((zone) => (
+          <option key={zone} value={zone}>{zone.replace(/_/g, " ")}</option>
+        ))}
+      </select>
       <div style={{ display:"grid", gap:9 }}>
         {NOTIFY_OPTIONS.map(o => (
           <Toggle
@@ -839,11 +851,19 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
     ...((window.INDEX_NATIVE && window.INDEX_NATIVE.notifyPrefs) || {}),
     ...(ME.notify || {}),
   };
+  const accountNotify = ME.notificationPreferences || {};
+  const prefer = (key) => {
+    if (accountNotify[key] !== undefined) return accountNotify[key] !== false;
+    if (localNotify[key] !== undefined) return localNotify[key] !== false;
+    if (key === "opportunity" && localNotify.alignment !== undefined) return localNotify.alignment !== false;
+    return true;
+  };
+  const [timezone, setTimezone] = useState(ME.timezone || (typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC"));
   const [notify, setNotify] = useState({
-    alignment: localNotify.alignment !== false,
-    accepted: localNotify.accepted !== false,
-    messages: localNotify.messages !== false,
-    morningBrief: (ME.notificationPreferences || {}).morningBrief !== false,
+    opportunity: prefer("opportunity"),
+    accepted: prefer("accepted"),
+    messages: prefer("messages"),
+    morningBrief: accountNotify.morningBrief !== false,
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -883,12 +903,16 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       notify,
       notificationPreferences: {
         ...(ME.notificationPreferences || {}),
+        opportunity: !!notify.opportunity,
+        accepted: !!notify.accepted,
+        messages: !!notify.messages,
         morningBrief: !!notify.morningBrief,
       },
+      timezone,
     });
-    // Toast toggles stay on this Mac. The morning brief is the account setting.
+    // The same four choices gate toasts on this Mac and the account the other apps read.
     const toast = {
-      alignment: notify.alignment,
+      opportunity: notify.opportunity,
       accepted: notify.accepted,
       messages: notify.messages,
     };
@@ -898,8 +922,14 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         name: form.name,
         intro: form.intro,
         location: form.location,
+        timezone,
         socials,
-        notificationPreferences: { morningBrief: !!notify.morningBrief },
+        notificationPreferences: {
+          opportunity: !!notify.opportunity,
+          accepted: !!notify.accepted,
+          messages: !!notify.messages,
+          morningBrief: !!notify.morningBrief,
+        },
         ...(avatarKey ? { avatar: avatarKey } : {}),
       }).catch(() => {});
       if (firstRun && window.IndexApp && window.IndexApp.confirmOnboardingProfile) {
@@ -967,7 +997,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             padding:"20px 24px 22px",
           }}>
             {tab === "profile" && <ProfilePane me={ME} form={form} set={set} profileOnly={profileOnly}/>}
-            {tab === "notify"  && <NotificationsPane notify={notify} toggle={toggle}/>}
+            {tab === "notify"  && <NotificationsPane notify={notify} toggle={toggle} timezone={timezone} onTimezone={setTimezone}/>}
             {tab === "keys"    && <AccessPane/>}
             {tab === "advanced" && <AdvancedPane/>}
           </div>

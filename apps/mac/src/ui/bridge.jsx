@@ -269,6 +269,7 @@ window.IndexApp = (function () {
       socials,
       websites: [],
       notificationPreferences: user.notificationPreferences || {},
+      timezone: user.timezone || "",
       source: user,
     };
   }

@@ -59,7 +59,10 @@ export interface NetworkRequestDetails {
 export type NetworkRequestStatus = 'pending' | 'needs_changes';
 
 export interface NotificationPreferences {
-  connectionUpdates: boolean;
+  /** Absent means the toast is on. */
+  opportunity?: boolean;
+  accepted?: boolean;
+  messages?: boolean;
   /** Absent means the morning wake is on. */
   morningBrief?: boolean;
 }
@@ -261,9 +264,7 @@ export const oauthConsents = pgTable('oauth_consent', {
 export const userNotificationSettings = pgTable('user_notification_settings', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
-  preferences: json('preferences').$type<NotificationPreferences>().default({
-    connectionUpdates: true,
-  }),
+  preferences: json('preferences').$type<NotificationPreferences>().default({}),
   unsubscribeToken: text('unsubscribe_token').$defaultFn(() => crypto.randomUUID()).notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

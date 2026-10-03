@@ -256,10 +256,13 @@ def _onboarding_gate(me: dict[str, Any] | None = None) -> dict[str, Any]:
 
 def _notification_preferences(value: Any) -> dict[str, bool]:
     prefs = value if isinstance(value, dict) else {}
+    def on(key: str) -> bool:
+        return prefs.get(key) is not False
     return {
-        "connectionUpdates": bool(prefs.get("connectionUpdates", True)),
-        "weeklyNewsletter": bool(prefs.get("weeklyNewsletter", True)),
-        "morningBrief": prefs.get("morningBrief") is not False,
+        "opportunity": on("opportunity"),
+        "accepted": on("accepted"),
+        "messages": on("messages"),
+        "morningBrief": on("morningBrief"),
     }
 
 
@@ -351,8 +354,9 @@ def _sanitize_profile_update(body: Any) -> tuple[dict[str, Any] | None, str | No
         if not isinstance(prefs, dict):
             return None, "notificationPreferences must be an object."
         update["notificationPreferences"] = {
-            "connectionUpdates": bool(prefs.get("connectionUpdates")),
-            "weeklyNewsletter": bool(prefs.get("weeklyNewsletter")),
+            "opportunity": prefs.get("opportunity") is not False,
+            "accepted": prefs.get("accepted") is not False,
+            "messages": prefs.get("messages") is not False,
             "morningBrief": prefs.get("morningBrief") is not False,
         }
     return update, None
