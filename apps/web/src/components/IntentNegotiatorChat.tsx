@@ -10,15 +10,8 @@ import { cn } from "@/lib/utils";
 
 type Provenance = { kind?: string; questionId?: string; scope?: string; matches?: PrincipalQuestion["matches"] };
 
-function loadingLine(text: string | null): text is string {
-  if (!text) return false;
-  const line = text.endsWith(".") ? text.slice(0, -1) : text;
-  return line === "Warming up" || line === "Working out who to reach";
-}
-
-function loadingSentence(text: string): string {
-  return text.endsWith(".") ? text : `${text}.`;
-}
+const WARMING = "Warming up.";
+const REACHING = "Working out who to reach.";
 
 function messageText(message: ConversationMessage): string {
   return (message.parts as { kind?: string; text?: string }[])
@@ -35,7 +28,7 @@ function supersededLoading(messages: ConversationMessage[]): Set<string> {
   const bodies = messages.map((message) => progressBody(messageText(message)));
   const firstOf = (text: string) => bodies.findIndex((body) => body === text);
   bodies.forEach((body, index) => {
-    if (!loadingLine(body)) return;
+    if (body !== WARMING && body !== REACHING) return;
     if (index !== firstOf(body)) hide.add(messages[index]!.id);
   });
   return hide;
@@ -163,18 +156,18 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             const provenance = message.metadata?.principalMessage as Provenance | undefined;
             if (!content || provenance?.kind === "question" && provenance.questionId && carded.has(provenance.questionId)) return null;
             const progress = progressBody(content);
-            if (loadingLine(progress)) {
+            if (progress === WARMING || progress === REACHING) {
               if (hiddenLoading.has(message.id)) return null;
               const earlier = index > 0 ? progressBody(messageText(messages[index - 1]!)) : null;
-              if (loadingLine(earlier) && !hiddenLoading.has(messages[index - 1]!.id)) return null;
+              if ((earlier === WARMING || earlier === REACHING) && !hiddenLoading.has(messages[index - 1]!.id)) return null;
               const lines = [progress];
               for (let next = index + 1; next < messages.length; next++) {
                 const body = progressBody(messageText(messages[next]!));
-                if (!loadingLine(body)) break;
+                if (body !== WARMING && body !== REACHING) break;
                 if (!hiddenLoading.has(messages[next]!.id)) lines.push(body);
               }
               return <div key={message.id} className="flex flex-col gap-2 text-sm text-[#5A5548]">
-                {lines.map((line) => <p key={line}>{loadingSentence(line)}</p>)}
+                {lines.map((line) => <p key={line}>{line}</p>)}
               </div>;
             }
             const own = message.role === "user";
