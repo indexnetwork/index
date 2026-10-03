@@ -384,11 +384,15 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
     if (networkIsOwner(net)) setTab((t) => (t === "overview" || t === "access" || t === "settings" ? t : "overview"));
   }, [net]);
 
+  // `live`, not `client`: getClient() is a new object every render, so depending
+  // on it restarts this fetch forever and the count stays on "…".
   useEffect(() => {
-    if (!client || !local.id) return;
+    if (!live || !local.id) return;
+    const c = window.IndexApp.getClient();
+    if (!c) return;
     let cancelled = false;
     setSignalsLoading(true);
-    client.networks.overview(local.id)
+    c.networks.overview(local.id)
       .then((res) => {
         if (cancelled) return;
         const intents = (res && res.intents) || [];
@@ -402,7 +406,7 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
       .catch(() => {})
       .finally(() => { if (!cancelled) setSignalsLoading(false); });
     return () => { cancelled = true; };
-  }, [client, local.id]);
+  }, [live, local.id]);
 
   // `live`, not `client`: getClient() hands back a new object every render, so
   // depending on it would re-run this on every render.

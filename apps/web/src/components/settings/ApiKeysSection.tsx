@@ -1,107 +1,53 @@
-import { useEffect, useState } from "react";
-import { Check, Copy, Loader2, Trash2 } from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
 
-import { Button } from "@/components/ui/button";
-import { ConfirmWindow } from "@/components/workbench/Workbench";
-import CopyableBox from "@/components/CopyableBox";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { buildCliSetup } from "@/lib/cli-config";
 import { apiKeysService, type ApiKeyInfo } from "@/services/api-keys";
 
-function hasActiveSelection(): boolean {
-  const sel = typeof window !== "undefined" ? window.getSelection() : null;
-  return !!sel && !sel.isCollapsed && sel.toString().length > 0;
-}
+const th: CSSProperties = {
+  textAlign: "left", padding: "6px 10px", borderBottom: "1px solid #000",
+  fontFamily: "var(--mac-mono)", fontSize: 9, fontWeight: 700,
+  textTransform: "uppercase", letterSpacing: 0.5, color: "var(--ink-2)",
+};
+const td: CSSProperties = {
+  padding: "7px 10px", borderBottom: "1px solid rgba(0,0,0,0.12)",
+  fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", whiteSpace: "nowrap",
+};
+const note: CSSProperties = {
+  margin: "0 0 10px", maxWidth: 520,
+  fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)",
+};
+const heading: CSSProperties = {
+  margin: 0, fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700,
+  textTransform: "uppercase", letterSpacing: 0.6, color: "var(--ink-2)",
+};
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "Never";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+function accessDay(value: string | null): string {
+  if (!value) return "never";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "never"
+    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function maskKey(start: string): string {
-  return start ? `${start}${"*".repeat(24)}` : "Unavailable";
+  return start ? `${start}${"*".repeat(24)}` : "unavailable";
 }
 
-function InlineSetupPanel({
-  apiKey,
-  onDismiss,
-}: {
-  apiKey: string;
-  onDismiss: () => void;
-}) {
-  const cliSetup = buildCliSetup(apiKey);
-  const [keyCopied, setKeyCopied] = useState(false);
-
-  async function copyKey() {
-    if (hasActiveSelection()) return;
-    try {
-      await navigator.clipboard.writeText(apiKey);
-      setKeyCopied(true);
-      setTimeout(() => setKeyCopied(false), 800);
-    } catch {
-      /* silent */
-    }
-  }
-
-
+function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolean }) {
+  const [armed, setArmed] = useState(false);
   return (
-    <div className="mt-4 border border-amber-200 rounded-sm bg-amber-50/50 p-4 space-y-4">
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-amber-900 font-ibm-plex-mono">
-          Copy this key now — it won&apos;t be shown again
-        </p>
-        <button
-          type="button"
-          onClick={copyKey}
-          aria-label="Copy API key"
-          className={`relative w-full text-left group rounded-sm border p-3 transition-colors duration-300 ${
-            keyCopied
-              ? "bg-amber-200 border-amber-400"
-              : "bg-white border-amber-200 hover:bg-amber-100"
-          }`}
-        >
-          <code className="block text-xs text-gray-900 font-ibm-plex-mono whitespace-pre-wrap break-all pr-16 select-text">
-            {apiKey}
-          </code>
-          <span
-            className={`absolute top-2 right-2 inline-flex items-center gap-1 text-xs transition-colors select-none ${
-              keyCopied ? "text-amber-900" : "text-gray-400 group-hover:text-amber-900"
-            }`}
-          >
-            {keyCopied ? (
-              <>
-                <Check className="w-3 h-3" />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="w-3 h-3" />
-                Copy
-              </>
-            )}
-          </span>
-        </button>
-      </div>
-
-      <div className="space-y-3">
-        <CopyableBox value={cliSetup} />
-        <p className="text-xs text-gray-400 font-ibm-plex-mono">
-          Configure your agent's environment with this API key. Use only one of INDEX_API_KEY or INDEX_SESSION_TOKEN.
-        </p>
-      </div>
-
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="text-xs text-gray-400 font-ibm-plex-mono hover:text-black transition-colors duration-150 underline"
-      >
-        Dismiss
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={() => { if (armed) { onConfirm(); setArmed(false); } else setArmed(true); }}
+      onBlur={() => setArmed(false)}
+      disabled={busy}
+      style={{
+        fontFamily: "var(--mac-mono)", fontSize: 11, padding: "3px 10px",
+        border: "1px solid #000", background: armed ? "var(--ink-warn)" : "#fff",
+        color: armed ? "#fff" : "var(--ink-warn)",
+        boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: busy ? "default" : "pointer",
+      }}
+    >{armed ? "sure?" : "revoke"}</button>
   );
 }
 
@@ -115,16 +61,14 @@ function generateDefaultKeyName(keys: ApiKeyInfo[]): string {
 
 /** The account's API keys. A key authenticates its owner, not an agent. */
 export default function ApiKeysSection() {
-  const { success, error } = useNotifications();
+  const { error } = useNotifications();
 
-  const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [mintedKey, setMintedKey] = useState<string | null>(null);
-  const [revokeTarget, setRevokeTarget] = useState<ApiKeyInfo | null>(null);
-  const [revoking, setRevoking] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  // Defensive: clear the plaintext secret from memory on unmount.
   useEffect(() => {
     return () => setMintedKey(null);
   }, []);
@@ -134,29 +78,31 @@ export default function ApiKeysSection() {
     apiKeysService
       .list()
       .then((result) => {
-        if (!cancelled) {
-          setKeys(result);
-          setLoading(false);
-        }
+        if (!cancelled) setKeys(result);
       })
       .catch((err) => {
-        if (!cancelled) {
-          error("Failed to load API keys", err instanceof Error ? err.message : undefined);
-          setLoading(false);
-        }
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : "could not load");
       });
     return () => {
       cancelled = true;
     };
-  }, [error]);
+  }, []);
+
+  async function reload() {
+    try {
+      setKeys(await apiKeysService.list());
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "could not load");
+    }
+  }
 
   async function handleGenerateKey() {
     setGenerating(true);
     try {
-      const created = await apiKeysService.create(generateDefaultKeyName(keys));
+      const created = await apiKeysService.create(generateDefaultKeyName(keys ?? []));
       setMintedKey(created.key);
-      setKeys(await apiKeysService.list());
-      success("API key created");
+      await reload();
     } catch (err) {
       error("Failed to create API key", err instanceof Error ? err.message : undefined);
     } finally {
@@ -164,108 +110,78 @@ export default function ApiKeysSection() {
     }
   }
 
-  async function performRevoke() {
-    if (!revokeTarget) return;
-    setRevoking(true);
+  async function revoke(id: string) {
+    setBusy(true);
     try {
-      await apiKeysService.revoke(revokeTarget.id);
-      setKeys(await apiKeysService.list());
-      success("API key revoked");
-      setRevokeTarget(null);
+      await apiKeysService.revoke(id);
+      await reload();
     } catch (err) {
       error("Failed to revoke API key", err instanceof Error ? err.message : undefined);
     } finally {
-      setRevoking(false);
+      setBusy(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
   return (
-    <>
-      <div className="max-w-3xl space-y-3">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-              api keys
-            </p>
-            <Button size="sm" onClick={handleGenerateKey} disabled={generating}>
-              {generating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-              generate key
-            </Button>
-          </div>
-
-          <p className="text-xs text-gray-400 font-ibm-plex-mono">
-            A key authenticates you in personal agents, CLI clients, and any other client.
-          </p>
-
-          {keys.length === 0 ? (
-            <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>no api keys yet.</p>
-          ) : (
-            <div style={{ border: "1px solid #000", overflow: "hidden" }}>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #000" }}>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                      Key
-                    </th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                      Created
-                    </th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                      Last used
-                    </th>
-                    <th className="text-right px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {keys.map((key) => (
-                    <tr key={key.id} style={{ borderBottom: "1px solid #000" }}>
-                      <td className="px-4 py-2 font-mono text-xs text-gray-500">{maskKey(key.start)}</td>
-                      <td className="px-4 py-2 text-sm text-gray-500">{formatDate(key.createdAt)}</td>
-                      <td className="px-4 py-2 text-sm text-gray-500">{formatDate(key.lastUsedAt)}</td>
-                      <td className="px-4 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setRevokeTarget(key)}
-                          className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                          title="revoke"
-                          aria-label="revoke"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {mintedKey ? (
-          <InlineSetupPanel apiKey={mintedKey} onDismiss={() => setMintedKey(null)} />
-        ) : null}
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+        <p style={heading}>api keys</p>
+        <button
+          type="button"
+          onClick={() => void handleGenerateKey()}
+          disabled={generating}
+          style={{
+            fontFamily: "var(--mac-mono)", fontSize: 11, padding: "5px 12px",
+            border: "1px solid #000", background: "#FF8A00", color: "#000", fontWeight: 700,
+            boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", cursor: generating ? "default" : "pointer",
+          }}
+        >generate key</button>
       </div>
 
-      {revokeTarget && (
-        <ConfirmWindow
-          title="revoke"
-          body={`revoke ${revokeTarget.name ?? maskKey(revokeTarget.start)}? any client using this key will stop working.`}
-          confirmLabel="revoke"
-          busy={revoking}
-          onCancel={() => { if (!revoking) setRevokeTarget(null); }}
-          onConfirm={() => void performRevoke()}
-        />
+      <p style={note}>
+        a key authenticates you in personal agents, CLI clients, and any other client.
+      </p>
+
+      {loadError ? (
+        <p style={note}>{loadError} · <button type="button" onClick={() => void reload()} style={{ fontFamily: "var(--mac-sans)", fontSize: 12, border: "none", background: "none", color: "var(--ink-2)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>retry</button></p>
+      ) : keys === null ? (
+        <p style={note}>loading…</p>
+      ) : keys.length === 0 ? (
+        <p style={note}>no api keys yet.</p>
+      ) : (
+        <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>key</th>
+                <th style={th}>created</th>
+                <th style={th}>last used</th>
+                <th style={{ ...th, textAlign: "right" }}>actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {keys.map((key) => (
+                <tr key={key.id}>
+                  <td style={{ ...td, color: "var(--ink-2)" }}>{maskKey(key.start)}</td>
+                  <td style={td}>{accessDay(key.createdAt)}</td>
+                  <td style={td}>{accessDay(key.lastUsedAt)}</td>
+                  <td style={{ ...td, textAlign: "right" }}>
+                    <RevokeButton busy={busy || generating} onConfirm={() => void revoke(key.id)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </>
+
+      {mintedKey && (
+        <div style={{ marginTop: 10, border: "1px solid #000", background: "#FFF6E5", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", padding: "10px 12px" }}>
+          <p style={{ margin: "0 0 6px", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700 }}>copy this key now — it won&apos;t be shown again</p>
+          <code style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 11, wordBreak: "break-all", userSelect: "text" }}>{mintedKey}</code>
+          <button type="button" onClick={() => setMintedKey(null)} style={{ marginTop: 8, fontFamily: "var(--mac-mono)", fontSize: 10, border: "none", background: "none", color: "var(--ink-2)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>dismiss</button>
+        </div>
+      )}
+    </div>
   );
 }

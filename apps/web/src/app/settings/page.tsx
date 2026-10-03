@@ -7,7 +7,6 @@ import UserAvatar from "@/components/UserAvatar";
 import { validateFiles } from "@/lib/file-validation";
 import ClientLayout from "@/components/ClientLayout";
 import { ConfirmWindow, Stage, Window } from "@/components/workbench/Workbench";
-import { SaveBarProvider } from "@/contexts/SaveBarContext";
 import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import DevicesSection from "@/components/settings/DevicesSection";
 import SettingsTabs from "@/components/settings/SettingsTabs";
@@ -53,7 +52,7 @@ export default function ProfilePage() {
   const activeTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "profile";
 
   const [saving, setSaving] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
+  const [, setIsDirty] = useState(false);
 
   const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
@@ -134,8 +133,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleDiscard = () => resetForm(user);
-
   const handleDeleteAccount = async () => {
     setIsDeletingAccount(true);
     try {
@@ -158,7 +155,6 @@ export default function ProfilePage() {
 
 
   return (
-    <SaveBarProvider visible={isDirty}>
       <ClientLayout>
         <Stage width={860} height="min(660px, calc(100vh - 112px))">
         <Window title="settings" onClose={() => navigate("/")} style={{ height: "100%" }}>
@@ -275,7 +271,7 @@ export default function ProfilePage() {
           )}
 
           {activeTab === "access" && (
-              <div className="space-y-10">
+              <div style={{ display: "grid", gap: 22 }}>
                 <ApiKeysSection />
                 <DevicesSection />
               </div>
@@ -305,23 +301,25 @@ export default function ProfilePage() {
           )}
 
         </div>
+        <div style={{
+          borderTop: "2px solid #000", padding: "11px 24px",
+          display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10,
+          flex: "0 0 auto", background: "#fff",
+        }}>
+          <button type="button" onClick={() => navigate("/")} disabled={saving} style={{
+            fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 17px",
+            border: "1px solid #000", background: "#fff", color: "#000",
+            boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: saving ? "default" : "pointer",
+          }}>cancel</button>
+          <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError} style={{
+            fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 19px",
+            border: "1px solid #000", background: "#000", color: "#fff",
+            boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: "pointer", fontWeight: 700,
+            opacity: saving || avatarError ? 0.5 : 1,
+          }}>{saving ? "saving…" : "save changes"}</button>
+        </div>
         </Window>
         </Stage>
-
-      {/* Sticky save bar */}
-      {isDirty && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-black z-40 px-6">
-          <div className="max-w-3xl mx-auto py-3 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-            <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13 }}>unsaved changes</span>
-            <div className="flex items-center gap-2 justify-self-end">
-              <button type="button" className="wb-btn" onClick={handleDiscard} disabled={saving}>cancel</button>
-              <button type="button" className="wb-btn primary" onClick={handleSave} disabled={saving || !!avatarError}>
-                {saving ? "saving…" : "save changes"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {showDeleteConfirmation && (
         <ConfirmWindow
           title="delete account"
@@ -336,7 +334,6 @@ export default function ProfilePage() {
         </ConfirmWindow>
       )}
       </ClientLayout>
-    </SaveBarProvider>
   );
 }
 
