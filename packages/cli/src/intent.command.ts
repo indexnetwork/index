@@ -14,14 +14,23 @@ Usage:
   index intent list [--archived] [--limit <n>] [--query <text>]  List your intents
   index intent show <id>                        Show intent details (accepts short ID)
   index intent prepare <content> [--answer 'prompt=reply']  Review and repair a draft
-  index intent create <content> [--receipt <token>]         Create an admitted intent
+  index intent create <content> [--receipt <token>] [--source-type <s>] [--source-id <s>]  Create an admitted intent
   index intent pause <id> | resume <id>         Hold or restart its agent
-  index intent update <id> <content>            Update an intent's description
+  index intent update <id> [<content>] [--source-type <s>] [--source-id <s>]  Update description or source fields
   index intent archive <id>                     Archive an intent (accepts short ID)
   index intent networks <id>                    List the networks an intent is shared in
   index intent add-to-network <id> <network-id>      Add an intent to a network
   index intent remove-from-network <id> <network-id> Remove an intent from a network
+
+--source-type and --source-id are optional strings Index stores and returns
+unchanged, so a client can map its own records (such as an inferred ambient
+intent) to the published signal. Pass an empty value to clear one on update.
 `;
+
+/** Map an optional CLI flag to a source field: absent stays undefined, empty clears. */
+function sourceField(value: string | undefined): string | null | undefined {
+  return value === undefined ? undefined : value || null;
+}
 
 /**
  * Route an intent subcommand to the appropriate handler.
@@ -43,8 +52,14 @@ export async function handleIntent(
     query?: string;
     receipt?: string;
     answers?: { key: string; value: string }[];
+    sourceType?: string;
+    sourceId?: string;
   },
 ): Promise<void> {
+  const source = {
+    ...(options.sourceType !== undefined ? { sourceType: sourceField(options.sourceType) } : {}),
+    ...(options.sourceId !== undefined ? { sourceId: sourceField(options.sourceId) } : {}),
+  };
   if (!subcommand) {
     if (options.json) {
       console.log(JSON.stringify({ error: "No subcommand provided" }));
@@ -102,6 +117,7 @@ export async function handleIntent(
         options.intentContent,
         options.targetId ? [options.targetId] : undefined,
         options.receipt,
+        source,
       );
       if (options.json) { console.log(JSON.stringify(result)); return; }
       output.success("Intent created.");
@@ -111,15 +127,15 @@ export async function handleIntent(
 
     case "update": {
       if (!options.intentId) {
-        output.error("Missing intent ID. Usage: index intent update <id> <content>", 1);
+        output.error("Missing intent ID. Usage: index intent update <id> [<content>] [--source-type <s>] [--source-id <s>]", 1);
         return;
       }
-      if (!options.intentContent) {
-        output.error("Missing content. Usage: index intent update <id> <content>", 1);
+      if (!options.intentContent && Object.keys(source).length === 0) {
+        output.error("Nothing to update. Usage: index intent update <id> [<content>] [--source-type <s>] [--source-id <s>]", 1);
         return;
       }
       if (!options.json) output.info("Updating intent...");
-      const result = await client.updateIntent(options.intentId, options.intentContent);
+      const result = await client.updateIntent(options.intentId, options.intentContent, source);
       if (options.json) { console.log(JSON.stringify(result)); return; }
       output.success("Intent updated.");
       return;

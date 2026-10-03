@@ -9,7 +9,7 @@ export default defineConfig({
     light: '/logos/logo-black-full.svg',
     dark: '/logos/logo-white-full.svg',
   },
-  accentColor: '#E08A2E',
+  accentColor: '#4091BB',
   head: {
     script: [
       {
@@ -52,7 +52,6 @@ export default defineConfig({
       text: 'Use',
       items: [
         { text: 'macOS', link: '/use/mac' },
-        { text: 'ChatGPT', link: '/use/chatgpt' },
         { text: 'Hermes', link: '/use/hermes' },
         { text: 'MCP', link: '/use/mcp' },
         { text: 'CLI', link: '/use/cli' },

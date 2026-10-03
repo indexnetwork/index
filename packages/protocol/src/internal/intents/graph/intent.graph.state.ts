@@ -149,6 +149,12 @@ export const IntentGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
+  /** Client-owned label written on create or update. Undefined leaves it; null clears it. */
+  sourceType: Annotation<string | null | undefined>,
+
+  /** Client-owned reference written on create or update. Undefined leaves it; null clears it. */
+  sourceId: Annotation<string | null | undefined>,
+
   /**
    * Optional network scope (network ID) for read operations. Prep always
    * fetches ALL user intents via getActiveIntents(userId) regardless of network

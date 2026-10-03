@@ -1,6 +1,6 @@
-import { useEffect, type ReactNode } from "react";
-import { Link } from "react-router";
-import { CONTACT_EMAIL, EARLY_ACCESS_PATH, GITHUB_URL, X_URL } from "./links";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link, useLocation } from "react-router";
+import { CONTACT_EMAIL, DOCS_URL, EARLY_ACCESS_PATH, GITHUB_URL, X_URL } from "./links";
 import "./site.css";
 
 const FONT_HREF =
@@ -24,15 +24,41 @@ export function ensureSiteFonts() {
   document.head.append(preconnect1, preconnect2, font);
 }
 
+/** Navbar. Below 640px the links collapse behind a menu button. */
 export function SiteNav() {
+  const [open, setOpen] = useState(false);
+  const { pathname } = useLocation();
+
+  useEffect(() => setOpen(false), [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   return (
-    <nav className="site-nav" aria-label="primary">
+    <nav className={open ? "site-nav site-nav--open" : "site-nav"} aria-label="primary">
       <Link className="site-nav-logo" to="/" aria-label="Index Network">
         <img src="/site/index-logo.svg" alt="Index Network" />
       </Link>
-      <div className="site-nav-links">
+      <button
+        type="button"
+        className="site-nav-toggle"
+        aria-expanded={open}
+        aria-controls="site-nav-links"
+        aria-label={open ? "Close menu" : "Open menu"}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="site-nav-toggle-bar" />
+        <span className="site-nav-toggle-bar" />
+      </button>
+      <div className="site-nav-links" id="site-nav-links">
+        <Link className="site-nav-link" to="/">home</Link>
         <Link className="site-nav-link" to="/hermes">hermes</Link>
         <Link className="site-nav-link" to="/blog">blog</Link>
+        <a className="site-nav-link" href={DOCS_URL}>docs</a>
         <Link className="site-nav-link" to="/about">about</Link>
         <Link className="site-btn" to={EARLY_ACCESS_PATH}>Get early access</Link>
       </div>

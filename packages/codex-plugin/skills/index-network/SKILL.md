@@ -33,7 +33,8 @@ The app calls intents signals. IDs accept a UUID or the 8-character short ID.
 - `index intent list [--archived] [--query <text>] [--limit <n>]`: list the user's signals with lifecycle, networks, and waiting counts.
 - `index intent show <id>`: read one signal, including its networks.
 - `index intent prepare <text> [--answer 'prompt=reply']`, then `index intent create <text> [--receipt <token>]`: prepare and create a signal, shared in every network the user belongs to. A draft that is not ready comes back with feedback and questions, and nothing is created.
-- `index intent update <id> <text>`: change only the description of a non-archived signal.
+- `index intent update <id> [<text>] [--source-type <s>] [--source-id <s>]`: change the description or source fields of a non-archived signal.
+- `--source-type` and `--source-id` on create or update are optional strings Index stores and returns unchanged. Use them to map your own records, such as an inferred ambient intent, to the published signal.
 - `index intent pause <id>` / `index intent resume <id>`: pausing a paused signal or resuming an active one succeeds without changing it. Archived signals stay archived.
 - `index intent archive <id>`: permanently archive a signal. It removes network associations and expires related opportunities.
 - `index intent networks|add-to-network|remove-from-network`: manage where a signal is shared.

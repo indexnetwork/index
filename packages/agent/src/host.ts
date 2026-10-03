@@ -393,6 +393,12 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
   }
 
   log("  thinking");
+  // The wake itself is the first line. The tool's line replaces it.
+  try {
+    await publishActions(client, intent.id, [{ type: "progress", text: "Warming up" }], context);
+  } catch (cause) {
+    log(`  progress failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
   const result = await wake({
     user,
     intent,

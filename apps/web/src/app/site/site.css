@@ -67,6 +67,51 @@
 .site .site-nav-link:hover { color: var(--blue); }
 .site-nav .site-btn { margin: -8px 0; }
 
+/* Menu button, shown below 640px: two bars that cross into an X when open. */
+.site .site-nav-toggle {
+  display: none;
+  position: relative;
+  width: 32px;
+  height: 32px;
+  margin: -9px -6px -9px 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.site-nav-toggle-bar {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  height: 1.5px;
+  background: var(--ink);
+  transition: transform .18s ease, top .18s ease;
+}
+.site-nav-toggle-bar:first-child { top: 12px; }
+.site-nav-toggle-bar:last-child { top: 19px; }
+.site-nav--open .site-nav-toggle-bar:first-child { top: 15.5px; transform: rotate(45deg); }
+.site-nav--open .site-nav-toggle-bar:last-child { top: 15.5px; transform: rotate(-45deg); }
+
+@media (max-width: 640px) {
+  .site .site-nav-toggle { display: block; }
+  .site-nav-links {
+    display: none;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-top: 14px;
+    font-size: 15px;
+  }
+  .site-nav--open .site-nav-links { display: flex; }
+  .site .site-nav-link {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--divider);
+  }
+  .site .site-nav .site-btn { margin: 18px 0 0; height: 42px; }
+}
+
+
 /* ---------- footer ---------- */
 .site-footer {
   max-width: 836px;
@@ -305,6 +350,37 @@
   cursor: pointer;
 }
 .site .site-copy-btn:hover { background: var(--bg); color: var(--ink); }
+
+/* ---------- invite form ---------- */
+/* Field and button read as one control: shared edge, shared height. */
+.site-invite {
+  display: flex;
+  width: 100%;
+  max-width: 440px;
+  border: 1px solid var(--ink);
+}
+.site-invite-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--bg);
+  border: 0;
+  border-radius: 0;
+  outline: none;
+}
+.site-invite:focus-within { box-shadow: 0 0 0 3px rgba(64, 145, 187, .25); }
+.site .site-invite .site-btn { height: 38px; padding: 0 16px; flex: 0 0 auto; }
+
+.site-invite-input::placeholder { color: var(--muted); }
+.site .site-invite .site-btn:disabled { opacity: .6; cursor: default; }
+.site-invite-done { margin: 0; font-size: 15px; color: var(--ink); }
+.site-invite-error { margin: 0; color: #B3261E; font-size: 13px; }
 
 @media (max-width: 520px) {
   .site-h1 { font-size: 34px; }

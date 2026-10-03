@@ -7,7 +7,6 @@ import { conversations } from './conversation.schema';
 import type { Id } from '../types/common.types';
 
 // Enums
-export const sourceType = pgEnum('source_type', ['integration', 'discovery_form', 'enrichment']);
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['active', 'paused']);
@@ -397,7 +396,7 @@ export const intents = pgTable('intents', {
   firstDiscoverySucceededAt: timestamp('first_discovery_succeeded_at', { withTimezone: true }),
   userId: text('user_id').notNull().references(() => users.id),
   sourceId: text('source_id'),
-  sourceType: sourceType('source_type'),
+  sourceType: text('source_type'),
   embedding: vector('embedding', { dimensions: 2000 }),
   semanticEntropy: doublePrecision('semantic_entropy').default(1.0),
   referentialAnchor: text('referential_anchor'),

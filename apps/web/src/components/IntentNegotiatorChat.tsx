@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 type Provenance = { kind?: string; questionId?: string; scope?: string; matches?: PrincipalQuestion["matches"] };
 
+const WARMING = "Warming up";
 const REACHING = "Working out who to reach";
 
 function messageText(message: ConversationMessage): string {
@@ -21,15 +22,18 @@ function progressBody(text: string): string | null {
   return text.startsWith("Progress: ") ? text.slice("Progress: ".length) : null;
 }
 
-/** The loading line drops once a later progress message has a count. */
-function supersededReaching(messages: ConversationMessage[]): Set<string> {
+/** Warming up drops once any later progress arrives. The reaching line drops once a later one has a count. */
+function supersededLoading(messages: ConversationMessage[]): Set<string> {
   const hide = new Set<string>();
   let counted = false;
+  let later = false;
   for (let index = messages.length - 1; index >= 0; index--) {
     const body = progressBody(messageText(messages[index]!));
     if (!body) continue;
-    if (countedDiscovery(body)) counted = true;
+    if (body === WARMING && later) hide.add(messages[index]!.id);
     else if (body === REACHING && counted) hide.add(messages[index]!.id);
+    if (countedDiscovery(body)) counted = true;
+    later = true;
   }
   return hide;
 }
@@ -138,7 +142,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     setSelections((current) => ({ ...current, [questionId]: current[questionId] === text ? "" : text }));
   };
 
-  const hiddenReaching = supersededReaching(messages);
+  const hiddenLoading = supersededLoading(messages);
 
   const references = (scope?: string, matches?: PrincipalQuestion["matches"]) => (
     <div className="mb-1 flex flex-wrap items-center gap-1 text-xs">
@@ -165,11 +169,11 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
             const provenance = message.metadata?.principalMessage as Provenance | undefined;
             if (!content || provenance?.kind === "question" && provenance.questionId && carded.has(provenance.questionId)) return null;
             const progress = progressBody(content);
-            if (progress === REACHING) {
-              if (hiddenReaching.has(message.id)) return null;
+            if (progress === WARMING || progress === REACHING) {
+              if (hiddenLoading.has(message.id)) return null;
               return <p key={message.id} role="status" className="flex items-center gap-2 font-mono text-[11px] text-gray-500">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-900" aria-hidden="true" />
-                {REACHING}
+                {progress}
               </p>;
             }
             const own = message.role === "user";

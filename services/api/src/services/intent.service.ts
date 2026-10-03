@@ -93,6 +93,12 @@ export type CreateOpportunitiesOutcome =
   | { kind: 'not_found' }
   | { kind: 'inactive' };
 
+/** Client-owned source fields. Undefined leaves a field unchanged; null clears it. */
+export interface IntentSource {
+  sourceType?: string | null;
+  sourceId?: string | null;
+}
+
 /** The outcome of rewriting an owned signal's description. */
 export type IntentUpdateOutcome =
   | { kind: 'updated' }
@@ -185,6 +191,7 @@ export class IntentService {
    * @param description - The signal text as the owner wrote it.
    * @param networkIds - Networks to share it in; empty means all memberships.
    * @param preparationReceipt - Server authorization from guided preparation, valid for final revisions.
+   * @param source - Optional client-owned source fields, stored unchanged.
    * @returns The created intent id and the networks it was linked to.
    * @throws {IntentNetworkMembershipError} When a named id is not a current membership.
    */
@@ -193,6 +200,7 @@ export class IntentService {
     description: string,
     networkIds: string[],
     preparationReceipt?: string,
+    source: IntentSource = {},
   ): Promise<{ id: string; networkIds: string[] }> {
     const targetNetworkIds = networkIds.length > 0
       ? networkIds
@@ -214,7 +222,7 @@ export class IntentService {
     logger.verbose('Creating intent', { userId, networkCount: targetNetworkIds.length });
 
     const result = await this.intentGraph.invoke(
-      { userId, userProfile: '', inputContent: description, preparation, networkIds: targetNetworkIds },
+      { userId, userProfile: '', inputContent: description, preparation, networkIds: targetNetworkIds, ...source },
       { recursionLimit: 100 },
     ) as {
       executionResults?: Array<{ actionType: string; success: boolean; intentId?: string; error?: string; linkedNetworkIds?: string[] }>;
@@ -240,26 +248,34 @@ export class IntentService {
   }
 
   /**
-   * Rewrite an owned signal's description.
+   * Rewrite an owned signal's description, its source fields, or both.
    *
-   * The graph re-infers and re-verifies the text, persists it, and re-evaluates
-   * the signal's community assignments. Ownership is checked here because the
-   * graph's update path, like create, does not filter by owner.
+   * A description rewrite goes through the graph, which re-infers and
+   * re-verifies the text, persists it with any source fields, and re-evaluates
+   * the signal's community assignments. A source-only update writes the columns
+   * without re-verifying. Ownership is checked here because the graph's update
+   * path, like create, does not filter by owner.
    *
    * @param intentId - Full intent UUID.
    * @param userId - Authenticated owner.
-   * @param description - The rewritten signal text.
+   * @param description - The rewritten signal text, or undefined to keep it.
+   * @param source - Optional client-owned source fields, stored unchanged.
    * @returns Whether the rewrite landed, or why it did not.
    */
-  async update(intentId: string, userId: string, description: string): Promise<IntentUpdateOutcome> {
+  async update(intentId: string, userId: string, description: string | undefined, source: IntentSource = {}): Promise<IntentUpdateOutcome> {
     logger.verbose('Updating intent', { intentId, userId });
 
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
     if (intent.archivedAt) return { kind: 'archived' };
 
+    if (description === undefined) {
+      const updated = await this.adapter.updateIntent(intentId, source);
+      return updated ? { kind: 'updated' } : { kind: 'not_found' };
+    }
+
     const result = await this.intentGraph.invoke(
-      { userId, userProfile: '', inputContent: description, targetIntentIds: [intentId] },
+      { userId, userProfile: '', inputContent: description, targetIntentIds: [intentId], ...source },
       { recursionLimit: 100 },
     ) as {
       executionResults?: Array<{ success: boolean; error?: string }>;

@@ -264,6 +264,8 @@ async function main(): Promise<void> {
         query: args.query,
         receipt: args.receipt,
         answers: args.answers,
+        sourceType: args.sourceType,
+        sourceId: args.sourceId,
       });
       return;
     case "opportunity":

@@ -8,6 +8,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Changed
+- **Continue on web is remembered** for intent and profile links. The next
+  external open in this browser skips the launch screen. A one-line Open in
+  Index or Open in Hermes link stays above the page when the account has an
+  app session. Opportunity links still use the launch screen.
 - **`/u/:id`, `/i/:id`, and `/o/:id` share one handoff.** A signed-in account
   with a Mac app session opens `index://<kind>/<id>`, so the app opens even when
   the universal link did not (Chrome, pasted links, another host). Otherwise an

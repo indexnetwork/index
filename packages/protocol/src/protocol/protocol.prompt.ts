@@ -93,6 +93,10 @@ Identity is account/presentation metadata. Context is dynamic, scoped runtime st
 - Confidence (0-1, how well the inference captured the user's intent)
 - Inference type (explicit = user stated directly; implicit = system inferred)
 - Embedding (semantic vector for matching)
+- Source type and source ID (optional client-owned strings, set on create or update, stored and returned unchanged)
+
+### Source Fields
+Clients may set \`sourceType\` and \`sourceId\` to map their own records to a published signal. An agent that inferred an ambient intent can pass its local id as \`sourceId\` when the owner approves publishing it, then match the signal back by that value. Index does not interpret either field. Omit a field to leave it unchanged; null clears it.
 
 ### Signal Lifecycle
 1. User creates intent (explicit signal) or system infers from behavior (implicit)

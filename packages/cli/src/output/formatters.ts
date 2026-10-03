@@ -204,7 +204,10 @@ export function intentCard(intent: Intent): void {
     console.log(`  ${BOLD}Mode${RESET}          ${intent.intentMode}`);
   }
   if (intent.sourceType) {
-    console.log(`  ${BOLD}Source${RESET}        ${intent.sourceType}`);
+    console.log(`  ${BOLD}Source type${RESET}   ${intent.sourceType}`);
+  }
+  if (intent.sourceId) {
+    console.log(`  ${BOLD}Source ID${RESET}     ${intent.sourceId}`);
   }
   if (intent.confidence !== undefined) {
     console.log(`  ${BOLD}Confidence${RESET}    ${confidenceBar(intent.confidence)}`);

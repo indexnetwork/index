@@ -43,15 +43,13 @@ export interface ActiveIntentRow {
   createdAt: Date;
   relevancyScore?: number | null;
 }
-export type SourceType = 'integration' | 'discovery_form' | 'enrichment';
-
 export interface CreateIntentInput {
   userId: string;
   payload: string;
   summary?: string | null;
   embedding?: number[];
   isIncognito?: boolean;
-  sourceType?: SourceType | null;
+  sourceType?: string | null;
   sourceId?: string | null;
   semanticEntropy?: number | null;
   referentialAnchor?: string | null;
@@ -66,6 +64,8 @@ export interface UpdateIntentInput {
   summary?: string | null;
   embedding?: number[];
   isIncognito?: boolean;
+  sourceType?: string | null;
+  sourceId?: string | null;
   semanticEntropy?: number | null;
   referentialAnchor?: string | null;
   felicityAuthority?: number | null;
@@ -255,9 +255,8 @@ export function ownIntentsListWhere(
       ? isNotNull(schema.intents.archivedAt)
       : isNull(schema.intents.archivedAt),
   ];
-  const validSourceTypes: SourceType[] = ['integration', 'discovery_form', 'enrichment'];
-  if (options.sourceType && validSourceTypes.includes(options.sourceType as SourceType)) {
-    conditions.push(eq(schema.intents.sourceType, options.sourceType as SourceType));
+  if (options.sourceType) {
+    conditions.push(eq(schema.intents.sourceType, options.sourceType));
   }
   if (options.q) {
     const pattern = `%${options.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

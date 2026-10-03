@@ -61,7 +61,7 @@ export function IndexIcon() {
 }
 
 export function HermesIcon() {
-  return <img className="apps-card-icon" src="/site/hermes-logo.png" alt="Hermes" />;
+  return <img className="apps-card-icon apps-card-icon--mark" src="/site/nous-research.png" alt="Hermes" />;
 }
 
 /** `/download` — post-invite install page: Mac app, Hermes plugin, web. */

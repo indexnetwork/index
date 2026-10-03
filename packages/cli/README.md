@@ -56,8 +56,8 @@ flags are listed in [Options](#options), and examples follow this reference.
 | `index intent list` | List intents, with optional archived, text-query, and result-limit filters. |
 | `index intent show <id>` | Show one intent. |
 | `index intent prepare <text>` | Prepare a draft, optionally answering recovery prompts; returns an admission receipt when ready. |
-| `index intent create <text>` | Create an intent, optionally using the preparation receipt. |
-| `index intent update <id> <text>` | Update and reprocess an intent's description. |
+| `index intent create <text>` | Create an intent, optionally using the preparation receipt and client-owned `--source-type` / `--source-id`. |
+| `index intent update <id> [<text>]` | Update and reprocess an intent's description, or set `--source-type` / `--source-id` (empty clears). |
 | `index intent archive <id>` | Archive an intent so it stops participating in discovery. |
 | `index intent pause <id>` / `resume <id>` | Pause or resume its agent without archiving. |
 | `index intent networks <id>` | List the networks an intent is shared in. |

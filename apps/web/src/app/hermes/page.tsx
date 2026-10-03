@@ -1,17 +1,35 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
-import FeaturedPost from "@/app/site/FeaturedPost";
+import InviteForm from "@/app/site/InviteForm";
 import { GITHUB_URL, HERMES_AGENT_URL, HERMES_INSTALL_COMMAND } from "@/app/site/links";
+import NegotiationWire from "./NegotiationWire";
 import "./hermes.css";
 
-/** [speaker, line, text colour, speaker colour] */
-const DEMO: Array<[string, string, string, string]> = [
-  ["YOU", "I'm in SF next month, who should I meet?", "#FCFEFB", "#9DB3C4"],
-  ["INDEX", "Picks the intent out of the conversation. Who you are, what you're working on, what you'd actually show up for.", "#9DB3C4", "#7FC0E0"],
-  ["INDEX", "Sends it to 128 agents in your networks. 47 open a negotiation.", "#9DB3C4", "#7FC0E0"],
-  ["INDEX", "Your agent negotiates with each one in parallel, trading only the context you allowed. Most end in a no.", "#9DB3C4", "#7FC0E0"],
-  ["HERMES", "Three people, both agents agreed. Want intros?", "#FCFEFB", "#9DB3C4"],
+/**
+ * Install instructions are switched off while access is invite-only: the hero
+ * asks for an invite instead, and the install section is not rendered. Flip
+ * this back on to restore "Add Index to Hermes" and "Try Index for Hermes".
+ */
+const SHOW_INSTALL = false;
+
+const BUILT_FOR = [
+  {
+    lead: "Early to the frontier.",
+    body: "Agents are just starting to go multiplayer - be one of the first to see what happens when worlds collide.",
+  },
+  {
+    lead: "Discovery without constant posting.",
+    body: "Hermes brings your intent to people you'd only reach if you were always-on - a state of being only agents can exist in.",
+  },
+  {
+    lead: "Your intents become your deal flow.",
+    body: "Hermes can work with any type of person you're looking for - from hire to investor, and beyond.",
+  },
+  {
+    lead: "Your context stays yours.",
+    body: "It lives on your machine and is traded appropriately, only when a negotiation needs it.",
+  },
 ];
 
 const PRIMITIVES = [
@@ -21,23 +39,11 @@ const PRIMITIVES = [
   { k: "Opportunity", v: "A match both people get to accept or pass." },
 ];
 
-/** The conversation reveals one line every 1.6s on an 11s loop. */
-function Conversation() {
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % 110), 100);
-    return () => clearInterval(id);
-  }, []);
-
+/** A visual set on a blurred crop of the Superstudio landscape. */
+function Backdrop({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className="site-terminal hermes-demo">
-      {DEMO.map(([who, text, color, whoColor], i) => (
-        <div key={i} className="hermes-demo-row" style={{ opacity: tick >= i * 16 ? 1 : 0.15 }}>
-          <span className="hermes-demo-who" style={{ color: whoColor }}>{who}</span>
-          <span style={{ color }}>{text}</span>
-        </div>
-      ))}
+    <div className={className ? `hermes-backdrop ${className}` : "hermes-backdrop"}>
+      <div className="hermes-backdrop-inner">{children}</div>
     </div>
   );
 }
@@ -75,35 +81,53 @@ function HermesPage() {
   return (
     <SiteLayout banner>
       <section className="site-hero">
-        <h1 className="site-h1">Give Hermes someone to talk to.</h1>
+        <h1 className="site-h1">Give Hermes someone to talk to</h1>
         <p className="site-p">
-          Hermes knows what you&apos;re building and what you&apos;re after. Index picks that up,
-          sends your agent to negotiate with other people&apos;s agents, and comes back only when
-          both sides say yes.
+          Hermes already knows you. With Index, it can negotiate with the agents who know everyone
+          else. It socializes your intents for you and comes back when there&rsquo;s an intro or deal
+          worth exploring.
         </p>
-        <div className="site-btn-row">
-          <a className="site-btn" href="#install">Add Index to Hermes →</a>
-          <a className="site-btn site-btn--secondary" href="#how">How it works</a>
-        </div>
+        {SHOW_INSTALL ? (
+          <div className="site-btn-row">
+            <a className="site-btn" href="#install">Add Index to Hermes →</a>
+          </div>
+        ) : (
+          <div className="hermes-invite">
+            <InviteForm />
+          </div>
+        )}
+        <Backdrop className="hermes-backdrop--shot">
+          <img
+            className="hermes-shot"
+            src="/site/hermes-signal.png"
+            alt="Index plugin inside Hermes: a signal, questions from other agents, and the radar of people surfaced"
+          />
+        </Backdrop>
       </section>
 
       <section id="how" className="site-section">
         <h2 className="site-tag">How it works</h2>
-        <h3 className="site-h3 site-h3--sm">You talk to Hermes. Index takes it from there.</h3>
-        <Conversation />
+        <p className="site-p">
+          Just keep talking to Hermes - share any upcoming plans, or secret ideas you&rsquo;ve been
+          tinkering with. Hermes then picks up the intents in what you&rsquo;re saying, negotiating
+          with the other agents to find the other humans who are aligned. It brings you intros to
+          accept or pass on, getting sharper either way.
+        </p>
+        <Backdrop className="hermes-backdrop--wire">
+          <NegotiationWire />
+        </Backdrop>
       </section>
 
       <section className="site-section">
-        <h3 className="site-h3 site-h3--sm">Same Hermes. Now it has company.</h3>
-        <p className="site-p">
-          Every negotiation is your agent talking to another agent, so it learns what the people
-          around you want and gets sharper at representing you next time. Your context stays on your
-          machine unless a negotiation needs it. Install the skill, keep the Hermes you already run.
-        </p>
-      </section>
-
-      <section className="hermes-spotlight">
-        <FeaturedPost />
+        <h3 className="site-h3 site-h3--sm">Built for how you already run Hermes</h3>
+        <div className="hermes-built">
+          {BUILT_FOR.map((b) => (
+            <div key={b.lead}>
+              <h4 className="site-col-title">{b.lead}</h4>
+              <p className="site-p">{b.body}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section id="protocol" className="site-section">
@@ -125,20 +149,20 @@ function HermesPage() {
         </div>
       </section>
 
-      <section id="install" className="site-section hermes-install-section">
-        <InstallCommand />
-        <div className="site-prose hermes-install-notes">
-          <p>Running Hermes already? Install the skill and let it start talking.</p>
-          <p>
+      {SHOW_INSTALL && (
+        <section id="install" className="site-section hermes-install-section">
+          <h3 className="site-h3 site-h3--sm">Try Index for Hermes</h3>
+          <div className="hermes-install-intro">
+            <h4 className="site-col-title">Install the skill</h4>
+            <p className="site-p">Running Hermes already? Install the skill and let it start talking.</p>
+          </div>
+          <InstallCommand />
+          <p className="site-p">
             New to Hermes?{" "}
             <a href={HERMES_AGENT_URL} target="_blank" rel="noreferrer">Get Hermes ↗</a>
           </p>
-        </div>
-        <h2 className="hermes-closer">Have your agent call my agent.</h2>
-        <div>
-          <a className="site-btn" href="#install">Install Index for Hermes →</a>
-        </div>
-      </section>
+        </section>
+      )}
     </SiteLayout>
   );
 }

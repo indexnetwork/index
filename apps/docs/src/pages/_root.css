@@ -2,13 +2,53 @@
  * Site-wide styles, loaded by Vocs from `src/pages/_root.css`.
  */
 
+/* #region Brand tokens
+ *
+ * Match the marketing site (apps/web/src/app/site/site.css): ink on an
+ * off-white page, blue accent, square buttons, 10px cards. The landing is
+ * light only, so the dark scheme is derived from the same ink. Vocs layers its
+ * own tokens, so these unlayered values win.
+ */
+
+:root {
+  --vocs-background-color-primary: light-dark(#f4f7f2, #03111f);
+  --vocs-background-color-surface: light-dark(#fcfefb, #061d33);
+  --vocs-background-color-surfaceMuted: light-dark(#eceeec, #03111f);
+  --vocs-background-color-surfaceTint: light-dark(#f4f7f2, #0a2540);
+
+  --vocs-text-color-primary: light-dark(#2e3b45, #dde6ec);
+  --vocs-text-color-secondary: light-dark(#5e6f7c, #9db3c4);
+  --vocs-text-color-muted: light-dark(#7a8b97, #7a8e9e);
+  --vocs-text-color-heading: light-dark(#041729, #fcfefb);
+  --vocs-text-color-link: light-dark(#041729, #fcfefb);
+  --vocs-text-color-link-hover: light-dark(#4091bb, #6fb3d6);
+  --vocs-text-color-quote: light-dark(#5e6f7c, #9db3c4);
+
+  --vocs-border-color-primary: light-dark(#dce7d7, #163450);
+  --vocs-border-color-secondary: light-dark(#e6ece3, #10283f);
+
+  --vocs-background-color-code-block: light-dark(#f4f7f2, #03111f);
+  --vocs-background-color-code-highlighted: light-dark(#e6ece3, #0a2540);
+  --vocs-background-color-inline-code: light-dark(#eceeec, #0a2540);
+  --vocs-border-color-code-highlighted: light-dark(#dce7d7, #163450);
+
+  --vocs-radius-xs: 2px;
+  --vocs-radius-sm: 4px;
+  --vocs-radius-md: 6px;
+  --vocs-radius-lg: 8px;
+  --vocs-radius-xl: 10px;
+  --vocs-radius-2xl: 10px;
+}
+
+/* #endregion */
+
 /* Live trace on the overview. The pitch document is light; the frame paints it dark. */
 .live-trace {
   width: 100%;
   height: 600px;
   margin: 1.25rem 0 1.75rem;
   border: 1px solid var(--vocs-border-color-primary);
-  border-radius: 12px;
+  border-radius: 10px;
   display: block;
   overflow: hidden;
   background: #141414;
@@ -39,8 +79,8 @@
 }
 
 [data-v-mermaid] .node rect {
-  rx: 8px;
-  ry: 8px;
+  rx: 6px;
+  ry: 6px;
 }
 
 [data-v-mermaid] .nodeLabel,
@@ -83,8 +123,8 @@
 /* #region Mac download
  *
  * The download card on `/use/mac` (src/components/MacDownload.tsx). Built on
- * Vocs tokens so it follows the light/dark scheme; the button is the one place
- * the page uses the accent as a fill.
+ * Vocs tokens so it follows the light/dark scheme; the button is the landing's
+ * primary button: square, ink fill, blue on hover.
  */
 
 .mac-download {
@@ -95,7 +135,7 @@
   margin: 1.5rem 0 2rem;
   padding: 1.25rem 1.5rem;
   border: 1px solid var(--vocs-border-color-primary);
-  border-radius: 14px;
+  border-radius: 10px;
   background:
     radial-gradient(
       120% 140% at 0% 0%,
@@ -165,48 +205,27 @@
 .mac-download__button {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.6875rem 1.25rem 0.6875rem 1.0625rem;
-  border-radius: 10px;
-  background: var(--vocs-color-accent);
-  color: #fff;
-  font-size: 0.9375rem;
-  font-weight: 600;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 0;
+  background: var(--vocs-text-color-heading);
+  color: var(--vocs-background-color-surface);
+  font-size: 0.875rem;
+  font-weight: 500;
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.22),
-    0 1px 2px rgb(0 0 0 / 0.18),
-    0 4px 14px color-mix(in oklch, var(--vocs-color-accent) 35%, transparent);
-  transition:
-    background-color 120ms ease,
-    box-shadow 120ms ease,
-    transform 120ms ease;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
 .mac-download__button:hover {
-  background: color-mix(in oklch, var(--vocs-color-accent) 88%, black);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.22),
-    0 1px 2px rgb(0 0 0 / 0.18),
-    0 6px 20px color-mix(in oklch, var(--vocs-color-accent) 45%, transparent);
-  transform: translateY(-1px);
-}
-
-.mac-download__button:active {
-  transform: translateY(0);
+  background: var(--vocs-color-accent);
+  color: #fcfefb;
 }
 
 .mac-download__button:focus-visible {
   outline: 2px solid var(--vocs-color-accent);
   outline-offset: 3px;
-}
-
-.mac-download__apple {
-  width: 1rem;
-  height: 1rem;
-  margin-top: -2px;
 }
 
 .mac-download__releases {
@@ -249,7 +268,7 @@
   gap: 0.625rem;
   padding: 0.625rem 0.875rem;
   border: 1px solid var(--vocs-border-color-primary);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--vocs-background-color-primary);
   font-size: 0.8125rem;
   text-align: left;

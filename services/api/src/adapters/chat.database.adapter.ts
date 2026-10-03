@@ -249,6 +249,8 @@ export class ChatDatabaseAdapter {
       if (data.summary !== undefined) updateData.summary = data.summary;
       if (data.embedding !== undefined) updateData.embedding = data.embedding;
       if (data.isIncognito !== undefined) updateData.isIncognito = data.isIncognito;
+      if (data.sourceType !== undefined) updateData.sourceType = data.sourceType;
+      if (data.sourceId !== undefined) updateData.sourceId = data.sourceId;
       if (data.semanticEntropy !== undefined) updateData.semanticEntropy = data.semanticEntropy;
       if (data.referentialAnchor !== undefined) updateData.referentialAnchor = data.referentialAnchor;
       if (data.felicityAuthority !== undefined) updateData.felicityAuthority = data.felicityAuthority;

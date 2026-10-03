@@ -174,10 +174,10 @@ export interface CreateIntentData {
   isIncognito?: boolean;
   /** Network IDs to associate with (optional, uses dynamic scoping if empty) */
   networkIds?: string[];
-  /** Source type for provenance tracking */
-  sourceType?: 'integration' | 'discovery_form' | 'enrichment';
-  /** Source ID for provenance tracking */
-  sourceId?: string;
+  /** Client-owned label, stored and returned unchanged */
+  sourceType?: string | null;
+  /** Client-owned reference, stored and returned unchanged */
+  sourceId?: string | null;
   /** Confidence score from inference (0-1, required) */
   confidence: number;
   /** How the intent was inferred */
@@ -211,6 +211,10 @@ export interface UpdateIntentData {
   embedding?: number[];
   /** Updated incognito status */
   isIncognito?: boolean;
+  /** Client-owned label; null clears it */
+  sourceType?: string | null;
+  /** Client-owned reference; null clears it */
+  sourceId?: string | null;
   /** Updated network associations (replaces existing) */
   networkIds?: string[];
   /** Semantic entropy from verifier (0 specific -> 1 vague) */
@@ -266,9 +270,9 @@ export interface IntentRecord extends CreatedIntent {
   archivedAt: Date | null;
   /** Embedding vector (may be null) */
   embedding?: number[] | null;
-  /** Source type for provenance */
+  /** Client-owned label */
   sourceType?: string | null;
-  /** Source ID for provenance */
+  /** Client-owned reference */
   sourceId?: string | null;
   /** Lifecycle admission state; null is a legacy active row. */
   status?: 'active' | 'paused' | null;

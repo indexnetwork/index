@@ -94,3 +94,5 @@
 .apps-browser-sub { font-size: 14px; line-height: 1.5; font-weight: 300; color: var(--body); }
 .apps-browser-cta { font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .site .apps-browser:hover .apps-browser-cta { color: var(--blue); }
+/* The Hermes mark is a tall transparent glyph: fit it inside the tile. */
+.apps-card-icon--mark { object-fit: contain; padding: 7px; background: transparent; }

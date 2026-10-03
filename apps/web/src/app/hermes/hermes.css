@@ -2,22 +2,6 @@
 
 .site-section:target { scroll-margin-top: 24px; }
 
-/* ---------- conversation ---------- */
-.hermes-demo { padding: 8px 22px; display: flex; flex-direction: column; }
-.hermes-demo-row {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: 14px;
-  padding: 12px 0;
-  border-bottom: 1px solid #1C3247;
-  transition: opacity .4s;
-  text-wrap: pretty;
-}
-.hermes-demo-row:last-child { border-bottom: 0; }
-.hermes-demo-who { font-size: 11px; letter-spacing: .06em; padding-top: 2px; }
-
-.hermes-spotlight { padding-top: 64px; }
-
 /* ---------- primitives ---------- */
 .hermes-prims { display: flex; flex-direction: column; border-top: 1px solid var(--ink); }
 .hermes-prim {
@@ -50,19 +34,151 @@
 .hermes-install-cmd { min-width: 0; overflow-wrap: anywhere; }
 .hermes-install-prompt { color: #9DB3C4; }
 .hermes-install-ok { color: #7FC0E0; }
-.hermes-install-notes { gap: 8px; }
 
-.hermes-closer {
-  margin: 72px 0 0;
-  font-family: var(--serif);
-  font-size: 52px;
-  line-height: 1.08;
-  font-weight: 400;
-  letter-spacing: -.03em;
-  text-wrap: balance;
-  color: var(--ink);
+/* ---------- blurred landscape backdrop ---------- */
+.hermes-backdrop {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  isolation: isolate;
 }
+.hermes-backdrop::before {
+  content: "";
+  position: absolute;
+  inset: -16px;
+  z-index: -1;
+  background: url("/site/banner-v3.jpg") center 60% / cover no-repeat;
+  filter: blur(8px) saturate(1.05);
+}
+.hermes-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(252, 254, 251, .12);
+}
+.hermes-backdrop-inner {
+  padding: clamp(20px, 6vw, 56px);
+  display: flex;
+  justify-content: center;
+}
+.hermes-shot {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, .6);
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgba(4, 23, 41, .28);
+}
+.hermes-backdrop--wire .hermes-backdrop-inner { padding-block: clamp(28px, 7vw, 64px); }
+
+/* ---------- negotiation history (the plugin's wire card) ---------- */
+.wire-card {
+  --wire-fg: #1A1C20;
+  --wire-muted: #7A8088;
+  --wire-border: #D9E1E6;
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  background: #FFFFFF;
+  border: 1px solid var(--wire-border);
+  border-radius: 2px;
+  box-shadow: 0 20px 50px rgba(4, 23, 41, .28);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--wire-fg);
+}
+.wire-head {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--wire-border);
+}
+.wire-title {
+  font-size: 12px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--wire-muted);
+}
+.wire-counts { font-size: 12px; }
+.wire-log {
+  height: 340px;
+  overflow: hidden;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+}
+.wire-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.wire-lines > * { animation: wire-in .45s ease both; }
+@keyframes wire-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.wire-turn { display: grid; gap: 3px; }
+.wire-turn-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 8px;
+}
+.wire-clock { color: var(--wire-muted); }
+.wire-tag,
+.wire-action {
+  padding: 0 5px;
+  border: 1px solid var(--wire-fg);
+  font-size: 11px;
+}
+.wire-action { text-transform: uppercase; letter-spacing: .06em; }
+.wire-action--mine { background: var(--wire-fg); color: #FFFFFF; }
+.wire-text { margin: 0; padding-left: 72px; color: var(--wire-muted); text-wrap: pretty; }
+.wire-event {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: .03em;
+  color: var(--wire-muted);
+}
+.wire-event b { font-weight: 700; }
+.wire-event--won { color: var(--wire-fg); }
+.wire-event--open { color: #FF8A00; }
+.wire-rule { flex: 1; border-top: 1px dashed currentColor; opacity: .5; }
+.wire-cursor { color: #FF8A00; opacity: .35; animation: site-blink 1s step-end infinite; }
+.wire-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--wire-border);
+  font-size: 11px;
+  letter-spacing: .03em;
+  color: var(--wire-muted);
+}
+.wire-dot { width: 8px; height: 8px; background: #FF8A00; opacity: .35; }
+
+/* ---------- built for ---------- */
+.hermes-built {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 28px 32px;
+}
+.hermes-built > div { display: flex; flex-direction: column; gap: 8px; }
+.hermes-install-intro { display: flex; flex-direction: column; gap: 8px; }
 
 @media (max-width: 520px) {
-  .hermes-closer { font-size: 40px; }
+  .wire-text { padding-left: 0; }
+  .wire-log { height: 380px; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .wire-lines > * { animation: none; }
+}
+
+.hermes-invite { display: flex; flex-direction: column; gap: 10px; }
+.hermes-backdrop--shot .hermes-backdrop-inner { padding: clamp(12px, 3.5vw, 28px); }
