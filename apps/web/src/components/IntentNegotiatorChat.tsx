@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -6,9 +6,23 @@ import { useConversations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type PrincipalQuestion } from "@/services/conversation";
-import { AgentFeedNote, AgentPortrait, DiscoveryTrace, OptionChip, WriteOwn, parseDiscovery } from "@/components/workbench/mac-blocks";
+import { AgentFeedNote, AgentPortrait, DiscoveryTrace, OptionChip, parseDiscovery } from "@/components/workbench/mac-blocks";
 
-type Provenance = { kind?: string; questionId?: string; scope?: string; matches?: PrincipalQuestion["matches"] };
+type Provenance = {
+  kind?: string;
+  questionId?: string;
+  scope?: string;
+  options?: string[];
+  matches?: PrincipalQuestion["matches"];
+};
+
+type QuestionCard = {
+  questionId: string;
+  text: string;
+  options: string[];
+  scope?: string;
+  matches: PrincipalQuestion["matches"];
+};
 
 function messageText(message: ConversationMessage): string {
   return (message.parts as { kind?: string; text?: string }[])
@@ -17,16 +31,36 @@ function messageText(message: ConversationMessage): string {
 
 type FeedPiece =
   | { kind: "user" | "note" | "progress"; id: string; text: string }
-  | { kind: "discovery"; id: string; loading: string[]; plan: string; queries: string[]; discovered: number | null; reached: number | null; progress: string };
+  | { kind: "discovery"; id: string; loading: string[]; plan: string; queries: string[]; discovered: number | null; reached: number | null; progress: string }
+  | { kind: "open-question"; id: string; question: QuestionCard }
+  | { kind: "answered-question"; id: string; question: QuestionCard; answer: string };
 
 function isLoadingLine(text: string) {
   const line = text.endsWith(".") ? text.slice(0, -1) : text;
   return line === "Warming up" || line === "Working out who to reach";
 }
 
-/** Same classification as the Mac signal inbox: progress folds into one discovery trace, briefs stay inside it. */
-function signalFeed(messages: ConversationMessage[], carded: Set<string>): FeedPiece[] {
+function questionCard(provenance: Provenance, text: string, live?: PrincipalQuestion): QuestionCard {
+  return {
+    questionId: provenance.questionId || live?.id || "",
+    text: live?.question || text,
+    options: live?.options ?? provenance.options ?? [],
+    scope: live?.scope ?? provenance.scope,
+    matches: live?.matches ?? provenance.matches ?? [],
+  };
+}
+
+/** Same classification as the Mac signal inbox: a question stays where it was asked, and its answer sits on that card. */
+function signalFeed(messages: ConversationMessage[], questions: PrincipalQuestion[]): FeedPiece[] {
+  const live = new Map(questions.map((question) => [question.id, question]));
+  const answers = new Map<string, string>();
+  for (const message of messages) {
+    const provenance = message.metadata?.principalMessage as Provenance | undefined;
+    const text = messageText(message).trim();
+    if (provenance?.kind === "answer" && provenance.questionId && text) answers.set(provenance.questionId, text);
+  }
   const feed: FeedPiece[] = [];
+  const seen = new Set<string>();
   let block: Extract<FeedPiece, { kind: "discovery" }> | null = null;
   const flush = () => { block = null; };
   for (const message of messages) {
@@ -34,15 +68,14 @@ function signalFeed(messages: ConversationMessage[], carded: Set<string>): FeedP
     const provenance = message.metadata?.principalMessage as Provenance | undefined;
     if (!text) continue;
     if (message.role === "agent" && provenance?.kind === "message" && (text.startsWith("Stall: ") || text.startsWith("Resolved: "))) continue;
-    if (provenance?.kind === "question" && provenance.questionId && carded.has(provenance.questionId)) continue;
-    if (provenance?.kind === "question") {
+    if (provenance?.kind === "answer" && provenance.questionId && answers.has(provenance.questionId)) continue;
+    if (provenance?.kind === "question" && provenance.questionId) {
       flush();
-      feed.push({ kind: "note", id: message.id, text });
-      continue;
-    }
-    if (provenance?.kind === "answer") {
-      flush();
-      feed.push({ kind: "user", id: message.id, text });
+      const question = questionCard(provenance, text, live.get(provenance.questionId));
+      seen.add(provenance.questionId);
+      const answer = answers.get(provenance.questionId);
+      if (live.has(provenance.questionId)) feed.push({ kind: "open-question", id: message.id, question });
+      else if (answer) feed.push({ kind: "answered-question", id: `answered-${provenance.questionId}`, question, answer });
       continue;
     }
     if (text.startsWith("Brief: ") || text.startsWith("Decision: ")) continue;
@@ -81,17 +114,123 @@ function signalFeed(messages: ConversationMessage[], carded: Set<string>): FeedP
     flush();
     feed.push({ kind: "note", id: message.id, text });
   }
+  for (const question of questions) {
+    if (seen.has(question.id)) continue;
+    feed.push({
+      kind: "open-question",
+      id: question.id,
+      question: { questionId: question.id, text: question.question, options: question.options ?? [], scope: question.scope, matches: question.matches },
+    });
+  }
   return feed;
 }
 
+function agentLabel(name: string) {
+  const owner = name.trim().replace(/[’']s\s+agent$|\s+agent$/i, "").trim();
+  if (!owner) return "your agent";
+  if (/^unknown$/i.test(owner)) return "someone's agent";
+  return `${owner}'s agent`;
+}
+
 /** One private intent conversation; every open question is answered in a single submit. */
-function questionAsker(question: PrincipalQuestion) {
+function questionAsker(question: { scope?: string; matches?: PrincipalQuestion["matches"] }) {
   const people = (question.matches ?? [])
     .map((match) => match.counterparty)
-    .filter((person): person is { id: string; name: string } => Boolean(person?.id && person.name));
-  if (people.length === 1) return { label: `${people[0].name}'s agent`, owner: people[0] };
-  if (people.length > 1) return { label: `${people.map((person) => person.name).join(", ")}'s agents`, owner: null };
-  return { label: question.scope === "match" ? "this match's agent" : "your agent", owner: null };
+    .filter((person): person is { id: string; name: string } => Boolean(person?.name));
+  if (people.length === 1) return { label: agentLabel(people[0].name), owner: people[0] };
+  if (people.length > 1) return { label: `${people.map((person) => person.name).join(", ")}’s agents`, owner: null };
+  return { label: question.scope === "match" ? "this match’s agent" : "your agent", owner: null };
+}
+
+function questionAskerLabel(question: QuestionCard, label: string, onSelectMatch?: (opportunityId: string) => void) {
+  const opportunityId = question.matches?.[0]?.opportunityId;
+  const style = { fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", textTransform: "uppercase" as const, letterSpacing: "0.05em" };
+  if (!onSelectMatch || !opportunityId) return <span style={style}>{label}</span>;
+  return <button type="button" onClick={() => onSelectMatch(opportunityId)} style={{ ...style, background: "none", border: "none", padding: 0, cursor: "pointer" }}>{label}</button>;
+}
+
+function OpenQuestion({ question, user, selections, setSelections, writing, setWriting, onSelectMatch }: {
+  question: QuestionCard;
+  user: { id?: string; name?: string; avatar?: string | null } | null;
+  selections: Record<string, string>;
+  setSelections: Dispatch<SetStateAction<Record<string, string>>>;
+  writing: Record<string, boolean>;
+  setWriting: Dispatch<SetStateAction<Record<string, boolean>>>;
+  onSelectMatch(opportunityId: string): void;
+}) {
+  const id = question.questionId;
+  const options = question.options;
+  const answer = selections[id] || "";
+  const asker = questionAsker(question);
+  const owner = asker.owner;
+  const own = !options.includes(answer) && answer;
+  const write = writing[id] || options.length === 0;
+  return (
+    <article style={{ display: "flex", gap: 12 }}>
+      <AgentPortrait id={owner?.id ?? user?.id} name={owner?.name ?? user?.name} photo={owner ? null : user?.avatar} />
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5 }}>
+            <span style={{ background: "#111", color: "#fff", padding: "2px 6px", borderRadius: 3, fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>QUESTION</span>
+            {questionAskerLabel(question, asker.label, onSelectMatch)}
+          </div>
+          <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 600, lineHeight: 1.55, color: "#2a2a2a" }}>{question.text}</div>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {options.map((option) => (
+            <OptionChip key={option} label={option} selected={answer === option}
+              onClick={() => {
+                setSelections((current) => ({ ...current, [id]: current[id] === option ? "" : option }));
+                setWriting((current) => ({ ...current, [id]: false }));
+              }} />
+          ))}
+          {write ? (
+            <input
+              autoFocus={options.length > 0}
+              value={own ? answer : ""}
+              onChange={(event) => setSelections((current) => ({ ...current, [id]: event.target.value }))}
+              onBlur={(event) => { if (!event.currentTarget.value.trim()) setWriting((current) => ({ ...current, [id]: false })); }}
+              onKeyDown={(event) => { if (event.key === "Escape" && !event.currentTarget.value.trim()) setWriting((current) => ({ ...current, [id]: false })); }}
+              placeholder="write your own"
+              aria-label="Write your own answer"
+              style={{ flex: "1 1 220px", minWidth: 180, minHeight: 36, border: "1px solid #000", padding: "8px 14px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "#111", outline: "none" }}
+            />
+          ) : (
+            <OptionChip write label="write your own" onClick={() => {
+              setSelections((current) => ({ ...current, [id]: "" }));
+              setWriting((current) => ({ ...current, [id]: true }));
+            }} />
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function AnsweredQuestion({ question, answer, user }: {
+  question: QuestionCard;
+  answer: string;
+  user: { id?: string; name?: string; avatar?: string | null } | null;
+}) {
+  const asker = questionAsker(question);
+  const owner = asker.owner;
+  return (
+    <article style={{ display: "flex", gap: 12 }}>
+      <AgentPortrait id={owner?.id ?? user?.id} name={owner?.name ?? user?.name} photo={owner ? null : user?.avatar} />
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <span style={{ color: "#2f7d4f", fontWeight: 600 }}>✓ answered</span>
+            <span style={{ color: "#8f8f88" }}>{asker.label}</span>
+          </div>
+          <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#2a2a2a" }}>{question.text}</div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>{answer}</div>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
@@ -110,7 +249,6 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const questions = agent?.questions ?? [];
-  const carded = new Set(questions.map((question) => question.id));
   // Read off the questions on screen, so a selection whose question is gone
   // counts for nothing and is never sent.
   const chosen = questions.filter((question) => selections[question.id]?.trim());
@@ -185,11 +323,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     }
   };
 
-  const choose = (questionId: string, text: string) => {
-    setSelections((current) => ({ ...current, [questionId]: current[questionId] === text ? "" : text }));
-  };
-
-  const feed = useMemo(() => signalFeed(messages, carded), [messages, questions]);
+  const feed = useMemo(() => signalFeed(messages, questions), [messages, questions]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
@@ -204,7 +338,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           if (piece.kind === "user") {
             return (
               <div key={piece.id} style={{ display: "flex", justifyContent: "flex-end" }}>
-                <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5 }}>
+                <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
                 </div>
               </div>
@@ -213,44 +347,20 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           if (piece.kind === "progress") {
             return <p key={piece.id} style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>· {piece.text}</p>;
           }
+          if (piece.kind === "open-question") {
+            return (
+              <OpenQuestion key={piece.id} question={piece.question} user={user} selections={selections} setSelections={setSelections} writing={writing} setWriting={setWriting} onSelectMatch={onSelectMatch} />
+            );
+          }
+          if (piece.kind === "answered-question") {
+            return <AnsweredQuestion key={piece.id} question={piece.question} answer={piece.answer} user={user} />;
+          }
           return (
             <AgentFeedNote key={piece.id}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
             </AgentFeedNote>
           );
         })}
-
-      {questions.map((question) => {
-        const asker = questionAsker(question);
-        const owner = asker.owner;
-        return (
-        <article key={question.id} style={{ display: "flex", gap: 12 }}>
-          <AgentPortrait id={owner?.id ?? user?.id} name={owner?.name ?? user?.name} photo={owner ? null : user?.avatar} />
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5 }}>
-              <span style={{ background: "#111", color: "#fff", padding: "2px 6px", borderRadius: 3, fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>QUESTION</span>
-              <button type="button" onClick={() => { const id = question.matches?.[0]?.opportunityId; if (id) onSelectMatch(id); }} style={{ background: "none", border: "none", padding: 0, cursor: question.matches?.[0] ? "pointer" : "default", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", textTransform: "uppercase", letterSpacing: "0.05em" }}>{asker.label}</button>
-            </div>
-            <p style={{ margin: 0, maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 600, lineHeight: 1.55, color: "#2a2a2a" }}>{question.question}</p>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {question.options?.map((option) => (
-              <OptionChip key={option} label={option} selected={selections[question.id] === option && !writing[question.id]}
-                onClick={() => { choose(question.id, option); setWriting((current) => ({ ...current, [question.id]: false })); }} />
-            ))}
-            <WriteOwn
-              open={!!writing[question.id]}
-              value={question.options?.includes(selections[question.id] ?? "") ? "" : selections[question.id] ?? ""}
-              onOpen={() => setWriting((current) => ({ ...current, [question.id]: true }))}
-              onChange={(value) => setSelections((current) => ({ ...current, [question.id]: value }))}
-              onClose={() => setWriting((current) => ({ ...current, [question.id]: false }))}
-            />
-          </div>
-          </div>
-        </article>
-        );
-      })}
       <div ref={endRef} />
       </div>
 
