@@ -290,7 +290,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
 
       {view === 'email-password' && canUseEmailPassword && product && (
         <>
-          <button type="button" className="wb-btn small" onClick={() => { setView('main'); setError(null); }} aria-label="back">←</button>
+          <button type="button" className="av-back" onClick={() => { setView('main'); setError(null); }}>← back</button>
           <h2 id="auth-modal-title" className="wb-auth-h">
             {isSignUp ? "create an account" : "sign in with a password"}
           </h2>
@@ -310,9 +310,9 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
               {loading ? "loading…" : isSignUp ? "create account" : "sign in"}
             </button>
           </form>
-          <p className="wb-auth-note">
+          <p className="av-alt">
             {isSignUp ? "already have an account? " : "don't have an account? "}
-            <button type="button" className="wb-btn small" onClick={() => { setIsSignUp(!isSignUp); setError(null); }}>
+            <button type="button" className="av-link" onClick={() => { setIsSignUp(!isSignUp); setError(null); }}>
               {isSignUp ? "sign in" : "sign up"}
             </button>
           </p>
