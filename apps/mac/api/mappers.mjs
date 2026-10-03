@@ -75,9 +75,11 @@ export function mapIntent(intent) {
     matches: 0,
     connected: 0,
     inConversations: 0,
-    // Row badge: unanswered agent questions plus opportunities awaiting the
-    // user. Hermes uses the same sum; the web list still shows opportunities only.
-    pending: count(intent.pendingQuestionCount) + count(intent.waitingOpportunityCount),
+    // Row and Dock badge: unanswered questions plus opportunities awaiting you,
+    // on active signals only. Paused and archived rows stay listed without a count.
+    pending: !archived && !paused
+      ? count(intent.pendingQuestionCount) + count(intent.waitingOpportunityCount)
+      : 0,
     inbound: [],
     source: intent,
   };

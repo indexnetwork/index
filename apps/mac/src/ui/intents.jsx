@@ -59,7 +59,7 @@ function NetworksRow({ count, pending, onClick }) {
 
 // Every person-to-person thread, including ones whose signal is gone. Same
 // shelf treatment as the networks row below it.
-function ConversationsRow({ onClick }) {
+function ConversationsRow({ unread = 0, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -80,6 +80,11 @@ function ConversationsRow({ onClick }) {
         flex:1, minWidth:0,
         fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
       }}>conversations</span>
+      <QCount
+        n={unread}
+        muted={!unread}
+        title={`${unread} unread`}
+      />
     </button>
   );
 }
@@ -398,7 +403,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
               {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
                 <div>
-                  <ConversationsRow onClick={() => onOpenView && onOpenView("conversations")}/>
+                  <ConversationsRow unread={env.chatUnread || 0} onClick={() => onOpenView && onOpenView("conversations")}/>
                   <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
                   <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
                 </div>
@@ -495,8 +500,8 @@ function signalStatus(intent) {
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  // Unanswered questions plus opportunities awaiting you.
-  const pending = intent.pending ?? 0;
+  // Unanswered questions plus opportunities awaiting you, on a live signal.
+  const pending = intent.status === "active" ? (intent.pending ?? 0) : 0;
   const hasQ = pending > 0;
   const statusLabel = signalStatus(intent);
   // the blink is the signal working. only the states that are actually running

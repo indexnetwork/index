@@ -404,7 +404,11 @@ def _count(value: Any) -> int:
 
 
 def _attention_count(intent: dict[str, Any]) -> int:
-    """Intent-row badge: unanswered agent questions plus opportunities awaiting the user."""
+    """Active signals only: unanswered questions plus opportunities awaiting the user."""
+    if intent.get("archivedAt"):
+        return 0
+    if _text(intent.get("status"), "active").lower() not in ("", "active"):
+        return 0
     return _count(intent.get("pendingQuestionCount")) + _count(intent.get("waitingOpportunityCount"))
 
 
@@ -611,6 +615,9 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
             item["type"] = net_type
         if detail:
             item["detail"] = detail
+        pending_joins = _count(network.get("pendingJoinCount"))
+        if pending_joins:
+            item["pendingJoinCount"] = pending_joins
         items.append(item)
     items.sort(key=lambda n: n.get("title", "").lower())
     return {

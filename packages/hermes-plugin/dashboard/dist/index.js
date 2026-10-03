@@ -1433,6 +1433,7 @@
   // One number per row: unanswered questions plus opportunities awaiting you.
   // The mac shelf shows this same sum.
   function intentMatchCount(intent) {
+    if (!intent || intent.lifecycleStatus === "paused" || intent.status === "paused") return 0;
     return Number.isFinite(intent.pendingCount) ? intent.pendingCount : 0;
   }
 
@@ -2347,6 +2348,12 @@
           (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
         ),
       ),
+      network.pendingJoinCount
+        ? React.createElement("span", {
+          className: "index-dashboard__intent-count",
+          "aria-label": network.pendingJoinCount === 1 ? "1 waiting to join" : network.pendingJoinCount + " waiting to join",
+        }, String(network.pendingJoinCount))
+        : null,
       isOwner
         ? React.createElement(BadgeText, null, "Owner")
         : React.createElement(BadgeText, { tone: "secondary" }, "Member"),
@@ -5670,6 +5677,17 @@
       return Promise.all([skeletonPromise, radarPromise]);
     }
 
+    function publishAttention(payload) {
+      const intents = (payload && payload.intents) || [];
+      let total = 0;
+      intents.forEach(function (intent) {
+        if (!intent || intent.lifecycleStatus === "paused" || intent.status === "paused") return;
+        const n = intent.pendingCount;
+        if (typeof n === "number" && n > 0) total += n;
+      });
+      window.dispatchEvent(new CustomEvent("index-network-attention", { detail: total }));
+    }
+
     function load() {
       setLoading(true);
       setError(null);
@@ -5685,6 +5703,7 @@
           }
           setSummary(payload);
           setNeedsOnboarding(!!(payload.onboarding && payload.onboarding.needsProfileConfirm));
+          publishAttention(payload);
         })
         .catch(function (err) {
           setError(err && err.message ? err.message : String(err));
@@ -5802,7 +5821,7 @@
     function applyIntentLifecycle(intentId, lifecycle) {
       setSummary(function (prev) {
         if (!prev || !Array.isArray(prev.intents)) return prev;
-        return Object.assign({}, prev, {
+        const next = Object.assign({}, prev, {
           intents: prev.intents.map(function (intent) {
             if (intent.id !== intentId) return intent;
             const counts = intent.statusCounts || {};
@@ -5812,6 +5831,8 @@
             return Object.assign({}, intent, { lifecycleStatus: lifecycle, status: status });
           }),
         });
+        publishAttention(next);
+        return next;
       });
     }
 
@@ -5959,6 +5980,7 @@
         setSummary(null);
         setNeedsOnboarding(false);
         setAuth("needsLogin");
+        publishAttention(null);
       }
       window.addEventListener("index-network-sign-out", onEnvironmentSignOut);
       return function () { window.removeEventListener("index-network-sign-out", onEnvironmentSignOut); };
@@ -5974,9 +5996,11 @@
         setSummary(null);
         setNeedsOnboarding(false);
         setAuth("needsLogin");
+        publishAttention(null);
       }).catch(function () {
         setSummary(null);
         setNeedsOnboarding(false);
+        publishAttention(null);
         setAuth("needsLogin");
       });
     }
