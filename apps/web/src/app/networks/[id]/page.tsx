@@ -190,11 +190,11 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
               )}
             </div>
             {isOwner && (
-              <div style={{ display: "flex", gap: 2 }}>
+              <Tabs.List style={{ display: "flex", gap: 2 }}>
                 {(['overview', 'settings', 'access'] as const).map((tab) => (
                   <Tabs.Trigger key={tab} value={tab} style={{ padding: "8px 14px 10px", border: "none", borderBottom: activeTab === tab ? "2px solid #000" : "2px solid transparent", background: "transparent", fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: activeTab === tab ? 700 : 400, color: activeTab === tab ? "#000" : "var(--ink-2)", textTransform: "capitalize", cursor: "pointer" }}>{tab}</Tabs.Trigger>
                 ))}
-              </div>
+              </Tabs.List>
             )}
           </div>
           <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 24px 20px" }}>
