@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Network } from '@/lib/types';
-import { Button } from '@/components/ui/button';
+import { ConfirmWindow } from '@/components/workbench/Workbench';
 import IntentList from '@/components/IntentList';
 import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -91,8 +90,8 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
       <div className="space-y-8">
         <div>
           <div className="flex items-center justify-between mb-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-              Your Signals
+            <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" }}>
+              your signals
             </p>
             {!overviewLoading && (
               <span className="text-xs text-gray-400">{intents.length} signal{intents.length !== 1 ? 's' : ''}</span>
@@ -101,29 +100,22 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
           <IntentList
             intents={intents}
             isLoading={overviewLoading}
-            emptyMessage="You haven't shared any signals in this network yet"
+            emptyMessage="you haven't shared any signals in this network yet"
             onIntentClick={handleOpenIntent}
           />
         </div>
       </div>
 
-      <AlertDialog.Root open={showLeaveConfirmation} onOpenChange={setLeaveConfirmation}>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Leave &apos;{network.title}&apos;?</AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              You will lose access to this network. You can rejoin later if the network is public or if you receive a new invitation.
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-3">
-              <AlertDialog.Cancel asChild><Button variant="outline">Cancel</Button></AlertDialog.Cancel>
-              <Button onClick={handleLeaveNetwork} disabled={isLeaving} className="bg-red-600 hover:bg-red-700 text-white">
-                {isLeaving ? 'Leaving...' : 'Leave'}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      {showLeaveConfirmation && (
+        <ConfirmWindow
+          title="leave"
+          body={`leave ${network.title}? you can rejoin later if the network is public or you are invited again.`}
+          confirmLabel={isLeaving ? "leaving" : "leave"}
+          busy={isLeaving}
+          onCancel={() => { if (!isLeaving) setLeaveConfirmation(false); }}
+          onConfirm={() => void handleLeaveNetwork()}
+        />
+      )}
     </>
   );
 }

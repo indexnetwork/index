@@ -1,41 +1,101 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, BotMessageSquare, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useConversations } from "@/contexts/APIContext";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type PrincipalQuestion } from "@/services/conversation";
-import { cn } from "@/lib/utils";
+import { AgentFeedNote, AgentPortrait, DiscoveryTrace, OptionChip, WriteOwn, parseDiscovery } from "@/components/workbench/mac-blocks";
 
 type Provenance = { kind?: string; questionId?: string; scope?: string; matches?: PrincipalQuestion["matches"] };
-
-const WARMING = "Warming up.";
-const REACHING = "Working out who to reach.";
 
 function messageText(message: ConversationMessage): string {
   return (message.parts as { kind?: string; text?: string }[])
     .filter((part) => part?.kind === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
 }
 
-function progressBody(text: string): string | null {
-  return text.startsWith("Progress: ") ? text.slice("Progress: ".length) : null;
+type FeedPiece =
+  | { kind: "user" | "note" | "progress"; id: string; text: string }
+  | { kind: "discovery"; id: string; loading: string[]; plan: string; queries: string[]; discovered: number | null; reached: number | null; progress: string };
+
+function isLoadingLine(text: string) {
+  const line = text.endsWith(".") ? text.slice(0, -1) : text;
+  return line === "Warming up" || line === "Working out who to reach";
 }
 
-/** A repeat of Warming up or Working out who to reach is hidden. Temporary: both stay after discovery starts so their style can be edited. */
-function supersededLoading(messages: ConversationMessage[]): Set<string> {
-  const hide = new Set<string>();
-  const bodies = messages.map((message) => progressBody(messageText(message)));
-  const firstOf = (text: string) => bodies.findIndex((body) => body === text);
-  bodies.forEach((body, index) => {
-    if (body !== WARMING && body !== REACHING) return;
-    if (index !== firstOf(body)) hide.add(messages[index]!.id);
-  });
-  return hide;
+/** Same classification as the Mac signal inbox: progress folds into one discovery trace, briefs stay inside it. */
+function signalFeed(messages: ConversationMessage[], carded: Set<string>): FeedPiece[] {
+  const feed: FeedPiece[] = [];
+  let block: Extract<FeedPiece, { kind: "discovery" }> | null = null;
+  const flush = () => { block = null; };
+  for (const message of messages) {
+    const text = messageText(message).trim();
+    const provenance = message.metadata?.principalMessage as Provenance | undefined;
+    if (!text) continue;
+    if (message.role === "agent" && provenance?.kind === "message" && (text.startsWith("Stall: ") || text.startsWith("Resolved: "))) continue;
+    if (provenance?.kind === "question" && provenance.questionId && carded.has(provenance.questionId)) continue;
+    if (provenance?.kind === "question") {
+      flush();
+      feed.push({ kind: "note", id: message.id, text });
+      continue;
+    }
+    if (provenance?.kind === "answer") {
+      flush();
+      feed.push({ kind: "user", id: message.id, text });
+      continue;
+    }
+    if (text.startsWith("Brief: ") || text.startsWith("Decision: ")) continue;
+    if (message.role === "user") {
+      flush();
+      feed.push({ kind: "user", id: message.id, text });
+      continue;
+    }
+    if (text.startsWith("Progress: ")) {
+      const body = text.slice("Progress: ".length);
+      if (isLoadingLine(body)) {
+        if (!block) {
+          block = { kind: "discovery", id: message.id, loading: [], plan: "", queries: [], discovered: null, reached: null, progress: "" };
+          feed.push(block);
+        }
+        block.loading.push(body);
+        continue;
+      }
+      const trace = parseDiscovery(body);
+      if (trace && (trace.plan || trace.queries.length || trace.discovered != null)) {
+        if (block && !block.plan && !block.queries.length && block.discovered == null) {
+          block.plan = trace.plan;
+          block.queries = trace.queries;
+          block.discovered = trace.discovered;
+          block.reached = trace.reached;
+          continue;
+        }
+        flush();
+        feed.push({ kind: "discovery", id: message.id, loading: [], progress: "", ...trace });
+        continue;
+      }
+      flush();
+      feed.push({ kind: "progress", id: message.id, text: body });
+      continue;
+    }
+    flush();
+    feed.push({ kind: "note", id: message.id, text });
+  }
+  return feed;
 }
 
 /** One private intent conversation; every open question is answered in a single submit. */
+function questionAsker(question: PrincipalQuestion) {
+  const people = (question.matches ?? [])
+    .map((match) => match.counterparty)
+    .filter((person): person is { id: string; name: string } => Boolean(person?.id && person.name));
+  if (people.length === 1) return { label: `${people[0].name}'s agent`, owner: people[0] };
+  if (people.length > 1) return { label: `${people.map((person) => person.name).join(", ")}'s agents`, owner: null };
+  return { label: question.scope === "match" ? "this match's agent" : "your agent", owner: null };
+}
+
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
+  const { user } = useAuthContext();
   const conversations = useConversations();
   const { subscribeConversationMessage, isConnected } = useConversation();
   const [draft, setDraft] = useState("");
@@ -129,102 +189,92 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
     setSelections((current) => ({ ...current, [questionId]: current[questionId] === text ? "" : text }));
   };
 
-  const hiddenLoading = supersededLoading(messages);
-
-  const references = (scope?: string, matches?: PrincipalQuestion["matches"]) => (
-    <div className="mb-1 flex flex-wrap items-center gap-1 text-xs">
-      {scope && <span className="opacity-70">{scope === "match" ? "For this match" : "For this intent"}</span>}
-      {matches?.map((match) => <button key={match.opportunityId} type="button" onClick={() => onSelectMatch(match.opportunityId)}
-        className="rounded px-1.5 py-0.5 underline decoration-current/30 underline-offset-2 hover:bg-black/5">
-        {match.counterparty.name ?? "View match"}
-      </button>)}
-    </div>
-  );
+  const feed = useMemo(() => signalFeed(messages, carded), [messages, questions]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="intent-negotiator-chat">
-      <p className="mb-3 text-xs text-gray-500" aria-live="polite">
-        {agent ? "Your inbox for this intent." : "Loading your agent conversation…"}
-      </p>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        {loading ? <Loader2 className="mx-auto my-10 h-5 w-5 animate-spin text-gray-400" />
-          : messages.length === 0 ? <div className="flex items-start gap-2 text-sm text-gray-600">
-            <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>Ask about your matches, share a preference, or give your agent direction for this intent.</p>
-          </div> : messages.map((message, index) => {
-            const content = messageText(message);
-            const provenance = message.metadata?.principalMessage as Provenance | undefined;
-            if (!content || provenance?.kind === "question" && provenance.questionId && carded.has(provenance.questionId)) return null;
-            const progress = progressBody(content);
-            if (progress === WARMING || progress === REACHING) {
-              if (hiddenLoading.has(message.id)) return null;
-              const earlier = index > 0 ? progressBody(messageText(messages[index - 1]!)) : null;
-              if ((earlier === WARMING || earlier === REACHING) && !hiddenLoading.has(messages[index - 1]!.id)) return null;
-              const lines = [progress];
-              for (let next = index + 1; next < messages.length; next++) {
-                const body = progressBody(messageText(messages[next]!));
-                if (body !== WARMING && body !== REACHING) break;
-                if (!hiddenLoading.has(messages[next]!.id)) lines.push(body);
-              }
-              return <div key={message.id} className="flex flex-col gap-2 text-sm text-[#5A5548]">
-                {lines.map((line) => <p key={line}>{line}</p>)}
-              </div>;
-            }
-            const own = message.role === "user";
-            return <div key={message.id} className={cn("flex", own ? "justify-end" : "justify-start")}>
-              <article className={cn("max-w-[92%] rounded-2xl px-4 py-3 text-sm", own ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900")}>
-                {references(provenance?.scope, provenance?.matches)}
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-              </article>
-            </div>;
-          })}
-        <div ref={endRef} />
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
+      <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 22 }}>
+      {loading ? <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
+        : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45 }}>
+          Ask about your matches, share a preference, or give your agent direction for this signal.
+        </p> : feed.map((piece) => {
+          if (piece.kind === "discovery") {
+            return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
+          }
+          if (piece.kind === "user") {
+            return (
+              <div key={piece.id} style={{ display: "flex", justifyContent: "flex-end" }}>
+                <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5 }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
+                </div>
+              </div>
+            );
+          }
+          if (piece.kind === "progress") {
+            return <p key={piece.id} style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>· {piece.text}</p>;
+          }
+          return (
+            <AgentFeedNote key={piece.id}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{piece.text}</ReactMarkdown>
+            </AgentFeedNote>
+          );
+        })}
+
+      {questions.map((question) => {
+        const asker = questionAsker(question);
+        const owner = asker.owner;
+        return (
+        <article key={question.id} style={{ display: "flex", gap: 12 }}>
+          <AgentPortrait id={owner?.id ?? user?.id} name={owner?.name ?? user?.name} photo={owner ? null : user?.avatar} />
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5 }}>
+              <span style={{ background: "#111", color: "#fff", padding: "2px 6px", borderRadius: 3, fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>QUESTION</span>
+              <button type="button" onClick={() => { const id = question.matches?.[0]?.opportunityId; if (id) onSelectMatch(id); }} style={{ background: "none", border: "none", padding: 0, cursor: question.matches?.[0] ? "pointer" : "default", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", textTransform: "uppercase", letterSpacing: "0.05em" }}>{asker.label}</button>
+            </div>
+            <p style={{ margin: 0, maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 600, lineHeight: 1.55, color: "#2a2a2a" }}>{question.question}</p>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {question.options?.map((option) => (
+              <OptionChip key={option} label={option} selected={selections[question.id] === option && !writing[question.id]}
+                onClick={() => { choose(question.id, option); setWriting((current) => ({ ...current, [question.id]: false })); }} />
+            ))}
+            <WriteOwn
+              open={!!writing[question.id]}
+              value={question.options?.includes(selections[question.id] ?? "") ? "" : selections[question.id] ?? ""}
+              onOpen={() => setWriting((current) => ({ ...current, [question.id]: true }))}
+              onChange={(value) => setSelections((current) => ({ ...current, [question.id]: value }))}
+              onClose={() => setWriting((current) => ({ ...current, [question.id]: false }))}
+            />
+          </div>
+          </div>
+        </article>
+        );
+      })}
+      <div ref={endRef} />
       </div>
 
-      {questions.length > 0 && <section aria-label="Your agent's questions" className="mt-3 shrink-0">
-        <p className="mb-2 text-xs font-semibold text-amber-800">
-          Your agent needs your input{questions.length > 1 ? ` on ${questions.length} things` : ""}
-        </p>
-        <div className="max-h-72 space-y-2 overflow-y-auto">
-          {questions.map((question) => <article key={question.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-            {references(question.scope, question.matches)}
-            <p className="mb-3 whitespace-pre-wrap text-sm text-gray-900">{question.question}</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {question.options?.map((option) => <button key={option} type="button" disabled={sending}
-                aria-pressed={selections[question.id] === option}
-                onClick={() => { choose(question.id, option); setWriting((current) => ({ ...current, [question.id]: false })); }}
-                className={cn("rounded-lg border px-3 py-2 text-left text-sm disabled:opacity-50",
-                  selections[question.id] === option
-                    ? "border-amber-500 bg-amber-100 font-medium text-gray-900"
-                    : "border-amber-200 bg-white text-gray-800 hover:border-amber-400")}>{option}</button>)}
-            </div>
-            {writing[question.id]
-              ? <input autoFocus value={question.options?.includes(selections[question.id] ?? "") ? "" : selections[question.id] ?? ""}
-                onChange={(event) => setSelections((current) => ({ ...current, [question.id]: event.target.value }))}
-                placeholder="Write your answer…" aria-label="Write your own answer"
-                className="mt-2 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-amber-400" />
-              : <button type="button" className="mt-2 text-xs text-amber-800 underline underline-offset-2"
-                onClick={() => setWriting((current) => ({ ...current, [question.id]: true }))}>write your own</button>}
-          </article>)}
+      {chosen.length > 0 && (
+        <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", flexDirection: "row-reverse", alignItems: "center", gap: 12 }}>
+          <button type="button" disabled={!chosen.length || sending} onClick={() => void sendAnswers()} style={{
+            fontFamily: "var(--mac-mono)", fontSize: 12, padding: "8px 18px",
+            background: !sending ? "#111" : "#fff", color: !sending ? "#fff" : "#999", border: "1px solid #000",
+          }}>{sending ? "sending…" : chosen.length > 1 ? `send ${chosen.length} answers` : "send answer"}</button>
+          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88" }}>
+            {questions.length - chosen.length > 0 ? `${questions.length - chosen.length} of ${questions.length} unanswered` : "all answered · ready to send"}
+          </span>
         </div>
-        <button type="button" disabled={!chosen.length || sending} onClick={() => void sendAnswers()}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[#041729] px-3 py-2 text-sm text-white disabled:opacity-50">
-          {sending && <Loader2 className="h-4 w-4 animate-spin" />}
-          {chosen.length > 1 ? `Send ${chosen.length} answers` : "Send answer"}
-        </button>
-      </section>}
+      )}
 
-      <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="mt-3 flex shrink-0 items-end gap-2 rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3">
-        <textarea ref={inputRef} rows={2} value={draft}
+      <form onSubmit={(event) => { event.preventDefault(); void send(); }} style={{ display: "flex", gap: 10, alignItems: "flex-end", borderTop: "1px solid #000", background: "#fff", padding: "7px 12px 8px" }}>
+        <textarea ref={inputRef} rows={1} value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
           placeholder="Message your personal agent…"
           aria-label="Message your personal agent"
-          className="max-h-32 min-w-0 flex-1 resize-y border-none bg-transparent text-sm leading-6 text-gray-900 outline-none" />
-        <button type="submit" disabled={!draft.trim() || sending}
-          aria-label="Send message"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#041729] text-white disabled:opacity-50">
-          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+          style={{ flex: 1, border: "none", resize: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, background: "transparent", padding: "4px 0" }} />
+        <button type="submit" disabled={!draft.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", color: draft.trim() && !sending ? "#111" : "#b9b3a4", cursor: draft.trim() ? "pointer" : "default" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="20" x2="12" y2="5" /><polyline points="5,12 12,5 19,12" /></svg>
         </button>
       </form>
     </div>

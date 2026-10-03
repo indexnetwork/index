@@ -1,36 +1,27 @@
 import AuthForm from '@/components/AuthForm';
-import './AuthModal.css';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Override the post-login redirect URL. Defaults to window.location.origin. */
   callbackURL?: string;
 }
 
-/** Dark overlay dialog wrapping the shared AuthForm. */
+/** Workbench sign-in window. Inline auth on public pages uses AuthForm directly. */
 export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div
-      className="auth auth-modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="auth-modal-title"
-      onClick={onClose}
-    >
-      <div className="av-backdrop" aria-hidden="true" />
-      <div className="av-card" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          className="av-close"
-          onClick={onClose}
-          aria-label="Close"
-        >
-          ×
-        </button>
-        <AuthForm callbackURL={callbackURL} onAuthenticated={onClose} />
+    <div className="workbench mac-desktop wb-auth" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+      <div style={{ width: 420, maxWidth: "100%" }}>
+        <div className="amiga-window">
+          <div className="mac-titlebar">
+            <span className="mac-close" role="button" tabIndex={0} aria-label="close" onClick={onClose} />
+            <span className="mac-title"><span className="t">index</span></span>
+          </div>
+          <div className="wb-body" style={{ padding: "30px 30px 26px" }}>
+            <AuthForm variant="product" callbackURL={callbackURL} onAuthenticated={onClose} />
+          </div>
+        </div>
       </div>
     </div>
   );

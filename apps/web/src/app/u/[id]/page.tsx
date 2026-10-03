@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Loader2, MessageCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers, useNetworks } from "@/contexts/APIContext";
 import AppHandoff from "@/components/AppHandoff";
@@ -8,7 +8,7 @@ import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import { Link } from "react-router";
 import ClientLayout from "@/components/ClientLayout";
-import { ContentContainer } from "@/components/layout";
+import { Stage, Window } from "@/components/workbench/Workbench";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import { getPublicUserProfile } from "@/services/users";
 import { log } from "@/lib/logger";
@@ -102,9 +102,7 @@ function UserProfile() {
         <div className="text-center py-12">
           <h2 className="text-xl font-bold text-red-600 mb-2 font-ibm-plex-mono">Error</h2>
           <p className="text-gray-600 mb-4 font-ibm-plex-mono">{error}</p>
-          <button onClick={() => navigate(-1)} className="px-4 py-2 bg-[#041729] text-white rounded hover:bg-[#0a2d4a] font-ibm-plex-mono">
-            Go Back
-          </button>
+          <button type="button" className="wb-btn" onClick={() => navigate(-1)}>back</button>
         </div>
       </ClientLayout>
     );
@@ -120,71 +118,50 @@ function UserProfile() {
   return (
     <>
     <ClientLayout>
-      <div className="px-6 lg:px-8 py-6 pb-20">
-        <ContentContainer className="space-y-8">
-
-          <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-black transition-colors text-xl">
-            ←
-          </button>
+      <Stage width={720} height="min(720px, calc(100vh - 112px))">
+      <Window title="profile" onClose={() => navigate(-1)} style={{ height: "100%" }}>
+      <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "grid", gap: 20, alignContent: "start" }}>
 
           {/* Avatar, Name, Location, Socials */}
-          <div className="flex items-center gap-4">
-            <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={80} />
-            <div className="flex-1">
-              <h1 className="font-ibm-plex-mono text-2xl font-bold text-black mb-1 flex items-center gap-2">
-                {profileData.name}
-              </h1>
-              {profileData.location && (
-                <p className="text-sm text-gray-500 mb-3">{profileData.location}</p>
-              )}
-              <div className="flex items-center gap-3">
-                {socialLinks.map(s => (
-                  <a
-                    key={s.href}
-                    href={s.href}
-                    title={`${s.platform} · ${s.handle}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-black transition-colors"
-                  >
+          <div style={{ display: "flex", alignItems: "center", gap: 14, paddingBottom: 14, borderBottom: "1px solid #000" }}>
+            <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={54} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontFamily: "var(--amiga-title)", fontSize: 20, fontWeight: 600 }}>{profileData.name}</div>
+              {profileData.location && <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>{profileData.location}</div>}
+            </div>
+            {isAuthenticated && isOtherUser && (
+              <button type="button" className="wb-btn primary small" onClick={() => navigate(`/u/${id}/chat`)}>send message</button>
+            )}
+          </div>
+
+          {profileData.intro && (
+            <div>
+              <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontWeight: 700, marginBottom: 5 }}>bio</div>
+              <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{profileData.intro}</p>
+            </div>
+          )}
+
+          {socialLinks.length > 0 && (
+            <div>
+              <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>elsewhere</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {socialLinks.map((s) => (
+                  <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
                     {SOCIAL_ICONS[s.platform]}
+                    <span>{s.handle}</span>
                   </a>
                 ))}
               </div>
             </div>
-
-            {isAuthenticated && isOtherUser && (
-              <button
-                onClick={() => {
-                  navigate(`/u/${id}/chat`);
-                }}
-                className="flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors flex-shrink-0"
-              >
-                <MessageCircle className="w-4 h-4" />
-                Message
-              </button>
-            )}
-          </div>
-
-          {/* Intro */}
-          {profileData.intro && (
-            <div>
-              <h3 className="text-base font-bold text-gray-900 mb-3 font-ibm-plex-mono">Intro</h3>
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                {profileData.intro}
-              </p>
-            </div>
           )}
 
-          {/* Shared Networks */}
           {sharedNetworks.length > 0 && (
             <div>
-              <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Shared Networks</h3>
-              <div className="flex flex-wrap gap-2">
+              <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>networks</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {sharedNetworks.map((network) => (
-                  <Link key={network.id} to={`/networks/${network.id}`} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-full text-sm text-gray-700 hover:border-gray-400 transition-colors">
-                    {network.title}
-                    <span className="text-xs text-gray-400">{network._count.members}</span>
+                  <Link key={network.id} to={`/networks/${network.id}`} style={{ border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>
+                    {network.title} · {network._count.members}
                   </Link>
                 ))}
               </div>
@@ -194,94 +171,14 @@ function UserProfile() {
           {/* Past Negotiations — only for authenticated users */}
           {isAuthenticated && id && (
             <div>
-              <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Negotiations</h3>
+              <h3 style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 8 }}>negotiation</h3>
               <NegotiationHistory userId={id} />
             </div>
           )}
 
-          {/* You're the connector — only shown when viewing someone else's profile */}
-          {/* eslint-disable-next-line no-constant-binary-expression */}
-          {false && user?.id !== id && (
-            <div>
-              <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-0.5">You&apos;re the connector</h3>
-              <p className="text-xs text-gray-400 mb-3">Intros you could make with {profileData?.name.split(' ')[0]}</p>
-              <div className="space-y-2">
-                {[
-                  {
-                    id: 'match-1',
-                    name: 'Riley Park',
-                    userId: 'mock-riley',
-                    avatar: null,
-                    reason: `Both ${profileData?.name.split(' ')[0]} and Riley are deep in agent infrastructure from different angles — they'd have a lot to stress-test together.`,
-                  },
-                  {
-                    id: 'match-2',
-                    name: 'Mia Chen',
-                    userId: 'mock-mia',
-                    avatar: null,
-                    reason: `Mia just relocated to the same city and is looking to plug into the local builder scene. ${profileData?.name.split(' ')[0]} would be a perfect first connection.`,
-                  },
-                ].map((match) => (
-                  <div key={match.id} className="bg-[#F8F8F8] rounded-md p-4">
-                    {/* Header: A <> B */}
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="flex items-center gap-1.5">
-                            <UserAvatar id={profileData?.id ?? ''} name={profileData?.name ?? ''} avatar={profileData?.avatar ?? null} size={24} />
-                            <span className="text-sm font-bold text-gray-900">{profileData?.name.split(' ')[0]}</span>
-                          </div>
-                          <span className="text-gray-400 text-xs">&lt;&gt;</span>
-                          <div className="flex items-center gap-1.5">
-                            <UserAvatar id={match.userId} name={match.name} avatar={match.avatar} size={24} />
-                            <span className="text-sm font-bold text-gray-900">{match.name}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-1.5 shrink-0">
-                        <button className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium leading-none hover:bg-[#0a2d4a] transition-colors">
-                          Good match
-                        </button>
-                        <button className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium leading-none hover:bg-gray-200 transition-colors">
-                          Pass
-                        </button>
-                      </div>
-                    </div>
-                    {/* Reason */}
-                    <p className="text-[14px] text-[#3D3D3D] leading-relaxed">{match.reason}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-
-          {/* Affiliations */}
-          {/* eslint-disable-next-line no-constant-binary-expression */}
-          {false && <div>
-            <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-3">Affiliations</h3>
-            <div className="space-y-3">
-              {[
-                { label: 'Backed By', items: ['Frachtis', 'dlab', 'Blueyard', 'Mesh'] },
-                { label: 'Worked In', items: ['Index Network', 'Gowit', 'Aposto'] },
-                { label: 'Events', items: ['Devconnect Buenos Aires', 'Token2049', 'New York TechWeek'] },
-              ].map((group) => (
-                <div key={group.label} className="flex items-start gap-3">
-                  <p className="text-xs text-gray-400 w-20 flex-shrink-0 pt-0.5">{group.label}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {group.items.map((item) => (
-                      <span key={item} className="text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded px-2 py-0.5">
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>}
-
-        </ContentContainer>
       </div>
+      </Window>
+      </Stage>
     </ClientLayout>
     </>
   );

@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, RotateCw, Shield, ShieldOff } from 'lucide-react';
+import { ConfirmWindow } from '@/components/workbench/Workbench';
+import { Copy, Trash2, Plus, Check, ChevronRight, ChevronLeft, RotateCw, Shield, ShieldOff } from 'lucide-react';
 
 import { Network } from '@/lib/types';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -186,7 +185,7 @@ export default function AccessTab({
       setJoinRequests(prev => prev.filter(r => r.id !== userId));
       if (decision === 'approve') await loadMembers();
       await refreshNetworks();
-      success(decision === 'approve' ? 'Request approved' : 'Request declined');
+      success(decision === 'approve' ? 'request approved' : 'request declined');
     } catch (err) {
       logger.error('Error reviewing join request', { error: err });
       error('Failed to review request');
@@ -300,34 +299,32 @@ export default function AccessTab({
       <div className="space-y-8">
 
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
+          <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 12 }}>visibility</p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => { setAnyoneCanJoin(true); handleUpdatePermissions(true); }}
-              className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
+              style={{ display: "flex", gap: 10, padding: 12, border: "1px solid #000", background: anyoneCanJoin ? "#000" : "#fff", color: anyoneCanJoin ? "#fff" : "#000", textAlign: "left" }}
             >
-              <Globe className={`h-4 w-4 flex-shrink-0 ${anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
               <div>
-                <p className="text-sm font-medium text-black">Public</p>
-                <p className="text-xs text-gray-400">Anyone can join</p>
+                <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700 }}>public</p>
+                <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-sans)", fontSize: 12, opacity: 0.75 }}>anyone can join</p>
               </div>
             </button>
             <button
               type="button"
               onClick={() => { setAnyoneCanJoin(false); handleUpdatePermissions(false); }}
-              className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${!anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
+              style={{ display: "flex", gap: 10, padding: 12, border: "1px solid #000", background: !anyoneCanJoin ? "#000" : "#fff", color: !anyoneCanJoin ? "#fff" : "#000", textAlign: "left" }}
             >
-              <Lock className={`h-4 w-4 flex-shrink-0 ${!anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
               <div>
-                <p className="text-sm font-medium text-black">Private</p>
-                <p className="text-xs text-gray-400">Invite only</p>
+                <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700 }}>private</p>
+                <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-sans)", fontSize: 12, opacity: 0.75 }}>invite only</p>
               </div>
             </button>
           </div>
 
           {!anyoneCanJoin && (
-            <label className="mt-2 flex items-center gap-3 p-3 border border-gray-200 rounded-sm cursor-pointer">
+            <label style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12, padding: 12, border: "1px solid #000" }}>
               <input
                 type="checkbox"
                 checked={requireApproval}
@@ -335,8 +332,8 @@ export default function AccessTab({
                 className="h-4 w-4 flex-shrink-0 accent-black"
               />
               <div>
-                <p className="text-sm font-medium text-black">Require admin approval</p>
-                <p className="text-xs text-gray-400">Require an admin to approve new members joining via the group link.</p>
+                <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700 }}>approval</p>
+                <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>an admin approves new members who use the link.</p>
               </div>
             </label>
           )}
@@ -344,8 +341,8 @@ export default function AccessTab({
 
         {joinRequests.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-              Pending approval <span className="normal-case font-normal">({joinRequests.length})</span>
+            <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 12 }}>
+              pending ({joinRequests.length})
             </p>
             <div className="space-y-0.5">
               {joinRequests.map((request) => (
@@ -355,23 +352,8 @@ export default function AccessTab({
                     <p className="text-sm text-black truncate">{request.name}</p>
                     <p className="text-xs text-gray-400 truncate">{request.email}</p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs h-7"
-                    disabled={reviewingUserId === request.id}
-                    onClick={() => handleReviewRequest(request.id, 'decline')}
-                  >
-                    Decline
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="text-xs h-7"
-                    disabled={reviewingUserId === request.id}
-                    onClick={() => handleReviewRequest(request.id, 'approve')}
-                  >
-                    Approve
-                  </Button>
+                  <button type="button" className="wb-btn small" disabled={reviewingUserId === request.id} onClick={() => handleReviewRequest(request.id, 'decline')}>decline</button>
+                  <button type="button" className="wb-btn primary small" disabled={reviewingUserId === request.id} onClick={() => handleReviewRequest(request.id, 'approve')}>approve</button>
                 </div>
               ))}
             </div>
@@ -379,10 +361,10 @@ export default function AccessTab({
         )}
 
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-            Invitation link
-          </p>
-          <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-sm bg-gray-50">
+            <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 12 }}>
+              invitation link
+            </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", border: "1px solid #000", background: "#fff" }}>
             <code className="flex-1 text-xs text-gray-500 truncate">
               {invitationLink
                 ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}`
@@ -413,8 +395,8 @@ export default function AccessTab({
 
         {/* Members */}
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-            Members <span className="normal-case font-normal">({members.length})</span>
+          <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 12 }}>
+            members ({members.length})
           </p>
 
           {/* Smart search input */}
@@ -424,7 +406,7 @@ export default function AccessTab({
                 <Plus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                 <Input
                   ref={searchInputRef}
-                  placeholder="Search by name or add by email..."
+                  placeholder="search by name or add by email…"
                   value={memberSearchQuery}
                   onChange={(e) => {
                     setMemberSearchQuery(e.target.value);
@@ -443,7 +425,7 @@ export default function AccessTab({
                   <button key={u.id} onClick={() => handleAddMember(u)} className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left">
                     <UserAvatar id={u.id} name={u.name} avatar={(u as Member).avatar} size={24} />
                     <span className="text-sm text-black flex-1 truncate">{u.name}</span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">Add</span>
+                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>add</span>
                   </button>
                 ))}
               </div>
@@ -458,7 +440,7 @@ export default function AccessTab({
                     onClick={() => handleInviteMember(memberSearchQuery)}
                     disabled={isAddingMember}
                   >
-                    <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <div className="h-6 w-6 bg-gray-100 flex items-center justify-center flex-shrink-0">
                       <Plus className="h-3.5 w-3.5 text-gray-500" />
                     </div>
                     <span className="text-sm text-black flex-1 truncate">
@@ -466,7 +448,7 @@ export default function AccessTab({
                     </span>
                   </button>
                 ) : (
-                  <div className="px-3 py-2.5 text-sm text-gray-400">No results found</div>
+                  <div style={{ padding: "10px 12px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>no results.</div>
                 )}
               </div>
             )}
@@ -476,7 +458,7 @@ export default function AccessTab({
             <div className="space-y-0.5">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-3 py-2">
-                  <div className="h-7 w-7 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
+                  <div className="h-7 w-7 bg-gray-100 animate-pulse flex-shrink-0" />
                   <div className="h-3.5 rounded bg-gray-100 animate-pulse flex-1" style={{ maxWidth: `${60 + (i % 3) * 15}%` }} />
                 </div>
               ))}
@@ -582,56 +564,32 @@ export default function AccessTab({
       </div>
 
       {/* Regenerate invitation link dialog */}
-      <AlertDialog.Root open={showRegenerateConfirm} onOpenChange={(open) => { if (!open && !isRegeneratingLink) setShowRegenerateConfirm(false); }}>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">
-              Regenerate invitation link?
-            </AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              The current link will stop working immediately. Anyone with the old link will no longer be able to join.
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-2">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline" disabled={isRegeneratingLink}>Cancel</Button>
-              </AlertDialog.Cancel>
-              <Button onClick={handleRegenerateLink} disabled={isRegeneratingLink}>
-                {isRegeneratingLink ? 'Regenerating...' : 'Regenerate'}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      {showRegenerateConfirm && (
+        <ConfirmWindow
+          title="regenerate"
+          body="the current link will stop working immediately."
+          confirmLabel="regenerate"
+          busy={isRegeneratingLink}
+          onCancel={() => { if (!isRegeneratingLink) setShowRegenerateConfirm(false); }}
+          onConfirm={() => void handleRegenerateLink()}
+        />
+      )}
 
-      {/* Role change dialog */}
-      <AlertDialog.Root open={roleChangeTarget !== null} onOpenChange={(open) => { if (!open) setRoleChangeTarget(null); }}>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">
-              {roleChangeTarget?.newRole === 'owner' ? 'Promote' : 'Demote'} {roleChangeTarget?.member.name || 'this member'}?
-            </AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              {roleChangeTarget?.newRole === 'owner'
-                ? 'This will give them full control of this community — they can manage settings, members, and integrations.'
-                : 'This will remove their owner privileges. They will remain a member but won\'t be able to manage settings or members.'}
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-2">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline">Cancel</Button>
-              </AlertDialog.Cancel>
-              <Button onClick={async () => {
-                if (!roleChangeTarget) return;
-                await handleUpdateMemberRole(roleChangeTarget.member.id, roleChangeTarget.newRole);
-                setRoleChangeTarget(null);
-              }}>
-                {roleChangeTarget?.newRole === 'owner' ? 'Promote to Owner' : 'Demote to Member'}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      {roleChangeTarget && (
+        <ConfirmWindow
+          title={roleChangeTarget.newRole === 'owner' ? 'promote' : 'demote'}
+          body={roleChangeTarget.newRole === 'owner'
+            ? `give ${roleChangeTarget.member.name || 'this member'} full control of this network.`
+            : `remove owner privileges from ${roleChangeTarget.member.name || 'this member'}. they stay a member.`}
+          confirmLabel={roleChangeTarget.newRole === 'owner' ? 'promote' : 'demote'}
+          onCancel={() => setRoleChangeTarget(null)}
+          onConfirm={() => {
+            const target = roleChangeTarget;
+            setRoleChangeTarget(null);
+            void handleUpdateMemberRole(target.member.id, target.newRole);
+          }}
+        />
+      )}
 
     </>
   );

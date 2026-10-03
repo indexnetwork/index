@@ -2,8 +2,6 @@ import { PropsWithChildren, Suspense, useMemo } from 'react';
 import { Link } from 'react-router';
 import { useLocation } from 'react-router';
 import Header from "@/components/Header";
-import TopBar from "@/components/TopBar";
-import ChatSidebar from "@/components/ChatSidebar";
 import { NetworkFilterProvider } from "@/contexts/NetworkFilterContext";
 import { NetworksProvider } from "@/contexts/NetworksContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
@@ -11,7 +9,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 
 const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents'];
 // /l is chrome-free web invite join; /index stays app-only public join.
-const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth'];
+const bareRoutes = ['/', '/l', '/index', '/login', '/download', '/i/new', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth'];
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
@@ -42,10 +40,6 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     pathname?.startsWith('/pages/'),
   [pathname, isAuthenticated]);
 
-  const isMessagesView = useMemo(() =>
-    pathname === '/chat' || pathname?.startsWith('/chat/') || pathname === '/negotiations' || pathname?.startsWith('/negotiations/') || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
-  [pathname]);
-
   if (isBareRoute) {
     return <NetworksProvider>{children}</NetworksProvider>;
   }
@@ -75,24 +69,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
             `}</style>
 
             {showAppShell ? (
-              // App layout: top bar over an optional secondary aside + content
-              <div className="flex flex-col h-screen overflow-hidden">
-                <TopBar />
-                <div className="flex flex-1 min-h-0 overflow-hidden">
-                  {/* Secondary aside: DM list on messages */}
-                  {isMessagesView && (
-                    <aside className="hidden lg:block w-80 bg-white border-r border-gray-200 flex-shrink-0">
-                      <ChatSidebar />
-                    </aside>
-                  )}
-
-                  {/* Main content area - takes remaining width, scrollable */}
-                  <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-                    <main className="flex-1 overflow-y-auto flex flex-col">
-                      {children}
-                    </main>
-                  </div>
-                </div>
+              <div className="workbench mac-desktop h-screen overflow-hidden">
+                <main className="h-full overflow-hidden flex flex-col">
+                  {children}
+                </main>
               </div>
             ) : (
               // Public layout without sidebar
