@@ -10,17 +10,11 @@ import { log } from '@/lib/logger';
 const logger = log.context.from('AuthContext');
 
 /**
- * The loading splash is dark on every route.
- *
- * It used to be #FDFDFD, matching the signed-in app. That made every dark
- * screen flash white before painting. Note the reverse is now true for the
- * light app screens, which flash dark before painting; this is deliberate, the
- * splash reads as one screen across the site rather than changing per route.
- *
- * #0d1a13 is the download page's background. The landing sits slightly lighter
- * at #14241f, so there is a small step there.
+ * The loading splash is light on every route, in the marketing site's
+ * background (src/app/site/site.css). The site and the signed-in app (#FDFDFD)
+ * are both light, so no route flashes a different colour before painting.
  */
-const SPLASH_BACKGROUND = '#0d1a13';
+const SPLASH_BACKGROUND = '#FCFEFB';
 
 /**
  * Server-driven feature flags returned alongside the user on GET /auth/me
@@ -207,19 +201,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           className="min-h-screen flex items-center justify-center"
           style={{ backgroundColor: SPLASH_BACKGROUND }}
         >
-          {/* The clip is a blue drawing on a solid white card, which would sit
-              as a white box on the dark ground. invert turns that card black and
-              the strokes light (they are mid-blue #2b62a8, so they invert to a
-              warm #d49d57), then screen drops the black and leaves the drawing. */}
+          {/* The leaf clip is drawn on pure white; multiply drops the white so
+              only the drawing sits on the off-white ground. It sits a little
+              below centre. */}
           <video
             autoPlay
             loop
             muted
             playsInline
             className="w-40 h-40"
-            style={{ filter: 'invert(1)', mixBlendMode: 'screen' }}
+            style={{ mixBlendMode: 'multiply', transform: 'translateY(8vh)' }}
           >
-            <source src="/loading-tree.m4v" type="video/mp4" />
+            <source src="/loading-leaf.mp4" type="video/mp4" />
           </video>
         </div>
       ) : error ? (

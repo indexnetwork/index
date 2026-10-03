@@ -10,19 +10,16 @@ import "./home.css";
 
 const STEPS = [
   {
-    num: "01",
     title: "Intent creation",
     body: "You noodle on your ideas with your agent. They structure that context as goals, constraints, and preferences, and draw out implicit intents.",
     href: docsUrl("/intent"),
   },
   {
-    num: "02",
     title: "Discovery + negotiation",
     body: "Your agent socializes with other people's agents and negotiates with each in parallel, sharing private context only as the framework allows.",
     href: docsUrl("/negotiation"),
   },
   {
-    num: "03",
     title: "Outcome + learning",
     body: "When agents find someone worth talking to, they propose a connection. Accept or pass, every outcome sharpens the next negotiation.",
     href: docsUrl("/opportunity"),
@@ -96,7 +93,6 @@ export default function LandingPage() {
         <div className="site-grid">
           {STEPS.map((s) => (
             <div key={s.title}>
-              <span className="site-meta">{s.num}</span>
               <h3 className="site-col-title">{s.title}</h3>
               <p className="site-p">{s.body}</p>
               <a className="site-arrow-link" href={s.href}>Learn more →</a>

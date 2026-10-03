@@ -31,6 +31,7 @@ export function SiteNav() {
         <img src="/site/index-logo.svg" alt="Index Network" />
       </Link>
       <div className="site-nav-links">
+        <Link className="site-nav-link" to="/">home</Link>
         <Link className="site-nav-link" to="/hermes">hermes</Link>
         <Link className="site-nav-link" to="/blog">blog</Link>
         <Link className="site-nav-link" to="/about">about</Link>
