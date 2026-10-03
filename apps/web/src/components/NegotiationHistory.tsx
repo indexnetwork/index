@@ -38,10 +38,10 @@ function TurnMessage({ turn, own, isLast }: { turn: NegotiationTurn; own: boolea
   const actionInfo = ACTION_LABELS[turn.action] ?? { label: turn.action, color: "text-gray-600" };
 
   return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <div className="w-2 h-2 rounded-full bg-gray-300 mt-2" />
-        {!isLast && <div className="w-px flex-1 bg-gray-200 mt-1" />}
+    <div style={{ display: "flex", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ width: 8, height: 8, background: "#000", marginTop: 6 }} />
+        {!isLast && <div style={{ width: 1, flex: 1, background: "#000", marginTop: 4 }} />}
       </div>
       <div className="flex-1 pb-4">
         <div className="flex items-center gap-2 mb-1">
@@ -142,7 +142,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
               tabIndex={0}
               onClick={() => void toggle(neg)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void toggle(neg); } }}
-              className="w-full p-4 flex items-center gap-4 text-left hover:bg-gray-100/50 transition-colors cursor-pointer"
+              style={{ width: "100%", padding: 16, display: "flex", alignItems: "center", gap: 16, textAlign: "left", cursor: "pointer", background: isExpanded ? "#F2F0EC" : "#fff" }}
             >
               <Link
                 to={`/u/${neg.counterparty.id}`}
@@ -167,7 +167,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
                     {neg.counterparty.name}
                   </Link>
                   {outcomeInfo ? (
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${outcomeInfo.className}`}>
+                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, color: outcomeInfo.label === "won" ? "#1FA463" : "var(--ink-warn)" }}>
                       {outcomeInfo.label}
                     </span>
                   ) : (
@@ -186,7 +186,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
             </div>
 
             {isExpanded && (
-              <div className="px-4 pb-4 pt-1 border-t border-gray-200/60">
+              <div style={{ padding: "8px 16px 16px", borderTop: "1px solid #000" }}>
                 {turns === undefined ? (
                   <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>loading…</p>
                 ) : turns.length === 0 ? (
