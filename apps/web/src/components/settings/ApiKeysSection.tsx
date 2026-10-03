@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmWindow } from "@/components/workbench/Workbench";
 import CopyableBox from "@/components/CopyableBox";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { buildCliSetup } from "@/lib/cli-config";
@@ -193,11 +193,11 @@ export default function ApiKeysSection() {
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-              API Keys
+              api keys
             </p>
             <Button size="sm" onClick={handleGenerateKey} disabled={generating}>
               {generating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-              Generate Key
+              generate key
             </Button>
           </div>
 
@@ -206,12 +206,12 @@ export default function ApiKeysSection() {
           </p>
 
           {keys.length === 0 ? (
-            <p className="text-xs text-gray-400 font-ibm-plex-mono">No API keys yet.</p>
+            <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>no api keys yet.</p>
           ) : (
-            <div className="border border-gray-200 rounded-sm overflow-hidden">
+            <div style={{ border: "1px solid #000", overflow: "hidden" }}>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
+                  <tr style={{ borderBottom: "1px solid #000" }}>
                     <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
                       Key
                     </th>
@@ -228,7 +228,7 @@ export default function ApiKeysSection() {
                 </thead>
                 <tbody>
                   {keys.map((key) => (
-                    <tr key={key.id} className="border-b border-gray-100 last:border-b-0">
+                    <tr key={key.id} style={{ borderBottom: "1px solid #000" }}>
                       <td className="px-4 py-2 font-mono text-xs text-gray-500">{maskKey(key.start)}</td>
                       <td className="px-4 py-2 text-sm text-gray-500">{formatDate(key.createdAt)}</td>
                       <td className="px-4 py-2 text-sm text-gray-500">{formatDate(key.lastUsedAt)}</td>
@@ -237,8 +237,8 @@ export default function ApiKeysSection() {
                           type="button"
                           onClick={() => setRevokeTarget(key)}
                           className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                          title="Revoke key"
-                          aria-label="Revoke key"
+                          title="revoke"
+                          aria-label="revoke"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -256,38 +256,16 @@ export default function ApiKeysSection() {
         ) : null}
       </div>
 
-      <AlertDialog.Root
-        open={revokeTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !revoking) setRevokeTarget(null);
-        }}
-      >
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Revoke API key</AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              {revokeTarget
-                ? `Revoke "${revokeTarget.name ?? maskKey(revokeTarget.start)}"? Any client using this key will stop working immediately.`
-                : ""}
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-3">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline" disabled={revoking}>
-                  Cancel
-                </Button>
-              </AlertDialog.Cancel>
-              <Button
-                onClick={performRevoke}
-                disabled={revoking}
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                {revoking ? "Revoking..." : "Revoke"}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      {revokeTarget && (
+        <ConfirmWindow
+          title="revoke"
+          body={`revoke ${revokeTarget.name ?? maskKey(revokeTarget.start)}? any client using this key will stop working.`}
+          confirmLabel="revoke"
+          busy={revoking}
+          onCancel={() => { if (!revoking) setRevokeTarget(null); }}
+          onConfirm={() => void performRevoke()}
+        />
+      )}
     </>
   );
 }

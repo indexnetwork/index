@@ -1,18 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { Link } from "react-router";
-import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { Loader2, Camera, ArrowUpRight, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import UserAvatar from "@/components/UserAvatar";
 import { validateFiles } from "@/lib/file-validation";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import ClientLayout from "@/components/ClientLayout";
-import { ContentContainer } from "@/components/layout";
+import { ConfirmWindow, Stage, Window } from "@/components/workbench/Workbench";
 import { SaveBarProvider } from "@/contexts/SaveBarContext";
 import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import DevicesSection from "@/components/settings/DevicesSection";
@@ -123,7 +117,7 @@ export default function ProfilePage() {
         intro: intro || undefined,
         location: location || undefined,
         avatar: avatarFilename || undefined,
-        timezone: timezone || undefined,
+                      Timezone: timezone || undefined,
         socials: socialsPayload,
         notificationPreferences,
       });
@@ -157,9 +151,7 @@ export default function ProfilePage() {
   if (authLoading) {
     return (
       <ClientLayout>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-        </div>
+        <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
       </ClientLayout>
     );
   }
@@ -168,214 +160,113 @@ export default function ProfilePage() {
   return (
     <SaveBarProvider visible={isDirty}>
       <ClientLayout>
-        <div className="px-6 lg:px-8 py-8">
-        <ContentContainer>
-          <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-8">Settings</h1>
-
-          <SettingsTabs />
+        <Stage width={860} height="min(660px, calc(100vh - 112px))">
+        <Window title="settings" onClose={() => navigate("/")} style={{ height: "100%" }}>
+        <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px 22px" }}>
+          <div style={{ marginBottom: 18 }}>
+            <SettingsTabs />
+          </div>
 
           {activeTab === "profile" && (
           <div className="space-y-10">
 
             {/* Identity header */}
-            <div className="flex items-center gap-5">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="relative flex-shrink-0 group cursor-pointer"
-              >
-                <div className="w-[72px] h-[72px] rounded-full overflow-hidden bg-gray-100">
-                  {avatarPreview ? (
-                    <img
-                      src={avatarPreview}
-                      alt={user?.name || "Avatar"}
-                      width={72}
-                      height={72}
-                      loading="lazy"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={72} />
-                  )}
-                </div>
-                <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center">
-                  <Camera className="w-4 h-4 text-white" />
-                </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <button type="button" onClick={() => fileInputRef.current?.click()} style={{ padding: 0, border: "1px solid #000", background: "#fff", cursor: "pointer", lineHeight: 0 }}>
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="" width={72} height={72} style={{ width: 72, height: 72, objectFit: "cover", display: "block" }} />
+                ) : (
+                  <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={72} />
+                )}
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
-
-              <div className="min-w-0">
-                <div className="font-semibold text-gray-900 font-ibm-plex-mono truncate leading-tight">
-                  {name || user?.name || "Your name"}
-                </div>
-                {user?.id && (
-                  <Link
-                    to={`/u/${user.id}`}
-                    className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-black transition-colors duration-150 mt-1"
-                  >
-                    View public profile
-                    <ArrowUpRight className="w-3 h-3" />
-                  </Link>
-                )}
+              <div>
+                <div style={{ fontFamily: "var(--mac-mono)", fontSize: 14, fontWeight: 700 }}>{name || "your name"}</div>
+                <button type="button" onClick={() => fileInputRef.current?.click()} style={{ marginTop: 4, background: "none", border: "none", padding: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", cursor: "pointer", textDecoration: "underline" }}>change photo</button>
               </div>
             </div>
-            {avatarError && <p className="text-sm text-red-500 -mt-6">{avatarError}</p>}
+            {avatarError && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-warn)" }}>{avatarError}</p>}
 
-            {/* Public Profile */}
-            <div className="space-y-4 pt-2 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono pt-4">
-                Public Profile
-              </p>
+            <div className="space-y-4 pt-2">
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="name" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                    Name <span className="text-gray-400">*</span>
-                  </label>
-                  <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => { setName(e.target.value); mark(); }}
-                    placeholder="John Doe"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="email" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                    Email
-                  </label>
-                  <Input
-                    id="email"
-                    value={user?.email || ''}
-                    readOnly
-                    className="bg-gray-50 text-gray-400 cursor-default"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="location" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                    Location
-                  </label>
-                  <Input
-                    id="location"
-                    value={location}
-                    onChange={(e) => { setLocation(e.target.value); mark(); }}
-                    placeholder="Brooklyn, NY"
-                  />
-                </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "14px 18px" }}>
+                <MacField label="name" required value={name} onChange={(v) => { setName(v); mark(); }} />
+                <MacField label="email" value={user?.email || ""} disabled />
+                <MacField label="location" value={location} onChange={(v) => { setLocation(v); mark(); }} />
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label htmlFor="intro" className="text-sm font-medium font-ibm-plex-mono text-gray-700">
-                    Introduction
-                  </label>
-                  <span className="text-xs text-gray-400">{intro.length}/500</span>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>
+                  <span>introduction</span>
+                  <span style={{ color: intro.length > 500 ? "var(--ink-warn)" : "var(--ink-2)", fontWeight: intro.length > 500 ? 700 : 400 }}>{intro.length}/500</span>
                 </div>
-                <Textarea
-                  id="intro"
-                  value={intro}
-                  onChange={(e) => { setIntro(e.target.value); mark(); }}
-                  className="min-h-[80px] resize-none [field-sizing:content]"
-                  placeholder="Tell others about yourself..."
-                  maxLength={500}
-                />
+                <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff", padding: "8px 10px" }}>
+                  <textarea id="intro" value={intro} rows={4} onChange={(e) => { setIntro(e.target.value); mark(); }} style={{ width: "100%", border: "none", outline: "none", resize: "vertical", background: "transparent", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5 }} />
+                </div>
               </div>
             </div>
 
             {/* Socials */}
-            <div className="space-y-2.5 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono pt-4 mb-4">
-                Socials
-              </p>
-
-              {[
-                { prefix: "x.com/", label: "twitter", value: getSocial('twitter'), onChange: (v: string) => setSocial('twitter', v) },
-                { prefix: "linkedin.com/in/", label: "linkedin", value: getSocial('linkedin'), onChange: (v: string) => setSocial('linkedin', v) },
-                { prefix: "github.com/", label: "github", value: getSocial('github'), onChange: (v: string) => setSocial('github', v) },
-                { prefix: "t.me/", label: "telegram", value: getSocial('telegram'), onChange: (v: string) => setSocial('telegram', v) },
-              ].map(({ prefix, label, value, onChange }) => (
-                <div key={prefix} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
-                  <span className="px-3 py-2 bg-gray-50 text-gray-400 font-ibm-plex-mono text-xs border-r border-gray-200 whitespace-nowrap select-none">
-                    {prefix}
-                  </span>
-                  <Input
-                    value={value}
-                    placeholder="username"
-                    onChange={(e) => onChange(e.target.value)}
-                    // A whole URL pasted from a browser is as welcome as a bare
-                    // handle: it is trimmed back to the handle once the field is
-                    // left, and untouched while typing so it never fights the
-                    // keyboard. A link for some other platform keeps its full
-                    // text, since that is where it goes.
-                    onBlur={(e) => {
-                      const resolved = parseSocial({ label, value: e.target.value });
-                      const platform = label === 'twitter' ? 'x' : label;
-                      onChange(resolved.platform === platform ? resolved.handle : e.target.value.trim());
-                    }}
-                    className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm"
-                  />
-                </div>
-              ))}
-
-              {customSocials.map((social, index) => (
-                <div key={index} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
-                  <Input
-                    value={social.value}
-                    onChange={(e) => {
-                      setSocials(prev => prev.map(s => s === social ? { label: 'custom', value: e.target.value } : s));
-                      mark();
-                    }}
-                    placeholder="https://example.com"
-                    className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSocials(prev => prev.filter(s => s !== social));
-                      mark();
-                    }}
-                    className="px-3 py-2 text-gray-400 hover:text-red-500 transition-colors border-l border-gray-200"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-
-              {customSocials.length < 3 && (
-                <button
-                  type="button"
-                  onClick={() => { setSocials(prev => [...prev, { label: 'custom', value: '' }]); mark(); }}
-                  className="w-full flex items-center justify-center px-3 py-2 border border-dashed border-gray-200 rounded-sm text-gray-400 hover:border-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors duration-150 text-sm"
-                >
-                  + Add website
-                </button>
-              )}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 12px", fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700 }}>
+                <span>socials</span>
+                <span style={{ flex: 1, height: 1, background: "#000" }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "9px 14px" }}>
+                {[
+                  { prefix: "x.com/", label: "twitter", value: getSocial("twitter") },
+                  { prefix: "linkedin.com/in/", label: "linkedin", value: getSocial("linkedin") },
+                  { prefix: "github.com/", label: "github", value: getSocial("github") },
+                  { prefix: "t.me/", label: "telegram", value: getSocial("telegram") },
+                ].map(({ prefix, label, value }) => (
+                  <label key={label} style={{ display: "flex", alignItems: "center", border: "1px solid #000", background: "#fff", minWidth: 0 }}>
+                    <span style={{ padding: "8px 8px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", borderRight: "1px solid #000", whiteSpace: "nowrap" }}>{prefix}</span>
+                    <input
+                      value={value}
+                      placeholder="username"
+                      onChange={(e) => setSocial(label, e.target.value)}
+                      onBlur={(e) => {
+                        const resolved = parseSocial({ label, value: e.target.value });
+                        const platform = label === "twitter" ? "x" : label;
+                        setSocial(label, resolved.platform === platform ? resolved.handle : e.target.value.trim());
+                      }}
+                      style={{ flex: 1, minWidth: 0, border: "none", outline: "none", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13, background: "transparent" }}
+                    />
+                  </label>
+                ))}
+                {customSocials.map((social, index) => (
+                  <label key={index} style={{ display: "flex", alignItems: "center", border: "1px solid #000", background: "#fff", minWidth: 0 }}>
+                    <input
+                      value={social.value}
+                      placeholder="https://"
+                      onChange={(e) => {
+                        setSocials((prev) => prev.map((s) => s === social ? { label: "custom", value: e.target.value } : s));
+                        mark();
+                      }}
+                      style={{ flex: 1, minWidth: 0, border: "none", outline: "none", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13, background: "transparent" }}
+                    />
+                    <button type="button" onClick={() => { setSocials((prev) => prev.filter((s) => s !== social)); mark(); }} style={{ border: "none", borderLeft: "1px solid #000", background: "#fff", fontFamily: "var(--mac-mono)", fontSize: 11, padding: "8px 10px", cursor: "pointer" }}>remove</button>
+                  </label>
+                ))}
+                {customSocials.length < 3 && (
+                  <button type="button" onClick={() => { setSocials((prev) => [...prev, { label: "custom", value: "" }]); mark(); }} style={{ justifySelf: "start", padding: "9px 14px", border: "1px dashed #000", background: "transparent", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", cursor: "pointer" }}>+ add website</button>
+                )}
+              </div>
             </div>
 
             {/* Danger Zone */}
-            <div className="pt-6 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => setIsDangerZoneExpanded(!isDangerZoneExpanded)}
-                className="flex items-center gap-2 text-xs font-semibold text-red-600 uppercase tracking-wider font-ibm-plex-mono hover:text-red-700 transition-colors duration-150 pt-4"
-              >
-                {isDangerZoneExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                Danger Zone
+            <div style={{ marginTop: 26 }}>
+              <button type="button" onClick={() => setIsDangerZoneExpanded((open) => !open)} style={{ display: "flex", alignItems: "center", gap: 7, padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: "var(--ink-warn)", textTransform: "uppercase" }}>
+                <span style={{ display: "inline-block", transform: isDangerZoneExpanded ? "rotate(90deg)" : "none" }}>›</span>
+                danger zone
               </button>
               {isDangerZoneExpanded && (
-                <div className="mt-3 flex items-center justify-between p-3 border border-red-200 rounded-sm bg-red-50">
+                <div style={{ marginTop: 10, padding: "11px 12px", border: "1px solid var(--ink-warn)", background: "#FFF3F3", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div>
-                    <p className="text-sm font-medium text-red-600">Delete your account</p>
-                    <p className="text-xs text-red-600/70 mt-1">This action cannot be undone.</p>
+                    <div style={{ fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 600, color: "var(--ink-warn)" }}>delete account</div>
+                    <div style={{ marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.45, color: "var(--ink-2)" }}>index stops immediately and every signal closes. connections you&apos;ve already made stay with the other person.</div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { setDeleteConfirmationText(""); setShowDeleteConfirmation(true); }}
-                    className="border-red-200 text-red-600 hover:bg-red-100"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" /> Delete
-                  </Button>
+                  <button type="button" onClick={() => { setDeleteConfirmationText(""); setShowDeleteConfirmation(true); }} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "6px 15px", border: "1px solid var(--ink-warn)", background: "var(--ink-warn)", color: "#fff", cursor: "pointer" }}>delete</button>
                 </div>
               )}
             </div>
@@ -393,117 +284,84 @@ export default function ProfilePage() {
           {activeTab === "notifications" && (
               <div className="space-y-10">
                 <div className="space-y-4">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                    Notifications
+                  <p style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)", marginBottom: 14 }}>
+                    index works in the background. choose what&apos;s worth interrupting you for.
                   </p>
-                  <div>
-                    <label htmlFor="timezone" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                      Timezone
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="timezone"
-                        value={timezone}
-                        onChange={(e) => { setTimezone(e.target.value); mark(); }}
-                        className="flex h-10 w-full rounded-sm border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 appearance-none cursor-pointer"
-                      >
-                        {Intl.supportedValuesOf("timeZone").map((tz) => (
-                          <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
-                        ))}
-                      </select>
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="m6 9 6 6 6-6" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2.5 pt-2 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 font-ibm-plex-mono mb-1">
-                      Choose which emails you&apos;d like to receive.
-                    </p>
-                    {[
-                      {
-                        key: "connectionUpdates" as const,
-                        label: "Connection updates",
-                        description: "Email when someone connects with you",
-                      },
-                    ].map(({ key, label, description }) => (
-                      <label
-                        key={key}
-                        className="flex items-center justify-between p-3 border border-gray-200 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors duration-150"
-                      >
-                        <div>
-                          <p className="text-sm font-medium font-ibm-plex-mono text-gray-700">{label}</p>
-                          <p className="text-xs text-gray-400 mt-0.5 font-ibm-plex-mono">{description}</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={notificationPreferences[key]}
-                          onChange={(e) => {
-                            setNotificationPreferences((prev) => ({ ...prev, [key]: e.target.checked }));
-                            mark();
-                          }}
-                          className="w-4 h-4 accent-black"
-                        />
-                      </label>
+                  <label htmlFor="timezone" style={{ display: "block", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>timezone</label>
+                  <select id="timezone" value={timezone} onChange={(e) => { setTimezone(e.target.value); mark(); }} style={{ width: "100%", border: "1px solid #000", background: "#fff", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13 }}>
+                    {Intl.supportedValuesOf("timeZone").map((tz) => (
+                      <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
                     ))}
-                  </div>
+                  </select>
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #000", padding: "10px 12px", background: "#fff" }}>
+                    <span>
+                      <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 700 }}>an intro is accepted</span>
+                      <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>both of you said yes, and the chat opens on both sides.</span>
+                    </span>
+                    <input type="checkbox" checked={notificationPreferences.connectionUpdates} onChange={(e) => { setNotificationPreferences({ connectionUpdates: e.target.checked }); mark(); }} />
+                  </label>
                 </div>
               </div>
           )}
 
-        </ContentContainer>
-      </div>
+        </div>
+        </Window>
+        </Stage>
 
       {/* Sticky save bar */}
       {isDirty && (
-        <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-200 z-40 px-6 lg:px-8">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-black z-40 px-6">
           <div className="max-w-3xl mx-auto py-3 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-            <span className="text-sm text-gray-500">You have unsaved changes</span>
+            <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13 }}>unsaved changes</span>
             <div className="flex items-center gap-2 justify-self-end">
-              <Button variant="outline" onClick={handleDiscard} disabled={saving}>
-                Discard
-              </Button>
-              <Button onClick={handleSave} disabled={saving || !!avatarError}>
-                {saving ? "Saving..." : "Save Changes"}
-              </Button>
+              <button type="button" className="wb-btn" onClick={handleDiscard} disabled={saving}>cancel</button>
+              <button type="button" className="wb-btn primary" onClick={handleSave} disabled={saving || !!avatarError}>
+                {saving ? "saving…" : "save changes"}
+              </button>
             </div>
           </div>
         </div>
       )}
-      <AlertDialog.Root open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Delete your account</AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              This action cannot be undone. Type your email address to confirm.
-            </AlertDialog.Description>
-            <Input
-              value={deleteConfirmationText}
-              onChange={(e) => setDeleteConfirmationText(e.target.value)}
-              placeholder={user?.email || "your@email.com"}
-              className="mb-4"
-            />
-            <div className="flex justify-end gap-3">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline" disabled={isDeletingAccount}>Cancel</Button>
-              </AlertDialog.Cancel>
-              <Button
-                onClick={handleDeleteAccount}
-                disabled={isDeletingAccount || deleteConfirmationText !== user?.email}
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                {isDeletingAccount ? "Deleting..." : "Delete"}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      {showDeleteConfirmation && (
+        <ConfirmWindow
+          title="delete account"
+          body="this cannot be undone. type your email to confirm."
+          confirmLabel="delete"
+          busy={isDeletingAccount}
+          disabled={deleteConfirmationText !== user?.email}
+          onCancel={() => { if (!isDeletingAccount) setShowDeleteConfirmation(false); }}
+          onConfirm={() => void handleDeleteAccount()}
+        >
+          <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={user?.email || "you@example.com"} style={{ width: "100%", border: "1px solid #000", padding: "8px 10px" }} />
+        </ConfirmWindow>
+      )}
       </ClientLayout>
     </SaveBarProvider>
+  );
+}
+
+function MacField({ label, value, onChange, disabled, required }: {
+  label: string; value: string; onChange?: (value: string) => void; disabled?: boolean; required?: boolean;
+}) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 600 }}>
+        {label}{required && <span style={{ color: "#FF8A00", marginLeft: 4 }}>*</span>}
+      </div>
+      <div style={{
+        border: "1px solid #000",
+        background: disabled ? "#EDEAE1" : "#fff",
+        boxShadow: "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff",
+        padding: "7px 10px",
+      }}>
+        <input
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange?.(e.target.value)}
+          style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, color: disabled ? "var(--ink-2)" : "#000" }}
+        />
+      </div>
+    </div>
   );
 }
 

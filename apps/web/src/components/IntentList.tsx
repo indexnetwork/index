@@ -1,40 +1,18 @@
-import { useMemo } from 'react';
-import { Calendar, Handshake } from 'lucide-react';
+import { useMemo, type CSSProperties } from "react";
 
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils";
+import { signalStatus, signalTitle } from "@/lib/signal-display";
+import { QCount } from "@/components/workbench/Workbench";
 
 interface BaseIntent {
   id: string;
   payload: string;
   summary?: string | null;
   createdAt: string;
-  /** Whether this fresh intent is still awaiting its first discovery run. */
   warming?: boolean;
-  /** Networks this intent is currently registered to. */
   networks?: { id: string; title: string }[];
-  /**
-   * Count of distinct `pending` opportunities awaiting the user and attributed
-   * to this signal. Shown next to the date. Undefined/0 renders nothing.
-   */
   waitingOpportunityCount?: number;
-  /**
-   * Lifecycle status (`active` or `paused`). A badge renders only for
-   * `paused`. Undefined or `active` renders nothing.
-   */
   status?: string;
-}
-
-/**
- * Renders an intent's lifecycle status as a badge, but only when it is a
- * `paused`. `active` (the schema default) and undefined render nothing.
- */
-function StatusBadge({ status }: { status?: string }) {
-  if (!status || status === 'active') return null;
-  return (
-    <span className="flex items-center gap-1 text-xs text-purple-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-purple-50 border border-purple-100 capitalize">
-      {status.toLowerCase()}
-    </span>
-  );
 }
 
 interface IntentListProps<T extends BaseIntent> {
@@ -48,142 +26,101 @@ interface IntentListProps<T extends BaseIntent> {
   selectedIntentIds?: Set<string>;
   removingIntentIds?: Set<string>;
   className?: string;
+  shelf?: boolean;
+  style?: CSSProperties;
 }
 
 export default function IntentList<T extends BaseIntent>({
   intents,
   isLoading = false,
-  emptyMessage = 'No signals yet',
+  emptyMessage = "nothing here yet.",
   onIntentClick,
-  newIntentIds = new Set(),
-  selectedIntentIds = new Set(),
-  className = '',
+  className = "",
+  shelf = false,
+  style,
 }: IntentListProps<T>) {
-  // Live (active) signals first, then newest-first within each group.
   const sortedIntents = useMemo(() => {
-    const isLive = (i: T) => !i.status || i.status === 'active';
+    const rank = (status?: string) => {
+      const value = (status || "active").toLowerCase();
+      if (value === "active") return 0;
+      if (value === "idle") return 1;
+      if (value === "paused") return 2;
+      return 3;
+    };
     return [...intents].sort((a, b) => {
-      const liveDiff = Number(isLive(b)) - Number(isLive(a));
-      if (liveDiff !== 0) return liveDiff;
+      const diff = rank(a.status) - rank(b.status);
+      if (diff !== 0) return diff;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [intents]);
 
   if (isLoading) {
-    return (
-      <div className={cn("flex items-center justify-center py-12", className)}>
-        <span className="h-6 w-6 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
-      </div>
-    );
+    return <p className={cn("py-6 text-center", className)} style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>;
   }
 
   if (sortedIntents.length === 0) {
+    if (shelf) return null;
     return (
-      <div className={cn("text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg", className)}>
-        <p>{emptyMessage}</p>
-      </div>
+      <p className={className} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", padding: 6 }}>
+        {emptyMessage}
+      </p>
     );
   }
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div
+      className={cn(shelf && "mac-scroll", className)}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        overflowY: shelf ? "auto" : undefined,
+        minHeight: 0,
+        ...style,
+      }}
+    >
       {sortedIntents.map((intent) => {
         const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
-        const createdAt = new Date(intent.createdAt);
-        const createdLabel = Number.isNaN(createdAt.getTime()) ? null : createdAt.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric'
-        });
-        const isFresh = newIntentIds.has(intent.id);
-        const isSelectedSource = selectedIntentIds.has(intent.id);
-        // active (or the schema default / unset) means the intent is live and
-        // being worked in the background.
-        const isActive = !intent.status || intent.status === 'active';
-
+        const status = (intent.status || "active").toLowerCase();
+        const label = signalStatus(intent);
+        const running = label === "live" || label === "negotiating";
+        const pending = status === "active" ? (intent.waitingOpportunityCount ?? 0) : 0;
         return (
-          <div
+          <button
             key={intent.id}
-            role={onIntentClick ? "button" : undefined}
-            tabIndex={onIntentClick ? 0 : undefined}
+            type="button"
+            className="wb-shelf-row"
+            style={{ opacity: status === "paused" ? 0.62 : 1 }}
             onClick={onIntentClick ? () => onIntentClick(intent) : undefined}
-            onKeyDown={onIntentClick ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onIntentClick(intent);
-              }
-            } : undefined}
-            className={cn(
-              "group relative p-4 rounded-lg border transition-all duration-200",
-              onIntentClick && "cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30",
-              isSelectedSource
-                ? "border-blue-200 bg-blue-50/50"
-                : isFresh
-                  ? "border-green-200 bg-green-50/50"
-                  : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
-            )}
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <p className="line-clamp-2 text-sm text-gray-900 leading-relaxed font-medium">
-                  {summary}
-                </p>
-                {intent.networks && intent.networks.length > 0 && (
-                  <p className="mt-1 text-[11px] text-gray-400 font-ibm-plex-mono truncate">
-                    {intent.networks.map((network) => network.title).join(' · ')}
-                  </p>
-                )}
-
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 mt-2.5">
-                  {/* Date */}
-                  {createdLabel && (
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400 font-ibm-plex-mono">
-                      <Calendar className="w-3 h-3" />
-                      <span>{createdLabel}</span>
-                    </div>
-                  )}
-
-                  {/* Fresh signals are waiting for their first discovery run. */}
-                  {intent.warming ? (
-                    <span className="text-[10px] tracking-wide font-ibm-plex-mono font-medium uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                      WARMING
-                    </span>
-                  ) : isActive && (
-                    /* Running — active signals are worked in the background */
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 font-ibm-plex-mono">
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      </span>
-                      live
-                    </div>
-                  )}
-
-                  {/* Opportunities — actionable, quiet blue accent. Warming
-                      signals show an explicit unknown value instead. */}
-                  {intent.warming ? (
-                    <span className="text-xs text-gray-400 font-ibm-plex-mono" aria-label="opportunities unknown">—</span>
-                  ) : (intent.waitingOpportunityCount ?? 0) > 0 && (
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-[#4091BB] font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#4091BB]/10 border border-[#4091BB]/25"
-                      title={`${intent.waitingOpportunityCount} ${intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'} for you`}
-                    >
-                      <Handshake className="w-3 h-3" />
-                      <span>{intent.waitingOpportunityCount} {intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'}</span>
-                    </div>
-                  )}
-
-                  {/* New Badge */}
-                  {isFresh && !isSelectedSource && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] tracking-wide font-ibm-plex-mono font-medium uppercase border border-green-200">
-                      New
-                    </span>
-                  )}
-
-                  <StatusBadge status={intent.status} />
-                </div>
-              </div>
-            </div>
-          </div>
+            <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 4, textAlign: "left" }}>
+              <span style={{
+                fontFamily: "var(--amiga-title)",
+                fontSize: 15.5,
+                fontWeight: 500,
+                letterSpacing: -0.1,
+                lineHeight: 1.2,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }} title={summary}>
+                {signalTitle(summary)}
+              </span>
+              <span style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontFamily: "var(--mac-mono)",
+                fontSize: 10,
+                color: "var(--ink-2)",
+                letterSpacing: 1,
+              }}>
+                {running && <span className="wb-live" style={{ width: 6, height: 6 }} />}
+                {label}
+              </span>
+            </span>
+            <QCount n={pending} />
+          </button>
         );
       })}
     </div>

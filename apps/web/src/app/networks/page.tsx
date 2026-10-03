@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import * as Tabs from '@radix-ui/react-tabs';
-import { Plus, Users, Loader2 } from 'lucide-react';
-import NetworkAvatar from '@/components/NetworkAvatar';
 import ClientLayout from '@/components/ClientLayout';
+import { resolveNetworkImageSrc } from '@/lib/network-image';
+import { Stage, Window } from '@/components/workbench/Workbench';
 import CreateNetworkModal from '@/components/modals/CreateNetworkModal';
 import RequestNetworkModal from '@/components/modals/RequestNetworkModal';
-import { ContentContainer } from '@/components/layout';
-import { Button } from '@/components/ui/button';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworks, useNetworkRequests } from '@/contexts/APIContext';
@@ -17,6 +14,32 @@ import type { NetworkRequest, NetworkRequestInput } from '@/services/networkRequ
 import { log } from '@/lib/logger';
 
 const logger = log.page.from('networks');
+
+const TILE = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
+
+function NetworkTile({ id, name, photo }: { id?: string; name?: string; photo?: string | null }) {
+  const [broken, setBroken] = useState(false);
+  const size = 36;
+  if (photo && !broken) {
+    return (
+      <img
+        src={resolveNetworkImageSrc(photo)}
+        alt=""
+        onError={() => setBroken(true)}
+        style={{ flex: "0 0 auto", width: size, height: size, objectFit: "cover", display: "block", border: "1px solid #000", filter: "grayscale(1) contrast(1.05)" }}
+      />
+    );
+  }
+  const seed = String(name || id || "");
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  const cells = [0, 1, 2, 3].map((i) => TILE[(h >>> (i * 3)) % TILE.length]);
+  return (
+    <span style={{ flex: "0 0 auto", width: size, height: size, border: "1px solid #000", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
+      {cells.map((color, i) => <span key={i} style={{ background: color }} />)}
+    </span>
+  );
+}
 
 export default function NetworksPage() {
   const navigate = useNavigate();
@@ -30,7 +53,7 @@ export default function NetworksPage() {
   // addresses), not inferred from the email on the client.
   const [canReview, setCanReview] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'my-networks' | 'discover'>('my-networks');
+  const [activeTab, setActiveTab] = useState<'mine' | 'discover'>('mine');
   const [createNetworkModalOpen, setCreateNetworkModalOpen] = useState(false);
   const [requestModalOpen, setRequestModalOpen] = useState(false);
   const [editingRequest, setEditingRequest] = useState<NetworkRequest | null>(null);
@@ -113,7 +136,7 @@ export default function NetworksPage() {
         success('You are already a member of this network');
       } else {
         addNetwork(result.network);
-        success('Joined network successfully');
+        success('joined network');
       }
       await loadPublicNetworks();
     } catch (err) {
@@ -134,8 +157,8 @@ export default function NetworksPage() {
       });
       addNetwork(newNetwork);
       setCreateNetworkModalOpen(false);
-      navigate(`/networks/${newNetwork.id}`);
-      success('Network created successfully');
+      navigate(`/networks/${newNetwork.id}/contacts`);
+      success(`${networkData.name} is live. send the link to let people in.`);
     } catch (err) {
       logger.error('Error creating network', { error: err });
       error('Failed to create network');
@@ -144,62 +167,44 @@ export default function NetworksPage() {
 
   return (
     <ClientLayout>
-      <div className="px-6 lg:px-8 py-8">
-        <ContentContainer>
+      <Stage width={860} height="min(660px, calc(100vh - 112px))">
+      <Window title="networks" onClose={() => navigate('/')} style={{ height: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 24px' }}>
+        <div className="wb-segmented lg" role="tablist">
+          <button type="button" role="tab" aria-pressed={activeTab === 'mine'} onClick={() => setActiveTab('mine')}>my networks ({allNetworks.length})</button>
+          <button type="button" role="tab" aria-pressed={activeTab === 'discover'} onClick={() => { setActiveTab('discover'); loadPublicNetworks(); }}>discover</button>
+        </div>
+        <button
+          type="button"
+          className="wb-btn small"
+          title={canReview ? 'start a new network' : 'request a new network'}
+          onClick={() => {
+            if (canReview) {
+              setCreateNetworkModalOpen(true);
+            } else {
+              setEditingRequest(null);
+              setRequestModalOpen(true);
+            }
+          }}
+        >
+          + create
+        </button>
+      </div>
+      <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '6px 12px 14px' }}>
 
-            {/* Header */}
-            <div className="flex items-center justify-between mb-8">
-              <h1 className="text-2xl font-bold text-black font-ibm-plex-mono">Networks</h1>
-              <button
-                onClick={() => {
-                  if (canReview) {
-                    setCreateNetworkModalOpen(true);
-                  } else {
-                    setEditingRequest(null);
-                    setRequestModalOpen(true);
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Create a network
-              </button>
-            </div>
-
-            <Tabs.Root value={activeTab} onValueChange={(v) => {
-              const tab = v as typeof activeTab;
-              setActiveTab(tab);
-              if (tab === 'discover') loadPublicNetworks();
-            }}>
-              <Tabs.List className="flex border-b border-gray-200 mb-8">
-                <Tabs.Trigger
-                  value="my-networks"
-                  className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-                >
-                  My Networks
-                  {allNetworks.length > 0 && <span className="ml-2 text-xs text-gray-400">({allNetworks.length})</span>}
-                </Tabs.Trigger>
-                <Tabs.Trigger
-                  value="discover"
-                  className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-                >
-                  Discover
-                </Tabs.Trigger>
-              </Tabs.List>
-
-              {/* My Networks */}
-              <Tabs.Content value="my-networks">
+              {activeTab === 'mine' && (
+                <>
                 {/* Staff review queue */}
                 {canReview && pendingRequests.length > 0 && (
                   <div className="mb-8">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Requests to review</p>
+                    <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, marginBottom: 8 }}>requests to review</p>
                     <div className="space-y-3">
                       {pendingRequests.map((r) => (
-                        <div key={r.id} className="border border-gray-200 rounded-sm p-4">
+                        <div key={r.id} style={{ border: "1px solid #000", padding: 14, background: "#fff" }}>
                           <div className="flex items-center justify-between mb-1">
                             <p className="text-sm font-medium text-black">{r.title}</p>
                             <span className={`text-xs px-1.5 py-0.5 rounded-sm ${r.status === 'needs_changes' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
-                              {r.status === 'needs_changes' ? 'Needs changes' : 'In review'}
+                              {r.status === 'needs_changes' ? 'needs changes' : 'in review'}
                             </span>
                           </div>
                           {r.requestedBy && (
@@ -213,8 +218,8 @@ export default function NetworksPage() {
                           )}
                           {r.notes && <p className="text-xs text-gray-500 mb-3">{r.notes}</p>}
                           <div className="flex gap-2">
-                            <Button size="sm" onClick={() => handleReview(r.id, 'approve')} className="text-xs h-7">Approve</Button>
-                            <Button size="sm" variant="outline" onClick={() => handleReview(r.id, 'needs_changes')} className="text-xs h-7">Needs changes</Button>
+                            <button type="button" className="wb-btn small" onClick={() => handleReview(r.id, 'approve')}>approve</button>
+                            <button type="button" className="wb-btn small" onClick={() => handleReview(r.id, 'needs_changes')}>needs changes</button>
                           </div>
                         </div>
                       ))}
@@ -226,11 +231,11 @@ export default function NetworksPage() {
                 {myRequests.length > 0 && (
                   <div className="mb-8 space-y-3">
                     {myRequests.map((r) => (
-                      <div key={r.id} className="border border-gray-200 rounded-sm p-4">
+                      <div key={r.id} style={{ border: "1px solid #000", padding: 14, background: "#fff" }}>
                         <div className="flex items-center justify-between mb-1">
                           <p className="text-sm font-medium text-black">{r.title}</p>
                           <span className={`text-xs px-1.5 py-0.5 rounded-sm ${r.status === 'needs_changes' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
-                            {r.status === 'needs_changes' ? 'Needs changes' : 'In review'}
+                            {r.status === 'needs_changes' ? 'needs changes' : 'in review'}
                           </span>
                         </div>
                         {r.status === 'needs_changes' && r.reviewNote ? (
@@ -238,12 +243,12 @@ export default function NetworksPage() {
                             <p className="text-xs text-gray-500 mb-1">Index team</p>
                             <p className="text-sm text-gray-700 mb-3 italic">“{r.reviewNote}”</p>
                             <div className="flex gap-2">
-                              <Button size="sm" variant="outline" onClick={() => handleDismissRequest(r.id)} className="text-xs h-7">Dismiss</Button>
-                              <Button size="sm" onClick={() => { setEditingRequest(r); setRequestModalOpen(true); }} className="text-xs h-7">Update request</Button>
+                              <button type="button" className="wb-btn small" onClick={() => handleDismissRequest(r.id)}>dismiss</button>
+                              <button type="button" className="wb-btn small" onClick={() => { setEditingRequest(r); setRequestModalOpen(true); }}>update</button>
                             </div>
                           </>
                         ) : (
-                          <p className="text-sm text-gray-500">Your request is in review. You may get a few questions about it.</p>
+                          <p style={{ fontFamily: "var(--mac-sans)", fontSize: 13 }}>your request is in review.</p>
                         )}
                       </div>
                     ))}
@@ -251,9 +256,7 @@ export default function NetworksPage() {
                 )}
 
                 {networksLoading ? (
-                  <div className="flex justify-center py-16">
-                    <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
-                  </div>
+                  <p style={{ margin: "18px 12px", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>loading…</p>
                 ) : allNetworks.length > 0 ? (
                   <div className="divide-y divide-gray-100">
                     {allNetworks.map((network) => {
@@ -264,92 +267,65 @@ export default function NetworksPage() {
                         || (viewerRole !== 'member' && user?.id === network.user?.id);
                       const pendingJoinCount = (network as { pendingJoinCount?: number }).pendingJoinCount ?? 0;
                       return (
-                        <button
-                          key={network.id}
-                          onClick={() => navigate(`/networks/${network.id}`)}
-                          className="w-full flex items-center gap-3 py-3 -mx-2 px-2 rounded-sm transition-colors text-left group hover:bg-gray-50"
-                        >
-                          <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
-                            <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="full" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-black truncate">{network.title}</p>
-                            <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                              <Users className="w-3 h-3" />
-                              {network._count?.members || 0} members
-                            </p>
-                          </div>
-                          {pendingJoinCount > 0 && (
-                            <span className="text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 ml-3 bg-amber-50 text-amber-700">
-                              {pendingJoinCount} waiting
-                            </span>
-                          )}
-                          <span className={`text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 ml-3 ${
-                            isOwner ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {isOwner ? 'Owner' : 'Member'}
-                          </span>
-                        </button>
+                        <div key={network.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: "1px solid #DDD8CC" }}>
+                          <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
+                          <button type="button" onClick={() => navigate(`/networks/${network.id}`)} style={{ flex: 1, minWidth: 0, textAlign: "left", padding: 0, border: "none", background: "transparent", cursor: "pointer" }}>
+                            <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "#000" }}>{network.title}</span>
+                            <span style={{ display: "block", marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>{network._count?.members || 0} members</span>
+                          </button>
+                          {pendingJoinCount > 0 && <span className="wb-count">{pendingJoinCount}</span>}
+                          <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontFamily: "var(--mac-mono)", fontSize: 13 }}>{isOwner ? "owner" : "member"}</span>
+                        </div>
                       );
                     })}
                   </div>
                 ) : (
                   <div className="py-16 text-center">
-                    <p className="text-sm font-medium text-gray-700 mb-1">No networks yet</p>
-                    <p className="text-xs text-gray-400">Join one from the Discover tab</p>
+                  <p style={{ fontFamily: 'var(--mac-mono)', fontSize: 12, color: 'var(--ink-2)' }}>nothing here yet.</p>
                   </div>
                 )}
-              </Tabs.Content>
+                </>
+              )}
 
-              {/* Discover */}
-              <Tabs.Content value="discover">
+              {activeTab === 'discover' && (
+                <>
                 {loadingPublic ? (
-                  <div className="flex justify-center py-16">
-                    <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
-                  </div>
+                  <p style={{ margin: "18px 12px", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>loading public networks…</p>
                 ) : publicNetworks.length > 0 ? (
-                  <div className="divide-y divide-gray-100">
+                  <div>
                     {publicNetworks.map((network) => (
-                      <div key={network.id} className="flex items-center gap-3 py-3">
-                        <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
-                          <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="full" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-black truncate">{network.title}</p>
-                          <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                            <Users className="w-3 h-3" />
-                            {network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} members
-                          </p>
-                        </div>
+                      <div key={network.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: "1px solid #DDD8CC" }}>
+                        <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "#000" }}>{network.title}</span>
+                          <span style={{ display: "block", marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>{network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} members</span>
+                        </span>
                         {network.isMember ? (
-                          <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-sm font-medium flex-shrink-0 ml-3">
-                            Joined
-                          </span>
+                          <span style={{ flex: "0 0 auto", color: "var(--ink-3)", fontFamily: "var(--mac-mono)", fontSize: 13 }}>member</span>
                         ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
+                          <button
+                            type="button"
+                            className="wb-btn small"
                             onClick={() => handleJoinNetwork(network.id)}
                             disabled={joiningNetwork === network.id}
-                            className="text-xs h-7 flex-shrink-0 ml-3"
                           >
-                            {joiningNetwork === network.id ? 'Joining...' : 'Join'}
-                          </Button>
+                            {joiningNetwork === network.id ? 'joining…' : 'join'}
+                          </button>
                         )}
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="py-16 text-center">
-                    <p className="text-sm font-medium text-gray-700 mb-1">No public networks</p>
-                    <p className="text-xs text-gray-400">Check back later</p>
+                  <p style={{ fontFamily: 'var(--mac-mono)', fontSize: 12, color: 'var(--ink-2)' }}>No public networks to discover right now.</p>
                   </div>
                 )}
-              </Tabs.Content>
-            </Tabs.Root>
+                </>
+              )}
 
-        </ContentContainer>
       </div>
+      </Window>
+      </Stage>
 
       <CreateNetworkModal
         open={createNetworkModalOpen}

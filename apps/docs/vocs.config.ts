@@ -72,6 +72,7 @@ export default defineConfig({
             { text: 'Conversations', link: '/integrate/rest/conversations' },
           ],
         },
+        { text: 'Client', link: '/integrate/client' },
         { text: 'Host', link: '/integrate/host' },
         { text: 'Stability', link: '/integrate/stability' },
       ],

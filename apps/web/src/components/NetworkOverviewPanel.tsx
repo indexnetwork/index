@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Network } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import IntentList from '@/components/IntentList';
+import { ConfirmWindow } from '@/components/workbench/Workbench';
+import { SignalAction } from '@/components/workbench/mac-blocks';
 import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworkFilter } from '@/contexts/NetworkFilterContext';
@@ -50,6 +49,8 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
     userName: string;
   }[]>([]);
   const [overviewLoading, setOverviewLoading] = useState(true);
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const [undo, setUndo] = useState<{ id: string; at: number } | null>(null);
 
   useEffect(() => {
     const loadOverview = async () => {
@@ -86,44 +87,51 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
     }
   };
 
+  const visible = intents.filter((intent) => !hiddenIds.includes(intent.id));
+
   return (
     <>
-      <div className="space-y-8">
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-              Your Signals
-            </p>
-            {!overviewLoading && (
-              <span className="text-xs text-gray-400">{intents.length} signal{intents.length !== 1 ? 's' : ''}</span>
-            )}
-          </div>
-          <IntentList
-            intents={intents}
-            isLoading={overviewLoading}
-            emptyMessage="You haven't shared any signals in this network yet"
-            onIntentClick={handleOpenIntent}
-          />
-        </div>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+        <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" }}>your signals</p>
+        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{overviewLoading ? "…" : `${visible.length} signal${visible.length === 1 ? "" : "s"}`}</span>
       </div>
-
-      <AlertDialog.Root open={showLeaveConfirmation} onOpenChange={setLeaveConfirmation}>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Leave &apos;{network.title}&apos;?</AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              You will lose access to this network. You can rejoin later if the network is public or if you receive a new invitation.
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-3">
-              <AlertDialog.Cancel asChild><Button variant="outline">Cancel</Button></AlertDialog.Cancel>
-              <Button onClick={handleLeaveNetwork} disabled={isLeaving} className="bg-red-600 hover:bg-red-700 text-white">
-                {isLeaving ? 'Leaving...' : 'Leave'}
-              </Button>
+      {undo && (
+        <div style={{ marginBottom: 10, padding: "8px 12px", border: "1px solid #000", background: "#F2F0EC", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12 }}>removed from {network.title}. the signal is still running everywhere else.</span>
+          <button type="button" onClick={() => { setHiddenIds((ids) => ids.filter((id) => id !== undo.id)); setUndo(null); }} style={{ flex: "0 0 auto", cursor: "pointer", padding: "4px 11px", border: "1px solid #000", background: "#fff", fontFamily: "var(--mac-mono)", fontSize: 11, boxShadow: "1px 1px 0 rgba(0,0,0,0.2)" }}>put it back</button>
+        </div>
+      )}
+      <div style={{ display: "grid", gap: 10 }}>
+        {visible.map((intent) => {
+          const text = (intent.payload?.trim() || intent.summary?.trim() || "untitled signal");
+          const date = intent.createdAt ? new Date(intent.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+          return (
+            <div key={intent.id} onClick={() => handleOpenIntent(intent)} style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", padding: "12px 14px", display: "flex", alignItems: "flex-start", gap: 14, cursor: "pointer" }}>
+              <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 9 }}>
+                <div style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5 }}>{text}</div>
+                {date && <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>▤ {date}</span>}
+              </div>
+              <span title={`stop sharing this signal with ${network.title}. it keeps running elsewhere`} style={{ flex: "0 0 auto" }} onClick={(event) => event.stopPropagation()}>
+                <SignalAction label="− remove" onClick={() => { setHiddenIds((ids) => [...ids, intent.id]); setUndo({ id: intent.id, at: 0 }); }} />
+              </span>
             </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+          );
+        })}
+      </div>
+      {!overviewLoading && visible.length === 0 && (
+        <p style={{ fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>You haven&apos;t shared any signals in this network yet</p>
+      )}
+
+      {showLeaveConfirmation && (
+        <ConfirmWindow
+          title="leave"
+          body={`leave ${network.title}? you can rejoin later if the network is public or you are invited again.`}
+          confirmLabel={isLeaving ? "leaving" : "leave"}
+          busy={isLeaving}
+          onCancel={() => { if (!isLeaving) setLeaveConfirmation(false); }}
+          onConfirm={() => void handleLeaveNetwork()}
+        />
+      )}
     </>
   );
 }

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Loader2, Trash2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { ConfirmWindow } from "@/components/workbench/Workbench";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { authClient } from "@/lib/auth-client";
 import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
@@ -112,7 +111,7 @@ export default function DevicesSection() {
       <div className="max-w-3xl space-y-3">
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-            Devices
+            devices
           </p>
 
           <p className="text-xs text-gray-400 font-ibm-plex-mono">
@@ -123,10 +122,10 @@ export default function DevicesSection() {
           {sessions.length === 0 ? (
             <p className="text-xs text-gray-400 font-ibm-plex-mono">No active devices.</p>
           ) : (
-            <div className="border border-gray-200 rounded-sm overflow-hidden">
+            <div style={{ border: "1px solid #000", overflow: "hidden" }}>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
+                  <tr style={{ borderBottom: "1px solid #000" }}>
                     <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
                       Device
                     </th>
@@ -143,7 +142,7 @@ export default function DevicesSection() {
                 </thead>
                 <tbody>
                   {sessions.map((session) => (
-                    <tr key={session.id} className="border-b border-gray-100 last:border-b-0">
+                    <tr key={session.id} style={{ borderBottom: "1px solid #000" }}>
                       <td className="px-4 py-2 text-sm text-gray-700">
                         {describeDevice(session.userAgent)}
                         {session.token === currentToken ? (
@@ -157,8 +156,8 @@ export default function DevicesSection() {
                           type="button"
                           onClick={() => setRevokeTarget(session)}
                           className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                          title="Sign out device"
-                          aria-label="Sign out device"
+                          title="sign out"
+                          aria-label="sign out"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -172,40 +171,18 @@ export default function DevicesSection() {
         </div>
       </div>
 
-      <AlertDialog.Root
-        open={revokeTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !revoking) setRevokeTarget(null);
-        }}
-      >
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Sign out device</AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              {revokeTarget
-                ? revokeTarget.token === currentToken
-                  ? "This is the browser you are using. Signing it out will end this session immediately."
-                  : `Sign out "${describeDevice(revokeTarget.userAgent)}"? It will have to sign in again.`
-                : ""}
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-3">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline" disabled={revoking}>
-                  Cancel
-                </Button>
-              </AlertDialog.Cancel>
-              <Button
-                onClick={performRevoke}
-                disabled={revoking}
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                {revoking ? "Signing out..." : "Sign out"}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      {revokeTarget && (
+        <ConfirmWindow
+          title="sign out"
+          body={revokeTarget.token === currentToken
+            ? "this is the browser you are using. signing it out ends this session."
+            : `sign out ${describeDevice(revokeTarget.userAgent)}? it will have to sign in again.`}
+          confirmLabel="sign out"
+          busy={revoking}
+          onCancel={() => { if (!revoking) setRevokeTarget(null); }}
+          onConfirm={() => void performRevoke()}
+        />
+      )}
     </>
   );
 }

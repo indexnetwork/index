@@ -11,6 +11,7 @@ type Page =
   | { path: '/guides/group-formation'; render: 'static' }
   | { path: '/guides/introducer-agent'; render: 'static' }
   | { path: '/'; render: 'static' }
+  | { path: '/integrate/client'; render: 'static' }
   | { path: '/integrate/host'; render: 'static' }
   | { path: '/integrate/rest/conversations'; render: 'static' }
   | { path: '/integrate/rest/events'; render: 'static' }

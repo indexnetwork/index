@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router";
-import { Loader2, ChevronDown, Bot } from "lucide-react";
 import UserAvatar from "@/components/UserAvatar";
 import { useNegotiations, useUsers } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -10,16 +9,16 @@ import type { NegotiationOutcome, NegotiationTurn } from "@/services/negotiation
 const PAGE_SIZE = 5;
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
-  propose: { label: "Proposed", color: "text-blue-600" },
-  counter: { label: "Countered", color: "text-amber-600" },
-  accept: { label: "Accepted", color: "text-emerald-600" },
-  decline: { label: "Declined", color: "text-red-600" },
+  propose: { label: "propose", color: "" },
+  counter: { label: "counter", color: "" },
+  accept: { label: "accept", color: "" },
+  decline: { label: "decline", color: "" },
 };
 
 const OUTCOME_LABELS: Record<NegotiationOutcome, { label: string; className: string }> = {
-  agreed: { label: "Agreed", className: "bg-emerald-50 text-emerald-700" },
-  declined: { label: "Declined", className: "bg-gray-100 text-gray-500" },
-  closed: { label: "Closed", className: "bg-gray-100 text-gray-500" },
+  agreed: { label: "won", className: "" },
+  declined: { label: "lost", className: "" },
+  closed: { label: "lost", className: "" },
 };
 
 function timeAgo(dateStr: string): string {
@@ -39,20 +38,18 @@ function TurnMessage({ turn, own, isLast }: { turn: NegotiationTurn; own: boolea
   const actionInfo = ACTION_LABELS[turn.action] ?? { label: turn.action, color: "text-gray-600" };
 
   return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <div className="w-2 h-2 rounded-full bg-gray-300 mt-2" />
-        {!isLast && <div className="w-px flex-1 bg-gray-200 mt-1" />}
+    <div style={{ display: "flex", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ width: 8, height: 8, background: "#000", marginTop: 6 }} />
+        {!isLast && <div style={{ width: 1, flex: 1, background: "#000", marginTop: 4 }} />}
       </div>
       <div className="flex-1 pb-4">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-900 flex items-center gap-1">
-            {own ? "Your agent" : "Their agent"}
-            <Bot className="w-3 h-3 text-gray-400" />
+          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>
+            {own ? "you.agent" : "their.agent"} · {actionInfo.label}
           </span>
-          <span className={`text-xs font-medium ${actionInfo.color}`}>{actionInfo.label}</span>
         </div>
-        <p className="text-sm text-gray-600 leading-relaxed">{turn.message}</p>
+        <p style={{ margin: "4px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>{turn.message}</p>
       </div>
     </div>
   );
@@ -127,16 +124,10 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
 
   return (
     <div className="space-y-2">
-      {isLoading && (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-        </div>
-      )}
+      {isLoading && <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>}
 
       {!isLoading && negotiations.length === 0 && (
-        <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-          <p>No negotiations yet</p>
-        </div>
+        <p style={{ margin: 0, padding: "28px 0", textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 12, border: "1px dashed #000" }}>no negotiations yet.</p>
       )}
 
       {negotiations.map((neg) => {
@@ -145,13 +136,13 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         const outcomeInfo = neg.outcome ? OUTCOME_LABELS[neg.outcome] : null;
 
         return (
-          <div key={neg.id} className="bg-[#F8F8F8] rounded-md overflow-hidden">
+          <div key={neg.id} style={{ border: "1px solid #000", background: "#fff" }}>
             <div
               role="button"
               tabIndex={0}
               onClick={() => void toggle(neg)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void toggle(neg); } }}
-              className="w-full p-4 flex items-center gap-4 text-left hover:bg-gray-100/50 transition-colors cursor-pointer"
+              style={{ width: "100%", padding: 16, display: "flex", alignItems: "center", gap: 16, textAlign: "left", cursor: "pointer", background: isExpanded ? "#F2F0EC" : "#fff" }}
             >
               <Link
                 to={`/u/${neg.counterparty.id}`}
@@ -168,24 +159,22 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <Link
+                    <Link
                     to={`/u/${neg.counterparty.id}`}
-                    className="text-sm font-bold text-gray-900 truncate hover:underline"
+                    style={{ fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", textDecoration: "none" }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {neg.counterparty.name}'s Agent
+                    {neg.counterparty.name}
                   </Link>
                   {outcomeInfo ? (
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${outcomeInfo.className}`}>
+                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, color: outcomeInfo.label === "won" ? "#1FA463" : "var(--ink-warn)" }}>
                       {outcomeInfo.label}
                     </span>
                   ) : (
-                    <span className="text-xs px-1.5 py-0.5 rounded-full font-medium bg-yellow-50 text-yellow-700">
-                      In progress
-                    </span>
+                    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>open</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+                <div style={{ display: "flex", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
                   {neg.turnCount > 0 && (
                     <span>{neg.turnCount} {neg.turnCount === 1 ? "turn" : "turns"}</span>
                   )}
@@ -193,25 +182,18 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
                 </div>
               </div>
 
-              <ChevronDown
-                className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-              />
+              <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{isExpanded ? "▾" : "›"}</span>
             </div>
 
             {isExpanded && (
-              <div className="px-4 pb-4 pt-1 border-t border-gray-200/60">
+              <div style={{ padding: "8px 16px 16px", borderTop: "1px solid #000" }}>
                 {turns === undefined ? (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                  </div>
+                  <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>loading…</p>
                 ) : turns.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-3">No turns yet</p>
+                  <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, textAlign: "center" }}>no turns yet.</p>
                 ) : (
                   <>
-                    <p className="text-xs text-gray-400 mt-2 mb-3 flex items-center gap-1">
-                      <Bot className="w-3 h-3" />
-                      Agents negotiated on behalf of both parties
-                    </p>
+                    <p style={{ margin: "8px 0", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>agents spoke for both of you</p>
                     <div>
                       {turns.map((turn, i) => (
                         <TurnMessage
@@ -234,13 +216,9 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         <button
           onClick={loadMore}
           disabled={loadingMore}
-          className="w-full text-center py-2 text-sm text-gray-600 hover:text-black transition-colors disabled:opacity-50"
+          style={{ width: "100%", background: "none", border: "none", fontFamily: "var(--mac-mono)", fontSize: 12, cursor: "pointer" }}
         >
-          {loadingMore ? (
-            <Loader2 className="h-4 w-4 animate-spin mx-auto" />
-          ) : (
-            "Show more"
-          )}
+          {loadingMore ? "loading…" : "show more"}
         </button>
       )}
     </div>

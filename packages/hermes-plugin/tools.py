@@ -151,6 +151,11 @@ def _api_request(
 ) -> dict[str, Any]:
     try:
         result = get_transport().request_rest(method, path, body)
+        if result.get("status") == 401:
+            from .env_transport import refresh_transport
+
+            if refresh_transport(unauthorized=True):
+                result = get_transport().request_rest(method, path, body)
         if result.get("no_content") is True and no_content_payload is not None:
             return no_content_payload
         return result
@@ -181,7 +186,9 @@ _LOCAL_AGENT_ENV = "INDEX_AGENT_ID"
 
 def local_agent_id() -> str:
     """The agent id this Hermes install speaks as, persisted in the Hermes env."""
-    return os.environ.get(_LOCAL_AGENT_ENV, "").strip()
+    from .env_transport import _stored_env
+
+    return _stored_env(_LOCAL_AGENT_ENV)
 
 
 def remember_local_agent(agent_id: str) -> None:

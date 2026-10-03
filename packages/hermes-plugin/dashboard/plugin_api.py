@@ -943,10 +943,18 @@ _ENVIRONMENTS = {
 }
 
 
+def _index_env(name: str) -> str:
+    """One Index env value from this process or the Hermes env file."""
+    module = sys.modules.get(f"{_runtime_package()}.env_transport")
+    if module is None:
+        return os.environ.get(name, "").strip()
+    return module._stored_env(name)
+
+
 def _environment_name() -> str:
     """Which of main, dev, or local the process is pointed at."""
     blob = " ".join(
-        os.environ.get(name, "").strip().lower()
+        _index_env(name).lower()
         for name in ("INDEX_API_URL", "INDEX_APP_BASE_URL")
     )
     if any(host in blob for host in ("localhost", "127.0.0.1", "::1")):
@@ -1002,6 +1010,34 @@ def environment_set(body: dict[str, Any] | None = Body(default=None)) -> dict[st
     return {"success": True, "environment": name, "needsLogin": True}
 
 
+def _ensure_hermes_agent() -> None:
+    """Register an external agent named Hermes when this account has none.
+
+    Runs once a session is live. Does not select it as the negotiator.
+    A registry failure must not block sign-in.
+    """
+    try:
+        payload = tools._api_request("GET", "/agents")
+        if payload.get("success") is False:
+            return
+        for agent in _list(payload.get("agents")):
+            if not isinstance(agent, dict) or _text(agent.get("name")).lower() != "hermes":
+                continue
+            agent_id = _text(agent.get("id"))
+            if agent_id:
+                tools.remember_local_agent(agent_id)
+            return
+        created = tools._api_request("POST", "/agents", {"name": "Hermes"})
+        if created.get("success") is False:
+            return
+        agent = created.get("agent")
+        agent_id = _text(agent.get("id")) if isinstance(agent, dict) else ""
+        if agent_id:
+            tools.remember_local_agent(agent_id)
+    except Exception:  # noqa: BLE001 - sign-in still completes.
+        return
+
+
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
     """Report transport health from the configured API key."""
@@ -1012,6 +1048,8 @@ def auth_status() -> dict[str, Any]:
         payload.update({"authenticated": False, "needsLogin": True})
         return payload
     connected = status.get("connected") is True and not status.get("reconnectRequired")
+    if connected:
+        _ensure_hermes_agent()
     return {
         "success": True,
         "authenticated": connected,
@@ -1036,9 +1074,9 @@ def _login_app_base_url() -> str:
     Without this pairing a dev-configured plugin would mint a prod key that then
     401s against the dev API.
     """
-    if os.environ.get("INDEX_APP_BASE_URL", "").strip():
+    if _index_env("INDEX_APP_BASE_URL"):
         return tools._app_base_url()
-    api_url = os.environ.get("INDEX_API_URL", "").strip()
+    api_url = _index_env("INDEX_API_URL")
     if not api_url:
         return tools.INDEX_APP_BASE_URL
     try:
@@ -1076,6 +1114,8 @@ def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[
 def auth_login_status() -> dict[str, Any]:
     """Poll the pending login; on success the user's API key is persisted."""
     result = auth_login.poll_status()
+    if result.get("status") == "success":
+        _ensure_hermes_agent()
     payload: dict[str, Any] = {"success": result.get("status") != "failed", "status": result.get("status")}
     if result.get("error"):
         payload["error"] = result.get("error")
@@ -2107,7 +2147,9 @@ def opportunity_counterpart(opportunity_id: str) -> dict[str, Any]:
     """Resolve an opportunity to the person on the other side of it.
 
     A notification names the opportunity; the panel it opens is that person's
-    profile, so the tap needs this one hop.
+    profile, so the tap needs this one hop. `intentId` is the viewer's own
+    signal, so the profile can open on that signal instead of whatever was
+    already selected.
     """
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
@@ -2122,7 +2164,11 @@ def opportunity_counterpart(opportunity_id: str) -> dict[str, Any]:
     counterpart_id = _counterpart_user_id(opp, current_user_id)
     if not counterpart_id:
         return {"success": False, "error": "That opportunity has no counterpart to open."}
-    return {"success": True, "userId": counterpart_id}
+    result: dict[str, Any] = {"success": True, "userId": counterpart_id}
+    intent_id = _text(opp.get("intentId"))
+    if intent_id:
+        result["intentId"] = intent_id
+    return result
 
 
 @full_router.get("/opportunities/{opportunity_id}/negotiation")

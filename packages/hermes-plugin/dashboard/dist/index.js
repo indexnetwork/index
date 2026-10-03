@@ -1439,7 +1439,7 @@
 
   const ENVIRONMENTS = ["main", "dev", "local"];
 
-  function IntentPitch(props) {
+  function bindEnvironmentMenu() {
     const menuState = React.useState(null);
     const menu = menuState[0];
     const setMenu = menuState[1];
@@ -1454,7 +1454,7 @@
       return function () { window.removeEventListener("mousedown", close); };
     }, [menu]);
 
-    function openEnvironmentMenu(event) {
+    function open(event) {
       event.preventDefault();
       event.stopPropagation();
       setMenu({ x: event.clientX, y: event.clientY });
@@ -1463,7 +1463,7 @@
       }).catch(function () {});
     }
 
-    function chooseEnvironment(name, event) {
+    function choose(name, event) {
       event.preventDefault();
       event.stopPropagation();
       setMenu(null);
@@ -1484,26 +1484,32 @@
       }).catch(function () {});
     }
 
+    const node = menu ? React.createElement("div", {
+      className: "index-dashboard__env-menu",
+      style: { left: menu.x, top: menu.y },
+      onMouseDown: function (event) { event.stopPropagation(); },
+    }, ENVIRONMENTS.map(function (name) {
+      return React.createElement("button", {
+        key: name,
+        type: "button",
+        className: "index-dashboard__env-item" + (name === environment ? " index-dashboard__env-item--on" : ""),
+        onMouseDown: function (event) { choose(name, event); },
+      }, name);
+    })) : null;
+    return { open: open, node: node };
+  }
+
+  function IntentPitch(props) {
+    const envMenu = bindEnvironmentMenu();
     const pitchImage = props.onLight ? assetSrc("pitch-light") : PITCH_IMAGE();
     return React.createElement("aside", { className: "index-dashboard__pitch" },
       pitchImage ? React.createElement("div", {
         className: "index-dashboard__pitch-media",
         style: { backgroundImage: "url(" + JSON.stringify(pitchImage) + ")" },
         "aria-hidden": "true",
-        onDoubleClick: openEnvironmentMenu,
+        onDoubleClick: envMenu.open,
       }) : null,
-      menu ? React.createElement("div", {
-        className: "index-dashboard__env-menu",
-        style: { left: menu.x, top: menu.y },
-        onMouseDown: function (event) { event.stopPropagation(); },
-      }, ENVIRONMENTS.map(function (name) {
-        return React.createElement("button", {
-          key: name,
-          type: "button",
-          className: "index-dashboard__env-item" + (name === environment ? " index-dashboard__env-item--on" : ""),
-          onMouseDown: function (event) { chooseEnvironment(name, event); },
-        }, name);
-      })) : null,
+      envMenu.node,
       React.createElement("div", { className: "index-dashboard__pitch-body" },
         React.createElement("h2", { className: "index-dashboard__pitch-title" },
           "find your others",
@@ -4279,6 +4285,7 @@
     const manualLink = linkState[0];
     const setManualLink = linkState[1];
     const pollRef = useRef(null);
+    const envMenu = bindEnvironmentMenu();
 
     function stopPolling() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -4331,10 +4338,12 @@
     }
 
     return React.createElement("div", { className: "index-dashboard__login" },
+      envMenu.node,
       React.createElement("div", { className: "index-dashboard__login-card" },
         React.createElement("h1", {
           className: "index-dashboard__login-brand",
           dangerouslySetInnerHTML: { __html: INDEX_WORDMARK_SVG },
+          onDoubleClick: envMenu.open,
         }),
         React.createElement("p", { className: "index-dashboard__login-copy" },
           "index finds the right people for you, before you even think to look."),
@@ -5616,6 +5625,9 @@
     const toggleProfileRef = useRef(null);
     const openMessagesRef = useRef(null);
     const focusAppliedRef = useRef(null);
+    const summaryRef = useRef(summary);
+    summaryRef.current = summary;
+    const shelfReady = !!summary;
 
     function loadNetworks() {
       fetchPluginJSON(API + "/networks/home")
@@ -6103,10 +6115,12 @@
       });
     }, [selectedId, profileOpen, viewUserId, messagesOpen, messagesTarget]);
 
-    // A notification tap re-enters this page with its target on the URL. An
-    // opportunity or a conversation opens as a panel over whatever was already
-    // selected; only a question changes the selection, because it is answered
-    // in its own signal and nowhere else.
+    // A notification tap or an Index link re-enters this page with its target
+    // on the URL. An opportunity is read inside the signal that surfaced it:
+    // that intent is selected first, and the profile opens on top. A
+    // conversation opens as a panel over whatever was already selected. Only
+    // a question changes the selection on its own, because it is answered in
+    // its own signal and nowhere else.
     useEffect(function () {
       if (auth !== "authed") return undefined;
       function applyFocus() {
@@ -6116,27 +6130,41 @@
         // navigation would otherwise re-open a panel the user has closed.
         const key = target.kind + ":" + target.id;
         if (focusAppliedRef.current === key) return;
-        focusAppliedRef.current = key;
         if (target.kind === "opportunity") {
+          const shelf = summaryRef.current;
+          if (!shelf) return;
+          focusAppliedRef.current = key;
           fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(target.id) + "/counterpart")
             .then(function (payload) {
-              if (payload && payload.success !== false && payload.userId) setViewUserId(payload.userId);
+              if (!payload || payload.success === false) return;
+              const intentId = payload.intentId;
+              const known = intentId && (shelf.intents || []).some(function (intent) {
+                return intent && intent.id === intentId;
+              });
+              if (known) {
+                setSelectedId(intentId);
+                writeHash(intentId);
+              }
+              if (payload.userId) setViewUserId(payload.userId);
             })
             .catch(function () { /* the page is open, which is most of the ask */ });
-        } else if (target.kind === "conversation") {
-          setMessagesTarget(target.id);
-          setMessagesOpen(true);
         } else {
-          setSelectedId(target.id);
-          writeHash(target.id);
-          if (selectedIdRef.current !== target.id) {
-            setFocusQuestion(function (n) { return n + 1; });
+          focusAppliedRef.current = key;
+          if (target.kind === "conversation") {
+            setMessagesTarget(target.id);
+            setMessagesOpen(true);
+          } else {
+            setSelectedId(target.id);
+            writeHash(target.id);
+            if (selectedIdRef.current !== target.id) {
+              setFocusQuestion(function (n) { return n + 1; });
+            }
           }
         }
       }
       applyFocus();
       return onLocation(applyFocus);
-    }, [auth]);
+    }, [auth, shelfReady]);
 
     const intents = (summary && summary.intents) || [];
 
@@ -6247,7 +6275,7 @@
       );
 
     return React.createElement("div", { className: "index-dashboard", ref: rootRef, "data-scheme": scheme },
-      inlineHdr
+      inlineHdr && auth === "authed"
         ? React.createElement(AgentHeader, {
           leading: headerLead,
           hasUnread: hasUnread,

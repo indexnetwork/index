@@ -61,9 +61,19 @@ def remove_env_var(name: str, path: Path | None = None) -> None:
 
 
 def persist_session_token(token: str) -> None:
-    """Persist the device session token to the Hermes env file and the live process."""
+    """Persist the device session and the API host that issued it.
+
+    The host has to be stored with the token. A later process that sees only the
+    token otherwise calls production with a dev or local session.
+    """
     upsert_env_var(_SESSION_ENV, token)
     os.environ[_SESSION_ENV] = token
+    from .env_transport import remember_api_origin
+
+    remember_api_origin(api_origin())
+    from .transport import reset_transport
+
+    reset_transport()
     from .mcp import sync_index_mcp
 
     sync_index_mcp()
