@@ -37,7 +37,7 @@ export interface AgentDatabase {
    */
   updateAgent(
     agentId: string,
-    updates: Partial<Pick<AgentRecord, 'name' | 'description' | 'status' | 'metadata'>>,
+    updates: Partial<Pick<AgentRecord, 'name' | 'status' | 'metadata'>>,
   ): Promise<AgentRecord | null>;
 
   /**

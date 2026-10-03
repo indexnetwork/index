@@ -259,7 +259,8 @@ final class NativeAPIRequestBridge {
         ("PATCH", #"^/networks/[^/?]+/(?:permissions|regenerate-invitation)$"#),
         ("GET", #"^/network-requests$"#), ("POST", #"^/network-requests$"#),
         ("PATCH", #"^/network-requests/[^/?]+$"#), ("DELETE", #"^/network-requests/[^/?]+$"#),
-        ("GET", #"^/agents$"#),
+        ("GET", #"^/agents$"#), ("POST", #"^/agents$"#),
+        ("PATCH", #"^/agents/[^/?]+$"#), ("DELETE", #"^/agents/[^/?]+$"#),
         ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
         ("POST", #"^/intents(?:/(?:list|prepare))?$"#),
         ("GET", #"^/intents/[^/?]+/opportunities(?:\?.*)?$"#),
@@ -608,6 +609,18 @@ final class NativeAPIRequestBridge {
         case "/network-requests": return validNetworkRequest(body)
         case let value where value.range(of: #"^/network-requests/[^/?]+$"#, options: .regularExpression) != nil:
             return validNetworkRequest(body)
+        case "/agents":
+            return exactTypedObject(body, required: ["name"], optional: ["description"]) { item in
+                boundedString(item["name"], maximum: 256)
+                    && optionalString(item, "description", maximum: 4_096)
+            }
+        case let value where value.range(of: #"^/agents/[^/?]+$"#, options: .regularExpression) != nil:
+            return exactTypedObject(body, optional: ["handleNegotiations", "notifyOnOpportunity", "dailySummaryEnabled"]) { item in
+                !item.isEmpty
+                    && optionalBool(item, "handleNegotiations")
+                    && optionalBool(item, "notifyOnOpportunity")
+                    && optionalBool(item, "dailySummaryEnabled")
+            }
         case "/intents/list":
             return exactTypedObject(body, optional: ["page", "limit", "archived", "sourceType"]) { item in
                 optionalInteger(item, "page", minimum: 1, maximum: 10_000)

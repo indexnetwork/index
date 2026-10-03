@@ -22,11 +22,10 @@ export class AgentService {
    *
    * @param ownerId - Owner of the new agent.
    * @param name - Display name.
-   * @param description - Optional description.
    * @returns The created agent.
    * @throws Error when the name is blank.
    */
-  async create(ownerId: string, name: string, description?: string): Promise<AgentRow> {
+  async create(ownerId: string, name: string): Promise<AgentRow> {
     const cleanName = name.trim();
     if (!cleanName) {
       throw new Error('Agent name is required');
@@ -35,7 +34,6 @@ export class AgentService {
     const agent = await this.db.createAgent({
       ownerId,
       name: cleanName,
-      description: description?.trim() || undefined,
       type: 'external',
     });
 
@@ -100,7 +98,6 @@ export class AgentService {
     userId: string,
     updates: {
       name?: string;
-      description?: string | null;
       status?: 'active' | 'inactive';
       notifyOnOpportunity?: boolean;
       dailySummaryEnabled?: boolean;
@@ -118,10 +115,6 @@ export class AgentService {
       }
 
       cleanUpdates.name = cleanName;
-    }
-
-    if (updates.description !== undefined) {
-      cleanUpdates.description = updates.description?.trim() || null;
     }
 
     if (updates.status !== undefined) {

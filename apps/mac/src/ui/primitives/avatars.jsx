@@ -369,13 +369,7 @@ function OwnedAgentAvatar({ owner, agent, size, style, title }) {
     <div
       title={title || agent.name}
       style={{ position:"relative", width:size, height:size, flex:"0 0 auto", ...style }}>
-      {owner.photo ? (
-        <img src={owner.photo} alt="" style={{
-          width:"100%", height:"100%", objectFit:"cover", display:"block",
-        }}/>
-      ) : (
-        <Avatar id={owner.id} name={owner.name} size={size}/>
-      )}
+      <Avatar id={owner.id} name={owner.name} photo={owner.photo} size={size}/>
       {/* bottom-right, held inside the footprint so the mark never overlaps
           whatever sits beside it in a tight row */}
       <span style={{

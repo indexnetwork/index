@@ -29,7 +29,6 @@ const SYSTEM_AGENT_DEFS = [
   {
     id: SYSTEM_AGENT_IDS.negotiator,
     name: 'Index Negotiator',
-    description: 'Built-in agent that handles negotiation turns and opportunity status transitions.',
   },
 ] as const;
 
@@ -242,7 +241,6 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
           id: systemAgent.id,
           ownerId: systemOwner.id,
           name: systemAgent.name,
-          description: systemAgent.description,
           type: 'system',
           status: 'active',
           metadata: {},

@@ -391,6 +391,15 @@ export function createIndexApiClient(options = {}) {
 
     agents: {
       list: (options = {}) => request('/agents', options),
+      create: (body, options = {}) => request('/agents', { ...options, method: 'POST', body }),
+      update: (id, body, options = {}) => request(
+        `/agents/${encodeURIComponent(id)}`,
+        { ...options, method: 'PATCH', body },
+      ),
+      delete: (id, options = {}) => request(
+        `/agents/${encodeURIComponent(id)}`,
+        { ...options, method: 'DELETE' },
+      ),
     },
 
     users: {

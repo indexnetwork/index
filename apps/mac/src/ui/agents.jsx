@@ -1,5 +1,20 @@
-// Agents: the runtimes on this Mac, and which one speaks for you.
-// Reached from the agents row on the hub's sidebar footer, same as networks.
+// Agents: who speaks for you, then every agent that can act for you. A runtime
+// found on this Mac wears an "on this mac" label and a switch. On registers it;
+// off removes it. Hermes also wires the local plugin.
+
+function liveClient() {
+  if (!window.IndexApp || !window.IndexApp.isAuthed()) return null;
+  return window.IndexApp.getClient() || null;
+}
+
+function errText(err) {
+  const msg = err && err.message ? err.message : err;
+  return String(msg || "something went wrong");
+}
+
+function ownerFirst() {
+  return String((currentMe() || {}).name || "").trim().split(/\s+/)[0].toLowerCase();
+}
 
 // On/off switch. A sliding knob rather than a checkmark: these rows are states
 // a runtime is in, not items you tick, and the knob's position reads at a
@@ -8,6 +23,7 @@
 function MiniSwitch({ on, onClick, label, fixed }) {
   return (
     <button
+      type="button"
       onClick={fixed ? undefined : onClick}
       role="switch"
       aria-checked={on}
@@ -33,13 +49,12 @@ function MiniSwitch({ on, onClick, label, fixed }) {
   );
 }
 
-// Status dot + word. Connected is live (accent); detected is present but idle.
+// Status dot + word. Connected is live; detected is present but idle.
 function AgentState({ state }) {
-  // "detected" is the only idle state; "connected" and "system default" are live
   const live = state !== "detected";
   return (
     <span style={{
-      display:"flex", alignItems:"center", gap:6, minWidth:0,
+      display:"flex", alignItems:"center", gap:6, minWidth:0, flex:"0 1 auto", overflow:"hidden",
       fontFamily:"var(--mac-mono)", fontSize:11,
       color: live ? "#000" : "var(--ink-3)",
     }}>
@@ -47,372 +62,510 @@ function AgentState({ state }) {
         flex:"0 0 auto", width:6, height:6,
         background: live ? "#1FA95B" : "var(--ink-4)",
       }}/>
-      {state}
+      <span style={{
+        minWidth:0,
+        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+      }}>{state}</span>
     </span>
   );
 }
 
-function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, last, work }) {
-  const connected = agent.state === "connected";
-  const [hover, setHover] = useState(false);
-  const busy = work && !work.done && !work.error;
-
-  // The whole row opens the row. A div rather than a button, because the switch
-  // inside is itself a button and buttons can't nest; the switch stops the
-  // click from bubbling so toggling an agent never also expands it.
-  const open = () => { if (connected) onToggleExpand(agent.id); };
-
+function NegotiatorBadge() {
   return (
-    // the container draws the outer frame, so the last row skips its divider
-    <div style={{ borderBottom: last ? "none" : "1px solid #000" }}>
-      <div
-        onClick={open}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        role={connected ? "button" : undefined}
-        tabIndex={connected ? 0 : undefined}
-        aria-expanded={connected ? expanded : undefined}
-        onKeyDown={e => {
-          if (!connected) return;
-          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
-        }}
-        title={agent.builtin ? "index is built in and always on"
-          : agent.wireable ? "wire this runtime to your account key"
-          : "add this agent in the web app"}
+    <span style={{
+      flex:"0 0 auto",
+      fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700, letterSpacing:0.4,
+      background:"#FF8A00", color:"#000", padding:"2px 6px",
+      border:"1px solid #000",
+    }}>NEGOTIATOR</span>
+  );
+}
+
+function NegotiatorMark() {
+  return <span title="negotiator" style={{
+    flex:"0 0 auto",
+    fontFamily:"var(--mac-mono)", fontSize:13, lineHeight:1, color:"#000",
+  }}>*</span>;
+}
+
+function RegisterLink({ open, disabled, onClick }) {
+  const [focus, setFocus] = useState(false);
+  const marked = open || focus;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      onFocus={() => setFocus(true)}
+      onBlur={() => setFocus(false)}
+      style={{
+        boxSizing:"border-box",
+        border:"1px solid " + (marked ? "#000" : "transparent"),
+        background: open ? "#000" : "transparent",
+        color: disabled ? "var(--ink-3)" : (open ? "#fff" : "#000"),
+        padding:"1px 6px",
+        cursor: disabled ? "default" : "pointer",
+        fontFamily:"var(--mac-mono)", fontSize:12,
+        textDecoration: marked ? "none" : "underline",
+        textUnderlineOffset:3,
+        outline:"none",
+      }}>+ register manually</button>
+  );
+}
+
+function RegisterName({ value, onChange, disabled, onSubmit }) {
+  const [focus, setFocus] = useState(false);
+  return (
+    <label style={{ display:"block" }}>
+      <span style={{
+        display:"block", marginBottom:5,
+        fontFamily:"var(--mac-mono)", fontSize:11, fontWeight:600, color:"#000",
+      }}>name<span style={{ color:"#FF8A00", marginLeft:4 }}>*</span></span>
+      <input
+        autoFocus
+        value={value}
+        disabled={disabled}
+        placeholder="agent name"
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
+        onKeyDown={e => { if (e.key === "Enter") onSubmit(); }}
         style={{
-          display:"flex", alignItems:"center", gap:11,
-          padding:"9px 12px",
-          background: (work || (connected && (hover || expanded))) ? "#F2EFE6" : "#fff",
-        }}>
-        {/* no picture here. a runtime is a process on this mac, not somebody.
-            the only thing in the app with a face is your negotiator, above */}
-        <span style={{
-          flex:"0 0 auto", minWidth:146,
-          fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:600, color:"#000",
-          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-        }}>{agent.name}</span>
-        <span style={{ flex:1, minWidth:0 }}>
-          <AgentState state={busy ? "working" : agent.state}/>
-        </span>
-        {/* the one thing in the row that isn't "open the row" */}
-        <span
-          onClick={e => e.stopPropagation()}
-          style={{ flex:"0 0 auto", display:"flex" }}>
-          <MiniSwitch on={agent.on} onClick={() => onToggleOn(agent.id)}
-            fixed={agent.builtin || !agent.wireable || busy} label={`${agent.name} on`}/>
-        </span>
-        {/* indicator now, not a control, the row carries the click.
-            the builtin row never opens, so it carries no chevron */}
-        <span aria-hidden="true" style={{
-          flex:"0 0 auto", width:18, textAlign:"center",
-          fontFamily:"var(--mac-mono)", fontSize:12,
-          color: connected ? "#000" : "var(--ink-4)",
-        }}>{agent.builtin ? "" : expanded ? "▾" : "›"}</span>
-      </div>
-
-      {work && (
-        <div style={{
-          background:"#F2F0EC", borderTop:"1px solid #000",
-          padding:"10px 12px 12px",
-        }}>
-          {busy && (
-            <div style={{
-              border:"1px solid #000", height:8, overflow:"hidden",
-              marginBottom:10, background:"#fff",
-            }}>
-              <div style={{
-                height:"100%",
-                backgroundImage:
-                  "repeating-linear-gradient(-45deg, #000 0, #000 6px, #fff 6px, #fff 12px)",
-                animation:"mac-stripes 0.8s linear infinite",
-                backgroundSize:"24px 24px",
-              }}/>
-            </div>
-          )}
-          {work.lines.map((line, i) => (
-            <div key={i} style={{
-              fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.55,
-              color: i === work.lines.length - 1 && !work.error ? "#000" : "var(--ink-2)",
-            }}>› {line}</div>
-          ))}
-          {work.error && (
-            <div style={{
-              fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.55,
-              color:"var(--ink-warn)", marginTop: work.lines.length ? 4 : 0,
-            }}>› {work.error}</div>
-          )}
-        </div>
-      )}
-
-      {expanded && connected && !work && (
-        <div style={{
-          background:"#F2F0EC", borderTop:"1px solid #000",
-          padding:"11px 12px 12px",
-        }}>
-          <div style={{
-            display:"flex", alignItems:"center", justifyContent:"space-between",
-            gap:12, flexWrap:"wrap", marginBottom:11,
-          }}>
-            <span style={{
-              fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-            }}>
-              connected as {agent.connectedAs}
-              {agent.heartbeat ? ` · last heartbeat ${agent.heartbeat}` : " · no heartbeat yet"}
-            </span>
-            <span style={{ display:"flex", gap:8, flex:"0 0 auto" }}>
-              <button style={{
-                fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
-                border:"1px solid #000", background:"#fff", color:"#000",
-                boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-              }}>test</button>
-              <button style={{
-                fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
-                border:"1px solid #000", background:"#fff", color:"var(--ink-warn)",
-                boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-              }}>disconnect</button>
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
+          display:"block", width:"100%", boxSizing:"border-box",
+          border:"1px solid #000",
+          background: disabled ? "#EDEAE1" : "#fff",
+          boxShadow: focus
+            ? "inset 2px 2px 0 #000"
+            : "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff",
+          padding:"7px 10px",
+          fontFamily:"var(--mac-mono)", fontSize:13,
+          color: disabled ? "var(--ink-2)" : "#000",
+          outline:"none",
+        }}/>
+    </label>
   );
 }
 
-// Your negotiator's identity, the one agent that speaks for you, and the only
-// thing on this page with a face. Laid out like the profile block in settings
-// (picture on the left, name beside it) because it is the same kind of thing:
-// who you are to the network, and who your agent is. The face is derived from
-// your account id, so it is persistent and needs no control surface.
-function NegotiatorProfile({ agent, runtimeLabel }) {
+function LineButton({ children, onClick, disabled, warn }) {
   return (
-    <div style={{ display:"grid", gap:16 }}>
-      {/* Which runtime carries your negotiator is picked in the web app, where
-          you are signed in; this states the answer and the face below is how it
-          shows up once that's settled. */}
-      <div style={{ display:"grid", gap:7 }}>
-        <div style={{
-          maxWidth:360, padding:"8px 11px",
-          border:"1px solid #000", background:"#fff",
-          boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
-          fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
-        }}>{runtimeLabel}</div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        fontFamily:"var(--mac-mono)", fontSize:12, padding:"5px 12px",
+        border:"1px solid #000",
+        background: disabled ? "#F2F0EC" : "#fff",
+        color: disabled ? "var(--ink-2)" : (warn ? "var(--ink-warn)" : "#000"),
+        boxShadow: disabled ? "none" : "1px 1px 0 rgba(0,0,0,0.2)",
+        cursor: disabled ? "default" : "pointer",
+      }}>{children}</button>
+  );
+}
+
+// Asks once. This shell has no confirm(), so the second click is the confirm.
+function RemoveButton({ onRemove, disabled }) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => { if (armed) onRemove(); else setArmed(true); }}
+      onBlur={() => setArmed(false)}
+      style={{
+        boxSizing:"border-box", height:18, padding:"0 8px",
+        fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1,
+        border:"1px solid #000",
+        background: armed ? "var(--ink-warn)" : "#fff",
+        color: armed ? "#fff" : "#000",
+        cursor: disabled ? "default" : "pointer",
+      }}>{armed ? "confirm" : "remove"}</button>
+  );
+}
+
+function BandHead({ label, action, first }) {
+  return (
+    <div style={{
+      display:"flex", alignItems:"center", gap:10,
+      margin: first ? "0 0 8px" : "26px 0 8px",
+      fontFamily:"var(--mac-mono)", fontSize:13, letterSpacing:1.4,
+      textTransform:"uppercase", fontWeight:700, color:"#000",
+    }}>
+      <span>{label}</span>
+      <div style={{
+        flex:1, height:2,
+        background:"linear-gradient(#000, #000) top/100% 1px no-repeat, linear-gradient(#fff, #fff) bottom/100% 1px no-repeat",
+      }}/>
+      {action && (
+        <span style={{ textTransform:"none", letterSpacing:0, fontWeight:400 }}>{action}</span>
+      )}
+    </div>
+  );
+}
+
+function BandCopy({ children }) {
+  return (
+    <p style={{
+      margin:"0 0 12px",
+      fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
+    }}>{children}</p>
+  );
+}
+
+function FaultLine({ children }) {
+  if (!children) return null;
+  return (
+    <p style={{
+      margin:"0 0 10px",
+      fontFamily:"var(--mac-mono)", fontSize:11, lineHeight:1.45, color:"var(--ink-warn)",
+    }}>{children}</p>
+  );
+}
+
+function Frame({ children, dim }) {
+  return (
+    <div style={{
+      border:"1px solid #000", background:"#fff",
+      boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
+      opacity: dim ? 0.5 : 1,
+      transition:"opacity 140ms linear",
+    }}>{children}</div>
+  );
+}
+
+// Shown when a connected agent is expanded. The switch turns the runtime on;
+// these tick what it is allowed to do. Nightly indexing has no field yet.
+const AGENT_OPTIONS = [
+  { key:"notifyOnOpportunity", title:"connection updates",
+    blurb:"tells this agent when an opportunity is accepted or someone reaches out." },
+  { key:"indexing", title:"nightly indexing",
+    blurb:"turns what this agent learned today into signals, overnight. off means discovery only knows what you've told it." },
+  { key:"dailySummaryEnabled", title:"daily brief",
+    blurb:"one message at 08:00 with new overlaps and anything waiting on you." },
+];
+
+function RosterRow({ name, badge, detail, id, aside, last, onClick, expanded, onToggle }) {
+  const [hover, setHover] = useState(false);
+  const opens = !!(onClick || onToggle);
+  const columns = id != null;
+  const row = {
+    display: columns ? "grid" : "flex",
+    gridTemplateColumns: columns ? "minmax(0,1fr) 168px 84px 140px 18px" : undefined,
+    alignItems:"center", gap:12, width:"100%", boxSizing:"border-box",
+    padding:"10px 12px", textAlign:"left",
+    border:"none", borderBottom: last && !expanded ? "none" : "1px solid #000",
+    background: (opens && (hover || expanded)) ? "#F2EFE6" : "#fff",
+    cursor: opens ? "pointer" : "default",
+    font:"inherit", color:"inherit",
+  };
+  const body = (
+    <React.Fragment>
+      <span style={{ flex: columns ? undefined : "1 1 34%", minWidth:0, display:"flex", alignItems:"center", gap:8 }}>
         <span style={{
-          fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
-        }}>change this in the web app. index takes over if it's unavailable.</span>
-      </div>
+          minWidth:0,
+          fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+        }}>{name}</span>
+        {badge}
+      </span>
+      <span style={{
+        flex: columns ? undefined : "1 1 40%", minWidth:0,
+        fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+      }}>{detail}</span>
+      {columns && (
+        <span style={{ minWidth:0 }}>
+          {id ? <CopyId id={id}/> : null}
+        </span>
+      )}
+      {aside != null && aside !== "" && (
+        <span
+          onClick={onToggle ? (e => e.stopPropagation()) : undefined}
+          style={{
+            minWidth: columns ? 0 : 108,
+            display:"flex", justifyContent:"flex-end", alignItems:"center", overflow:"hidden",
+            fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+          }}>{aside}</span>
+      )}
+      {(onToggle || columns) && (
+        <span aria-hidden="true" style={{
+          width:18, textAlign:"center",
+          fontFamily:"var(--mac-mono)", fontSize:12, color:"#000",
+        }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
+      )}
+    </React.Fragment>
+  );
+  const hoverProps = {
+    onMouseEnter: () => setHover(true),
+    onMouseLeave: () => setHover(false),
+  };
+  if (onToggle) {
+    return (
+      <div
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        aria-expanded={!!expanded}
+        onKeyDown={e => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
+        }}
+        {...hoverProps}
+        style={row}>{body}</div>
+    );
+  }
+  if (!onClick) return <div style={row}>{body}</div>;
+  return (
+    <button type="button" onClick={onClick} {...hoverProps} style={row}>{body}</button>
+  );
+}
 
-      <div style={{ display:"grid", gap:2 }}>
-        <RuleLabel size={13}>your agent</RuleLabel>
-        <p style={{
-          margin:"0 0 8px", maxWidth:560,
-          fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
-        }}>
-          how your agent appears wherever it represents you.
-        </p>
-        <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-          <MyAgentAvatar size={54}/>
+function CopyId({ id }) {
+  const [copied, setCopied] = useState(false);
+  const short = String(id || "");
+  const copy = () => {
+    const write = navigator.clipboard && navigator.clipboard.writeText(short);
+    if (!write) return;
+    write.then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    }).catch(() => {});
+  };
+  return (
+    <button
+      type="button"
+      onClick={e => { e.stopPropagation(); copy(); }}
+      title={copied ? "copied" : short}
+      aria-label="copy agent id"
+      style={{
+        border:"none", background:"none", padding:0,
+        cursor:"pointer", fontFamily:"var(--mac-mono)", fontSize:11,
+        color:"var(--ink-4)", letterSpacing:0.2, whiteSpace:"nowrap",
+      }}>{copied ? "copied" : `${short.slice(0, 8)}…`}</button>
+  );
+}
 
-          <div style={{
-            fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
-          }}>{agent.name}</div>
-        </div>
+function AgentOptions({ agent, indexing, onToggle, last }) {
+  return (
+    <div style={{
+      background:"#F2F0EC",
+      borderBottom: last ? "none" : "1px solid #000",
+      padding:"11px 12px 12px",
+    }}>
+      <div style={{ display:"grid", gap:8 }}>
+        {AGENT_OPTIONS.map(option => (
+          <Toggle
+            key={option.key}
+            on={option.key === "indexing" ? indexing : !!agent[option.key]}
+            onClick={() => onToggle(agent, option.key)}
+            title={option.title}
+            blurb={option.blurb}/>
+        ))}
       </div>
     </div>
   );
 }
 
-// Screen shell mirrors Networks: same 860 x min(660px) frame, same header band
-// with a title and a right-hand action, so moving between the two shelf
-// destinations doesn't resize or restyle the window.
-// Map one GET /agents entity into the row shape used here. Read-only: agent
-// management writes are session-only and unreachable with an API key.
-function mapLiveAgent(a) {
-  const TINTS = ["#4C6FD4", "#B4553F", "#3E8E7E", "#C64B8C", "#7B5EA7", "#E8A317"];
-  const name = a.name || "agent";
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  const rel = (iso) => {
-    const t = Date.parse(iso);
-    if (Number.isNaN(t)) return "";
-    const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
-    if (s < 60) return `${s}s ago`;
-    const m = Math.floor(s / 60);
-    return m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
-  };
-  // An agent registered against your account is connected, whether or not it
-  // has checked in lately. `lastSeenAt` is null on every agent the API has
-  // handed back so far, and reading that as "detected" left every row shut:
-  // only a connected row opens, so the detail behind it was unreachable.
-  // The heartbeat is a separate fact and says for itself when there isn't one.
-  const active = a.status ? a.status === "active" : true;
-  const owner = String((currentMe() || {}).name || "").trim().split(/\s+/)[0];
-  return {
-    id: a.id,
-    name,
-    live: true,
-    initial: (name[0] || "a").toLowerCase(),
-    tint: TINTS[h % TINTS.length],
-    state: active ? "connected" : "detected",
-    on: active,
-    // the one agent the API says carries negotiations
-    negotiates: !!a.handleNegotiations,
-    connectedAs: a.description || (owner ? `${owner}'s ${name.toLowerCase()}` : name.toLowerCase()),
-    heartbeat: a.lastSeenAt ? rel(a.lastSeenAt) : "",
-  };
-}
+const KIND_DETAIL = {
+  index: "hosted by index",
+  runtime: "on this mac",
+  manual: "registered manually",
+};
 
 function Agents({ onClose }) {
-  // Live-only: no demo runtimes. The list is populated by fetchRegistered (the
-  // account's registered agents) and the local harness scan below.
   const [agents, setAgents] = useState([]);
+  const [detected, setDetected] = useState(null);
+  const [picking, setPicking] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const [busyOn, setBusyOn] = useState(false);
+  const [busyLine, setBusyLine] = useState("");
+  const [fault, setFault] = useState(null);
+  const [checking, setChecking] = useState(false);
   const [expanded, setExpanded] = useState(null);
-  const [hermesWork, setHermesWork] = useState(null);
-  // Read off the live agent list; "index" is the builtin negotiator fallback.
-  const [negotiator, setNegotiator] = useState("index");
+  const [indexing, setIndexing] = useState({});
+  const checkTimer = useRef(null);
+  const inflight = useRef(false);
 
-  // Which local runtimes are already registered on the account: personal
-  // agents matched by name (lowercased). Server-side system agents never map
-  // to runtime rows — the Index row in the list is the local builtin, pinned
-  // on, and it doubles as the negotiator fallback in the picker below.
-  const [registered, setRegistered] = useState({});
-  const fetchRegistered = () => {
-    if (!window.IndexApp || !window.IndexApp.isAuthed()) return Promise.resolve();
-    const client = window.IndexApp.getClient();
-    if (!client) return Promise.resolve();
+  const refresh = () => {
+    const client = liveClient();
+    if (!client) {
+      setAgents([]);
+      return Promise.resolve();
+    }
     return client.agents.list()
       .then((res) => {
-        const list = window.IndexApp.normalizeList(res, "agents")
-          .filter(a => a.type !== "system");
-        // Rebuild from scratch so agents deactivated or deleted elsewhere
-        // (e.g. on the web) drop their stale state here.
-        const next = {};
-        list.forEach((a) => {
-          const row = mapLiveAgent(a);
-          next[row.name.toLowerCase()] = row;
-        });
-        setRegistered(next);
-        const carries = list.find(a => a.handleNegotiations && a.status !== "inactive");
-        setNegotiator(carries ? carries.id : "index");
+        setAgents(window.IndexApp.normalizeList(res, "agents").filter(a => a.type !== "system"));
       })
-      .catch(() => {});
+      .catch((err) => setFault({ scope:"connected", text: errText(err) }));
   };
-  useEffect(() => { fetchRegistered(); }, []);
 
-  // Real inventory: the Swift shell scans the login-shell PATH for known
-  // agent CLIs (claude, codex, goose, …). Until the first scan answers, or
-  // when there is no bridge (browser preview), the demo list stands in.
-  const [detected, setDetected] = useState(null);
-  const scan = () => (window.IndexApp && window.IndexApp.detectHarnesses)
-    ? window.IndexApp.detectHarnesses().then((list) => {
-        if (list) setDetected(list.map(h => ({
-          id: `local-${h.id}`, name: h.label, path: h.path,
-          wired: h.wired === "true",
-        })));
-      })
-    : Promise.resolve();
-  useEffect(() => { scan(); }, []);
+  const scan = () => {
+    if (!window.IndexApp || !window.IndexApp.detectHarnesses) {
+      setDetected([]);
+      return Promise.resolve();
+    }
+    return window.IndexApp.detectHarnesses().then((list) => {
+      setDetected((list || []).map(h => ({ id:`local-${h.id}`, name:h.label })));
+    });
+  };
+
+  useEffect(() => { refresh(); scan(); }, []);
+  useEffect(() => () => clearTimeout(checkTimer.current), []);
   useEffect(() => {
     if (!window.IndexApp || !window.IndexApp.onHermesProgress) return;
-    return window.IndexApp.onHermesProgress((step) => {
-      if (!step) return;
-      setHermesWork(w => w ? { ...w, lines: [...w.lines, step] } : w);
-    });
+    return window.IndexApp.onHermesProgress((step) => { if (step) setBusyLine(step); });
   }, []);
 
-  // "check again" re-scans local binaries AND re-fetches registration status
-  // from the API; the spin holds long enough to read.
-  const [checking, setChecking] = useState(false);
-  const checkTimer = useRef(null);
-  useEffect(() => () => clearTimeout(checkTimer.current), []);
+  const locked = !!busyId || checking;
+  const runtimes = detected || [];
+  const used = new Set();
+  const runtimeAgents = [];
+  runtimes.forEach((runtime) => {
+    const hit = agents.find(a => !used.has(a.id) && String(a.name || "").trim().toLowerCase() === runtime.name.toLowerCase());
+    if (!hit) return;
+    used.add(hit.id);
+    runtimeAgents.push(hit);
+  });
+  const manualAgents = agents.filter(a => !used.has(a.id));
+  const carrier = agents.find(a => a.handleNegotiations && a.status !== "inactive") || null;
+  const carrierKind = !carrier ? "index" : (used.has(carrier.id) ? "runtime" : "manual");
+  const first = ownerFirst();
+  const who = first ? `${first}'s agent` : "your agent";
+
+  const needAccount = () => {
+    alert("sign in first.");
+    return null;
+  };
+
+  const fail = (scope, err) => setFault({ scope, text: errText(err) });
+
+  const begin = () => {
+    if (inflight.current || locked) return false;
+    inflight.current = true;
+    setFault(null);
+    return true;
+  };
+  const finish = () => {
+    inflight.current = false;
+    setBusyId(null);
+    setBusyLine("");
+  };
+
+  const selectCarrier = (agent) => {
+    const client = liveClient() || needAccount();
+    if (!client) return;
+    const current = agents.find(a => a.handleNegotiations && a.status !== "inactive") || null;
+    if (!agent) {
+      if (!current) { setPicking(false); return; }
+    } else if (current && current.id === agent.id) {
+      setPicking(false);
+      return;
+    }
+    if (!begin()) return;
+    setBusyId("pick");
+    const job = agent
+      ? client.agents.update(agent.id, { handleNegotiations: true })
+      : client.agents.update(current.id, { handleNegotiations: false });
+    job
+      .then(() => refresh())
+      .then(() => setPicking(false))
+      .catch((err) => fail("negotiator", err))
+      .then(finish);
+  };
+
+  const createManual = () => {
+    const name = draftName.trim();
+    if (!name) return;
+    const client = liveClient() || needAccount();
+    if (!client || !begin()) return;
+    setBusyId("register");
+    client.agents.create({ name })
+      .then(() => {
+        setDraftName("");
+        setRegisterOpen(false);
+        return refresh();
+      })
+      .catch((err) => fail("connected", err))
+      .then(finish);
+  };
+
+  const removeAgent = (agent) => {
+    const client = liveClient() || needAccount();
+    if (!client || !begin()) return;
+    setBusyId(agent.id);
+    const clear = agent.handleNegotiations
+      ? client.agents.update(agent.id, { handleNegotiations: false })
+      : Promise.resolve();
+    clear
+      .then(() => client.agents.delete(agent.id))
+      .then(() => refresh())
+      .catch((err) => fail("connected", err))
+      .then(finish);
+  };
+
+  const toggleRuntime = (runtime) => {
+    const client = liveClient() || needAccount();
+    if (!client || !begin()) return;
+    const existing = agents.find(a => String(a.name || "").trim().toLowerCase() === runtime.name.toLowerCase());
+    const turningOn = !existing;
+    const hermes = runtime.name.toLowerCase() === "hermes";
+    setBusyId(runtime.id);
+    setBusyOn(turningOn);
+    setBusyLine(turningOn ? "adding" : "removing");
+    let job = Promise.resolve();
+    if (hermes) {
+      job = job.then(() => {
+        const fn = turningOn ? window.IndexApp.setupHermes : window.IndexApp.teardownHermes;
+        if (!fn) throw new Error("no native bridge");
+        return fn();
+      }).then((r) => {
+        if (!(r && r.ok)) throw new Error((r && r.error) || "could not update Hermes");
+      });
+    }
+    job
+      .then(() => {
+        if (turningOn) return client.agents.create({ name: runtime.name });
+        const clear = existing.handleNegotiations
+          ? client.agents.update(existing.id, { handleNegotiations: false })
+          : Promise.resolve();
+        return clear.then(() => client.agents.delete(existing.id));
+      })
+      .then(() => refresh())
+      .catch((err) => fail("connected", err))
+      .then(finish);
+  };
+
+  const toggleSetting = (agent, key) => {
+    if (key === "indexing") {
+      setIndexing(s => ({ ...s, [agent.id]: !s[agent.id] }));
+      return;
+    }
+    const client = liveClient() || needAccount();
+    if (!client) return;
+    const next = !agent[key];
+    setAgents(list => list.map(a => a.id === agent.id ? { ...a, [key]: next } : a));
+    client.agents.update(agent.id, { [key]: next }).catch((err) => {
+      fail("connected", err);
+      refresh();
+    });
+  };
+
   const check = () => {
-    if (checking) return;
+    if (locked) return;
     setChecking(true);
-    Promise.all([scan(), fetchRegistered()]).then(() => {
+    setFault(null);
+    Promise.all([scan(), refresh()]).then(() => {
       checkTimer.current = setTimeout(() => setChecking(false), 700);
     });
   };
 
-  // The switch wires a local runtime to your account, it does not create an
-  // agent: agents are created and deleted in the web app with a signed-in
-  // session. Hermes is the runtime with local wiring — the Swift shell writes
-  // your stored key into ~/.hermes/.env and installs the Index plugin.
-  const busy = useRef(new Set());
-  const toggleOn = (id) => {
-    // browser preview: the demo rows keep their local flip
-    if (detected === null) {
-      setAgents(list => list.map(a => {
-        if (a.id !== id) return a;
-        return { ...a, on: !a.on };
-      }));
-      return;
-    }
-    if (!window.IndexApp || !window.IndexApp.isAuthed()) {
-      alert("sign in first — wiring a runtime needs your account key.");
-      return;
-    }
-    const row = rows.find(a => a.id === id);
-    if (!row || row.name.toLowerCase() !== "hermes") return;
-    if (busy.current.has(id)) return;
-    busy.current.add(id);
-    const done = () => busy.current.delete(id);
-    const turningOn = !row.on;
-    setHermesWork({
-      turningOn,
-      lines: [turningOn ? "wiring Hermes to this account" : "unwiring Hermes"],
-      error: null,
-      done: false,
-    });
-    const wire = row.on
-      ? window.IndexApp.teardownHermes()
-      : window.IndexApp.setupHermes();
-    wire
-      .then((r) => {
-        if (!(r && r.ok)) {
-          setHermesWork(w => w ? { ...w, error: (r && r.error) || "unknown error" } : w);
-          return;
-        }
-        setDetected(list => (list || []).map(h =>
-          h.name.toLowerCase() === "hermes" ? { ...h, wired: turningOn } : h
-        ));
-        setHermesWork(null);
-      })
-      .catch((err) => {
-        setHermesWork(w => w ? { ...w, error: String(err && err.message || err) } : w);
-      })
-      .then(done, done);
-  };
-
-  // Your negotiator's picture is derived from your account id (see myAgent in
-  // primitives), so it is the same everywhere with nothing to configure here.
-  const myNegotiator = myAgent();
-
-  // Rows are the builtin Index runtime plus the detected local runtimes.
-  // Index leads the list: always on, not switchable — it is the system
-  // default that carries negotiations when nothing else does. A local
-  // runtime already registered on the account (matched by name) wears its
-  // live record: connected state, real id, on = active. Everything else is
-  // detected, and stays detected until that agent is added in the web app.
-  const indexRow = {
-    id:"index", name:"Index", state:"system default", on:true, builtin:true,
-  };
-  const rows = [indexRow, ...(detected === null ? agents : detected.map(d => {
-    const live = registered[d.name.toLowerCase()];
-    // hermes is the only runtime with local wiring, so it is the only switch
-    // that does anything here.
-    const wireable = d.name.toLowerCase() === "hermes";
-    const wired = wireable && d.wired;
-    return live
-      ? { ...live, path: d.path, wireable, on: wireable ? wired : live.on }
-      : { id: d.id, name: d.name, state: "detected", on: !!wired,
-          connectedAs: "", heartbeat: "", path: d.path, wireable };
-  }))];
-
-  // Which runtime carries negotiations is picked in the web app, where you
-  // have a session; here it is read off the agent list.
-  const negotiatorRow = rows.find(a => a.id === negotiator);
-  const negotiatorLabel = negotiatorRow && !negotiatorRow.builtin
-    ? `${negotiatorRow.name} · on this mac`
-    : "Index · system default";
+  const choices = [
+    { id:"index", name:"Index", kind:"index", agent:null },
+    ...runtimeAgents.map(a => ({ id:a.id, name:a.name, kind:"runtime", agent:a })),
+    ...manualAgents.map(a => ({ id:a.id, name:a.name, kind:"manual", agent:a })),
+  ];
 
   return (
     <div style={{
@@ -421,104 +574,167 @@ function Agents({ onClose }) {
       gridTemplateColumns:"minmax(0, 1fr)",
       padding:"56px 40px", overflow:"auto",
     }}>
-      {/* Takes the screen it is given: tall enough that the runtimes and the
-          negotiator both sit above the fold on a laptop, and it still gives way
-          to the desktop margin on a short one. */}
       <div style={{
         width:860, maxWidth:"100%",
         height:"min(880px, calc(100vh - 96px))",
       }}>
-        <MacWindow
-          title="agents"
-          onClose={onClose}
-          style={{ height:"100%", minHeight:0 }}>
-
+        <MacWindow title="agents" onClose={onClose} style={{ height:"100%", minHeight:0 }}>
           <div style={{ padding:"18px 24px 14px", borderBottom:"2px solid #000" }}>
-            <div style={{
-              display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-            }}>
-              <h2 style={{
-                margin:0,
-                fontFamily:"var(--mac-mono)", fontSize:22, fontWeight:700, color:"#000",
-              }}>agents</h2>
-              <ActionButton
-                title="look for agent runtimes again"
-                onClick={check}>
-                <span style={{ display:"inline-flex", alignItems:"center", gap:7 }}>
-                  <span style={{
-                    display:"inline-block",
-                    animation: checking ? "mac-orbit 0.7s linear infinite" : "none",
-                  }}>↻</span>
-                  {checking ? "checking" : "check again"}
-                </span>
-              </ActionButton>
-            </div>
-            <p style={{
-              margin:"10px 0 0", maxWidth:560,
-              fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
-            }}>
-              customize how agents on your mac can run for you.
-            </p>
+            <h2 style={{
+              margin:0,
+              fontFamily:"var(--mac-mono)", fontSize:22, fontWeight:700, color:"#000",
+            }}>agents</h2>
           </div>
 
           <div className="mac-scroll" style={{
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"18px 24px 22px",
           }}>
-            {/* What's on the machine first, then who speaks for you out of it.
-                the inventory is the concrete thing, the negotiator is the choice
-                you make from it. */}
-            <RuleLabel size={13}>runtimes</RuleLabel>
-            <p style={{
-              margin:"8px 0 10px", maxWidth:560,
-              fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
-            }}>
-              turn any agent connection on or off. connected agents can create
-              signals and negotiate with other agents for you.
-            </p>
-
-            {/* one framed block; rows divide it, so it reads as a single
-                inventory of this machine rather than four loose cards */}
-            <div style={{
-              border:"1px solid #000", background:"#fff",
-              boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
-              opacity: checking ? 0.5 : 1,
-              transition:"opacity 140ms linear",
-            }}>
-              {rows.map((a, i) => (
-                <AgentRow
-                  key={a.id}
-                  last={i === rows.length - 1}
-                  agent={a}
-                  expanded={expanded === a.id}
-                  onToggleExpand={(id) => setExpanded(e => e === id ? null : id)}
-                  onToggleOn={toggleOn}
-                  work={a.name.toLowerCase() === "hermes" ? hermesWork : null}
+            <BandHead label="your negotiator" first/>
+            <BandCopy>
+              one agent speaks for {who} in the network. index takes over if it's offline.
+            </BandCopy>
+            <FaultLine>{fault && fault.scope === "negotiator" ? fault.text : null}</FaultLine>
+            <Frame>
+              <div style={{
+                display:"flex", alignItems:"center", gap:14, padding:"12px 14px",
+                borderBottom: picking ? "1px solid #000" : "none",
+              }}>
+                <MyAgentAvatar size={48}/>
+                <div style={{ minWidth:0, flex:1 }}>
+                  <div style={{
+                    fontFamily:"var(--mac-mono)", fontSize:16, fontWeight:700, color:"#000",
+                  }}>{carrier ? carrier.name : "Index"}</div>
+                  <div style={{
+                    marginTop:2,
+                    fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+                  }}>{KIND_DETAIL[carrierKind]}</div>
+                </div>
+                <LineButton onClick={() => setPicking(open => !open)} disabled={locked}>
+                  {picking ? "cancel" : "change"}
+                </LineButton>
+              </div>
+              {picking && choices.map((choice, i) => (
+                <RosterRow
+                  key={choice.id}
+                  last={i === choices.length - 1}
+                  name={choice.name}
+                  badge={(!carrier && choice.kind === "index") || (carrier && choice.agent && carrier.id === choice.agent.id)
+                    ? <NegotiatorBadge/> : null}
+                  detail={KIND_DETAIL[choice.kind]}
+                  onClick={() => selectCarrier(choice.agent)}
                 />
               ))}
-              {/* index is always here, so "empty" means no local runtimes */}
-              {rows.length === 1 && (
+            </Frame>
+
+            <BandHead
+              label="connected agents"
+              action={
+                <span style={{ display:"inline-flex", alignItems:"center", gap:14 }}>
+                  <RegisterLink
+                    open={registerOpen}
+                    disabled={locked}
+                    onClick={() => setRegisterOpen(open => !open)}/>
+                  <ActionButton title="look for agent runtimes again" disabled={locked} onClick={check}>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:7 }}>
+                      <span style={{
+                        display:"inline-block",
+                        animation: checking ? "mac-orbit 0.7s linear infinite" : "none",
+                      }}>↻</span>
+                      {checking ? "checking" : "check"}
+                    </span>
+                  </ActionButton>
+                </span>
+              }/>
+            <BandCopy>everything that can act for you, from any device.</BandCopy>
+            <FaultLine>{fault && (fault.scope === "connected" || fault.scope === "mac") ? fault.text : null}</FaultLine>
+            {registerOpen && (
+              <div style={{ display:"grid", gap:10, maxWidth:420, marginBottom:12 }}>
+                <RegisterName
+                  value={draftName}
+                  onChange={setDraftName}
+                  disabled={locked}
+                  onSubmit={createManual}/>
+                <div style={{ display:"flex", gap:8 }}>
+                  <ActionButton
+                    disabled={locked || !draftName.trim()}
+                    onClick={createManual}>create</ActionButton>
+                  <LineButton disabled={locked} onClick={() => setRegisterOpen(false)}>cancel</LineButton>
+                </div>
+              </div>
+            )}
+            <Frame dim={checking}>
+              <RosterRow
+                name="Index"
+                badge={!carrier ? <NegotiatorMark/> : null}
+                detail={KIND_DETAIL.index}
+                id=""
+                aside="always on"/>
+              {detected === null && (
                 <div style={{
-                  padding:"12px", borderTop:"1px solid #000",
+                  padding:"12px",
+                  borderBottom: manualAgents.length ? "1px solid #000" : "none",
                   fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)",
-                }}>no other agent runtimes found on this mac</div>
+                }}>looking…</div>
               )}
-            </div>
-
-            <SectionRule size={13}>negotiator agent</SectionRule>
-            {/* no measure cap on this one: it is one sentence and it should
-                stay one line, so it gets the full width of the pane */}
-            <p style={{
-              margin:"8px 0 12px",
-              fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
-            }}>
-              one agent represents you in the network. pick which runtime carries it.
-            </p>
-
-            <NegotiatorProfile
-              agent={myNegotiator}
-              runtimeLabel={negotiatorLabel}
-            />
+              {detected && detected.length === 0 && (
+                <div style={{
+                  padding:"12px",
+                  borderBottom: manualAgents.length ? "1px solid #000" : "none",
+                  fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)",
+                }}>no agent runtimes found on this mac</div>
+              )}
+              {runtimes.map((runtime, i) => {
+                const match = agents.find(a => String(a.name || "").trim().toLowerCase() === runtime.name.toLowerCase());
+                const on = busyId === runtime.id ? busyOn : !!match;
+                const state = busyId === runtime.id
+                  ? (busyLine || "working")
+                  : (match ? "connected" : "detected");
+                const open = !!(match && expanded === match.id);
+                const last = manualAgents.length === 0 && i === runtimes.length - 1;
+                return (
+                  <React.Fragment key={runtime.id}>
+                    <RosterRow
+                      last={last}
+                      expanded={open}
+                      onToggle={match ? () => setExpanded(id => id === match.id ? null : match.id) : undefined}
+                      name={runtime.name}
+                      badge={match && carrier && carrier.id === match.id ? <NegotiatorMark/> : null}
+                      detail={KIND_DETAIL.runtime}
+                      id={match ? match.id : ""}
+                      aside={
+                        <span style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:10, minWidth:0, maxWidth:"100%" }}>
+                          <AgentState state={state}/>
+                          <MiniSwitch
+                            on={on}
+                            fixed={locked}
+                            onClick={() => toggleRuntime(runtime)}
+                            label={`${runtime.name} on`}/>
+                        </span>
+                      }/>
+                    {open && <AgentOptions agent={match} indexing={!!indexing[match.id]} onToggle={toggleSetting} last={last}/>}
+                  </React.Fragment>
+                );
+              })}
+              {manualAgents.map((agent, i) => {
+                const open = expanded === agent.id;
+                const last = i === manualAgents.length - 1;
+                return (
+                  <React.Fragment key={agent.id}>
+                    <RosterRow
+                      last={last}
+                      expanded={open}
+                      onToggle={() => setExpanded(id => id === agent.id ? null : agent.id)}
+                      name={agent.name}
+                      badge={carrier && carrier.id === agent.id ? <NegotiatorMark/> : null}
+                      detail={KIND_DETAIL.manual}
+                      id={agent.id}
+                      aside={<RemoveButton disabled={locked} onRemove={() => removeAgent(agent)}/>}/>
+                    {open && <AgentOptions agent={agent} indexing={!!indexing[agent.id]} onToggle={toggleSetting} last={last}/>}
+                  </React.Fragment>
+                );
+              })}
+            </Frame>
           </div>
         </MacWindow>
       </div>

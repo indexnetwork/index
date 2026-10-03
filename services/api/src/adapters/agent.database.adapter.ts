@@ -20,7 +20,6 @@ export interface AgentRow {
   id: string;
   ownerId: string;
   name: string;
-  description: string | null;
   type: AgentType;
   status: AgentStatus;
   metadata: Record<string, unknown>;
@@ -38,7 +37,6 @@ export interface CreateAgentInput {
   id?: string;
   ownerId: string;
   name: string;
-  description?: string | null;
   type: AgentType;
   status?: AgentStatus;
   metadata?: Record<string, unknown>;
@@ -53,7 +51,7 @@ export interface AgentRegistryStore {
   getAgent(agentId: string): Promise<AgentRow | null>;
   updateAgent(
     agentId: string,
-    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata' | 'notifyOnOpportunity' | 'dailySummaryEnabled' | 'handleNegotiations'>>,
+    updates: Partial<Pick<AgentRow, 'name' | 'status' | 'metadata' | 'notifyOnOpportunity' | 'dailySummaryEnabled' | 'handleNegotiations'>>,
   ): Promise<AgentRow | null>;
   deleteAgent(agentId: string): Promise<void>;
   listAgentsForUser(userId: string): Promise<AgentRow[]>;
@@ -84,7 +82,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         id: input.id,
         ownerId: input.ownerId,
         name: input.name,
-        description: input.description ?? null,
         type: input.type,
         status: input.status ?? 'active',
         metadata: input.metadata ?? {},
@@ -107,7 +104,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   async updateAgent(
     agentId: string,
-    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata' | 'notifyOnOpportunity' | 'dailySummaryEnabled' | 'handleNegotiations'>>,
+    updates: Partial<Pick<AgentRow, 'name' | 'status' | 'metadata' | 'notifyOnOpportunity' | 'dailySummaryEnabled' | 'handleNegotiations'>>,
   ): Promise<AgentRow | null> {
     const [row] = await db
       .update(schema.agents)
@@ -318,7 +315,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       id: row.id,
       ownerId: row.ownerId,
       name: row.name,
-      description: row.description,
       type: row.type,
       status: row.status,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,

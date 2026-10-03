@@ -489,7 +489,6 @@ export const agents = pgTable('agents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  description: text('description'),
   type: agentTypeEnum('type').notNull(),
   status: agentStatusEnum('status').notNull().default('active'),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
