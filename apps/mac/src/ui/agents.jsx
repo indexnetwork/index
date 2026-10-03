@@ -579,13 +579,6 @@ function Agents({ onClose }) {
         height:"min(880px, calc(100vh - 96px))",
       }}>
         <MacWindow title="agents" onClose={onClose} style={{ height:"100%", minHeight:0 }}>
-          <div style={{ padding:"18px 24px 14px", borderBottom:"2px solid #000" }}>
-            <h2 style={{
-              margin:0,
-              fontFamily:"var(--mac-mono)", fontSize:22, fontWeight:700, color:"#000",
-            }}>agents</h2>
-          </div>
-
           <div className="mac-scroll" style={{
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"18px 24px 22px",

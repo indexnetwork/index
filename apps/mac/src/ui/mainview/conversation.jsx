@@ -605,7 +605,7 @@ function DiscoveryTrace({ plan, queries = [], discovered, reached, progress, ite
           marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:11,
           color:"#8f8f88", textTransform:"uppercase", letterSpacing:"0.05em",
         }}>your agent</div>
-        {loading.map((line) => (
+        {(loading.length && !loading.includes("Warming up") && !loading.includes("Warming up.") ? ["Warming up.", ...loading] : loading).map((line) => (
           <p key={line} style={{
             margin:"0 0 8px", fontFamily:"var(--mac-sans)", fontSize:14, lineHeight:1.55, color:"#5A5548",
           }}>{loadingSentence(line)}</p>

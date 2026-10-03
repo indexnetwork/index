@@ -13,6 +13,16 @@ const SHELF_VISIBLE_ROWS = 6;
 
 /* ---------- account shelf ---------- */
 
+// Plain tally on the right of a shelf row. Not the orange waiting badge.
+function ShelfCount({ n }) {
+  return (
+    <span style={{
+      flex:"0 0 auto",
+      fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
+    }}>{n}</span>
+  );
+}
+
 // Account shelf avatar — same bauhaus fallback as everywhere else.
 function InitialsTile({ id, name, size = 46, photo }) {
   return (
@@ -23,7 +33,7 @@ function InitialsTile({ id, name, size = 46, photo }) {
 // The communities you belong to. Intentionally quiet, no border or shadow, so
 // it reads as a shelf item rather than competing with the account row below it.
 // The label uses the same size and weight as the account row, so the two line up.
-function NetworksRow({ count, pending, onClick }) {
+function NetworksRow({ count, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -47,12 +57,8 @@ function NetworksRow({ count, pending, onClick }) {
       <span style={{
         flex:1, minWidth:0,
         fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
-      }}>networks ({count})</span>
-      <QCount
-        n={pending}
-        muted={!pending}
-        title={`${pending} waiting on you — people asking to join`}
-      />
+      }}>networks</span>
+      <ShelfCount n={count}/>
     </button>
   );
 }
@@ -142,7 +148,8 @@ function AgentsRow({ count, onClick }) {
       <span style={{
         flex:1, minWidth:0,
         fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:500, color:"#000",
-      }}>agents ({count})</span>
+      }}>agents</span>
+      <ShelfCount n={count}/>
     </button>
   );
 }
@@ -256,7 +263,6 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
   const NETWORKS = env.networks || [];
   const AGENTS = [];
   const joinedCount = NETWORKS.filter(n => n.joined !== false).length;
-  const pendingJoins = NETWORKS.reduce((sum, n) => sum + (n.pendingJoinCount || 0), 0);
   const agentCount  = 1 + AGENTS.filter(a => a.state === "connected").length;
 
   useEffect(() => {
@@ -404,7 +410,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
               <div style={{ display:"grid", gap:9 }}>
                 <div>
                   <ConversationsRow unread={env.chatUnread || 0} onClick={() => onOpenView && onOpenView("conversations")}/>
-                  <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
+                  <NetworksRow count={joinedCount} onClick={() => onOpenView && onOpenView("networks")}/>
                   <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
                 </div>
                 <UserMenu me={ME} onSelect={onAccountSelect}/>

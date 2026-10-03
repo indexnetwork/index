@@ -3482,8 +3482,11 @@
     const counted = typeof props.discovered === "number";
     const summary = counted ? discoverySummary(props.discovered, props.reached, items) : props.progress;
     const loading = props.loading || [];
+    const lines = loading.indexOf("Warming up") >= 0 || loading.indexOf("Warming up.") >= 0 || !loading.length
+      ? loading
+      : ["Warming up."].concat(loading);
     return React.createElement(AgentLine, { speaker: { label: "your agent", id: "" } },
-      loading.map(function (line) {
+      lines.map(function (line) {
         return React.createElement("p", { key: line, style: { margin: "0 0 8px" } }, loadingSentence(line));
       }),
       props.plan ? React.createElement("p", { className: "index-dashboard__disc-plan" }, props.plan) : null,

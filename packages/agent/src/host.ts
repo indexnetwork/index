@@ -393,9 +393,9 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
   }
 
   log("  thinking");
-  // The first wake's opening line. A later wake already has progress, so it
-  // does not write the line again.
-  if (!principalConversation.some((entry) => entry.kind === "progress")) {
+  // The first wake's opening line. A later wake that already wrote it does not
+  // write the line again. Any other progress is not this line.
+  if (!principalConversation.some((entry) => entry.kind === "progress" && (entry.text === "Warming up" || entry.text === "Warming up."))) {
     try {
       await publishActions(client, intent.id, [{ type: "progress", text: "Warming up." }], context);
     } catch (cause) {

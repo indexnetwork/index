@@ -282,7 +282,7 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/auth/api-key/(?:create|delete)$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
-        ("POST", #"^/conversations/(?:dm|agent/answers|[^/?]+/messages)$"#),
+        ("POST", #"^/conversations/(?:dm|agent/answers|[^/?]+/messages|[^/?]+/read)$"#),
         ("PATCH", #"^/conversations/[^/?]+/metadata$"#),
         ("DELETE", #"^/conversations/[^/?]+$"#),
     ]
@@ -563,6 +563,9 @@ final class NativeAPIRequestBridge {
         let route = String(path.split(separator: "?", maxSplits: 1)[0])
         if method == "GET" || method == "DELETE" { return body == nil }
         if method == "PATCH" && route.range(of: #"^/intents/[^/?]+/archive$"#, options: .regularExpression) != nil {
+            return body == nil
+        }
+        if method == "POST" && route.range(of: #"^/conversations/[^/?]+/read$"#, options: .regularExpression) != nil {
             return body == nil
         }
         switch route {

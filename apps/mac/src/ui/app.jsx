@@ -653,7 +653,7 @@ function App() {
               />
             )}
             {overlay.view === "conversations" && (
-              <Conversations initialConversationId={overlay.conversationId} onClose={closeOverlay}/>
+              <Conversations initialConversationId={overlay.conversationId} onClose={closeOverlay} onRead={refreshChatUnread}/>
             )}
             {overlay.view === "negotiations" && <NegotiationHistory onClose={closeOverlay}/>}
           </div>

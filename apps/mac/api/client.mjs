@@ -495,6 +495,10 @@ export function createIndexApiClient(options = {}) {
         `/conversations/${encodeURIComponent(conversationId)}/messages`,
         { ...options, method: 'POST', body },
       ),
+      markRead: (conversationId, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}/read`,
+        { ...options, method: 'POST' },
+      ),
       sendAnswers: (intentId, answers, options = {}) => request(
         '/conversations/agent/answers',
         { ...options, method: 'POST', body: { intentId, answers } },

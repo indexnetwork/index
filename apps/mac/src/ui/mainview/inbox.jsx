@@ -13,8 +13,31 @@ function conversationRow(c, myId) {
     photo: other.avatar || null,
     last: last ? apiChatMessage(last, myId).text : "",
     lastAt: c.lastMessageAt || (last && last.createdAt) || "",
+    createdAt: c.createdAt || "",
+    via: (Array.isArray(c.via) ? c.via : []).map(v => v && v.title).filter(Boolean),
     unread: c.unreadCount || 0,
   };
+}
+
+function chatDayLabel(at) {
+  if (!at) return "";
+  const d = new Date(at);
+  if (isNaN(d.getTime())) return "";
+  const today = new Date();
+  const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((start(today) - start(d)) / 86400000);
+  if (diff === 0) return "today";
+  if (diff === 1) return "yesterday";
+  const opts = { month: "short", day: "numeric" };
+  if (d.getFullYear() !== today.getFullYear()) opts.year = "numeric";
+  return d.toLocaleDateString([], opts).toLowerCase();
+}
+
+function chatListWhen(at) {
+  const day = chatDayLabel(at);
+  if (!day) return "";
+  if (day === "today") return chatTime(at);
+  return day;
 }
 
 function isPersonThread(c) {
@@ -22,7 +45,7 @@ function isPersonThread(c) {
   return ps.length === 2 && ps.every(p => p && p.participantType === "user");
 }
 
-function Conversations({ initialConversationId, onClose }) {
+function Conversations({ initialConversationId, onClose, onRead }) {
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
   const [convs, setConvs] = useState(null);
   const [activeId, setActiveId] = useState(initialConversationId || null);
@@ -41,13 +64,25 @@ function Conversations({ initialConversationId, onClose }) {
       .then((res) => {
         const rows = window.IndexApp.normalizeList(res, "conversations")
           .filter(isPersonThread)
-          .map(c => conversationRow(c, myId));
+          .map(c => {
+            const row = conversationRow(c, myId);
+            if (row.id === activeRef.current) row.unread = 0;
+            return row;
+          });
         setConvs(rows);
       })
       .catch(() => setConvs((prev) => prev || []));
   }, [client, myId]);
 
   useEffect(() => { loadList(); }, [loadList]);
+
+  // Opening the menu with no specific thread lands on the top of the list,
+  // the most recent conversation. A deep link still wins.
+  useEffect(() => {
+    if (activeId || !convs || !convs.length) return;
+    const first = convs.slice().sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)))[0];
+    if (first) setActiveId(first.id);
+  }, [convs, activeId]);
 
   useEffect(() => {
     setMessages([]);
@@ -59,9 +94,16 @@ function Conversations({ initialConversationId, onClose }) {
         setMessages(window.IndexApp.normalizeList(res, "messages").map(m => apiChatMessage(m, myId)));
       })
       .catch(() => {});
+    // The row drops immediately. The server cursor is what the shelf and Dock
+    // re-read, so a local zero without this comes back on the next refresh.
     setConvs((prev) => prev && prev.map(c => c.id === activeId ? { ...c, unread: 0 } : c));
+    if (client.conversations.markRead) {
+      client.conversations.markRead(activeId).then(() => {
+        if (!cancelled && onRead) onRead();
+      }).catch(() => { if (!cancelled) loadList(); });
+    }
     return () => { cancelled = true; };
-  }, [activeId, client, myId]);
+  }, [activeId, client, myId, onRead, loadList]);
 
   useEffect(() => {
     const sub = window.IndexApp.streamInbox((event) => {
@@ -69,6 +111,11 @@ function Conversations({ initialConversationId, onClose }) {
       const m = apiChatMessage(event.message, myId);
       if (event.conversationId === activeRef.current && m.who !== "you") {
         setMessages((prev) => prev.some(x => x.id === m.id) ? prev : [...prev, m]);
+        if (client && client.conversations.markRead) {
+          client.conversations.markRead(event.conversationId).then(() => {
+            if (onRead) onRead();
+          }).catch(() => {});
+        }
       }
       setConvs((prev) => {
         if (!prev) return prev;
@@ -82,7 +129,7 @@ function Conversations({ initialConversationId, onClose }) {
       });
     });
     return () => { if (sub && sub.close) sub.close(); };
-  }, [myId, loadList]);
+  }, [myId, loadList, client, onRead]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -131,7 +178,19 @@ function Conversations({ initialConversationId, onClose }) {
                 }}>
                   <Avatar id={c.userId || c.id} name={c.name} photo={c.photo} size={32}/>
                   <span style={{ display:"grid", gap:3, minWidth:0 }}>
-                    <span style={{ fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000" }}>{c.name}</span>
+                    <span style={{ display:"flex", gap:8, alignItems:"baseline", minWidth:0 }}>
+                      <span style={{
+                        flex:1, minWidth:0,
+                        fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+                        whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+                      }}>{c.name}</span>
+                      {chatListWhen(c.lastAt) && (
+                        <span style={{
+                          flex:"0 0 auto",
+                          fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                        }}>{chatListWhen(c.lastAt)}</span>
+                      )}
+                    </span>
                     <span style={{
                       fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-2)",
                       whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
@@ -155,15 +214,48 @@ function Conversations({ initialConversationId, onClose }) {
                   display:"flex", gap:12, alignItems:"center",
                 }}>
                   {active && <Avatar id={active.userId || active.id} name={active.name} photo={active.photo} size={34}/>}
-                  <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
-                    {active ? active.name : ""}
+                  <div style={{ display:"grid", gap:2, minWidth:0 }}>
+                    <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
+                      {active ? active.name : ""}
+                    </div>
+                    {active && (chatDayLabel(active.createdAt) || active.via.length > 0) && (
+                      <div style={{
+                        fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
+                        whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+                      }}>
+                        {chatDayLabel(active.createdAt) ? `started ${chatDayLabel(active.createdAt)}` : ""}
+                        {chatDayLabel(active.createdAt) && active.via.length ? " · " : ""}
+                        {active.via.length ? active.via[0] : ""}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div ref={scrollRef} className="mac-scroll" style={{
+                <div ref={scrollRef} className="mac-scroll mac-chat-dated" style={{
                   overflowY:"auto", padding:"14px 16px", minHeight:0,
                   display:"flex", flexDirection:"column", gap:10,
                 }}>
-                  {messages.map(m => <ChatBubble key={m.id} m={m}/>)}
+                  {messages.map((m, i) => {
+                    const day = chatDayLabel(m.at);
+                    const prev = i > 0 ? chatDayLabel(messages[i - 1].at) : "";
+                    return (
+                      <React.Fragment key={m.id}>
+                        {day && day !== prev && (
+                          <div style={{
+                            display:"flex", alignItems:"center", gap:8,
+                            margin: i === 0 ? "0 0 2px" : "6px 0 2px",
+                          }}>
+                            <span style={{ flex:1, height:1, background:"var(--ink-4)" }}/>
+                            <span style={{
+                              fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                              letterSpacing:0.3,
+                            }}>{day}</span>
+                            <span style={{ flex:1, height:1, background:"var(--ink-4)" }}/>
+                          </div>
+                        )}
+                        <ChatBubble m={m}/>
+                      </React.Fragment>
+                    );
+                  })}
                 </div>
                 <div style={{ borderTop:"1px solid #000", padding:"7px 12px 8px", display:"flex", gap:10, alignItems:"flex-end" }}>
                   <textarea

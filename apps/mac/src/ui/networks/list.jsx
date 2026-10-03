@@ -301,31 +301,21 @@ function Networks({ onClose, onOpenSignal }) {
           style={{ height:"100%", minHeight:0 }}>
 
           <div style={{
-            padding:"18px 24px 0", borderBottom:"2px solid #000",
+            display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+            padding:"14px 24px",
           }}>
-            <div style={{
-              display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-            }}>
-              <h2 style={{
-                margin:0,
-                fontFamily:"var(--mac-mono)", fontSize:19, fontWeight:700, color:"#000",
-              }}>networks</h2>
-              <ActionButton
-                title={canReview ? "start a new network" : "request a new network"}
-                onClick={startCreate}>+ create</ActionButton>
-            </div>
-
-            <div style={{ padding:"14px 0" }}>
-              <MacSegmented
-                size="lg"
-                value={tab}
-                onChange={handleTabChange}
-                options={[
-                  { value:"mine",     label:`my networks (${mine.length})` },
-                  { value:"discover", label:"discover" },
-                ]}
-              />
-            </div>
+            <MacSegmented
+              size="lg"
+              value={tab}
+              onChange={handleTabChange}
+              options={[
+                { value:"mine",     label:`my networks (${mine.length})` },
+                { value:"discover", label:"discover" },
+              ]}
+            />
+            <ActionButton
+              title={canReview ? "start a new network" : "request a new network"}
+              onClick={startCreate}>+ create</ActionButton>
           </div>
 
           <div className="mac-scroll" style={{
