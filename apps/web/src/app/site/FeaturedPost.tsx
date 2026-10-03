@@ -11,7 +11,7 @@ const FEATURED = {
 /** The spotlight card shared by Home and Hermes. */
 export default function FeaturedPost() {
   return (
-    <Link className="site-card" to={FEATURED.href}>
+    <Link className="site-card" to={FEATURED.href} target="_blank" rel="noreferrer">
       <img src="/site/village.jpg" alt="Agent village - Edge City" />
       <span className="site-card-body">
         <span className="site-meta">{FEATURED.meta}</span>

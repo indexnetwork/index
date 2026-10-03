@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { Link } from "react-router";
-import { CONTACT_EMAIL, EARLY_ACCESS_PATH, GITHUB_URL, X_URL } from "./links";
+import { CONTACT_EMAIL, DOCS_URL, EARLY_ACCESS_PATH, GITHUB_URL, X_URL } from "./links";
 import "./site.css";
 
 const FONT_HREF =
@@ -34,6 +34,7 @@ export function SiteNav() {
         <Link className="site-nav-link" to="/">home</Link>
         <Link className="site-nav-link" to="/hermes">hermes</Link>
         <Link className="site-nav-link" to="/blog">blog</Link>
+        <a className="site-nav-link" href={DOCS_URL}>docs</a>
         <Link className="site-nav-link" to="/about">about</Link>
         <Link className="site-btn" to={EARLY_ACCESS_PATH}>Get early access</Link>
       </div>

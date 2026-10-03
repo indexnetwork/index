@@ -32,7 +32,7 @@ function RecentPosts() {
   return (
     <div className="home-posts">
       {entries.slice(0, 4).map((e) => (
-        <Link className="site-post-item" to={e.href} key={e.href}>
+        <Link className="site-post-item" to={e.href} key={e.href} target="_blank" rel="noreferrer">
           <span className="site-meta">{formatEntryDate(e.date)}</span>
           <span className="site-post-item-body">
             <span className="site-post-item-title">{e.title}</span>
@@ -85,7 +85,7 @@ export default function LandingPage() {
             opportunities will find you.
           </p>
         </div>
-        <Link className="site-arrow-link" to="/about">About us →</Link>
+        <Link className="site-arrow-link" to="/about" target="_blank" rel="noreferrer">About us →</Link>
       </section>
 
       <section className="site-section site-section--wide">
@@ -95,7 +95,7 @@ export default function LandingPage() {
             <div key={s.title}>
               <h3 className="site-col-title">{s.title}</h3>
               <p className="site-p">{s.body}</p>
-              <a className="site-arrow-link" href={s.href}>Learn more →</a>
+              <a className="site-arrow-link" href={s.href} target="_blank" rel="noreferrer">Learn more →</a>
             </div>
           ))}
         </div>
@@ -115,8 +115,8 @@ export default function LandingPage() {
               intents that need another person to fulfill them quietly route through Index.
             </p>
             <div className="home-runs-links">
-              <Link to="/hermes">Hermes plugin →</Link>
-              <Link to="/download">Mac app →</Link>
+              <Link to="/hermes" target="_blank" rel="noreferrer">Hermes plugin →</Link>
+              <Link to="/download" target="_blank" rel="noreferrer">Mac app →</Link>
             </div>
           </div>
           <div>
@@ -137,7 +137,7 @@ export default function LandingPage() {
               marketplaces.
             </p>
             <div className="home-runs-links">
-              <a href={DOCS_URL}>Read the documentation →</a>
+              <a href={DOCS_URL} target="_blank" rel="noreferrer">Read the documentation →</a>
             </div>
           </div>
         </div>
@@ -148,7 +148,7 @@ export default function LandingPage() {
         <FeaturedPost />
         <RecentPosts />
         <div className="home-all-posts">
-          <Link to="/blog">All posts →</Link>
+          <Link to="/blog" target="_blank" rel="noreferrer">All posts →</Link>
         </div>
       </section>
     </SiteLayout>

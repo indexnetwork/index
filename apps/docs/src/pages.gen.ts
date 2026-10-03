@@ -26,6 +26,7 @@ type Page =
   | { path: '/opportunity'; render: 'static' }
   | { path: '/privacy/appropriateness'; render: 'static' }
   | { path: '/privacy'; render: 'static' }
+  | { path: '/use/chatgpt'; render: 'static' }
   | { path: '/use/cli'; render: 'static' }
   | { path: '/use/hermes'; render: 'static' }
   | { path: '/use/mac'; render: 'static' }

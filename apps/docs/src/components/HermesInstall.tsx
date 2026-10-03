@@ -9,7 +9,7 @@
 
 import { useState } from 'react'
 
-const INSTALL_URL = 'hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1'
+const REQUEST_ACCESS_URL = 'https://index.network/waitlist'
 const REPO_URL = 'https://github.com/indexnetwork/hermes-plugin'
 const COMMAND = 'hermes plugins install indexnetwork/hermes-plugin'
 
@@ -39,8 +39,8 @@ export function HermesInstall() {
         </ul>
       </div>
       <div className="mac-download__actions">
-        <a className="mac-download__button" href={INSTALL_URL}>
-          <span>Install in Hermes</span>
+        <a className="mac-download__button" href={REQUEST_ACCESS_URL}>
+          <span>Request access</span>
         </a>
         <a className="mac-download__releases" href={REPO_URL}>
           View plugin on GitHub →

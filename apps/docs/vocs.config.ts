@@ -9,7 +9,7 @@ export default defineConfig({
     light: '/logos/logo-black-full.svg',
     dark: '/logos/logo-white-full.svg',
   },
-  accentColor: '#E08A2E',
+  accentColor: '#4091BB',
   head: {
     script: [
       {
