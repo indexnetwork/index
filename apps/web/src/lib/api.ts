@@ -1,9 +1,11 @@
 import { useCallback, useMemo } from 'react';
 
 import { authClient, getJwtToken } from './auth-client';
+import { protocolOrigin } from './protocol-origin';
 
-// In production, VITE_PROTOCOL_URL points to the protocol service; in dev, Vite proxies /api
-const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';
+// In production this is the protocol service. In dev it stays empty so Vite proxies /api,
+// unless settings has pointed the app at another origin.
+const PROTOCOL_BASE = protocolOrigin();
 const API_BASE_URL = `${PROTOCOL_BASE}/api`;
 
 /** Prefix an /api/... path with the protocol origin when running in production. */

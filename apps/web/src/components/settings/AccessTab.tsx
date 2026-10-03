@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, RotateCw, Shield, ShieldOff } from 'lucide-react';
+import { useNavigate } from 'react-router';
 
 import { Network } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Tooltip } from '@/components/ui/Tooltip';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworksState } from '@/contexts/NetworksContext';
 import { JoinRequest, Member } from '@/services/networks';
 import UserAvatar from '@/components/UserAvatar';
-import { useNavigate } from 'react-router';
+import { RuleLabel } from '@/components/workbench/Workbench';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('AccessTab');
+const MEMBERS_PAGE_SIZE = 10;
+const act: React.CSSProperties = {
+  flex: "0 0 auto", cursor: "pointer", padding: "2px 8px", border: "1px solid #000", background: "#fff",
+  fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000",
+};
 
 interface AccessTabProps {
   network: Network;
@@ -41,7 +42,6 @@ export default function AccessTab({
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(network.permissions?.joinPolicy === 'anyone');
   const [requireApproval, setRequireApproval] = useState(network.permissions?.requireAdminApproval === true);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
-  const [reviewingUserId, setReviewingUserId] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
@@ -49,28 +49,20 @@ export default function AccessTab({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchIsLoading, setSearchIsLoading] = useState(false);
   const [searchHasQueried, setSearchHasQueried] = useState(false);
-  const searchContainerRef = useRef<HTMLDivElement>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [invitationLink, setInvitationLink] = useState<{ code: string } | null>(null);
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [isRegeneratingLink, setIsRegeneratingLink] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  const [roleChangeTarget, setRoleChangeTarget] = useState<{ member: Member; newRole: 'owner' | 'member' } | null>(null);
-
   const [isAddingMember, setIsAddingMember] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [membersPage, setMembersPage] = useState(1);
-  const MEMBERS_PAGE_SIZE = 10;
 
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local state from prop changes */
   useEffect(() => {
     setAnyoneCanJoin(network.permissions?.joinPolicy === 'anyone');
     setRequireApproval(network.permissions?.requireAdminApproval === true);
-    if (network.permissions?.invitationLink?.code) {
-      setInvitationLink({ code: network.permissions.invitationLink.code });
-    } else {
-      setInvitationLink(null);
-    }
+    if (network.permissions?.invitationLink?.code) setInvitationLink({ code: network.permissions.invitationLink.code });
+    else setInvitationLink(null);
   }, [network.id, network.permissions]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -101,7 +93,6 @@ export default function AccessTab({
   }, [networkService, networkId]);
 
   useEffect(() => {
-    // Turning the gate off admits everyone waiting, so an ungated network has no queue.
     if (!isGated) {
       setJoinRequests([]); // eslint-disable-line react-hooks/set-state-in-effect -- clears the queue with the gate
       return;
@@ -129,19 +120,17 @@ export default function AccessTab({
   }, [networkService, networkId]);
 
   useEffect(() => {
-    setMembersPage(1); // eslint-disable-line react-hooks/set-state-in-effect -- reset page on search change
     const timeoutId = setTimeout(() => {
       if (memberSearchQuery) searchUsers(memberSearchQuery);
       else { setSuggestedUsers([]); setSearchHasQueried(false); }
-    }, 300);
+    }, 220);
     return () => clearTimeout(timeoutId);
   }, [memberSearchQuery, searchUsers]);
 
+  const searchRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSuggestions(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -149,14 +138,10 @@ export default function AccessTab({
 
   const handleUpdatePermissions = async (joinPolicy: boolean) => {
     try {
-      await networkService.updatePermissions(networkId, {
-        joinPolicy: joinPolicy ? 'anyone' : 'invite_only',
-      });
+      await networkService.updatePermissions(networkId, { joinPolicy: joinPolicy ? 'anyone' : 'invite_only' });
       const updatedNetwork = await networkService.getNetwork(networkId);
       onUpdated(updatedNetwork);
-      if (updatedNetwork.permissions?.invitationLink?.code) {
-        setInvitationLink({ code: updatedNetwork.permissions.invitationLink.code });
-      }
+      if (updatedNetwork.permissions?.invitationLink?.code) setInvitationLink({ code: updatedNetwork.permissions.invitationLink.code });
       await refreshNetworks();
     } catch (err) {
       logger.error('Error updating permissions', { error: err });
@@ -180,28 +165,28 @@ export default function AccessTab({
   };
 
   const handleReviewRequest = async (userId: string, decision: 'approve' | 'decline') => {
-    setReviewingUserId(userId);
+    setBusyId(userId);
     try {
       await networkService.reviewJoinRequest(networkId, userId, decision);
       setJoinRequests(prev => prev.filter(r => r.id !== userId));
       if (decision === 'approve') await loadMembers();
       await refreshNetworks();
-      success(decision === 'approve' ? 'Request approved' : 'Request declined');
+      success(decision === 'approve' ? 'request approved' : 'request declined');
     } catch (err) {
       logger.error('Error reviewing join request', { error: err });
       error('Failed to review request');
     } finally {
-      setReviewingUserId(null);
+      setBusyId(null);
     }
   };
 
+  const shareUrl = invitationLink ? `${window.location.origin}/l/${invitationLink.code}` : '';
+
   const handleCopyLink = async () => {
-    if (!invitationLink?.code) return;
-    const url = `${window.location.origin}/l/${invitationLink.code}`;
+    if (!shareUrl) return;
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(shareUrl);
       setIsCopied(true);
-      success('Link copied');
       setTimeout(() => setIsCopied(false), 2000);
     } catch {
       error('Failed to copy link');
@@ -213,9 +198,7 @@ export default function AccessTab({
     try {
       const updatedNetwork = await networkService.regenerateInvitationLink(networkId);
       onUpdated(updatedNetwork);
-      if (updatedNetwork.permissions?.invitationLink?.code) {
-        setInvitationLink({ code: updatedNetwork.permissions.invitationLink.code });
-      }
+      if (updatedNetwork.permissions?.invitationLink?.code) setInvitationLink({ code: updatedNetwork.permissions.invitationLink.code });
       setShowRegenerateConfirm(false);
       success('Invitation link regenerated');
     } catch (err) {
@@ -240,23 +223,28 @@ export default function AccessTab({
   };
 
   const handleRemoveMember = async (memberId: string) => {
+    setBusyId(memberId);
     try {
       await networkService.removeMember(networkId, memberId);
       setMembers(prev => prev.filter(m => m.id !== memberId));
     } catch (err) {
       logger.error('Error removing member', { error: err });
+    } finally {
+      setBusyId(null);
     }
   };
 
   const handleUpdateMemberRole = async (memberId: string, newRole: 'owner' | 'member') => {
+    setBusyId(memberId);
     try {
       const permissions = newRole === 'owner' ? ['owner'] : ['member'];
       const updated = await networkService.updateMemberPermissions(networkId, memberId, permissions);
       setMembers(prev => prev.map(m => m.id === memberId ? { ...m, permissions: updated.permissions } : m));
-      success(`Role updated to ${newRole}`);
     } catch (err) {
       logger.error('Error updating member role', { error: err });
       error(err instanceof Error ? err.message : 'Failed to update role');
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -264,13 +252,12 @@ export default function AccessTab({
     if (isAddingMember) return;
     setIsAddingMember(true);
     try {
-      const result = await networkService.inviteMember(networkId, email);
+      await networkService.inviteMember(networkId, email);
       setMemberSearchQuery('');
       setSuggestedUsers([]);
       setShowSuggestions(false);
       setSearchHasQueried(false);
       await loadMembers();
-      success(result.alreadyMember ? 'Already a member' : 'Member added');
     } catch (err) {
       logger.error('Error inviting member', { error: err });
       error('Failed to invite member');
@@ -280,359 +267,170 @@ export default function AccessTab({
   };
 
   const filteredSuggestions = suggestedUsers.filter(u => !members.find(m => m.id === u.id));
-  const filteredMembers = useMemo(() =>
-    (memberSearchQuery.trim()
-      ? members.filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
-      : members
-    ),
-    [members, memberSearchQuery]
+  const totalPages = Math.max(1, Math.ceil(members.length / MEMBERS_PAGE_SIZE));
+  const safePage = Math.min(membersPage, totalPages);
+  const slice = useMemo(
+    () => members.slice((safePage - 1) * MEMBERS_PAGE_SIZE, safePage * MEMBERS_PAGE_SIZE),
+    [members, safePage],
   );
-  const totalMembersPages = Math.max(1, Math.ceil(filteredMembers.length / MEMBERS_PAGE_SIZE));
-  const safePage = Math.min(membersPage, totalMembersPages);
-  const paginatedMembers = filteredMembers.slice(
-    (safePage - 1) * MEMBERS_PAGE_SIZE,
-    safePage * MEMBERS_PAGE_SIZE
-  );
-  const noResults = searchHasQueried && filteredSuggestions.length === 0 && filteredMembers.length === 0;
+  const noResults = showSuggestions && searchHasQueried && !searchIsLoading && memberSearchQuery.trim() && filteredSuggestions.length === 0;
 
   return (
-    <>
-      <div className="space-y-8">
+    <div style={{ display: "grid", gap: 22 }}>
+      <div>
+        <RuleLabel>Visibility</RuleLabel>
+        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
+          <ChoiceCard title="Public" sub="Anyone can join" selected={anyoneCanJoin} onClick={() => { setAnyoneCanJoin(true); void handleUpdatePermissions(true); }} />
+          <ChoiceCard title="Private" sub="Invite only" selected={!anyoneCanJoin} onClick={() => { setAnyoneCanJoin(false); void handleUpdatePermissions(false); }} />
+        </div>
+      </div>
 
+      {!anyoneCanJoin && (
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => { setAnyoneCanJoin(true); handleUpdatePermissions(true); }}
-              className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
-            >
-              <Globe className={`h-4 w-4 flex-shrink-0 ${anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
-              <div>
-                <p className="text-sm font-medium text-black">Public</p>
-                <p className="text-xs text-gray-400">Anyone can join</p>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAnyoneCanJoin(false); handleUpdatePermissions(false); }}
-              className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${!anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
-            >
-              <Lock className={`h-4 w-4 flex-shrink-0 ${!anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
-              <div>
-                <p className="text-sm font-medium text-black">Private</p>
-                <p className="text-xs text-gray-400">Invite only</p>
-              </div>
-            </button>
+          <RuleLabel>Approval</RuleLabel>
+          <div style={{ marginTop: 12 }}>
+            <Toggle on={requireApproval} onClick={() => void handleUpdateApproval(!requireApproval)} title="Require admin approval" blurb="Require an admin to approve new members joining via the group link." />
           </div>
+        </div>
+      )}
 
-          {!anyoneCanJoin && (
-            <label className="mt-2 flex items-center gap-3 p-3 border border-gray-200 rounded-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={requireApproval}
-                onChange={(e) => handleUpdateApproval(e.target.checked)}
-                className="h-4 w-4 flex-shrink-0 accent-black"
-              />
-              <div>
-                <p className="text-sm font-medium text-black">Require admin approval</p>
-                <p className="text-xs text-gray-400">Require an admin to approve new members joining via the group link.</p>
-              </div>
-            </label>
+      <div>
+        <RuleLabel>Invitation link</RuleLabel>
+        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid #000", background: "#F2F0EC" }}>
+          <code style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl || "No invitation link yet."}</code>
+          {shareUrl && (
+            <>
+              <button type="button" onClick={() => setShowRegenerateConfirm((open) => !open)} disabled={isRegeneratingLink} title="Regenerate invitation link" aria-label="Regenerate invitation link" style={{ ...act, padding: "4px 10px", background: showRegenerateConfirm ? "#000" : "#fff", color: showRegenerateConfirm ? "#fff" : "#000", boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", opacity: isRegeneratingLink ? 0.5 : 1 }}>↻</button>
+              <button type="button" onClick={() => void handleCopyLink()} title={isCopied ? "Copied" : "Copy link"} style={{ ...act, padding: "4px 10px", background: isCopied ? "#000" : "#fff", color: isCopied ? "#fff" : "#000", boxShadow: "1px 1px 0 rgba(0,0,0,0.2)" }}>{isCopied ? "copied" : "copy"}</button>
+            </>
           )}
         </div>
-
-        {joinRequests.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-              Pending approval <span className="normal-case font-normal">({joinRequests.length})</span>
-            </p>
-            <div className="space-y-0.5">
-              {joinRequests.map((request) => (
-                <div key={request.id} className="flex items-center gap-3 px-3 py-2 rounded-sm hover:bg-gray-50 transition-colors">
-                  <UserAvatar id={request.id} name={request.name} avatar={request.avatar} size={28} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-black truncate">{request.name}</p>
-                    <p className="text-xs text-gray-400 truncate">{request.email}</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs h-7"
-                    disabled={reviewingUserId === request.id}
-                    onClick={() => handleReviewRequest(request.id, 'decline')}
-                  >
-                    Decline
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="text-xs h-7"
-                    disabled={reviewingUserId === request.id}
-                    onClick={() => handleReviewRequest(request.id, 'approve')}
-                  >
-                    Approve
-                  </Button>
-                </div>
-              ))}
+        {showRegenerateConfirm && shareUrl && (
+          <div style={{ marginTop: 8, padding: 12, border: "1px solid #000", background: "#FFF5F5", display: "grid", gap: 10 }}>
+            <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "#8A0000" }}>The current link stops working immediately. Regenerate?</p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" disabled={isRegeneratingLink} onClick={() => setShowRegenerateConfirm(false)} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "7px 14px", border: "1px solid #000", background: "#fff", cursor: "pointer" }}>Cancel</button>
+              <button type="button" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "7px 14px", border: "1px solid #000", background: "#000", color: "#fff", cursor: "pointer" }}>{isRegeneratingLink ? "Regenerating…" : "Regenerate"}</button>
             </div>
           </div>
         )}
+      </div>
 
+      {isGated && joinRequests.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-            Invitation link
-          </p>
-          <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-sm bg-gray-50">
-            <code className="flex-1 text-xs text-gray-500 truncate">
-              {invitationLink
-                ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}`
-                : 'Loading...'}
-            </code>
-            <Tooltip content="Regenerate link">
-              <button
-                type="button"
-                aria-label="Regenerate invitation link"
-                onClick={() => setShowRegenerateConfirm(true)}
-                disabled={!invitationLink || isRegeneratingLink}
-                className="flex-shrink-0 p-1 rounded-sm text-gray-400 hover:text-black transition-colors disabled:opacity-50"
-              >
-                <RotateCw className="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
-            <button
-              type="button"
-              aria-label="Copy invitation link"
-              onClick={handleCopyLink}
-              disabled={!invitationLink}
-              className={`flex-shrink-0 p-1 rounded-sm transition-colors disabled:opacity-50 ${isCopied ? 'text-green-600' : 'text-gray-400 hover:text-black'}`}
-            >
-              {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Members */}
-        <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-            Members <span className="normal-case font-normal">({members.length})</span>
-          </p>
-
-          {/* Smart search input */}
-          <div ref={searchContainerRef} className="relative mb-3">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Plus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                <Input
-                  ref={searchInputRef}
-                  placeholder="Search by name or add by email..."
-                  value={memberSearchQuery}
-                  onChange={(e) => {
-                    setMemberSearchQuery(e.target.value);
-                    setShowSuggestions(true);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            {/* Dropdown: new users to add (not already in list) */}
-            {showSuggestions && memberSearchQuery.trim() && !searchIsLoading && filteredSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-sm shadow-sm z-10 max-h-40 overflow-y-auto">
-                {filteredSuggestions.map((u) => (
-                  <button key={u.id} onClick={() => handleAddMember(u)} className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left">
-                    <UserAvatar id={u.id} name={u.name} avatar={(u as Member).avatar} size={24} />
-                    <span className="text-sm text-black flex-1 truncate">{u.name}</span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">Add</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* No results: add by email or show empty state */}
-            {showSuggestions && memberSearchQuery.trim() && !searchIsLoading && noResults && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-sm shadow-sm z-10">
-                {memberSearchQuery.includes('@') ? (
-                  <button
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
-                    onClick={() => handleInviteMember(memberSearchQuery)}
-                    disabled={isAddingMember}
-                  >
-                    <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                      <Plus className="h-3.5 w-3.5 text-gray-500" />
-                    </div>
-                    <span className="text-sm text-black flex-1 truncate">
-                      {`Invite "${memberSearchQuery}"`}
-                    </span>
-                  </button>
-                ) : (
-                  <div className="px-3 py-2.5 text-sm text-gray-400">No results found</div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {isMembersLoading ? (
-            <div className="space-y-0.5">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 px-3 py-2">
-                  <div className="h-7 w-7 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
-                  <div className="h-3.5 rounded bg-gray-100 animate-pulse flex-1" style={{ maxWidth: `${60 + (i % 3) * 15}%` }} />
-                </div>
-              ))}
-            </div>
-          ) : (
-          <>
-          <div className="space-y-0.5">
-            {paginatedMembers.map((member) => (
-              <div key={member.id} className="flex items-center gap-3 px-3 py-2 rounded-sm hover:bg-gray-50 transition-colors group">
-                <button
-                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                  onClick={() => navigate(`/u/${member.id}`)}
-                >
-                  <UserAvatar
-                    id={member.id}
-                    name={member.name}
-                    avatar={member.avatar}
-                    size={28}
-                  />
-                  <span className="text-sm flex-1 truncate flex items-center gap-1.5 text-black">
-                    {member.name}
-                  </span>
-                </button>
-                {member.permissions.includes('owner') && (
-                  <span className="group-hover:hidden text-xs px-1.5 py-0.5 rounded-sm font-medium bg-gray-900 text-white flex-shrink-0">
-                    Owner
-                  </span>
-                )}
-                {!member.permissions.includes('owner') && (
-                  <span className="group-hover:hidden text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 bg-gray-200 text-gray-700">
-                    {member.permissions.includes('member') ? 'Member' : 'Contact'}
-                  </span>
-                )}
-                {/* Role change: promote member → owner */}
-                {!member.permissions.includes('owner') && member.permissions.includes('member') && member.id !== currentUser?.id && (
-                  <Tooltip content="Promote to owner">
-                    <button
-                      type="button"
-                      aria-label="Promote to owner"
-                      onClick={() => setRoleChangeTarget({ member, newRole: 'owner' })}
-                      className="hidden group-hover:block p-1 text-gray-300 hover:text-gray-900 transition-colors flex-shrink-0"
-                    >
-                      <Shield className="h-3.5 w-3.5" />
-                    </button>
-                  </Tooltip>
-                )}
-                {/* Role change: demote owner → member */}
-                {member.permissions.includes('owner') && member.id !== currentUser?.id && (
-                  <Tooltip content="Demote to member">
-                    <button
-                      type="button"
-                      aria-label="Demote to member"
-                      onClick={() => setRoleChangeTarget({ member, newRole: 'member' })}
-                      className="hidden group-hover:block p-1 text-gray-300 hover:text-gray-900 transition-colors flex-shrink-0"
-                    >
-                      <ShieldOff className="h-3.5 w-3.5" />
-                    </button>
-                  </Tooltip>
-                )}
-                {!member.permissions.includes('owner') && (
-                  <Tooltip content="Remove member">
-                    <button
-                      onClick={() => handleRemoveMember(member.id)}
-                      className="hidden group-hover:block p-1 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </Tooltip>
-                )}
+          <RuleLabel>Pending ({joinRequests.length})</RuleLabel>
+          <div style={{ marginTop: 12, border: "1px solid #000", background: "#fff" }}>
+            {joinRequests.map((request) => (
+              <div key={request.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
+                <UserAvatar id={request.id} name={request.name} avatar={request.avatar} size={28} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontFamily: "var(--mac-sans)", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{request.name}</span>
+                  <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{request.email}</span>
+                </span>
+                <button type="button" title="Approve" disabled={busyId === request.id} onClick={() => void handleReviewRequest(request.id, 'approve')} style={act}>approve</button>
+                <button type="button" title="Decline" disabled={busyId === request.id} onClick={() => void handleReviewRequest(request.id, 'decline')} style={{ ...act, color: "var(--ink-warn)" }}>decline</button>
               </div>
             ))}
           </div>
-          {totalMembersPages > 1 && (
-            <div className="flex items-center justify-between pt-3 mt-1 border-t border-gray-100">
-              <span className="text-xs text-gray-400">
-                {(safePage - 1) * MEMBERS_PAGE_SIZE + 1}–{Math.min(safePage * MEMBERS_PAGE_SIZE, filteredMembers.length)} of {filteredMembers.length}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setMembersPage(p => Math.max(1, p - 1))}
-                  disabled={safePage === 1}
-                  className="p-1 rounded-sm text-gray-400 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="h-4 w-4" />
+        </div>
+      )}
+
+      <div>
+        <RuleLabel>Members ({members.length})</RuleLabel>
+        <div ref={searchRef} style={{ marginTop: 12, position: "relative" }}>
+          <input
+            value={memberSearchQuery}
+            onChange={(e) => { setMemberSearchQuery(e.target.value); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)}
+            placeholder="Search by name or add by email…"
+            style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", border: "1px solid #000", background: "#fff", fontFamily: "var(--mac-mono)", fontSize: 12 }}
+          />
+          {showSuggestions && memberSearchQuery.trim() && filteredSuggestions.length > 0 && (
+            <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 2, zIndex: 5, border: "1px solid #000", background: "#fff", maxHeight: 160, overflowY: "auto", boxShadow: "2px 2px 0 rgba(0,0,0,0.2)" }}>
+              {filteredSuggestions.map((person) => (
+                <button key={person.id} type="button" onClick={() => void handleAddMember(person)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--mac-sans)", fontSize: 13 }}>
+                  <UserAvatar id={person.id} name={person.name} avatar={person.avatar} size={24} />
+                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{person.name}</span>
+                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>Add</span>
                 </button>
-                <span className="text-xs text-gray-500 min-w-[3rem] text-center">
-                  {safePage} / {totalMembersPages}
-                </span>
-                <button
-                  onClick={() => setMembersPage(p => Math.min(totalMembersPages, p + 1))}
-                  disabled={safePage === totalMembersPages}
-                  className="p-1 rounded-sm text-gray-400 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
+              ))}
             </div>
           )}
-          </>
+          {noResults && (
+            <div style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 2, zIndex: 5, border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.2)" }}>
+              {memberSearchQuery.includes('@') ? (
+                <button type="button" disabled={isAddingMember} onClick={() => void handleInviteMember(memberSearchQuery.trim())} style={{ width: "100%", padding: "10px 12px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--mac-sans)", fontSize: 13 }}>Invite &quot;{memberSearchQuery.trim()}&quot;</button>
+              ) : (
+                <div style={{ padding: "10px 12px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>No results found</div>
+              )}
+            </div>
           )}
         </div>
 
+        <div style={{ marginTop: 12, display: "grid", gap: 2 }}>
+          {isMembersLoading && <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>Loading members…</p>}
+          {!isMembersLoading && slice.map((member) => {
+            const isOwner = member.permissions.includes('owner');
+            const isSelf = currentUser?.id === member.id;
+            const ghost = Boolean((member as Member & { isGhost?: boolean }).isGhost);
+            return (
+              <div key={member.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
+                <button type="button" onClick={() => navigate(`/u/${member.id}`)} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", padding: 0 }}>
+                  <UserAvatar id={member.id} name={member.name} avatar={member.avatar} size={28} blur={ghost} />
+                  <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {member.name}
+                    {ghost && <span style={{ marginLeft: 6, fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)" }}>ghost</span>}
+                  </span>
+                </button>
+                <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, padding: "2px 6px", background: isOwner ? "#000" : "#E8E6E1", color: isOwner ? "#fff" : "var(--ink-2)" }}>{isOwner ? "Owner" : (member.permissions.includes('member') ? "Member" : "Contact")}</span>
+                {!isOwner && member.permissions.includes('member') && !isSelf && (
+                  <button type="button" title="Promote to owner" disabled={busyId === member.id} onClick={() => void handleUpdateMemberRole(member.id, 'owner')} style={act}>↑</button>
+                )}
+                {isOwner && !isSelf && (
+                  <button type="button" title="Demote to member" disabled={busyId === member.id} onClick={() => void handleUpdateMemberRole(member.id, 'member')} style={act}>↓</button>
+                )}
+                {!isOwner && (
+                  <button type="button" title="Remove member" disabled={busyId === member.id} onClick={() => void handleRemoveMember(member.id)} style={{ ...act, color: "var(--ink-warn)" }}>×</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {totalPages > 1 && (
+          <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #ddd", paddingTop: 10, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
+            <span>{(safePage - 1) * MEMBERS_PAGE_SIZE + 1}–{Math.min(safePage * MEMBERS_PAGE_SIZE, members.length)} of {members.length}</span>
+            <span style={{ display: "flex", gap: 6 }}>
+              <button type="button" disabled={safePage <= 1} onClick={() => setMembersPage(safePage - 1)} style={act}>prev</button>
+              <button type="button" disabled={safePage >= totalPages} onClick={() => setMembersPage(safePage + 1)} style={act}>next</button>
+            </span>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
 
-      {/* Regenerate invitation link dialog */}
-      <AlertDialog.Root open={showRegenerateConfirm} onOpenChange={(open) => { if (!open && !isRegeneratingLink) setShowRegenerateConfirm(false); }}>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">
-              Regenerate invitation link?
-            </AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              The current link will stop working immediately. Anyone with the old link will no longer be able to join.
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-2">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline" disabled={isRegeneratingLink}>Cancel</Button>
-              </AlertDialog.Cancel>
-              <Button onClick={handleRegenerateLink} disabled={isRegeneratingLink}>
-                {isRegeneratingLink ? 'Regenerating...' : 'Regenerate'}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+function ChoiceCard({ title, sub, selected, onClick }: { title: string; sub: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={selected} style={{ display: "flex", alignItems: "flex-start", gap: 11, width: "100%", textAlign: "left", padding: "10px 12px", cursor: "pointer", border: "1px solid #000", background: selected ? "#F2EFE6" : "#fff", boxShadow: selected ? "inset 1px 1px 0 rgba(0,0,0,0.25)" : "1px 1px 0 rgba(0,0,0,0.2)" }}>
+      <span style={{ flex: "0 0 auto", width: 13, height: 13, marginTop: 2, border: "1px solid #000", background: selected ? "#FF8A00" : "#fff", boxShadow: selected ? "inset 1px 1px 0 rgba(0,0,0,0.3)" : "none" }} />
+      <span style={{ display: "grid", gap: 2, minWidth: 0 }}>
+        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 600 }}>{title}</span>
+        <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)" }}>{sub}</span>
+      </span>
+    </button>
+  );
+}
 
-      {/* Role change dialog */}
-      <AlertDialog.Root open={roleChangeTarget !== null} onOpenChange={(open) => { if (!open) setRoleChangeTarget(null); }}>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">
-              {roleChangeTarget?.newRole === 'owner' ? 'Promote' : 'Demote'} {roleChangeTarget?.member.name || 'this member'}?
-            </AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              {roleChangeTarget?.newRole === 'owner'
-                ? 'This will give them full control of this community — they can manage settings, members, and integrations.'
-                : 'This will remove their owner privileges. They will remain a member but won\'t be able to manage settings or members.'}
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-2">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline">Cancel</Button>
-              </AlertDialog.Cancel>
-              <Button onClick={async () => {
-                if (!roleChangeTarget) return;
-                await handleUpdateMemberRole(roleChangeTarget.member.id, roleChangeTarget.newRole);
-                setRoleChangeTarget(null);
-              }}>
-                {roleChangeTarget?.newRole === 'owner' ? 'Promote to Owner' : 'Demote to Member'}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
-
-    </>
+function Toggle({ on, onClick, title, blurb }: { on: boolean; onClick: () => void; title: string; blurb: string }) {
+  return (
+    <button type="button" onClick={onClick} role="switch" aria-checked={on} style={{ display: "flex", gap: 11, alignItems: "flex-start", textAlign: "left", width: "100%", padding: "10px 12px", cursor: "pointer", border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
+      <span style={{ flex: "0 0 auto", width: 16, height: 16, marginTop: 1, border: "1px solid #000", background: on ? "#FF8A00" : "#EDEAE1", boxShadow: on ? "inset 1px 1px 0 #8A4500, inset -1px -1px 0 #FFD7A0" : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700 }}>{on ? "✓" : ""}</span>
+      <span>
+        <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 12, fontWeight: 600 }}>{title}</span>
+        <span style={{ display: "block", marginTop: 3, fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.45, color: "var(--ink-2)" }}>{blurb}</span>
+      </span>
+    </button>
   );
 }

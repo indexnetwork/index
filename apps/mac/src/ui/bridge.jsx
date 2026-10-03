@@ -268,6 +268,8 @@ window.IndexApp = (function () {
       photo: avatarUrl(user.avatar),
       socials,
       websites: [],
+      notificationPreferences: user.notificationPreferences || {},
+      timezone: user.timezone || "",
       source: user,
     };
   }

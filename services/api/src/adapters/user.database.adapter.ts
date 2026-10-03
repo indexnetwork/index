@@ -161,11 +161,7 @@ export class UserDatabaseAdapter {
       ...user,
       socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
       hasProfile,
-      notificationPreferences: settings?.preferences as {
-        connectionUpdates: boolean;
-      } || {
-        connectionUpdates: true,
-      }
+      notificationPreferences: (settings?.preferences as NotificationPreferences | undefined) ?? {},
     };
   }
 
@@ -305,9 +301,7 @@ export class UserDatabaseAdapter {
     await db.insert(userNotificationSettings)
       .values({
         userId,
-        preferences: {
-          connectionUpdates: true,
-        }
+        preferences: {},
       })
       .onConflictDoNothing();
   }
@@ -319,9 +313,7 @@ export class UserDatabaseAdapter {
     const [upsertedSettings] = await db.insert(userNotificationSettings)
       .values({
         userId,
-        preferences: {
-          connectionUpdates: true,
-        }
+        preferences: {},
       })
       .onConflictDoUpdate({
         target: userNotificationSettings.userId,
@@ -339,15 +331,17 @@ export class UserDatabaseAdapter {
   /**
    * Upsert notification preferences for a user
    */
-  async updateNotificationPreferences(userId: string, preferences: NotificationPreferences): Promise<void> {
-    const existing = await db.select().from(userNotificationSettings).where(eq(userNotificationSettings.userId, userId)).limit(1);
-    if (existing.length > 0) {
+  async updateNotificationPreferences(userId: string, preferences: Partial<NotificationPreferences>): Promise<void> {
+    const [existing] = await db.select().from(userNotificationSettings).where(eq(userNotificationSettings.userId, userId)).limit(1);
+    const current = (existing?.preferences ?? {}) as NotificationPreferences;
+    const next = { ...current, ...preferences };
+    if (existing) {
       await db.update(userNotificationSettings)
-        .set({ preferences, updatedAt: new Date() })
+        .set({ preferences: next, updatedAt: new Date() })
         .where(eq(userNotificationSettings.userId, userId));
     } else {
       await db.insert(userNotificationSettings)
-        .values({ userId, preferences });
+        .values({ userId, preferences: next });
     }
   }
 

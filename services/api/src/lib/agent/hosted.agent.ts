@@ -2,9 +2,9 @@
  * Index's own personal agent: the seat that works a signal whose owner has
  * bound no external negotiator.
  *
- * It is not a session. Nothing runs on a clock — a wake happens because
- * something changed on the signal, and a negotiator runs because a decision
- * authorised it. The reasoning is `@indexnetwork/agent`, reached through
+ * A wake happens because something changed, and once each local morning.
+ * A negotiator runs because a decision authorised it. The reasoning is
+ * `@indexnetwork/agent`, reached through
  * {@link HostedIndex}, so a hosted seat runs exactly the code an external
  * runner would without a request leaving this process.
  */
@@ -69,6 +69,19 @@ export class HostedAgent {
     this.abort = new AbortController();
     this.reader = createRedisClient();
     void this.follow(this.reader);
+  }
+
+  /**
+   * One morning wake. The signal id stays here, so a person it opens takes
+   * the same negotiator an event wake starts.
+   */
+  async morningWake(userId: string, intent: Intent): Promise<void> {
+    if (!this.running || !await this.holdsSeat(userId)) return;
+    await runWake(new HostedIndex(userId), intent, {
+      ...this.runtime(),
+      reason: 'morning',
+      onNegotiate: (opportunityId) => this.run(this.negotiate(userId, intent.id, opportunityId)),
+    });
   }
 
   /** Stop answering, cancel the runs in flight, and drop the reader. */

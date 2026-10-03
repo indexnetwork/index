@@ -16,7 +16,15 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const read = p => readFileSync(join(here, p), 'utf8')
 
-const css = read('theme-map.css') + '\n' + read('../dashboard/dist/style.css')
+// The stylesheet points at dashboard/fonts/. This host injects the sheet as a
+// <style> with no base URL, so those file urls are inlined here.
+const css = (read('theme-map.css') + '\n' + read('../dashboard/dist/style.css')).replace(
+  /url\(\.\.\/fonts\/([^)]+)\)/g,
+  (_, file) => {
+    const bytes = readFileSync(join(here, '../dashboard/fonts', file))
+    return `url(data:font/woff2;base64,${bytes.toString('base64')})`
+  }
+)
 const tail = read('tail.js').replace('__PLUGIN_CSS__', () => JSON.stringify(css))
 
 const out = [

@@ -1,18 +1,16 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Loader2, ArrowUp, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Link } from 'react-router';
 import UserAvatar from '@/components/UserAvatar';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { cn, formatChatDayLabel } from '@/lib/utils';
-import { ContentContainer } from '@/components/layout';
+import { formatChatClock, formatChatDayLabel } from '@/lib/utils';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import type { ChatContextOpportunity } from '@/services/opportunities';
 import { buildChatTimeline } from './timeline';
 import OpportunityDivider, { OpportunityDividerSkeleton } from './OpportunityDivider';
-import ConversationHeader from './ConversationHeader';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('ChatView');
@@ -30,17 +28,25 @@ interface ChatViewProps {
   onFirstMessageSent?: () => void;
   onClose: () => void;
   onBack?: () => void;
+  /** Third window on a signal: the window already has the name header. */
+  embedded?: boolean;
+  /** Match write-up shown above the thread, the way the desktop chat opens. */
+  opener?: { headline?: string; detail?: string };
 }
 
-export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack }: ChatViewProps) {
+function normText(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener }: ChatViewProps) {
   const { user } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const {
     messages: allMessages,
     conversations,
     sendMessage: conversationSend,
+    loadMessages,
     loadSessionHistory,
-    loadPreviousSessionMessages,
     sessionHistory,
     getOrCreateDm,
     markConversationRead,
@@ -120,13 +126,13 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   useEffect(() => {
     const cid = initialGroupId ?? conversationId;
     if (cid) {
-      loadSessionHistory(cid).finally(() => setMessagesLoading(false));
+      loadMessages(cid).finally(() => setMessagesLoading(false));
     } else {
       // No conversation yet: clear the initial loading state via microtask
       // to satisfy react-hooks/set-state-in-effect.
       queueMicrotask(() => setMessagesLoading(false));
     }
-  }, [initialGroupId, conversationId, loadSessionHistory]);
+  }, [initialGroupId, conversationId, loadMessages]);
 
   // Get or create DM conversation
   useEffect(() => {
@@ -247,104 +253,57 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     return () => document.removeEventListener('mousedown', handler);
   }, [showMenu]);
 
-  const handleBack = () => { if (onBack) onBack(); else onClose(); };
-
-  const formatTime = (createdAt: string) => {
-    if (!createdAt) return '';
-    return new Date(createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  };
-
   const timeline = useMemo(
     () => buildChatTimeline(messages, acceptedOpportunities),
     [messages, acceptedOpportunities],
   );
+  const openerHeadline = opener?.headline?.trim() ?? "";
+  const openerBody = opener?.detail?.trim() || openerHeadline;
+  const showOpenerHeadline = Boolean(openerHeadline && openerBody && normText(openerHeadline) !== normText(openerBody));
 
   return (
     <>
-      <ConversationHeader>
-        <div className="flex w-full items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={handleBack} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">&larr;</button>
-          <div className="flex items-center gap-3">
-            <UserAvatar avatar={userAvatar} id={userId} name={userName} size={44} />
-            <div>
-              <h2 className="font-ibm-plex-mono font-bold text-lg text-black flex items-center gap-1.5">
-                <Link to={`/u/${userId}`} className="hover:opacity-80 transition-opacity">{userName}</Link>
-              </h2>
-              {latestVia && (
-                <Link
-                  to={`/i/${latestVia.intentId}`}
-                  title={via.map((entry) => entry.title).join(' · ')}
-                  className="font-ibm-plex-mono text-[11px] text-gray-400 hover:text-gray-700 transition-colors"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  via: {latestVia.title}
-                </Link>
-              )}
-            </div>
+      {!embedded && (
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center" }}>
+          <UserAvatar avatar={userAvatar} id={userId} name={userName} size={34} />
+          <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+            <Link to={`/u/${userId}`} style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600, color: "#000", textDecoration: "none" }}>{userName}</Link>
+            {(conversationSummary?.createdAt || latestVia) && (
+              <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {conversationSummary?.createdAt ? `started ${formatChatDayLabel(conversationSummary.createdAt)}` : ""}
+                {conversationSummary?.createdAt && latestVia ? " · " : ""}
+                {latestVia ? <Link to={`/i/${latestVia.intentId}`} style={{ color: "inherit", textDecoration: "none" }}>{latestVia.title}</Link> : null}
+              </div>
+            )}
           </div>
         </div>
-        <div className="relative" ref={menuRef}>
-          <button onClick={() => setShowMenu(!showMenu)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <MoreHorizontal className="w-5 h-5 text-[#3D3D3D]" />
-          </button>
-          {showMenu && (
-            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[160px] z-20">
-              <button
-                onClick={async () => {
-                  setShowMenu(false);
-                  if (conversationId) await hideConversation(conversationId);
-                  onClose();
-                }}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" /> Delete chat
-              </button>
-            </div>
-          )}
-        </div>
-        </div>
-      </ConversationHeader>
+      )}
 
       {/* Messages */}
-      <div className="px-6 lg:px-8 pb-32 flex-1">
-        <ContentContainer>
-          <div className="space-y-4">
-            {history?.hasPreviousSession && conversationId && (
-              <div className="flex justify-center py-2">
-                <button
-                  type="button"
-                  onClick={() => void loadPreviousSessionMessages(conversationId)}
-                  disabled={history.loadingPrevious}
-                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-ibm-plex-mono text-gray-600 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
-                  aria-label="Load previous messages"
-                >
-                  {history.loadingPrevious ? 'Loading previous messages…' : 'Load Previous Messages'}
-                </button>
+      <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {history?.hasPreviousSession && conversationId && history.loadingPrevious && (
+              <p style={{ textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 11 }}>loading…</p>
+            )}
+            {openerBody && (
+              <div style={{ border: "1px solid var(--ink-4)", background: "#FBFAF7", padding: "12px 14px", display: "grid", gap: 7, marginBottom: 6 }}>
+                {showOpenerHeadline && (
+                  <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13.5, fontWeight: 600, color: "#000", lineHeight: 1.35, letterSpacing: -0.1 }}>{openerHeadline}</span>
+                )}
+                <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{openerBody}</span>
               </div>
             )}
             {messagesLoading ? (
               <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
-            ) : messages.length === 0 && via.length > 0 ? (
+            ) : messages.length === 0 && via.length > 0 && !openerBody ? (
               <div className="text-center py-5 text-[13px] text-gray-400 font-ibm-plex-mono">
                 agents matched you on this signal — say hi.
-              </div>
-            ) : messages.length === 0 && !contextLoading && acceptedOpportunities.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
-                <p className="text-sm">Start a conversation with {userName}</p>
               </div>
             ) : null}
 
             {messages.length === 0 && acceptedOpportunitiesLoading && <OpportunityDividerSkeleton />}
 
             {!acceptedOpportunitiesLoading && timeline.map((item, index) => {
-                const prev = timeline[index - 1];
-                const showTimestamp =
-                  item.type === 'message' &&
-                  (index === 0 ||
-                    (prev && prev.type === 'message' &&
-                      new Date(item.at).getTime() - new Date(prev.at).getTime() > 300_000));
-
                 if (item.type === 'opportunity') {
                   return (
                     <OpportunityDivider
@@ -357,81 +316,64 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
 
                 const message = item.message;
                 const previousMessage = [...timeline.slice(0, index)].reverse().find((candidate) => candidate.type === 'message')?.message;
-                const startsSession = previousMessage !== undefined && previousMessage.sessionId !== message.sessionId;
                 const isOwn = message.senderId === user?.id;
                 const textPart = (message.parts as { text?: string }[] | undefined)?.find((p) => p.text)?.text;
                 const content = textPart ?? '';
                 if (!content.trim()) return null;
+                const day = message.createdAt ? formatChatDayLabel(message.createdAt) : "";
+                const prevDay = previousMessage?.createdAt ? formatChatDayLabel(previousMessage.createdAt) : "";
+                const clock = message.createdAt ? formatChatClock(message.createdAt) : "";
 
                 return (
                   <div key={message.id}>
-                    {startsSession && (
-                      <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
-                        <span className="h-px flex-1 bg-gray-200" />
-                        <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">Earlier conversation</span>
-                        <span className="h-px flex-1 bg-gray-200" />
+                    {day && day !== prevDay && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: index === 0 ? "0 0 2px" : "6px 0 2px" }}>
+                        <span style={{ flex: 1, height: 1, background: "var(--ink-4)" }} />
+                        <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)", letterSpacing: 0.3 }}>{day}</span>
+                        <span style={{ flex: 1, height: 1, background: "var(--ink-4)" }} />
                       </div>
                     )}
-                    {showTimestamp && message.createdAt && (
-                      <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">
-                        {`${formatChatDayLabel(message.createdAt)}, ${formatTime(message.createdAt)}`}
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 6, justifyContent: isOwn ? "flex-end" : "flex-start" }}>
+                      {isOwn && clock && <time style={{ fontFamily: "var(--mac-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: 0.2, whiteSpace: "nowrap" }}>{clock}</time>}
+                      <div className="wb-chat" style={{
+                        maxWidth: "82%",
+                        border: "1px solid #000",
+                        background: isOwn ? "#000" : "#fff",
+                        color: isOwn ? "#fff" : "#000",
+                        padding: "8px 11px",
+                        fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4,
+                        boxShadow: isOwn ? "none" : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)",
+                      }}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
                       </div>
-                    )}
-                    <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
-                      {!isOwn && (
-                        <Link to={`/u/${userId}`} className="flex-shrink-0">
-                          <UserAvatar avatar={userAvatar} id={userId} name={userName} size={32} />
-                        </Link>
-                      )}
-                      <div className={cn('max-w-[70%] rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
-                        <article className={cn('text-sm', isOwn && 'text-white')}>
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-                        </article>
-                      </div>
-                      {isOwn && (
-                        <Link to={`/u/${user?.id}`} className="flex-shrink-0">
-                          <UserAvatar avatar={user?.avatar} id={user?.id} name={user?.name} size={32} />
-                        </Link>
-                      )}
+                      {!isOwn && clock && <time style={{ fontFamily: "var(--mac-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: 0.2, whiteSpace: "nowrap" }}>{clock}</time>}
                     </div>
                   </div>
                 );
             })}
             <div ref={messagesEndRef} />
           </div>
-        </ContentContainer>
       </div>
 
-      {/* Input */}
-      <div className="sticky bottom-0 z-20">
-        <div className="px-6 lg:px-8">
-          <ContentContainer>
-            <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
-              <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex items-end gap-3 bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3">
-                <textarea
-                  ref={inputRef}
-                  rows={1}
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  onKeyDown={handleKeyPress}
-                  placeholder={`Type a message to ${userName}...`}
-                  disabled={sending}
-                  autoFocus
-                  className="flex-1 bg-transparent border-none outline-none text-gray-900 placeholder-gray-500 resize-none overflow-hidden leading-6 py-0.5 max-h-40"
-                />
-                <button
-                  type="submit"
-                  disabled={!messageText.trim() || sending}
-                  className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white flex items-center justify-center hover:bg-[#0a2d4a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </button>
-              </form>
-            </div>
-            <div className="bg-white py-2"></div>
-          </ContentContainer>
-        </div>
-      </div>
+      <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} style={{ borderTop: "1px solid #000", background: "#fff", padding: "7px 12px 8px", display: "flex", gap: 10, alignItems: "flex-end" }}>
+        <textarea
+          ref={inputRef}
+          rows={1}
+          value={messageText}
+          onChange={(e) => setMessageText(e.target.value)}
+          onKeyDown={handleKeyPress}
+          placeholder={embedded ? `message ${userName}…` : "write a message…"}
+          disabled={sending}
+          autoFocus
+          style={{ flex: 1, minWidth: 0, border: "none", outline: "none", resize: "none", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, background: "transparent", padding: "4px 0" }}
+        />
+        <button type="submit" disabled={!messageText.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", padding: 0, cursor: messageText.trim() ? "pointer" : "default", color: messageText.trim() ? "#111" : "#b9b3a4" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+            <line x1="12" y1="20" x2="12" y2="5" />
+            <polyline points="5,12 12,5 19,12" />
+          </svg>
+        </button>
+      </form>
     </>
   );
 }

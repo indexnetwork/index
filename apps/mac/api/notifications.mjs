@@ -69,16 +69,19 @@ export function isOwnMessage(event, currentUserId) {
 
 /**
  * Gate an event on the user's notification preferences (settings pane).
- * `alignment` gates opportunity.*, `messages` gates conversation messages.
+ * `opportunity` gates opportunity.new, `accepted` gates opportunity.status,
+ * `messages` gates conversation messages.
  * Absent prefs (or unknown types) fail open.
  * @param {Object} event
- * @param {{ alignment?: boolean, messages?: boolean } | null} prefs
+ * @param {{ opportunity?: boolean, accepted?: boolean, messages?: boolean } | null} prefs
  * @returns {boolean}
  */
 export function notificationEventAllowed(event, prefs) {
   if (!event || typeof event.type !== 'string') return false;
   if (!prefs || typeof prefs !== 'object') return true;
-  if (event.type.indexOf('opportunity.') === 0) return prefs.alignment !== false;
+  if (event.type === 'opportunity.new') return prefs.opportunity !== false;
+  if (event.type === 'opportunity.status') return prefs.accepted !== false;
+  if (event.type.indexOf('opportunity.') === 0) return prefs.opportunity !== false;
   if (event.type === 'message' || event.type.indexOf('message.') === 0) {
     return prefs.messages !== false;
   }

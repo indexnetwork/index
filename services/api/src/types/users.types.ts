@@ -8,7 +8,11 @@ export interface UserSocial {
 }
 
 export interface NotificationPreferences {
-  connectionUpdates: boolean;
+  opportunity?: boolean;
+  accepted?: boolean;
+  messages?: boolean;
+  /** Absent means the morning wake is on. */
+  morningBrief?: boolean;
 }
 
 export interface OnboardingState {

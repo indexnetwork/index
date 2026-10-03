@@ -48,6 +48,8 @@
   and it retries a failed wake up to three times.
 
 ### Changed
+- The negotiator name uses Public Sans, the same face as the rest of the plugin.
+- The desktop sidebar unread count sits in parentheses: `Discover (3)`.
 - The plugin no longer registers an Index gateway platform. The gateway
   process watches the selected negotiator and records sessions in the
   Negotiations project. Pause, or choosing another negotiator, still stops it.
@@ -339,6 +341,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Hermes plugin install scan: reword docs and env-file paths so community
   install no longer trips a HIGH finding.
+- Install scan no longer treats the bundled fonts as exfiltration, the loading
+  loops as oversized files, or the runtime typecheck paths as traversal. The
+  negotiator still starts through a subprocess, which the scan reports at
+  medium and does not block.
 - Browser login redeem no longer 404s when `INDEX_API_URL` still includes a
   trailing `/api` (the pre-0.36 form). The origin is normalized before
   `/api` is appended, matching the transport used after sign-in.

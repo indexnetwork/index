@@ -2,14 +2,17 @@ import { createAuthClient } from "better-auth/react";
 import { magicLinkClient, jwtClient, deviceAuthorizationClient } from "better-auth/client/plugins";
 import { apiKeyClient } from "@better-auth/api-key/client";
 
-// In production, VITE_PROTOCOL_URL points to the protocol service; in dev, Vite proxies /api
+import { protocolOrigin } from "./protocol-origin";
+
+// In production this is the protocol service. In dev it stays empty so Vite proxies /api,
+// unless settings has pointed the app at another origin.
 export const authClient = createAuthClient({
-  baseURL: import.meta.env.VITE_PROTOCOL_URL || '',
+  baseURL: protocolOrigin(),
   basePath: "/api/auth",
   plugins: [magicLinkClient(), jwtClient(), apiKeyClient(), deviceAuthorizationClient()],
 });
 
-const authBaseURL = `${import.meta.env.VITE_PROTOCOL_URL || ''}/api/auth`;
+const authBaseURL = `${protocolOrigin()}/api/auth`;
 
 export async function getMcpConsentDetails(code: string): Promise<{ clientName: string; redirectURI: string }> {
   const url = `${authBaseURL}/mcp/consent-details?${new URLSearchParams({ consent_code: code })}`;

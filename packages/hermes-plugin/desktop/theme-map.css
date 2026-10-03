@@ -53,8 +53,15 @@
 }
 
 /* Browser sign-in gate fills the desktop page; button matches Getting started. */
+.index-network-desktop-page:has(.index-dashboard__login) {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.index-network-desktop-page:has(.index-dashboard__login) .index-dashboard,
 .index-network-desktop-page .index-dashboard__login {
-  min-height: calc(100% - 1rem);
+  flex: 1;
+  min-height: 0;
 }
 
 .index-network-desktop-page .index-dashboard__login-btn.idx-btn {

@@ -256,9 +256,13 @@ def _onboarding_gate(me: dict[str, Any] | None = None) -> dict[str, Any]:
 
 def _notification_preferences(value: Any) -> dict[str, bool]:
     prefs = value if isinstance(value, dict) else {}
+    def on(key: str) -> bool:
+        return prefs.get(key) is not False
     return {
-        "connectionUpdates": bool(prefs.get("connectionUpdates", True)),
-        "weeklyNewsletter": bool(prefs.get("weeklyNewsletter", True)),
+        "opportunity": on("opportunity"),
+        "accepted": on("accepted"),
+        "messages": on("messages"),
+        "morningBrief": on("morningBrief"),
     }
 
 
@@ -350,8 +354,10 @@ def _sanitize_profile_update(body: Any) -> tuple[dict[str, Any] | None, str | No
         if not isinstance(prefs, dict):
             return None, "notificationPreferences must be an object."
         update["notificationPreferences"] = {
-            "connectionUpdates": bool(prefs.get("connectionUpdates")),
-            "weeklyNewsletter": bool(prefs.get("weeklyNewsletter")),
+            "opportunity": prefs.get("opportunity") is not False,
+            "accepted": prefs.get("accepted") is not False,
+            "messages": prefs.get("messages") is not False,
+            "morningBrief": prefs.get("morningBrief") is not False,
         }
     return update, None
 
@@ -943,10 +949,18 @@ _ENVIRONMENTS = {
 }
 
 
+def _index_env(name: str) -> str:
+    """One Index env value from this process or the Hermes env file."""
+    module = sys.modules.get(f"{_runtime_package()}.env_transport")
+    if module is None:
+        return os.environ.get(name, "").strip()
+    return module._stored_env(name)
+
+
 def _environment_name() -> str:
     """Which of main, dev, or local the process is pointed at."""
     blob = " ".join(
-        os.environ.get(name, "").strip().lower()
+        _index_env(name).lower()
         for name in ("INDEX_API_URL", "INDEX_APP_BASE_URL")
     )
     if any(host in blob for host in ("localhost", "127.0.0.1", "::1")):
@@ -1066,9 +1080,9 @@ def _login_app_base_url() -> str:
     Without this pairing a dev-configured plugin would mint a prod key that then
     401s against the dev API.
     """
-    if os.environ.get("INDEX_APP_BASE_URL", "").strip():
+    if _index_env("INDEX_APP_BASE_URL"):
         return tools._app_base_url()
-    api_url = os.environ.get("INDEX_API_URL", "").strip()
+    api_url = _index_env("INDEX_API_URL")
     if not api_url:
         return tools.INDEX_APP_BASE_URL
     try:

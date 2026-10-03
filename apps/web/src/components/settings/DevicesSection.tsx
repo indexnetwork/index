@@ -1,11 +1,27 @@
-import { useCallback, useEffect, useState } from "react";
-import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { Loader2, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
-import { Button } from "@/components/ui/button";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { authClient } from "@/lib/auth-client";
 import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
+
+const th: CSSProperties = {
+  textAlign: "left", padding: "6px 10px", borderBottom: "1px solid #000",
+  fontFamily: "var(--mac-mono)", fontSize: 9, fontWeight: 700,
+  textTransform: "uppercase", letterSpacing: 0.5, color: "var(--ink-2)",
+};
+const td: CSSProperties = {
+  padding: "7px 10px", borderBottom: "1px solid rgba(0,0,0,0.12)",
+  fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", whiteSpace: "nowrap",
+};
+const note: CSSProperties = {
+  margin: "0 0 10px", maxWidth: 520,
+  fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)",
+};
+const heading: CSSProperties = {
+  margin: 0, fontFamily: "var(--mac-mono)", fontSize: 10, fontWeight: 700,
+  textTransform: "uppercase", letterSpacing: 0.6, color: "var(--ink-2)",
+};
 
 interface DeviceSession {
   id: string;
@@ -15,26 +31,39 @@ interface DeviceSession {
   expiresAt: string;
 }
 
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+function accessDay(value: string | null): string {
+  if (!value) return "never";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "never"
+    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-/**
- * Name a session from its user agent. The device grant records whatever the
- * client sent, so this reads the few clients we ship and otherwise falls back
- * to the raw value rather than inventing a label.
- */
 function describeDevice(userAgent: string | null): string {
-  if (!userAgent) return "Unknown device";
-  if (isMacUserAgent(userAgent)) return "Index for Mac";
-  if (userAgent.startsWith("index-cli")) return "Index CLI";
-  if (isHermesUserAgent(userAgent)) return "Hermes agent";
-  if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return "Web browser";
-  return userAgent.slice(0, 48);
+  if (!userAgent) return "unknown device";
+  if (isMacUserAgent(userAgent)) return "index for mac";
+  if (userAgent.startsWith("index-cli")) return "index cli";
+  if (isHermesUserAgent(userAgent)) return "hermes agent";
+  if (/Chrome|Safari|Firefox|Edg/.test(userAgent)) return "web browser";
+  return userAgent.slice(0, 32);
+}
+
+function RevokeButton({ onConfirm, busy }: { onConfirm: () => void; busy: boolean }) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => { if (armed) { onConfirm(); setArmed(false); } else setArmed(true); }}
+      onBlur={() => setArmed(false)}
+      disabled={busy}
+      style={{
+        fontFamily: "var(--mac-mono)", fontSize: 11, padding: "3px 10px",
+        border: "1px solid #000", background: armed ? "var(--ink-warn)" : "#fff",
+        color: armed ? "#fff" : "var(--ink-warn)",
+        boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: busy ? "default" : "pointer",
+      }}
+    >{armed ? "sure?" : "revoke"}</button>
+  );
 }
 
 /**
@@ -42,25 +71,36 @@ function describeDevice(userAgent: string | null): string {
  * signed in through the device grant. Revoking one signs that device out.
  */
 export default function DevicesSection() {
-  const { success, error } = useNotifications();
+  const { signOut } = useAuthContext();
+  const { error } = useNotifications();
 
-  const [sessions, setSessions] = useState<DeviceSession[]>([]);
+  const [sessions, setSessions] = useState<DeviceSession[] | null>(null);
   const [currentToken, setCurrentToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [revokeTarget, setRevokeTarget] = useState<DeviceSession | null>(null);
-  const [revoking, setRevoking] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const fetchDevices = useCallback(async () => {
     const [listed, current] = await Promise.all([
       authClient.listSessions(),
       authClient.getSession(),
     ]);
-    if (listed.error) throw new Error(listed.error.message ?? "Could not load devices");
+    if (listed.error) throw new Error(listed.error.message ?? "could not load");
     return {
       sessions: (listed.data ?? []) as unknown as DeviceSession[],
       currentToken: current.data?.session.token ?? null,
     };
   }, []);
+
+  const reload = useCallback(async () => {
+    try {
+      const result = await fetchDevices();
+      setSessions(result.sessions);
+      setCurrentToken(result.currentToken);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "could not load");
+    }
+  }, [fetchDevices]);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,141 +111,74 @@ export default function DevicesSection() {
         setCurrentToken(result.currentToken);
       })
       .catch((err) => {
-        if (!cancelled) error("Failed to load devices", err instanceof Error ? err.message : undefined);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : "could not load");
       });
     return () => {
       cancelled = true;
     };
-  }, [fetchDevices, error]);
+  }, [fetchDevices]);
 
-  async function performRevoke() {
-    if (!revokeTarget) return;
-    setRevoking(true);
+  async function revoke(session: DeviceSession) {
+    if (session.token === currentToken) {
+      await signOut();
+      return;
+    }
+    setBusy(true);
     try {
-      const result = await authClient.revokeSession({ token: revokeTarget.token });
-      if (result.error) throw new Error(result.error.message ?? "Could not revoke device");
-      const refreshed = await fetchDevices();
-      setSessions(refreshed.sessions);
-      setCurrentToken(refreshed.currentToken);
-      success("Device signed out");
-      setRevokeTarget(null);
+      const result = await authClient.revokeSession({ token: session.token });
+      if (result.error) throw new Error(result.error.message ?? "request failed");
+      await reload();
     } catch (err) {
       error("Failed to sign out device", err instanceof Error ? err.message : undefined);
     } finally {
-      setRevoking(false);
+      setBusy(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
   return (
-    <>
-      <div className="max-w-3xl space-y-3">
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-            Devices
-          </p>
+    <div>
+      <p style={{ ...heading, marginBottom: 8 }}>devices</p>
+      <p style={note}>
+        where you are signed in. the mac app, cli and personal agents each hold their own session, so signing one out here leaves the others alone.
+      </p>
 
-          <p className="text-xs text-gray-400 font-ibm-plex-mono">
-            Where you are signed in. The Mac app, CLI and personal agents each hold their own
-            session, so signing one out here leaves the others alone.
-          </p>
-
-          {sessions.length === 0 ? (
-            <p className="text-xs text-gray-400 font-ibm-plex-mono">No active devices.</p>
-          ) : (
-            <div className="border border-gray-200 rounded-sm overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                      Device
-                    </th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                      Signed in
-                    </th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                      Expires
-                    </th>
-                    <th className="text-right px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessions.map((session) => (
-                    <tr key={session.id} className="border-b border-gray-100 last:border-b-0">
-                      <td className="px-4 py-2 text-sm text-gray-700">
-                        {describeDevice(session.userAgent)}
-                        {session.token === currentToken ? (
-                          <span className="ml-2 text-xs text-gray-400 font-ibm-plex-mono">this browser</span>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-500">{formatDate(session.createdAt)}</td>
-                      <td className="px-4 py-2 text-sm text-gray-500">{formatDate(session.expiresAt)}</td>
-                      <td className="px-4 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setRevokeTarget(session)}
-                          className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                          title="Sign out device"
-                          aria-label="Sign out device"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      {loadError ? (
+        <p style={note}>{loadError} · <button type="button" onClick={() => void reload()} style={{ fontFamily: "var(--mac-sans)", fontSize: 12, border: "none", background: "none", color: "var(--ink-2)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>retry</button></p>
+      ) : sessions === null ? (
+        <p style={note}>loading…</p>
+      ) : sessions.length === 0 ? (
+        <p style={note}>no active devices.</p>
+      ) : (
+        <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>device</th>
+                <th style={th}>signed in</th>
+                <th style={th}>expires</th>
+                <th style={{ ...th, textAlign: "right" }}>actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((session) => (
+                <tr key={session.id}>
+                  <td style={td}>
+                    {describeDevice(session.userAgent)}
+                    {session.token === currentToken && (
+                      <span style={{ marginLeft: 6, fontSize: 10, color: "var(--ink-2)" }}>this browser</span>
+                    )}
+                  </td>
+                  <td style={td}>{accessDay(session.createdAt)}</td>
+                  <td style={td}>{accessDay(session.expiresAt)}</td>
+                  <td style={{ ...td, textAlign: "right" }}>
+                    <RevokeButton busy={busy} onConfirm={() => void revoke(session)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
-
-      <AlertDialog.Root
-        open={revokeTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !revoking) setRevokeTarget(null);
-        }}
-      >
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Sign out device</AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              {revokeTarget
-                ? revokeTarget.token === currentToken
-                  ? "This is the browser you are using. Signing it out will end this session immediately."
-                  : `Sign out "${describeDevice(revokeTarget.userAgent)}"? It will have to sign in again.`
-                : ""}
-            </AlertDialog.Description>
-            <div className="flex justify-end gap-3">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline" disabled={revoking}>
-                  Cancel
-                </Button>
-              </AlertDialog.Cancel>
-              <Button
-                onClick={performRevoke}
-                disabled={revoking}
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                {revoking ? "Signing out..." : "Sign out"}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
-    </>
+      )}
+    </div>
   );
 }

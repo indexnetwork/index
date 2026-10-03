@@ -8,6 +8,8 @@ const MUTE = "#5E6F7C";
 const BG = "#FCFEFB";
 /** Milliseconds per animation time unit; higher is slower. */
 const TIME_SCALE_MS = 700;
+/** Blank space left of the leftmost element in the drawing's own coordinates. */
+const LEFT_INSET = 40;
 const NAMES = ["Mira", "Theo", "Zoe", "Omar", "Nina", "Sam"];
 /** Which counterparty matches in each 9s cycle. */
 const HITS = [2, 0, 4, 1, 5, 3];
@@ -52,6 +54,8 @@ function drawFan(c: CanvasRenderingContext2D, t: number, dpr: number, imgs: Imag
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.fillStyle = BG;
   c.fillRect(0, 0, W, H);
+  // shift the drawing so its left edge (the "your agent" label) sits on the text column
+  c.translate(-LEFT_INSET, 0);
 
   const you = { x: 90, y: 64 };
   const me = { x: 90, y: 320 };

@@ -8,15 +8,13 @@ interface NetworkAvatarProps {
   imageUrl?: string | null;
   size: number;
   className?: string;
-  rounded?: 'full' | 'sm';
 }
 
-function BoringFallback({ id, title, size, rounded, className }: { id?: string; title?: string; size: number; rounded: 'full' | 'sm'; className?: string }) {
+function BoringFallback({ id, title, size, className }: { id?: string; title?: string; size: number; className?: string }) {
   const seed = id || title || 'default';
-  const roundedClass = rounded === 'full' ? 'rounded-full' : 'rounded-sm';
   return (
     <div
-      className={`overflow-hidden shrink-0 ${roundedClass} ${className || ''}`}
+      className={`overflow-hidden shrink-0 ${className || ''}`}
       style={{ width: size, height: size }}
     >
       <Avatar size={size} name={seed} variant="bauhaus" />
@@ -29,17 +27,16 @@ function BoringFallback({ id, title, size, rounded, className }: { id?: string; 
  * fails to load. Mounted with `key={imageUrl}` so a new image clears the
  * previous failure instead of needing an effect to reset it.
  */
-function NetworkImage({ id, title, imageUrl, size, className, rounded }: NetworkAvatarProps & { imageUrl: string; className: string; rounded: 'full' | 'sm' }) {
+function NetworkImage({ id, title, imageUrl, size, className }: NetworkAvatarProps & { imageUrl: string; className: string }) {
   const [imgError, setImgError] = useState(false);
 
   if (imgError) {
-    return <BoringFallback id={id} title={title} size={size} rounded={rounded} className={className} />;
+    return <BoringFallback id={id} title={title} size={size} className={className} />;
   }
 
-  const roundedClass = rounded === 'full' ? 'rounded-full' : 'rounded-sm';
   return (
     <div
-      className={`overflow-hidden shrink-0 ${roundedClass} ${className}`}
+      className={`overflow-hidden shrink-0 ${className}`}
       style={{ width: size, height: size }}
     >
       <img
@@ -55,9 +52,9 @@ function NetworkImage({ id, title, imageUrl, size, className, rounded }: Network
   );
 }
 
-export default function NetworkAvatar({ id, title, imageUrl, size, className = '', rounded = 'full' }: NetworkAvatarProps) {
+export default function NetworkAvatar({ id, title, imageUrl, size, className = '' }: NetworkAvatarProps) {
   if (!imageUrl) {
-    return <BoringFallback id={id} title={title} size={size} rounded={rounded} className={className} />;
+    return <BoringFallback id={id} title={title} size={size} className={className} />;
   }
 
   return (
@@ -68,7 +65,6 @@ export default function NetworkAvatar({ id, title, imageUrl, size, className = '
       imageUrl={imageUrl}
       size={size}
       className={className}
-      rounded={rounded}
     />
   );
 }

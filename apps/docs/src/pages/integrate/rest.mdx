@@ -68,7 +68,7 @@ Your account is who you are on Index. These routes read and update your profile 
 | `POST` | `/api/auth/devices/revoke` | `{ "sessionId" }`, session only |
 | `GET` | `/api/auth/providers` | no credential |
 
-`PATCH /api/auth/profile/update` changes only the fields you send: `name`, `intro`, `location`, `timezone`, `avatar`, `socials`, and `notificationPreferences` (`{ "connectionUpdates": true }`). The response is `{ "user" }`.
+`PATCH /api/auth/profile/update` changes only the fields you send: `name`, `intro`, `location`, `timezone`, `avatar`, `socials`, and `notificationPreferences` (`{ "opportunity": true, "morningBrief": true }`). The response is `{ "user" }`.
 
 `socials` is `[{ "label", "value" }]`. Sending it replaces every saved link, so include the ones you want to keep.
 

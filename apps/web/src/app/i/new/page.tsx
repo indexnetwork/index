@@ -1,70 +1,70 @@
 import { useState } from "react";
-import { ChevronLeft, Loader2, Send } from "lucide-react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import { RecoveryForm } from "@/app/i/new/RecoveryForm";
+import { AgentPortrait, CALIBRATING_LINES, OptionChip } from "@/components/workbench/mac-blocks";
+import { Btn, Window } from "@/components/workbench/Workbench";
 import { signalService, type PrepareAnswer, type RecoveryField } from "@/services/signals";
 
-/** The opening question: whatever is answered here becomes the signal. */
-const OPENING_PROMPT = "Who are you trying to reach, and why?";
-
-/** Whole signals rather than categories — same material typing would provide. */
+const OPENING_PROMPT = "what are you looking for right now?";
+const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
 const OPENING_OPTIONS = [
-  { label: "want to meet cool ai people in nyc", description: "" },
-  { label: "have a new business idea, want honest feedback from others", description: "" },
-  { label: "looking for a cool open-source project to contribute to", description: "" },
-  { label: "want to find a co-founder who's actually shipped something", description: "" },
+  "traveling soon, want to meet cool people in ai",
+  "building something, want honest feedback on it",
+  "just launched, want cool people to try it",
+  "new in town, want to find my people",
+  "raising soon, want to meet investors who get it",
+  "hiring soon, want to meet great people early",
+  "have an idea, want someone to build it with",
 ];
 
 type Stage = "opening" | "recovery" | "summary" | "retry";
+type Turn = { id: string; prompt: string; answer: string };
 
 /** Prepare the draft, asking follow-ups until it's ready, then create it. */
 export default function NewSignalPage() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuthContext();
+  const { user, isAuthenticated } = useAuthContext();
+  const [turns, setTurns] = useState<Turn[]>([]);
   const [stage, setStage] = useState<Stage>("opening");
   const [payload, setPayload] = useState("");
   const [recoveryFields, setRecoveryFields] = useState<RecoveryField[]>([]);
   const [preparationReceipt, setPreparationReceipt] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [recoveryUsed, setRecoveryUsed] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const runPrepare = async (text: string, answers: PrepareAnswer[] = []) => {
-    setBusy(true);
+    setThinking(true);
     try {
       const result = await signalService.prepare(text, answers);
       setPayload(result.payload);
-      // No approval step: a ready draft is created as it stands. Anything else
-      // goes back to the questions, since create needs the ready receipt.
       if (result.status === "ready") {
         setPreparationReceipt(result.preparationReceipt);
+        setThinking(false);
         void create(result.payload, result.preparationReceipt);
         return;
       }
       setPreparationReceipt("");
       setFeedback(result.feedback);
       setRecoveryFields(result.recovery);
+      setRecoveryUsed(true);
       setStage(result.recovery.length ? "recovery" : "summary");
+      setThinking(false);
     } catch {
       setStage("retry");
-    } finally {
-      setBusy(false);
+      setThinking(false);
     }
   };
 
-  const submitOpening = async (text: string) => {
-    setPayload(text);
-    await runPrepare(text);
-  };
-
-  const submitRecovery = async (answers: PrepareAnswer[]) => {
-    await runPrepare(payload, answers);
-  };
-
-  const recheck = async () => {
-    await runPrepare(payload);
+  const submitOpening = (text: string) => {
+    const answer = text.trim();
+    if (!answer) return;
+    setTurns([{ id: "intent", prompt: OPENING_PROMPT, answer }]);
+    setPayload(answer);
+    void runPrepare(answer);
   };
 
   const create = async (description = payload, receipt = preparationReceipt) => {
@@ -75,7 +75,7 @@ export default function NewSignalPage() {
       navigate(`/i/${created.intentId}`);
     } catch (error) {
       setPreparationReceipt("");
-      setFeedback(`That didn't go through — ${error instanceof Error ? error.message : "try again."}`);
+      setFeedback(`that didn't go through — ${error instanceof Error ? error.message : "try again."}`);
       setStage("summary");
       setCreating(false);
     }
@@ -83,185 +83,251 @@ export default function NewSignalPage() {
 
   if (!isAuthenticated) return <Navigate to="/" replace />;
 
-  const progressStep = stage === "summary" ? 2 : 1;
+  const stepIdx = stage === "opening" ? 1 : 2;
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] px-5 py-6 sm:px-8 sm:py-10">
-      <main className="mx-auto w-full max-w-2xl">
-        <button
-          type="button"
-          onClick={() => navigate("/")}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 transition hover:text-[#041729]"
-        >
-          <ChevronLeft className="h-4 w-4" /> Back
-        </button>
-        <p className="mt-10 text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Start a new signal</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#041729] sm:text-4xl">Make what you’re looking for legible.</h1>
-
-        <div className="mt-8 flex gap-1.5" aria-label="Signal progress">
-          {Array.from({ length: 2 }).map((_, index) => (
-            <span
-              key={index}
-              className={`h-1.5 flex-1 rounded-full ${
-                index < progressStep ? "bg-[#041729]" : index === progressStep - 1 ? "bg-[#8BA8B8]" : "bg-gray-200"
-              }`}
-            />
-          ))}
-        </div>
-
-        {busy || creating ? (
-          <div role="status" className="mt-14 flex items-center gap-3 text-sm text-gray-500">
-            <Loader2 className="h-4 w-4 animate-spin" /> Taking that in…
+    <div className="workbench mac-desktop" style={{ position: "relative", height: "100vh" }}>
+      {creating || (thinking && recoveryUsed) ? (
+        <Calibrating />
+      ) : (
+        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: "56px 40px", overflow: "auto" }}>
+          <div style={{
+            width: 980, maxWidth: "100%",
+            display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 18,
+            height: "min(720px, calc(100vh - 128px))",
+          }}>
+            <Window title="calibrating" onClose={() => navigate("/")}>
+              <div style={{ padding: "18px 28px 12px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                  <button type="button" onClick={() => navigate("/")} style={{ fontFamily: "var(--mac-mono)", fontSize: 13, color: "#000", background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>← back</button>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 24 }}>
+                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", letterSpacing: "0.05em", flex: "0 0 auto" }}>step {stepIdx} of 2</span>
+                  <div style={{ flex: 1, display: "flex", gap: 3 }}>
+                    {[0, 1].map((i) => (
+                      <div key={i} style={{
+                        flex: 1, height: 8, border: "1px solid #000",
+                        background: i < stepIdx - 1 ? "#000" : i === stepIdx - 1 ? "repeating-linear-gradient(45deg, #000 0, #000 2px, #fff 2px, #fff 4px)" : "#fff",
+                      }} />
+                    ))}
+                  </div>
+                </div>
+                <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20, marginRight: -28, paddingRight: 28, paddingBottom: 18 }}>
+                  {turns.map((turn) => (
+                    <PastTurn key={turn.id} user={user} prompt={turn.prompt} answer={turn.answer} />
+                  ))}
+                  {thinking ? (
+                    <div className="fade-up"><AgentLine user={user}><WorkingDots /></AgentLine></div>
+                  ) : stage === "retry" ? (
+                    <div className="fade-up" style={{ display: "grid", gap: 12 }}>
+                      <AgentLine user={user}>couldn&apos;t reach your agent.</AgentLine>
+                      <div style={{ marginLeft: 36 }}><Btn primary onClick={() => void runPrepare(payload)}>try again</Btn></div>
+                    </div>
+                  ) : stage === "summary" ? (
+                    <div className="fade-up" style={{ display: "grid", gap: 12 }}>
+                      <AgentLine user={user}>Here&apos;s your signal.</AgentLine>
+                      <SignalSummary
+                        description={payload}
+                        note={preparationReceipt ? "" : feedback}
+                        canCreate={Boolean(preparationReceipt)}
+                        onChange={setPayload}
+                        onCreate={() => void create()}
+                        onRecheck={() => void runPrepare(payload)}
+                      />
+                    </div>
+                  ) : stage === "recovery" ? (
+                    <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers)} />
+                  ) : (
+                    <Opening user={user} onSubmit={submitOpening} />
+                  )}
+                </div>
+              </div>
+            </Window>
+            <Window title="warming up">
+              <FieldPreview turns={turns} stepIdx={stepIdx} />
+            </Window>
           </div>
-        ) : stage === "summary" ? (
-          <SignalSummary
-            description={payload}
-            feedback={preparationReceipt ? "" : feedback}
-            canCreate={Boolean(preparationReceipt)}
-            busy={creating}
-            onChange={setPayload}
-            onCreate={() => void create()}
-            onRecheck={() => void recheck()}
-          />
-        ) : stage === "retry" ? (
-          <section aria-label="Preparation failed" className="mt-8">
-            <h2 className="text-2xl font-semibold leading-tight text-[#041729] sm:text-3xl">
-              Couldn’t reach your agent.
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">Your answers are kept.</p>
-            <button
-              type="button"
-              onClick={() => void runPrepare(payload)}
-              className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a]"
-            >
-              Try again
-            </button>
-          </section>
-        ) : stage === "recovery" ? (
-          <RecoveryForm
-            fields={recoveryFields}
-            feedback={feedback}
-            busy={busy}
-            onSubmit={submitRecovery}
-          />
-        ) : (
-          <OpeningQuestion onSubmit={submitOpening} />
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 }
 
-/** Opening turn before the first prepare call. */
-function OpeningQuestion({ onSubmit }: { onSubmit: (text: string) => Promise<void> }) {
-  const [selected, setSelected] = useState<string[]>([]);
-  const [freeText, setFreeText] = useState("");
-  const text = [...selected, freeText.trim()].filter(Boolean).join(" — ");
-
-  const toggleOption = (label: string) => {
-    setSelected((current) => (current.includes(label) ? [] : [label]));
-  };
-
+function Opening({ user, onSubmit }: {
+  user: { id?: string; name?: string; avatar?: string | null } | null;
+  onSubmit: (text: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
   return (
-    <section aria-label="Opening question" className="mt-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">First</p>
-      <h2 className="mt-3 text-2xl font-semibold leading-tight text-[#041729] sm:text-3xl">{OPENING_PROMPT}</h2>
-      <textarea
-        value={freeText}
-        onChange={(event) => setFreeText(event.target.value)}
-        rows={4}
-        maxLength={65_536}
-        placeholder="Type what you’re looking for…"
-        className="mt-6 w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10"
-      />
-      <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Or pick one</p>
-      <div className="mt-3 grid gap-3">
-        {OPENING_OPTIONS.map((option) => {
-          const checked = selected.includes(option.label);
-          return (
-            <button
-              key={option.label}
-              type="button"
-              aria-pressed={checked}
-              onClick={() => toggleOption(option.label)}
-              className={`rounded-2xl border px-4 py-3 text-left transition ${
-                checked
-                  ? "border-[#041729] bg-[#041729] text-white"
-                  : "border-gray-200 bg-white text-gray-800 hover:border-gray-400"
-              }`}
-            >
-              <span className="block text-sm font-medium">{option.label}</span>
-            </button>
-          );
-        })}
+    <div className="fade-up" style={{ display: "grid", gap: 10 }}>
+      <AgentLine user={user}>{OPENING_PROMPT}</AgentLine>
+      <div style={{ marginLeft: 42, display: "grid", gap: 10 }}>
+        <form onSubmit={(e) => { e.preventDefault(); onSubmit(draft); }} style={{ maxWidth: 620, border: "1px solid #000", background: "#fff", display: "flex", flexDirection: "column" }}>
+          <textarea
+            autoFocus
+            value={draft}
+            maxLength={65_536}
+            rows={3}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={OPENING_PLACEHOLDER}
+            style={{ background: "transparent", border: "none", outline: "none", color: "#111", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.45, resize: "vertical", padding: "11px 14px 4px" }}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 8px 8px" }}>
+            <Btn primary small type="submit" disabled={!draft.trim()}>send →</Btn>
+          </div>
+        </form>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {OPENING_OPTIONS.map((option) => (
+            <OptionChip key={option} label={option} onClick={() => onSubmit(option)} />
+          ))}
+        </div>
       </div>
-      <button
-        type="button"
-        disabled={text.length === 0}
-        onClick={() => void onSubmit(text)}
-        className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        <Send className="h-4 w-4" /> Continue
-      </button>
-    </section>
+    </div>
   );
 }
 
-/** Final description editor; preparation remains valid throughout revisions. */
-function SignalSummary({
-  description,
-  feedback,
-  canCreate,
-  busy,
-  onChange,
-  onCreate,
-  onRecheck,
-}: {
+function AgentLine({ user, children, muted = false }: {
+  user: { id?: string; name?: string; avatar?: string | null } | null;
+  children: React.ReactNode;
+  muted?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <AgentPortrait id={user?.id} name={user?.name} photo={user?.avatar} size={30} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ marginBottom: 6, color: "#8f8f88", fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>your agent</div>
+        <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: muted ? 400 : 700, lineHeight: 1.55, color: muted ? "#2a2a2a" : "#111" }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function WorkingDots() {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+      {[0, 1, 2].map((i) => (
+        <span key={i} style={{ width: 8, height: 8, background: "#000", animation: "mac-blink 1.05s steps(2) infinite", animationDelay: `${i * 0.35}s` }} />
+      ))}
+    </span>
+  );
+}
+
+function PastTurn({ user, prompt, answer }: {
+  user: { id?: string; name?: string; avatar?: string | null } | null;
+  prompt: string;
+  answer: string;
+}) {
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <AgentLine user={user} muted>{prompt}</AgentLine>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>{answer}</div>
+      </div>
+    </div>
+  );
+}
+
+function SignalSummary({ description, note, canCreate, onChange, onCreate, onRecheck }: {
   description: string;
-  feedback: string;
+  note: string;
   canCreate: boolean;
-  busy: boolean;
   onChange: (value: string) => void;
   onCreate: () => void;
   onRecheck: () => void;
 }) {
   return (
-    <section aria-label="Your signal" className="mt-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Review</p>
-      {feedback && <p className="mt-3 text-sm text-amber-800">{feedback}</p>}
-      <textarea
-        aria-label="Signal description"
-        value={description}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={busy}
-        maxLength={65_536}
-        rows={6}
-        className="mt-4 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-base leading-relaxed text-[#041729] outline-none focus:border-[#041729] disabled:opacity-60"
-      />
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+    <div style={{ marginLeft: 36, maxWidth: 560, display: "grid", gap: 14 }}>
+      <div style={{ borderLeft: "2px solid #000", paddingLeft: 14, display: "grid", gap: 8 }}>
+        <textarea
+          aria-label="Signal description"
+          value={description}
+          onChange={(event) => onChange(event.target.value)}
+          maxLength={65_536}
+          rows={6}
+          style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #000", fontFamily: "var(--mac-sans)", fontSize: 16, fontWeight: 500, lineHeight: 1.4, color: "#000", background: "#fff", resize: "vertical" }}
+        />
+        {note && <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12.5, fontStyle: "italic", lineHeight: 1.5, color: "var(--ink-2)" }}>{note}</div>}
+      </div>
+      <div>
         {canCreate ? (
-          <button
-            type="button"
-            disabled={busy || !description.trim() || description.length > 65_536}
-            onClick={onCreate}
-            className="inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            Create signal
-          </button>
+          <Btn primary disabled={!description.trim() || description.length > 65_536} onClick={onCreate}>create this signal</Btn>
         ) : (
-          <button
-            type="button"
-            disabled={busy || !description.trim()}
-            onClick={onRecheck}
-            className="inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            Check signal
-          </button>
+          <Btn primary disabled={!description.trim()} onClick={onRecheck}>check signal</Btn>
         )}
       </div>
-    </section>
+    </div>
+  );
+}
+
+function FieldPreview({ turns, stepIdx }: { turns: Turn[]; stepIdx: number }) {
+  const lines = [
+    "getting a read on what you need…",
+    turns[0] ? `you're after: "${truncate(turns[0].answer, 40)}"` : null,
+    stepIdx >= 2 ? "sharpening the edges…" : null,
+  ].filter((line): line is string => Boolean(line));
+
+  return (
+    <div style={{ padding: "20px 26px 18px", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", flex: 1, minHeight: 0 }}>
+      <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", fontFamily: "var(--mac-mono)", fontSize: 13, color: "#000", lineHeight: 1.7, display: "grid", gap: 6, alignContent: "start" }}>
+        {lines.map((line, i) => (
+          <div key={line} className="fade-up" style={{ animationDelay: `${i * 60}ms`, display: "flex", gap: 8, alignItems: "baseline" }}>
+            <span style={{ color: "#FF8A00", fontWeight: 700 }}>·</span>
+            <span style={{ fontWeight: i === lines.length - 1 ? 700 : 400 }}>{line}</span>
+          </div>
+        ))}
+        {turns.length > 0 && <FieldGlyph />}
+      </div>
+    </div>
+  );
+}
+
+function truncate(value: string, n: number) {
+  return value.length > n ? `${value.slice(0, n - 1)}…` : value;
+}
+
+function FieldGlyph() {
+  return (
+    <div style={{ position: "relative", height: 150, marginTop: 12 }}>
+      <div style={{ position: "absolute", left: "50%", top: "50%", width: 10, height: 10, marginLeft: -5, marginTop: -5, background: "#000" }} />
+      {[36, 56, 78].map((r, i) => (
+        <div key={r} style={{
+          position: "absolute", left: "50%", top: "50%",
+          width: r * 2, height: r * 2, marginLeft: -r, marginTop: -r,
+          border: "1px dashed #000", borderRadius: 999,
+          animation: `mac-orbit ${22 + i * 8}s linear infinite`,
+        }}>
+          <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 6, height: 6, background: "#000" }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Calibrating() {
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
+      <Window title="calibrating" style={{ width: 420 }}>
+        <div style={{ padding: "26px 28px 24px", textAlign: "center" }}>
+          <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginBottom: 18 }}>
+            <span className="wb-live" style={{ width: 9, height: 9 }} />
+            <span style={{ fontFamily: "var(--mac-mono)", letterSpacing: 3, fontSize: 13, textTransform: "uppercase" }}>index</span>
+          </div>
+          <div style={{ border: "1px solid #000", height: 10, overflow: "hidden", margin: "0 auto 18px", background: "#fff" }}>
+            <div style={{ height: "100%", backgroundImage: "repeating-linear-gradient(-45deg, #000 0, #000 6px, #fff 6px, #fff 12px)", animation: "mac-stripes 0.8s linear infinite", backgroundSize: "24px 24px" }} />
+          </div>
+          {CALIBRATING_LINES.map((line, i) => (
+            <div key={line} className="fade-up" style={{
+              animationDelay: `${i * 350}ms`, fontFamily: "var(--mac-sans)", fontSize: 15,
+              color: i === CALIBRATING_LINES.length - 1 ? "#000" : "var(--ink-2)",
+              letterSpacing: 0.2, padding: "4px 0",
+              fontWeight: i === CALIBRATING_LINES.length - 1 ? 700 : 400,
+            }}>
+              <span style={{ marginRight: 8, fontFamily: "var(--mac-mono)" }}>›</span>{line}
+            </div>
+          ))}
+        </div>
+      </Window>
+    </div>
   );
 }
 

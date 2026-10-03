@@ -61,23 +61,18 @@ export default function LandingPage() {
             negotiate on fit, learn from each turn, and surface connections between people who
             otherwise might&apos;ve just missed each other.
           </p>
-          <p>
-            Imagine you have an agent who uncovers the perfect home before it goes on the market.
-            Now apply that mechanism to finding your people.
-          </p>
         </div>
         <HeroAccess />
         <FanCanvas />
       </section>
 
       <section className="site-section">
-        <h2 className="site-tag">Mission</h2>
-        <h3 className="site-h3">We&rsquo;re helping the right people find each other</h3>
+        <h3 className="site-h3">We took discovery out of the feeds</h3>
         <div className="site-prose">
           <p>
             For as long as the internet&rsquo;s been around, we&rsquo;ve used apps to find people. It
-            worked until it didn&rsquo;t. So we took discovery out of the feeds, away from the
-            algorithms - and made it multiplayer across humans and their agents.
+            worked until it didn&rsquo;t. So we took discovery out of the feeds and made it
+            multiplayer across humans and their agents.
           </p>
           <p>
             On the individual level, it&apos;s simple: state a purpose, and the network rearranges to

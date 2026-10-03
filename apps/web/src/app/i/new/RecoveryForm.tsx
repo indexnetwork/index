@@ -1,23 +1,25 @@
 import { useState } from "react";
-import { Loader2, Send } from "lucide-react";
 
+import { AgentPortrait, OptionChip, WriteOwn } from "@/components/workbench/mac-blocks";
+import { Btn } from "@/components/workbench/Workbench";
+import { useAuthContext } from "@/contexts/AuthContext";
 import type { PrepareAnswer, RecoveryField } from "@/services/signals";
 
 /** Dynamic recovery form rendered from server-generated fields and options. */
 export function RecoveryForm({
   fields,
   feedback,
-  busy,
   onSubmit,
 }: {
   fields: RecoveryField[];
   feedback: string;
-  busy: boolean;
   onSubmit: (answers: PrepareAnswer[]) => Promise<void>;
 }) {
+  const { user } = useAuthContext();
   const [singleSelected, setSingleSelected] = useState<Record<string, string>>({});
   const [multiSelected, setMultiSelected] = useState<Record<string, string[]>>({});
   const [textValues, setTextValues] = useState<Record<string, string>>({});
+  const [writing, setWriting] = useState<Record<string, boolean>>({});
 
   const toggleMulti = (fieldId: string, label: string) => {
     setMultiSelected((current) => {
@@ -36,104 +38,87 @@ export function RecoveryForm({
       const answer = textValues[field.id]?.trim();
       return answer ? [{ prompt: field.label, answer }] : [];
     }
+    const own = writing[field.id] ? textValues[field.id]?.trim() : "";
     if (field.kind === "single") {
-      const answer = singleSelected[field.id]?.trim();
+      const answer = own || singleSelected[field.id]?.trim();
       return answer ? [{ prompt: field.label, answer }] : [];
     }
-    const answer = (multiSelected[field.id] ?? []).join(" — ");
+    const answer = [...(multiSelected[field.id] ?? []), ...(own ? [own] : [])].join(" — ");
     return answer ? [{ prompt: field.label, answer }] : [];
   });
 
   return (
-    <section aria-label="Recovery form" className="mt-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Shape your signal</p>
-      {feedback && <p className="mt-3 text-sm text-gray-500">{feedback}</p>}
-
-      <div className="mt-6 space-y-8">
+    <div className="fade-up" style={{ display: "grid", gap: 16 }}>
+      <AgentLine user={user}>{feedback || "help me understand what you're looking for."}</AgentLine>
+      <div style={{ marginLeft: 42, display: "grid", gap: 18, maxWidth: 620 }}>
         {fields.map((field) => (
           <div key={field.id}>
-            <h3 className="text-sm font-semibold text-[#041729]">{field.label}</h3>
-
+            <div style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 700, marginBottom: 8 }}>{field.label}</div>
             {field.kind === "text" && (
               <textarea
                 value={textValues[field.id] ?? ""}
                 onChange={(event) => setTextValues((current) => ({ ...current, [field.id]: event.target.value }))}
-                placeholder={field.placeholder ?? "Tell me in your own words"}
+                placeholder={field.placeholder ?? "type your answer…"}
                 rows={2}
                 maxLength={65_536}
-                disabled={busy}
-                className="mt-3 w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10 disabled:opacity-60"
+                style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #000", fontFamily: "var(--mac-sans)", fontSize: 14 }}
               />
             )}
-
-            {field.kind === "single" && field.options && (
-              <div className="mt-3 grid gap-2">
+            {(field.kind === "single" || field.kind === "multi") && field.options && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {field.options.map((option) => {
-                  const checked = singleSelected[field.id] === option.label;
+                  const checked = field.kind === "single"
+                    ? !writing[field.id] && singleSelected[field.id] === option.label
+                    : (multiSelected[field.id] ?? []).includes(option.label);
                   return (
-                    <button
+                    <OptionChip
                       key={option.label}
-                      type="button"
-                      aria-pressed={checked}
-                      disabled={busy}
-                      onClick={() => setSingleSelected((current) => ({
-                        ...current,
-                        [field.id]: checked ? "" : option.label,
-                      }))}
-                      className={`rounded-2xl border px-4 py-3 text-left transition disabled:opacity-60 ${
-                        checked
-                          ? "border-[#041729] bg-[#041729] text-white"
-                          : "border-gray-200 bg-white text-gray-800 hover:border-gray-400"
-                      }`}
-                    >
-                      <span className="block text-sm font-medium">{option.label}</span>
-                      {option.description && (
-                        <span className={`mt-1 block text-xs ${checked ? "text-gray-200" : "text-gray-500"}`}>
-                          {option.description}
-                        </span>
-                      )}
-                    </button>
+                      label={option.label}
+                      selected={checked}
+                      onClick={() => {
+                        if (field.kind === "single") {
+                          setSingleSelected((current) => ({ ...current, [field.id]: checked ? "" : option.label }));
+                          setWriting((current) => ({ ...current, [field.id]: false }));
+                          setTextValues((current) => ({ ...current, [field.id]: "" }));
+                        } else {
+                          toggleMulti(field.id, option.label);
+                        }
+                      }}
+                    />
                   );
                 })}
-              </div>
-            )}
-
-            {field.kind === "multi" && field.options && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {field.options.map((option) => {
-                  const checked = (multiSelected[field.id] ?? []).includes(option.label);
-                  return (
-                    <button
-                      key={option.label}
-                      type="button"
-                      aria-pressed={checked}
-                      disabled={busy}
-                      onClick={() => toggleMulti(field.id, option.label)}
-                      className={`rounded-full border px-4 py-2 text-sm transition disabled:opacity-60 ${
-                        checked
-                          ? "border-[#041729] bg-[#041729] text-white"
-                          : "border-gray-200 bg-white text-gray-800 hover:border-gray-400"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
+                <WriteOwn
+                  open={!!writing[field.id]}
+                  value={textValues[field.id] ?? ""}
+                  onOpen={() => {
+                    if (field.kind === "single") setSingleSelected((current) => ({ ...current, [field.id]: "" }));
+                    setWriting((current) => ({ ...current, [field.id]: true }));
+                  }}
+                  onChange={(value) => setTextValues((current) => ({ ...current, [field.id]: value }))}
+                  onClose={() => setWriting((current) => ({ ...current, [field.id]: false }))}
+                />
               </div>
             )}
           </div>
         ))}
+        <div><Btn primary onClick={() => void onSubmit(buildAnswers())}>create signal</Btn></div>
       </div>
+    </div>
+  );
+}
 
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void onSubmit(buildAnswers())}
-        className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        Send answer
-      </button>
-    </section>
+function AgentLine({ user, children, muted = false }: {
+  user: { id?: string; name?: string; avatar?: string | null } | null;
+  children: React.ReactNode;
+  muted?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <AgentPortrait id={user?.id} name={user?.name} photo={user?.avatar} size={30} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ marginBottom: 6, color: "#8f8f88", fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>your agent</div>
+        <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: muted ? 400 : 700, lineHeight: 1.55, color: muted ? "#2a2a2a" : "#111" }}>{children}</div>
+      </div>
+    </div>
   );
 }

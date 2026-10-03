@@ -14,15 +14,17 @@
 /* One quiet meta line, all in the label voice. */
 .home-available {
   display: flex;
+  /* 16px access gap + 12px = the 28px hero gap above, so the line sits centred. */
+  margin-bottom: 12px;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 14px;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: .06em;
+  font-size: 13px;
+  font-weight: 400;
   line-height: 1;
   color: var(--muted);
 }
+.home-available-label { font-size: 12px; letter-spacing: .06em; }
 .home-available-app {
   display: inline-flex;
   align-items: center;
@@ -44,40 +46,29 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  background: linear-gradient(to bottom, rgba(64, 145, 187, .1) 75%, rgba(64, 145, 187, 0));
-  border-radius: 10px;
-  padding: 22px 24px 34px;
-}
-.home-trace-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
+  border-top: 1px solid var(--divider);
+  padding-top: 28px;
 }
 .home-trace-title { font-size: 18px; line-height: 1.4; }
-.home-trace-clock,
-.home-trace-time {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: .06em;
-  color: var(--green);
-}
-.home-trace-log {
-  display: flex;
-  flex-direction: column;
+/* The table is fixed-width text; on narrow screens it scrolls inside its own box. */
+.home-trace-scroll { overflow-x: auto; }
+.home-trace-pre {
+  margin: 0;
   font-family: var(--mono);
   font-size: 11.5px;
-  line-height: 1.4;
+  line-height: 1.85;
+  color: var(--muted);
+  white-space: pre;
 }
-.home-trace-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
-  padding: 3px 0;
-  transition: opacity .3s;
-}
-.home-trace-time { font-size: 11.5px; letter-spacing: 0; }
+.home-trace-dim { color: var(--muted); }
+.home-trace-ink { color: var(--ink); }
+.home-trace-rule { color: rgba(4, 23, 41, .22); }
+/* one colour per phase of the trace */
+.home-trace-p-query { color: var(--ink); }
+.home-trace-p-intent { color: #7A5AA6; }
+.home-trace-p-reach { color: var(--blue); }
+.home-trace-p-negotiate { color: #C07A1E; }
+.home-trace-p-present { color: #2E7D32; }
 
 /* ---------- where index runs ---------- */
 .home-runs-links {
@@ -95,4 +86,4 @@
 .home-all-posts { font-size: 14px; }
 
 /* extra breathing room between the hero CTA and the animation below it */
-.site-hero .home-fan { margin-top: 24px; }
+.site-hero .home-fan { margin-top: 72px; }

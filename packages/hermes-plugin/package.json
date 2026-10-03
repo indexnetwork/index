@@ -20,6 +20,7 @@
     "bridge.py",
     "sidecar.py",
     "events.py",
+    "morning.py",
     "mcp.py",
     "runtime/dist/",
     "dashboard/",

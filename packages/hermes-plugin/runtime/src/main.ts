@@ -70,7 +70,15 @@ const server = Bun.serve({
     if (request.headers.get('authorization') !== `Bearer ${bridge.token}`) {
       return Response.json({ error: 'The Index bridge token is required.' }, { status: 401 });
     }
-    if (new URL(request.url).pathname !== '/shutdown') {
+    const path = new URL(request.url).pathname;
+    if (path === '/morning' && request.method === 'POST') {
+      const body = await request.json().catch(() => null) as { intentId?: string } | null;
+      const intentId = body?.intentId?.trim();
+      if (!intentId) return Response.json({ error: 'intentId is required.' }, { status: 400 });
+      await runner.morning(intentId);
+      return Response.json({ ok: true });
+    }
+    if (path !== '/shutdown') {
       return Response.json({ error: 'Unknown negotiator route.' }, { status: 404 });
     }
     queueMicrotask(() => void shutdown());

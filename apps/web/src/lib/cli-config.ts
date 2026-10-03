@@ -1,7 +1,9 @@
+import { protocolOrigin } from "./protocol-origin";
+
 const DEFAULT_PROTOCOL_URL = import.meta.env.DEV
   ? "http://localhost:3001"
   : "https://protocol.index.network";
-const PROTOCOL_URL = import.meta.env.VITE_PROTOCOL_URL || DEFAULT_PROTOCOL_URL;
+const PROTOCOL_URL = protocolOrigin() || DEFAULT_PROTOCOL_URL;
 
 function shellQuote(value: string): string {
   return "'" + value.replace(/'/g, "'\"'\"'") + "'";
