@@ -314,7 +314,7 @@ export default function AgentsPage() {
     }
   }
 
-  async function toggleSetting(agent: Agent, key: "notifyOnOpportunity" | "dailySummaryEnabled") {
+  async function toggleSetting(agent: Agent, key: "notifyOnOpportunity") {
     const next = !agent[key];
     setAgents((list) => list.map((item) => item.id === agent.id ? { ...item, [key]: next } : item));
     try {
@@ -416,7 +416,6 @@ export default function AgentsPage() {
                         <div style={{ background: "#F2F0EC", borderBottom: last ? "none" : "1px solid #000", padding: "11px 12px 12px" }}>
                           <div style={{ display: "grid", gap: 8 }}>
                             <OptionToggle on={agent.notifyOnOpportunity} onClick={() => void toggleSetting(agent, "notifyOnOpportunity")} title="connection updates" blurb="tells this agent when an opportunity is accepted or someone reaches out." />
-                            <OptionToggle on={agent.dailySummaryEnabled} onClick={() => void toggleSetting(agent, "dailySummaryEnabled")} title="daily brief" blurb="one message at 08:00 with new overlaps and anything waiting on you." />
                           </div>
                         </div>
                       )}

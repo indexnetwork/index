@@ -259,6 +259,7 @@ def _notification_preferences(value: Any) -> dict[str, bool]:
     return {
         "connectionUpdates": bool(prefs.get("connectionUpdates", True)),
         "weeklyNewsletter": bool(prefs.get("weeklyNewsletter", True)),
+        "morningBrief": prefs.get("morningBrief") is not False,
     }
 
 
@@ -352,6 +353,7 @@ def _sanitize_profile_update(body: Any) -> tuple[dict[str, Any] | None, str | No
         update["notificationPreferences"] = {
             "connectionUpdates": bool(prefs.get("connectionUpdates")),
             "weeklyNewsletter": bool(prefs.get("weeklyNewsletter")),
+            "morningBrief": prefs.get("morningBrief") is not False,
         }
     return update, None
 

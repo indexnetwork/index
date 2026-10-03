@@ -4954,6 +4954,15 @@
           }),
           ),
         ),
+        React.createElement(ProfileField, { label: "Daily brief" },
+          React.createElement("label", { className: "index-dashboard__profile-check" },
+            React.createElement("div", null,
+              React.createElement("p", { className: "index-dashboard__profile-check-label" }, "Daily brief"),
+              React.createElement("p", { className: "index-dashboard__profile-check-desc" }, "Your agent looks again at 08:00, and speaks only when it has something new."),
+            ),
+            React.createElement("input", { type: "checkbox", checked: prefs.morningBrief !== false, onChange: function (e) { setPref("morningBrief", e.target.checked); } }),
+          ),
+        ),
       );
     }
 
