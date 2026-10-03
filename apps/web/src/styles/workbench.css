@@ -611,6 +611,7 @@
   text-decoration: underline;
 }
 .wb-auth .av-back {
+  align-self: flex-start;
   background: none;
   border: 0;
   padding: 0;
@@ -618,4 +619,5 @@
   cursor: pointer;
   font-family: var(--mac-mono);
   font-size: 13px;
+  text-align: left;
 }

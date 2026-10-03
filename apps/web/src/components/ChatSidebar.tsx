@@ -107,7 +107,11 @@ export default function ChatSidebar() {
               <button
                 key={chat.groupId}
                 type="button"
-                onClick={() => navigate(chat.peerUserId ? `/u/${chat.peerUserId}/chat` : `/chat`)}
+                onClick={() => {
+                  const to = chat.peerUserId ? `/u/${chat.peerUserId}/chat` : "/chat";
+                  if (to === pathname) return;
+                  navigate(to, { replace: pathname === "/chat" || activePeerId !== null });
+                }}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "auto minmax(0, 1fr) auto",

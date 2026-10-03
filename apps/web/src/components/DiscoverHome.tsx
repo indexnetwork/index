@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import Avatar from "boring-avatars";
 
-import { apiClient, apiUrl } from "@/lib/api";
+import { apiClient } from "@/lib/api";
+import UserAvatar from "@/components/UserAvatar";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents } from "@/contexts/APIContext";
 import { useNetworksState } from "@/contexts/NetworksContext";
@@ -28,30 +28,6 @@ interface HomeIntent {
 const SHELF_ROW_H = 72;
 const SHELF_ROW_GAP = 8;
 const SHELF_VISIBLE_ROWS = 6;
-
-function photoSrc(photo: string): string {
-  if (photo.startsWith("http://") || photo.startsWith("https://")) return photo;
-  if (photo.startsWith("/api/storage/")) return apiUrl(photo);
-  const clean = photo.startsWith("/") ? photo.slice(1) : photo;
-  return apiUrl(`/api/storage/${clean}`);
-}
-
-function SquareFace({ id, name, photo, size = 34 }: { id?: string; name?: string; photo?: string | null; size?: number }) {
-  const [broken, setBroken] = useState(false);
-  const frame: CSSProperties = { width: size, height: size, overflow: "hidden", flex: "0 0 auto" };
-  if (!photo || broken) {
-    return (
-      <span style={frame}>
-        <Avatar size={size} name={id || name || "default"} variant="bauhaus" />
-      </span>
-    );
-  }
-  return (
-    <span style={frame}>
-      <img src={photoSrc(photo)} alt="" onError={() => setBroken(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-    </span>
-  );
-}
 
 function ShelfCount({ n }: { n: number }) {
   return <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 500, color: "#000" }}>{n}</span>;
@@ -268,7 +244,7 @@ export default function DiscoverHome() {
                     padding: "7px 11px", textAlign: "left", cursor: "pointer",
                     border: "1px solid #000", background: menuOpen ? "#F2EFE6" : "#fff",
                   }}>
-                  <SquareFace id={user?.id} name={user?.name} photo={user?.avatar} />
+                  <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={34} />
                   <span style={{ flex: 1, minWidth: 0, display: "block", fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {user?.name || "you"}
                   </span>

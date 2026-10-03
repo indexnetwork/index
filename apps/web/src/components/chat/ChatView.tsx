@@ -38,6 +38,17 @@ function normText(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function conversationIdForPeer(
+  conversations: { id: string; participants?: { participantId: string; participantType: string }[] }[],
+  userId: string,
+  initialGroupId?: string,
+) {
+  if (initialGroupId) return initialGroupId;
+  return conversations.find((conversation) =>
+    conversation.participants?.some((participant) => participant.participantType === "user" && participant.participantId === userId),
+  )?.id ?? null;
+}
+
 export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack, embedded = false, opener }: ChatViewProps) {
   const { user } = useAuthContext();
   const opportunitiesService = useOpportunities();
@@ -53,11 +64,14 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     hideConversation,
   } = useConversation();
 
-  const [conversationId, setConversationId] = useState<string | null>(initialGroupId ?? null);
+  const startingConversationId = conversationIdForPeer(conversations, userId, initialGroupId);
+  const [conversationId, setConversationId] = useState<string | null>(startingConversationId);
   const [messageText, setMessageText] = useState(autoSend ? '' : (initialMessage ?? ''));
   const hasAutoSentRef = useRef(false);
   const hasFiredFirstMessageRef = useRef(false);
-  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(
+    () => startingConversationId != null && !allMessages.has(startingConversationId),
+  );
   const [contextLoading, setContextLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -66,21 +80,25 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const scrolledConversationRef = useRef<string | null>(null);
+  const scrolledCountRef = useRef(0);
 
-  // Reset conversation state when userId changes (component reused by React Router)
-  const prevUserIdRef = useRef(userId);
-  useEffect(() => {
-    if (prevUserIdRef.current !== userId) {
-      prevUserIdRef.current = userId;
-      setConversationId(null);
-      setMessagesLoading(true);
-      setContextLoading(true);
-      setAcceptedOpportunities([]);
-      setAcceptedOpportunitiesLoading(true);
-      hasAutoSentRef.current = false;
-      hasFiredFirstMessageRef.current = false;
-    }
-  }, [userId]);
+  // Route param changes reuse this instance. Adjust before paint so the previous
+  // thread never flashes, and keep a cached thread on screen instead of a spinner.
+  const [trackedUserId, setTrackedUserId] = useState(userId);
+  if (trackedUserId !== userId) {
+    const nextId = conversationIdForPeer(conversations, userId, initialGroupId);
+    setTrackedUserId(userId);
+    setConversationId(nextId);
+    setMessagesLoading(nextId != null && !allMessages.has(nextId));
+    setContextLoading(true);
+    setMessageText(autoSend ? '' : (initialMessage ?? ''));
+    setShowMenu(false);
+    setAcceptedOpportunities([]);
+    setAcceptedOpportunitiesLoading(true);
+    hasAutoSentRef.current = false;
+    hasFiredFirstMessageRef.current = false;
+  }
 
   const messages = useMemo(
     () => (conversationId ? allMessages.get(conversationId) ?? [] : []),
@@ -118,8 +136,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     };
   }, [userId, opportunitiesService]);
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   }, []);
 
   // Load messages when we have a conversationId
@@ -154,7 +172,13 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     return () => { mounted = false; };
   }, [userId, initialGroupId, getOrCreateDm, conversationId]);
 
-  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
+  useEffect(() => {
+    const sameConversation = scrolledConversationRef.current === conversationId;
+    const grew = scrolledCountRef.current > 0 && messages.length > scrolledCountRef.current;
+    scrolledConversationRef.current = conversationId;
+    scrolledCountRef.current = messages.length;
+    scrollToBottom(sameConversation && grew ? 'smooth' : 'auto');
+  }, [messages, conversationId, scrollToBottom]);
 
   // The conversation is open once the DM exists. Land in the composer then,
   // including after accept navigates here (autoFocus alone loses that race).

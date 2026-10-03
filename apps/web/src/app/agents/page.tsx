@@ -1,38 +1,23 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import Avatar from 'boring-avatars';
 
 import ClientLayout from '@/components/ClientLayout';
+import UserAvatar from '@/components/UserAvatar';
 import { AgentFace } from '@/components/workbench/agent-face';
 import { Stage, Window } from '@/components/workbench/Workbench';
 import { useAgents } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { apiUrl } from '@/lib/api';
 import type { Agent } from '@/services/agents';
-
-function avatarSrc(avatar: string): string {
-  if (avatar.startsWith('http://') || avatar.startsWith('https://')) return avatar;
-  if (avatar.startsWith('/api/storage/')) return apiUrl(avatar);
-  const clean = avatar.startsWith('/') ? avatar.slice(1) : avatar;
-  return apiUrl(`/api/storage/${clean}`);
-}
 
 function NegotiatorPicture({ id, name, photo }: { id?: string; name?: string; photo?: string | null }) {
   const size = 48;
   const badge = Math.max(8, Math.round(size * 0.44));
   const ring = Math.max(1, Math.round(size * 0.055 * 10) / 10);
-  const [broken, setBroken] = useState(false);
   const seed = id || name || "index";
   return (
     <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
-      <span style={{ width: size, height: size, display: "block", overflow: "hidden", lineHeight: 0 }}>
-        {photo && !broken ? (
-          <img src={avatarSrc(photo)} alt="" onError={() => setBroken(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        ) : (
-          <Avatar size={size} name={seed} variant="bauhaus" />
-        )}
-      </span>
+      <UserAvatar id={id} name={name} avatar={photo} size={size} />
       <span style={{ position: "absolute", right: 0, bottom: 0, display: "block", lineHeight: 0, boxShadow: `0 0 0 ${ring}px #fff` }}>
         <AgentFace seed={seed} size={badge} />
       </span>
