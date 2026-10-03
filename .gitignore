@@ -45,7 +45,7 @@ docs/superpowers
 # ===================
 # Dependencies
 # ===================
-node_modules/
+node_modules
 
 # ===================
 # Local Worktrees
