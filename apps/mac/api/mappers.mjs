@@ -75,9 +75,9 @@ export function mapIntent(intent) {
     matches: 0,
     connected: 0,
     inConversations: 0,
-    // Row badge: opportunities awaiting the user, straight from the server
-    // list count so it matches the Hermes and web dashboards.
-    pending: count(intent.waitingOpportunityCount),
+    // Row badge: unanswered agent questions plus opportunities awaiting the
+    // user. Hermes uses the same sum; the web list still shows opportunities only.
+    pending: count(intent.pendingQuestionCount) + count(intent.waitingOpportunityCount),
     inbound: [],
     source: intent,
   };

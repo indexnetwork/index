@@ -116,6 +116,11 @@ export interface IntentListRow {
    * actor intent. Rows the owner already acted on are excluded.
    */
   waitingOpportunityCount: number;
+  /**
+   * Unanswered questions the owner's agent has asked on this signal.
+   * A question leaves the count when an answer or an expire names it.
+   */
+  pendingQuestionCount: number;
   /** True while a fresh intent has not completed its first discovery run. */
   warming: boolean;
 }

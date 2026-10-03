@@ -403,6 +403,11 @@ def _count(value: Any) -> int:
     return value if isinstance(value, int) and value > 0 else 0
 
 
+def _attention_count(intent: dict[str, Any]) -> int:
+    """Intent-row badge: unanswered agent questions plus opportunities awaiting the user."""
+    return _count(intent.get("pendingQuestionCount")) + _count(intent.get("waitingOpportunityCount"))
+
+
 def _section_error(payload: dict[str, Any]) -> str | None:
     if payload.get("success") is not False:
         return None
@@ -662,7 +667,7 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
         "title": title,
         "lifecycleStatus": lifecycle,
         "status": "paused" if lifecycle == "paused" else "live",
-        "pendingCount": _count(intent.get("waitingOpportunityCount")),
+        "pendingCount": _attention_count(intent),
     }
 
 
@@ -771,10 +776,9 @@ def _build_dashboard(
         )
         obj = ensure(intent_id, title)
         obj["lifecycleStatus"] = _text(intent.get("status"), "active").lower()
-        # Row badge: opportunities awaiting the user, taken verbatim from the
-        # server list count so every surface (Hermes web/desktop, mac app, web
-        # app) shows the same number.
-        obj["pendingCount"] = _count(intent.get("waitingOpportunityCount"))
+        # Row badge: unanswered questions plus opportunities awaiting the user,
+        # the same sum the mac shelf shows.
+        obj["pendingCount"] = _attention_count(intent)
 
     known_ids = set(intents.keys())
     seen_opp_ids: set[str] = set()

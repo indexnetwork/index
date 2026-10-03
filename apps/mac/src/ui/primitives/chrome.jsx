@@ -131,7 +131,7 @@ function QCount({ n, muted, title }) {
   }
   return (
     <span
-      title={title || `${n} waiting on you — pending opportunities`}
+      title={title || `${n} waiting on you`}
       style={{
         display:"flex", alignItems:"baseline", justifyContent:"center",
         padding:"3px 8px",

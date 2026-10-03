@@ -495,7 +495,7 @@ function signalStatus(intent) {
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  // Opportunities awaiting you (same number as the Hermes and web dashboards).
+  // Unanswered questions plus opportunities awaiting you.
   const pending = intent.pending ?? 0;
   const hasQ = pending > 0;
   const statusLabel = signalStatus(intent);
@@ -548,7 +548,7 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
         </span>
       </div>
 
-      {/* awaiting opportunities, the hero */}
+      {/* questions and opportunities waiting on you */}
       <QCount n={pending} muted={!hasQ}/>
     </button>
   );

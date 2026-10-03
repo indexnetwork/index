@@ -1487,15 +1487,15 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       matches
         ? React.createElement("span", {
           className: "index-dashboard__intent-count",
-          "aria-label": matches === 1 ? "1 match waiting" : matches + " matches waiting",
+          "aria-label": matches === 1 ? "1 waiting on you" : matches + " waiting on you",
         }, String(matches))
         : null,
       React.createElement("span", { className: "index-dashboard__intent-chevron", "aria-hidden": "true" }, "\u203A"),
     );
   }
 
-  // One consolidated number per row: awaiting opportunities. Every surface
-  // (Hermes web/desktop, mac app) shows this same count so they stay consistent.
+  // One number per row: unanswered questions plus opportunities awaiting you.
+  // The mac shelf shows this same sum.
   function intentMatchCount(intent) {
     return Number.isFinite(intent.pendingCount) ? intent.pendingCount : 0;
   }
