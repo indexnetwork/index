@@ -140,7 +140,10 @@ export function mapPersonFromRadarCard(card) {
     overlap: compact([card.headline]),
     // the presenter card carries a 0-1 match score; it was being dropped
     score: typeof card.score === 'number' ? card.score : null,
-    status: mapOpportunityStatusToPrototype(card.status),
+    status: card.viewerCommitted === true && card.status === 'pending'
+      ? 'accepted'
+      : mapOpportunityStatusToPrototype(card.status),
+    waitingOnThem: card.viewerCommitted === true && card.status === 'pending',
     pitchFromAgent: card.narratorChip?.text || card.mainText || '',
     introVia: card.narratorChip?.name || card.cta || '',
     ...mapCounterpartProfile(card),

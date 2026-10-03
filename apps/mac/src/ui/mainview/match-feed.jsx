@@ -231,6 +231,11 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
       }}>
         {accepted ? (
           <React.Fragment>
+            {person.waitingOnThem && (
+              <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)" }}>
+                waiting for them
+              </span>
+            )}
             {unreadCount > 0 && (
               <span style={{
                 fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,

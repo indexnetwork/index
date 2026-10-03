@@ -683,6 +683,8 @@ def _radar_item(card: dict[str, Any], intent_id: str | None = None) -> dict[str,
     status = _text(card.get("status"))
     if status:
         item["status"] = status
+    if card.get("viewerCommitted") is True:
+        item["viewerCommitted"] = True
     user_id = _text(card.get("userId") or peer.get("userId"))
     if user_id:
         item["counterpartUserId"] = user_id

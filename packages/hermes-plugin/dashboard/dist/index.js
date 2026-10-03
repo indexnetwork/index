@@ -1088,7 +1088,8 @@
     { key: "expired", label: "Missed" },
   ];
 
-  function bucketForStatus(status) {
+  function bucketForStatus(status, viewerCommitted) {
+    if (status === "pending" && viewerCommitted) return "accepted";
     const key = String(status || "");
     return key in STATUS_BUCKET ? STATUS_BUCKET[key] : "pending";
   }
@@ -1096,7 +1097,7 @@
   function statusCountsFromOpportunities(opportunities) {
     const counts = { pending: 0, negotiating: 0, accepted: 0, expired: 0 };
     (opportunities || []).forEach(function (opp) {
-      const bucket = bucketForStatus(opp && opp.status);
+      const bucket = bucketForStatus(opp && opp.status, opp && opp.viewerCommitted);
       if (bucket && bucket in counts) counts[bucket] += 1;
     });
     return counts;
@@ -1288,10 +1289,11 @@
   function OpportunityCard(props) {
     const opportunity = props.opportunity;
     const status = opportunity.status || "";
-    const resolved = OPP_RESOLVED_LABEL[status];
+    const waitingOnThem = status === "pending" && opportunity.viewerCommitted;
+    const resolved = waitingOnThem ? "Waiting for them" : OPP_RESOLVED_LABEL[status];
     const acting = !!props.actingId && props.actingId === opportunity.opportunityId;
     let actionButtons = null;
-    if (props.onAccept && bucketForStatus(status) === "pending") {
+    if (props.onAccept && bucketForStatus(status, opportunity.viewerCommitted) === "pending") {
       actionButtons = [
         React.createElement(Button, {
           key: "accept", type: "button", size: "sm", className: "index-dashboard__btn-md",
@@ -1304,14 +1306,17 @@
           onClick: function () { if (props.onSkip) props.onSkip(opportunity); },
         }, "pass"),
       ];
-    } else if (status === "accepted") {
+    } else if (status === "accepted" || waitingOnThem) {
       if (props.onStartChat && opportunity.counterpartUserId) {
-        actionButtons = [React.createElement(Button, {
-          key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
-          disabled: acting,
-          onClick: function () { props.onStartChat(opportunity); },
-        }, acting ? "Working…" : "open chat",
-          acting ? null : React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"))];
+        actionButtons = [
+          waitingOnThem ? React.createElement("span", { key: "wait", className: "index-dashboard__opp-status" }, "Waiting for them") : null,
+          React.createElement(Button, {
+            key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
+            disabled: acting,
+            onClick: function () { props.onStartChat(opportunity); },
+          }, acting ? "Working…" : "open chat",
+            acting ? null : React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A")),
+        ].filter(Boolean);
       } else if (opportunity.chatUrl) {
         actionButtons = [React.createElement("a", {
           key: "open", className: "index-dashboard__opp-openchat",
@@ -1353,7 +1358,7 @@
           ? React.createElement("div", { className: "index-dashboard__opp-btns" }, actionButtons)
           // A negotiating row is the only status you can open: the two agents
           // are mid-conversation and it is readable.
-          : props.onOpenNegotiation && bucketForStatus(status) === "negotiating"
+          : props.onOpenNegotiation && bucketForStatus(status, opportunity.viewerCommitted) === "negotiating"
             ? React.createElement("button", {
               type: "button",
               className: "index-dashboard__opp-negotiating",
@@ -4097,7 +4102,7 @@
     const discoveryExpired = expiredState[0];
     const setDiscoveryExpired = expiredState[1];
     const shownCount = intent && Array.isArray(intent.opportunities)
-      ? intent.opportunities.filter(function (opp) { return bucketForStatus(opp.status) !== null; }).length
+      ? intent.opportunities.filter(function (opp) { return bucketForStatus(opp.status, opp.viewerCommitted) !== null; }).length
       : 0;
     React.useEffect(function () {
       setDiscoveryExpired(false);
@@ -4115,7 +4120,7 @@
     const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
     const allOpps = Array.isArray(intent.opportunities) ? intent.opportunities : [];
     const visibleOpps = allOpps.filter(function (opp) {
-      const bucket = bucketForStatus(opp.status);
+      const bucket = bucketForStatus(opp.status, opp.viewerCommitted);
       if (!bucket) return false;
       return selectedBucket === "all" || bucket === selectedBucket;
     });

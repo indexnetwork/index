@@ -444,7 +444,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       client.opportunities.updateStatusForIntent(personId, "accepted", intentId)
         .then(() => {
           setPeople(prev => prev.map(p =>
-            p.id === personId ? { ...p, status: "accepted" } : p));
+            p.id === personId ? { ...p, status: "accepted", waitingOnThem: true } : p));
           openChat(personId);
           setTimeout(refreshRadar, 1500);
         })
@@ -452,7 +452,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       return;
     }
     setPeople(prev => prev.map(p =>
-      p.id === personId ? { ...p, status: "accepted" } : p));
+      p.id === personId ? { ...p, status: "accepted", waitingOnThem: true } : p));
     openChat(personId);
   };
   // Pass is the other half of the ready-stage decision, decline the intro

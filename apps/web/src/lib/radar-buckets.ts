@@ -19,7 +19,9 @@ const STATUS_BUCKETS: Record<OpportunityLifecycleStatus, RadarBucket> = {
 /** Assign an opportunity to the person currently responsible for it. */
 export function radarBucketForOpportunity(
   status: OpportunityLifecycleStatus | undefined,
+  viewerCommitted = false,
 ): RadarBucket {
+  if (status === "pending" && viewerCommitted) return "connected";
   return status ? STATUS_BUCKETS[status] : "waiting";
 }
 

@@ -65,6 +65,8 @@ export interface PresentedOpportunity {
   mutualIntentsLabel: string;
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   presentationPending?: boolean;
+  /** This viewer already committed. Status can still be pending until the other person accepts. */
+  viewerCommitted?: boolean;
   personalizedSummary?: string;
   narratorRemark?: string;
   acceptedAt?: string | null;
