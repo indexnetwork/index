@@ -268,6 +268,7 @@ window.IndexApp = (function () {
       photo: avatarUrl(user.avatar),
       socials,
       websites: [],
+      notificationPreferences: user.notificationPreferences || {},
       source: user,
     };
   }

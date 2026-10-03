@@ -133,6 +133,8 @@ export interface WakeInput {
   onOpened?: (opportunityIds: string[]) => void;
   /** Persist one user-facing boundary for each discovery tool call. */
   onProgress?: (text: string) => void | Promise<void>;
+  /** Omitted for an event. Morning is the same wake, with one extra instruction. */
+  reason?: "morning";
 }
 
 export type WakeAction =

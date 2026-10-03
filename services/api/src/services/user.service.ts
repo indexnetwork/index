@@ -117,8 +117,8 @@ export class UserService {
     /**
      * Update notification preferences for a user (upsert)
      */
-    async updateNotificationPreferences(userId: string, preferences: { connectionUpdates?: boolean }) {
-        return this.db.updateNotificationPreferences(userId, preferences as import('../schemas/database.schema').NotificationPreferences);
+    async updateNotificationPreferences(userId: string, preferences: Partial<import('../schemas/database.schema').NotificationPreferences>) {
+        return this.db.updateNotificationPreferences(userId, preferences);
     }
 
     /**

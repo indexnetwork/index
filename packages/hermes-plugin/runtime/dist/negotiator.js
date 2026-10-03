@@ -591,6 +591,7 @@ var WAKE_PROMPT = [
 ].join(`
 
 `);
+var MORNING = "It is morning. Discover again even when opportunities are already open: the communities may have grown, or the earlier queries were too narrow. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
 function openQuestions(conversation) {
   const open = new Map;
   for (const entry of conversation) {
@@ -898,8 +899,10 @@ async function wake(input) {
     maxSteps: WAKE_STEPS,
     ...input.now ? { now: input.now } : {},
     ...input.signal ? { signal: input.signal } : {},
-    instructions: WAKE_PROMPT,
-    prompt: `Something happened on this signal. Work out what it changes, act only there, and stop.
+    instructions: input.reason === "morning" ? `${WAKE_PROMPT}
+
+${MORNING}` : WAKE_PROMPT,
+    prompt: (input.reason === "morning" ? MORNING : "Something happened on this signal. Work out what it changes, act only there, and stop.") + `
 ` + JSON.stringify({
       principal: principalFacts(user),
       conversation,
@@ -1218,7 +1221,7 @@ function counterpartsOf(details) {
   ]));
 }
 async function runWake(client, intent, runtime) {
-  const { model, now, signal, log = () => {}, onNegotiate } = runtime;
+  const { model, now, signal, log = () => {}, onNegotiate, reason } = runtime;
   const [user, negotiations, inbox] = await Promise.all([
     client.me(),
     client.listIntentNegotiations(intent.id),
@@ -1266,7 +1269,8 @@ async function runWake(client, intent, runtime) {
       for (const opportunityId of opportunityIds)
         onNegotiate?.(opportunityId);
     },
-    onProgress: (text) => publishActions(client, intent.id, [{ type: "progress", text }], context)
+    onProgress: (text) => publishActions(client, intent.id, [{ type: "progress", text }], context),
+    ...reason ? { reason } : {}
   });
   if (!result2.actions.length)
     log("  silent");
@@ -1531,6 +1535,28 @@ function startRunner(options) {
         await settle(intentId);
     }
   }
+  async function morning(intentId) {
+    if (stopped)
+      return;
+    let intent = intents.get(intentId);
+    if (!intent) {
+      const rows = await client.listIntents();
+      for (const row of rows) {
+        if (row.status !== "active")
+          continue;
+        intents.set(row.id, { id: row.id, statement: row.statement });
+      }
+      intent = intents.get(intentId);
+    }
+    if (!intent)
+      return;
+    log(`morning ${intent.statement}`);
+    await runWake(client, intent, {
+      ...runtime(),
+      reason: "morning",
+      onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId)
+    });
+  }
   function startNegotiate(intentId, opportunityId) {
     const intent = intents.get(intentId);
     if (stopped || !intent || working.has(opportunityId))
@@ -1597,6 +1623,7 @@ function startRunner(options) {
   });
   return {
     wake: startWake,
+    morning,
     stop: () => {
       stopped = true;
       stopStream();
@@ -1670,7 +1697,16 @@ var server = Bun.serve({
     if (request.headers.get("authorization") !== `Bearer ${bridge.token}`) {
       return Response.json({ error: "The Index bridge token is required." }, { status: 401 });
     }
-    if (new URL(request.url).pathname !== "/shutdown") {
+    const path = new URL(request.url).pathname;
+    if (path === "/morning" && request.method === "POST") {
+      const body = await request.json().catch(() => null);
+      const intentId = body?.intentId?.trim();
+      if (!intentId)
+        return Response.json({ error: "intentId is required." }, { status: 400 });
+      await runner.morning(intentId);
+      return Response.json({ ok: true });
+    }
+    if (path !== "/shutdown") {
       return Response.json({ error: "Unknown negotiator route." }, { status: 404 });
     }
     queueMicrotask(() => void shutdown());

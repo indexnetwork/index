@@ -60,6 +60,8 @@ export type NetworkRequestStatus = 'pending' | 'needs_changes';
 
 export interface NotificationPreferences {
   connectionUpdates: boolean;
+  /** Absent means the morning wake is on. */
+  morningBrief?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -78,6 +80,7 @@ export const users = pgTable('users', {
   location: text('location'),
   onboarding: json('onboarding').$type<OnboardingState>().default({}),
   timezone: text('timezone').default('UTC'),
+  lastMorningBriefAt: timestamp('last_morning_brief_at'),
   lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
 
 
