@@ -1002,6 +1002,34 @@ def environment_set(body: dict[str, Any] | None = Body(default=None)) -> dict[st
     return {"success": True, "environment": name, "needsLogin": True}
 
 
+def _ensure_hermes_agent() -> None:
+    """Register an external agent named Hermes when this account has none.
+
+    Runs once a session is live. Does not select it as the negotiator.
+    A registry failure must not block sign-in.
+    """
+    try:
+        payload = tools._api_request("GET", "/agents")
+        if payload.get("success") is False:
+            return
+        for agent in _list(payload.get("agents")):
+            if not isinstance(agent, dict) or _text(agent.get("name")).lower() != "hermes":
+                continue
+            agent_id = _text(agent.get("id"))
+            if agent_id:
+                tools.remember_local_agent(agent_id)
+            return
+        created = tools._api_request("POST", "/agents", {"name": "Hermes"})
+        if created.get("success") is False:
+            return
+        agent = created.get("agent")
+        agent_id = _text(agent.get("id")) if isinstance(agent, dict) else ""
+        if agent_id:
+            tools.remember_local_agent(agent_id)
+    except Exception:  # noqa: BLE001 - sign-in still completes.
+        return
+
+
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
     """Report transport health from the configured API key."""
@@ -1012,6 +1040,8 @@ def auth_status() -> dict[str, Any]:
         payload.update({"authenticated": False, "needsLogin": True})
         return payload
     connected = status.get("connected") is True and not status.get("reconnectRequired")
+    if connected:
+        _ensure_hermes_agent()
     return {
         "success": True,
         "authenticated": connected,
@@ -1076,6 +1106,8 @@ def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[
 def auth_login_status() -> dict[str, Any]:
     """Poll the pending login; on success the user's API key is persisted."""
     result = auth_login.poll_status()
+    if result.get("status") == "success":
+        _ensure_hermes_agent()
     payload: dict[str, Any] = {"success": result.get("status") != "failed", "status": result.get("status")}
     if result.get("error"):
         payload["error"] = result.get("error")
