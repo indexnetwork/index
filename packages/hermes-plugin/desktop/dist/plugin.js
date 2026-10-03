@@ -6330,7 +6330,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       );
 
     return React.createElement("div", { className: "index-dashboard", ref: rootRef, "data-scheme": scheme },
-      inlineHdr
+      inlineHdr && auth === "authed"
         ? React.createElement(AgentHeader, {
           leading: headerLead,
           hasUnread: hasUnread,

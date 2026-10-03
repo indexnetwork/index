@@ -124,6 +124,10 @@ def _watch() -> None:
             except Exception as error:  # noqa: BLE001
                 logger.warning("Index event stream failed: %s", error)
                 heard = False
+                if _recover(error):
+                    delay = 1.0
+                    _apply_current()
+                    continue
             if _runner() is None or done.is_set():
                 break
             if heard:
@@ -139,6 +143,24 @@ def _watch() -> None:
         done.set()
         with _lock:
             _started = False
+
+
+def _unauthorized(error: BaseException) -> bool:
+    if getattr(error, "code", None) == 401:
+        return True
+    text = str(error)
+    return "status 401" in text or "HTTP Error 401" in text
+
+
+def _recover(error: BaseException) -> bool:
+    """Rebuild the client from the env file, and on 401 follow the accepting host."""
+    from .env_transport import refresh_transport
+
+    try:
+        return refresh_transport(unauthorized=_unauthorized(error))
+    except Exception:  # noqa: BLE001 - a failed recovery leaves the existing retry backoff.
+        logger.warning("Index session recovery failed")
+        return False
 
 
 def _follow_events(done: threading.Event) -> bool:

@@ -4,15 +4,25 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any, Iterator
 
+logger = logging.getLogger(__name__)
+
 _DEFAULT_API = "https://protocol.index.network"
 _INDEX_DOMAIN = "index.network"
+_KNOWN_ORIGINS = (
+    "https://protocol.index.network",
+    "https://protocol.dev.index.network",
+    "http://localhost:3001",
+)
+_realign_not_before = 0.0
 
 def hermes_env_path() -> Path:
     """The default Hermes `.env` (overridable for tests via HERMES_ENV_PATH)."""
@@ -125,21 +135,121 @@ def remove_index_env(name: str, path: Path | None = None) -> None:
     remove_env_file(path or hermes_env_path(), name)
 
 
+def _normalize_origin(origin: str) -> str:
+    return origin.strip().rstrip("/").removesuffix("/api")
+
+
+def _session_accepted(origin: str, token: str) -> bool:
+    """Whether this device session is accepted by `origin`."""
+    request = urllib.request.Request(
+        _normalize_origin(origin) + "/api/agents/me",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "User-Agent": "Index-Hermes",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            if getattr(response, "status", 200) != 200:
+                return False
+            payload = json.loads(response.read(4096).decode("utf-8", "replace"))
+    except Exception:  # noqa: BLE001 - a down or rejecting host is not this session's home.
+        return False
+    return isinstance(payload, dict) and payload.get("success") is not False and not payload.get("error")
+
+
+def remember_api_origin(origin: str) -> bool:
+    """Store the API host next to the session so later processes call the same one.
+
+    An empty Hermes env means production. Switching hosts drops `INDEX_API_KEY`,
+    which was minted for the previous API. Returns True when the host changed.
+    """
+    origin = _normalize_origin(origin)
+    if not origin:
+        return False
+    path = hermes_env_path()
+    stored = ""
+    if path.is_file():
+        prefix = "INDEX_API_URL="
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith(prefix) or stripped.startswith(f"export {prefix}"):
+                stored = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+    previous = _normalize_origin(stored or _DEFAULT_API)
+    os.environ["INDEX_API_URL"] = origin
+    upsert_env_file(path, "INDEX_API_URL", origin)
+    if previous == origin:
+        return False
+    os.environ.pop("INDEX_API_KEY", None)
+    remove_env_file(path, "INDEX_API_KEY")
+    return True
+
+
+def refresh_transport(*, unauthorized: bool = False) -> bool:
+    """Drop a stale Index client, and on 401 follow the host that accepts this session.
+
+    The gateway keeps the first token and origin it built. Login writes the pair
+    into the Hermes env, which a different process does not see until the client
+    is rebuilt. A 401 from the current host may be a session that belongs to
+    another known Index environment. Returns True when the caller should retry.
+    """
+    global _realign_not_before
+    token = _stored_env("INDEX_SESSION_TOKEN")
+    if not token:
+        return False
+    origin = api_origin()
+    from .transport import get_transport, reset_transport
+
+    cached = None
+    try:
+        cached = get_transport()
+    except Exception:  # noqa: BLE001 - probe with the env file even when the client cannot be built.
+        reset_transport()
+    cached_origin = _normalize_origin(str(getattr(cached, "_origin", "") or ""))
+    if cached is not None and (
+        getattr(cached, "_api_key", None) != token or cached_origin != _normalize_origin(origin)
+    ):
+        reset_transport()
+        return True
+    if not unauthorized:
+        return False
+    now = time.monotonic()
+    if now < _realign_not_before:
+        return False
+    if _session_accepted(origin, token):
+        return False
+    for candidate in _KNOWN_ORIGINS:
+        if _normalize_origin(candidate) == _normalize_origin(origin):
+            continue
+        if not _session_accepted(candidate, token):
+            continue
+        logger.warning("Index session was rejected by %s; using %s", origin, candidate)
+        remember_api_origin(candidate)
+        reset_transport()
+        return True
+    _realign_not_before = now + 30.0
+    return False
+
+
 def api_origin() -> str:
     """Resolve the Index API origin, without its `/api` prefix.
 
-    `INDEX_API_URL` wins. Failing that the origin is derived from
-    `INDEX_APP_BASE_URL` by adding the `protocol.` host label
-    (`dev.index.network` -> `protocol.dev.index.network`), because sign-in and
-    every REST call have to name one environment: an env carrying only the web
-    origin would otherwise approve a device code on dev and redeem it on
-    production, which answers 404. Hosts outside `index.network` are left alone,
-    since a local API's port cannot be derived from the web app's.
+    `INDEX_API_URL` wins, from this process or the Hermes env file. Failing
+    that the origin is derived from `INDEX_APP_BASE_URL` by adding the
+    `protocol.` host label (`dev.index.network` -> `protocol.dev.index.network`),
+    because sign-in and every REST call have to name one environment: an env
+    carrying only the web origin would otherwise approve a device code on dev
+    and redeem it on production, which answers 404. Hosts outside
+    `index.network` are left alone, since a local API's port cannot be derived
+    from the web app's.
     """
-    configured = os.environ.get("INDEX_API_URL", "").strip().rstrip("/")
+    configured = _stored_env("INDEX_API_URL").rstrip("/")
     if configured:
         return configured.removesuffix("/api")
-    app_url = os.environ.get("INDEX_APP_BASE_URL", "").strip().rstrip("/")
+    app_url = _stored_env("INDEX_APP_BASE_URL").rstrip("/")
     if not app_url:
         return _DEFAULT_API
     parts = urllib.parse.urlsplit(app_url)
@@ -172,7 +282,7 @@ class EnvironmentCredentialTransport:
     """The production transport for tool handlers, dashboard HTTP, uploads, and streams."""
 
     def __init__(self) -> None:
-        self._api_key = os.environ.get("INDEX_SESSION_TOKEN", "").strip()
+        self._api_key = _stored_env("INDEX_SESSION_TOKEN")
         if not self._api_key:
             raise TransportError("api_key_missing", _API_KEY_HELP)
         self._origin = api_origin()
