@@ -22,27 +22,25 @@ function InitialsTile({ id, name, size = 46, photo }) {
 
 // The communities you belong to. Intentionally quiet, no border or shadow, so
 // it reads as a shelf item rather than competing with the account row below it.
-// The glyph occupies the same 34px block as the account tile and the label uses
-// the same size and weight, so the two rows line up even though their fills
-// differ on purpose.
+// The label uses the same size and weight as the account row, so the two line up.
 function NetworksRow({ count, pending, onClick }) {
   return (
     <button
       onClick={onClick}
       style={{
-        display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"3px 6px", cursor:"pointer", textAlign:"left",
+        display:"flex", alignItems:"center", gap:8.4, width:"100%",
+        padding:"3px 0", cursor:"pointer", textAlign:"left",
         border:"none", borderTop:"1px solid #DAD8D4", background:"transparent",
       }}>
       <span style={{
-        flex:"0 0 auto", width:34, height:34,
+        flex:"0 0 auto", width:20.8, height:34,
         display:"flex", flexDirection:"column",
-        alignItems:"center", justifyContent:"center", gap:5,
+        alignItems:"flex-start", justifyContent:"center", gap:4,
       }}>
         {[0, 1].map(r => (
-          <span key={r} style={{ display:"flex", gap:4, alignItems:"center" }}>
-            <span style={{ width:4, height:4, background:"#000" }}/>
-            <span style={{ width:13, height:4, background:"#000" }}/>
+          <span key={r} style={{ display:"flex", gap:3.2, alignItems:"center" }}>
+            <span style={{ width:3.2, height:3.2, background:"#000" }}/>
+            <span style={{ width:10.4, height:3.2, background:"#000" }}/>
           </span>
         ))}
       </span>
@@ -66,15 +64,15 @@ function ConversationsRow({ onClick }) {
     <button
       onClick={onClick}
       style={{
-        display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"3px 6px", cursor:"pointer", textAlign:"left",
-        border:"none", borderTop:"1px solid #DAD8D4", background:"transparent",
+        display:"flex", alignItems:"center", gap:8.4, width:"100%",
+        padding:"3px 0", cursor:"pointer", textAlign:"left",
+        border:"none", background:"transparent",
       }}>
       <span style={{
-        flex:"0 0 auto", width:34, height:34,
-        display:"grid", placeItems:"center",
+        flex:"0 0 auto", width:20.8, height:34,
+        display:"grid", placeItems:"center start",
       }}>
-        <svg width="22" height="20" viewBox="0 0 22 20" fill="none" stroke="#000" strokeWidth={2.5} strokeLinejoin="miter">
+        <svg width="17.6" height="16" viewBox="0 0 22 20" fill="none" stroke="#000" strokeWidth={2.5} strokeLinejoin="miter">
           <path d="M2 2h18v12H9l-5 4v-4H2z"/>
         </svg>
       </span>
@@ -126,15 +124,15 @@ function AgentsRow({ count, onClick }) {
     <button
       onClick={onClick}
       style={{
-        display:"flex", alignItems:"center", gap:12, width:"100%",
-        padding:"3px 6px", cursor:"pointer", textAlign:"left",
+        display:"flex", alignItems:"center", gap:8.4, width:"100%",
+        padding:"3px 0", cursor:"pointer", textAlign:"left",
         border:"none", borderTop:"1px solid #DAD8D4", background:"transparent",
       }}>
       <span style={{
-        flex:"0 0 auto", width:34, height:34,
-        display:"grid", placeItems:"center",
+        flex:"0 0 auto", width:20.8, height:34,
+        display:"grid", placeItems:"center start",
       }}>
-        <AgentGlyph size={26}/>
+        <AgentGlyph size={20.8}/>
       </span>
       <span style={{
         flex:1, minWidth:0,
@@ -215,7 +213,7 @@ function UserMenu({ me, onSelect }) {
       </button>
 
       {open && (
-        <div role="menu" className="fade-up" style={{
+        <div role="menu" style={{
           position:"absolute", bottom:"calc(100% + 6px)", left:0, zIndex:40,
           minWidth:200, width:"100%", background:"#fff",
           border:"1px solid #000", boxShadow:"3px 3px 0 rgba(0,0,0,0.22)",
@@ -399,7 +397,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
 
               {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
-                <div style={{ borderBottom:"1px solid #DAD8D4" }}>
+                <div>
                   <ConversationsRow onClick={() => onOpenView && onOpenView("conversations")}/>
                   <NetworksRow count={joinedCount} pending={pendingJoins} onClick={() => onOpenView && onOpenView("networks")}/>
                   <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
