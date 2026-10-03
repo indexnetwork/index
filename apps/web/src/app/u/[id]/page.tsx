@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Loader2 } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers, useNetworks } from "@/contexts/APIContext";
 import AppHandoff from "@/components/AppHandoff";
@@ -89,9 +88,7 @@ function UserProfile() {
   if (authLoading || isLoading) {
     return (
       <ClientLayout>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-        </div>
+        <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
       </ClientLayout>
     );
   }
@@ -99,9 +96,8 @@ function UserProfile() {
   if (error) {
     return (
       <ClientLayout>
-        <div className="text-center py-12">
-          <h2 className="text-xl font-bold text-red-600 mb-2 font-ibm-plex-mono">Error</h2>
-          <p className="text-gray-600 mb-4 font-ibm-plex-mono">{error}</p>
+        <div style={{ padding: 24 }}>
+          <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-warn)" }}>{error}</p>
           <button type="button" className="wb-btn" onClick={() => navigate(-1)}>back</button>
         </div>
       </ClientLayout>

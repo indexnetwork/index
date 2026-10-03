@@ -1,10 +1,9 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
 import * as Tabs from '@radix-ui/react-tabs';
 
-import NetworkAvatar from '@/components/NetworkAvatar';
 import ClientLayout from '@/components/ClientLayout';
+import { resolveNetworkImageSrc } from '@/lib/network-image';
 import { Stage, Window } from '@/components/workbench/Workbench';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
 import NetworkOverviewPanel from '@/components/NetworkOverviewPanel';
@@ -15,6 +14,26 @@ import { Network } from '@/lib/types';
 import { log } from '@/lib/logger';
 
 const logger = log.page.from('networks/[id]');
+
+const TILE = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
+
+function NetworkTile({ id, name, photo, size = 48 }: { id?: string; name?: string; photo?: string | null; size?: number }) {
+  const [broken, setBroken] = useState(false);
+  if (photo && !broken) {
+    return (
+      <img src={resolveNetworkImageSrc(photo)} alt="" onError={() => setBroken(true)} style={{ flex: "0 0 auto", width: size, height: size, objectFit: "cover", display: "block", border: "1px solid #000", filter: "grayscale(1) contrast(1.05)" }} />
+    );
+  }
+  const seed = String(name || id || "");
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  const cells = [0, 1, 2, 3].map((i) => TILE[(h >>> (i * 3)) % TILE.length]);
+  return (
+    <span style={{ flex: "0 0 auto", width: size, height: size, border: "1px solid #000", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+      {cells.map((color, i) => <span key={i} style={{ background: color }} />)}
+    </span>
+  );
+}
 
 export type TabValue = 'overview' | 'settings' | 'access';
 
@@ -145,59 +164,56 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
     <ClientLayout>
       <Stage width={860} height="min(660px, calc(100vh - 112px))">
       <Window title={network?.title?.toLowerCase() || 'networks'} onClose={() => navigate('/networks')} style={{ height: '100%' }}>
-      <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: '18px 24px 22px' }}>
-
-          {loading ? (
-            <div className="flex justify-center py-16">
-              <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
-            </div>
-          ) : notFound ? (
-            <div className="py-16 text-center">
-              <p style={{ fontFamily: 'var(--mac-mono)', fontSize: 12 }}>network not found</p>
-              <button type="button" className="wb-btn small" onClick={() => navigate('/networks')}>back</button>
-            </div>
-          ) : network ? (
-            <>
-              {/* Header */}
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-                <div>
-                  <h1 style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 18, fontWeight: 700 }}>{network.title.toLowerCase()}</h1>
-                  <p style={{ margin: "6px 0 0", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
-                    {isPublic ? "public" : "private"}
-                    {network._count?.members !== undefined ? ` · ${network._count.members} members` : ""}
-                    {isOwner ? " · owner" : ""}
-                  </p>
+      {loading ? (
+        <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
+      ) : notFound ? (
+        <div style={{ padding: 24 }}>
+          <p style={{ fontFamily: 'var(--mac-mono)', fontSize: 12 }}>network not found</p>
+          <button type="button" className="wb-btn small" onClick={() => navigate('/networks')}>back</button>
+        </div>
+      ) : network ? (
+        <Tabs.Root value={isOwner ? activeTab : "overview"} onValueChange={handleTabChange} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "14px 24px 0", borderBottom: "2px solid #000" }}>
+            <button type="button" onClick={() => navigate('/networks')} style={{ padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>← back</button>
+            <div style={{ marginTop: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 14 }}>
+              <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: "var(--mac-mono)", fontSize: 19, fontWeight: 700 }}>{network.title}</div>
+                <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: "4px 16px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>
+                  <span>{isPublic ? "public" : "🔒 private"}</span>
+                  {network._count?.members !== undefined && <span>👤 {network._count.members} members</span>}
+                  {isOwner && <span>★ owner</span>}
                 </div>
-                {!isOwner && (
-                  <button type="button" className="wb-btn small" onClick={() => setLeaveRequested(true)}>leave</button>
-                )}
               </div>
-
-              {isOwner ? (
-                <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
-                  <div className="wb-segmented lg" style={{ marginBottom: 16 }}>
-                    {(['overview', 'settings', 'access'] as const).map((tab) => (
-                      <Tabs.Trigger key={tab} value={tab}>{tab}</Tabs.Trigger>
-                    ))}
-                  </div>
-
-                  <Tabs.Content value="overview">
-                    <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
-                  </Tabs.Content>
-                  <Tabs.Content value="settings">
-                    <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="settings" />
-                  </Tabs.Content>
-                  <Tabs.Content value="access">
-                    <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="access" />
-                  </Tabs.Content>
-                </Tabs.Root>
-              ) : (
-                <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
+              {!isOwner && (
+                <button type="button" onClick={() => setLeaveRequested(true)} style={{ flex: "0 0 auto", cursor: "pointer", fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 15px", border: "1px solid var(--ink-warn)", background: "#fff", color: "var(--ink-warn)", boxShadow: "1px 1px 0 rgba(138,0,0,0.3)" }}>leave</button>
               )}
-            </>
-          ) : null}
-
-      </div>
+            </div>
+            {isOwner && (
+              <div style={{ display: "flex", gap: 2 }}>
+                {(['overview', 'settings', 'access'] as const).map((tab) => (
+                  <Tabs.Trigger key={tab} value={tab} style={{ padding: "8px 14px 10px", border: "none", borderBottom: activeTab === tab ? "2px solid #000" : "2px solid transparent", background: "transparent", fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: activeTab === tab ? 700 : 400, color: activeTab === tab ? "#000" : "var(--ink-2)", textTransform: "capitalize", cursor: "pointer" }}>{tab}</Tabs.Trigger>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 24px 20px" }}>
+            <Tabs.Content value="overview">
+              <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
+            </Tabs.Content>
+            {isOwner && (
+              <>
+                <Tabs.Content value="settings">
+                  <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="settings" />
+                </Tabs.Content>
+                <Tabs.Content value="access">
+                  <NetworkSettingsPanel network={network} onDeleted={handleDeleted} activeTab="access" />
+                </Tabs.Content>
+              </>
+            )}
+          </div>
+        </Tabs.Root>
+      ) : null}
       </Window>
       </Stage>
     </ClientLayout>
