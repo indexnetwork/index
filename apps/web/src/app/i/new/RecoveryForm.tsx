@@ -1,20 +1,21 @@
 import { useState } from "react";
 
-import { OptionChip, WriteOwn } from "@/components/workbench/mac-blocks";
+import { AgentPortrait, OptionChip, WriteOwn } from "@/components/workbench/mac-blocks";
+import { Btn } from "@/components/workbench/Workbench";
+import { useAuthContext } from "@/contexts/AuthContext";
 import type { PrepareAnswer, RecoveryField } from "@/services/signals";
 
 /** Dynamic recovery form rendered from server-generated fields and options. */
 export function RecoveryForm({
   fields,
   feedback,
-  busy,
   onSubmit,
 }: {
   fields: RecoveryField[];
   feedback: string;
-  busy: boolean;
   onSubmit: (answers: PrepareAnswer[]) => Promise<void>;
 }) {
+  const { user } = useAuthContext();
   const [singleSelected, setSingleSelected] = useState<Record<string, string>>({});
   const [multiSelected, setMultiSelected] = useState<Record<string, string[]>>({});
   const [textValues, setTextValues] = useState<Record<string, string>>({});
@@ -47,64 +48,77 @@ export function RecoveryForm({
   });
 
   return (
-    <section aria-label="Recovery form" style={{ display: "grid", gap: 16 }}>
-      <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 14 }}>{feedback || "help me understand what you're looking for."}</p>
-      {fields.map((field) => (
-        <div key={field.id} style={{ display: "grid", gap: 8 }}>
-          <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 14 }}>{field.label}</p>
-          {field.kind === "text" && (
-            <textarea
-              value={textValues[field.id] ?? ""}
-              onChange={(event) => setTextValues((current) => ({ ...current, [field.id]: event.target.value }))}
-              placeholder={field.placeholder ?? "type your answer…"}
-              rows={2}
-              maxLength={65_536}
-              disabled={busy}
-              style={{ width: "100%", border: "1px solid #000", padding: "10px 12px", fontFamily: "var(--mac-sans)", fontSize: 14 }}
-            />
-          )}
-          {(field.kind === "single" || field.kind === "multi") && field.options && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {field.options.map((option) => {
-                const checked = field.kind === "single"
-                  ? !writing[field.id] && singleSelected[field.id] === option.label
-                  : (multiSelected[field.id] ?? []).includes(option.label);
-                return (
-                  <OptionChip
-                    key={option.label}
-                    label={option.label}
-                    selected={checked}
-                    onClick={() => {
-                      if (field.kind === "single") {
-                        setSingleSelected((current) => ({ ...current, [field.id]: checked ? "" : option.label }));
-                        setWriting((current) => ({ ...current, [field.id]: false }));
-                        setTextValues((current) => ({ ...current, [field.id]: "" }));
-                      } else {
-                        toggleMulti(field.id, option.label);
-                      }
-                    }}
-                  />
-                );
-              })}
-              <WriteOwn
-                open={!!writing[field.id]}
+    <div className="fade-up" style={{ display: "grid", gap: 16 }}>
+      <AgentLine user={user}>{feedback || "help me understand what you're looking for."}</AgentLine>
+      <div style={{ marginLeft: 42, display: "grid", gap: 18, maxWidth: 620 }}>
+        {fields.map((field) => (
+          <div key={field.id}>
+            <div style={{ fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: 700, marginBottom: 8 }}>{field.label}</div>
+            {field.kind === "text" && (
+              <textarea
                 value={textValues[field.id] ?? ""}
-                onOpen={() => {
-                  if (field.kind === "single") setSingleSelected((current) => ({ ...current, [field.id]: "" }));
-                  setWriting((current) => ({ ...current, [field.id]: true }));
-                }}
-                onChange={(value) => setTextValues((current) => ({ ...current, [field.id]: value }))}
-                onClose={() => setWriting((current) => ({ ...current, [field.id]: false }))}
+                onChange={(event) => setTextValues((current) => ({ ...current, [field.id]: event.target.value }))}
+                placeholder={field.placeholder ?? "type your answer…"}
+                rows={2}
+                maxLength={65_536}
+                style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #000", fontFamily: "var(--mac-sans)", fontSize: 14 }}
               />
-            </div>
-          )}
-        </div>
-      ))}
-      <div>
-        <button type="button" className="wb-btn primary" disabled={busy} onClick={() => void onSubmit(buildAnswers())}>
-          {busy ? "sending…" : "create signal"}
-        </button>
+            )}
+            {(field.kind === "single" || field.kind === "multi") && field.options && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {field.options.map((option) => {
+                  const checked = field.kind === "single"
+                    ? !writing[field.id] && singleSelected[field.id] === option.label
+                    : (multiSelected[field.id] ?? []).includes(option.label);
+                  return (
+                    <OptionChip
+                      key={option.label}
+                      label={option.label}
+                      selected={checked}
+                      onClick={() => {
+                        if (field.kind === "single") {
+                          setSingleSelected((current) => ({ ...current, [field.id]: checked ? "" : option.label }));
+                          setWriting((current) => ({ ...current, [field.id]: false }));
+                          setTextValues((current) => ({ ...current, [field.id]: "" }));
+                        } else {
+                          toggleMulti(field.id, option.label);
+                        }
+                      }}
+                    />
+                  );
+                })}
+                <WriteOwn
+                  open={!!writing[field.id]}
+                  value={textValues[field.id] ?? ""}
+                  onOpen={() => {
+                    if (field.kind === "single") setSingleSelected((current) => ({ ...current, [field.id]: "" }));
+                    setWriting((current) => ({ ...current, [field.id]: true }));
+                  }}
+                  onChange={(value) => setTextValues((current) => ({ ...current, [field.id]: value }))}
+                  onClose={() => setWriting((current) => ({ ...current, [field.id]: false }))}
+                />
+              </div>
+            )}
+          </div>
+        ))}
+        <div><Btn primary onClick={() => void onSubmit(buildAnswers())}>create signal</Btn></div>
       </div>
-    </section>
+    </div>
+  );
+}
+
+function AgentLine({ user, children, muted = false }: {
+  user: { id?: string; name?: string; avatar?: string | null } | null;
+  children: React.ReactNode;
+  muted?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <AgentPortrait id={user?.id} name={user?.name} photo={user?.avatar} size={30} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ marginBottom: 6, color: "#8f8f88", fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>your agent</div>
+        <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: muted ? 400 : 700, lineHeight: 1.55, color: muted ? "#2a2a2a" : "#111" }}>{children}</div>
+      </div>
+    </div>
   );
 }
