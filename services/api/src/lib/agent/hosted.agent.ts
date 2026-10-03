@@ -19,6 +19,7 @@ import { log } from '../log';
 import { ackPendingUserEvents, ackUserEvent, ensureUserEventGroup, readUserEventGroup, scanUserEventStreams, skipUserEventGroupToTail, type UserEventRecord } from '../user-events';
 
 import { HostedIndex } from './hosted.index';
+import { HostedSession } from './hosted.session';
 
 const logger = log.agent.from('HostedAgent');
 
@@ -26,11 +27,6 @@ const logger = log.agent.from('HostedAgent');
 const WAKE_GROUP = 'hosted-negotiator';
 /** Short enough that an owner's first-ever stream is picked up by the next scan. */
 const WAKE_BLOCK_MS = 2000;
-/** How many times a failed wake is retried before it waits for the next event or restart. */
-const WAKE_RETRIES = 3;
-/** The first retry's delay; each later one waits that much longer again. */
-const WAKE_RETRY_MS = 30_000;
-
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
   type?: string;
@@ -40,18 +36,7 @@ interface WakeFrame {
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
 export class HostedAgent {
   private readonly registry = new AgentDatabaseAdapter();
-  /** Signals with a wake in flight, and those that asked for one while it ran. */
-  private readonly waking = new Set<string>();
-  private readonly again = new Set<string>();
-  /** Opportunities with a negotiator in flight, by the signal they stand on. */
-  private readonly working = new Map<string, string>();
-  /** Failed wakes retried so far, by signal. */
-  private readonly retries = new Map<string, number>();
-  /** Stalls no wake has read yet, by signal: the only ones worth waking for. */
-  private readonly unread = new Map<string, string>();
-  /** Signals whose initiation check is running, and those that asked for one while it ran. */
-  private readonly closing = new Set<string>();
-  private readonly resettle = new Set<string>();
+  private readonly session: HostedSession;
   private readonly joined = new Set<string>();
   /** Owners whose seat an external negotiator holds, so this host leaves their stream unread. */
   private readonly aside = new Set<string>();
@@ -61,7 +46,27 @@ export class HostedAgent {
   private reader?: ReturnType<typeof createRedisClient>;
   private running = false;
 
-  constructor(private readonly model: Model) {}
+  constructor(private readonly model: Model) {
+    this.session = new HostedSession({
+      running: () => this.running,
+      holdsSeat: (userId) => this.holdsSeat(userId),
+      activeIntent: (userId, intentId) => this.activeIntent(userId, intentId),
+      runWake: (userId, intent) => this.invokeWake(userId, intent),
+      closeInitiation: (userId, intent) => closeInitiation(new HostedIndex(userId), intent, this.runtime()),
+      runNegotiate: (userId, intent, opportunityId) => runNegotiate(new HostedIndex(userId), opportunityId, intent, this.runtime()),
+      getNegotiation: async (userId, opportunityId) => {
+        const record = await new HostedIndex(userId).getNegotiation(opportunityId).catch(() => null);
+        if (!record) return null;
+        return { settledAt: record.settledAt, awaitingUserId: record.awaitingUserId };
+      },
+      schedule: (run, delayMs) => { setTimeout(run, delayMs).unref(); },
+      onError: (line) => {
+        const detail = line.includes(': ') ? line.slice(line.indexOf(': ') + 2) : line;
+        logger.error(line, { error: detail });
+      },
+      verbose: (message, meta) => { logger.verbose(message, meta); },
+    });
+  }
 
   /** Start reading every owner's event stream. */
   async start(): Promise<void> {
@@ -80,7 +85,7 @@ export class HostedAgent {
     await runWake(new HostedIndex(userId), intent, {
       ...this.runtime(),
       reason: 'morning',
-      onNegotiate: (opportunityId) => this.run(this.negotiate(userId, intent.id, opportunityId)),
+      onNegotiate: (opportunityId) => this.session.run(this.session.negotiate(userId, intent.id, opportunityId)),
     });
   }
 
@@ -176,35 +181,23 @@ export class HostedAgent {
 
     switch (frame.type) {
       case 'negotiation.turn':
-        if (intentId && opportunityId) this.run(this.negotiate(userId, intentId, opportunityId));
+        if (intentId && opportunityId) this.session.run(this.session.negotiate(userId, intentId, opportunityId));
         break;
       case 'principal.input':
         // An answer releases only the stalls its question asked about, which the
         // wake reads from the conversation; anything else they write releases none.
-        if (intentId) this.run(this.wake(userId, intentId));
+        if (intentId) this.session.run(this.session.wake(userId, intentId));
         break;
       case 'intent.created':
-        if (intentId) this.run(this.wake(userId, intentId));
+        if (intentId) this.session.run(this.session.wake(userId, intentId));
         break;
       case 'intent.lifecycle':
         // A resumed signal is worth a think pass; pausing and removing are not.
-        if (intentId && status === 'active') this.run(this.wake(userId, intentId));
+        if (intentId && status === 'active') this.session.run(this.session.wake(userId, intentId));
         break;
       default:
         break;
     }
-  }
-
-  /**
-   * A run is its own unit of work: a failure is reported and dropped rather
-   * than taken out on the stream reader or a sibling run.
-   *
-   * @param work - One run already started.
-   */
-  private run(work: Promise<void>): void {
-    void work.catch((error: unknown) => {
-      logger.error('Hosted run failed', { error: error instanceof Error ? error.message : String(error) });
-    });
   }
 
   /** @param userId - The owner in question. @returns Whether Index still holds their seat. */
@@ -233,62 +226,14 @@ export class HostedAgent {
   }
 
   /**
-   * One wake over one signal, coalescing a request that arrives while one is
-   * running into a single follow-up.
-   *
-   * @param userId - The signal's owner.
-   * @param intentId - The signal to think about.
+   * One event wake. Each opportunity opens the moment its own decision is
+   * published, so the first turns go out while the wake is still thinking.
    */
-  private async wake(userId: string, intentId: string): Promise<void> {
-    if (!this.running) return;
-    // Claimed before the first await: two frames for one signal must not both
-    // become a wake.
-    if (this.waking.has(intentId)) {
-      this.again.add(intentId);
-      return;
-    }
-    this.waking.add(intentId);
-    // This wake reads every stall standing on the signal, so none of them is a
-    // reason to wake again.
-    for (const [opportunityId, signal] of this.unread) if (signal === intentId) this.unread.delete(opportunityId);
-
-    try {
-      if (!await this.holdsSeat(userId)) return;
-      const intent = await this.activeIntent(userId, intentId);
-      if (!intent) return;
-      // Each opportunity opens the moment its own decision is published, so the
-      // first turns go out while the wake is still thinking.
-      await runWake(new HostedIndex(userId), intent, {
-        ...this.runtime(),
-        onNegotiate: (opportunityId) => this.run(this.negotiate(userId, intentId, opportunityId)),
-      });
-      this.retries.delete(intentId);
-    } catch (error: unknown) {
-      this.retry(userId, intentId);
-      throw error;
-    } finally {
-      this.waking.delete(intentId);
-      if (this.again.delete(intentId) && this.running) this.run(this.wake(userId, intentId));
-    }
-  }
-
-  /**
-   * A failed wake leaves what it owed on the conversation, so the wake runs
-   * again a few times, further apart each time, then waits for the next event
-   * or restart.
-   *
-   * @param userId - The signal's owner.
-   * @param intentId - The signal whose wake failed.
-   */
-  private retry(userId: string, intentId: string): void {
-    const attempt = (this.retries.get(intentId) ?? 0) + 1;
-    if (!this.running || attempt > WAKE_RETRIES) {
-      this.retries.delete(intentId);
-      return;
-    }
-    this.retries.set(intentId, attempt);
-    logger.verbose('Hosted wake retry scheduled', { intentId, attempt });
-    setTimeout(() => this.run(this.wake(userId, intentId)), WAKE_RETRY_MS * attempt).unref();
+  private invokeWake(userId: string, intent: Intent): Promise<void> {
+    return runWake(new HostedIndex(userId), intent, {
+      ...this.runtime(),
+      onNegotiate: (opportunityId) => this.session.run(this.session.negotiate(userId, intent.id, opportunityId)),
+    });
   }
 
   /**
@@ -306,107 +251,8 @@ export class HostedAgent {
       const intent = await this.activeIntent(userId, intentId);
       if (!intent) continue;
       const owed = await owedWork(index, intent);
-      if (owed.wake) this.run(this.wake(userId, intentId));
-      for (const opportunityId of owed.negotiate) this.run(this.negotiate(userId, intentId, opportunityId));
+      if (owed.wake) this.session.run(this.session.wake(userId, intentId));
+      for (const opportunityId of owed.negotiate) this.session.run(this.session.negotiate(userId, intentId, opportunityId));
     }
-  }
-
-  /**
-   * Work one negotiation. A stall stands on the conversation and is recorded
-   * here; waking on it is {@link finish}'s call, not this run's.
-   *
-   * A stall still standing on the conversation holds the negotiator inside
-   * `runNegotiate`, whatever started it — without that, asking and stalling
-   * would trade places without end. Its answer, a resolution, a decline or a
-   * stop is what releases it.
-   *
-   * @param userId - The seat owner.
-   * @param intentId - The signal this negotiation belongs to.
-   * @param opportunityId - The negotiation to work.
-   */
-  private async negotiate(userId: string, intentId: string, opportunityId: string): Promise<void> {
-    if (!this.running || this.working.has(opportunityId)) return;
-    this.working.set(opportunityId, intentId);
-    // The wake waits for this negotiator to be out of flight: it re-decides the
-    // opportunity, and a decision starts a negotiator for it again.
-    try {
-      await this.takeTurn(userId, intentId, opportunityId);
-    } finally {
-      await this.finish(userId, intentId, opportunityId);
-    }
-  }
-
-  /**
-   * One negotiator is done. The initiation is the negotiations this seat opened
-   * since the last summary. While one of them is still on its opening turn,
-   * a stall waits here instead of waking. When none are, one summary is written
-   * and one wake decides the whole set.
-   *
-   * A stall the principal already has stays standing until they answer, and is
-   * not a reason to wake over every turn that lands meanwhile.
-   *
-   * @param userId - The seat owner.
-   * @param intentId - The signal that negotiator belonged to.
-   * @param opportunityId - The negotiation it worked.
-   */
-  private async finish(userId: string, intentId: string, opportunityId: string): Promise<void> {
-    this.working.delete(opportunityId);
-    await this.settle(userId, intentId);
-  }
-
-  /**
-   * Read the initiation from the database and wake once it has finished.
-   * A check that arrives while one is running becomes a single follow-up.
-   *
-   * @param userId - The seat owner.
-   * @param intentId - The signal.
-   */
-  private async settle(userId: string, intentId: string): Promise<void> {
-    if (!this.running) return;
-    if (this.closing.has(intentId)) {
-      this.resettle.add(intentId);
-      return;
-    }
-    this.closing.add(intentId);
-    try {
-      if (!await this.holdsSeat(userId)) return;
-      const intent = await this.activeIntent(userId, intentId);
-      if (!intent) return;
-      const status = await closeInitiation(new HostedIndex(userId), intent, this.runtime());
-      if (!this.running) return;
-      const unread = [...this.unread.values()].includes(intentId);
-      if (status === 'done' || (status === 'idle' && unread)) await this.wake(userId, intentId);
-    } catch (error: unknown) {
-      logger.error('Negotiation summary failed', { error: error instanceof Error ? error.message : String(error) });
-    } finally {
-      this.closing.delete(intentId);
-      if (this.resettle.delete(intentId) && this.running) await this.settle(userId, intentId);
-    }
-  }
-
-  /**
-   * @param userId - The seat owner.
-   * @param intentId - The signal this negotiation belongs to.
-   * @param opportunityId - The negotiation to work.
-   */
-  private async takeTurn(userId: string, intentId: string, opportunityId: string): Promise<void> {
-    if (!await this.holdsSeat(userId)) return;
-    const intent = await this.activeIntent(userId, intentId);
-    if (!intent) return;
-
-    const index = new HostedIndex(userId);
-    // A turn that hit the limit without settling is still a `negotiation.turn`
-    // frame with nobody awaiting. Reading first is what keeps that from reaching
-    // the negotiator, which would stall and ask for a wake over nothing.
-    const record = await index.getNegotiation(opportunityId).catch(() => null);
-    if (!record || record.settledAt || record.awaitingUserId !== userId) return;
-
-    const result = await runNegotiate(index, opportunityId, intent, this.runtime());
-    if ('turn' in result) {
-      this.unread.delete(opportunityId);
-      return;
-    }
-    if ('held' in result) return;
-    this.unread.set(opportunityId, intentId);
   }
 }

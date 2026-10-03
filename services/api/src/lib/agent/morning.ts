@@ -52,50 +52,83 @@ export function morningDue(owner: MorningOwner, now: Date): boolean {
   return localParts(now, zone).minutes >= MORNING_START + morningOffsetMinutes(owner.id);
 }
 
+/** Release the cross-replica gate. Null when another process already holds it. */
+export type MorningLock = () => Promise<(() => Promise<void>) | null>;
+
 interface MorningBriefDeps {
   listHostedOwners: () => Promise<MorningOwner[]>;
   claim: (userId: string, now: Date, timeZone: string) => Promise<MorningClaim | null>;
   work: (owner: MorningOwner) => Promise<void>;
   onError?: (error: unknown) => void;
   cap?: number;
+  /**
+   * One process claims at a time. Held until the work that pass started has
+   * finished, so another replica cannot start its own cap on top.
+   */
+  lock?: MorningLock;
 }
 
 /**
  * Once a minute, start the hosted owners whose local morning minute has
- * arrived. A claim is the only thing that lets a pass run.
+ * arrived. A claim is the only thing that lets a pass run, and at most `cap`
+ * of those runs are in flight at once — including a tick that overlaps one
+ * already going, and including another process that loses {@link MorningLock}.
  */
 export function createMorningBrief(deps: MorningBriefDeps): { tick: (now?: Date) => Promise<void> } {
   const cap = deps.cap ?? DEFAULT_CAP;
   let inFlight = 0;
   const running = new Set<string>();
+  let tail: Promise<void> = Promise.resolve();
+
+  async function claimPass(now: Date): Promise<Promise<void>[]> {
+    if (inFlight >= cap) return [];
+    const due = (await deps.listHostedOwners())
+      .filter((owner) => !running.has(owner.id) && morningDue(owner, now))
+      .sort((left, right) => morningOffsetMinutes(left.id) - morningOffsetMinutes(right.id));
+
+    const jobs: Promise<void>[] = [];
+    for (const owner of due) {
+      if (inFlight >= cap) break;
+      inFlight += 1;
+      running.add(owner.id);
+      const claim = await deps.claim(owner.id, now, morningZone(owner.timezone)).catch((error: unknown) => {
+        deps.onError?.(error);
+        return null;
+      });
+      if (!claim) {
+        inFlight -= 1;
+        running.delete(owner.id);
+        continue;
+      }
+      jobs.push(Promise.resolve().then(() => deps.work(owner)).catch((error: unknown) => {
+        deps.onError?.(error);
+      }).finally(() => {
+        inFlight -= 1;
+        running.delete(owner.id);
+      }));
+    }
+    return jobs;
+  }
 
   return {
     async tick(now = new Date()) {
-      if (inFlight >= cap) return;
-      const due = (await deps.listHostedOwners())
-        .filter((owner) => !running.has(owner.id) && morningDue(owner, now))
-        .sort((left, right) => morningOffsetMinutes(left.id) - morningOffsetMinutes(right.id));
-
-      for (const owner of due) {
-        if (inFlight >= cap) break;
-        inFlight += 1;
-        running.add(owner.id);
-        const claim = await deps.claim(owner.id, now, morningZone(owner.timezone)).catch((error: unknown) => {
-          deps.onError?.(error);
-          return null;
-        });
-        if (!claim) {
-          inFlight -= 1;
-          running.delete(owner.id);
-          continue;
+      const run = tail.then(async () => {
+        if (inFlight >= cap) return;
+        const release = deps.lock ? await deps.lock() : null;
+        if (deps.lock && !release) return;
+        let jobs: Promise<void>[] = [];
+        try {
+          if (inFlight >= cap) return;
+          jobs = await claimPass(now);
+        } finally {
+          // An empty pass lets the next replica in immediately. A pass that
+          // started work keeps the gate until those runs finish.
+          if (jobs.length === 0) await release?.();
+          else void Promise.all(jobs).finally(() => release?.()).catch(() => undefined);
         }
-        void deps.work(owner).catch((error: unknown) => {
-          deps.onError?.(error);
-        }).finally(() => {
-          inFlight -= 1;
-          running.delete(owner.id);
-        });
-      }
+      });
+      tail = run.then(() => undefined, () => undefined);
+      await run;
     },
   };
 }

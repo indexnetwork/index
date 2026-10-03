@@ -9,6 +9,10 @@ const DEFAULT_MODELS: readonly string[] = Object.freeze([
 
 /** Long enough for a slow model, short enough to notice a hang. */
 const DEFAULT_TIMEOUT = 120_000;
+/** One tool call fits. This model bills reasoning as output, up to 65,536 tokens otherwise. */
+const MAX_TOKENS = 2048;
+/** Gemini 3 requires reasoning. Low matches the protocol agents, and the text stays out of the transcript. */
+const REASONING = { effort: "low", exclude: true } as const;
 
 export interface ToolCall {
   id: string;
@@ -24,6 +28,12 @@ export interface ModelMessage {
   tool_calls?: ToolCall[];
   /** Set on tool messages, pointing at the call they answer. */
   tool_call_id?: string;
+  /**
+   * Thought signature from the previous completion. Gemini rejects the next
+   * tool round unless this comes back unchanged.
+   */
+  reasoning?: string | null;
+  reasoning_details?: unknown;
 }
 
 export interface ToolDefinition {
@@ -95,6 +105,8 @@ export class ModelClient implements Model {
       body: JSON.stringify({
         models: this.models,
         messages,
+        max_tokens: MAX_TOKENS,
+        reasoning: REASONING,
         ...(tools.length ? { tools, provider: { require_parameters: true } } : {}),
       }),
     });
@@ -120,6 +132,8 @@ export class ModelClient implements Model {
       role: "assistant",
       content: message.content ?? null,
       ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}),
+      ...(message.reasoning != null ? { reasoning: message.reasoning } : {}),
+      ...(message.reasoning_details != null ? { reasoning_details: message.reasoning_details } : {}),
     };
   }
 }
