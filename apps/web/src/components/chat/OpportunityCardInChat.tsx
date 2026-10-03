@@ -147,7 +147,7 @@ export function OpportunitySkeleton() {
       {/* Header Skeleton */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-gray-200 shrink-0" />
+          <div className="w-8 h-8 bg-gray-200 shrink-0" />
           <div className="space-y-1.5">
             <div className="h-4 w-24 bg-gray-200 rounded-sm" />
             <div className="h-3 w-32 bg-gray-200 rounded-sm" />

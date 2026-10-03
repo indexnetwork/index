@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ChevronLeft, Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
+import { Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
 import * as Tabs from '@radix-ui/react-tabs';
 
 import NetworkAvatar from '@/components/NetworkAvatar';
 import ClientLayout from '@/components/ClientLayout';
+import { Stage, Window } from '@/components/workbench/Workbench';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
 import NetworkOverviewPanel from '@/components/NetworkOverviewPanel';
-import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNetworks } from '@/contexts/APIContext';
@@ -143,18 +143,9 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
 
   return (
     <ClientLayout>
-      <div className="px-6 lg:px-8 py-8">
-        <ContentContainer>
-
-          {/* Back */}
-          <button
-            type="button"
-            onClick={() => navigate('/networks')}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-black transition-colors mb-6"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            Networks
-          </button>
+      <Stage width={860} height="min(660px, calc(100vh - 112px))">
+      <Window title={network?.title?.toLowerCase() || 'networks'} onClose={() => navigate('/networks')} style={{ height: '100%' }}>
+      <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: '18px 24px 22px' }}>
 
           {loading ? (
             <div className="flex justify-center py-16">
@@ -162,68 +153,33 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
             </div>
           ) : notFound ? (
             <div className="py-16 text-center">
-              <p className="text-sm font-medium text-gray-700 mb-1">Network not found</p>
-              <button onClick={() => navigate('/networks')} className="text-xs text-gray-400 hover:text-black transition-colors">
-                Back to Networks
-              </button>
+              <p style={{ fontFamily: 'var(--mac-mono)', fontSize: 12 }}>network not found</p>
+              <button type="button" className="wb-btn small" onClick={() => navigate('/networks')}>back</button>
             </div>
           ) : network ? (
             <>
               {/* Header */}
-              <div className="flex items-start justify-between mb-8">
-                <div className="flex items-start gap-4">
-                  <div className="w-16 h-16 rounded-full overflow-hidden shrink-0">
-                    <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={64} rounded="full" />
-                  </div>
-                  <div>
-                  <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-3">
-                    {network.title}
-                  </h1>
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                      {isPublic
-                        ? <Globe className="w-3.5 h-3.5" />
-                        : <Lock className="w-3.5 h-3.5" />}
-                      {isPublic ? 'Public' : 'Private'}
-                    </span>
-                    {network._count?.members !== undefined && (
-                      <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                        <Users className="w-3.5 h-3.5" />
-                        {network._count.members} member{network._count.members !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                    {isOwner && (
-                      <span className="text-xs px-1.5 py-0.5 bg-gray-900 text-white rounded-sm font-medium">
-                        Owner
-                      </span>
-                    )}
-                  </div>
-                  </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h1 style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 18, fontWeight: 700 }}>{network.title.toLowerCase()}</h1>
+                  <p style={{ margin: "6px 0 0", fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>
+                    {isPublic ? "public" : "private"}
+                    {network._count?.members !== undefined ? ` · ${network._count.members} members` : ""}
+                    {isOwner ? " · owner" : ""}
+                  </p>
                 </div>
                 {!isOwner && (
-                  <button
-                    onClick={() => setLeaveRequested(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-500 border border-red-200 rounded-sm hover:bg-red-50 hover:border-red-300 transition-colors"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Leave
-                  </button>
+                  <button type="button" className="wb-btn small" onClick={() => setLeaveRequested(true)}>leave</button>
                 )}
               </div>
 
               {isOwner ? (
                 <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
-                  <Tabs.List className="flex border-b border-gray-200 mb-8">
+                  <div className="wb-segmented lg" style={{ marginBottom: 16 }}>
                     {(['overview', 'settings', 'access'] as const).map((tab) => (
-                      <Tabs.Trigger
-                        key={tab}
-                        value={tab}
-                        className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold capitalize"
-                      >
-                        {tab}
-                      </Tabs.Trigger>
+                      <Tabs.Trigger key={tab} value={tab}>{tab}</Tabs.Trigger>
                     ))}
-                  </Tabs.List>
+                  </div>
 
                   <Tabs.Content value="overview">
                     <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
@@ -241,8 +197,9 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
             </>
           ) : null}
 
-        </ContentContainer>
       </div>
+      </Window>
+      </Stage>
     </ClientLayout>
   );
 }

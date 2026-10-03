@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/Tooltip";
 import { router } from "@/routes";
 
 import "./app/globals.css";
+import "./styles/workbench.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

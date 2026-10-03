@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { Camera, ChevronRight, ChevronDown, Trash2 } from 'lucide-react';
+import { Camera, ChevronRight, ChevronDown } from 'lucide-react';
 
 import { Network } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ConfirmWindow } from '@/components/workbench/Workbench';
 import { Textarea } from '@/components/ui/textarea';
 import { validateFiles } from '@/lib/file-validation';
 import NetworkAvatar from '@/components/NetworkAvatar';
@@ -159,14 +157,14 @@ export default function SettingsTab({
             disabled={isSavingSettings}
             className="relative flex-shrink-0 group cursor-pointer disabled:cursor-not-allowed"
           >
-            <div className="w-[72px] h-[72px] rounded-full overflow-hidden">
+            <div className="w-[72px] h-[72px] overflow-hidden" style={{ border: "1px solid #000" }}>
               {displayImageUrl ? (
                 <img src={resolveNetworkImageSrc(displayImageUrl)} alt="Network" width={72} height={72} loading="lazy" className="w-full h-full object-cover" />
               ) : (
-                <NetworkAvatar id={networkId} title={title || network.title} size={72} rounded="full" />
+                <NetworkAvatar id={networkId} title={title || network.title} size={72} />
               )}
             </div>
-            <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center">
               <Camera className="w-4 h-4 text-white" />
             </div>
           </button>
@@ -191,23 +189,19 @@ export default function SettingsTab({
 
         {/* Title field */}
         <div>
-          <label htmlFor="title" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-            Title
-          </label>
-          <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Network title" />
+          <label htmlFor="title" className="wb-field">title</label>
+          <input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="network title" style={{ width: "100%", border: "1px solid #000", padding: "8px 10px" }} />
         </div>
         <div>
-          <label className="block text-sm font-medium font-ibm-plex-mono text-gray-700 mb-1.5">Prompt</label>
+          <label className="wb-field">prompt</label>
           <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What people can share in this network..." className="min-h-[100px]" rows={4} />
           <p className="text-xs text-gray-400 mt-1.5">Guides what kind of signals people can share.</p>
         </div>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => { setTitle(originalTitle); setPrompt(originalPrompt); setImageUrl(originalImageUrl); setImageFile(null); setImagePreview(null); setRemoveImageRequested(false); if (imageInputRef.current) imageInputRef.current.value = ''; }} disabled={isSavingSettings || !hasSettingsChanged}>
-            Cancel
-          </Button>
-          <Button size="sm" onClick={handleSaveSettings} disabled={isSavingSettings || !hasSettingsChanged || !title.trim()}>
-            {isSavingSettings ? 'Saving...' : 'Save'}
-          </Button>
+          <button type="button" className="wb-btn small" onClick={() => { setTitle(originalTitle); setPrompt(originalPrompt); setImageUrl(originalImageUrl); setImageFile(null); setImagePreview(null); setRemoveImageRequested(false); if (imageInputRef.current) imageInputRef.current.value = ''; }} disabled={isSavingSettings || !hasSettingsChanged}>cancel</button>
+          <button type="button" className="wb-btn primary small" onClick={handleSaveSettings} disabled={isSavingSettings || !hasSettingsChanged || !title.trim()}>
+            {isSavingSettings ? 'saving…' : 'save'}
+          </button>
         </div>
 
         {/* Danger zone */}
@@ -218,39 +212,34 @@ export default function SettingsTab({
               className="flex items-center gap-2 text-sm text-red-500 hover:text-red-600 transition-colors"
             >
               {isDangerZoneExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              Danger Zone
+              danger zone
             </button>
             {isDangerZoneExpanded && (
               <div className="mt-3 flex items-center justify-between p-3 border border-red-100 rounded-sm bg-red-50">
                 <div>
-                  <p className="text-sm font-medium text-red-800">Delete this network</p>
+                  <p className="text-sm font-medium">delete this network</p>
                   <p className="text-xs text-red-500 mt-0.5">This action cannot be undone.</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirmation(true)} className="border-red-200 text-red-600 hover:bg-red-100">
-                  <Trash2 className="h-4 w-4 mr-1" /> Delete
-                </Button>
+                <button type="button" className="wb-btn small" onClick={() => setShowDeleteConfirmation(true)}>delete</button>
               </div>
             )}
           </div>
         )}
       </div>
 
-      <AlertDialog.Root open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Delete &apos;{network.title}&apos;</AlertDialog.Title>
-            <AlertDialog.Description className="text-sm text-gray-600 mb-4">This action cannot be undone. Type the network name to confirm.</AlertDialog.Description>
-            <Input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={network.title} className="mb-4" />
-            <div className="flex justify-end gap-3">
-              <AlertDialog.Cancel asChild><Button variant="outline">Cancel</Button></AlertDialog.Cancel>
-              <Button onClick={handleDeleteNetwork} disabled={isDeletingNetwork || !isDeleteConfirmationValid} className="bg-red-600 hover:bg-red-700 text-white">
-                {isDeletingNetwork ? 'Deleting...' : 'Delete'}
-              </Button>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      {showDeleteConfirmation && (
+        <ConfirmWindow
+          title="delete"
+          body="this cannot be undone. type the network name to confirm."
+          confirmLabel="delete"
+          busy={isDeletingNetwork}
+          disabled={!isDeleteConfirmationValid}
+          onCancel={() => { if (!isDeletingNetwork) setShowDeleteConfirmation(false); }}
+          onConfirm={() => void handleDeleteNetwork()}
+        >
+          <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={network.title} style={{ border: "1px solid #000", padding: "8px 10px", width: "100%" }} />
+        </ConfirmWindow>
+      )}
     </>
   );
 }

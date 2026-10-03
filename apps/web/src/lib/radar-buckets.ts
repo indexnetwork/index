@@ -1,38 +1,44 @@
 import type { OpportunityLifecycleStatus } from "@/services/opportunities";
 
-export type RadarBucket =
-  | "needs-you"
-  | "waiting"
-  | "connected"
-  | "closed";
+export type RadarBucket = "all" | "awaiting you" | "negotiating" | "accepted" | "missed";
 
-export const DEFAULT_RADAR_BUCKET: RadarBucket = "needs-you";
+export const RADAR_STAGES: Array<Exclude<RadarBucket, "all">> = [
+  "awaiting you",
+  "negotiating",
+  "accepted",
+  "missed",
+];
 
-const STATUS_BUCKETS: Record<OpportunityLifecycleStatus, RadarBucket> = {
-  pending: "needs-you",
-  negotiating: "waiting",
-  accepted: "connected",
-  rejected: "closed",
-  expired: "closed",
+export const DEFAULT_RADAR_BUCKET: RadarBucket = "all";
+
+const EMPTY_RADAR: Record<Exclude<RadarBucket, "all">, string> = {
+  "awaiting you": "nothing waiting on you. answer their questions in the feed first.",
+  negotiating: "no negotiations open. your agent starts one when it finds an overlap.",
+  accepted: "no one accepted yet. accept someone from the awaiting-you list.",
+  missed: "nothing missed. these are people the moment passed on.",
 };
 
-/** Assign an opportunity to the person currently responsible for it. */
+/** Assign an opportunity to a desktop radar stage. Rejected people stay off the radar. */
 export function radarBucketForOpportunity(
   status: OpportunityLifecycleStatus | undefined,
   viewerCommitted = false,
-): RadarBucket {
-  if (status === "pending" && viewerCommitted) return "connected";
-  return status ? STATUS_BUCKETS[status] : "waiting";
+): Exclude<RadarBucket, "all"> | null {
+  if (status === "rejected") return null;
+  if (status === "pending" && viewerCommitted) return "accepted";
+  if (status === "pending") return "awaiting you";
+  if (status === "accepted") return "accepted";
+  if (status === "expired") return "missed";
+  return "negotiating";
 }
 
-/** Only a non-zero Needs you count calls for visual attention. */
-export function radarBucketBadgeTone(
-  bucketKey: RadarBucket,
-  value: number,
-  active: boolean,
-): string {
-  if (bucketKey === "needs-you" && value > 0) {
-    return "bg-amber-200 text-amber-950";
-  }
-  return active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500";
+export function radarEmptyLine(bucket: RadarBucket): string {
+  if (bucket === "all") return "no one here right now. the field keeps moving, so check back.";
+  return EMPTY_RADAR[bucket];
+}
+
+export function personWindowTitle(bucket: Exclude<RadarBucket, "all"> | null): "profile" | "chat" | "negotiation" | "summary" {
+  if (bucket === "accepted") return "chat";
+  if (bucket === "negotiating") return "negotiation";
+  if (bucket === "missed") return "summary";
+  return "profile";
 }

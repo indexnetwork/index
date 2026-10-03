@@ -135,7 +135,7 @@ function NotificationToasts({
   };
 
   return (
-    <div className="fixed top-[4.5rem] right-4 z-50 flex flex-col gap-2 items-end">
+    <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 flex-col gap-2 items-center">
       {notifications.map((notification, index) => {
         if (notification.type === 'intent_broadcast') {
           return (
@@ -155,11 +155,8 @@ function NotificationToasts({
             tabIndex={notification.onClick ? 0 : undefined}
             onClick={notification.onClick}
             onKeyDown={notification.onClick ? (e) => e.key === 'Enter' && notification.onClick?.() : undefined}
-            className={`flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-lg shadow-lg animate-in slide-in-from-right-2 min-w-80 max-w-[360px] w-full text-left ${notification.onClick ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
-            style={{
-              animationDelay: `${index * 100}ms`,
-              animationFillMode: 'both',
-            }}
+            className="flex items-start gap-3 p-3 bg-white min-w-80 max-w-[360px] w-full text-left"
+            style={{ border: "2px solid #000" }}
           >
             {notification.avatarUrl ? (
               <img
@@ -168,7 +165,7 @@ function NotificationToasts({
                 width={32}
                 height={32}
                 loading="lazy"
-                className="flex-shrink-0 w-8 h-8 rounded-full object-cover"
+                className="flex-shrink-0 w-8 h-8 object-cover"
               />
             ) : (
               <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${getIconBackground(notification.type)}`}>
@@ -186,9 +183,9 @@ function NotificationToasts({
                 e.stopPropagation();
                 onRemove(notification.id);
               }}
-              className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors p-0.5"
+              className="wb-btn small"
             >
-              <X className="h-4 w-4" />
+              dismiss
             </button>
           </div>
         );
@@ -236,11 +233,8 @@ function IntentBroadcastToast({
 
   return (
     <div
-      className="rounded-lg bg-white border border-gray-200 px-4 py-3 shadow-lg animate-in slide-in-from-right-2 min-w-80 max-w-[360px] w-full"
-      style={{
-        animationDelay: `${index * 100}ms`,
-        animationFillMode: 'both',
-      }}
+      className="bg-white px-4 py-3 min-w-80 max-w-[360px] w-full"
+      style={{ border: "2px solid #000" }}
     >
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
@@ -249,7 +243,7 @@ function IntentBroadcastToast({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
             </span>
-            {notification.title || "Broadcasting Signal"}
+            {notification.title || "broadcasting"}
           </div>
           <p className="text-[13px] text-[#3D3D3D] leading-relaxed mt-0.5 line-clamp-2">
             {notification.message || notification.title}

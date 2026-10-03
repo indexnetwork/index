@@ -27,9 +27,17 @@ export function formatDate(date: string | Date | number): string {
 export function formatChatDayLabel(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return 'Today';
+  if (d.toDateString() === now.toDateString()) return 'today';
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  if (d.toDateString() === yesterday.toDateString()) return 'yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }).toLowerCase();
+}
+
+export function formatChatClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const clock = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+  if (d.toDateString() === new Date().toDateString()) return clock;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' }).toLowerCase()}, ${clock}`;
 }

@@ -5,6 +5,8 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers } from "@/contexts/APIContext";
 import { User } from "@/lib/types";
 import ChatView from "@/components/chat/ChatView";
+import ChatSidebar from "@/components/ChatSidebar";
+import { Stage, Window } from "@/components/workbench/Workbench";
 import { log } from "@/lib/logger";
 
 const logger = log.page.from("u/[id]/chat");
@@ -76,12 +78,7 @@ export default function ChatPage() {
       <div className="flex flex-col items-center justify-center py-20">
         <h2 className="text-xl font-bold text-red-600 mb-2">Error</h2>
         <p className="text-gray-600 mb-4">{error}</p>
-        <button
-          onClick={() => navigate('/')}
-          className="px-4 py-2 bg-[#041729] text-white rounded hover:bg-[#0a2d4a]"
-        >
-          Go Back
-        </button>
+        <button type="button" className="wb-btn" onClick={() => navigate("/")}>back</button>
       </div>
     );
   }
@@ -89,16 +86,27 @@ export default function ChatPage() {
   if (!profileData) return null;
 
   return (
-    <ChatView
-      userId={profileData.id}
-      userName={profileData.name}
-      userAvatar={profileData.avatar || undefined}
-      initialGroupId={initialGroupId}
-      initialMessage={prefillMessage}
-      autoSend={autoSend}
-      onClose={handleClose}
-      onBack={handleBack}
-    />
+    <Stage width={860} height="min(660px, calc(100vh - 112px))">
+      <Window title="conversations" onClose={handleBack} style={{ height: "100%" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
+          <div style={{ borderRight: "2px solid #000", minHeight: 0, overflow: "hidden" }}>
+            <ChatSidebar />
+          </div>
+          <div style={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <ChatView
+          userId={profileData.id}
+          userName={profileData.name}
+          userAvatar={profileData.avatar || undefined}
+          initialGroupId={initialGroupId}
+          initialMessage={prefillMessage}
+          autoSend={autoSend}
+          onClose={handleClose}
+          onBack={handleBack}
+        />
+          </div>
+        </div>
+      </Window>
+    </Stage>
   );
 }
 

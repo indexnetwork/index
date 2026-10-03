@@ -1,29 +1,23 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ChevronLeft, LoaderCircle, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
-import * as AlertDialog from "@radix-ui/react-alert-dialog";
 
 import AppHandoff from "@/components/AppHandoff";
 import ClientLayout from "@/components/ClientLayout";
-import { ContentContainer } from "@/components/layout";
-import { Button } from "@/components/ui/button";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import NegotiationConversation from "@/components/NegotiationConversation";
-import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
+import ChatView from "@/components/chat/ChatView";
+import UserAvatar from "@/components/UserAvatar";
+import { useConversation } from "@/contexts/ConversationContext";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
+import { getPublicUserProfile } from "@/services/users";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
-import { cn } from "@/lib/utils";
-import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone, radarBucketForOpportunity, type RadarBucket } from "@/lib/radar-buckets";
-
-const RADAR_BUCKETS: Array<{ key: RadarBucket; label: string }> = [
-  { key: "needs-you", label: "Needs you" },
-  { key: "waiting", label: "Waiting" },
-  { key: "connected", label: "Connected" },
-  { key: "closed", label: "Closed" },
-];
+import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, personWindowTitle, radarBucketForOpportunity, radarEmptyLine, type RadarBucket } from "@/lib/radar-buckets";
+import { MatchCard, PipelineFunnel, SignalAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
+import { Btn, Window } from "@/components/workbench/Workbench";
 
 function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus {
   if (status === "paused") return status;
@@ -44,121 +38,7 @@ const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
   "expired",
 ];
 
-/** Icon-only action button in the intent detail header (Pause / Edit / Archive). */
-function ActionChip({
-  icon,
-  title,
-  tone = "text-gray-400 hover:text-gray-700 hover:bg-gray-100",
-  onClick,
-  disabled = false,
-  busy = false,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  tone?: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  busy?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      aria-busy={busy || undefined}
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "inline-flex items-center justify-center rounded p-1.5 leading-none transition-colors [&>svg]:h-4 [&>svg]:w-4",
-        tone,
-        disabled && "cursor-not-allowed opacity-50",
-      )}
-    >
-      {icon}
-    </button>
-  );
-}
-
-/** Selectable radar status filter tab: a label with a subtle count badge. */
-function StatPill({
-  bucketKey,
-  value,
-  label,
-  active,
-  onSelect,
-}: {
-  bucketKey: RadarBucket;
-  value: number;
-  label: string;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onSelect}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-        active
-          ? "bg-[#041729] text-white"
-          : "text-gray-500 hover:bg-gray-100 hover:text-gray-700",
-      )}
-    >
-      <span>{label}</span>
-      <span
-        className={cn(
-          "min-w-[18px] rounded-full px-1 py-px text-center text-[10px] font-semibold tabular-nums",
-          radarBucketBadgeTone(bucketKey, value, active),
-        )}
-      >
-        {value}
-      </span>
-    </button>
-  );
-}
-
-/** Card-style panel used for the Questions and Radar columns. */
-function Panel({
-  title,
-  count,
-  description,
-  media,
-  action,
-  children,
-  className,
-}: {
-  title: string;
-  count?: number;
-  description?: string;
-  media?: React.ReactNode;
-  /** Right-aligned header affordance (e.g. a link to a related surface). */
-  action?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={cn("flex min-h-0 flex-col", className)}>
-      <div className="mb-2.5 shrink-0">
-        <h3 className="flex items-center gap-2 text-sm font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
-          <span>
-            {title}
-            {count !== undefined && ` (${count})`}
-          </span>
-          {media}
-          {action && <span className="ml-auto">{action}</span>}
-        </h3>
-        {description && (
-          <p className="mt-1 text-xs text-gray-500">{description}</p>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-/** Intent detail view: the signal's header card with Pause/Edit/Archive
- * actions over a Radar panel with a status filter strip. */
+/** Intent detail view: the signal window beside the radar. */
 export default function IntentDetailPage() {
   const { intentId } = useParams<{ intentId: string }>();
   return <AppHandoff kind="i" id={intentId ?? ""} webPage={<IntentDetail />} />;
@@ -167,6 +47,8 @@ export default function IntentDetailPage() {
 function IntentDetail() {
   const navigate = useNavigate();
   const { intentId } = useParams<{ intentId: string }>();
+  const { user } = useAuthContext();
+  const { conversations } = useConversation();
   const intentsService = useIntents();
   const opportunitiesService = useOpportunities();
   const { error: showError } = useNotifications();
@@ -192,25 +74,24 @@ function IntentDetail() {
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
-  const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
+  const [archiveArmed, setArchiveArmed] = useState(false);
+  const archiveTimer = useRef<number | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
   const selectedBucketEffectRef = useRef<RadarBucket | null>(null);
   // Below lg the Radar is the primary content and the negotiator column opens
   // as an off-canvas sheet; this is its open state.
-  const [negotiatorPanelOpen, setNegotiatorPanelOpen] = useState(false);
-  const [expandedMatches, setExpandedMatches] = useState<Set<string>>(() => new Set());
-  const [matchFocus, setMatchFocus] = useState<{ id: string }>();
+  const [openPersonId, setOpenPersonId] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     activeIntentIdRef.current = intentId;
     lifecycleGenerationRef.current += 1;
     lifecycleMutationRef.current = null;
     selectedBucketEffectRef.current = null;
-    setArchiveTargetId(null);
+    setArchiveArmed(false);
+    if (archiveTimer.current) window.clearTimeout(archiveTimer.current);
     setArchiving(false);
-    setNegotiatorPanelOpen(false);
-    setExpandedMatches(new Set());
+    setOpenPersonId(null);
   }, [intentId]);
 
   const scope = useMemo(
@@ -326,23 +207,30 @@ function IntentDetail() {
     return () => clearInterval(timer);
   }, [loadOpportunities]);
 
-  useEffect(() => {
-    if (matchFocus) document.getElementById(`radar-match-${matchFocus.id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [matchFocus]);
-
   const handleArchive = useCallback(async () => {
-    if (!archiveTargetId || archiving) return;
+    if (!intentId || archiving) return;
     setArchiving(true);
     try {
-      await intentsService.archiveIntent(archiveTargetId);
-      setArchiveTargetId(null);
+      await intentsService.archiveIntent(intentId);
       navigate("/");
     } catch {
-      showError("Failed to archive signal");
+      showError("couldn't archive this signal.");
     } finally {
       setArchiving(false);
     }
-  }, [archiveTargetId, archiving, intentsService, navigate, showError]);
+  }, [intentId, archiving, intentsService, navigate, showError]);
+
+  const clickArchive = useCallback(() => {
+    if (archiving || !intentId) return;
+    if (archiveTimer.current) window.clearTimeout(archiveTimer.current);
+    if (!archiveArmed) {
+      setArchiveArmed(true);
+      archiveTimer.current = window.setTimeout(() => setArchiveArmed(false), 4000);
+      return;
+    }
+    setArchiveArmed(false);
+    void handleArchive();
+  }, [archiveArmed, archiving, handleArchive, intentId]);
 
   const handleSetIntentStatus = useCallback(
     async (status: MutableIntentLifecycleStatus) => {
@@ -422,365 +310,263 @@ function IntentDetail() {
   );
 
   const bucketCounts = useMemo(() => {
-    const counts: Partial<Record<RadarBucket, number>> = {};
+    const counts: Partial<Record<Exclude<RadarBucket, "all">, number>> = {};
     for (const item of opportunities) {
       const b = bucketOf(item);
+      if (!b) continue;
       counts[b] = (counts[b] ?? 0) + 1;
     }
     return counts;
   }, [opportunities, bucketOf]);
 
   const visibleOpportunities = useMemo(
-    () => opportunities.filter((item) => bucketOf(item) === selectedBucket),
+    () => opportunities.filter((item) => {
+      const bucket = bucketOf(item);
+      if (!bucket) return false;
+      return selectedBucket === "all" || bucket === selectedBucket;
+    }),
     [opportunities, bucketOf, selectedBucket],
   );
-  const title = (
-    intent?.summary && intent.summary.trim().length > 0
-      ? intent.summary
-      : (intent?.payload ?? "")
-  ).trim();
+  const chatPeers = useMemo(() => {
+    const ids = new Set<string>();
+    for (const conv of conversations) {
+      for (const participant of conv.participants ?? []) {
+        if (participant.participantType === "user" && participant.participantId !== user?.id) ids.add(participant.participantId);
+      }
+    }
+    return ids;
+  }, [conversations, user?.id]);
+  const openPerson = opportunities.find((item) => item.opportunityId === openPersonId) ?? null;
+  const title = (intent?.payload?.trim() || intent?.summary?.trim() || "");
   const lifecycleStatus = normalizeIntentLifecycleStatus(intent?.status);
   const lifecycleBusy = intentStatusPending?.intentId === intentId;
 
   return (
     <ClientLayout>
       {opportunityModalElement}
-      <div className="flex h-full min-h-0 flex-col px-10 lg:px-16 py-6">
-        <ContentContainer size="xwide" className="flex min-h-0 flex-1 flex-col">
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            className="mb-3 inline-flex shrink-0 items-center gap-1 self-start text-sm text-gray-600 hover:text-black transition-colors"
-            aria-label="Back to home"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Back
-          </button>
-
-          {!intentLoading && !intent ? (
-            <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-              Signal not found
-            </div>
-          ) : (
-            <>
-            <div className="contents">
-              {/* Header card: skeleton while the intent loads — the workspace
-                  below renders (and fetches) immediately, in parallel. */}
-              <div className="mb-6 shrink-0 rounded-lg border border-gray-200 bg-white p-5">
-                {intentLoading ? (
-                  <div className="animate-pulse space-y-3" data-testid="intent-header-skeleton">
-                    <div className="h-4 w-2/3 rounded bg-gray-200" />
-                    <div className="h-3.5 w-52 rounded bg-gray-200" />
-                  </div>
-                ) : (
-                  <>
-                <div className="flex items-start justify-between gap-4">
-                  <h1 className="text-sm font-bold text-black font-ibm-plex-mono leading-snug">
-                    {title}
-                  </h1>
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    {lifecycleStatus === "active" && (
-                      <ActionChip
-                        icon={
-                          lifecycleBusy
-                            ? <LoaderCircle className="animate-spin" />
-                            : <Pause />
-                        }
-                        title="Pause"
-                        tone="text-amber-500 hover:text-amber-600 hover:bg-amber-50"
-                        onClick={() => void handleSetIntentStatus("paused")}
-                        disabled={lifecycleBusy}
-                        busy={lifecycleBusy}
-                      />
-                    )}
-                    {lifecycleStatus === "paused" && (
-                      <ActionChip
-                        icon={
-                          lifecycleBusy
-                            ? <LoaderCircle className="animate-spin" />
-                            : <Play />
-                        }
-                        title="Resume"
-                        tone="text-green-600 hover:text-green-700 hover:bg-green-50"
-                        onClick={() => void handleSetIntentStatus("active")}
-                        disabled={lifecycleBusy}
-                        busy={lifecycleBusy}
-                      />
-                    )}
-                    <ActionChip
-                      icon={<Pencil />}
-                      title="Edit"
-                      onClick={() => setShowRefine((v) => !v)}
-                    />
-                    <ActionChip
-                      icon={<Trash2 />}
-                      title="Archive"
-                      tone="text-red-400 hover:text-red-500 hover:bg-red-50"
-                      onClick={() => intentId && setArchiveTargetId(intentId)}
-                    />
-                  </div>
-                </div>
-                <div className="mt-2.5 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
-                  {lifecycleStatus === "active" && (
-                    <>
-                      <span className="inline-flex items-center gap-1.5 rounded border border-green-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-green-600">
-                        <span className="relative flex h-1.5 w-1.5">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
-                        </span>
-                        live
-                      </span>
-                      <span>background matching on — new matches appear in Radar below</span>
-                    </>
-                  )}
-                  {lifecycleStatus === "paused" && (
-                    <>
-                      <span className="inline-flex items-center rounded border border-amber-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-amber-600">
-                        paused
-                      </span>
-                      <span>
-                        background discovery is paused; existing Radar matches
-                        remain available
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                {showRefine && (
-                  <div className="mt-3 flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={refineText}
-                      onChange={(e) => setRefineText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleRefine();
-                      }}
-                      placeholder="Refine this signal..."
-                      disabled={refining}
-                      autoFocus
-                      className="flex-1 text-sm text-gray-900 placeholder:text-gray-400 bg-[#FCFCFC] border border-[#E9E9E9] rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleRefine}
-                      disabled={refining || !refineText.trim()}
-                      className="shrink-0 px-4 py-2 rounded-full bg-[#041729] text-white text-sm font-medium hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {refining ? "Refining..." : "Refine"}
-                    </button>
-                  </div>
-                )}
-                  </>
-                )}
-              </div>
-
-              {/* Below lg the Radar is the primary content; the negotiator
-                  column opens as an off-canvas sheet. */}
-              <button
-                type="button"
-                onClick={() => setNegotiatorPanelOpen(true)}
-                data-testid="negotiator-trigger"
-                className="mb-4 inline-flex items-center gap-2 self-start rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 lg:hidden"
-              >
-                <MessageCircle className="h-4 w-4" />
-                Your personal agent
-              </button>
-            </div>
-            </>
-          )}
-
-          {!intentLoading && !intent ? null : (
-              <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row">
-                {/* Backdrop for the mobile sheet only. */}
-                <div
-                  aria-hidden="true"
-                  onClick={() => setNegotiatorPanelOpen(false)}
-                  className={cn(
-                    "fixed inset-0 z-[100] bg-black/50 transition-opacity duration-300 lg:hidden",
-                    negotiatorPanelOpen ? "opacity-100" : "pointer-events-none invisible opacity-0",
-                  )}
-                />
-                {/* One mounted negotiator column: an off-canvas sheet below lg,
-                    an equal-width static column at lg+. It is never unmounted,
-                    so its loaded thread and live subscription survive
-                    open/close and breakpoint changes. */}
-                <div
-                  data-testid="negotiator-sheet"
-                  data-state={negotiatorPanelOpen ? "open" : "closed"}
-                  role={negotiatorPanelOpen ? "dialog" : undefined}
-                  aria-label="Your personal agent"
-                  className={cn(
-                    "fixed inset-y-0 right-0 z-[100] flex w-[min(85vw,24rem)] flex-col bg-white p-4 shadow-xl",
-                    "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-                    "max-lg:data-[state=closed]:pointer-events-none max-lg:data-[state=closed]:invisible max-lg:data-[state=closed]:translate-x-full",
-                    "lg:static lg:z-auto lg:min-h-0 lg:min-w-0 lg:w-auto lg:flex-1 lg:translate-x-0 lg:p-0 lg:shadow-none",
-                  )}
-                >
-                  <div className="mb-1 flex shrink-0 justify-end lg:hidden">
-                    <button
-                      type="button"
-                      aria-label="Close panel"
-                      onClick={() => setNegotiatorPanelOpen(false)}
-                      className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <Panel
-                    title="Your personal agent"
-                    description="One private conversation for this intent, across all your matches."
-                    className="min-h-0 flex-1"
-                  >
-                    {intentId && <IntentNegotiatorChat key={intentId} intentId={intentId} onSelectMatch={(id) => {
-                      const item = opportunities.find((entry) => entry.opportunityId === id);
-                      if (!item) return;
-                      setSelectedBucket(bucketOf(item));
-                      setExpandedMatches((current) => new Set(current).add(id));
-                      setMatchFocus({ id });
-                      setNegotiatorPanelOpen(false);
-                    }} />}
-                  </Panel>
-                </div>
-                <div data-testid="radar-column" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden">
-                <Panel
-                  title="Radar"
-                  description="Matches for this intent. Expand a match to follow its agents’ conversation."
-                  className="flex-1"
-                  media={
-                    <img
-                      src="/eye.webp"
-                      alt=""
-                      aria-hidden="true"
-                      loading="lazy"
-                      className="h-6 w-auto object-contain"
-                    />
-                  }
-                >
-                  <div className="mb-3 flex shrink-0 flex-wrap gap-1.5">
-                    {RADAR_BUCKETS.map((bucket) => (
-                      <StatPill
-                        key={bucket.key}
-                        bucketKey={bucket.key}
-                        value={bucketCounts[bucket.key] ?? 0}
-                        label={bucket.label}
-                        active={selectedBucket === bucket.key}
-                        onSelect={() => setSelectedBucket(bucket.key)}
-                      />
-                    ))}
-                  </div>
-                  <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
-                  {opportunitiesLoading ? (
-                    <div className="space-y-3" data-testid="radar-skeleton">
-                      <OpportunitySkeleton />
-                      <OpportunitySkeleton />
-                    </div>
-                  ) : opportunitiesError && visibleOpportunities.length === 0 ? (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-6 text-center">
-                      <p className="font-ibm-plex-mono text-sm text-red-700">Radar couldn’t load opportunities.</p>
-                      <button
-                        type="button"
-                        onClick={() => void loadOpportunities()}
-                        className="mt-3 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
-                      >
-                        Try again
-                      </button>
-                    </div>
-                  ) : visibleOpportunities.length === 0 ? (
-                    <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
-                      No matches here yet.
-                    </div>
+      <div style={{
+        height: "100%",
+        display: "grid",
+        gridTemplateColumns: openPerson
+          ? "minmax(0, 40fr) minmax(0, 30fr) minmax(0, 30fr)"
+          : "minmax(0, 56fr) minmax(0, 44fr)",
+        gap: 8,
+        padding: "56px 18px",
+        minHeight: 0,
+      }}>
+        {!intentLoading && !intent ? (
+          <Window title="signal" onClose={() => navigate("/")}>
+            <p style={{ padding: 28, fontFamily: "var(--mac-mono)", fontSize: 12 }}>signal not found</p>
+          </Window>
+        ) : (
+          <>
+            <Window title="signal" onClose={() => navigate("/")}>
+              <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
+                <div style={{ padding: "12px 18px", minHeight: 68, boxSizing: "border-box", borderBottom: "1px solid #000", background: "#fff" }}>
+                  {intentLoading ? (
+                    <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
                   ) : (
-                    <div className="space-y-3">
-                      {visibleOpportunities.map((item) => (
-                        <article key={item.opportunityId} id={`radar-match-${item.opportunityId}`} className="overflow-hidden rounded-lg border border-gray-200">
-                          <OpportunityCard
-                            card={item}
-                            currentStatus={
-                              opportunityStatusMap[item.opportunityId]
-                            }
-                            onPrimaryAction={(
-                              oppId,
-                              userId,
-                              viewerRole,
-                              counterpartName,
-                            ) =>
-                              handleOpportunityAction(
-                                oppId,
-                                "accepted",
-                                userId,
-                                viewerRole,
-                                counterpartName,
-                              )
-                            }
-                            onSecondaryAction={(
-                              oppId,
-                              userId,
-                              viewerRole,
-                              counterpartName,
-                            ) =>
-                              handleOpportunityAction(
-                                oppId,
-                                "rejected",
-                                userId,
-                                viewerRole,
-                                counterpartName,
-                              )
-                            }
-                            isLoading={
-                              !!opportunityActionLoading[item.opportunityId]
-                            }
+                    <>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                        <h2 title={title || "your signal"} style={{
+                          margin: 0, fontFamily: "var(--amiga-title)", fontWeight: 500,
+                          fontSize: 17, color: "#000", letterSpacing: -0.2, lineHeight: 1.2,
+                          flex: 1, minWidth: 0,
+                          display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 3,
+                          maxHeight: "3.6em", overflow: "hidden",
+                        }}>{title || "your signal"}</h2>
+                        <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+                          <SignalAction
+                            label={lifecycleStatus === "paused" ? "▶ resume" : "❚❚ pause"}
+                            active={lifecycleStatus === "paused"}
+                            onClick={() => { if (!lifecycleBusy) void handleSetIntentStatus(lifecycleStatus === "paused" ? "active" : "paused"); }}
                           />
-                          {intentId && <NegotiationConversation intentId={intentId} opportunityId={item.opportunityId}
-                            expanded={expandedMatches.has(item.opportunityId)} onToggle={() => setExpandedMatches((current) => {
-                              const next = new Set(current);
-                              if (next.has(item.opportunityId)) next.delete(item.opportunityId); else next.add(item.opportunityId);
-                              return next;
-                            })} />}
-                        </article>
-                      ))}
-                    </div>
+                          <SignalAction
+                            danger
+                            label={archiving ? "archiving…" : archiveArmed ? "archive · confirm" : "archive"}
+                            active={archiveArmed || archiving}
+                            onClick={clickArchive}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 10, letterSpacing: 0.3, color: lifecycleStatus === "paused" ? "var(--ink-3)" : "#000" }}>
+                        {lifecycleStatus !== "paused" && <span className="wb-live" style={{ width: 6, height: 6 }} />}
+                        <span>{lifecycleStatus === "paused" ? "paused · agent on hold" : "live · agent is looking in the background"}</span>
+                      </div>
+                    </>
                   )}
-                  </div>
-                </Panel>
+                </div>
+                <div style={{ minHeight: 0, display: "flex", flexDirection: "column", flex: 1 }}>
+                  {intentId && <IntentNegotiatorChat key={intentId} intentId={intentId} onSelectMatch={(id) => setOpenPersonId(id)} />}
                 </div>
               </div>
-          )}
-
-          <AlertDialog.Root
-            open={archiveTargetId !== null}
-            onOpenChange={(open) => {
-              if (!open && !archiving) setArchiveTargetId(null);
-            }}
-          >
-            <AlertDialog.Portal>
-              <AlertDialog.Overlay className="fixed inset-0 z-[110] bg-black/50" />
-              <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[110] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-sm bg-white p-6 shadow-lg focus:outline-none">
-                <AlertDialog.Title className="mb-2 text-lg font-bold text-gray-900">
-                  Archive this signal? It will stop matching.
-                </AlertDialog.Title>
-                <AlertDialog.Description className="mb-6 text-sm text-gray-600">
-                  You can keep its existing history, but it will no longer find new opportunities.
-                </AlertDialog.Description>
-                <div className="flex justify-end gap-3">
-                  <AlertDialog.Cancel asChild>
-                    <Button variant="outline" disabled={archiving}>Cancel</Button>
-                  </AlertDialog.Cancel>
-                  <Button
-                    type="button"
-                    onClick={() => void handleArchive()}
-                    disabled={archiving}
-                    aria-busy={archiving || undefined}
-                    className="bg-red-600 text-white hover:bg-red-700"
-                  >
-                    {archiving ? "Archiving..." : "Archive signal"}
-                  </Button>
-                </div>
-              </AlertDialog.Content>
-            </AlertDialog.Portal>
-          </AlertDialog.Root>
-        </ContentContainer>
+            </Window>
+            <Window title="radar" onClose={() => navigate("/")}>
+              <div style={{ height: 56, boxSizing: "border-box", borderBottom: "1.5px solid #111" }}>
+                <PipelineFunnel
+                  activeStage={selectedBucket}
+                  onClickStage={(label) => setSelectedBucket(label as RadarBucket)}
+                  stages={RADAR_STAGES.map((stage) => ({
+                    label: stage,
+                    count: bucketCounts[stage] ?? 0,
+                    accent: stage === "awaiting you" || stage === "accepted",
+                  }))}
+                />
+              </div>
+              <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 22px 24px", display: "grid", gap: 8, alignContent: "start" }}>
+                {opportunitiesLoading ? (
+                  <p data-testid="radar-skeleton" style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
+                ) : opportunitiesError && visibleOpportunities.length === 0 ? (
+                  <div style={{ padding: 16, textAlign: "center" }}>
+                    <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>radar couldn’t load.</p>
+                    <Btn small onClick={() => void loadOpportunities()}>try again</Btn>
+                  </div>
+                ) : visibleOpportunities.length === 0 ? (
+                  <p style={{ padding: 28, textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", border: "1px dashed #000" }}>
+                    {radarEmptyLine(selectedBucket)}
+                  </p>
+                ) : visibleOpportunities.map((item) => {
+                  const bucket = bucketOf(item);
+                  const busy = !!opportunityActionLoading[item.opportunityId];
+                  return (
+                    <MatchCard
+                      key={item.opportunityId}
+                      name={item.name || "someone"}
+                      blurb={item.headline || item.mainText || ""}
+                      photo={item.avatar}
+                      userId={item.userId}
+                      accepted={bucket === "accepted"}
+                      ready={bucket === "awaiting you"}
+                      negotiating={bucket === "negotiating"}
+                      expired={bucket === "missed"}
+                      waitingOnThem={item.viewerCommitted}
+                      hasChat={!!item.userId && chatPeers.has(item.userId)}
+                      onOpen={() => setOpenPersonId(item.opportunityId)}
+                      onAccept={() => void handleOpportunityAction(item.opportunityId, "accepted", item.userId)}
+                      onPass={() => void handleOpportunityAction(item.opportunityId, "rejected", item.userId)}
+                    />
+                  );
+                })}
+              </div>
+            </Window>
+            {openPerson && (
+              <Window title={personWindowTitle(bucketOf(openPerson))} dismiss onClose={() => setOpenPersonId(null)}>
+                <PersonPane
+                  item={openPerson}
+                  bucket={bucketOf(openPerson)}
+                  intentId={intentId}
+                  onClose={() => setOpenPersonId(null)}
+                  onAccept={() => void handleOpportunityAction(openPerson.opportunityId, "accepted", openPerson.userId)}
+                  onPass={() => void handleOpportunityAction(openPerson.opportunityId, "rejected", openPerson.userId)}
+                />
+              </Window>
+            )}
+          </>
+        )}
       </div>
     </ClientLayout>
+  );
+}
+
+function PersonHead({ name, photo, userId, sub, size = 34 }: {
+  name: string; photo?: string | null; userId?: string; sub?: string; size?: number;
+}) {
+  return (
+    <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
+      <UserAvatar id={userId} name={name} avatar={photo} size={size} />
+      <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+        <div style={{ fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 17 : 15, fontWeight: 600, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+        {sub && <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: 1, textTransform: "uppercase" }}>{sub}</div>}
+      </div>
+    </div>
+  );
+}
+
+function PersonPane({
+  item,
+  bucket,
+  intentId,
+  onClose,
+  onAccept,
+  onPass,
+}: {
+  item: RadarCardItem;
+  bucket: ReturnType<typeof radarBucketForOpportunity>;
+  intentId?: string;
+  onClose: () => void;
+  onAccept: () => void;
+  onPass: () => void;
+}) {
+  const name = item.name || "someone";
+  const [profile, setProfile] = useState<Awaited<ReturnType<typeof getPublicUserProfile>> | null>(null);
+  useEffect(() => {
+    if (!item.userId || bucket === "negotiating" || bucket === "accepted" || bucket === "missed") return;
+    let active = true;
+    getPublicUserProfile(item.userId).then((user) => { if (active) setProfile(user); }).catch(() => {});
+    return () => { active = false; };
+  }, [item.userId, bucket]);
+
+  if (bucket === "accepted" && item.userId) {
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
+        <PersonHead name={name} photo={item.avatar} userId={item.userId} />
+        <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <ChatView embedded userId={item.userId} userName={name} userAvatar={item.avatar ?? undefined} onClose={onClose} opener={{ headline: item.headline, detail: item.mainText }} />
+        </div>
+      </div>
+    );
+  }
+  if (bucket === "negotiating" && intentId) {
+    const first = name.split(/\s+/)[0];
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
+          <UserAvatar id={item.userId} name={name} avatar={item.avatar} size={34} />
+          <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+            <div style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600 }}>your agent ⇄ {first}&apos;s agent</div>
+            <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "var(--ink-2)" }}>
+              The two agents are working out whether you and {name} should meet. This isn&apos;t a chat with {name}.
+            </div>
+          </div>
+        </div>
+        <NegotiationConversation intentId={intentId} opportunityId={item.opportunityId} expanded onToggle={onClose} />
+      </div>
+    );
+  }
+  if (bucket === "missed") {
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
+        <PersonHead name={name} photo={item.avatar} userId={item.userId} sub="expired" />
+        <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 16, alignContent: "start", background: "#fff" }}>
+          <SummarySection label="what your agent found">{item.mainText || item.headline || "nothing recorded."}</SummarySection>
+          <SummarySection label="why it closed">{expiryReason(item.opportunityId, name)}</SummarySection>
+        </div>
+      </div>
+    );
+  }
+  const bio = profile?.intro || "";
+  const note = item.mainText && item.mainText !== bio ? item.mainText : item.headline;
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr auto" }}>
+      <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} size={42} />
+      <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 15, alignContent: "start", background: "#fff" }}>
+        {bio && <SummarySection label="bio">{bio}</SummarySection>}
+        {note && <SummarySection label="why your agent surfaced them">{note}</SummarySection>}
+        {profile?.location && <SummarySection label="elsewhere">{profile.location}</SummarySection>}
+      </div>
+      <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", alignItems: "center", gap: 10 }}>
+        {bucket === "awaiting you" ? (
+          <>
+            <Btn primary small onClick={onAccept}>accept</Btn>
+            <Btn small onClick={onPass}>pass</Btn>
+          </>
+        ) : (
+          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-3)" }}>
+            answer their question in your feed to move forward.
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

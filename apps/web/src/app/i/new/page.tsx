@@ -1,20 +1,22 @@
 import { useState } from "react";
-import { ChevronLeft, Loader2, Send } from "lucide-react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import { RecoveryForm } from "@/app/i/new/RecoveryForm";
 import { signalService, type PrepareAnswer, type RecoveryField } from "@/services/signals";
+import { CALIBRATING_LINES } from "@/components/workbench/mac-blocks";
+import { Btn, Window } from "@/components/workbench/Workbench";
 
-/** The opening question: whatever is answered here becomes the signal. */
-const OPENING_PROMPT = "Who are you trying to reach, and why?";
-
-/** Whole signals rather than categories — same material typing would provide. */
+const OPENING_PROMPT = "what are you looking for right now?";
+const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
 const OPENING_OPTIONS = [
-  { label: "want to meet cool ai people in nyc", description: "" },
-  { label: "have a new business idea, want honest feedback from others", description: "" },
-  { label: "looking for a cool open-source project to contribute to", description: "" },
-  { label: "want to find a co-founder who's actually shipped something", description: "" },
+  "traveling soon, want to meet cool people in ai",
+  "building something, want honest feedback on it",
+  "just launched, want cool people to try it",
+  "new in town, want to find my people",
+  "raising soon, want to meet investors who get it",
+  "hiring soon, want to meet great people early",
+  "have an idea, want someone to build it with",
 ];
 
 type Stage = "opening" | "recovery" | "summary" | "retry";
@@ -75,7 +77,7 @@ export default function NewSignalPage() {
       navigate(`/i/${created.intentId}`);
     } catch (error) {
       setPreparationReceipt("");
-      setFeedback(`That didn't go through — ${error instanceof Error ? error.message : "try again."}`);
+      setFeedback(`that didn't go through — ${error instanceof Error ? error.message : "try again."}`);
       setStage("summary");
       setCreating(false);
     }
@@ -86,128 +88,131 @@ export default function NewSignalPage() {
   const progressStep = stage === "summary" ? 2 : 1;
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] px-5 py-6 sm:px-8 sm:py-10">
-      <main className="mx-auto w-full max-w-2xl">
-        <button
-          type="button"
-          onClick={() => navigate("/")}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 transition hover:text-[#041729]"
-        >
-          <ChevronLeft className="h-4 w-4" /> Back
-        </button>
-        <p className="mt-10 text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Start a new signal</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#041729] sm:text-4xl">Make what you’re looking for legible.</h1>
-
-        <div className="mt-8 flex gap-1.5" aria-label="Signal progress">
-          {Array.from({ length: 2 }).map((_, index) => (
-            <span
-              key={index}
-              className={`h-1.5 flex-1 rounded-full ${
-                index < progressStep ? "bg-[#041729]" : index === progressStep - 1 ? "bg-[#8BA8B8]" : "bg-gray-200"
-              }`}
-            />
-          ))}
+    <div className="workbench mac-desktop" style={{ height: "100vh" }}>
+      <div style={{
+        height: "100%",
+        display: "grid",
+        placeItems: "center",
+        padding: "56px 40px",
+      }}>
+        <div style={{
+          width: 980,
+          maxWidth: "100%",
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
+          gap: 18,
+          height: "min(720px, calc(100vh - 128px))",
+        }}>
+          <Window title="calibrating" onClose={() => navigate("/")}>
+            <div style={{ padding: "18px 28px 12px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+              <button type="button" onClick={() => navigate("/")} style={{ fontFamily: "var(--mac-mono)", fontSize: 13, background: "transparent", border: "none", padding: 0, marginBottom: 16 }}>← back</button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 24 }}>
+                <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88" }}>step {progressStep} of 2</span>
+                <div style={{ flex: 1, display: "flex", gap: 3 }}>
+                  {[0, 1].map((i) => (
+                    <div key={i} style={{
+                      flex: 1,
+                      height: 8,
+                      border: "1px solid #000",
+                      background: i < progressStep - 1 ? "#000" : i === progressStep - 1 ? "repeating-linear-gradient(45deg, #000 0, #000 2px, #fff 2px, #fff 4px)" : "#fff",
+                    }} />
+                  ))}
+                </div>
+              </div>
+              <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                {busy || creating ? (
+                  <div role="status" style={{ textAlign: "center" }}>
+                    {CALIBRATING_LINES.map((line, i) => (
+                      <div key={line} style={{
+                        fontFamily: "var(--mac-sans)", fontSize: 15, padding: "4px 0",
+                        color: i === CALIBRATING_LINES.length - 1 ? "#000" : "var(--ink-2)",
+                        fontWeight: i === CALIBRATING_LINES.length - 1 ? 700 : 400,
+                      }}>
+                        <span style={{ marginRight: 8, fontFamily: "var(--mac-mono)" }}>›</span>{line}
+                      </div>
+                    ))}
+                  </div>
+                ) : stage === "summary" ? (
+                  <SignalSummary
+                    description={payload}
+                    feedback={preparationReceipt ? "" : feedback}
+                    canCreate={Boolean(preparationReceipt)}
+                    busy={creating}
+                    onChange={setPayload}
+                    onCreate={() => void create()}
+                    onRecheck={() => void recheck()}
+                  />
+                ) : stage === "retry" ? (
+                  <div>
+                    <p style={{ fontFamily: "var(--mac-sans)", fontSize: 14 }}>couldn&apos;t reach your agent.</p>
+                    <div style={{ marginTop: 12 }}>
+                      <Btn primary onClick={() => void runPrepare(payload)}>try again</Btn>
+                    </div>
+                  </div>
+                ) : stage === "recovery" ? (
+                  <RecoveryForm fields={recoveryFields} feedback={feedback} busy={busy} onSubmit={submitRecovery} />
+                ) : (
+                  <OpeningQuestion onSubmit={submitOpening} />
+                )}
+              </div>
+            </div>
+          </Window>
+          <Window title="warming up">
+            <div style={{ padding: 28 }}>
+              <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>index</p>
+              <div style={{ marginTop: 16, border: "1px solid #000", height: 10, overflow: "hidden" }}>
+                <div style={{
+                  height: "100%",
+                  backgroundImage: "repeating-linear-gradient(-45deg, #000 0, #000 6px, #fff 6px, #fff 12px)",
+                  animation: busy || creating ? "mac-stripes 0.8s linear infinite" : undefined,
+                  backgroundSize: "24px 24px",
+                  width: busy || creating ? "100%" : "30%",
+                }} />
+              </div>
+            </div>
+          </Window>
         </div>
-
-        {busy || creating ? (
-          <div role="status" className="mt-14 flex items-center gap-3 text-sm text-gray-500">
-            <Loader2 className="h-4 w-4 animate-spin" /> Taking that in…
-          </div>
-        ) : stage === "summary" ? (
-          <SignalSummary
-            description={payload}
-            feedback={preparationReceipt ? "" : feedback}
-            canCreate={Boolean(preparationReceipt)}
-            busy={creating}
-            onChange={setPayload}
-            onCreate={() => void create()}
-            onRecheck={() => void recheck()}
-          />
-        ) : stage === "retry" ? (
-          <section aria-label="Preparation failed" className="mt-8">
-            <h2 className="text-2xl font-semibold leading-tight text-[#041729] sm:text-3xl">
-              Couldn’t reach your agent.
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">Your answers are kept.</p>
-            <button
-              type="button"
-              onClick={() => void runPrepare(payload)}
-              className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a]"
-            >
-              Try again
-            </button>
-          </section>
-        ) : stage === "recovery" ? (
-          <RecoveryForm
-            fields={recoveryFields}
-            feedback={feedback}
-            busy={busy}
-            onSubmit={submitRecovery}
-          />
-        ) : (
-          <OpeningQuestion onSubmit={submitOpening} />
-        )}
-      </main>
+      </div>
     </div>
   );
 }
 
 /** Opening turn before the first prepare call. */
 function OpeningQuestion({ onSubmit }: { onSubmit: (text: string) => Promise<void> }) {
-  const [selected, setSelected] = useState<string[]>([]);
-  const [freeText, setFreeText] = useState("");
-  const text = [...selected, freeText.trim()].filter(Boolean).join(" — ");
-
-  const toggleOption = (label: string) => {
-    setSelected((current) => (current.includes(label) ? [] : [label]));
-  };
-
+  const [draft, setDraft] = useState("");
   return (
-    <section aria-label="Opening question" className="mt-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">First</p>
-      <h2 className="mt-3 text-2xl font-semibold leading-tight text-[#041729] sm:text-3xl">{OPENING_PROMPT}</h2>
-      <textarea
-        value={freeText}
-        onChange={(event) => setFreeText(event.target.value)}
-        rows={4}
-        maxLength={65_536}
-        placeholder="Type what you’re looking for…"
-        className="mt-6 w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10"
-      />
-      <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Or pick one</p>
-      <div className="mt-3 grid gap-3">
-        {OPENING_OPTIONS.map((option) => {
-          const checked = selected.includes(option.label);
-          return (
-            <button
-              key={option.label}
-              type="button"
-              aria-pressed={checked}
-              onClick={() => toggleOption(option.label)}
-              className={`rounded-2xl border px-4 py-3 text-left transition ${
-                checked
-                  ? "border-[#041729] bg-[#041729] text-white"
-                  : "border-gray-200 bg-white text-gray-800 hover:border-gray-400"
-              }`}
-            >
-              <span className="block text-sm font-medium">{option.label}</span>
-            </button>
-          );
-        })}
-      </div>
-      <button
-        type="button"
-        disabled={text.length === 0}
-        onClick={() => void onSubmit(text)}
-        className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a] disabled:cursor-not-allowed disabled:opacity-40"
+    <div style={{ display: "grid", gap: 10 }}>
+      <p style={{ fontFamily: "var(--mac-sans)", fontSize: 14 }}>{OPENING_PROMPT}</p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (draft.trim()) void onSubmit(draft.trim());
+        }}
+        style={{ maxWidth: 620, border: "1px solid #000", background: "#fff", display: "flex", flexDirection: "column" }}
       >
-        <Send className="h-4 w-4" /> Continue
-      </button>
-    </section>
+        <textarea
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          rows={3}
+          maxLength={65_536}
+          placeholder={OPENING_PLACEHOLDER}
+          style={{ background: "transparent", border: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.45, resize: "vertical", padding: "11px 14px 4px" }}
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 8px 8px" }}>
+          <Btn primary small type="submit" disabled={!draft.trim()}>send →</Btn>
+        </div>
+      </form>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {OPENING_OPTIONS.map((option) => (
+          <button key={option} type="button" className="wb-btn small" onClick={() => void onSubmit(option)}>
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
-/** Final description editor; preparation remains valid throughout revisions. */
 function SignalSummary({
   description,
   feedback,
@@ -226,9 +231,9 @@ function SignalSummary({
   onRecheck: () => void;
 }) {
   return (
-    <section aria-label="Your signal" className="mt-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Review</p>
-      {feedback && <p className="mt-3 text-sm text-amber-800">{feedback}</p>}
+    <section aria-label="Your signal">
+      <p style={{ fontFamily: "var(--mac-sans)", fontSize: 14 }}>Here&apos;s your signal.</p>
+      {feedback && <p style={{ marginTop: 8, fontFamily: "var(--mac-sans)", fontSize: 13 }}>{feedback}</p>}
       <textarea
         aria-label="Signal description"
         value={description}
@@ -236,29 +241,15 @@ function SignalSummary({
         disabled={busy}
         maxLength={65_536}
         rows={6}
-        className="mt-4 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-base leading-relaxed text-[#041729] outline-none focus:border-[#041729] disabled:opacity-60"
+        style={{ marginTop: 12, width: "100%", border: "1px solid #000", padding: "10px 12px", fontFamily: "var(--mac-sans)", fontSize: 14 }}
       />
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      <div style={{ marginTop: 12 }}>
         {canCreate ? (
-          <button
-            type="button"
-            disabled={busy || !description.trim() || description.length > 65_536}
-            onClick={onCreate}
-            className="inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            Create signal
-          </button>
+          <Btn primary disabled={busy || !description.trim() || description.length > 65_536} onClick={onCreate}>
+            {busy ? "sending…" : "create this signal"}
+          </Btn>
         ) : (
-          <button
-            type="button"
-            disabled={busy || !description.trim()}
-            onClick={onRecheck}
-            className="inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0a2d4a] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            Check signal
-          </button>
+          <Btn primary disabled={busy || !description.trim()} onClick={onRecheck}>check signal</Btn>
         )}
       </div>
     </section>

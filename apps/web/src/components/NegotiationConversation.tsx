@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Loader2 } from "lucide-react";
-
 import { useNegotiations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import type { NegotiationDetail } from "@/services/negotiations";
-import { cn } from "@/lib/utils";
 
 /** Expand one Radar match's read-only A2A thread without affecting its runtime. */
 export default function NegotiationConversation({ intentId, opportunityId, expanded, onToggle }: {
@@ -46,40 +43,32 @@ export default function NegotiationConversation({ intentId, opportunityId, expan
     if (history.current && follow.current) history.current.scrollTop = history.current.scrollHeight;
   }, [expanded, detail?.turnCount]);
 
-  const record = expanded && detail ? detail : match;
-  const status = record?.outcome === "agreed" ? "Agents agreed"
-    : record?.outcome === "declined" ? "Declined" : record?.settledAt ? "Closed"
-      : detail?.protocol.blockedReason === "turn_limit" ? "Turn limit reached · undecided"
-        : detail?.protocol.blockedReason === "signal_inactive" ? "Paused" : "In progress";
+  const name = detail?.counterparty.name || match?.counterparty?.name || "them";
+  const first = name.split(" ")[0];
 
-  return <div className="border-t border-gray-200" data-testid="negotiation-conversation">
-    <button type="button" aria-expanded={expanded} aria-controls={`a2a-${opportunityId}`} onClick={onToggle}
-      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-xs text-gray-600 hover:bg-gray-50">
-      <span>
-        <span className="font-medium text-gray-900">Agent conversation</span>
-        {record && <span className="ml-2">{status} · {record.turnCount} turns</span>}
-      </span>
-      <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", expanded && "rotate-180")} />
-    </button>
-    {expanded && <div id={`a2a-${opportunityId}`} className="px-4 pb-4">
-      {error && <p role="alert" className="mb-2 text-sm text-red-700">{error}</p>}
-      {!detail ? !error && <Loader2 className="mx-auto my-6 h-5 w-5 animate-spin text-gray-400" /> : <>
-        <p className="mb-3 text-xs text-gray-500" aria-live="polite">{status} · {detail.turnCount}/{detail.protocol.maxTurns} turns</p>
-        <div ref={history} className="max-h-96 space-y-3 overflow-y-auto pr-1"
-          onScroll={() => { const pane = history.current; if (pane) follow.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80; }}>
-          {detail.turns.length === 0 ? <p className="py-4 text-sm text-gray-500">Waiting for the opening proposal.</p>
-            : detail.turns.map((turn) => {
-              const own = turn.seatUserId === user?.id;
-              return <article key={turn.turnIndex} className={cn("rounded-xl border p-3", own ? "border-blue-100 bg-blue-50/60" : "border-gray-200 bg-gray-50")}>
-                <p className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                  <span className="font-semibold text-gray-800">{own ? "Your agent" : `${detail.counterparty.name ?? "Their"}'s agent`}</span>
-                  <span className="capitalize">{turn.action}</span>
-                </p>
-                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-800">{turn.message}</p>
-              </article>;
-            })}
+  if (!expanded) return null;
+
+  return <div data-testid="negotiation-conversation" id={`a2a-${opportunityId}`} className="mac-scroll" ref={history}
+    onScroll={() => { const pane = history.current; if (pane) follow.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80; }}
+    style={{ minHeight: 0, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10, background: "#fff" }}>
+    {error && <p role="alert" style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", textAlign: "center" }}>couldn&apos;t load this negotiation.</p>}
+    {!detail && !error && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", textAlign: "center" }}>loading…</p>}
+    {detail && detail.turns.length === 0 && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", textAlign: "center" }}>no turns yet.</p>}
+    {detail?.turns.map((turn) => {
+      const own = turn.seatUserId === user?.id;
+      return (
+        <div key={turn.turnIndex} style={{ display: "grid", gap: 4, justifyItems: own ? "end" : "start" }}>
+          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: 0.5 }}>
+            {own ? "your agent" : `${first}'s agent`} · {turn.action}
+          </span>
+          <div style={{
+            maxWidth: "82%", border: "1px solid #000",
+            background: own ? "#000" : "#fff", color: own ? "#fff" : "#000",
+            padding: "8px 11px", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap",
+            boxShadow: own ? "none" : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)",
+          }}>{turn.message}</div>
         </div>
-      </>}
-    </div>}
+      );
+    })}
   </div>;
 }

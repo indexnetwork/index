@@ -1,9 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, Globe, Lock, Camera } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { validateFiles } from '@/lib/file-validation';
 import NetworkAvatar from '@/components/NetworkAvatar';
 import { log } from '@/lib/logger';
@@ -99,132 +95,40 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg w-full max-w-md z-[100] focus:outline-none">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <Dialog.Title className="text-lg font-bold text-black">
-                Create Network
-              </Dialog.Title>
-              <Dialog.Close className="p-1 rounded-sm hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
-                <X className="h-4 w-4" />
-              </Dialog.Close>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Identity header: circle image left, name/placeholder right */}
-              <div className="flex items-center gap-5">
-                <button
-                  type="button"
-                  aria-label="Upload network image"
-                  onClick={() => uploadNetworkImage && fileInputRef.current?.click()}
-                  disabled={isSubmitting || !uploadNetworkImage}
-                  className="relative flex-shrink-0 group cursor-pointer disabled:cursor-not-allowed"
-                >
-                  <div className="w-[72px] h-[72px] rounded-full overflow-hidden">
-                    {imagePreview ? (
-                      <img src={imagePreview} alt="Preview" width={72} height={72} loading="lazy" className="w-full h-full object-cover" />
-                    ) : (
-                      <NetworkAvatar title={name || 'Network name'} size={72} rounded="full" />
-                    )}
-                  </div>
-                  <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center">
-                    <Camera className="w-4 h-4 text-white" />
-                  </div>
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="hidden"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-gray-900 font-ibm-plex-mono truncate leading-tight">
-                    {name.trim() || "Network name"}
-                  </div>
-                  {imagePreview && (
-                    <button
-                      type="button"
-                      onClick={handleRemoveImage}
-                      disabled={isSubmitting}
-                      className="text-sm text-red-600 hover:text-red-700 font-medium disabled:opacity-50 mt-1"
-                    >
-                      Remove image
-                    </button>
-                  )}
-                  {imageError && (
-                    <p className="text-sm text-red-600 font-medium mt-1">{imageError}</p>
-                  )}
+        <Dialog.Overlay className="fixed inset-0 z-[100]" style={{ background: "rgba(0,85,170,0.28)" }} />
+        <Dialog.Content className="amiga-window fixed left-1/2 top-1/2 z-[100] w-full max-w-md -translate-x-1/2 -translate-y-1/2 focus:outline-none">
+          <div className="mac-titlebar">
+            <Dialog.Close className="mac-close" aria-label="close" />
+            <span className="mac-title"><span className="t">new network</span></span>
+          </div>
+          <div className="wb-body" style={{ padding: 18 }}>
+            <Dialog.Title style={{ margin: "0 0 10px", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.45 }}>
+              a network is a group that shares signals. if you run a community, event, or team, create one here, then invite your members so their signals can find each other.
+            </Dialog.Title>
+            <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
+              <button type="button" onClick={() => uploadNetworkImage && fileInputRef.current?.click()} disabled={isSubmitting || !uploadNetworkImage} style={{ display: "flex", gap: 12, alignItems: "center", background: "none", border: "none", padding: 0, textAlign: "left" }}>
+                <NetworkAvatar title={name || "network name"} imageUrl={imagePreview} size={48} />
+                <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>{imagePreview ? "picture" : "picture optional"}</span>
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+              {imagePreview && <button type="button" className="wb-btn small" onClick={handleRemoveImage} disabled={isSubmitting}>remove image</button>}
+              {imageError && <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-warn)" }}>{imageError}</p>}
+              <label style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>name
+                <input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="network name" disabled={isSubmitting} autoFocus required style={{ display: "block", width: "100%", marginTop: 4, border: "1px solid #000", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13 }} />
+              </label>
+              <label style={{ fontFamily: "var(--mac-mono)", fontSize: 11 }}>description
+                <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="optional" rows={3} disabled={isSubmitting} style={{ display: "block", width: "100%", marginTop: 4, border: "1px solid #000", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13 }} />
+              </label>
+              <div>
+                <p style={{ margin: "0 0 6px", fontFamily: "var(--mac-mono)", fontSize: 11 }}>access</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className={`wb-btn small${joinPolicy === "anyone" ? " primary" : ""}`} onClick={() => setJoinPolicy("anyone")}>public</button>
+                  <button type="button" className={`wb-btn small${joinPolicy === "invite_only" ? " primary" : ""}`} onClick={() => setJoinPolicy("invite_only")}>private</button>
                 </div>
               </div>
-
-              {/* Name field at bottom */}
-              <div>
-                <label htmlFor="name" className="text-md font-medium font-ibm-plex-mono text-black">
-                  <div className="mb-2">Name *</div>
-                </label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Network name"
-                  disabled={isSubmitting}
-                  autoFocus
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Description <span className="text-gray-400 font-normal">(optional)</span>
-                </label>
-                <Textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="What people can share in this network..."
-                  rows={3}
-                  disabled={isSubmitting}
-                  className="resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">Access</label>
-                <div className="space-y-2">
-                  {([
-                    { key: 'public', icon: Globe, label: 'Public', desc: 'Anyone can discover and join' },
-                    { key: 'private', icon: Lock, label: 'Private', desc: 'Only people with invitation link' },
-                  ] as const).map(({ key, icon: Icon, label, desc }) => {
-                    const selected = key === 'public' ? joinPolicy === 'anyone' : joinPolicy === 'invite_only';
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setJoinPolicy(key === 'public' ? 'anyone' : 'invite_only')}
-                        disabled={isSubmitting}
-                        className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${
-                          selected ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'
-                        } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        <Icon className={`h-4 w-4 ${selected ? 'text-black' : 'text-gray-400'}`} />
-                        <div>
-                          <p className="text-sm font-medium text-black">{label}</p>
-                          <p className="text-xs text-gray-500">{desc}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={!name.trim() || isSubmitting}>
-                  {isSubmitting ? 'Creating...' : 'Create'}
-                </Button>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="wb-btn" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>cancel</button>
+                <button type="submit" className="wb-btn primary" disabled={!name.trim() || isSubmitting}>{isSubmitting ? "creating…" : "create"}</button>
               </div>
             </form>
           </div>
