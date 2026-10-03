@@ -393,11 +393,14 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime): 
   }
 
   log("  thinking");
-  // The wake itself is the first line. The tool's line replaces it.
-  try {
-    await publishActions(client, intent.id, [{ type: "progress", text: "Warming up" }], context);
-  } catch (cause) {
-    log(`  progress failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+  // The first wake's opening line. A later wake already has progress, so it
+  // does not write the line again.
+  if (!principalConversation.some((entry) => entry.kind === "progress")) {
+    try {
+      await publishActions(client, intent.id, [{ type: "progress", text: "Warming up." }], context);
+    } catch (cause) {
+      log(`  progress failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
   }
   const result = await wake({
     user,

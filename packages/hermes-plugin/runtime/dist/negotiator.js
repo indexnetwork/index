@@ -860,7 +860,7 @@ async function wake(input) {
       },
       run: async ({ plan, queries }) => {
         try {
-          await input.onProgress?.("Working out who to reach");
+          await input.onProgress?.("Working out who to reach.");
         } catch (cause) {
           unpersisted ??= cause;
         }
@@ -1239,7 +1239,7 @@ async function runWake(client, intent, runtime) {
   }
   log("  thinking");
   try {
-    await publishActions(client, intent.id, [{ type: "progress", text: "Warming up" }], context);
+    await publishActions(client, intent.id, [{ type: "progress", text: "Warming up." }], context);
   } catch (cause) {
     log(`  progress failed: ${cause instanceof Error ? cause.message : String(cause)}`);
   }

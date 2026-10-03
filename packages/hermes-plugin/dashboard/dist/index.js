@@ -1055,7 +1055,7 @@
       + (props.onSelect ? " index-dashboard__stat--selectable" : "")
       + (props.active ? " index-dashboard__stat--active" : "");
     const children = [
-      React.createElement("strong", { key: "v" }, formatCount(props.value)),
+      React.createElement("strong", { key: "v" }, formatCount(props.value), props.mark || null),
       React.createElement("span", { key: "l" }, props.label),
     ];
     if (props.onSelect) {
@@ -1102,8 +1102,49 @@
     return counts;
   }
 
+  function NegotiationSquare(props) {
+    const box = React.useRef(null);
+    const heard = React.useRef(props.pulse);
+    React.useEffect(function () {
+      if (props.pulse === heard.current) return undefined;
+      heard.current = props.pulse;
+      const el = box.current;
+      if (!el) return undefined;
+      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const struck = performance.now();
+      let frame = 0;
+      function draw(now) {
+        if (!box.current) return;
+        const dt = (now - struck) / 1000;
+        const E = Math.max(0, (Math.exp(-4.6 * dt / 10) - 0.01) / 0.99);
+        const scale = still || dt >= 0.5 ? 1 : 1 + 0.22 * Math.exp(-12 * dt) * Math.cos(16 * dt);
+        box.current.style.opacity = String(E);
+        box.current.style.transform = "scale(" + scale + ")";
+        if (E > 0) frame = requestAnimationFrame(draw);
+      }
+      draw(struck);
+      return function () { cancelAnimationFrame(frame); };
+    }, [props.pulse]);
+    return React.createElement("span", { ref: box, className: "index-dashboard__nego-square", "aria-hidden": "true" });
+  }
+
   function RadarStrip(props) {
     const counts = props.counts || {};
+    const negotiating = counts.negotiating || 0;
+    const pulseState = React.useState(0);
+    const pulse = pulseState[0];
+    const setPulse = pulseState[1];
+    const last = React.useRef(negotiating);
+    const skip = React.useRef(true);
+    React.useEffect(function () {
+      if (negotiating === last.current) return undefined;
+      last.current = negotiating;
+      if (skip.current) {
+        skip.current = false;
+        return undefined;
+      }
+      setPulse(function (n) { return n + 1; });
+    }, [negotiating]);
     return React.createElement("div", { className: "index-dashboard__radar-strip" },
       RADAR_BUCKETS.map(function (bucket) {
         const active = props.selected === bucket.key;
@@ -1112,6 +1153,7 @@
           value: counts[bucket.key] || 0,
           label: bucket.label,
           active: active,
+          mark: bucket.key === "negotiating" ? React.createElement(NegotiationSquare, { pulse: pulse }) : null,
           // Mac-app parity: picking a stage filters to it, picking it again
           // goes back to the whole radar.
           onSelect: props.onSelect ? function () { props.onSelect(active ? "all" : bucket.key); } : null,
@@ -3244,20 +3286,27 @@
       + " promising " + (promising === 1 ? "one" : "ones");
   }
 
+  function loadingLine(text) {
+    const line = typeof text === "string" && text.endsWith(".") ? text.slice(0, -1) : text;
+    return line === "Warming up" || line === "Working out who to reach";
+  }
+
+  function loadingSentence(text) {
+    return text.endsWith(".") ? text : text + ".";
+  }
+
   // The looking note and the counted note are two rows. Once the count
   // arrives, the earlier one is the same run and drops out.
   function withoutSupersededLooking(entries) {
     const traces = entries.map(function (entry) { return entry.kind === "progress" ? parseDiscoveryProgress(entry.text) : null; });
     return entries.filter(function (entry, index) {
-      if (entry.kind === "progress" && entry.text === "Warming up") {
-        return !entries.some(function (other, otherIndex) {
-          return otherIndex > index && other.kind === "progress";
-        });
-      }
-      if (entry.kind === "progress" && entry.text === "Working out who to reach") {
-        return !traces.some(function (other, otherIndex) {
-          return otherIndex > index && other && typeof other.discovered === "number";
-        });
+      if (entry.kind === "progress" && (loadingLine(entry.text))) {
+        var first = -1;
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i].kind === "progress" && entries[i].text === entry.text) { first = i; break; }
+        }
+        // Temporary: keep these lines after discovery starts so their style can be edited.
+        return index === first;
       }
       const trace = traces[index];
       if (!trace || typeof trace.discovered === "number") return true;
@@ -3279,7 +3328,7 @@
     const planNote = new Map();
     let runId = "before-discovery";
     entries.forEach(function (entry, index) {
-      if (entry.kind === "progress") {
+      if (entry.kind === "progress" && !loadingLine(entry.text)) {
         runId = entry.id;
         progress.set(runId, entry.text);
       }
@@ -3293,7 +3342,7 @@
         runs.set(runId, run);
       }
     });
-    if (!runs.size) return entries;
+    if (!runs.size) return foldLoading(entries);
 
     const insertions = new Map();
     runs.forEach(function (run) {
@@ -3326,6 +3375,42 @@
       }
       if (planIndexes.has(index)) return;
       if (entry.kind !== "brief" && entry.kind !== "decision") feed.push(entry);
+    });
+    return foldLoading(feed);
+  }
+
+  function foldLoading(entries) {
+    const feed = [];
+    let block = null;
+    entries.forEach(function (entry) {
+      if (entry.kind === "loading" || (entry.kind === "progress" && loadingLine(entry.text))) {
+        const lines = entry.kind === "loading" ? entry.lines : [entry.text];
+        if (!block) {
+          block = { kind: "discovery", id: entry.id, loading: [], plan: "", queries: [], discovered: null, reached: null, progress: "", items: [] };
+          feed.push(block);
+        }
+        lines.forEach(function (line) { block.loading.push(line); });
+        return;
+      }
+      const trace = entry.kind === "discovery" ? entry : (entry.kind === "progress" ? parseDiscoveryProgress(entry.text) : null);
+      if (trace && (entry.kind === "discovery" || trace.plan || (trace.queries && trace.queries.length))) {
+        if (block && !block.plan && !block.queries.length) {
+          block.plan = trace.plan || "";
+          block.queries = trace.queries || [];
+          block.discovered = trace.discovered;
+          block.reached = trace.reached;
+          block.progress = entry.kind === "discovery" ? entry.progress : "";
+          block.items = entry.kind === "discovery" ? entry.items : [];
+          return;
+        }
+        if (entry.kind === "discovery") feed.push(entry);
+        else feed.push({
+          kind: "discovery", id: entry.id, loading: [], plan: trace.plan || "", queries: trace.queries || [],
+          discovered: trace.discovered, reached: trace.reached, progress: "", items: [],
+        });
+        return;
+      }
+      feed.push(entry);
     });
     return feed;
   }
@@ -3384,7 +3469,11 @@
     const reaching = rest.filter(function (item) { return reachedDecision(item.decision); }).length;
     const counted = typeof props.discovered === "number";
     const summary = counted ? discoverySummary(props.discovered, props.reached, items) : props.progress;
+    const loading = props.loading || [];
     return React.createElement(AgentLine, { speaker: { label: "your agent", id: "" } },
+      loading.map(function (line) {
+        return React.createElement("p", { key: line, style: { margin: "0 0 8px" } }, loadingSentence(line));
+      }),
       props.plan ? React.createElement("p", { className: "index-dashboard__disc-plan" }, props.plan) : null,
       React.createElement("div", { className: "index-dashboard__disc" },
         queries.length
@@ -3436,6 +3525,13 @@
             React.createElement("strong", null, item.counterpart),
             item.decision ? React.createElement("span", null, item.decision) : null),
           item.brief ? React.createElement(Markdown, { text: item.brief }) : null);
+      }));
+  }
+
+  function LoadingTrace(props) {
+    return React.createElement(AgentLine, { speaker: { label: "your agent", id: "" } },
+      props.lines.map(function (line) {
+        return React.createElement("p", { key: line, style: { margin: 0 } }, loadingSentence(line));
       }));
   }
 
@@ -3912,6 +4008,7 @@
           ),
         );
       }
+      if (entry.kind === "loading") return React.createElement(LoadingTrace, { key: entry.id, lines: entry.lines });
       if (entry.kind === "discovery") return React.createElement(DiscoveryTrace, Object.assign({ key: entry.id }, entry));
       if (entry.kind === "decisions") return React.createElement(DecisionGroup, { key: entry.id, items: entry.items });
       if (entry.kind === "progress") return React.createElement(ProgressLine, { key: entry.id, text: entry.text });
@@ -3966,74 +4063,15 @@
     );
   }
 
-  /* Counterparty discovery, the mac app's radar while the agent runs its first
-     search: the loading art, then a checklist whose steps tick only when the
-     data says so. Every counter is a number the dashboard actually has. */
-  const DISCOVERY_STEPS = [
-    { key: "reach", label: "mapping reach",
-      done: function (m) { return m.networks != null; },
-      detail: function () { return ""; } },
-    { key: "scan", label: "scanning counterparties",
-      done: function (m) { return m.found != null; },
-      detail: function (m) { return m.found == null ? "" : formatCount(m.found) + " found"; } },
-    { key: "overlap", label: "evaluating overlap",
-      done: function (m) { return m.scored != null; },
-      detail: function (m) { return m.scored == null ? "" : formatCount(m.scored) + " scored"; } },
-    { key: "rank", label: "ranking counterparties",
-      done: function (m) { return m.scored != null; },
-      detail: function (m, isDone) { return isDone ? "ranked" : "ranking"; } },
-    // Holds as the active step while the radar is empty: nobody has advanced.
-    { key: "short", label: "shortlisting",
-      done: function (m) { return m.advanced > 0; },
-      detail: function (m) { return m.advanced == null ? "" : formatCount(m.advanced) + " advanced"; } },
-  ];
-  const DISCOVERY_SPINNER = "\u280B\u2819\u2839\u2838\u283C\u2834\u2826\u2827\u2807\u280F".split("");
-  // The data lands in one go; the checklist walks one row per dwell so each
-  // step reads as its own, and never past what the data supports.
-  const DISCOVERY_STEP_DWELL_MS = 700;
   // An empty radar stops claiming to search after this long.
   const DISCOVERY_GIVE_UP_MS = 120000;
 
-  function DiscoveryStages(props) {
-    const metrics = props.metrics;
-    let reached = 0;
-    for (let i = 0; i < DISCOVERY_STEPS.length; i++) {
-      if (!DISCOVERY_STEPS[i].done(metrics)) break;
-      reached += 1;
-    }
-    const walkedState = React.useState(0);
-    const setWalked = walkedState[1];
-    const walked = Math.min(walkedState[0], reached);
-    React.useEffect(function () {
-      if (walked >= reached) return undefined;
-      const timer = setTimeout(function () { setWalked(walked + 1); }, DISCOVERY_STEP_DWELL_MS);
-      return function () { clearTimeout(timer); };
-    }, [walked, reached]);
-    const activeIndex = walked < DISCOVERY_STEPS.length ? walked : -1;
-    const frameState = React.useState(0);
-    const frame = frameState[0];
-    const setFrame = frameState[1];
-    React.useEffect(function () {
-      if (activeIndex === -1) return undefined;
-      const timer = setInterval(function () { setFrame(function (n) { return (n + 1) % DISCOVERY_SPINNER.length; }); }, 100);
-      return function () { clearInterval(timer); };
-    }, [activeIndex === -1]);
-
+  function DiscoveryStages() {
     return React.createElement("div", { className: "index-dashboard__discovery" },
       LOADING_IMAGE()
         ? React.createElement("img", { className: "index-dashboard__discovery-art", src: LOADING_IMAGE(), alt: "searching" })
         : null,
-      React.createElement("p", { className: "index-dashboard__discovery-title" }, "hold on, looking for your people"),
-      React.createElement("div", { className: "index-dashboard__discovery-steps", role: "status", "aria-live": "polite" },
-        DISCOVERY_STEPS.map(function (step, i) {
-          const isDone = i < walked;
-          const isActive = i === activeIndex;
-          const state = isDone ? "done" : isActive ? "active" : "pending";
-          return React.createElement("div", { key: step.key, className: "index-dashboard__discovery-step index-dashboard__discovery-step--" + state },
-            React.createElement("span", { className: "index-dashboard__discovery-mark" }, isDone ? "\u2713" : isActive ? DISCOVERY_SPINNER[frame] : "\u00B7"),
-            React.createElement("span", { className: "index-dashboard__discovery-label" }, step.label),
-            React.createElement("span", { className: "index-dashboard__discovery-detail" }, isDone || isActive ? step.detail(metrics, isDone) : ""));
-        })));
+      React.createElement("p", { className: "index-dashboard__discovery-title" }, "hold on, looking for your people"));
   }
 
   function IntentDetail(props) {
@@ -4085,12 +4123,6 @@
     const radarLoading = !!props.radarLoading;
     // Nothing on the radar and not yet given up: the agents are still out.
     const discovering = shownCount === 0 && !discoveryExpired;
-    const discoveryMetrics = {
-      networks: props.networkCount,
-      found: intent.radarLoaded ? allOpps.length : null,
-      scored: intent.radarLoaded ? allOpps.filter(function (opp) { return typeof opp.score === "number"; }).length : null,
-      advanced: shownCount,
-    };
     const signalHead = React.createElement(SignalHead, {
       title: intent.title || "Untitled intent",
       paused: paused,
@@ -4134,7 +4166,7 @@
           props.actionError ? React.createElement("div", { className: "index-dashboard__error" }, props.actionError) : null,
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
           discovering
-            ? React.createElement(DiscoveryStages, { key: intent.id, metrics: discoveryMetrics })
+            ? React.createElement(DiscoveryStages, { key: intent.id })
             : radarLoading && !allOpps.length
             ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
             : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onOpenNegotiation: props.onOpenNegotiation, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
@@ -5141,6 +5173,7 @@
     const activeIdRef = useRef(props.initialConversationId || null);
     const userIdRef = useRef("");
     const threadRef = useRef(null);
+    const composerRef = useRef(null);
 
     function markRead(id, at) {
       if (!id) return;
@@ -5215,6 +5248,12 @@
     }
 
     useEffect(function () { loadList(props.initialConversationId || null); }, []);
+
+    // Accept opens this panel on a thread. The composer is the place to type.
+    useEffect(function () {
+      if (!activeId || threadLoading) return;
+      if (composerRef.current) composerRef.current.focus();
+    }, [activeId, threadLoading]);
 
     // Authoritative realtime, mirroring the web app's ConversationContext:
     // dedup by message id, live conversation-summary updates, and
@@ -5439,6 +5478,7 @@
                 ),
                 React.createElement("div", { className: "index-dashboard__msg-composer" },
                   React.createElement("textarea", {
+                    ref: composerRef,
                     className: "index-dashboard__textarea index-dashboard__msg-input",
                     rows: 1,
                     value: input,
@@ -6117,7 +6157,7 @@
         ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: goBack }, ICON_ARROW_LEFT(), "Back")
         : React.createElement(IntentPitch, { onLight: true });
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, networkCount: networks && Array.isArray(networks.items) ? networks.items.length : null, radarLoading: radarLoading, actionError: actionError, onBack: goBack, backInHeader: inlineHdr, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, backInHeader: inlineHdr, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         inlineHdr ? null : React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },

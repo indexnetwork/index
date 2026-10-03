@@ -350,7 +350,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         // The call itself is the loading line. The plan follows once people
         // are found. A failure is kept for the caller, same as the counted write.
         try {
-          await input.onProgress?.("Working out who to reach");
+          await input.onProgress?.("Working out who to reach.");
         } catch (cause) {
           unpersisted ??= cause;
         }

@@ -10,8 +10,15 @@ import { cn } from "@/lib/utils";
 
 type Provenance = { kind?: string; questionId?: string; scope?: string; matches?: PrincipalQuestion["matches"] };
 
-const WARMING = "Warming up";
-const REACHING = "Working out who to reach";
+function loadingLine(text: string | null): text is string {
+  if (!text) return false;
+  const line = text.endsWith(".") ? text.slice(0, -1) : text;
+  return line === "Warming up" || line === "Working out who to reach";
+}
+
+function loadingSentence(text: string): string {
+  return text.endsWith(".") ? text : `${text}.`;
+}
 
 function messageText(message: ConversationMessage): string {
   return (message.parts as { kind?: string; text?: string }[])
@@ -22,29 +29,16 @@ function progressBody(text: string): string | null {
   return text.startsWith("Progress: ") ? text.slice("Progress: ".length) : null;
 }
 
-/** Warming up drops once any later progress arrives. The reaching line drops once a later one has a count. */
+/** A repeat of Warming up or Working out who to reach is hidden. Temporary: both stay after discovery starts so their style can be edited. */
 function supersededLoading(messages: ConversationMessage[]): Set<string> {
   const hide = new Set<string>();
-  let counted = false;
-  let later = false;
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const body = progressBody(messageText(messages[index]!));
-    if (!body) continue;
-    if (body === WARMING && later) hide.add(messages[index]!.id);
-    else if (body === REACHING && counted) hide.add(messages[index]!.id);
-    if (countedDiscovery(body)) counted = true;
-    later = true;
-  }
+  const bodies = messages.map((message) => progressBody(messageText(message)));
+  const firstOf = (text: string) => bodies.findIndex((body) => body === text);
+  bodies.forEach((body, index) => {
+    if (!loadingLine(body)) return;
+    if (index !== firstOf(body)) hide.add(messages[index]!.id);
+  });
   return hide;
-}
-
-function countedDiscovery(text: string): boolean {
-  try {
-    const data = JSON.parse(text) as { queries?: unknown; discovered?: unknown };
-    return Array.isArray(data.queries) && typeof data.discovered === "number";
-  } catch {
-    return false;
-  }
 }
 
 /** One private intent conversation; every open question is answered in a single submit. */
@@ -164,17 +158,24 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           : messages.length === 0 ? <div className="flex items-start gap-2 text-sm text-gray-600">
             <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0" />
             <p>Ask about your matches, share a preference, or give your agent direction for this intent.</p>
-          </div> : messages.map((message) => {
+          </div> : messages.map((message, index) => {
             const content = messageText(message);
             const provenance = message.metadata?.principalMessage as Provenance | undefined;
             if (!content || provenance?.kind === "question" && provenance.questionId && carded.has(provenance.questionId)) return null;
             const progress = progressBody(content);
-            if (progress === WARMING || progress === REACHING) {
+            if (loadingLine(progress)) {
               if (hiddenLoading.has(message.id)) return null;
-              return <p key={message.id} role="status" className="flex items-center gap-2 font-mono text-[11px] text-gray-500">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-900" aria-hidden="true" />
-                {progress}
-              </p>;
+              const earlier = index > 0 ? progressBody(messageText(messages[index - 1]!)) : null;
+              if (loadingLine(earlier) && !hiddenLoading.has(messages[index - 1]!.id)) return null;
+              const lines = [progress];
+              for (let next = index + 1; next < messages.length; next++) {
+                const body = progressBody(messageText(messages[next]!));
+                if (!loadingLine(body)) break;
+                if (!hiddenLoading.has(messages[next]!.id)) lines.push(body);
+              }
+              return <div key={message.id} className="flex flex-col gap-2 text-sm text-[#5A5548]">
+                {lines.map((line) => <p key={line}>{loadingSentence(line)}</p>)}
+              </div>;
             }
             const own = message.role === "user";
             return <div key={message.id} className={cn("flex", own ? "justify-end" : "justify-start")}>
