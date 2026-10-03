@@ -5616,6 +5616,9 @@
     const toggleProfileRef = useRef(null);
     const openMessagesRef = useRef(null);
     const focusAppliedRef = useRef(null);
+    const summaryRef = useRef(summary);
+    summaryRef.current = summary;
+    const shelfReady = !!summary;
 
     function loadNetworks() {
       fetchPluginJSON(API + "/networks/home")
@@ -6103,10 +6106,12 @@
       });
     }, [selectedId, profileOpen, viewUserId, messagesOpen, messagesTarget]);
 
-    // A notification tap re-enters this page with its target on the URL. An
-    // opportunity or a conversation opens as a panel over whatever was already
-    // selected; only a question changes the selection, because it is answered
-    // in its own signal and nowhere else.
+    // A notification tap or an Index link re-enters this page with its target
+    // on the URL. An opportunity is read inside the signal that surfaced it:
+    // that intent is selected first, and the profile opens on top. A
+    // conversation opens as a panel over whatever was already selected. Only
+    // a question changes the selection on its own, because it is answered in
+    // its own signal and nowhere else.
     useEffect(function () {
       if (auth !== "authed") return undefined;
       function applyFocus() {
@@ -6116,27 +6121,41 @@
         // navigation would otherwise re-open a panel the user has closed.
         const key = target.kind + ":" + target.id;
         if (focusAppliedRef.current === key) return;
-        focusAppliedRef.current = key;
         if (target.kind === "opportunity") {
+          const shelf = summaryRef.current;
+          if (!shelf) return;
+          focusAppliedRef.current = key;
           fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(target.id) + "/counterpart")
             .then(function (payload) {
-              if (payload && payload.success !== false && payload.userId) setViewUserId(payload.userId);
+              if (!payload || payload.success === false) return;
+              const intentId = payload.intentId;
+              const known = intentId && (shelf.intents || []).some(function (intent) {
+                return intent && intent.id === intentId;
+              });
+              if (known) {
+                setSelectedId(intentId);
+                writeHash(intentId);
+              }
+              if (payload.userId) setViewUserId(payload.userId);
             })
             .catch(function () { /* the page is open, which is most of the ask */ });
-        } else if (target.kind === "conversation") {
-          setMessagesTarget(target.id);
-          setMessagesOpen(true);
         } else {
-          setSelectedId(target.id);
-          writeHash(target.id);
-          if (selectedIdRef.current !== target.id) {
-            setFocusQuestion(function (n) { return n + 1; });
+          focusAppliedRef.current = key;
+          if (target.kind === "conversation") {
+            setMessagesTarget(target.id);
+            setMessagesOpen(true);
+          } else {
+            setSelectedId(target.id);
+            writeHash(target.id);
+            if (selectedIdRef.current !== target.id) {
+              setFocusQuestion(function (n) { return n + 1; });
+            }
           }
         }
       }
       applyFocus();
       return onLocation(applyFocus);
-    }, [auth]);
+    }, [auth, shelfReady]);
 
     const intents = (summary && summary.intents) || [];
 

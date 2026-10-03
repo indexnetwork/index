@@ -2139,7 +2139,9 @@ def opportunity_counterpart(opportunity_id: str) -> dict[str, Any]:
     """Resolve an opportunity to the person on the other side of it.
 
     A notification names the opportunity; the panel it opens is that person's
-    profile, so the tap needs this one hop.
+    profile, so the tap needs this one hop. `intentId` is the viewer's own
+    signal, so the profile can open on that signal instead of whatever was
+    already selected.
     """
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
@@ -2154,7 +2156,11 @@ def opportunity_counterpart(opportunity_id: str) -> dict[str, Any]:
     counterpart_id = _counterpart_user_id(opp, current_user_id)
     if not counterpart_id:
         return {"success": False, "error": "That opportunity has no counterpart to open."}
-    return {"success": True, "userId": counterpart_id}
+    result: dict[str, Any] = {"success": True, "userId": counterpart_id}
+    intent_id = _text(opp.get("intentId"))
+    if intent_id:
+        result["intentId"] = intent_id
+    return result
 
 
 @full_router.get("/opportunities/{opportunity_id}/negotiation")
