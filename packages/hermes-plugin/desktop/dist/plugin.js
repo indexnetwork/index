@@ -1477,10 +1477,10 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       React.createElement("span", { className: "index-dashboard__intent-dot", "aria-hidden": "true" }),
       React.createElement("div", { className: "index-dashboard__intent-main" },
         React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
-        // What is waiting rides the count tag; the meta line only says paused.
-        intent.status === "paused"
+        // What is waiting rides the count tag; the meta line only says paused or draft.
+        intent.status === "paused" || intent.status === "draft"
           ? React.createElement("div", { className: "index-dashboard__intent-meta" },
-            React.createElement("span", null, "paused"),
+            React.createElement("span", null, intent.status === "draft" ? "draft" : "paused"),
           )
           : null,
       ),
@@ -1497,7 +1497,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   // One number per row: unanswered questions plus opportunities awaiting you.
   // The mac shelf shows this same sum.
   function intentMatchCount(intent) {
-    if (!intent || intent.lifecycleStatus === "paused" || intent.status === "paused") return 0;
+    if (!intent || intent.lifecycleStatus === "paused" || intent.status === "paused" || intent.lifecycleStatus === "draft" || intent.status === "draft") return 0;
     return Number.isFinite(intent.pendingCount) ? intent.pendingCount : 0;
   }
 
@@ -3278,11 +3278,11 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
       ),
       React.createElement("div", { className: "index-dashboard__detail-live" },
-        React.createElement("span", { className: "index-dashboard__live" + (props.paused ? " index-dashboard__live--paused" : "") },
+        React.createElement("span", { className: "index-dashboard__live" + (props.paused || props.draft ? " index-dashboard__live--paused" : "") },
           React.createElement("span", { className: "index-dashboard__live-dot" }),
-          props.paused ? "paused" : "live",
+          props.draft ? "draft" : props.paused ? "paused" : "live",
         ),
-        React.createElement("span", { className: "index-dashboard__detail-live-text" }, props.paused ? "agent on hold" : "agent is looking in the background"),
+        React.createElement("span", { className: "index-dashboard__detail-live-text" }, props.draft ? "not in discovery" : props.paused ? "agent on hold" : "agent is looking in the background"),
       ),
     );
   }
@@ -4198,6 +4198,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       );
     }
     const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
+    const draft = String(intent.lifecycleStatus || intent.status || "").toLowerCase() === "draft";
     const allOpps = Array.isArray(intent.opportunities) ? intent.opportunities : [];
     const visibleOpps = allOpps.filter(function (opp) {
       const bucket = bucketForStatus(opp.status, opp.viewerCommitted);
@@ -4207,10 +4208,11 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const radarEmpty = "No matches here yet.";
     const radarLoading = !!props.radarLoading;
     // Nothing on the radar and not yet given up: the agents are still out.
-    const discovering = shownCount === 0 && !discoveryExpired;
+    const discovering = !draft && shownCount === 0 && !discoveryExpired;
     const signalHead = React.createElement(SignalHead, {
       title: intent.title || "Untitled intent",
       paused: paused,
+      draft: draft,
       actions: (function () {
         const archiving = props.archivingId === intent.id;
         return React.createElement("span", { className: "index-dashboard__action-group" },
@@ -5765,7 +5767,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       const intents = (payload && payload.intents) || [];
       let total = 0;
       intents.forEach(function (intent) {
-        if (!intent || intent.lifecycleStatus === "paused" || intent.status === "paused") return;
+        if (!intent || intent.lifecycleStatus === "paused" || intent.status === "paused" || intent.lifecycleStatus === "draft" || intent.status === "draft") return;
         const n = intent.pendingCount;
         if (typeof n === "number" && n > 0) total += n;
       });
@@ -6236,6 +6238,12 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     }, [auth, shelfReady]);
 
     const intents = (summary && summary.intents) || [];
+    const draftIntents = intents.filter(function (intent) {
+      return String(intent.lifecycleStatus || intent.status || "").toLowerCase() === "draft";
+    });
+    const shelfIntents = intents.filter(function (intent) {
+      return String(intent.lifecycleStatus || intent.status || "").toLowerCase() !== "draft";
+    });
 
     function selectIntent(id) {
       setSelectedId(id);
@@ -6293,14 +6301,20 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           React.createElement(Panel, {
             icon: ICON_SPARKLES(),
             title: "Intents",
-            count: intents.length,
+            count: shelfIntents.length,
             action: React.createElement(Button, {
               type: "button", outlined: true, size: "sm",
               className: "index-dashboard__net-create-btn index-dashboard__new-signal-btn",
               onClick: function () { setNewSignalOpen(true); },
             }, ICON_PLUS(), "New signal"),
           },
-            React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
+            React.createElement(IntentList, { intents: shelfIntents, selectedId: selectedId, onSelect: selectIntent }),
+            draftIntents.length
+              ? React.createElement("details", { style: { marginTop: 8 } },
+                React.createElement("summary", { style: { cursor: "pointer" } }, "drafts"),
+                React.createElement(IntentList, { intents: draftIntents, selectedId: selectedId, onSelect: selectIntent }),
+              )
+              : null,
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
             React.createElement(NetworksMini, {

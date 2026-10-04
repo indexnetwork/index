@@ -675,11 +675,12 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
         or "Untitled intent"
     )
     lifecycle = _text(intent.get("status"), "active").lower()
+    shown = "paused" if lifecycle == "paused" else "draft" if lifecycle == "draft" else "live"
     return {
         "id": intent_id,
         "title": title,
         "lifecycleStatus": lifecycle,
-        "status": "paused" if lifecycle == "paused" else "live",
+        "status": shown,
         "pendingCount": _attention_count(intent),
     }
 
@@ -1905,6 +1906,8 @@ def create_intent(body: dict[str, Any] | None = Body(default=None)) -> dict[str,
     receipt = _text(body.get("preparationReceipt"))
     if receipt:
         request["preparationReceipt"] = receipt
+    if body.get("draft") is True:
+        request["draft"] = True
     payload = tools._api_request("POST", "/intents", request)
     if payload.get("success") is False:
         return payload

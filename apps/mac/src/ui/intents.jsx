@@ -335,7 +335,8 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
   const active   = visible.filter(i => i.status === "active");
   const idle     = visible.filter(i => i.status === "idle");
   const paused   = visible.filter(i => i.status === "paused");
-  const rest     = visible.filter(i => i.status !== "active" && i.status !== "idle" && i.status !== "paused");
+  const drafts   = visible.filter(i => i.status === "draft");
+  const rest     = visible.filter(i => i.status !== "active" && i.status !== "idle" && i.status !== "paused" && i.status !== "draft");
   const ordered  = [...active, ...idle, ...paused, ...rest];
 
   return (
@@ -452,6 +453,23 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
                   />
                 ))}
               </div>
+              {drafts.length > 0 && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ fontFamily: "var(--mac-mono)", fontSize: 12, cursor: "pointer" }}>drafts</summary>
+                  <div style={{ display: "flex", flexDirection: "column", gap: SHELF_ROW_GAP, marginTop: 8 }}>
+                    {drafts.map(intent => (
+                      <IntentRow
+                        key={intent.id}
+                        intent={intent}
+                        hovered={hovered === intent.id}
+                        onHover={() => setHovered(intent.id)}
+                        onLeave={() => {}}
+                        onPick={() => onPickExisting(intent)}
+                      />
+                    ))}
+                  </div>
+                </details>
+              )}
 
               {/* Starting a signal is what this screen is for, so it sits
                   outside the shelf, a long list scrolls behind it rather than
@@ -498,6 +516,7 @@ function signalTitle(raw) {
 function signalStatus(intent) {
   if (intent.status === "archived") return "closed";
   if (intent.status === "paused") return "paused";
+  if (intent.status === "draft") return "draft";
   if (intent.matches > 0) return "matched";
   if ((intent.pipeline || {}).negotiating > 0) return "negotiating";
   return "live";

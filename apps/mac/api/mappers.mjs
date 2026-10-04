@@ -62,13 +62,14 @@ export function mapIntent(intent) {
 
   const archived = Boolean(intent.archivedAt);
   const paused = !archived && String(intent.status || '') === 'paused';
+  const draft = !archived && !paused && String(intent.status || '') === 'draft';
 
   return {
     id: intent.id,
     title: intent.summary || intent.payload || 'untitled signal',
     edges: networkTitles.join(' · '),
     offLimits: '',
-    status: archived ? 'archived' : paused ? 'paused' : 'active',
+    status: archived ? 'archived' : paused ? 'paused' : draft ? 'draft' : 'active',
     pipeline: { warm: 0, considering: 0, negotiating: 0 },
     lastSignal: intent.updatedAt ? `updated ${relativeAge(intent.updatedAt)}` : '',
     age: intent.createdAt ? `running ${relativeAge(intent.createdAt)}` : '',
@@ -77,7 +78,7 @@ export function mapIntent(intent) {
     inConversations: 0,
     // Row and Dock badge: unanswered questions plus opportunities awaiting you,
     // on active signals only. Paused and archived rows stay listed without a count.
-    pending: !archived && !paused
+    pending: !archived && !paused && !draft
       ? count(intent.pendingQuestionCount) + count(intent.waitingOpportunityCount)
       : 0,
     inbound: [],

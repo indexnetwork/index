@@ -286,6 +286,8 @@ def index_create_intent(args: dict, **kwargs) -> str:
     network_ids = args.get("networkIds")
     if isinstance(network_ids, list) and network_ids:
         body["networkIds"] = [str(item) for item in network_ids]
+    if args.get("draft") is True:
+        body["draft"] = True
     return _api_result("POST", "/intents", body)
 
 

@@ -79,6 +79,10 @@ INDEX_CREATE_INTENT = {
                 "items": {"type": "string"},
                 "description": "Optional network UUIDs to share the signal in.",
             },
+            "draft": {
+                "type": "boolean",
+                "description": "When true, save the signal as a draft. Drafts are listed but do not enter discovery.",
+            },
         },
         "required": ["description"],
     },
