@@ -58,6 +58,8 @@ export interface CreateIntentInput {
   felicityClarity?: number | null;
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
+  /** Persisted lifecycle. Omitted rows stay the column default (`active`). */
+  status?: 'draft';
 }
 export interface UpdateIntentInput {
   payload?: string;
@@ -91,7 +93,7 @@ export interface ArchiveResultShape {
   success: boolean;
   error?: string;
 }
-export type IntentLifecycleStatus = 'active' | 'paused';
+export type IntentLifecycleStatus = 'active' | 'paused' | 'draft';
 
 export interface IntentListRow {
   id: string;

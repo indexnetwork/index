@@ -10,7 +10,7 @@ export interface DiscoveryPreflight {
     text: string;
     hasEmbedding: boolean;
     isArchived: boolean;
-    status: 'active' | 'paused';
+    status: 'active' | 'paused' | 'draft';
     assignedToNetworks: Array<{ networkId: string; title: string | null }>;
   };
   userNetworks: Array<{ networkId: string; title: string | null }>;
@@ -77,7 +77,7 @@ export class DebugIntentDiscoveryBlockedError extends Error {
 export function isDebugDiscoveryIntentActive(
   intent: {
     userId: string;
-    status: 'active' | 'paused' | null;
+    status: 'active' | 'paused' | 'draft' | null;
     archivedAt: Date | null;
   } | null,
   userId: string,

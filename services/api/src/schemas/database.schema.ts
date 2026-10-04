@@ -9,7 +9,7 @@ import type { Id } from '../types/common.types';
 // Enums
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
-export const intentStatusEnum = pgEnum('intent_status', ['active', 'paused']);
+export const intentStatusEnum = pgEnum('intent_status', ['active', 'paused', 'draft']);
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);

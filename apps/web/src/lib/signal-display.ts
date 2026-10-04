@@ -15,6 +15,7 @@ export function signalTitle(raw: string): string {
 export function signalStatus(intent: { status?: string | null; waitingOpportunityCount?: number }): string {
   const status = (intent.status || "").toLowerCase();
   if (status === "archived" || status === "expired" || status === "fulfilled") return "closed";
+  if (status === "draft") return "draft";
   if (status === "paused") return "paused";
   if ((intent.waitingOpportunityCount ?? 0) > 0) return "negotiating";
   return "live";

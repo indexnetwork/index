@@ -14,7 +14,7 @@ Usage:
   index intent list [--archived] [--limit <n>] [--query <text>]  List your intents
   index intent show <id>                        Show intent details (accepts short ID)
   index intent prepare <content> [--answer 'prompt=reply']  Review and repair a draft
-  index intent create <content> [--receipt <token>] [--source-type <s>] [--source-id <s>]  Create an admitted intent
+  index intent create <content> [--draft] [--receipt <token>] [--source-type <s>] [--source-id <s>]  Create an admitted intent
   index intent pause <id> | resume <id>         Hold or restart its agent
   index intent update <id> [<content>] [--source-type <s>] [--source-id <s>]  Update description or source fields
   index intent archive <id>                     Archive an intent (accepts short ID)
@@ -54,6 +54,7 @@ export async function handleIntent(
     answers?: { key: string; value: string }[];
     sourceType?: string;
     sourceId?: string;
+    draft?: boolean;
   },
 ): Promise<void> {
   const source = {
@@ -118,6 +119,7 @@ export async function handleIntent(
         options.targetId ? [options.targetId] : undefined,
         options.receipt,
         source,
+        options.draft,
       );
       if (options.json) { console.log(JSON.stringify(result)); return; }
       output.success("Intent created.");

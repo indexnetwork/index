@@ -159,11 +159,12 @@ export class ApiClient {
    * @returns The created signal id and the networks it was linked to.
    * @throws Error on auth failure, a refused description, or network error.
    */
-  async createIntent(description: string, networkIds?: string[], preparationReceipt?: string, source: IntentSource = {}): Promise<{ intentId: string; networkIds: string[] } & Required<IntentSource>> {
+  async createIntent(description: string, networkIds?: string[], preparationReceipt?: string, source: IntentSource = {}, draft = false): Promise<{ intentId: string; networkIds: string[] } & Required<IntentSource>> {
     const res = await this.post("/api/intents", {
       description,
       ...(networkIds?.length ? { networkIds } : {}),
       ...(preparationReceipt ? { preparationReceipt } : {}),
+      ...(draft ? { draft: true } : {}),
       ...source,
     });
     return (await res.json()) as { intentId: string; networkIds: string[] } & Required<IntentSource>;

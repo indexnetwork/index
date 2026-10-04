@@ -223,6 +223,7 @@ export class ChatDatabaseAdapter {
           felicityClarity: data.felicityClarity,
           intentMode: data.intentMode,
           speechActType: data.speechActType,
+          ...(data.status ? { status: data.status } : {}),
         })
         .returning({
           id: schema.intents.id,

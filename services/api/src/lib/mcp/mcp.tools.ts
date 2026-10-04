@@ -280,10 +280,11 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         networkIds: z.array(z.string().uuid()).optional(),
         sourceType: sourceFieldSchema,
         sourceId: sourceFieldSchema,
+        draft: z.boolean().optional().default(false),
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    ({ description, networkIds, sourceType = null, sourceId = null }) => runTool('create_intent', principal, async () => {
+    ({ description, networkIds, sourceType = null, sourceId = null, draft }) => runTool('create_intent', principal, async () => {
       let prepared;
       try {
         prepared = await intentService.prepare(principal.userId, { payload: description });
@@ -308,6 +309,7 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
           networkIds ?? [],
           prepared.preparationReceipt,
           { sourceType, sourceId },
+          draft,
         );
         const url = appLink('i', created.id);
         const label = signalLabel(prepared.payload);

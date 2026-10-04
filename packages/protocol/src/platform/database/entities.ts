@@ -196,6 +196,8 @@ export interface CreateIntentData {
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   /** Speech act category used by protocol enum */
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
+  /** Persisted lifecycle. Omitted rows stay active. */
+  status?: 'draft';
 }
 
 /**
@@ -275,7 +277,7 @@ export interface IntentRecord extends CreatedIntent {
   /** Client-owned reference */
   sourceId?: string | null;
   /** Lifecycle admission state; null is a legacy active row. */
-  status?: 'active' | 'paused' | null;
+  status?: 'active' | 'paused' | 'draft' | null;
 }
 
 /**
@@ -297,7 +299,7 @@ export interface ArchiveResult {
 }
 
 /** An intent's admission lifecycle status; null/legacy rows are active. */
-export type IntentLifecycleStatus = 'active' | 'paused';
+export type IntentLifecycleStatus = 'active' | 'paused' | 'draft';
 
 /**
  * Result of an atomic active/paused lifecycle transition.

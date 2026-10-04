@@ -266,6 +266,7 @@ async function main(): Promise<void> {
         answers: args.answers,
         sourceType: args.sourceType,
         sourceId: args.sourceId,
+        draft: args.draft,
       });
       return;
     case "opportunity":
