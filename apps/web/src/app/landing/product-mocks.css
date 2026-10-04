@@ -1,0 +1,183 @@
+/* Product views on the landing page, drawn at 1040x640 and scaled into their cards.
+   Sizes here are design pixels; ProductMocks.tsx scales the whole stage. */
+
+.pm-frame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 3px;
+  box-shadow: 0 14px 34px rgba(4, 23, 41, .3);
+  transition: transform .4s ease;
+  user-select: text;
+  cursor: text;
+}
+.pm-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  overflow: hidden;
+  background: #fff;
+}
+.pm-stage h4, .pm-stage p { margin: 0; }
+
+/* ---------- Mac app ---------- */
+.pm-mac {
+  --pm-ink: #111;
+  --pm-orange: #EE9234;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 3px solid var(--pm-ink);
+  box-sizing: border-box;
+  color: var(--pm-ink);
+  font-family: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+}
+.pm-mac-bar {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  flex: 0 0 auto;
+  border-bottom: 3px solid var(--pm-ink);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+.pm-mac-close {
+  width: 30px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border-right: 3px solid var(--pm-ink);
+}
+.pm-mac-close span { width: 14px; height: 14px; border: 3px solid var(--pm-ink); box-sizing: border-box; background: #fff; box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 6px var(--pm-ink); }
+.pm-mac-grip { width: 6px; height: 100%; margin-left: 2px; background: repeating-linear-gradient(var(--pm-ink) 0 3px, transparent 3px 6px); }
+.pm-mac-name { padding: 0 14px; font-size: 17px; }
+.pm-mac-stripes { flex: 1; height: 100%; background: repeating-linear-gradient(transparent 0 3px, var(--pm-ink) 3px 5px, transparent 5px 8px); }
+
+.pm-mac-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1.3fr; padding: 36px 30px 24px; gap: 0; }
+.pm-mac-left { display: flex; flex-direction: column; justify-content: space-between; padding-right: 26px; border-right: 3px solid var(--pm-ink); }
+.pm-mac-hero { padding-top: 64px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.pm-mac-h { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 40px; font-weight: 800; letter-spacing: -.01em; }
+.pm-mac-p { font-size: 14px; line-height: 1.5; }
+.pm-mac-invite {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  padding: 12px 16px;
+  background: #E8F3EA;
+  color: #2E5B3A;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pm-mac-invite svg { width: 18px; height: 18px; }
+.pm-mac-nav { display: flex; flex-direction: column; }
+.pm-mac-nav-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #D6D6D6;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px;
+}
+.pm-mac-nav-row:nth-child(3) { border-bottom: 0; }
+.pm-mac-nav-row svg { width: 18px; height: 18px; }
+.pm-mac-nav-row b { font-weight: 400; }
+.pm-mac-me {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--pm-ink);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pm-mac-me i { margin-left: auto; font-style: normal; font-size: 11px; }
+
+.pm-mac-right { display: flex; flex-direction: column; gap: 14px; padding-left: 26px; min-height: 0; }
+.pm-mac-label { display: flex; align-items: center; gap: 12px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; font-weight: 700; letter-spacing: .22em; }
+.pm-mac-label span { flex: 1; height: 1.5px; background: var(--pm-ink); }
+.pm-mac-list { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; padding-right: 18px; }
+.pm-mac-scroll { position: absolute; top: 0; right: 0; width: 8px; height: 30%; background: var(--pm-orange); border: 1px solid var(--pm-ink); box-sizing: border-box; }
+.pm-mac-signal {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border: 1.5px solid var(--pm-ink);
+  box-shadow: 2px 2px 0 #C9C9C9;
+}
+.pm-mac-signal-t { font-size: 16px; }
+.pm-mac-live { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: #555; }
+.pm-mac-live span { width: 7px; height: 7px; box-sizing: border-box; border: 1.5px solid #B9773A; background: #F3C99C; }
+.pm-mac-count { min-width: 26px; padding: 2px 6px; box-sizing: border-box; text-align: center; background: var(--pm-orange); border: 1.5px solid var(--pm-ink); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px; }
+.pm-mac-new {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  margin-right: 18px;
+  background: var(--pm-orange);
+  border: 2.5px solid var(--pm-ink);
+  box-shadow: 3px 3px 0 #BDBDBD;
+  font-size: 17px;
+  font-weight: 600;
+}
+.pm-mac-new span { width: 26px; height: 26px; display: grid; place-items: center; background: #fff; border: 1.5px solid var(--pm-ink); font-size: 16px; }
+
+/* ---------- Hermes plugin ---------- */
+.pm-her {
+  --pm-ink: #1A1C20;
+  --pm-muted: #7A8088;
+  --pm-line: #E4E7EA;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1.08fr 1fr;
+  gap: 32px;
+  padding: 30px 30px 0;
+  box-sizing: border-box;
+  color: var(--pm-ink);
+  font-family: 'Public Sans', system-ui, sans-serif;
+}
+.pm-her-label { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; letter-spacing: .16em; color: var(--pm-muted); }
+.pm-her-signal { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pm-her-head { display: flex; gap: 18px; align-items: center; }
+.pm-her-h { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 21px; line-height: 1.35; font-weight: 700; }
+.pm-her-tools { display: flex; flex: 0 0 auto; border: 1px solid var(--pm-line); }
+.pm-her-tools > span { width: 44px; height: 34px; display: grid; place-items: center; }
+.pm-her-tools svg { width: 18px; height: 18px; }
+.pm-her-pause { color: #C9952B; border-right: 1px solid var(--pm-line); }
+.pm-her-trash { color: #D0353F; }
+.pm-her-status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--pm-muted); }
+.pm-her-live { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; background: #E8F3EA; border: 1px solid #CFE3D3; color: #3D7A4A; font-family: "JetBrains Mono", ui-monospace, monospace; }
+.pm-her-live i { width: 6px; height: 6px; background: #D7C3A3; }
+.pm-her-rule { height: 1px; background: var(--pm-line); margin: 2px 0 8px; }
+.pm-her-p { font-size: 14px; line-height: 1.6; }
+.pm-her-qhead { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .12em; color: var(--pm-muted); }
+.pm-her-qtag { padding: 3px 6px; background: var(--pm-ink); color: #fff; }
+.pm-her-q { font-size: 14px; line-height: 1.5; font-weight: 600; }
+.pm-her-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.pm-her-opts span { padding: 9px 14px; border: 1px solid var(--pm-ink); font-size: 13px; }
+.pm-her-opts .pm-her-own { border-color: #9AA0A6; color: var(--pm-muted); font-family: "JetBrains Mono", ui-monospace, monospace; }
+.pm-her-input { margin-top: auto; margin-bottom: 20px; padding: 13px 14px; border: 1px solid var(--pm-line); background: #FAFBFC; font-size: 13px; color: #9AA0A6; }
+
+.pm-her-radar { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pm-her-radar-h { display: flex; align-items: center; gap: 12px; }
+.pm-her-sub { font-size: 12.5px; color: var(--pm-muted); }
+.pm-her-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+.pm-her-stats span { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 10px; border: 1px solid var(--pm-line); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10.5px; letter-spacing: .12em; color: #4A5058; }
+.pm-her-stats b { font-size: 14px; font-weight: 500; color: var(--pm-ink); letter-spacing: 0; }
+.pm-her-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--pm-line); }
+.pm-her-card-top { display: flex; align-items: center; gap: 12px; }
+.pm-her-name { font-size: 15px; font-weight: 500; }
+.pm-her-acts { display: flex; gap: 6px; margin-left: auto; }
+.pm-her-acts span, .pm-her-neg { padding: 6px 12px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11.5px; letter-spacing: .08em; border: 1px solid var(--pm-ink); }
+.pm-her-accept { background: var(--pm-ink); color: #fff; }
+.pm-her-neg { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+.pm-her-neg i { width: 6px; height: 6px; background: #D7C3A3; }
+.pm-her-line { font-size: 13px; color: var(--pm-muted); }
