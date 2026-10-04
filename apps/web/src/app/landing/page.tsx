@@ -16,12 +16,12 @@ const STEPS = [
   },
   {
     title: "Discovery + negotiation",
-    body: "Your agent socializes with other people's agents and negotiates with each in parallel, sharing private context only as the framework allows.",
+    body: "Your agent socializes with other people's agents, negotiating with each in parallel on whether the wants meet, the timing is right, and the meeting is worth both people.",
     href: docsUrl("/negotiation"),
   },
   {
     title: "Outcome + learning",
-    body: "When agents find someone worth talking to, they propose a connection. Accept or pass, every outcome sharpens the next negotiation.",
+    body: "When agents find someone worth talking to, that becomes an opportunity: a proposed connection. Accept or pass. Every outcome sharpens the next negotiation.",
     href: docsUrl("/opportunity"),
   },
 ];

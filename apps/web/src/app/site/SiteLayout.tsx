@@ -74,9 +74,6 @@ export function SiteFooter({ className = "site-footer" }: { className?: string }
       <a href={X_URL} target="_blank" rel="noreferrer">X</a>
       <Link to="/pages/privacy-policy">Privacy</Link>
       <Link to="/pages/terms-of-use">Terms</Link>
-      <span className="site-footer-copy">
-        © {new Date().getFullYear()}<span className="site-blink">▮</span>
-      </span>
     </footer>
   );
 }

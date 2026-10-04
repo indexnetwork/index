@@ -36,8 +36,6 @@
 .site a:hover { color: var(--blue); }
 
 @keyframes site-blink { 0%, 49% { opacity: 1 } 50%, 100% { opacity: 0 } }
-.site-blink { animation: site-blink 1.2s step-end infinite; }
-.site-blink-fast { animation: site-blink 1s step-end infinite; }
 
 /* ---------- column ---------- */
 .site-col {
@@ -126,7 +124,6 @@
 }
 .site .site-footer a { font-family: var(--sans); font-size: 12px; color: var(--green); }
 .site .site-footer a:hover { color: var(--blue); }
-.site-footer-copy { margin-left: auto; }
 
 .site-banner { width: 100%; height: auto; display: block; }
 
