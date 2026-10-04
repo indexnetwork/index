@@ -254,8 +254,12 @@ export class OpportunityService {
     opportunity: Opportunity,
     viewerId: string,
     intentId?: string,
+    options?: { skeleton?: boolean },
   ): Promise<PresentedOpportunity> {
-    const card = await presentOpportunityCard(this.getCardsDeps(), opportunity, viewerId, { intentId })
+    const card = await presentOpportunityCard(this.getCardsDeps(), opportunity, viewerId, {
+      intentId,
+      skeleton: options?.skeleton,
+    })
       .catch((e) => {
         logger.warn('presentOpportunityCard failed', { opportunityId: opportunity.id, viewerId, error: e });
         return null;
@@ -446,9 +450,14 @@ export class OpportunityService {
    *
    * @param opportunityId - The opportunity ID
    * @param viewerId - The user viewing the opportunity
+   * @param options - `presentation: 'skeleton'` skips the presenter
    * @returns Opportunity with presentation data or null
    */
-  async getOpportunityWithPresentation(opportunityId: string, viewerId: string) {
+  async getOpportunityWithPresentation(
+    opportunityId: string,
+    viewerId: string,
+    options?: { presentation?: 'full' | 'skeleton' },
+  ) {
     logger.verbose('Getting opportunity', { opportunityId, viewerId });
 
     let opp = await this.db.getOpportunity(opportunityId);
@@ -492,7 +501,9 @@ export class OpportunityService {
       ? opp.interpretation.confidence
       : parseFloat(opp.confidence ?? opp.interpretation.confidence as unknown as string) || 0;
 
-    const presented = await this.presentOpportunityForViewer(opp, viewerId);
+    const presented = await this.presentOpportunityForViewer(opp, viewerId, undefined, {
+      skeleton: options?.presentation === 'skeleton',
+    });
 
     return {
       id: opp.id,
