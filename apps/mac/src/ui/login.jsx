@@ -148,6 +148,13 @@ function AskName({ initialName = "", onSubmit, onSignOut }) {
               autoFocus
               value={name}
               onChange={e => setName(e.target.value)}
+              // Enter continues. Handled here rather than left to implicit form
+              // submission, which doesn't fire reliably inside the shell's web view.
+              onKeyDown={e => {
+                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                if (ready) onSubmit(name.trim());
+              }}
               placeholder="your name"
               aria-label="your name"
               style={{

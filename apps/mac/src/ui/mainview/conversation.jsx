@@ -227,7 +227,7 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
             {agentMessages.length === 0 ? (
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", lineHeight:1.45,
-              }}>Ask about your matches, share a preference, or give your agent direction for this signal.</div>
+              }}>ask about your matches, share a preference, or tell your agent what to look for.</div>
             ) : inboxFeed.map((it) => {
               if (it.kind === "user") return <UserLine key={it.id}>{it.text}</UserLine>;
               if (it.kind === "discovery") return (
@@ -339,8 +339,8 @@ function ConversationPane({ profile, conversation, negotiatingPeople = [], onRes
                   send();
                 }
               }}
-              placeholder="Message your personal agent…"
-              aria-label="Message your personal agent"
+              placeholder="message your agent…"
+              aria-label="message your agent"
               style={{
                 flex:1, minWidth:0, display:"block",
                 maxHeight:COMPOSER_MAX, overflowY:"auto", resize:"none",

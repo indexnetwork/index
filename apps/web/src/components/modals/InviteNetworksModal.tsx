@@ -6,6 +6,7 @@ import { Network } from "@/lib/types";
 import { resolveNetworkImageSrc } from "@/lib/network-image";
 import { log } from "@/lib/logger";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const logger = log.ui.from("InviteNetworksModal");
 
@@ -36,7 +37,7 @@ function NetworkTile({ id, name, photo }: { id?: string; name?: string; photo?: 
 }
 
 export default function InviteNetworksModal({ onClose }: { onClose: () => void }) {
-  const { networks } = useNetworksState();
+  const { networks, loading, error, refreshNetworks } = useNetworksState();
   const { user } = useAuthContext();
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -66,7 +67,7 @@ export default function InviteNetworksModal({ onClose }: { onClose: () => void }
       <Window title="invite" onClose={onClose} style={{ height: "100%" }}>
         <div style={{ padding: "18px 24px 14px", borderBottom: "2px solid #000" }}>
           <h2 style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 22, fontWeight: 700, color: "#000" }}>invite</h2>
-          <p style={{ margin: "6px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>Share a link to any network you can invite people to.</p>
+          <p style={{ margin: "6px 0 0", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>share a link to any network you can invite people to.</p>
         </div>
         <div className="mac-scroll" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "6px 12px 14px" }}>
           {invitable.map(({ network, isOwner, isPublic, url }) => (
@@ -92,7 +93,28 @@ export default function InviteNetworksModal({ onClose }: { onClose: () => void }
             </div>
           ))}
           {!invitable.length && (
-            <p style={{ margin: "18px 12px", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>No networks to invite people to yet.</p>
+            loading ? (
+              <EmptyState tone="loading" style={{ padding: "48px 12px" }} />
+            ) : error && networks.length === 0 ? (
+              <EmptyState
+                tone="error"
+                style={{ padding: "48px 12px" }}
+                message="couldn't load your networks."
+                action={{ label: "try again", onClick: () => void refreshNetworks() }}
+              />
+            ) : networks.length === 0 ? (
+              <EmptyState
+                style={{ padding: "48px 12px" }}
+                message="you're not in any networks yet. create one to invite people."
+                action={{ label: "create a network", to: "/networks", primary: true }}
+              />
+            ) : (
+              <EmptyState
+                style={{ padding: "48px 12px" }}
+                message="none of your networks has a link you can share. an owner can create one in the network's access tab."
+                action={{ label: "see networks", to: "/networks" }}
+              />
+            )
           )}
         </div>
       </Window>

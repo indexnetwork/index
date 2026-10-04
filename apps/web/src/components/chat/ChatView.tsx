@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Link } from 'react-router';
 import UserAvatar from '@/components/UserAvatar';
 import ReactMarkdown from 'react-markdown';
@@ -318,11 +318,11 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               </div>
             )}
             {messagesLoading ? (
-              <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+              <EmptyState tone="loading" style={{ padding: "60px 0" }} />
             ) : messages.length === 0 && via.length > 0 && !openerBody ? (
-              <div className="text-center py-5 text-[13px] text-gray-400 font-ibm-plex-mono">
-                agents matched you on this signal — say hi.
-              </div>
+              <EmptyState message="agents matched you on this signal. say hi." style={{ padding: "20px 0" }} />
+            ) : messages.length === 0 && !openerBody && !acceptedOpportunitiesLoading && !timeline.some((item) => item.type === 'opportunity') ? (
+              <EmptyState message="no messages yet. say hello." style={{ padding: "20px 0" }} />
             ) : null}
 
             {messages.length === 0 && acceptedOpportunitiesLoading && <OpportunityDividerSkeleton />}

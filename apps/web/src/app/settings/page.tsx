@@ -431,7 +431,7 @@ function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
       <RuleLabel>protocol server</RuleLabel>
       <p style={{ margin: "12px 0", maxWidth: 520, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
         requests go to <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{active}</span>.
-        switching signs you out — a session belongs to the server it was made on.
+        switching signs you out. a session belongs to the server it was made on.
       </p>
       <Segmented
         value={choice}

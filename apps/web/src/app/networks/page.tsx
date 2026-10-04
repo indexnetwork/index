@@ -11,6 +11,7 @@ import { useNetworksState } from '@/contexts/NetworksContext';
 import { Network as NetworkType } from '@/lib/types';
 import type { NetworkRequest, NetworkRequestInput } from '@/services/networkRequests';
 import { log } from '@/lib/logger';
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const logger = log.page.from('networks');
 
@@ -46,7 +47,7 @@ export default function NetworksPage() {
   const { success, error } = useNotifications();
   const networksService = useNetworks();
   const networkRequestsService = useNetworkRequests();
-  const { networks: rawNetworks, loading: networksLoading, addNetwork } = useNetworksState();
+  const { networks: rawNetworks, loading: networksLoading, error: networksError, refreshNetworks, addNetwork } = useNetworksState();
 
   // Staff capability is decided by the server (covers STAFF_EMAILS and mixed-case
   // addresses), not inferred from the email on the client.
@@ -60,6 +61,7 @@ export default function NetworksPage() {
   const [pendingRequests, setPendingRequests] = useState<NetworkRequest[]>([]);
   const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean })[]>([]);
   const [loadingPublic, setLoadingPublic] = useState(false);
+  const [publicError, setPublicError] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
 
   const loadRequests = useCallback(async () => {
@@ -118,10 +120,12 @@ export default function NetworksPage() {
   const loadPublicNetworks = async () => {
     try {
       setLoadingPublic(true);
+      setPublicError(false);
       const response = await networksService.discoverPublicNetworks(1, 50);
       setPublicNetworks(response.data);
     } catch (err) {
       logger.error('Error loading public networks', { error: err });
+      setPublicError(true);
     } finally {
       setLoadingPublic(false);
     }
@@ -164,6 +168,16 @@ export default function NetworksPage() {
     }
   }, [networksService, addNetwork, navigate, success, error]);
 
+  const openCreate = () => {
+    if (canReview) {
+      setCreateNetworkModalOpen(true);
+    } else {
+      setEditingRequest(null);
+      setRequestModalOpen(true);
+    }
+  };
+  const openDiscover = () => { setActiveTab('discover'); void loadPublicNetworks(); };
+
   return (
     <>
       <Stage width={860} height="min(660px, calc(100vh - 112px))">
@@ -171,20 +185,13 @@ export default function NetworksPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 24px' }}>
         <div className="wb-segmented lg" role="tablist">
           <button type="button" role="tab" aria-pressed={activeTab === 'mine'} onClick={() => setActiveTab('mine')}>my networks ({allNetworks.length})</button>
-          <button type="button" role="tab" aria-pressed={activeTab === 'discover'} onClick={() => { setActiveTab('discover'); loadPublicNetworks(); }}>discover</button>
+          <button type="button" role="tab" aria-pressed={activeTab === 'discover'} onClick={openDiscover}>discover</button>
         </div>
         <button
           type="button"
           className="wb-btn small"
           title={canReview ? 'start a new network' : 'request a new network'}
-          onClick={() => {
-            if (canReview) {
-              setCreateNetworkModalOpen(true);
-            } else {
-              setEditingRequest(null);
-              setRequestModalOpen(true);
-            }
-          }}
+          onClick={openCreate}
         >
           + create
         </button>
@@ -255,7 +262,14 @@ export default function NetworksPage() {
                 )}
 
                 {networksLoading ? (
-                  <p style={{ margin: "18px 12px", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>loading…</p>
+                  <EmptyState tone="loading" style={{ padding: "48px 12px" }} />
+                ) : networksError && allNetworks.length === 0 ? (
+                  <EmptyState
+                    tone="error"
+                    style={{ padding: "48px 12px" }}
+                    message="couldn't load your networks."
+                    action={{ label: "try again", onClick: () => void refreshNetworks() }}
+                  />
                 ) : allNetworks.length > 0 ? (
                   <div className="divide-y divide-gray-100">
                     {allNetworks.map((network) => {
@@ -278,18 +292,37 @@ export default function NetworksPage() {
                       );
                     })}
                   </div>
+                ) : myRequests.length > 0 ? (
+                  // The request card above already says it's in review; this only says where the network lands.
+                  <EmptyState
+                    style={{ padding: "32px 12px" }}
+                    message="no networks yet. yours shows up here once it's approved."
+                    action={{ label: "discover networks", onClick: openDiscover }}
+                  />
                 ) : (
-                  <div className="py-16 text-center">
-                  <p style={{ fontFamily: 'var(--mac-mono)', fontSize: 12, color: 'var(--ink-2)' }}>nothing here yet.</p>
-                  </div>
+                  <EmptyState
+                    style={{ padding: "64px 12px" }}
+                    message="you're not in any networks yet."
+                    action={[
+                      { label: "create a network", onClick: openCreate, primary: true },
+                      { label: "discover networks", onClick: openDiscover },
+                    ]}
+                  />
                 )}
                 </>
               )}
 
               {activeTab === 'discover' && (
                 <>
-                {loadingPublic ? (
-                  <p style={{ margin: "18px 12px", fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>loading public networks…</p>
+                {loadingPublic && publicNetworks.length === 0 ? (
+                  <EmptyState tone="loading" style={{ padding: "48px 12px" }} message="loading public networks…" />
+                ) : publicError && publicNetworks.length === 0 ? (
+                  <EmptyState
+                    tone="error"
+                    style={{ padding: "48px 12px" }}
+                    message="couldn't load public networks."
+                    action={{ label: "try again", onClick: () => void loadPublicNetworks() }}
+                  />
                 ) : publicNetworks.length > 0 ? (
                   <div>
                     {publicNetworks.map((network) => (
@@ -315,9 +348,7 @@ export default function NetworksPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="py-16 text-center">
-                  <p style={{ fontFamily: 'var(--mac-mono)', fontSize: 12, color: 'var(--ink-2)' }}>No public networks to discover right now.</p>
-                  </div>
+                  <EmptyState style={{ padding: "64px 12px" }} message="no public networks to discover right now." />
                 )}
                 </>
               )}

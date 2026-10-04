@@ -266,15 +266,30 @@ class EnvironmentCredentialTransport:
         return json.loads(data.decode("utf-8", errors="replace"))
 
     def status(self) -> dict[str, Any]:
-        payload = self.request_rest("GET", "/auth/me")
-        connected = payload.get("success") is not False
+        """Probe `GET /auth/me`.
+
+        Only a 401 or 403 means the session is gone. A network error, a
+        timeout, a 5xx or any other failure means Index could not be reached,
+        which is reported as `unreachable` so the dashboard does not ask a
+        signed-in user to sign in again during an outage.
+        """
+        try:
+            payload = self.request_rest("GET", "/auth/me")
+        except Exception as exc:  # noqa: BLE001 - timeouts and bad bodies are outages, not sign-outs.
+            payload = {"success": False, "error": f"Index API request failed: {exc}", "code": "network_error"}
+        failed = payload.get("success") is False
+        unauthorized = failed and payload.get("status") in (401, 403)
+        connected = not failed
+        unreachable = failed and not unauthorized
         return {
             "connected": connected,
+            "unreachable": unreachable,
+            "error": payload.get("error") if failed else None,
             "accountLabel": None,
             "installationId": os.environ.get("INDEX_INSTALLATION_ID") or None,
             "actions": [],
             "expiresAt": None,
-            "health": "active" if connected else "disconnected",
+            "health": "active" if connected else ("unreachable" if unreachable else "disconnected"),
             "revocationPending": False,
             "reconnectSoon": False,
             "reconnectRequired": False,

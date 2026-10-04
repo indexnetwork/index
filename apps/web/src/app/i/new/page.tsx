@@ -7,6 +7,7 @@ import { CALIBRATING_LINES, OptionChip } from "@/components/workbench/mac-blocks
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Btn, Window } from "@/components/workbench/Workbench";
 import { signalService, type PrepareAnswer, type RecoveryField } from "@/services/signals";
+import { APIError } from "@/lib/api";
 
 const OPENING_PROMPT = "what are you looking for right now?";
 const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
@@ -76,7 +77,7 @@ export default function NewSignalPage() {
       navigate(`/i/${created.intentId}`);
     } catch (error) {
       setPreparationReceipt("");
-      setFeedback(`that didn't go through — ${error instanceof Error ? error.message : "try again."}`);
+      setFeedback(`that didn't go through. ${createFailureReason(error)}`);
       setStage("summary");
       setCreating(false);
     }
@@ -330,3 +331,10 @@ function Calibrating() {
 }
 
 export const Component = NewSignalPage;
+
+/** A server reason worth showing ("Signal limit reached."), or "try again." for transport noise. */
+function createFailureReason(error: unknown): string {
+  const raw = error instanceof APIError && error.status > 0 && error.status < 500 ? error.message.trim() : "";
+  if (!raw || /^HTTP \d/.test(raw)) return "try again.";
+  return /[.!?]$/.test(raw) ? raw : `${raw}.`;
+}

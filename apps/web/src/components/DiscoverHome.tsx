@@ -69,7 +69,8 @@ export default function DiscoverHome() {
   const agentsService = useAgents();
   const { networks } = useNetworksState();
   const [intents, setIntents] = useState<HomeIntent[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [intentsError, setIntentsError] = useState(false);
   const [agentCount, setAgentCount] = useState(1);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -85,12 +86,22 @@ export default function DiscoverHome() {
   const fetchIntents = useCallback(async () => {
     try {
       const res = await apiClient.post<{ intents?: HomeIntent[] }>("/intents/list", { page: 1, limit: 100 });
-      if (mountedRef.current) setIntents(res.intents ?? []);
+      if (mountedRef.current) {
+        setIntents(res.intents ?? []);
+        setIntentsError(false);
+      }
     } catch (err) {
       logger.error("Failed to load signals", { error: err });
-      if (mountedRef.current) setIntents([]);
+      if (mountedRef.current) setIntentsError(true);
     }
   }, []);
+
+  const retryIntents = useCallback(() => {
+    setLoading(true);
+    fetchIntents().finally(() => {
+      if (mountedRef.current) setLoading(false);
+    });
+  }, [fetchIntents]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -216,7 +227,7 @@ export default function DiscoverHome() {
                   label="networks"
                   aside={
                     <>
-                      <QCount n={pendingJoins} title={`${pendingJoins} waiting on you — people asking to join`} />
+                      <QCount n={pendingJoins} title={`${pendingJoins} waiting on you: people asking to join`} />
                       <ShelfCount n={joinedCount} />
                     </>
                   }
@@ -299,6 +310,8 @@ export default function DiscoverHome() {
             <IntentList
               intents={visible}
               isLoading={loading}
+              loadError={intentsError}
+              onRetry={retryIntents}
               shelf
               className="mac-scroll"
               style={{ maxHeight: shelfMax, gap: SHELF_ROW_GAP }}

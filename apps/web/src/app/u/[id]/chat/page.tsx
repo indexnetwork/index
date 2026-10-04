@@ -8,6 +8,8 @@ import { User } from "@/lib/types";
 import ChatView from "@/components/chat/ChatView";
 import ChatSidebar from "@/components/ChatSidebar";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { APIError, isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
 
 const logger = log.page.from("u/[id]/chat");
@@ -34,7 +36,8 @@ export default function ChatPage() {
   const loginPromptedRef = useRef(false);
 
   const [profileData, setProfileData] = useState<User | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"notFound" | "failed" | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const cachedPeer = useMemo(() => {
     if (!id) return null;
@@ -62,10 +65,11 @@ export default function ChatPage() {
     }).catch((err: unknown) => {
       if (cancelled) return;
       logger.error('Failed to fetch profile', { error: err });
-      setError('User not found');
+      // getUserProfile throws a plain Error when a 200 carries no user: treat that as missing too.
+      setError(isNotFoundError(err) || !(err instanceof APIError) ? "notFound" : "failed");
     });
     return () => { cancelled = true; };
-  }, [id, isAuthenticated, authLoading, usersService]);
+  }, [id, isAuthenticated, authLoading, usersService, reloadKey]);
 
   const leave = () => navigate("/");
 
@@ -89,10 +93,16 @@ export default function ChatPage() {
           </div>
           <div style={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
             {showMissingUser ? (
-              <div className="flex flex-col items-center justify-center flex-1">
-                <h2 className="text-xl font-bold text-red-600 mb-2">Error</h2>
-                <p className="text-gray-600 mb-4">{error}</p>
-                <button type="button" className="wb-btn" onClick={leave}>back</button>
+              <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>
+                {error === "notFound" ? (
+                  <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: leave }} />
+                ) : (
+                  <EmptyState
+                    tone="error"
+                    message="couldn't load this person."
+                    action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
+                  />
+                )}
               </div>
             ) : id ? (
               <ChatView

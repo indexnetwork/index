@@ -11,6 +11,8 @@ import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNetworks } from '@/contexts/APIContext';
 import { Network } from '@/lib/types';
 import { log } from '@/lib/logger';
+import { EmptyState } from "@/components/ui/EmptyState";
+import { APIError } from "@/lib/api";
 
 const logger = log.page.from('networks/[id]');
 
@@ -78,6 +80,8 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const [network, setNetwork] = useState<Network | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [isOwner, setIsOwner] = useState(false);
   const [leaveRequested, setLeaveRequested] = useState(false);
   const isCheckingOwnership = useRef(false);
@@ -103,6 +107,8 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
         return;
       }
 
+      setNotFound(false);
+      setLoadFailed(false);
       try {
         const fetchedNetwork = await networksService.getNetwork(networkId);
         const ownerStatus = await checkOwnership(networkId, fetchedNetwork);
@@ -110,7 +116,11 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
         setIsOwner(ownerStatus);
       } catch (err) {
         logger.error('Error loading network', { error: err });
-        setNotFound(true);
+        // 404 and 403 (not a member) both mean "not yours to see"; a 200 without a network
+        // throws a plain Error. Anything else (5xx, offline) is retryable.
+        const missing = !(err instanceof APIError) || err.status === 404 || err.status === 403;
+        setNotFound(missing);
+        setLoadFailed(!missing);
       } finally {
         setLoading(false);
       }
@@ -119,7 +129,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
     if (networkId) {
       loadNetwork();
     }
-  }, [networkId, networks, networksService, checkOwnership]);
+  }, [networkId, networks, networksService, checkOwnership, reloadKey]);
 
   useEffect(() => {
     const updateNetworkFromContext = async () => {
@@ -164,12 +174,20 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
       <Stage width={860} height="min(660px, calc(100vh - 112px))">
       <Window title={network?.title?.toLowerCase() || 'networks'} onClose={() => navigate('/networks')} style={{ height: '100%' }}>
       {loading ? (
-        <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
+        <EmptyState tone="loading" style={{ padding: "64px 24px" }} />
       ) : notFound ? (
-        <div style={{ padding: 24 }}>
-          <p style={{ fontFamily: 'var(--mac-mono)', fontSize: 12 }}>network not found</p>
-          <button type="button" className="wb-btn small" onClick={() => navigate('/networks')}>back</button>
-        </div>
+        <EmptyState
+          style={{ padding: "64px 24px" }}
+          message="this network doesn't exist, or you don't have access to it."
+          action={{ label: "back to networks", to: "/networks" }}
+        />
+      ) : loadFailed ? (
+        <EmptyState
+          tone="error"
+          style={{ padding: "64px 24px" }}
+          message="couldn't load this network."
+          action={{ label: "try again", onClick: () => { setLoading(true); setReloadKey((k) => k + 1); } }}
+        />
       ) : network ? (
         <Tabs.Root value={isOwner ? activeTab : "overview"} onValueChange={handleTabChange} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "14px 24px 0", borderBottom: "2px solid #000" }}>

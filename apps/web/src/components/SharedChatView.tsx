@@ -6,6 +6,9 @@ import remarkGfm from "remark-gfm";
 import SiteLayout from "@/app/site/SiteLayout";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { apiUrl } from "@/lib/api";
+import { log } from "@/lib/logger";
+
+const logger = log.ui.from("SharedChatView");
 
 interface SharedMessage {
   id: string;
@@ -91,19 +94,28 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
   const [session, setSession] = useState<SharedSession | null>(null);
   const [messages, setMessages] = useState<SharedMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"notFound" | "failed" | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     fetch(apiUrl(`/api/chat/shared/${token}`))
       .then(async (res) => {
-        if (!res.ok) throw new Error("Conversation not found");
+        if (res.status === 404 || res.status === 410) {
+          setError("notFound");
+          return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         setSession(data.session);
-        setMessages(data.messages);
+        setMessages(data.messages ?? []);
+        setError(data.session ? null : "notFound");
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        logger.error("Failed to load shared conversation", { error: err });
+        setError("failed");
+      })
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, reloadKey]);
 
   if (loading) {
     return (
@@ -113,25 +125,47 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
     );
   }
 
+  if (error === "failed") {
+    return (
+      <SiteLayout>
+        <section className="site-hero">
+          <h1 className="site-h1">Couldn&apos;t load this conversation</h1>
+          <p className="site-p">Check your connection and try again.</p>
+          <button
+            type="button"
+            className="site-btn"
+            onClick={() => { setLoading(true); setError(null); setReloadKey((k) => k + 1); }}
+          >
+            Try again
+          </button>
+        </section>
+      </SiteLayout>
+    );
+  }
+
   if (error || !session) {
     return (
       <SiteLayout>
         <section className="site-hero">
           <h1 className="site-h1">Conversation not found</h1>
-          <p className="site-p">{error || "This shared conversation could not be found."}</p>
+          <p className="site-p">This shared conversation doesn&apos;t exist, or its link was turned off.</p>
           <Link className="site-btn" to="/">Go home</Link>
         </section>
       </SiteLayout>
     );
   }
 
+  const visibleMessages = messages.filter((msg) => msg.role !== "system");
+
   return (
     <SiteLayout>
       <section className="site-hero">
         <h1 className="site-h1">{session.title || "Shared conversation"}</h1>
+        {visibleMessages.length === 0 && (
+          <p className="site-p">This conversation has no messages yet.</p>
+        )}
         <div className="space-y-4">
-            {messages
-              .filter((msg) => msg.role !== "system")
+            {visibleMessages
               .map((msg) => (
                 <div key={msg.id}>
                   <div

@@ -215,7 +215,9 @@ window.IndexApp = (function () {
     ]);
     const user = meR.ok ? (meR.value.user || meR.value) : null;
     const networks = netR.ok ? normalizeList(netR.value, "networks") : [];
-    return { networks: mapNetworks(networks, user) };
+    // `failed` lets a screen tell "you're in none" from "the list didn't load";
+    // callers that only read `networks` still get the empty list as before.
+    return { networks: mapNetworks(networks, user), failed: !netR.ok };
   }
 
   // Web origin for share / invitation links. Always pair with the active API

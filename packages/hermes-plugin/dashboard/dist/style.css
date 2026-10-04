@@ -816,6 +816,52 @@
   color: var(--color-destructive, #ef4444);
 }
 
+/* EmptyState: one block for empty, loading and error, with optional actions. */
+.index-dashboard__empty-text {
+  margin: 0;
+}
+
+.index-dashboard__empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.index-dashboard__empty--error {
+  border-color: color-mix(in srgb, var(--color-destructive, #ef4444) 50%, transparent);
+  color: var(--color-destructive, #ef4444);
+}
+
+/* Keeps the error colour inside containers that restyle their text. */
+.index-dashboard .index-dashboard__empty--error .index-dashboard__empty-text {
+  color: var(--color-destructive, #ef4444);
+}
+
+.index-dashboard__empty--loading .index-dashboard__empty-text {
+  opacity: 0.8;
+}
+
+/* Hero loader caption, so the wait is never a blank page. */
+.index-dashboard__loading-caption {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+/* Full-page states (auth unreachable, onboarding profile failure). */
+.index-dashboard__page-state {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3.5rem 1rem;
+}
+
+.index-dashboard__page-state > .index-dashboard__empty {
+  width: min(32rem, 100%);
+}
+
 /* Hero loading state: the eye animation, color-reversed for the dark theme. */
 .index-dashboard__loading--hero {
   display: flex;
@@ -1277,6 +1323,7 @@
 .index-dashboard__net-detail-body {
   display: grid;
   gap: 1.25rem;
+  padding: 1.25rem 1.75rem 1.5rem;
 }
 
 .index-dashboard__net-detail-head {
@@ -4369,6 +4416,20 @@
 }
 
 .index-dashboard__wire-roles { font-size: 0.62rem; }
+
+div.index-dashboard__wire-note p {
+  margin: 0 0 0.5rem;
+}
+
+.index-dashboard__wire-retry {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid currentColor;
+  border-radius: var(--index-radius, 2px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 
 .index-dashboard__wire-text {
   margin: 0;

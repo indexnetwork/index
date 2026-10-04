@@ -47,8 +47,9 @@ function DiscoveryStages({ art }) {
   );
 }
 
-function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, onNegotiation, unread = {}, chatIds = [], profile = {}, discovering = false }) {
+function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, onNegotiation, unread = {}, chatIds = [], profile = {}, discovering = false, paused = false, radarError = false, onRetryRadar }) {
   const shownPeople = people.filter(p => opportunityBucket(p) !== null);
+  const awaitingCount = shownPeople.filter(p => opportunityBucket(p) === "awaiting you").length;
   const peopleForTab = tab === "all"
     ? shownPeople
     : shownPeople.filter(p => opportunityBucket(p) === tab);
@@ -94,26 +95,31 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
         overflowY:"auto", padding:"14px 22px 24px",
         display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:8, alignContent:"start",
       }}>
-        {discovering && (
+        {radarError && peopleForTab.length === 0 ? (
+          // A failed radar fetch is not "still looking": it shows even inside
+          // the discovery window, so a dead request never hides behind the gif.
+          <EmptyState tone="error" message="radar couldn't load." onRetry={onRetryRadar}/>
+        ) : discovering ? (
           <DiscoveryStages art={(window.IndexAssets || {}).loading2}/>
-        )}
-        {!discovering && peopleForTab.map(p => (
+        ) : peopleForTab.length === 0 ? (
+          <EmptyState
+            message={
+              paused && shownPeople.length === 0 ? "this signal is paused, so your agent isn't looking right now."
+              : tab === "awaiting you" ? "nothing waiting on you right now."
+              : tab === "negotiating" ? "no negotiations open. your agent starts one when it finds an overlap."
+              : tab === "accepted"    ? "no one accepted yet."
+              : tab === "missed"      ? "nothing missed."
+              : "no one here right now. the field keeps moving, so check back."
+            }
+            action={tab === "accepted" && awaitingCount > 0
+              ? { label:"see awaiting you", onClick:() => setTab("awaiting you") }
+              : null}
+            style={{ padding:28 }}
+          />
+        ) : peopleForTab.map(p => (
           <MatchCard key={p.id} person={p} onOpenRoom={onOpenRoom} onAccept={onAccept} onPass={onPass} onSummary={onSummary} onProfile={onProfile} onNegotiation={onNegotiation}
             hasChat={chatIds.includes(p.id)} unreadCount={unread[p.id] || 0} compact={compact}/>
         ))}
-        {!discovering && peopleForTab.length === 0 && (
-          <div style={{
-            padding:28, textAlign:"center",
-            fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-            border:"1px dashed #000",
-          }}>{
-            tab === "awaiting you" ? "nothing waiting on you. answer their questions in the feed first."
-            : tab === "negotiating" ? "no negotiations open. your agent starts one when it finds an overlap."
-            : tab === "accepted"    ? "no one accepted yet. accept someone from the awaiting-you list."
-            : tab === "missed"      ? "nothing missed. these are people the moment passed on."
-            : "no one here right now. the field keeps moving, so check back."
-          }</div>
-        )}
       </div>
     </div>
   );

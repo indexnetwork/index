@@ -672,7 +672,7 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
         _text(intent.get("description"))
         or _text(intent.get("payload"))
         or _text(intent.get("summary"))
-        or "Untitled intent"
+        or "Untitled signal"
     )
     lifecycle = _text(intent.get("status"), "active").lower()
     return {
@@ -681,6 +681,9 @@ def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
         "lifecycleStatus": lifecycle,
         "status": "paused" if lifecycle == "paused" else "live",
         "pendingCount": _attention_count(intent),
+        # Lets the radar time its "looking for your people" window from when the
+        # signal was made rather than from each time the page opens it.
+        "createdAt": _text(intent.get("createdAt")) or None,
     }
 
 
@@ -761,7 +764,7 @@ def _build_dashboard(
         if existing is None:
             existing = {
                 "id": intent_id,
-                "title": title or "Untitled intent",
+                "title": title or "Untitled signal",
                 "opportunities": [],
                 "networks": [],
                 "statusCounts": _empty_status_counts(),
@@ -770,7 +773,7 @@ def _build_dashboard(
             }
             intents[intent_id] = existing
             order.append(intent_id)
-        elif title and existing["title"] == "Untitled intent":
+        elif title and existing["title"] == "Untitled signal":
             existing["title"] = title
         return existing
 
@@ -785,7 +788,7 @@ def _build_dashboard(
             _text(intent.get("description"))
             or _text(intent.get("payload"))
             or _text(intent.get("summary"))
-            or "Untitled intent"
+            or "Untitled signal"
         )
         obj = ensure(intent_id, title)
         obj["lifecycleStatus"] = _text(intent.get("status"), "active").lower()
@@ -1046,13 +1049,30 @@ def _ensure_hermes_agent() -> None:
 
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
-    """Report transport health from the configured API key."""
+    """Report transport health from the configured API key.
+
+    `needsLogin` is only true for a missing token or a real 401/403. When
+    Index cannot be reached (network error, timeout, 5xx) the answer is
+    `unreachable` instead, so an outage is not mistaken for being signed out.
+    """
     try:
         status = tools.get_transport().status()
     except tools.TransportError as exc:
         payload = exc.as_payload()
         payload.update({"authenticated": False, "needsLogin": True})
         return payload
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        status = {"connected": False, "unreachable": True, "error": f"Index status check failed: {exc}"}
+    if status.get("unreachable") is True:
+        return {
+            "success": False,
+            "code": "unreachable",
+            "error": _text(status.get("error"), "Index could not be reached."),
+            "authenticated": False,
+            "needsLogin": False,
+            "unreachable": True,
+            "health": "unreachable",
+        }
     connected = status.get("connected") is True and not status.get("reconnectRequired")
     if connected:
         _ensure_hermes_agent()

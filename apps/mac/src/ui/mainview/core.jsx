@@ -149,10 +149,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   /* ----- live radar polling ----- */
   // Intent switches keep MainView mounted; wipe the previous signal's radar
   // before the next poll lands.
+  const [radarError, setRadarError] = useState(false);
   useEffect(() => {
     if (!live) return;
     radarSeqRef.current += 1;
     setPeople([]);
+    setRadarError(false);
   }, [live, intentId, setPeople]);
 
   const refreshRadar = React.useCallback(async () => {
@@ -193,8 +195,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
     const radarR = await client.opportunities
       .radarForIntent(forIntent, { statuses: radarStatuses })
-      .catch(() => null);
+      .catch((err) => { console.warn("[radar] load failed", err); return null; });
     if (radarSeqRef.current !== seq || intentIdRef.current !== forIntent) return;
+    // The poll keeps retrying on its own; this only decides whether the radar
+    // says so instead of pretending to look.
+    setRadarError(!radarR);
     applyRadar(radarR);
   }, [live, client, intentId, setPeople]);
 
@@ -218,7 +223,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     [visiblePeople]
   );
   // Nothing on the radar and not yet given up: the agents are still out.
-  const discovering = live && shownPeople.length === 0 && !discoveryExpired;
+  // A paused signal is not looking, so it gets its own line instead of the loader.
+  const discovering = live && shownPeople.length === 0 && !discoveryExpired && !paused;
 
   // The clock starts per signal, and a signal that lands someone stops it for
   // good: the give-up state only exists for the empty case.
@@ -361,6 +367,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const chatIdRef = useRef(null);
   useEffect(() => { chatIdRef.current = chatId; }, [chatId]);
   const [chats, setChats] = useState({});
+  const [chatFailed, setChatFailed] = useState({});   // personId -> true when the thread didn't load
   const [chatDraft, setChatDraft] = useState("");
   const [unread, setUnread] = useState({});   // personId -> unread count
   const [responses, setResponses] = useState({});      // your typed answer to each person's question
@@ -378,10 +385,15 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setUnread(prev => (prev[personId] ? { ...prev, [personId]: 0 } : prev));
 
     if (live && client) {
+      setChatFailed(prev => (prev[personId] ? { ...prev, [personId]: false } : prev));
+      const fail = (err) => {
+        console.warn("[chat] open failed", err);
+        setChatFailed(prev => ({ ...prev, [personId]: true }));
+      };
       client.opportunities.startChatForIntent(personId, intentId)
         .then((res) => {
           const cid = res && res.conversationId;
-          if (!cid) return;
+          if (!cid) { fail(new Error("no conversation id")); return; }
           convByPerson.current[personId] = cid;
           personByConv.current[cid] = personId;
           return client.conversations.messages(cid).then((msgsRes) => {
@@ -389,7 +401,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             setChats(prev => ({ ...prev, [personId]: msgs }));
           });
         })
-        .catch(() => {});
+        .catch(fail);
       return;
     }
 
@@ -687,6 +699,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             unread={unread}
             chatIds={chatIds}
             discovering={discovering}
+            paused={paused}
+            radarError={live && radarError}
+            onRetryRadar={refreshRadar}
           />
         </MacWindow>
         )}
@@ -696,6 +711,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             <ChatWindow
               person={chatPerson}
               messages={chats[chatId] || []}
+              loading={live && !chats[chatId] && !chatFailed[chatId]}
+              failed={live && !chats[chatId] && !!chatFailed[chatId]}
+              onRetry={() => openChat(chatId)}
               draft={chatDraft}
               setDraft={setChatDraft}
               onSend={sendChat}

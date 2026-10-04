@@ -7,7 +7,12 @@ import { buildCliDeviceCodeCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequ
 
 import "./cli-auth.css";
 
-function Status({ title, message, ok }: { title: string; message: string; ok?: boolean }) {
+function Status({ title, message, ok, action }: {
+  title: string;
+  message: string;
+  ok?: boolean;
+  action?: { label: string; onClick: () => void };
+}) {
   return (
     <div className="cli-auth__status">
       {ok && (
@@ -19,6 +24,11 @@ function Status({ title, message, ok }: { title: string; message: string; ok?: b
       )}
       <h1>{title}</h1>
       <p>{message}</p>
+      {action && (
+        <div style={{ marginTop: 24 }}>
+          <button type="button" className="site-btn" onClick={action.onClick}>{action.label}</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -81,7 +91,7 @@ function CliAuthPage() {
         const userCode = requested.data?.user_code;
         if (!deviceCode || !userCode) {
           setStatus("error");
-          setError("Failed to start device sign-in. Please try again from the app.");
+          setError("Couldn't start device sign-in. Try again, or restart sign-in from the app.");
           return;
         }
 
@@ -92,7 +102,7 @@ function CliAuthPage() {
         const approved = await authClient.device.approve({ userCode });
         if (!approved.data?.success) {
           setStatus("error");
-          setError("Failed to authorize this device. Please try again from the app.");
+          setError("Couldn't authorize this device. Try again, or restart sign-in from the app.");
           return;
         }
 
@@ -104,7 +114,7 @@ function CliAuthPage() {
         );
       } catch {
         setStatus("error");
-        setError("Authentication failed. Please try signing in again from the app.");
+        setError("Sign-in didn't go through. Try again, or restart sign-in from the app.");
       }
     }
 
@@ -123,13 +133,19 @@ function CliAuthPage() {
           </div>
         )}
         {status === "loading" && (
-          <Status title="Signing you in" message="Connecting to your account..." />
+          <Status title="Signing you in" message="Connecting to your account…" />
         )}
         {status === "redirecting" && (
-          <Status ok title="Authentication complete" message="You may now close this window" />
+          <Status ok title="Authentication complete" message="You can close this window now." />
         )}
         {status === "error" && (
-          <Status title="Authorization failed" message={error ?? ""} />
+          <Status
+            title="Authorization failed"
+            message={error ?? ""}
+            // A malformed request can only be fixed by starting again from the app or CLI.
+            // Runtime failures reload this same validated request, which mints a fresh device code.
+            action={request ? { label: "Try again", onClick: () => window.location.reload() } : undefined}
+          />
         )}
       </div>
     </AppsShell>

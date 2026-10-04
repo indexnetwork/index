@@ -9,7 +9,8 @@ import UserAvatar from "@/components/UserAvatar";
 import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { APIError } from "@/lib/api";
+import { APIError, isNotFoundError } from "@/lib/api";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { getPublicUserProfile } from "@/services/users";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -62,6 +63,8 @@ function IntentDetail() {
   > | null>(null);
   const [intentLoading, setIntentLoading] = useState(true);
   const [intentMissing, setIntentMissing] = useState(false);
+  const [intentFailed, setIntentFailed] = useState(false);
+  const [intentReloadKey, setIntentReloadKey] = useState(0);
   const [intentStatusPending, setIntentStatusPending] = useState<{
     intentId: string;
     status: MutableIntentLifecycleStatus;
@@ -192,6 +195,7 @@ function IntentDetail() {
     let active = true;
     setIntentLoading(true);
     setIntentMissing(false);
+    setIntentFailed(false);
     intentsService
       .getIntent(intentId)
       .then((res) => {
@@ -205,7 +209,9 @@ function IntentDetail() {
           navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
           return;
         }
-        setIntentMissing(error instanceof APIError && error.status === 404);
+        const missing = isNotFoundError(error);
+        setIntentMissing(missing);
+        setIntentFailed(!missing);
       })
       .finally(() => {
         if (active) setIntentLoading(false);
@@ -214,7 +220,7 @@ function IntentDetail() {
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadOpportunities, authLoading, isAuthenticated, navigate]);
+  }, [intentId, intentsService, loadOpportunities, authLoading, isAuthenticated, navigate, intentReloadKey]);
 
   useEffect(() => {
     if (selectedBucketEffectRef.current === null) {
@@ -386,11 +392,23 @@ function IntentDetail() {
         padding: "56px 18px",
         minHeight: 0,
       }}>
-        {!intentLoading && !intent && intentMissing ? (
+        {!intent ? (
           <Window title="signal" onClose={() => navigate("/")}>
-            <p style={{ padding: 28, fontFamily: "var(--mac-mono)", fontSize: 12 }}>signal not found</p>
+            <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 28 }}>
+              {intentLoading ? (
+                <EmptyState tone="loading" />
+              ) : intentMissing ? (
+                <EmptyState message="this signal doesn't exist or was removed." action={{ label: "go home", to: "/" }} />
+              ) : intentFailed ? (
+                <EmptyState
+                  tone="error"
+                  message="couldn't load this signal."
+                  action={{ label: "try again", onClick: () => setIntentReloadKey((k) => k + 1) }}
+                />
+              ) : null /* signed out: the effect above is already redirecting to /login */}
+            </div>
           </Window>
-        ) : !intent ? null : (
+        ) : (
           <>
             <Window title="signal" onClose={() => navigate("/")}>
               <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
@@ -446,17 +464,29 @@ function IntentDetail() {
                 />
               </div>
               <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 22px 24px", display: "grid", gap: 8, alignContent: "start" }}>
-                {opportunitiesLoading || discovering ? (
-                  <div data-testid="radar-skeleton"><DiscoveryLoader /></div>
-                ) : opportunitiesError && visibleOpportunities.length === 0 ? (
-                  <div style={{ padding: 16, textAlign: "center" }}>
-                    <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>radar couldn’t load.</p>
-                    <Btn small onClick={() => void loadOpportunities()}>try again</Btn>
-                  </div>
+                {/* A failed fetch wins over the discovery loader, even inside the give-up window. */}
+                {opportunitiesError && visibleOpportunities.length === 0 && !opportunitiesLoading ? (
+                  <EmptyState
+                    tone="error"
+                    style={{ padding: 16 }}
+                    message="radar couldn't load."
+                    action={{ label: "try again", onClick: () => void loadOpportunities() }}
+                  />
+                ) : opportunitiesLoading && opportunities.length === 0 ? (
+                  <div data-testid="radar-skeleton"><EmptyState tone="loading" style={{ padding: 28 }} /></div>
+                ) : discovering ? (
+                  <div data-testid="radar-discovering"><DiscoveryLoader /></div>
                 ) : visibleOpportunities.length === 0 ? (
-                  <p style={{ padding: 28, textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", border: "1px dashed #000" }}>
-                    {radarEmptyLine(selectedBucket)}
-                  </p>
+                  <EmptyState
+                    framed
+                    style={{ padding: 28, borderColor: "#000" }}
+                    message={selectedBucket === "all" && lifecycleStatus === "paused" && shownCount === 0
+                      ? "this signal is paused, so your agent isn't looking right now."
+                      : radarEmptyLine(selectedBucket)}
+                    action={selectedBucket === "accepted" && (bucketCounts["awaiting you"] ?? 0) > 0
+                      ? { label: "see awaiting you", onClick: () => setSelectedBucket("awaiting you") }
+                      : undefined}
+                  />
                 ) : visibleOpportunities.map((item) => {
                   const bucket = bucketOf(item);
                   const busy = !!opportunityActionLoading[item.opportunityId];
@@ -540,10 +570,17 @@ function PersonPane({
 }) {
   const name = item.name || "someone";
   const [profile, setProfile] = useState<Awaited<ReturnType<typeof getPublicUserProfile>> | null>(null);
+  // The userId whose profile fetch has finished, so switching people shows loading again.
+  const [settledFor, setSettledFor] = useState<string | null>(null);
+  const profileSettled = settledFor === item.userId;
   useEffect(() => {
     if (!item.userId || bucket === "negotiating" || bucket === "accepted" || bucket === "missed") return;
     let active = true;
-    getPublicUserProfile(item.userId).then((user) => { if (active) setProfile(user); }).catch(() => {});
+    const userId = item.userId;
+    getPublicUserProfile(userId)
+      .then((user) => { if (active) setProfile(user); })
+      .catch(() => {})
+      .finally(() => { if (active) setSettledFor(userId); });
     return () => { active = false; };
   }, [item.userId, bucket]);
 
@@ -594,6 +631,11 @@ function PersonPane({
         {bio && <SummarySection label="bio">{bio}</SummarySection>}
         {note && <SummarySection label="why your agent surfaced them">{note}</SummarySection>}
         {profile?.location && <SummarySection label="elsewhere">{profile.location}</SummarySection>}
+        {!bio && !note && !profile?.location && (
+          !profileSettled && item.userId
+            ? <EmptyState tone="loading" align="start" />
+            : <EmptyState align="start" message="nothing recorded yet." />
+        )}
       </div>
       <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", alignItems: "center", gap: 10 }}>
         {bucket === "awaiting you" ? (

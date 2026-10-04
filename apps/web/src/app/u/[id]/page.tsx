@@ -10,6 +10,8 @@ import { Stage, Window } from "@/components/workbench/Workbench";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import { getPublicUserProfile } from "@/services/users";
 import { log } from "@/lib/logger";
+import { APIError, isNotFoundError } from "@/lib/api";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { resolveSocials, type SocialPlatform } from "@/lib/socials";
 
 const logger = log.page.from("u/[id]");
@@ -48,7 +50,8 @@ function UserProfile() {
   const [profileData, setProfileData] = useState<User | null>(null);
   const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"notFound" | "failed" | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const isOtherUser = !!user?.id && user.id !== id;
 
@@ -76,34 +79,37 @@ function UserProfile() {
         }
       } catch (err) {
         logger.error('Failed to fetch profile', { error: err });
-        setError('User not found');
+        // A 200 without a user throws a plain Error: that is "missing" too.
+        setError(isNotFoundError(err) || !(err instanceof APIError) ? "notFound" : "failed");
       } finally {
         setIsLoading(false);
       }
     };
     fetchData();
-  }, [id, user?.id, isAuthenticated, authLoading, usersService, networksService]);
+  }, [id, user?.id, isAuthenticated, authLoading, usersService, networksService, reloadKey]);
 
-  if (authLoading || isLoading) {
+  if (authLoading || isLoading || error || !profileData) {
+    // Every non-content state sits in the same profile window so the ink stays legible on the desktop.
     return (
-      <>
-        <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-      </>
+      <Stage width={480}>
+        <Window title="profile" onClose={() => navigate(-1)}>
+          <div style={{ padding: "36px 24px" }}>
+            {authLoading || isLoading ? (
+              <EmptyState tone="loading" />
+            ) : error === "failed" ? (
+              <EmptyState
+                tone="error"
+                message="couldn't load this profile."
+                action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
+              />
+            ) : (
+              <EmptyState message="couldn't find this person." action={{ label: "go back", onClick: () => (window.history.length > 1 ? navigate(-1) : navigate("/")) }} />
+            )}
+          </div>
+        </Window>
+      </Stage>
     );
   }
-
-  if (error) {
-    return (
-      <>
-        <div style={{ padding: 24 }}>
-          <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-warn)" }}>{error}</p>
-          <button type="button" className="wb-btn" onClick={() => navigate(-1)}>back</button>
-        </div>
-      </>
-    );
-  }
-
-  if (!profileData) return null;
 
   // Sorted on where each link actually points rather than on its stored label,
   // so a LinkedIn URL filed under 'custom' shows as LinkedIn instead of

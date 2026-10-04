@@ -7,6 +7,7 @@ import { useConversation } from "@/contexts/ConversationContext";
 import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type PrincipalQuestion } from "@/services/conversation";
 import { AgentFeedNote, DiscoveryTrace, OptionChip, parseDiscovery } from "@/components/workbench/mac-blocks";
 import { MyAgentAvatar, TheirAgentAvatar, agentLabel } from "@/components/workbench/agent-avatar";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 type Provenance = {
   kind?: string;
@@ -234,6 +235,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [agent, setAgent] = useState<PersonalAgentState>();
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [sending, setSending] = useState(false);
   const requests = useRef({ generation: 0, mounted: false });
   const endRef = useRef<HTMLDivElement>(null);
@@ -257,8 +259,11 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
       setConversationId(loaded.conversationId);
       mergeMessages(loaded.messages);
       setAgent(loaded.agent);
+      setLoadFailed(false);
     } catch {
       // Keep the last good transcript; the stream or the next read reconciles it.
+      // Only an empty transcript surfaces the failure (see the render below).
+      if (current === requests.current.generation) setLoadFailed(true);
     } finally {
       if (current === requests.current.generation) setLoading(false);
     }
@@ -318,9 +323,17 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
       <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 22 }}>
-      {loading ? <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-        : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45 }}>
-          Ask about your matches, share a preference, or give your agent direction for this signal.
+      {loading ? <EmptyState tone="loading" align="start" style={{ padding: 0 }} />
+        : feed.length === 0 && questions.length === 0 && loadFailed ? (
+          <EmptyState
+            tone="error"
+            align="start"
+            style={{ padding: 0 }}
+            message="couldn't load your agent's messages."
+            action={{ label: "try again", onClick: () => { setLoading(true); void refresh(); } }}
+          />
+        ) : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45 }}>
+          ask about your matches, share a preference, or tell your agent what to look for.
         </p> : feed.map((piece) => {
           if (piece.kind === "discovery") {
             return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
@@ -370,8 +383,8 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
         <textarea ref={inputRef} rows={1} value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
-          placeholder="Message your personal agent…"
-          aria-label="Message your personal agent"
+          placeholder="message your agent…"
+          aria-label="Message your agent"
           style={{ flex: 1, border: "none", resize: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, background: "transparent", padding: "4px 0" }} />
         <button type="submit" disabled={!draft.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", color: draft.trim() && !sending ? "#111" : "#b9b3a4", cursor: draft.trim() ? "pointer" : "default" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="20" x2="12" y2="5" /><polyline points="5,12 12,5 19,12" /></svg>

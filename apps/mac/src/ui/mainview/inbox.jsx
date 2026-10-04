@@ -45,11 +45,14 @@ function isPersonThread(c) {
   return ps.length === 2 && ps.every(p => p && p.participantType === "user");
 }
 
-function Conversations({ initialConversationId, onClose, onRead }) {
+function Conversations({ initialConversationId, onClose, onRead, onNewSignal }) {
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
   const [convs, setConvs] = useState(null);
+  const [listError, setListError] = useState(false);
   const [activeId, setActiveId] = useState(initialConversationId || null);
-  const [messages, setMessages] = useState([]);
+  // null while the open thread is loading, "error" when it failed.
+  const [messages, setMessages] = useState(null);
+  const [threadTry, setThreadTry] = useState(0);
   const [draft, setDraft] = useState("");
   const activeRef = useRef(activeId);
   activeRef.current = activeId;
@@ -69,9 +72,15 @@ function Conversations({ initialConversationId, onClose, onRead }) {
             if (row.id === activeRef.current) row.unread = 0;
             return row;
           });
+        setListError(false);
         setConvs(rows);
       })
-      .catch(() => setConvs((prev) => prev || []));
+      .catch((err) => {
+        console.warn("[conversations] list failed", err);
+        // A failed refresh keeps the rows already on screen; the error state
+        // only renders while there is nothing loaded yet.
+        setListError(true);
+      });
   }, [client, myId]);
 
   useEffect(() => { loadList(); }, [loadList]);
@@ -85,7 +94,7 @@ function Conversations({ initialConversationId, onClose, onRead }) {
   }, [convs, activeId]);
 
   useEffect(() => {
-    setMessages([]);
+    setMessages(null);
     if (!activeId || !client) return;
     let cancelled = false;
     client.conversations.messages(activeId)
@@ -93,7 +102,10 @@ function Conversations({ initialConversationId, onClose, onRead }) {
         if (cancelled) return;
         setMessages(window.IndexApp.normalizeList(res, "messages").map(m => apiChatMessage(m, myId)));
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn("[conversations] thread failed", err);
+        if (!cancelled) setMessages("error");
+      });
     // The row drops immediately. The server cursor is what the shelf and Dock
     // re-read, so a local zero without this comes back on the next refresh.
     setConvs((prev) => prev && prev.map(c => c.id === activeId ? { ...c, unread: 0 } : c));
@@ -103,14 +115,14 @@ function Conversations({ initialConversationId, onClose, onRead }) {
       }).catch(() => { if (!cancelled) loadList(); });
     }
     return () => { cancelled = true; };
-  }, [activeId, client, myId, onRead, loadList]);
+  }, [activeId, client, myId, onRead, loadList, threadTry]);
 
   useEffect(() => {
     const sub = window.IndexApp.streamInbox((event) => {
       if (!event || event.type !== "message" || !event.message) return;
       const m = apiChatMessage(event.message, myId);
       if (event.conversationId === activeRef.current && m.who !== "you") {
-        setMessages((prev) => prev.some(x => x.id === m.id) ? prev : [...prev, m]);
+        setMessages((prev) => !Array.isArray(prev) ? prev : prev.some(x => x.id === m.id) ? prev : [...prev, m]);
         if (client && client.conversations.markRead) {
           client.conversations.markRead(event.conversationId).then(() => {
             if (onRead) onRead();
@@ -133,14 +145,14 @@ function Conversations({ initialConversationId, onClose, onRead }) {
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages.length]);
+  }, [messages]);
 
   const send = () => {
     const text = draft.trim();
     if (!text || !activeId || !client) return;
     setDraft("");
     const at = nowISO();
-    setMessages((prev) => [...prev, { id: rid(), who:"you", text, at }]);
+    setMessages((prev) => [...(Array.isArray(prev) ? prev : []), { id: rid(), who:"you", text, at }]);
     setConvs((prev) => prev && prev.map(c => c.id === activeId ? { ...c, last: text, lastAt: at } : c));
     client.conversations.sendMessage(activeId, { parts: [{ text }] }).catch(() => {});
   };
@@ -165,10 +177,16 @@ function Conversations({ initialConversationId, onClose, onRead }) {
             <div className="mac-scroll" style={{
               borderRight:"2px solid #000", overflowY:"auto", minHeight:0,
             }}>
-              {convs === null ? (
-                <p style={{ margin:16, fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)" }}>loading…</p>
+              {listError && convs === null ? (
+                <EmptyState tone="error" message="couldn't load conversations." align="left"
+                  onRetry={() => { setListError(false); loadList(); }} style={{ margin:12 }}/>
+              ) : convs === null ? (
+                <EmptyState tone="loading" framed={false} align="left" style={{ margin:"10px 16px" }}/>
               ) : sorted.length === 0 ? (
-                <p style={{ margin:16, fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)" }}>no conversations yet.</p>
+                <EmptyState
+                  message="no conversations yet. a chat opens when you and someone both accept an intro."
+                  action={onNewSignal ? { label:"start a signal", onClick:onNewSignal } : null}
+                  align="left" style={{ margin:12 }}/>
               ) : sorted.map(c => (
                 <button key={c.id} onClick={() => setActiveId(c.id)} style={{
                   display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
@@ -194,7 +212,7 @@ function Conversations({ initialConversationId, onClose, onRead }) {
                     <span style={{
                       fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-2)",
                       whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
-                    }}>{c.last}</span>
+                    }}>{c.last || "no messages yet."}</span>
                   </span>
                   {c.unread > 0 && (
                     <span style={{
@@ -234,7 +252,14 @@ function Conversations({ initialConversationId, onClose, onRead }) {
                   overflowY:"auto", padding:"14px 16px", minHeight:0,
                   display:"flex", flexDirection:"column", gap:10,
                 }}>
-                  {messages.map((m, i) => {
+                  {messages === null ? (
+                    <EmptyState tone="loading" framed={false} align="left"/>
+                  ) : messages === "error" ? (
+                    <EmptyState tone="error" message="couldn't load this conversation." align="left"
+                      onRetry={() => setThreadTry(n => n + 1)}/>
+                  ) : messages.length === 0 ? (
+                    <EmptyState message="no messages yet. say hello." framed={false} align="left"/>
+                  ) : messages.map((m, i) => {
                     const day = chatDayLabel(m.at);
                     const prev = i > 0 ? chatDayLabel(messages[i - 1].at) : "";
                     return (
@@ -295,8 +320,10 @@ function Conversations({ initialConversationId, onClose, onRead }) {
                 </div>
               </div>
             ) : (
+              // Only ask for a pick when there is something to pick. While the
+              // list loads, fails or is empty, the list column already says so.
               <div style={{ display:"grid", placeItems:"center", fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)" }}>
-                pick a conversation.
+                {sorted.length > 0 ? "pick a conversation." : null}
               </div>
             )}
           </div>

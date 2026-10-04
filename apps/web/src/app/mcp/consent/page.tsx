@@ -51,6 +51,12 @@ function McpConsentPage() {
           </>
         ) : !error ? <p>Checking authorization request…</p> : null}
         {error && <p role="alert" className="mcp-consent__error">{error}</p>}
+        {error && !client && (
+          // Nothing to retry here: a fresh request has to come from the MCP client.
+          <div className="mcp-consent__actions">
+            <a className="site-btn" href="/">Go home</a>
+          </div>
+        )}
       </main>
     </AppsShell>
   );

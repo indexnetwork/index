@@ -42,7 +42,7 @@ export function RecoveryForm({
       const answer = own || singleSelected[field.id]?.trim();
       return answer ? [{ prompt: field.label, answer }] : [];
     }
-    const answer = [...(multiSelected[field.id] ?? []), ...(own ? [own] : [])].join(" — ");
+    const answer = [...(multiSelected[field.id] ?? []), ...(own ? [own] : [])].join(", ");
     return answer ? [{ prompt: field.label, answer }] : [];
   });
 

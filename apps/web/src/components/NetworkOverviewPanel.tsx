@@ -9,6 +9,7 @@ import { useNetworkFilter } from '@/contexts/NetworkFilterContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
 import { log } from '@/lib/logger';
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const logger = log.ui.from('NetworkOverviewPanel');
 
@@ -49,6 +50,8 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
     userName: string;
   }[]>([]);
   const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewFailed, setOverviewFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [undo, setUndo] = useState<{ id: string; at: number } | null>(null);
 
@@ -57,14 +60,16 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
       try {
         const overview = await networksService.getNetworkOverview(network.id);
         setIntents(overview.intents);
+        setOverviewFailed(false);
       } catch (err) {
         logger.error('Error loading network overview', { error: err });
+        setOverviewFailed(true);
       } finally {
         setOverviewLoading(false);
       }
     };
     loadOverview();
-  }, [network.id, networksService]);
+  }, [network.id, networksService, reloadKey]);
 
   const handleOpenIntent = useCallback((intent: { id: string }) => {
     setSelectedNetworkIds([]);
@@ -118,8 +123,20 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
           );
         })}
       </div>
-      {!overviewLoading && visible.length === 0 && (
-        <p style={{ fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>You haven&apos;t shared any signals in this network yet</p>
+      {overviewLoading && <EmptyState tone="loading" />}
+      {!overviewLoading && overviewFailed && visible.length === 0 && (
+        <EmptyState
+          tone="error"
+          message="couldn't load your signals in this network."
+          action={{ label: "try again", onClick: () => { setOverviewLoading(true); setReloadKey((k) => k + 1); } }}
+        />
+      )}
+      {!overviewLoading && !overviewFailed && visible.length === 0 && (
+        <EmptyState
+          framed
+          message="you haven't shared any signals in this network yet."
+          action={{ label: "start a signal", to: "/i/new" }}
+        />
       )}
 
       {showLeaveConfirmation && (
