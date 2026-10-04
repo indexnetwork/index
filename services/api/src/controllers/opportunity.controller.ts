@@ -82,7 +82,14 @@ export class OpportunityController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const result = await opportunityService.getOpportunityWithPresentation(resolved.id, user.id);
+    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
+    const presentationParam = url.searchParams.get('presentation');
+    if (presentationParam && presentationParam !== 'skeleton' && presentationParam !== 'full') {
+      return Response.json({ error: "Invalid presentation; allowed: 'skeleton', 'full'" }, { status: 400 });
+    }
+    const presentation = presentationParam === 'skeleton' ? 'skeleton' as const : undefined;
+
+    const result = await opportunityService.getOpportunityWithPresentation(resolved.id, user.id, { presentation });
 
     if (!result) {
       logger.verbose('Opportunity not found', { userId: user.id, opportunityId: resolved.id });
