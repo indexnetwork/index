@@ -229,8 +229,8 @@ export class HostedAgent {
    * One event wake. Each opportunity opens the moment its own decision is
    * published, so the first turns go out while the wake is still thinking.
    */
-  private invokeWake(userId: string, intent: Intent): Promise<void> {
-    return runWake(new HostedIndex(userId), intent, {
+  private async invokeWake(userId: string, intent: Intent): Promise<void> {
+    await runWake(new HostedIndex(userId), intent, {
       ...this.runtime(),
       onNegotiate: (opportunityId) => this.session.run(this.session.negotiate(userId, intent.id, opportunityId)),
     });

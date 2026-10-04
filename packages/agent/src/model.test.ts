@@ -5,7 +5,7 @@ import { ModelClient } from "./model.ts";
 test("completion asks for low reasoning and a token cap", async () => {
   const bodies: Array<Record<string, unknown>> = [];
   const original = globalThis.fetch;
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (_input: Parameters<typeof original>[0], init?: RequestInit) => {
     bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
     const signature = [{ type: "reasoning.encrypted", data: "sig" }];
     return new Response(JSON.stringify({

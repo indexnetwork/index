@@ -15,9 +15,13 @@ const logger = log.agent.from('hosted-agents.main');
 // The default seat for owners without an external negotiator.
 const hostedAgent = new HostedAgent(new ModelClient({ apiKey: process.env.OPENROUTER_API_KEY! }));
 void hostedAgent.start();
-const morning = startMorningBrief({
-  wake: (userId, intent) => hostedAgent.morningWake(userId, intent),
-});
+const morningDisabled = process.env.DISABLE_MORNING_BRIEF === 'true';
+const morning = morningDisabled
+  ? { stop() {} }
+  : startMorningBrief({
+      wake: (userId, intent) => hostedAgent.morningWake(userId, intent),
+    });
+if (morningDisabled) logger.info('Morning brief disabled (DISABLE_MORNING_BRIEF)');
 const mcpEventDispatcher = new McpEventDispatcher();
 mcpEventDispatcher.start();
 logger.info('Hosted agents running');
