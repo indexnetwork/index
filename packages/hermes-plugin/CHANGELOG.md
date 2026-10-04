@@ -23,6 +23,7 @@
   instead of the browser. Modified clicks still open the browser.
 
 ### Fixed
+- Brief and negotiate runs require a tool call on their first step. The bridge forwards `tool_choice` so a prose reply cannot drop the brief or the turn.
 - Opportunity status frames no longer wake the bundled negotiator.
 - A failed profile load no longer crashes Discover. The panel rendered
   `form.avatar` while `form` was still null, and the page error boundary

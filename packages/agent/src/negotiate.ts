@@ -83,6 +83,7 @@ export async function negotiate(input: NegotiateInput): Promise<NegotiateResult>
       JSON.stringify(opportunity),
     tools,
     maxSteps: 3,
+    requireTool: true,
     ...(input.now ? { now: input.now } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
   });
