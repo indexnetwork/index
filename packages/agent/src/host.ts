@@ -69,7 +69,7 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
     const text = textOf(message);
     const stalls = principal?.stalls?.length ? { stalls: principal.stalls } : {};
 
-    if (principal?.reply) return { kind: "reply", text };
+    if (principal?.replyToMessageId) return { kind: "reply", text, replyToMessageId: principal.replyToMessageId };
     if (message.role === "agent" && text.startsWith(BRIEF)) {
       return { kind: "brief", text: text.slice(BRIEF.length), ...(opportunity ? { opportunity } : {}), ...(counterpart ? { counterpart } : {}) };
     }
@@ -93,6 +93,7 @@ export function readConversation(messages: ConversationMessage[]): ConversationE
     const kind = principal?.kind ?? (message.role === "user" ? "user" : "message");
     return {
       kind,
+      id: message.id,
       text,
       ...(principal?.scope ? { scope: principal.scope === "match" ? "opportunity" as const : "intent" as const } : {}),
       ...(principal?.questionId ? { questionId: principal.questionId } : {}),
@@ -319,7 +320,7 @@ export async function publishActions(
         entries.push(entry("message", action.text));
         break;
       case "reply":
-        entries.push({ ...entry("message", action.text), reply: true });
+        entries.push({ ...entry("message", action.text), replyToMessageId: action.replyToMessageId });
         break;
       case "progress":
         entries.push(entry("message", `${PROGRESS}${action.text}`));

@@ -34,8 +34,7 @@ export type Decision = "continue" | "accept" | "decline" | "stop";
  * One entry of the principal conversation. Briefs and decisions are entries
  * too: they are how a wake's work persists, and the principal can read them.
  */
-export interface ConversationEntry {
-  kind: "user" | "message" | "reply" | "question" | "answer" | "brief" | "decision" | "stall" | "resolution" | "expire" | "progress";
+export type ConversationEntry = {
   text: string;
   /** The agent DM row this entry was read from. */
   id?: string;
@@ -48,7 +47,11 @@ export interface ConversationEntry {
   opportunity?: string;
   questionId?: string;
   options?: string[];
-}
+} & (
+  | { kind: "user"; id: string }
+  | { kind: "reply"; replyToMessageId: string }
+  | { kind: "message" | "question" | "answer" | "brief" | "decision" | "stall" | "resolution" | "expire" | "progress" }
+);
 
 /** One opportunity as the host assembled it: Index's record plus the latest brief and decision. */
 export interface Opportunity {
@@ -143,7 +146,7 @@ export type WakeAction =
   | { type: "ask"; scope: "intent" | "opportunity"; opportunityId?: string; question: string; options: string[]; stalls?: string[] }
   | { type: "resolve"; opportunityId: string; stallId: string; reason: string }
   | { type: "note"; text: string }
-  | { type: "reply"; text: string }
+  | { type: "reply"; text: string; replyToMessageId: string }
   | { type: "progress"; text: string }
   | { type: "expire"; questionId: string };
 

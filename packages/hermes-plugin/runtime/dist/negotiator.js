@@ -591,7 +591,7 @@ var WAKE_PROMPT = [
 ].join(`
 
 `);
-var MORNING = "It is morning. Discover again even when opportunities are already open: the communities may have grown, or the earlier queries were too narrow. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
+var MORNING = "It is morning. Open an opportunity only with someone who does not already have one. Ask only when a missing fact would change who you reach out to. If you speak to your principal, begin with Good morning: the plan you pass to reach_counterparties, or a note about a decision or a question. Do not write a note only to greet them, and do not recap who you discovered. Otherwise stop.";
 function openQuestions(conversation) {
   const open = new Map;
   for (const entry of conversation) {
@@ -605,14 +605,14 @@ function openQuestions(conversation) {
   return open;
 }
 function unansweredPrincipalMessage(conversation) {
-  let answered = false;
   for (let index = conversation.length - 1;index >= 0; index--) {
     const entry = conversation[index];
-    if (entry.kind === "user" || entry.kind === "answer") {
-      return entry.kind === "user" && !answered ? { text: entry.text } : null;
+    if (entry.kind === "answer")
+      return null;
+    if (entry.kind === "user") {
+      const answered = conversation.some((reply) => reply.kind === "reply" && reply.replyToMessageId === entry.id);
+      return answered ? null : { id: entry.id, text: entry.text };
     }
-    if (entry.kind === "reply")
-      answered = true;
   }
   return null;
 }
@@ -739,7 +739,7 @@ async function wake(input) {
         if (actions.some((action) => action.type === "reply")) {
           throw new Error("You already replied to your principal's direct message on this wake. Do not reply again.");
         }
-        actions.push({ type: "reply", text });
+        actions.push({ type: "reply", text, replyToMessageId: unansweredMessage.id });
         return "Reply recorded.";
       }
     }),
@@ -844,7 +844,7 @@ async function wake(input) {
     }),
     tool({
       name: "reach_counterparties",
-      description: "Discover people in this signal's communities and open an opportunity with everyone discovered. A query describes the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. Everyone discovered is opened and briefed for you. plan is one sentence to your principal about who you are going to look for. Future tense. Not a count, and not a recap of the results. Say discovering and reaching out, never searching.",
+      description: "Discover people in this signal's communities and open an opportunity with each one that does not already have one. A query describes the kind of person this signal needs, in your own words, not the signal restated. Give several queries at once when one kind of person is not the whole answer; each direction is discovered separately and the results are merged. plan is one sentence to your principal about who you are going to look for. Future tense. Not a count, and not a recap of the results. Say discovering and reaching out, never searching.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -879,10 +879,11 @@ async function wake(input) {
           if (!seen || counterparty.score > seen.score)
             found.set(counterparty.userId, counterparty);
         }
-        const picks = [...found.values()].sort((left, right) => right.score - left.score).slice(0, OPEN_LIMIT).map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
+        const started = new Set((await client.listIntentNegotiations(intent.id)).map((negotiation) => negotiation.counterparty.intentId));
+        const picks = [...found.values()].filter((counterparty) => !started.has(counterparty.intentId)).sort((left, right) => right.score - left.score).slice(0, OPEN_LIMIT).map((counterparty) => ({ intentId: counterparty.intentId, networkId: counterparty.networkId }));
         if (!picks.length) {
           await report(found.size, 0);
-          return "No counterparties matched those queries. Try different ones, or stop.";
+          return found.size ? "Everyone discovered already has an opportunity." : "No counterparties matched those queries. Try different ones, or stop.";
         }
         const created = await client.createOpportunities(intent.id, picks);
         await report(found.size, created.length);
@@ -995,8 +996,8 @@ function readConversation(messages) {
     const counterpart = principal?.matches?.[0]?.counterparty.name ?? undefined;
     const text = textOf(message);
     const stalls = principal?.stalls?.length ? { stalls: principal.stalls } : {};
-    if (principal?.reply)
-      return { kind: "reply", text };
+    if (principal?.replyToMessageId)
+      return { kind: "reply", text, replyToMessageId: principal.replyToMessageId };
     if (message.role === "agent" && text.startsWith(BRIEF)) {
       return { kind: "brief", text: text.slice(BRIEF.length), ...opportunity ? { opportunity } : {}, ...counterpart ? { counterpart } : {} };
     }
@@ -1022,6 +1023,7 @@ function readConversation(messages) {
     const kind = principal?.kind ?? (message.role === "user" ? "user" : "message");
     return {
       kind,
+      id: message.id,
       text,
       ...principal?.scope ? { scope: principal.scope === "match" ? "opportunity" : "intent" } : {},
       ...principal?.questionId ? { questionId: principal.questionId } : {},
@@ -1184,7 +1186,7 @@ async function publishActions(client, intentId, actions, context) {
         entries.push(entry("message", action.text));
         break;
       case "reply":
-        entries.push({ ...entry("message", action.text), reply: true });
+        entries.push({ ...entry("message", action.text), replyToMessageId: action.replyToMessageId });
         break;
       case "progress":
         entries.push(entry("message", `${PROGRESS}${action.text}`));

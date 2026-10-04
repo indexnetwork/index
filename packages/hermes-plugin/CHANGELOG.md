@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.49.0
+
+### Changed
+- **BREAKING:** The bundled agent publishes direct replies with
+  `replyToMessageId` instead of `reply: true`, bound to the selected persisted
+  user message. A late reply no longer closes newer input. Historical replies
+  without a target no longer close an input, which may be revisited.
+- Rebuilt the runtime and desktop bundles for the reply-attribution contract.
 
 ## Unreleased
 

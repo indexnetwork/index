@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.12.0
+
+### Changed
+- **BREAKING:** `PrincipalMessage.reply` is removed. Direct replies now carry
+  `replyToMessageId`, the actual persisted user-message ID from the inbox.
+  Notes and progress carry no target. Update external publishers in place;
+  there is no compatibility read or chronological fallback.
+- Historical `reply: true` records have no reliable target and no longer close
+  an input. A previously answered latest input may be revisited. No historical
+  recovery, migration, or replay policy is included.
+
 ## 0.11.0
 
 ### Changed

@@ -56,14 +56,14 @@ function openQuestions(conversation: ConversationEntry[]): Map<string, string> {
  * @param conversation - The signal's conversation, oldest first.
  * @returns The message to answer, or null when none is waiting.
  */
-export function unansweredPrincipalMessage(conversation: ConversationEntry[]): { text: string } | null {
-  let answered = false;
+export function unansweredPrincipalMessage(conversation: ConversationEntry[]): { id: string; text: string } | null {
   for (let index = conversation.length - 1; index >= 0; index--) {
     const entry = conversation[index]!;
-    if (entry.kind === "user" || entry.kind === "answer") {
-      return entry.kind === "user" && !answered ? { text: entry.text } : null;
+    if (entry.kind === "answer") return null;
+    if (entry.kind === "user") {
+      const answered = conversation.some((reply) => reply.kind === "reply" && reply.replyToMessageId === entry.id);
+      return answered ? null : { id: entry.id, text: entry.text };
     }
-    if (entry.kind === "reply") answered = true;
   }
   return null;
 }
@@ -227,7 +227,7 @@ export async function wake(input: WakeInput): Promise<WakeResult> {
         if (actions.some((action) => action.type === "reply")) {
           throw new Error("You already replied to your principal's direct message on this wake. Do not reply again.");
         }
-        actions.push({ type: "reply", text });
+        actions.push({ type: "reply", text, replyToMessageId: unansweredMessage.id });
         return "Reply recorded.";
       },
     }),

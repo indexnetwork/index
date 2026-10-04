@@ -110,8 +110,8 @@ export interface PrincipalMessage {
   kind: "question" | "answer" | "user" | "message" | "expire";
   /** Marks the negotiation summary, so the next one can be read from the notes after this. */
   summary?: boolean;
-  /** Marks a direct reply, distinct from an unrelated note or progress update. */
-  reply?: boolean;
+  /** The persisted user-message ID this direct reply answers; notes and progress answer nothing. */
+  replyToMessageId?: string;
   /** Marks a negotiator's stall, with the turn count it stalled at: a later turn discharges it. */
   stall?: { turnCount: number };
   /** The stall entries this question asks about, or this resolution releases, by entry id. */
