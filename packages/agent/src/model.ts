@@ -47,10 +47,11 @@ export interface Model {
    * @param messages - The conversation for this call.
    * @param tools - Available tool definitions.
    * @param signal - Cancellation for this call.
+   * @param toolChoice - When `"required"`, the model must call a tool. Omit it to allow a plain reply.
    * @returns The assistant's text or tool calls.
    * @throws On cancellation or any model failure.
    */
-  complete(messages: ModelMessage[], tools?: ToolDefinition[], signal?: AbortSignal): Promise<ModelMessage>;
+  complete(messages: ModelMessage[], tools?: ToolDefinition[], signal?: AbortSignal, toolChoice?: "required"): Promise<ModelMessage>;
 }
 
 export interface ModelClientOptions {
@@ -91,10 +92,11 @@ export class ModelClient implements Model {
    * @param messages - The conversation to continue.
    * @param tools - Functions available to every model in the list.
    * @param signal - Cancels the request.
+   * @param toolChoice - When `"required"`, the model must call one of `tools`.
    * @returns The assistant's text or tool calls.
    * @throws When the request is cancelled, times out, or OpenRouter refuses it.
    */
-  async complete(messages: ModelMessage[], tools: ToolDefinition[] = [], signal?: AbortSignal): Promise<ModelMessage> {
+  async complete(messages: ModelMessage[], tools: ToolDefinition[] = [], signal?: AbortSignal, toolChoice?: "required"): Promise<ModelMessage> {
     const deadline = AbortSignal.timeout(this.timeout);
     const stop = signal ? AbortSignal.any([signal, deadline]) : deadline;
 
@@ -107,7 +109,7 @@ export class ModelClient implements Model {
         messages,
         max_tokens: MAX_TOKENS,
         reasoning: REASONING,
-        ...(tools.length ? { tools, provider: { require_parameters: true } } : {}),
+        ...(tools.length ? { tools, provider: { require_parameters: true }, ...(toolChoice ? { tool_choice: toolChoice } : {}) } : {}),
       }),
     });
     const body = await response.text();

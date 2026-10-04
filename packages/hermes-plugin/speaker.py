@@ -194,7 +194,7 @@ def _main_agent():
 
 
 def complete(payload: dict) -> dict:
-    """@param payload - `messages` and `tools` for one step.
+    """@param payload - `messages`, `tools`, and optional `tool_choice` for one step.
     @returns The assistant message. @throws When Hermes has no model or the call fails.
     """
     from agent.secret_scope import build_profile_secret_scope, reset_secret_scope, set_secret_scope
@@ -210,6 +210,8 @@ def complete(payload: dict) -> dict:
         tools = payload.get("tools") or None
         if tools:
             kwargs["tools"] = tools
+            if payload.get("tool_choice"):
+                kwargs["tool_choice"] = payload["tool_choice"]
         response = agent.client.chat.completions.create(**kwargs)
         choices = getattr(response, "choices", None) or []
         if not choices:
