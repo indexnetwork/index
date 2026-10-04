@@ -376,6 +376,18 @@ export function PipelineFunnel({ stages, activeStage, onClickStage }: {
   );
 }
 
+/** The radar while the agent is still out looking: the same eye and line as the Mac app. */
+export function DiscoveryLoader() {
+  return (
+    <div style={{ padding: "16px 30px 30px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <img src="/loading-eye.gif" alt="searching" style={{ width: 180, height: 180, objectFit: "cover", flexShrink: 0, display: "block", mixBlendMode: "multiply" }} />
+      <div style={{ fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, letterSpacing: "0.04em", color: "#111", margin: 0 }}>
+        hold on, looking for your people
+      </div>
+    </div>
+  );
+}
+
 function AgentLabel() {
   return (
     <div style={{ marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, color: "#8f8f88", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -458,7 +470,7 @@ export function DiscoveryTrace({
                   {queries.map((query) => (
                     <div key={query} style={{ display: "grid", gridTemplateColumns: "14px 1fr", gap: 9, alignItems: "baseline", color: "#5A5548", fontSize: 14, lineHeight: 1.55, fontFamily: "var(--mac-sans)" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /></svg>
-                      <span>Looking for <span style={{ fontFamily: "var(--mac-mono)", fontSize: 14, color: "#8A8578" }}>{query}</span></span>
+                      <span>Looking for <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "#8A8578" }}>{query}</span></span>
                     </div>
                   ))}
                 </div>
