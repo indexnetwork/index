@@ -593,20 +593,21 @@ export class IntentService {
   /**
    * Archive an intent via the Intent Graph's `expire` action (archives the
    * row, drops its network associations, and expires referencing
-   * opportunities). Ownership is checked here: the graph's expire path, like
-   * create/update, does not filter by owner — that's the caller's
+   * opportunities and closes their open negotiations atomically). Ownership
+   * is checked here: the graph's expire path, like create/update, does not
+   * filter by owner — that's the caller's
    * responsibility.
    *
    * @param intentId - The intent ID
    * @param userId - The user ID (for ownership verification)
    * @returns Result with success flag and optional error
    */
-  async archive(intentId: string, userId: string): Promise<{ success: boolean; error?: string }> {
+  async archive(intentId: string, userId: string): Promise<{ success: boolean; error?: string; status?: 404 | 500 }> {
     logger.verbose('Archiving intent', { intentId, userId });
 
     const owned = await this.adapter.isOwnedByUser(intentId, userId);
     if (!owned) {
-      return { success: false, error: 'Intent not found or unauthorized' };
+      return { success: false, error: 'Intent not found or unauthorized', status: 404 };
     }
 
     const result = await this.intentGraph.invoke(
@@ -616,7 +617,11 @@ export class IntentService {
 
     const execution = result.executionResults?.[0];
     if (!execution?.success) {
-      return { success: false, error: execution?.error ?? 'Intent not found' };
+      return {
+        success: false,
+        error: execution?.error ?? 'Unable to archive intent; please retry',
+        status: execution?.error === 'Intent not found' ? 404 : 500,
+      };
     }
 
     IntentEvents.onArchived(intentId, userId);

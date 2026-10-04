@@ -12,7 +12,7 @@ const DISCOVERY_GIVE_UP_MS = 120000;
 
 function MainView({ profile, people, setPeople, conversation, setConversation,
                     field, setField, stats, simRate, setSimRate, tweaks = {},
-                    onOpenRoom, onBack, registerChats, pendingFocus, onPendingHandled,
+                    onOpenRoom, onBack, onNotice, registerChats, pendingFocus, onPendingHandled,
                     focusQuestion }) {
   // Live-only: these demo sim feeds no longer exist, so they default to empty.
   // The simulation loops below stay wired but idle on empty arrays.
@@ -543,13 +543,17 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Archive retires the signal and drops it off the hub. Only leave the screen
   // once the backend has taken it, otherwise you'd land back on a hub still
   // showing the signal you thought you'd just archived.
-  const archiveSignal = () => {
-    if (!(live && client && intentId)) { onBack && onBack(); return Promise.resolve(); }
-    return client.intents.archive(intentId).then(async () => {
-      if (patchIntentStatus) patchIntentStatus(intentId, "archived");
-      if (refreshIntents) await refreshIntents().catch(() => null);
-      onBack && onBack();
-    });
+  const archiveSignal = async () => {
+    if (!(live && client && intentId)) { onBack && onBack(); return; }
+    try {
+      await client.intents.archive(intentId);
+    } catch {
+      onNotice("Couldn't archive the signal. Please try again.");
+      return;
+    }
+    if (patchIntentStatus) patchIntentStatus(intentId, "archived");
+    if (refreshIntents) await refreshIntents().catch(() => null);
+    onBack && onBack();
   };
 
   // Three columns need room. Below that the third window takes the radar's

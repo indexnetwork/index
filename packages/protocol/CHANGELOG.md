@@ -1,5 +1,12 @@
 # Changelog
 
+## 67.0.0
+
+### Breaking changes
+
+- `Database.archiveIntent` (including user/composite/graph database views) now represents the entire atomic archive: archive the intent, delete its network associations, expire referencing negotiating/pending opportunities, and close their open negotiations. Preserve accepted/rejected/expired outcomes, inspect locked current state, and roll back every required write on failure. Repeating a successful archive is safe. Notifications are post-commit and delivery failures must not report rollback.
+- Remove `deleteIntentNetworkAssociations`, `expireOpportunitiesByIntentActor`, and `IntentFollowUp.onIntentArchived`. Hosts must implement cleanup inside `archiveIntent`; the graph no longer performs separate best-effort cleanup. No compatibility path remains. Expired opportunities remain hidden from normal lists and explicitly readable through existing reads.
+
 ## 66.0.0
 
 ### Breaking changes

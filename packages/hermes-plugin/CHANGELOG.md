@@ -15,6 +15,9 @@
   instead of the browser. Modified clicks still open the browser.
 
 ### Fixed
+- Rebuild the negotiator bundle from the current agent source, including its
+  existing duplicate-opportunity filtering, so the committed artifact matches
+  the build and passes the CI freshness check.
 - Opportunity status frames no longer wake the bundled negotiator.
 - A failed profile load no longer crashes Discover. The panel rendered
   `form.avatar` while `form` was still null, and the page error boundary

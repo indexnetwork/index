@@ -125,8 +125,14 @@ export interface DatabaseIdentityQueries {
   updateIntent(intentId: string, data: UpdateIntentData): Promise<CreatedIntent | null>;
 
   /**
-   * Archives (soft-deletes) an intent.
-   * Sets the archivedAt timestamp rather than hard deleting.
+   * Atomically archives an intent, deletes its network associations, expires
+   * referencing negotiating/pending opportunities, and closes their open negotiations.
+   * Accepted, rejected, and expired outcomes remain unchanged. Inspect locked current
+   * state and serialize conflicting actions with database transaction/row-lock ordering.
+   * Any required write failure rolls back the entire operation and reports failure
+   * (or throws). Success means every required write committed; notification delivery
+   * is post-commit and must never turn committed success into failure. Repeating a
+   * successful archive is safe.
    *
    * Called when the reconciler outputs an "expire" action.
    *
@@ -168,20 +174,6 @@ export interface DatabaseIdentityQueries {
     lifecycleVersionMs: number;
     networkScopeId?: string | null;
   }): Promise<{ status: IntentLifecycleStatus; lifecycleVersionMs: number } | null>;
-
-  /**
-   * Deletes every intent–network association for an archived intent.
-   * Called as part of the "expire" action's cleanup.
-   */
-  deleteIntentNetworkAssociations(intentId: string): Promise<void>;
-
-  /**
-   * Expires every non-expired opportunity where this intent appears as an actor.
-   * Called as part of the "expire" action's cleanup.
-   *
-   * @returns The number of opportunities expired.
-   */
-  expireOpportunitiesByIntentActor(intentId: string): Promise<number>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Query Operations
