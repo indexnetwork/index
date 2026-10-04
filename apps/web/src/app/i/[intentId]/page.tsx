@@ -52,7 +52,7 @@ export default function IntentDetailPage() {
 function IntentDetail() {
   const navigate = useNavigate();
   const { intentId } = useParams<{ intentId: string }>();
-  const { user, isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { conversations } = useConversation();
   const intentsService = useIntents();
   const opportunitiesService = useOpportunities();
@@ -186,6 +186,8 @@ function IntentDetail() {
       setIntent(null);
       setIntentMissing(false);
       setIntentLoading(false);
+      const next = window.location.pathname + window.location.search;
+      navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
       return;
     }
     let active = true;
@@ -199,6 +201,11 @@ function IntentDetail() {
       .catch((error: unknown) => {
         if (!active) return;
         setIntent(null);
+        if (error instanceof APIError && error.status === 401) {
+          const next = window.location.pathname + window.location.search;
+          navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
+          return;
+        }
         setIntentMissing(error instanceof APIError && error.status === 404);
       })
       .finally(() => {
@@ -208,7 +215,7 @@ function IntentDetail() {
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadOpportunities, authLoading, isAuthenticated]);
+  }, [intentId, intentsService, loadOpportunities, authLoading, isAuthenticated, navigate]);
 
   useEffect(() => {
     if (selectedBucketEffectRef.current === null) {
@@ -380,21 +387,11 @@ function IntentDetail() {
         padding: "56px 18px",
         minHeight: 0,
       }}>
-        {!intentLoading && !intent ? (
+        {!intentLoading && !intent && intentMissing ? (
           <Window title="signal" onClose={() => navigate("/")}>
-            {intentMissing ? (
-              <p style={{ padding: 28, fontFamily: "var(--mac-mono)", fontSize: 12 }}>signal not found</p>
-            ) : (
-              <button
-                type="button"
-                onClick={() => openLoginModal(window.location.href)}
-                style={{ margin: 28, fontFamily: "var(--mac-mono)", fontSize: 12, background: "none", border: 0, padding: 0, cursor: "pointer" }}
-              >
-                sign in to open this signal
-              </button>
-            )}
+            <p style={{ padding: 28, fontFamily: "var(--mac-mono)", fontSize: 12 }}>signal not found</p>
           </Window>
-        ) : (
+        ) : !intent ? null : (
           <>
             <Window title="signal" onClose={() => navigate("/")}>
               <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
