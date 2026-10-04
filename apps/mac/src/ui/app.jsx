@@ -668,6 +668,7 @@ function App() {
             stats={stats}
             simRate={simRate} setSimRate={setSimRate}
             onBack={() => setScreen("intents")}
+            onNotice={setNotice}
             registerChats={registerChats}
             pendingFocus={pendingFocus}
             onPendingHandled={() => setPendingFocus(null)}
