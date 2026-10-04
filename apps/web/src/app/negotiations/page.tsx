@@ -6,7 +6,10 @@ import { NegoClosedLine, NegoOpenLine, NegoThreadRow, NegoTurnLine, negoResult }
 import { useNegotiations } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type { NegotiationSummary, NegotiationTurn } from "@/services/negotiations";
+
+const emptyBox = { borderColor: "#000", padding: "18px 16px" } as const;
 
 type HistoryFilter = "all" | "won" | "lost" | "open";
 type HistoryMode = "stream" | "grouped";
@@ -14,7 +17,7 @@ type HistoryMode = "stream" | "grouped";
 export default function NegotiationsPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, user } = useAuthContext();
-  const { negotiations } = useConversation();
+  const { negotiations, negotiationsStatus, refreshNegotiations } = useConversation();
   const negotiationsService = useNegotiations();
   const [filter, setFilter] = useState<HistoryFilter>("all");
   const [mode, setMode] = useState<HistoryMode>("stream");
@@ -71,11 +74,33 @@ export default function NegotiationsPage() {
     <div className="mac-scroll" style={{ overflowY: "auto", padding: "14px 18px", display: "flex", flexDirection: "column" }}>
       <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
         {events.length === 0 ? (
-          <div style={{ border: "1px dashed #000", padding: "18px 16px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>
-            {mode === "stream"
-              ? "nothing on the wire yet, your agent logs every negotiation here as it happens."
-              : "no sessions here."}
-          </div>
+          threads.length === 0 && negotiationsStatus === "loading" ? (
+            <EmptyState tone="loading" align="start" framed style={emptyBox} />
+          ) : threads.length === 0 && negotiationsStatus === "error" ? (
+            <EmptyState
+              tone="error"
+              align="start"
+              framed
+              style={emptyBox}
+              message="couldn't load negotiations."
+              action={{ label: "try again", onClick: () => void refreshNegotiations() }}
+            />
+          ) : threads.length === 0 ? (
+            <EmptyState
+              align="start"
+              framed
+              style={emptyBox}
+              message="nothing on the wire yet. your agent logs every negotiation here as it happens."
+            />
+          ) : (
+            <EmptyState
+              align="start"
+              framed
+              style={emptyBox}
+              message="no sessions match this filter."
+              action={filter !== "all" ? { label: "clear filter", onClick: () => { setFilter("all"); setSelectedId(null); } } : undefined}
+            />
+          )
         ) : events.map((ev, i) =>
           ev.kind === "closed"
             ? <NegoClosedLine key={`c-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"} />
@@ -115,9 +140,7 @@ export default function NegotiationsPage() {
                 {filtered.map((th) => (
                   <NegoThreadRow key={th.id} th={th} active={!!selected && selected.id === th.id} onPick={() => setSelectedId(th.id)} />
                 ))}
-                {filtered.length === 0 && (
-                  <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)", padding: 6 }}>no sessions here.</span>
-                )}
+                {/* An empty list stays blank here: the log pane beside it carries the empty state. */}
               </div>
               {log}
             </div>

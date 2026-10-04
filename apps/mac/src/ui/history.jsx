@@ -157,6 +157,8 @@ function NegotiationHistory({ onClose }) {
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
   const [threads, setThreads] = useState(null);   // null = loading
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
   const [turnLogs, setTurnLogs] = useState({});   // opportunityId -> { turnCount, turns }
   const [mode, setMode] = useState("stream");
   const [filter, setFilter] = useState("all");
@@ -171,16 +173,21 @@ function NegotiationHistory({ onClose }) {
       if (live && myId && window.IndexApp.getClient) {
         try {
           const res = await window.IndexApp.getClient().users.negotiations(myId, { limit: 50 });
-          if (!dead) setThreads(res.negotiations || []);
-          return;
-        } catch (e) { /* keep whatever is shown; empty state below covers first load */ }
+          if (!dead) { setThreads(res.negotiations || []); setLoadFailed(false); }
+        } catch (e) {
+          // Keep whatever is shown. With nothing loaded yet this is an error,
+          // not an empty wire; the poll keeps retrying underneath it.
+          console.warn("[negotiations] load failed", e);
+          if (!dead) setLoadFailed(true);
+        }
+        return;
       }
       if (!dead) setThreads((prev) => prev || []);
     };
     load();
     const t = setInterval(load, 3000);   // same cadence as the radar
     return () => { dead = true; clearInterval(t); };
-  }, [live, myId]);
+  }, [live, myId, retryTick]);
 
   // Turns are not on the list. Read each thread once, and again when its
   // turn count moves.
@@ -262,18 +269,19 @@ function NegotiationHistory({ onClose }) {
         display:"flex", flexDirection:"column",
       }}>
         <div style={{ marginTop:"auto", display:"flex", flexDirection:"column", gap:10 }}>
-          {threads === null ? (
+          {threads === null && loadFailed ? (
+            <EmptyState tone="error" message="couldn't load negotiations." align="left"
+              onRetry={() => { setLoadFailed(false); setRetryTick((n) => n + 1); }}/>
+          ) : threads === null ? (
             <div style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>
               reading the wire<span className="mac-caret"/>
             </div>
+          ) : all.length === 0 ? (
+            <EmptyState align="left"
+              message="nothing on the wire yet. your agent logs every negotiation here as it happens."/>
           ) : events.length === 0 ? (
-            <div style={{
-              border:"1px dashed #000", padding:"18px 16px",
-              fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-            }}>
-              nothing on the wire yet, your agent logs every negotiation here
-              as it happens.
-            </div>
+            <EmptyState align="left" message="no sessions match this filter."
+              action={filter !== "all" ? { label:"clear filter", onClick:() => { setFilter("all"); setSelectedId(null); } } : null}/>
           ) : events.map((ev, i) =>
             ev.kind === "closed"
               ? <NegoClosedLine key={`c-${ev.th.id}-${i}`} th={ev.th} withTag={mode === "stream"}/>
@@ -343,11 +351,9 @@ function NegotiationHistory({ onClose }) {
                       active={selected && selected.id === th.id}
                       onPick={() => setSelectedId(th.id)}/>
                   ))}
-                  {filtered.length === 0 && (
-                    <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)", padding:6 }}>
-                      no sessions here.
-                    </span>
-                  )}
+                  {/* An empty drawer stays quiet on purpose: the log beside it
+                      already says why (nothing yet, or nothing for this
+                      filter), and two empty lines at once read as two problems. */}
                 </div>
                 {log}
               </div>

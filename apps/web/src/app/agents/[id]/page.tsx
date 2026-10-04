@@ -2,11 +2,14 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents } from "@/contexts/APIContext";
-import { useNotifications } from "@/contexts/NotificationContext";
-import ClientLayout from "@/components/ClientLayout";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import type { Agent } from "@/services/agents";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { isNotFoundError } from "@/lib/api";
+import { log } from "@/lib/logger";
+
+const logger = log.page.from("agents/[id]");
 
 const SYSTEM_AGENT_IDS = {
   negotiator: "00000000-0000-0000-0000-000000000002",
@@ -41,10 +44,10 @@ export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated, isLoading: authLoading, user } = useAuthContext();
   const agentsService = useAgents();
-  const { error } = useNotifications();
-
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -59,13 +62,17 @@ export default function AgentDetailPage() {
     agentsService
       .get(id)
       .then((result) => {
-        if (!cancelled) setAgent(result);
+        if (!cancelled) {
+          setAgent(result);
+          setFailed(false);
+        }
       })
       .catch((err) => {
-        if (!cancelled) {
-          error("Failed to load agent", err instanceof Error ? err.message : undefined);
-          navigate("/agents");
-        }
+        if (cancelled) return;
+        logger.error("Failed to load agent", { error: err });
+        setAgent(null);
+        // A 404 falls through to the "doesn't exist" state below; anything else is retryable.
+        setFailed(!isNotFoundError(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -74,32 +81,32 @@ export default function AgentDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, agentsService, isAuthenticated, error, navigate]);
+  }, [id, agentsService, isAuthenticated, reloadKey]);
 
-  if (authLoading || !isAuthenticated || loading) {
+  if (authLoading || !isAuthenticated || loading || !agent) {
     return (
-      <ClientLayout>
-        <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-      </ClientLayout>
+      <Stage width={520}>
+        <Window title="agents" onClose={() => navigate("/agents")}>
+          <div style={{ padding: 28 }}>
+            {authLoading || !isAuthenticated || loading ? (
+              <EmptyState tone="loading" />
+            ) : failed ? (
+              <EmptyState
+                tone="error"
+                message="couldn't load this agent."
+                action={{ label: "try again", onClick: () => { setLoading(true); setFailed(false); setReloadKey((k) => k + 1); } }}
+              />
+            ) : (
+              <EmptyState message="this agent doesn't exist or was removed." action={{ label: "back to agents", to: "/agents" }} />
+            )}
+          </div>
+        </Window>
+      </Stage>
     );
   }
-
-  if (!agent) {
-    return (
-      <ClientLayout>
-        <Stage>
-          <Window title="agents" onClose={() => navigate("/agents")}>
-            <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>agent not found.</p>
-          </Window>
-        </Stage>
-      </ClientLayout>
-    );
-  }
-
-  const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
   return (
-    <ClientLayout>
+    <>
       <Stage width={860} height="min(720px, calc(100vh - 112px))">
         <Window title="agents" onClose={() => navigate("/agents")} style={{ height: "100%" }}>
           <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px" }}>
@@ -108,11 +115,10 @@ export default function AgentDetailPage() {
               {agent.type === "system" ? "hosted by index" : agent.status}
             </p>
             <AgentOverview agent={agent} userId={user?.id ?? ""} />
-            {isNegotiator && <NegotiationHistory userId={user?.id ?? ""} />}
           </div>
         </Window>
       </Stage>
-    </ClientLayout>
+    </>
   );
 }
 

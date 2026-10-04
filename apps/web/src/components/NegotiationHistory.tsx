@@ -5,6 +5,7 @@ import { useNegotiations, useUsers } from "@/contexts/APIContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import type { NegotiationHistoryEntry } from "@/services/users";
 import type { NegotiationOutcome, NegotiationTurn } from "@/services/negotiations";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const PAGE_SIZE = 5;
 
@@ -65,6 +66,8 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
   const { user: viewer } = useAuthContext();
   const [negotiations, setNegotiations] = useState<NegotiationHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -78,6 +81,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
+    setLoadFailed(false);
     setNegotiations([]);
     setExpandedId(null);
     fetchNegotiations(0)
@@ -87,13 +91,13 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         setHasMore(results.length === PAGE_SIZE);
       })
       .catch(() => {
-        if (!cancelled) setNegotiations([]);
+        if (!cancelled) setLoadFailed(true);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [fetchNegotiations]);
+  }, [fetchNegotiations, reloadKey]);
 
   const loadMore = async () => {
     setLoadingMore(true);
@@ -124,10 +128,24 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
 
   return (
     <div className="space-y-2">
-      {isLoading && <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>}
+      {isLoading && <EmptyState tone="loading" />}
 
-      {!isLoading && negotiations.length === 0 && (
-        <p style={{ margin: 0, padding: "28px 0", textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 12, border: "1px dashed #000" }}>no negotiations yet.</p>
+      {!isLoading && loadFailed && (
+        <EmptyState
+          tone="error"
+          framed
+          style={{ padding: "28px 16px", borderColor: "#000" }}
+          message="couldn't load negotiations."
+          action={{ label: "try again", onClick: () => setReloadKey((k) => k + 1) }}
+        />
+      )}
+
+      {!isLoading && !loadFailed && negotiations.length === 0 && (
+        <EmptyState
+          framed
+          style={{ padding: "28px 16px", borderColor: "#000" }}
+          message="nothing on the wire yet. your agent logs every negotiation here as it happens."
+        />
       )}
 
       {negotiations.map((neg) => {

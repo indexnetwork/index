@@ -79,6 +79,24 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
       url: appLink('o', String(data.opportunityId)),
     }),
   },
+  'negotiation.turn': {
+    description: 'The owner\'s negotiator owes the next turn, or the turn limit paused the negotiation. Read it with get_opportunity, then submit_negotiation_turn with your agent id and an action from protocol.availableActions. The turn message is not included.',
+    args: z.object({ intentId: intentFilter }).strict(),
+    payload: z.object({
+      opportunityId: z.string(),
+      intentId: z.string().nullable(),
+      turnIndex: z.number(),
+      summary: z.string(),
+      url: z.string(),
+    }).strict(),
+    toPayload: ({ body, data = {} }) => ({
+      opportunityId: String(data.opportunityId),
+      intentId: (data.intentId as string | null | undefined) ?? null,
+      turnIndex: Number(data.turnIndex),
+      summary: body ?? '',
+      url: appLink('o', String(data.opportunityId)),
+    }),
+  },
   'question.pending': {
     description: 'The owner\'s Index agent stopped on a question only the owner can answer. Relay it to the owner and link them to the signal.',
     args: z.object({ intentId: intentFilter }).strict(),

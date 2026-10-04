@@ -5,7 +5,6 @@ import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import UserAvatar from "@/components/UserAvatar";
 import { validateFiles } from "@/lib/file-validation";
-import ClientLayout from "@/components/ClientLayout";
 import { ConfirmWindow, RuleLabel, Segmented, Stage, Window } from "@/components/workbench/Workbench";
 import ApiKeysSection from "@/components/settings/ApiKeysSection";
 import DevicesSection from "@/components/settings/DevicesSection";
@@ -155,15 +154,15 @@ export default function ProfilePage() {
 
   if (authLoading) {
     return (
-      <ClientLayout>
+      <>
         <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-      </ClientLayout>
+      </>
     );
   }
 
 
   return (
-      <ClientLayout>
+      <>
         <Stage width={860} height="min(660px, calc(100vh - 112px))">
         <Window title="settings" onClose={() => navigate("/")} style={{ height: "100%" }}>
         <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px 22px" }}>
@@ -359,7 +358,7 @@ export default function ProfilePage() {
           <input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={user?.email || "you@example.com"} style={{ width: "100%", border: "1px solid #000", padding: "8px 10px" }} />
         </ConfirmWindow>
       )}
-      </ClientLayout>
+      </>
   );
 }
 
@@ -432,7 +431,7 @@ function AdvancedPane({ signOut }: { signOut: () => Promise<void> }) {
       <RuleLabel>protocol server</RuleLabel>
       <p style={{ margin: "12px 0", maxWidth: 520, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>
         requests go to <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>{active}</span>.
-        switching signs you out — a session belongs to the server it was made on.
+        switching signs you out. a session belongs to the server it was made on.
       </p>
       <Segmented
         value={choice}

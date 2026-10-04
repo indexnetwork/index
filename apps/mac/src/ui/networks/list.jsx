@@ -1,4 +1,4 @@
-function Networks({ onClose, onOpenSignal }) {
+function Networks({ onClose, onOpenSignal, onNewSignal, initialCreate = false }) {
   // Live-only: the mirror holds the signed-in user's networks (set by
   // applyLoaded). Ensure it is an array so the local unshift below still
   // persists a just-created network to the other screens.
@@ -26,7 +26,12 @@ function Networks({ onClose, onOpenSignal }) {
   const [nets, setNets] = useState(NETWORKS);
   const [discoverNets, setDiscoverNets] = useState([]);
   const [discoverLoading, setDiscoverLoading] = useState(false);
-  const [discoverError, setDiscoverError] = useState(null);
+  const [discoverError, setDiscoverError] = useState(false);
+  const [joinError, setJoinError] = useState("");
+  // "loading" until the first fetch answers, "error" if it failed with nothing
+  // to show, "ready" otherwise. A mirror that already holds rows starts ready.
+  const [mineState, setMineState] = useState(() => (NETWORKS.length || !live ? "ready" : "loading"));
+  const pendingCreate = useRef(initialCreate);
   const [joiningId, setJoiningId] = useState(null);
 
   const loadRequests = () => {
@@ -35,8 +40,16 @@ function Networks({ onClose, onOpenSignal }) {
       .then((r) => {
         setMyRequests((r && r.requests) || []);
         setCanReview(!!(r && r.canReview));
+        // Arrived from "create a network" elsewhere: open the right form once
+        // we know whether this account creates directly or requests.
+        if (pendingCreate.current) {
+          pendingCreate.current = false;
+          if (r && r.canReview) setCreating(true); else setRequesting(true);
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (pendingCreate.current) { pendingCreate.current = false; setRequesting(true); }
+      });
   };
 
   // One-shot on mount: `client` is rebuilt each render, so depending on it would
@@ -45,7 +58,7 @@ function Networks({ onClose, onOpenSignal }) {
 
   // Boot snapshot no longer embeds networks; fetch on open so the list is not
   // stuck on the empty array seeded at first paint.
-  useEffect(() => {
+  const loadMine = () => {
     if (!live || !window.IndexApp) return;
     const load = window.IndexApp.loadNetworks
       ? () => window.IndexApp.loadNetworks()
@@ -63,12 +76,19 @@ function Networks({ onClose, onOpenSignal }) {
         };
     load()
       .then((net) => {
+        if (net && net.failed) throw new Error("networks list failed");
+        setMineState("ready");
         if (!net || !Array.isArray(net.networks)) return;
         window.INDEX_DATA.NETWORKS = net.networks;
         setNets([...net.networks]);
       })
-      .catch(() => {});
-  }, [live]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch((err) => {
+        console.warn("[networks] load failed", err);
+        // Rows already in the mirror stay; only an empty list becomes an error.
+        setMineState(window.INDEX_DATA.NETWORKS.length ? "ready" : "error");
+      });
+  };
+  useEffect(() => { loadMine(); }, [live]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPublicNetworks = () => {
     if (!client) {
@@ -76,16 +96,18 @@ function Networks({ onClose, onOpenSignal }) {
       return;
     }
     setDiscoverLoading(true);
-    setDiscoverError(null);
+    setDiscoverError(false);
+    setJoinError("");
     client.networks.discoverPublic(1, 50)
       .then((res) => {
         const raw = window.IndexApp.normalizeList(res, "networks");
         const mapped = window.IndexApp.mapDiscoverNetworks(raw);
         setDiscoverNets(mapped);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn("[networks] discover failed", err);
         setDiscoverNets([]);
-        setDiscoverError("Failed to load public networks. Please try again later.");
+        setDiscoverError(true);
       })
       .finally(() => { setDiscoverLoading(false); });
   };
@@ -216,7 +238,7 @@ function Networks({ onClose, onOpenSignal }) {
   const joinNetwork = (net) => {
     if (!net || !net.id) return;
     setJoiningId(net.id);
-    setDiscoverError(null);
+    setJoinError("");
     const joined = { ...net, joined: true, role: "member" };
     setDiscoverNets(prev => prev.filter(n => n.id !== net.id));
     NETWORKS.unshift(joined);
@@ -228,7 +250,7 @@ function Networks({ onClose, onOpenSignal }) {
     client.networks.join(net.id)
       .then(() => { loadPublicNetworks(); })
       .catch(() => {
-        setDiscoverError("Failed to join that network.");
+        setJoinError("couldn't join that network. try again.");
         const i = NETWORKS.findIndex(n => n.id === net.id);
         if (i >= 0) NETWORKS.splice(i, 1);
         setNets([...NETWORKS]);
@@ -263,6 +285,7 @@ function Networks({ onClose, onOpenSignal }) {
         onUpdated={updateOpenNet}
         onDeleted={deleteNetwork}
         onOpenSignal={onOpenSignal}
+        onNewSignal={onNewSignal}
       />
     );
   }
@@ -340,25 +363,29 @@ function Networks({ onClose, onOpenSignal }) {
                 joining={joiningId === net.id}/>
             ))}
 
-            {tab === "discover" && discoverLoading && (
-              <p style={{
-                margin:"18px 12px",
-                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-              }}>loading public networks…</p>
+            {tab === "discover" && joinError && (
+              <p role="alert" style={{
+                margin:"12px 12px 0",
+                fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-warn)",
+              }}>{joinError}</p>
             )}
 
-            {tab === "discover" && !discoverLoading && discoverError && (
-              <p style={{
-                margin:"18px 12px",
-                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--mac-red, #c00)",
-              }}>{discoverError}</p>
-            )}
-
-            {!shown.length && !(tab === "mine" && myRequests.length) && !(tab === "discover" && discoverLoading) && !(tab === "discover" && discoverError) && (
-              <p style={{
-                margin:"18px 12px",
-                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-              }}>{tab === "discover" ? "No public networks to discover right now." : "nothing here yet."}</p>
+            {!shown.length && !(tab === "mine" && myRequests.length) && (
+              <div style={{ margin:"12px" }}>
+                {tab === "discover" ? (
+                  discoverLoading ? <EmptyState tone="loading" message="loading public networks…"/>
+                  : discoverError ? <EmptyState tone="error" message="couldn't load public networks." onRetry={loadPublicNetworks}/>
+                  : <EmptyState message="no public networks to discover right now."/>
+                ) : (
+                  mineState === "loading" ? <EmptyState tone="loading" message="loading networks…"/>
+                  : mineState === "error" ? <EmptyState tone="error" message="couldn't load your networks."
+                      onRetry={() => { setMineState("loading"); loadMine(); }}/>
+                  : <EmptyState message="you're not in any networks yet." action={[
+                      { label:"create a network", onClick:startCreate, primary:true },
+                      { label:"discover networks", onClick:() => handleTabChange("discover") },
+                    ]}/>
+                )}
+              </div>
             )}
           </div>
         </MacWindow>
@@ -371,7 +398,7 @@ function Networks({ onClose, onOpenSignal }) {
 /* ---------- invite: every link you can hand out, in one place ---------- */
 // Owners see all of their networks, members only the public ones, because a
 // private network is the owner's to open up. Both come from networkShareUrl.
-function InviteNetworks({ networks, onClose }) {
+function InviteNetworks({ networks, onClose, onCreate }) {
   const [copiedId, setCopiedId] = useState(null);
   const invitable = (networks || [])
     .filter(n => n.joined !== false)
@@ -403,7 +430,7 @@ function InviteNetworks({ networks, onClose }) {
             <p style={{
               margin:"6px 0 0",
               fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-            }}>Share a link to any network you can invite people to.</p>
+            }}>share a link to any network you can invite people to.</p>
           </div>
 
           <div className="mac-scroll" style={{ flex:"1 1 auto", minHeight:0, overflowY:"auto", padding:"6px 12px 14px" }}>
@@ -443,10 +470,10 @@ function InviteNetworks({ networks, onClose }) {
             ))}
 
             {!invitable.length && (
-              <p style={{
-                margin:"18px 12px",
-                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-              }}>No networks to invite people to yet.</p>
+              <EmptyState
+                message="you're not in any networks yet. create one to invite people."
+                action={onCreate ? { label:"create a network", onClick:onCreate, primary:true } : null}
+                style={{ margin:12 }}/>
             )}
           </div>
         </MacWindow>

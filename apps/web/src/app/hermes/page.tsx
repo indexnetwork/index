@@ -99,7 +99,7 @@ function HermesPage() {
         <Backdrop className="hermes-backdrop--shot">
           <img
             className="hermes-shot"
-            src="/site/hermes-signal.png"
+            src="/site/hermes-discover.png"
             alt="Index plugin inside Hermes: a signal, questions from other agents, and the radar of people surfaced"
           />
         </Backdrop>

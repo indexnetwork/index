@@ -130,6 +130,7 @@ export async function briefIfMissing(input: BriefInput): Promise<WakeAction[]> {
         opportunity,
       }),
     tools,
+    requireTool: true,
   });
 
   return recorded;

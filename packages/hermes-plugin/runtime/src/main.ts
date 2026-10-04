@@ -22,8 +22,8 @@ function required(name: string): string {
 class HermesModel implements Model {
   constructor(private readonly bridge: Bridge) {}
 
-  async complete(messages: ModelMessage[], tools: ToolDefinition[] = [], signal?: AbortSignal): Promise<ModelMessage> {
-    const body = JSON.stringify({ messages, tools });
+  async complete(messages: ModelMessage[], tools: ToolDefinition[] = [], signal?: AbortSignal, toolChoice?: "required"): Promise<ModelMessage> {
+    const body = JSON.stringify({ messages, tools, ...(toolChoice ? { tool_choice: toolChoice } : {}) });
     let last: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {

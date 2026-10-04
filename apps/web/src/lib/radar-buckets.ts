@@ -12,10 +12,10 @@ export const RADAR_STAGES: Array<Exclude<RadarBucket, "all">> = [
 export const DEFAULT_RADAR_BUCKET: RadarBucket = "all";
 
 const EMPTY_RADAR: Record<Exclude<RadarBucket, "all">, string> = {
-  "awaiting you": "nothing waiting on you. answer their questions in the feed first.",
+  "awaiting you": "nothing waiting on you right now.",
   negotiating: "no negotiations open. your agent starts one when it finds an overlap.",
-  accepted: "no one accepted yet. accept someone from the awaiting-you list.",
-  missed: "nothing missed. these are people the moment passed on.",
+  accepted: "no one accepted yet.",
+  missed: "nothing missed.",
 };
 
 /** Assign an opportunity to a desktop radar stage. Rejected people stay off the radar. */

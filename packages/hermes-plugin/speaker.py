@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,9 @@ PROJECT_NAME = "Negotiations"
 PROJECT_FOLDER = "negotiations"
 # How many transcript rows of the current run are already in this Hermes session.
 _written: dict[str, tuple[str, int]] = {}
+_main = None
+_main_key = None
+_main_lock = threading.Lock()
 
 
 def _message(message) -> dict:
@@ -154,13 +158,46 @@ def _record(messages: list, assistant: dict) -> None:
     _written[chat_id] = (user, len(messages) + 1)
 
 
+def _main_agent():
+    """The gateway's own model client, built once for this process.
+
+    @returns An agent whose client is the main chat client.
+    @throws RuntimeError when Hermes has no model or client.
+    """
+    global _main, _main_key
+    from run_agent import AIAgent
+    from gateway.run import _resolve_gateway_model, _resolve_runtime_agent_kwargs
+
+    runtime = _resolve_runtime_agent_kwargs()
+    runtime.pop("_fallback_notice", None)
+    model = runtime.pop("model", None) or _resolve_gateway_model()
+    if not model:
+        raise RuntimeError("Hermes has no gateway model configured.")
+    key = (model, runtime.get("provider"), runtime.get("base_url"), runtime.get("api_mode"))
+    with _main_lock:
+        if _main is not None and _main_key == key and getattr(_main, "client", None) is not None:
+            return _main
+        agent = AIAgent(
+            model=model,
+            quiet_mode=True,
+            max_iterations=1,
+            skip_context_files=True,
+            skip_memory=True,
+            load_soul_identity=False,
+            enabled_toolsets=[],
+            **runtime,
+        )
+        if getattr(agent, "client", None) is None:
+            raise RuntimeError("Hermes has no model client configured.")
+        _main, _main_key = agent, key
+        return agent
+
+
 def complete(payload: dict) -> dict:
-    """@param payload - `messages` and `tools` for one step.
+    """@param payload - `messages`, `tools`, and optional `tool_choice` for one step.
     @returns The assistant message. @throws When Hermes has no model or the call fails.
     """
-    from agent.auxiliary_client import call_llm
     from agent.secret_scope import build_profile_secret_scope, reset_secret_scope, set_secret_scope
-    from gateway.run import _resolve_gateway_model, _resolve_runtime_agent_kwargs
     from hermes_constants import get_hermes_home
 
     # The multiplexed gateway reads credentials only inside a profile scope;
@@ -168,20 +205,14 @@ def complete(payload: dict) -> dict:
     home = get_hermes_home()
     secret_token = set_secret_scope(build_profile_secret_scope(home), profile_home=str(home))
     try:
-        runtime = _resolve_runtime_agent_kwargs()
-        model = _resolve_gateway_model()
-        if not model:
-            raise RuntimeError("Hermes has no gateway model configured.")
+        agent = _main_agent()
+        kwargs = {"model": agent.model, "messages": payload.get("messages") or []}
         tools = payload.get("tools") or None
-        response = call_llm(
-            messages=payload.get("messages") or [],
-            tools=tools,
-            model=model,
-            provider=runtime.get("provider") or None,
-            base_url=runtime.get("base_url") or None,
-            api_key=runtime.get("api_key") or None,
-            api_mode=runtime.get("api_mode") or None,
-        )
+        if tools:
+            kwargs["tools"] = tools
+            if payload.get("tool_choice"):
+                kwargs["tool_choice"] = payload["tool_choice"]
+        response = agent.client.chat.completions.create(**kwargs)
         choices = getattr(response, "choices", None) or []
         if not choices:
             raise RuntimeError("Hermes returned no completion.")

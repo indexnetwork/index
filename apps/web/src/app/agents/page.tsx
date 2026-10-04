@@ -1,29 +1,16 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
-import ClientLayout from '@/components/ClientLayout';
-import UserAvatar from '@/components/UserAvatar';
-import { AgentFace } from '@/components/workbench/agent-face';
+import { MyAgentAvatar } from '@/components/workbench/agent-avatar';
 import { Stage, Window } from '@/components/workbench/Workbench';
 import { useAgents } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import type { Agent } from '@/services/agents';
+import { EmptyState } from "@/components/ui/EmptyState";
+import { log } from "@/lib/logger";
 
-function NegotiatorPicture({ id, name, photo }: { id?: string; name?: string; photo?: string | null }) {
-  const size = 48;
-  const badge = Math.max(8, Math.round(size * 0.44));
-  const ring = Math.max(1, Math.round(size * 0.055 * 10) / 10);
-  const seed = id || name || "index";
-  return (
-    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
-      <UserAvatar id={id} name={name} avatar={photo} size={size} />
-      <span style={{ position: "absolute", right: 0, bottom: 0, display: "block", lineHeight: 0, boxShadow: `0 0 0 ${ring}px #fff` }}>
-        <AgentFace seed={seed} size={badge} />
-      </span>
-    </div>
-  );
-}
+const logger = log.page.from("agents");
 
 function NegotiatorBadge() {
   return (
@@ -199,6 +186,8 @@ export default function AgentsPage() {
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -220,17 +209,19 @@ export default function AgentsPage() {
       .then((result) => {
         if (!cancelled) {
           setAgents(result);
+          setLoadFailed(false);
           setLoading(false);
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          error('Failed to load agents', err instanceof Error ? err.message : undefined);
+          logger.error('Failed to load agents', { error: err });
+          setLoadFailed(true);
           setLoading(false);
         }
       });
     return () => { cancelled = true; };
-  }, [agentsService, error, isAuthenticated]);
+  }, [agentsService, isAuthenticated, reloadKey]);
 
   const personalAgents = useMemo(
     () => agents.filter((agent) => agent.type === 'external'),
@@ -312,21 +303,26 @@ export default function AgentsPage() {
 
   if (authLoading || !isAuthenticated) {
     return (
-      <ClientLayout>
-        <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-      </ClientLayout>
+      <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
     );
   }
 
   const kind = selectedNegotiator ? "registered manually" : "hosted by index";
 
   return (
-    <ClientLayout>
+    <>
       <Stage width={860} height="min(880px, calc(100vh - 96px))">
       <Window title="agents" onClose={() => navigate('/')} style={{ height: '100%' }}>
       <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: '18px 24px 22px' }}>
           {loading ? (
-            <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
+            <EmptyState tone="loading" style={{ padding: 28 }} />
+          ) : loadFailed ? (
+            <EmptyState
+              tone="error"
+              style={{ padding: 28 }}
+              message="couldn't load your agents."
+              action={{ label: "try again", onClick: () => { setLoading(true); setReloadKey((k) => k + 1); } }}
+            />
           ) : (
             <>
               <BandHead label="your negotiator" first />
@@ -335,7 +331,7 @@ export default function AgentsPage() {
               </p>
               <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 14px", borderBottom: picking ? "1px solid #000" : "none" }}>
-                  <NegotiatorPicture id={user?.id} name={user?.name} photo={user?.avatar} />
+                  <MyAgentAvatar size={48} />
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontFamily: "var(--mac-mono)", fontSize: 16, fontWeight: 700 }}>{selectedNegotiator?.name || "Index"}</div>
                     <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{kind}</div>
@@ -408,12 +404,20 @@ export default function AgentsPage() {
                   );
                 })}
               </div>
+              {personalAgents.length === 0 && !registerOpen && (
+                <EmptyState
+                  align="start"
+                  style={{ padding: "12px 0 0" }}
+                  message="no agents of your own yet. connect one with the index CLI or MCP, or register it by hand."
+                  action={{ label: "register manually", onClick: () => setRegisterOpen(true) }}
+                />
+              )}
             </>
           )}
         </div>
       </Window>
       </Stage>
-    </ClientLayout>
+    </>
   );
 }
 

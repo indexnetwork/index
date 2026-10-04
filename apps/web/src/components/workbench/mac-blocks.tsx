@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from "react";
 
 import UserAvatar from "@/components/UserAvatar";
-import { useAuthContext } from "@/contexts/AuthContext";
-import { AgentFace } from "@/components/workbench/agent-face";
+import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import type { NegotiationSummary, NegotiationTurn } from "@/services/negotiations";
 
 /* Copied from apps/mac/src/ui. Data bindings are the only web-side change. */
@@ -377,21 +376,15 @@ export function PipelineFunnel({ stages, activeStage, onClickStage }: {
   );
 }
 
-export function AgentMark({ size = 30 }: { size?: number }) {
-  const glyph = Math.round(size * 0.64);
+/** The radar while the agent is still out looking: the same eye and line as the Mac app. */
+export function DiscoveryLoader() {
   return (
-    <span style={{ width: size, height: size, flex: "0 0 auto", border: "1px solid #000", display: "grid", placeItems: "center", background: "#fff", marginTop: 2 }}>
-      <svg width={glyph} height={glyph} viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth={2} strokeLinecap="square" strokeLinejoin="miter">
-        <line x1="12" y1="3" x2="12" y2="6" />
-        <circle cx="12" cy="2.5" r="1" fill="#000" stroke="none" />
-        <rect x="4" y="6" width="16" height="12" rx="1.5" />
-        <line x1="2" y1="11" x2="4" y2="11" />
-        <line x1="20" y1="11" x2="22" y2="11" />
-        <rect x="8.5" y="10" width="2" height="2.5" fill="#000" stroke="none" />
-        <rect x="13.5" y="10" width="2" height="2.5" fill="#000" stroke="none" />
-        <line x1="9" y1="15" x2="15" y2="15" />
-      </svg>
-    </span>
+    <div style={{ padding: "16px 30px 30px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <img src="/loading-eye.gif" alt="searching" style={{ width: 180, height: 180, objectFit: "cover", flexShrink: 0, display: "block", mixBlendMode: "multiply" }} />
+      <div style={{ fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, letterSpacing: "0.04em", color: "#111", margin: 0 }}>
+        hold on, looking for your people
+      </div>
+    </div>
   );
 }
 
@@ -403,24 +396,10 @@ function AgentLabel() {
   );
 }
 
-export function AgentPortrait({ id, name, photo, size = 30 }: { id?: string; name?: string; photo?: string | null; size?: number }) {
-  const badge = Math.max(8, Math.round(size * 0.44));
-  const ring = Math.max(1, Math.round(size * 0.055 * 10) / 10);
-  return (
-    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto", marginTop: 2 }}>
-      <UserAvatar id={id} name={name} avatar={photo} size={size} />
-      <span style={{ position: "absolute", right: 0, bottom: 0, display: "block", lineHeight: 0, boxShadow: `0 0 0 ${ring}px #fff` }}>
-        <AgentFace seed={id || name || "index"} size={badge} />
-      </span>
-    </div>
-  );
-}
-
 export function AgentFeedNote({ children }: { children: ReactNode }) {
-  const { user } = useAuthContext();
   return (
     <div style={{ display: "flex", gap: 12 }}>
-      <AgentPortrait id={user?.id} name={user?.name} photo={user?.avatar} />
+      <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <AgentLabel />
         <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.55, color: "#2a2a2a" }}>{children}</div>
@@ -466,7 +445,7 @@ export function DiscoveryTrace({
   const lines = loading.length && !loading.some((line) => line.startsWith("Warming up")) ? ["Warming up.", ...loading] : loading;
   return (
     <section style={{ display: "flex", gap: 12 }}>
-      <AgentMark />
+      <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <AgentLabel />
         {lines.map((line) => (
@@ -491,7 +470,7 @@ export function DiscoveryTrace({
                   {queries.map((query) => (
                     <div key={query} style={{ display: "grid", gridTemplateColumns: "14px 1fr", gap: 9, alignItems: "baseline", color: "#5A5548", fontSize: 14, lineHeight: 1.55, fontFamily: "var(--mac-sans)" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /></svg>
-                      <span>Looking for <span style={{ fontFamily: "var(--mac-mono)", fontSize: 14, color: "#8A8578" }}>{query}</span></span>
+                      <span>Looking for <span style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "#8A8578" }}>{query}</span></span>
                     </div>
                   ))}
                 </div>

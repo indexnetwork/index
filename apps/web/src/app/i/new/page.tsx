@@ -3,9 +3,11 @@ import { Navigate, useNavigate } from "react-router";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import { RecoveryForm } from "@/app/i/new/RecoveryForm";
-import { AgentPortrait, CALIBRATING_LINES, OptionChip } from "@/components/workbench/mac-blocks";
+import { CALIBRATING_LINES, OptionChip } from "@/components/workbench/mac-blocks";
+import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Btn, Window } from "@/components/workbench/Workbench";
 import { signalService, type PrepareAnswer, type RecoveryField } from "@/services/signals";
+import { APIError } from "@/lib/api";
 
 const OPENING_PROMPT = "what are you looking for right now?";
 const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
@@ -25,7 +27,7 @@ type Turn = { id: string; prompt: string; answer: string };
 /** Prepare the draft, asking follow-ups until it's ready, then create it. */
 export default function NewSignalPage() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuthContext();
+  const { isAuthenticated } = useAuthContext();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [stage, setStage] = useState<Stage>("opening");
   const [payload, setPayload] = useState("");
@@ -75,7 +77,7 @@ export default function NewSignalPage() {
       navigate(`/i/${created.intentId}`);
     } catch (error) {
       setPreparationReceipt("");
-      setFeedback(`that didn't go through — ${error instanceof Error ? error.message : "try again."}`);
+      setFeedback(`that didn't go through. ${createFailureReason(error)}`);
       setStage("summary");
       setCreating(false);
     }
@@ -114,18 +116,18 @@ export default function NewSignalPage() {
                 </div>
                 <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20, marginRight: -28, paddingRight: 28, paddingBottom: 18 }}>
                   {turns.map((turn) => (
-                    <PastTurn key={turn.id} user={user} prompt={turn.prompt} answer={turn.answer} />
+                    <PastTurn key={turn.id} prompt={turn.prompt} answer={turn.answer} />
                   ))}
                   {thinking ? (
-                    <div className="fade-up"><AgentLine user={user}><WorkingDots /></AgentLine></div>
+                    <div className="fade-up"><AgentLine><WorkingDots /></AgentLine></div>
                   ) : stage === "retry" ? (
                     <div className="fade-up" style={{ display: "grid", gap: 12 }}>
-                      <AgentLine user={user}>couldn&apos;t reach your agent.</AgentLine>
+                      <AgentLine>couldn&apos;t reach your agent.</AgentLine>
                       <div style={{ marginLeft: 36 }}><Btn primary onClick={() => void runPrepare(payload)}>try again</Btn></div>
                     </div>
                   ) : stage === "summary" ? (
                     <div className="fade-up" style={{ display: "grid", gap: 12 }}>
-                      <AgentLine user={user}>Here&apos;s your signal.</AgentLine>
+                      <AgentLine>Here&apos;s your signal.</AgentLine>
                       <SignalSummary
                         description={payload}
                         note={preparationReceipt ? "" : feedback}
@@ -138,7 +140,7 @@ export default function NewSignalPage() {
                   ) : stage === "recovery" ? (
                     <RecoveryForm fields={recoveryFields} feedback={feedback} onSubmit={(answers) => runPrepare(payload, answers)} />
                   ) : (
-                    <Opening user={user} onSubmit={submitOpening} />
+                    <Opening onSubmit={submitOpening} />
                   )}
                 </div>
               </div>
@@ -153,14 +155,13 @@ export default function NewSignalPage() {
   );
 }
 
-function Opening({ user, onSubmit }: {
-  user: { id?: string; name?: string; avatar?: string | null } | null;
+function Opening({ onSubmit }: {
   onSubmit: (text: string) => void;
 }) {
   const [draft, setDraft] = useState("");
   return (
     <div className="fade-up" style={{ display: "grid", gap: 10 }}>
-      <AgentLine user={user}>{OPENING_PROMPT}</AgentLine>
+      <AgentLine>{OPENING_PROMPT}</AgentLine>
       <div style={{ marginLeft: 42, display: "grid", gap: 10 }}>
         <form onSubmit={(e) => { e.preventDefault(); onSubmit(draft); }} style={{ maxWidth: 620, border: "1px solid #000", background: "#fff", display: "flex", flexDirection: "column" }}>
           <textarea
@@ -186,14 +187,13 @@ function Opening({ user, onSubmit }: {
   );
 }
 
-function AgentLine({ user, children, muted = false }: {
-  user: { id?: string; name?: string; avatar?: string | null } | null;
+function AgentLine({ children, muted = false }: {
   children: React.ReactNode;
   muted?: boolean;
 }) {
   return (
     <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-      <AgentPortrait id={user?.id} name={user?.name} photo={user?.avatar} size={30} />
+      <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ marginBottom: 6, color: "#8f8f88", fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>your agent</div>
         <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: muted ? 400 : 700, lineHeight: 1.55, color: muted ? "#2a2a2a" : "#111" }}>{children}</div>
@@ -212,14 +212,13 @@ function WorkingDots() {
   );
 }
 
-function PastTurn({ user, prompt, answer }: {
-  user: { id?: string; name?: string; avatar?: string | null } | null;
+function PastTurn({ prompt, answer }: {
   prompt: string;
   answer: string;
 }) {
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      <AgentLine user={user} muted>{prompt}</AgentLine>
+      <AgentLine muted>{prompt}</AgentLine>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <div style={{ maxWidth: "92%", padding: "11px 14px", background: "#2a2a2a", color: "#fff", borderRadius: "4px 4px 2px 4px", fontFamily: "var(--mac-sans)", fontSize: 14, lineHeight: 1.5, wordBreak: "break-word" }}>{answer}</div>
       </div>
@@ -306,7 +305,7 @@ function FieldGlyph() {
 function Calibrating() {
   return (
     <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
-      <Window title="calibrating" style={{ width: 420 }}>
+      <Window title="calibrating" style={{ width: 420, height: "auto" }}>
         <div style={{ padding: "26px 28px 24px", textAlign: "center" }}>
           <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginBottom: 18 }}>
             <span className="wb-live" style={{ width: 9, height: 9 }} />
@@ -332,3 +331,10 @@ function Calibrating() {
 }
 
 export const Component = NewSignalPage;
+
+/** A server reason worth showing ("Signal limit reached."), or "try again." for transport noise. */
+function createFailureReason(error: unknown): string {
+  const raw = error instanceof APIError && error.status > 0 && error.status < 500 ? error.message.trim() : "";
+  if (!raw || /^HTTP \d/.test(raw)) return "try again.";
+  return /[.!?]$/.test(raw) ? raw : `${raw}.`;
+}

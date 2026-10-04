@@ -498,7 +498,7 @@ function NetworkRow({ net, onOpen, onJoin, joining }) {
       <QCount
         n={net.pendingJoinCount}
         muted={!net.pendingJoinCount}
-        title={`${net.pendingJoinCount} waiting on you — people asking to join`}
+        title={`${net.pendingJoinCount} waiting on you: people asking to join`}
       />
 
       {net.joined

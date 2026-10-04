@@ -58,9 +58,9 @@ export function SiteNav() {
         <Link className="site-nav-link" to="/">home</Link>
         <Link className="site-nav-link" to="/hermes">hermes</Link>
         <Link className="site-nav-link" to="/blog">blog</Link>
-        <a className="site-nav-link" href={DOCS_URL}>docs</a>
+        <a className="site-nav-link" href={DOCS_URL} target="_blank" rel="noreferrer">docs</a>
         <Link className="site-nav-link" to="/about">about</Link>
-        <Link className="site-btn" to={EARLY_ACCESS_PATH}>Get early access</Link>
+        <Link className="site-btn" to={EARLY_ACCESS_PATH}>Request your invite</Link>
       </div>
     </nav>
   );
@@ -74,9 +74,6 @@ export function SiteFooter({ className = "site-footer" }: { className?: string }
       <a href={X_URL} target="_blank" rel="noreferrer">X</a>
       <Link to="/pages/privacy-policy">Privacy</Link>
       <Link to="/pages/terms-of-use">Terms</Link>
-      <span className="site-footer-copy">
-        © {new Date().getFullYear()}<span className="site-blink">▮</span>
-      </span>
     </footer>
   );
 }

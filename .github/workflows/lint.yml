@@ -111,7 +111,7 @@ jobs:
           bun run --cwd packages/hermes-plugin typecheck:runtime
           bun run --cwd packages/hermes-plugin build:runtime
           bun run --cwd packages/hermes-plugin build:desktop
-          git diff --exit-code -- packages/hermes-plugin/runtime/dist/negotiator.js packages/hermes-plugin/desktop/dist/plugin.js
+          git diff --exit-code -- packages/hermes-plugin/runtime/dist/negotiator.js packages/hermes-plugin/desktop/plugin.js
 
   protocol-architecture:
     # Keep the architectural dependency checks visible as separate CI checks so

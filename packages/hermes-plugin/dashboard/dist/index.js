@@ -624,8 +624,8 @@
     return React.createElement("span", { key: key, className: "index-dashboard__tip", "data-tip": label }, child);
   }
 
-  // React twin of the DOM controls injected into the web dashboard's banner
-  // header — rendered inline when no such header exists (desktop host).
+  // Desktop renders this header inside the page. The web dashboard uses the
+  // header-right slot instead of the host banner.
   function headerIcon(paths) {
     return React.createElement("svg", {
       xmlns: "http://www.w3.org/2000/svg", width: 20, height: 20, viewBox: "0 0 24 24",
@@ -900,9 +900,9 @@
     return params;
   }
 
-  // HashRouter commits with history.pushState / replaceState. Those do not
-  // fire hashchange, so a deep link onto an already-open Discover page never
-  // reached the view. One watch turns every URL write into one event.
+  // hashchange and popstate retarget an open Discover page. This plugin does
+  // not wrap history.pushState or replaceState. Our own navigations dispatch
+  // LOCATION_EVENT.
   const LOCATION_EVENT = "index-network-location";
   if (!window.__indexNetworkLocationWatch) {
     window.__indexNetworkLocationWatch = true;
@@ -911,25 +911,23 @@
     };
     window.addEventListener("hashchange", emitLocation);
     window.addEventListener("popstate", emitLocation);
-    const pushState = history.pushState;
-    const replaceState = history.replaceState;
-    history.pushState = function () {
-      const before = window.location.href;
-      const result = pushState.apply(this, arguments);
-      if (window.location.href !== before) emitLocation();
-      return result;
-    };
-    history.replaceState = function () {
-      const before = window.location.href;
-      const result = replaceState.apply(this, arguments);
-      if (window.location.href !== before) emitLocation();
-      return result;
-    };
   }
 
   function onLocation(handler) {
     window.addEventListener(LOCATION_EVENT, handler);
     return function () { window.removeEventListener(LOCATION_EVENT, handler); };
+  }
+
+  function openIndexQuery(kind) {
+    const path = (window.location.pathname || "").split("?")[0];
+    const onPage = path === PAGE_PATH || path.indexOf(PAGE_PATH + "/") === 0;
+    if (onPage) {
+      window.dispatchEvent(new Event(kind === "chat" ? "index-network-open-messages" : "index-network-toggle-profile"));
+      return;
+    }
+    const target = PAGE_PATH + "?" + (kind === "chat" ? "chat" : "profile=1");
+    window.history.pushState(null, "", target);
+    window.dispatchEvent(new PopStateEvent("popstate"));
   }
 
   function parseView() {
@@ -1020,8 +1018,38 @@
     writeView(view, true);
   }
 
+  /**
+   * The one empty / loading / error block. `tone` is "empty" (default),
+   * "loading" or "error"; `action` is one {label, onClick} or a list of them,
+   * drawn as buttons inside the block. `message` (or children) is the copy.
+   */
   function EmptyState(props) {
-    return React.createElement("div", { className: "index-dashboard__empty" }, props.children || "Nothing to show yet.");
+    const tone = props.tone === "error" || props.tone === "loading" ? props.tone : "empty";
+    const list = Array.isArray(props.action) ? props.action : (props.action ? [props.action] : []);
+    const actions = list.filter(function (a) { return a && a.label && typeof a.onClick === "function"; });
+    const message = props.message || props.children
+      || (tone === "loading" ? "loading…" : tone === "error" ? "couldn't load this." : "nothing to show yet.");
+    return React.createElement("div", {
+      className: "index-dashboard__empty" + (tone === "empty" ? "" : " index-dashboard__empty--" + tone)
+        + (props.className ? " " + props.className : ""),
+      role: tone === "error" ? "alert" : (tone === "loading" ? "status" : undefined),
+    },
+      React.createElement("p", { className: "index-dashboard__empty-text" }, message),
+      actions.length
+        ? React.createElement("div", { className: "index-dashboard__empty-actions" },
+          actions.map(function (a) {
+            return React.createElement(Button, {
+              key: a.label,
+              type: "button",
+              outlined: true,
+              size: "sm",
+              className: "index-dashboard__empty-btn",
+              disabled: !!a.disabled,
+              onClick: a.onClick,
+            }, a.label);
+          }))
+        : null,
+    );
   }
 
   function Panel(props) {
@@ -1379,10 +1407,10 @@
   function RadarList(props) {
     const items = Array.isArray(props.items) ? props.items : [];
     if (props.error) {
-      return React.createElement("div", { className: "index-dashboard__error" }, props.error);
+      return React.createElement(EmptyState, { tone: "error", message: props.error, action: props.onRetry ? { label: "try again", onClick: props.onRetry } : null });
     }
     if (items.length === 0) {
-      return React.createElement(EmptyState, null, props.empty || "No matches surfaced yet.");
+      return React.createElement(EmptyState, { message: props.empty || "no matches yet." });
     }
     return React.createElement("div", { className: "index-dashboard__opps" },
       items.map(function (opportunity, index) {
@@ -1412,7 +1440,7 @@
     return React.createElement("button", { type: "button", className: className, onClick: function () { props.onSelect(intent.id); } },
       React.createElement("span", { className: "index-dashboard__intent-dot", "aria-hidden": "true" }),
       React.createElement("div", { className: "index-dashboard__intent-main" },
-        React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
+        React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled signal"),
         // What is waiting rides the count tag; the meta line only says paused.
         intent.status === "paused"
           ? React.createElement("div", { className: "index-dashboard__intent-meta" },
@@ -1426,7 +1454,6 @@
           "aria-label": matches === 1 ? "1 waiting on you" : matches + " waiting on you",
         }, String(matches))
         : null,
-      React.createElement("span", { className: "index-dashboard__intent-chevron", "aria-hidden": "true" }, "\u203A"),
     );
   }
 
@@ -1648,6 +1675,18 @@
     const membersLoadingState = React.useState(false);
     const membersLoading = membersLoadingState[0];
     const setMembersLoading = membersLoadingState[1];
+    // A failed read is its own state, never an empty list.
+    const signalsErrorState = React.useState(false);
+    const signalsError = signalsErrorState[0];
+    const setSignalsError = signalsErrorState[1];
+    const membersErrorState = React.useState(false);
+    const membersError = membersErrorState[0];
+    const setMembersError = membersErrorState[1];
+    // Bumped by "try again" to re-run a read.
+    const reloadState = React.useState(0);
+    const reloadKey = reloadState[0];
+    const setReloadKey = reloadState[1];
+    function retryReads() { setReloadKey(function (n) { return n + 1; }); }
     const queryState = React.useState("");
     const query = queryState[0];
     const setQuery = queryState[1];
@@ -1706,31 +1745,43 @@
       if (!local.id) return;
       let cancelled = false;
       setSignalsLoading(true);
+      setSignalsError(false);
       fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/overview")
         .then(function (payload) {
           if (cancelled) return;
           if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load signals.");
           setSignals(Array.isArray(payload.intents) ? payload.intents : []);
         })
-        .catch(function () { if (!cancelled) setSignals([]); })
+        .catch(function (e) {
+          if (cancelled) return;
+          console.warn("[index] network signals read failed", e);
+          setSignals([]);
+          setSignalsError(true);
+        })
         .finally(function () { if (!cancelled) setSignalsLoading(false); });
       return function () { cancelled = true; };
-    }, [local.id]);
+    }, [local.id, reloadKey]);
 
     React.useEffect(function () {
       if (!showOwnerTabs || !local.id || tab !== "access") return;
       let cancelled = false;
       setMembersLoading(true);
+      setMembersError(false);
       fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members")
         .then(function (payload) {
           if (cancelled) return;
           if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load members.");
           setMembers(Array.isArray(payload.members) ? payload.members : []);
         })
-        .catch(function () { if (!cancelled) setMembers([]); })
+        .catch(function (e) {
+          if (cancelled) return;
+          console.warn("[index] network members read failed", e);
+          setMembers([]);
+          setMembersError(true);
+        })
         .finally(function () { if (!cancelled) setMembersLoading(false); });
       return function () { cancelled = true; };
-    }, [showOwnerTabs, local.id, tab]);
+    }, [showOwnerTabs, local.id, tab, reloadKey]);
 
     React.useEffect(function () {
       if (!query.trim()) { setSuggestions([]); return; }
@@ -2101,10 +2152,13 @@
               )
               : null,
           )
-          : React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "No invitation link yet.")),
+          : React.createElement(EmptyState, {
+            message: "no invitation link yet.",
+            action: { label: busy ? "creating\u2026" : "create link", disabled: busy, onClick: regenerateLink },
+          })),
       React.createElement("div", { className: "index-dashboard__net-members" },
         React.createElement("p", { className: "index-dashboard__net-invite-label" },
-          "Members (", String(members.length), ")"),
+          membersLoading || membersError ? "Members" : "Members (" + String(members.length) + ")"),
         React.createElement("div", { className: "index-dashboard__net-member-search" },
           React.createElement("input", {
             className: "index-dashboard__net-member-input",
@@ -2134,12 +2188,17 @@
                   disabled: busy,
                   onClick: function () { inviteEmail(query.trim()); },
                 }, "Invite \"" + query.trim() + "\"")
-                : React.createElement("div", { className: "index-dashboard__net-invite-empty" }, "No results found"),
+                : React.createElement("div", { className: "index-dashboard__net-invite-empty" }, "no one found. enter a full email to invite them."),
             )
             : null,
         ),
         membersLoading
-          ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading members…")
+          ? React.createElement(EmptyState, { tone: "loading", message: "loading members\u2026" })
+          : membersError
+          ? React.createElement(EmptyState, { tone: "error", message: "couldn't load members.", action: { label: "try again", onClick: retryReads } })
+          // The search field above is the invite action, so the empty block has none.
+          : members.length === 0
+          ? React.createElement(EmptyState, { message: "no members yet." })
           : React.createElement("div", { className: "index-dashboard__net-member-list" },
             pageMembers.map(function (m) {
               const perms = Array.isArray(m.permissions) ? m.permissions : [];
@@ -2284,10 +2343,12 @@
       React.createElement("div", { className: "index-dashboard__net-overview-head" },
         React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Your Signals"),
         React.createElement("span", { className: "index-dashboard__net-overview-count" },
-          signalsLoading ? "…" : (String(signals.length) + (signals.length === 1 ? " signal" : " signals"))),
+          signalsLoading || signalsError ? "" : (String(signals.length) + (signals.length === 1 ? " signal" : " signals"))),
       ),
       signalsLoading
-        ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading signals…")
+        ? React.createElement(EmptyState, { tone: "loading", message: "loading signals\u2026" })
+        : signalsError
+        ? React.createElement(EmptyState, { tone: "error", message: "couldn't load your signals in this network.", action: { label: "try again", onClick: retryReads } })
         : (signals.length
           ? React.createElement("div", { className: "index-dashboard__net-signal-list" },
             signals.map(function (sig) {
@@ -2303,8 +2364,12 @@
               }, React.createElement("span", null, text));
             }),
           )
-          : React.createElement("p", { className: "index-dashboard__net-invite-empty" },
-            "You haven't shared any signals in this network yet")),
+          : React.createElement(EmptyState, {
+            message: "you haven't shared any signals in this network yet.",
+            action: props.onStartSignal
+              ? { label: "start a signal", onClick: function () { if (props.onClose) props.onClose(); props.onStartSignal(); } }
+              : null,
+          })),
     );
 
     const body = (showOwnerTabs && tab === "access")
@@ -2389,10 +2454,10 @@
   function NetworkRows(props) {
     const items = Array.isArray(props.items) ? props.items : [];
     if (props.error) {
-      return React.createElement("div", { className: "index-dashboard__error" }, props.error);
+      return React.createElement(EmptyState, { tone: "error", message: props.error, action: props.onRetry ? { label: "try again", onClick: props.onRetry } : null });
     }
     if (items.length === 0) {
-      return React.createElement(EmptyState, null, props.empty || "Nothing to show yet.");
+      return React.createElement(EmptyState, { message: props.empty || "nothing to show yet." });
     }
     return React.createElement("div", { className: "index-dashboard__net-list" },
       items.map(function (network, index) {
@@ -2545,23 +2610,26 @@
     return React.createElement("div", { className: "index-dashboard__profile-section" },
       React.createElement("p", { className: "index-dashboard__net-request-intro" },
         "Network creation is still early. Fill this in and it gets reviewed before it goes live."),
+      // Picture and name share one row: the picture is the network's mark, so it
+      // sits beside the name it belongs to instead of taking a row of its own.
       React.createElement("div", { className: "index-dashboard__net-request-identity" },
-        React.createElement("label", { className: "index-dashboard__net-request-photo", title: "Change network picture" },
+        React.createElement("label", { className: "index-dashboard__net-request-photo", title: photo ? "Change picture" : "Add a picture (optional)" },
           React.createElement(NetworkAvatar, { className: "index-dashboard__net-request-photo-mark", imageUrl: photo, seed: trimmed || "network" }),
+          React.createElement("span", { className: "index-dashboard__net-request-photo-badge", "aria-hidden": "true" }, "+"),
           React.createElement("input", {
             ref: photoFileRef,
             type: "file",
             accept: "image/*",
+            "aria-label": "Network picture (optional)",
             className: "index-dashboard__profile-avatar-input",
             onChange: onPhotoFile,
           }),
         ),
-        React.createElement("span", { className: "index-dashboard__net-request-photo-hint" }, "Picture optional"),
+        React.createElement("div", { className: "index-dashboard__net-request-identity-main" },
+          React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "Network name", "aria-label": "Network name", onChange: function (e) { setName(e.target.value); } }),
+        ),
       ),
-      React.createElement(ProfileField, { label: "Name" },
-        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "Network name", onChange: function (e) { setName(e.target.value); } }),
-      ),
-      React.createElement(ProfileField, { label: "Description", hint: "Optional" },
+      React.createElement(ProfileField, { label: "Description", note: "optional" },
         React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: desc, placeholder: "What people can share in this network…", onChange: function (e) { setDesc(e.target.value); } }),
       ),
       React.createElement(ProfileField, { label: "Access" },
@@ -2571,7 +2639,7 @@
         ),
       ),
       React.createElement(ProfileField, { label: "How many people are you hoping to bring together?" },
-        React.createElement("div", { className: "index-dashboard__net-size-grid" },
+        React.createElement("div", { className: "index-dashboard__net-size-grid index-dashboard__net-size-grid--row" },
           NETWORK_SIZE_OPTIONS.map(function (opt) {
             const active = size === opt;
             return React.createElement("button", {
@@ -2771,18 +2839,30 @@
     return React.createElement("section", { className: "index-dashboard__wire-card" },
       React.createElement("div", { className: "index-dashboard__wire-head" },
         React.createElement("h2", { className: "index-dashboard__card-title" }, "Negotiation history"),
-        React.createElement("span", { className: "index-dashboard__wire-counts" },
-          React.createElement("b", null, all.length), " sessions · ",
-          React.createElement("b", null, counts.won), " ✓ · ",
-          React.createElement("b", null, counts.lost), " ✕ · ",
-          React.createElement("b", null, counts.open), " open")),
+        // Counts only once there is something to count; a row of zeros under
+        // the empty line says the same thing twice.
+        all.length
+          ? React.createElement("span", { className: "index-dashboard__wire-counts" },
+            React.createElement("b", null, all.length), all.length === 1 ? " session · " : " sessions · ",
+            React.createElement("b", null, counts.won), " ✓ · ",
+            React.createElement("b", null, counts.lost), " ✕ · ",
+            React.createElement("b", null, counts.open), " open")
+          : null),
       React.createElement("div", { className: "index-dashboard__wire-log-wrap" },
         React.createElement("div", { ref: scrollRef, onScroll: onScroll, className: "index-dashboard__wire-log" },
           React.createElement("div", { className: "index-dashboard__wire-lines" },
-            threads === null
+            !userId
+              // No account id means the bootstrap could not say who you are,
+              // so there is nothing to read until it does.
+              ? React.createElement("div", { className: "index-dashboard__wire-note" },
+                React.createElement("p", null, "couldn't load negotiation history."),
+                props.onRetry
+                  ? React.createElement("button", { type: "button", className: "index-dashboard__wire-retry", onClick: props.onRetry }, "try again")
+                  : null)
+              : threads === null
               ? React.createElement("p", { className: "index-dashboard__wire-note" }, failed ? "couldn't read the wire, retrying…" : "reading the wire…")
               : events.length === 0
-                ? React.createElement("p", { className: "index-dashboard__wire-empty" }, "nothing on the wire yet, your agent logs every negotiation here as it happens.")
+                ? React.createElement("p", { className: "index-dashboard__wire-empty" }, "nothing on the wire yet. your agent logs every negotiation here as it happens.")
                 : events.map(line),
             React.createElement("span", { className: "index-dashboard__wire-cursor", "aria-hidden": "true" }, "▌"))),
         away
@@ -2799,6 +2879,8 @@
   // on the right. Create opens the (reviewed) request form as a modal. Owner
   // rows open a detail modal with Access-tab invite links (web parity).
   function NetworksMini(props) {
+    // null until the first read lands: loading, or an error when that read failed.
+    const pending = !props.networks;
     const networks = props.networks || { items: [], count: 0, discover: [] };
     const items = Array.isArray(networks.items) ? networks.items : [];
     const discover = Array.isArray(networks.discover) ? networks.discover : [];
@@ -2827,7 +2909,7 @@
     return React.createElement("section", { className: "index-dashboard__net-card" },
       React.createElement("div", { className: "index-dashboard__net-head" },
         React.createElement("div", { className: "index-dashboard__profile-tabs index-dashboard__net-tabs" },
-          tabButton("mine", "My networks (" + formatCount(networks.count || items.length) + ")"),
+          tabButton("mine", pending ? "My networks" : "My networks (" + formatCount(networks.count || items.length) + ")"),
           tabButton("discover", "Discover", ICON_GLOBE()),
         ),
         React.createElement("div", { className: "index-dashboard__net-head-actions" },
@@ -2838,8 +2920,12 @@
           }, ICON_PLUS(), "Create"),
         ),
       ),
-      tab === "discover"
-        ? React.createElement(NetworkRows, { items: discover, discover: true, error: networks.error, empty: "No public networks to discover right now.", onJoin: props.onJoin, joiningId: props.joiningId })
+      pending
+        ? (props.loadError
+          ? React.createElement(EmptyState, { tone: "error", message: "couldn't load networks.", action: props.onRetry ? { label: "try again", onClick: props.onRetry } : null })
+          : React.createElement(EmptyState, { tone: "loading", message: "loading networks\u2026" }))
+        : tab === "discover"
+        ? React.createElement(NetworkRows, { items: discover, discover: true, error: networks.error ? "couldn't load networks." : null, empty: "no public networks to discover right now.", onJoin: props.onJoin, joiningId: props.joiningId, onRetry: props.onRetry })
         : React.createElement("div", null,
           requests.length
             ? React.createElement("div", { className: "index-dashboard__net-list index-dashboard__net-request-list" },
@@ -2849,9 +2935,15 @@
             )
             : null,
           networks.error
-            ? React.createElement("div", { className: "index-dashboard__error" }, networks.error)
+            ? React.createElement(EmptyState, { tone: "error", message: "couldn't load networks.", action: props.onRetry ? { label: "try again", onClick: props.onRetry } : null })
             : items.length === 0
-              ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
+              ? React.createElement(EmptyState, {
+                message: "you're not in any networks yet.",
+                action: [
+                  { label: "create a network", onClick: function () { if (props.onCreate) props.onCreate(); } },
+                  { label: "discover networks", onClick: function () { setTab("discover"); } },
+                ],
+              })
               : React.createElement("div", { className: "index-dashboard__net-list" },
                 items.map(function (network, index) {
                   return React.createElement(NetworkMiniRow, {
@@ -2874,6 +2966,7 @@
           onLeft: onRemoved,
           onOpenUser: props.onOpenUser,
           onSelectIntent: props.onSelectIntent,
+          onStartSignal: props.onStartSignal,
         })
         : null,
     );
@@ -2943,7 +3036,8 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }).then(function (payload) {
-        if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Request failed.");
+        // No message from the API means no reason to give; the caller says "try again."
+        if (!payload || payload.success === false) throw new Error((payload && payload.error) || "");
         return payload;
       });
     }
@@ -3000,7 +3094,8 @@
           receiptRef.current = "";
           setCreating(false);
           setStage("summary");
-          setFeedback("that didn't go through — " + ((err && err.message) || "try again."));
+          const reason = String((err && err.message) || "").trim();
+          setFeedback("that didn't go through. " + (reason ? (/[.!?]$/.test(reason) ? reason : reason + ".") : "try again."));
         });
     }
 
@@ -3142,7 +3237,7 @@
         let text;
         if (field.kind === "text") text = own;
         else if (field.kind === "single") text = (writing[field.id] && own) || chosen[0] || "";
-        else text = chosen.concat(writing[field.id] && own ? [own] : []).join(" — ");
+        else text = chosen.concat(writing[field.id] && own ? [own] : []).join(", ");
         if (text) answers.push({ prompt: field.label, answer: text });
       });
       props.onSubmit(answers);
@@ -3194,8 +3289,13 @@
   function IntentList(props) {
     const intents = Array.isArray(props.intents) ? props.intents : [];
     return React.createElement("div", { className: "index-dashboard__intent-list" },
-      intents.length === 0
-        ? React.createElement(EmptyState, null, "No active intents yet.")
+      props.error && intents.length === 0
+        ? React.createElement(EmptyState, { tone: "error", message: "couldn't load your signals.", action: props.onRetry ? { label: "try again", onClick: props.onRetry } : null })
+        : intents.length === 0
+        ? React.createElement(EmptyState, {
+          message: "no signals yet. start one and your agent goes looking.",
+          action: props.onStartSignal ? { label: "start a signal", onClick: props.onStartSignal } : null,
+        })
         : intents.map(function (intent) {
           return React.createElement(IntentRow, { key: intent.id, intent: intent, selected: props.selectedId === intent.id, onSelect: props.onSelect });
         }),
@@ -3297,6 +3397,7 @@
   }
 
   function discoverySummary(discovered, reached, items) {
+    if (!discovered) return "no compatible people found yet. your agent keeps looking.";
     const pending = !items.length || items.some(function (item) { return !item.decision; });
     const promising = pending ? reached : items.filter(function (item) { return reachedDecision(item.decision); }).length;
     return "Discovered " + discovered + (discovered === 1 ? " person" : " people")
@@ -3715,6 +3816,9 @@
     const err = errState[0];
     const setErr = errState[1];
     const opportunityId = props.opportunity.opportunityId;
+    const attemptState = React.useState(0);
+    const attempt = attemptState[0];
+    const setAttempt = attemptState[1];
 
     React.useEffect(function () {
       let alive = true;
@@ -3724,14 +3828,18 @@
         .then(function (payload) {
           if (!alive) return;
           if (!payload || payload.success === false) {
-            setErr((payload && payload.error) || "Could not read this negotiation.");
+            console.warn("[index] negotiation read failed", payload && payload.error);
+            setErr("couldn't load this negotiation.");
             return;
           }
           setData(payload.negotiation || { turns: [] });
         })
-        .catch(function () { if (alive) setErr("Could not read this negotiation."); });
+        .catch(function (e) {
+          console.warn("[index] negotiation read failed", e);
+          if (alive) setErr("couldn't load this negotiation.");
+        });
       return function () { alive = false; };
-    }, [opportunityId]);
+    }, [opportunityId, attempt]);
 
     const turns = (data && Array.isArray(data.turns)) ? data.turns : [];
     return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
@@ -3751,9 +3859,9 @@
         ),
         React.createElement("div", { className: "index-dashboard__a2a-body" },
           err
-            ? React.createElement("div", { className: "index-dashboard__error" }, err)
+            ? React.createElement(EmptyState, { tone: "error", message: err, action: { label: "try again", onClick: function () { setAttempt(function (n) { return n + 1; }); } } })
             : !data
-              ? React.createElement(EmptyState, null, "Reading the negotiation\u2026")
+              ? React.createElement(EmptyState, { tone: "loading", message: "loading the negotiation\u2026" })
               : turns.length
                 ? turns.map(function (turn) {
                   return React.createElement("div", {
@@ -3771,7 +3879,7 @@
                     React.createElement("p", { className: "index-dashboard__a2a-text" }, turn.text),
                   );
                 })
-                : React.createElement(EmptyState, null, "No turns yet \u2014 the agents have not spoken."),
+                : React.createElement(EmptyState, { message: "no turns yet. the agents haven't spoken." }),
         ),
       ),
     );
@@ -3807,6 +3915,11 @@
     const sendingState = useState(false);
     const sending = sendingState[0];
     const setSending = sendingState[1];
+    // "loading" until the first read lands, "error" if it failed with nothing
+    // shown yet, then "ready". A later failed poll keeps the last transcript.
+    const readStateState = useState("loading");
+    const readState = readStateState[0];
+    const setReadState = readStateState[1];
     const rootRef = useRef(null);
     const threadRef = useRef(null);
     const aliveRef = useRef(true);
@@ -3815,15 +3928,28 @@
     function read() {
       return fetchPluginJSON(API + "/agent/conversation?intentId=" + encodeURIComponent(intentId))
         .then(function (payload) {
-          if (!aliveRef.current || !payload || payload.success === false) return;
+          if (!aliveRef.current) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "unreadable");
           setMessages(payload.messages || []);
           setAgent(payload.agent || null);
+          setReadState("ready");
         })
-        .catch(function () { /* Keep the last good transcript; the next read is 5s away. */ });
+        .catch(function (e) {
+          // Keep the last good transcript; the next read is 5s away.
+          if (!aliveRef.current) return;
+          console.warn("[index] agent conversation read failed", e);
+          setReadState(function (prev) { return prev === "ready" ? prev : "error"; });
+        });
+    }
+
+    function retryRead() {
+      setReadState("loading");
+      read();
     }
 
     useEffect(function () {
       aliveRef.current = true;
+      setReadState("loading");
       read();
       const timer = setInterval(read, 5000);
       return function () { aliveRef.current = false; clearInterval(timer); };
@@ -4043,9 +4169,16 @@
     const feed = bubbles.concat(questions.filter(function (question) {
       return !placed[question.id];
     }).map(questionCard));
+    const threadBody = feed.length
+      ? feed
+      : readState === "loading"
+        ? React.createElement(EmptyState, { tone: "loading", message: "loading your agent's notes\u2026" })
+        : readState === "error"
+          ? React.createElement(EmptyState, { tone: "error", message: "couldn't load this conversation.", action: { label: "try again", onClick: retryRead } })
+          : React.createElement(EmptyState, { message: "ask about your matches, share a preference, or tell your agent what to look for." });
 
     return React.createElement("div", { ref: rootRef, className: "index-dashboard__agent-chat" },
-      React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef }, feed),
+      React.createElement("div", { className: "index-dashboard__msg-thread index-dashboard__agent-thread", ref: threadRef }, threadBody),
       // The answer action rides above the composer rather than scrolling away
       // with the question it belongs to, and only once there is an answer to
       // send: a dead button is one more thing to read past.
@@ -4063,8 +4196,8 @@
           className: "index-dashboard__textarea index-dashboard__msg-input",
           rows: 1,
           value: draft,
-          placeholder: "Message your personal agent…",
-          "aria-label": "Message your personal agent",
+          placeholder: "message your agent…",
+          "aria-label": "Message your agent",
           onChange: function (e) { setDraft(e.target.value); },
           onKeyDown: function (e) {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
@@ -4123,14 +4256,21 @@
     React.useEffect(function () {
       setDiscoveryExpired(false);
     }, [intent && intent.id]);
+    // The window runs from when the signal was made, when the row says so,
+    // so reopening an old signal does not restart "looking for your people".
+    const createdMs = intent && intent.createdAt ? Date.parse(intent.createdAt) : NaN;
     React.useEffect(function () {
       if (shownCount > 0) return undefined;
-      const timer = setTimeout(function () { setDiscoveryExpired(true); }, DISCOVERY_GIVE_UP_MS);
+      const left = Number.isFinite(createdMs)
+        ? DISCOVERY_GIVE_UP_MS - (Date.now() - createdMs)
+        : DISCOVERY_GIVE_UP_MS;
+      if (left <= 0) { setDiscoveryExpired(true); return undefined; }
+      const timer = setTimeout(function () { setDiscoveryExpired(true); }, left);
       return function () { clearTimeout(timer); };
-    }, [intent && intent.id, shownCount]);
+    }, [intent && intent.id, shownCount, createdMs]);
     if (!intent) {
       return React.createElement("div", { className: "index-dashboard__detail" },
-        React.createElement(EmptyState, null, "Select an intent to see its radar."),
+        React.createElement(EmptyState, { message: "pick a signal to see its radar." }),
       );
     }
     const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
@@ -4140,12 +4280,15 @@
       if (!bucket) return false;
       return selectedBucket === "all" || bucket === selectedBucket;
     });
-    const radarEmpty = "No matches here yet.";
+    // A stage filter hiding everything is not the same as an empty radar.
+    const radarEmpty = selectedBucket !== "all" && shownCount > 0 ? "nothing in this stage." : "no matches yet.";
     const radarLoading = !!props.radarLoading;
+    const radarFailed = !!intent.radarError && !allOpps.length;
     // Nothing on the radar and not yet given up: the agents are still out.
-    const discovering = shownCount === 0 && !discoveryExpired;
+    // A paused signal is not looking, so it never shows the search.
+    const discovering = shownCount === 0 && !discoveryExpired && !paused && !radarFailed;
     const signalHead = React.createElement(SignalHead, {
-      title: intent.title || "Untitled intent",
+      title: intent.title || "Untitled signal",
       paused: paused,
       actions: (function () {
         const archiving = props.archivingId === intent.id;
@@ -4183,13 +4326,17 @@
           signalHead,
           React.createElement(AgentChat, { intentId: intent.id, focusQuestion: props.focusQuestion, onOpenUser: props.onOpenUser }),
         ),
-        React.createElement(Panel, { title: "radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
+        React.createElement(Panel, { title: "radar", primary: true, count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this signal." },
           props.actionError ? React.createElement("div", { className: "index-dashboard__error" }, props.actionError) : null,
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
-          discovering
+          radarFailed
+            ? React.createElement(EmptyState, { tone: "error", message: "radar couldn't load.", action: props.onRetryRadar ? { label: "try again", onClick: props.onRetryRadar } : null })
+            : discovering
             ? React.createElement(DiscoveryStages, { key: intent.id })
             : radarLoading && !allOpps.length
-            ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
+            ? React.createElement(EmptyState, { tone: "loading", message: "loading radar\u2026" })
+            : paused && shownCount === 0
+            ? React.createElement(EmptyState, { message: "this signal is paused, so your agent isn't looking right now." })
             : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onOpenNegotiation: props.onOpenNegotiation, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
@@ -4233,10 +4380,13 @@
   // twice would read as the loader repeating rather than as two pieces of work.
   // Desktop fetches the art through the plugin backend, so it can arrive a
   // beat after mount; hold the space empty rather than flash a second loader.
+  // The caption is always there, so the wait reads as a wait even before
+  // the art has arrived.
   function HeroLoader() {
     const src = LOADING_IMAGE();
-    return React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
-      src ? React.createElement("img", { className: "index-dashboard__loading-anim", src: src, alt: "Loading", loading: "eager" }) : null,
+    return React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero", role: "status" },
+      src ? React.createElement("img", { className: "index-dashboard__loading-anim", src: src, alt: "", "aria-hidden": "true", loading: "eager" }) : null,
+      React.createElement("p", { className: "index-dashboard__loading-caption" }, "loading\u2026"),
     );
   }
 
@@ -4304,7 +4454,7 @@
           } else if (status === "failed") {
             stopPolling();
             setWaiting(false);
-            setLoginError((payload && payload.error) || "Login failed. Please try again.");
+            setLoginError((payload && payload.error) || "login failed. try again.");
           } else if (status === "idle") {
             stopPolling();
             setWaiting(false);
@@ -4355,7 +4505,7 @@
         }, waiting ? "waiting for browser…" : "log in with browser"),
         manualLink
           ? React.createElement("p", { className: "index-dashboard__login-manual" },
-            "No browser opened here — ",
+            "no browser opened here. ",
             React.createElement("a", { href: manualLink, target: "_blank", rel: "noopener noreferrer" }, "open this link to continue"),
             ".")
           : null,
@@ -4395,6 +4545,12 @@
           placeholder: "Your name",
           "aria-label": "Your name",
           onChange: function (e) { setName(e.target.value); },
+          // Enter continues even if the host Button doesn't render as a submit button.
+          onKeyDown: function (e) {
+            if (e.key !== "Enter" || (e.nativeEvent && e.nativeEvent.isComposing)) return;
+            e.preventDefault();
+            if (ready) props.onSubmit(name.trim());
+          },
         }),
         React.createElement(Button, {
           type: "submit",
@@ -4574,6 +4730,15 @@
     const errorState = useState(null);
     const panelError = errorState[0];
     const setPanelError = errorState[1];
+    // Why the profile read failed, when it did: "notfound" (a real 404) or
+    // "error". Save failures stay in panelError.
+    const loadErrorState = useState(null);
+    const loadError = loadErrorState[0];
+    const setLoadError = loadErrorState[1];
+    // First run: whether the public lookup came back with anything to review.
+    const enrichFoundState = useState(true);
+    const enrichFound = enrichFoundState[0];
+    const setEnrichFound = enrichFoundState[1];
     const tabState = useState("profile");
     const tab = tabState[0];
     const setTab = tabState[1];
@@ -4653,17 +4818,21 @@
     function load() {
       setLoading(true);
       setPanelError(null);
+      setLoadError(null);
       const profileUrl = props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile";
       fetchPluginJSON(profileUrl)
         .then(function (payload) {
           if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Profile could not be loaded.");
+            const failure = new Error((payload && payload.error) || "Profile could not be loaded.");
+            failure.status = payload && payload.status;
+            throw failure;
           }
           applyProfile(payload["profile"] || {});
           return null;
         })
         .catch(function (err) {
-          setPanelError(err && err.message ? err.message : String(err));
+          console.warn("[index] profile read failed", err);
+          setLoadError(err && err.status === 404 ? "notfound" : "error");
         })
         .finally(function () {
           setLoading(false);
@@ -4686,11 +4855,13 @@
         body: JSON.stringify({ name: confirmed }),
       })
         .then(function (enriched) {
-          if (enriched && enriched.success !== false && usableEnriched(enriched)) {
+          const found = !!(enriched && enriched.success !== false && usableEnriched(enriched));
+          setEnrichFound(found);
+          if (found) {
             adoptEnrichment(enriched, Object.assign({}, assembledRef.current, { name: confirmed }));
           }
         })
-        .catch(function () { /* keep the baseline profile */ })
+        .catch(function () { setEnrichFound(false); /* keep the baseline profile */ })
         .finally(function () { setStep("review"); });
     }
 
@@ -4907,10 +5078,10 @@
         ),
         React.createElement("div", { className: "index-dashboard__profile-grid" },
           React.createElement(ProfileField, { label: "Name" },
-            React.createElement("input", { className: "index-dashboard__profile-input", value: form.name, placeholder: "John Doe", onChange: function (e) { patchForm({ name: e.target.value }); } }),
+            React.createElement("input", { className: "index-dashboard__profile-input", value: form.name, placeholder: "your name", onChange: function (e) { patchForm({ name: e.target.value }); } }),
           ),
           React.createElement(ProfileField, { label: "Location" },
-            React.createElement("input", { className: "index-dashboard__profile-input", value: form.location, placeholder: "Brooklyn, NY", onChange: function (e) { patchForm({ location: e.target.value }); } }),
+            React.createElement("input", { className: "index-dashboard__profile-input", value: form.location, placeholder: "city, country", onChange: function (e) { patchForm({ location: e.target.value }); } }),
           ),
         ),
         React.createElement(ProfileField, { label: "Introduction", note: "agents share this when negotiating" },
@@ -4946,7 +5117,7 @@
             ["opportunity", "an opportunity surfaces", "your agent found someone who meets your signals and wants you to review."],
             ["accepted", "an intro is accepted", "both of you said yes, and the chat opens on both sides."],
             ["messages", "a message arrives", "a connection wrote to you."],
-            ["morningBrief", "daily brief", "your agent looks again at 08:00, and speaks only when it has something new."],
+            ["morningBrief", "daily brief", "off until you turn it on. At 08:00 your agent wakes once per active networked signal."],
           ].map(function (row) {
             const key = row[0];
             return React.createElement("label", { key: key, className: "index-dashboard__profile-check" },
@@ -4999,9 +5170,22 @@
           )
           : null,
         !form.intro && !form.context && socials.length === 0
-          ? React.createElement(EmptyState, null, "This person hasn't shared profile details yet.")
+          ? React.createElement(EmptyState, { message: "this person hasn't shared profile details yet." })
           : null,
       );
+    }
+
+    // A failed read: a real 404 on someone else's profile is "not found",
+    // anything else is retryable.
+    function renderLoadError() {
+      if (loadError === "notfound" && readOnly) {
+        return React.createElement(EmptyState, { tone: "error", message: "couldn't find this person." });
+      }
+      return React.createElement(EmptyState, {
+        tone: "error",
+        message: readOnly ? "couldn't load this profile." : "couldn't load your profile.",
+        action: { label: "try again", onClick: load },
+      });
     }
 
     const title = gettingStarted
@@ -5025,7 +5209,9 @@
       ),
       gettingStarted
         ? React.createElement("p", { className: "index-dashboard__getting-started-copy" },
-          "Here's what I pulled together. Make sure it's right.")
+          enrichFound
+            ? "here's what I pulled together. make sure it's right."
+            : "nothing public turned up for that name. add what you'd like your agent to share.")
         : null,
       (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
         tabButton("profile", "Profile"),
@@ -5039,8 +5225,11 @@
         ? React.createElement("div", { className: "index-dashboard__profile-body" },
           React.createElement(NegotiatorSettings),
         )
-        : (loading || !form
-          ? (panelError ? null : React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…"))
+        : (loadError && !form
+          ? React.createElement("div", { className: "index-dashboard__profile-body" }, renderLoadError())
+          : loading || !form
+          ? React.createElement("div", { className: "index-dashboard__profile-body" },
+            React.createElement(EmptyState, { tone: "loading", message: "loading profile\u2026" }))
           : React.createElement("div", { className: "index-dashboard__profile-body" },
             readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
           )),
@@ -5078,6 +5267,11 @@
       const wrap = function (child) {
         return React.createElement("div", { className: "index-dashboard__getting-started" }, child);
       };
+      // The first-run loader only covers a read in flight; a failed read
+      // says so with a retry instead of looping the setting-up lines.
+      if (loadError && !form) {
+        return wrap(React.createElement("div", { className: "index-dashboard__page-state" }, renderLoadError()));
+      }
       if (loading || !form) return wrap(React.createElement(SettingUpScreen));
       if (step === "name") {
         return wrap(React.createElement(AskNameCard, {
@@ -5177,6 +5371,14 @@
     const listErrState = useState(null);
     const listErr = listErrState[0];
     const setListErr = listErrState[1];
+    // Failed reads, drawn in place of the list / thread rather than as an
+    // empty one. listErr above is only for a send that didn't go through.
+    const listFailedState = useState(false);
+    const listFailed = listFailedState[0];
+    const setListFailed = listFailedState[1];
+    const threadFailedState = useState(false);
+    const threadFailed = threadFailedState[0];
+    const setThreadFailed = threadFailedState[1];
     const listLoadingState = useState(true);
     const listLoading = listLoadingState[0];
     const setListLoading = listLoadingState[1];
@@ -5230,6 +5432,7 @@
       if (!id) return;
       setActiveId(id);
       setThreadLoading(true);
+      setThreadFailed(false);
       setMessages([]);
       fetchPluginJSON(API + "/conversations/" + encodeURIComponent(id) + "/messages")
         .then(function (payload) {
@@ -5243,13 +5446,17 @@
             .filter(Boolean);
           setMessages(list);
         })
-        .catch(function (err) { setListErr(err && err.message ? err.message : String(err)); })
+        .catch(function (err) {
+          console.warn("[index] messages read failed", err);
+          setThreadFailed(true);
+        })
         .finally(function () { setThreadLoading(false); });
     }
 
     function loadList(selectId) {
       setListLoading(true);
       setListErr(null);
+      setListFailed(false);
       fetchPluginJSON(API + "/conversations")
         .then(function (payload) {
           if (!payload || payload.success === false) {
@@ -5260,7 +5467,10 @@
           const target = selectId || activeIdRef.current;
           if (target) loadThread(target);
         })
-        .catch(function (err) { setListErr(err && err.message ? err.message : String(err)); })
+        .catch(function (err) {
+          console.warn("[index] conversations read failed", err);
+          setListFailed(true);
+        })
         .finally(function () { setListLoading(false); });
     }
 
@@ -5384,7 +5594,8 @@
         .catch(function (err) {
           setMessages(function (prev) { return prev.filter(function (m) { return m.id !== optimisticId; }); });
           setInput(text);
-          setListErr(err && err.message ? err.message : String(err));
+          console.warn("[index] message send failed", err);
+          setListErr("that didn't go through. try again.");
         })
         .finally(function () { setSending(false); });
     }
@@ -5431,11 +5642,16 @@
             ),
             React.createElement("div", { className: "index-dashboard__msg-convs" },
             listLoading
-              ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading…")
+              ? React.createElement(EmptyState, { tone: "loading", message: "loading conversations\u2026" })
+              : listFailed
+              ? React.createElement(EmptyState, { tone: "error", message: "couldn't load conversations.", action: { label: "try again", onClick: function () { loadList(); } } })
               : (convs.length === 0
-                ? React.createElement(EmptyState, null, "No conversations yet.")
+                ? React.createElement(EmptyState, {
+                  message: "no conversations yet. a chat opens when you and someone both accept an intro.",
+                  action: props.onStartSignal ? { label: "start a signal", onClick: props.onStartSignal } : null,
+                })
                 : (filteredConvs.length === 0
-                  ? React.createElement(EmptyState, null, "No matches.")
+                  ? React.createElement(EmptyState, { message: "no matches." })
                   : filteredConvs.map(function (c) {
                     const active = c.id === activeId;
                     const unread = isUnread(c);
@@ -5459,7 +5675,7 @@
                           ),
                           React.createElement("span", { className: "index-dashboard__msg-conv-time" }, timeStamp(c.lastMessageAt, true)),
                         ),
-                        c.lastMessagePreview ? React.createElement("span", { className: "index-dashboard__msg-conv-preview" }, c.lastMessagePreview) : null,
+                        React.createElement("span", { className: "index-dashboard__msg-conv-preview" }, c.lastMessagePreview || "no messages yet."),
                       ),
                       unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,
                     );
@@ -5482,10 +5698,12 @@
                   : null,
                 React.createElement("div", { className: "index-dashboard__msg-thread", ref: threadRef },
                   threadLoading
-                    ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading messages…")
+                    ? React.createElement(EmptyState, { tone: "loading", message: "loading messages\u2026" })
+                    : threadFailed
+                    ? React.createElement(EmptyState, { tone: "error", message: "couldn't load messages.", action: { label: "try again", onClick: function () { loadThread(activeId); } } })
                     : (function () {
                         const visible = messages.filter(function (m) { return m.text && m.text.trim(); });
-                        if (visible.length === 0) return React.createElement(EmptyState, null, "No messages yet. Say hello.");
+                        if (visible.length === 0) return React.createElement(EmptyState, { message: "no messages yet. say hello." });
                         return visible.map(function (m) {
                           let cls = "index-dashboard__msg-bubble";
                           if (m.mine) cls += " index-dashboard__msg-bubble--mine";
@@ -5525,7 +5743,7 @@
                 ),
               )
               : React.createElement("div", { className: "index-dashboard__msg-thread" },
-                React.createElement(EmptyState, null, "Select a conversation to view messages."),
+                React.createElement(EmptyState, { message: "pick a conversation." }),
               ),
           ),
         ),
@@ -5548,6 +5766,9 @@
     const networksState = useState(null);
     const networks = networksState[0];
     const setNetworks = networksState[1];
+    const networksFailedState = useState(false);
+    const networksFailed = networksFailedState[0];
+    const setNetworksFailed = networksFailedState[1];
     const intentDetailsState = useState({});
     const intentDetails = intentDetailsState[0];
     const setIntentDetails = intentDetailsState[1];
@@ -5614,9 +5835,7 @@
     const unreadState = useState(false);
     const hasUnread = unreadState[0];
     const setHasUnread = unreadState[1];
-    const inlineHdrState = useState(false);
-    const inlineHdr = inlineHdrState[0];
-    const setInlineHdr = inlineHdrState[1];
+    const inlineHdr = !!DESKTOP_ENV;
     // Auth gate: "checking" until /auth/status resolves, then "needsLogin"
     // (browser sign-in) or "authed" (load the dashboard).
     const authState = useState("checking");
@@ -5626,7 +5845,6 @@
     const loadIntentDetailRef = useRef(null);
     const selectedIdRef = useRef(selectedId);
     selectedIdRef.current = selectedId;
-    const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
     const openMessagesRef = useRef(null);
     const focusAppliedRef = useRef(null);
@@ -5635,12 +5853,17 @@
     const shelfReady = !!summary;
 
     function loadNetworks() {
+      setNetworksFailed(false);
       fetchPluginJSON(API + "/networks/home")
         .then(function (payload) {
-          if (!payload || payload.success === false) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "unreadable");
           setNetworks(payload.networks || { items: [], count: 0, discover: [] });
         })
-        .catch(function () { /* noop */ });
+        .catch(function (e) {
+          // Only matters while nothing is shown; a loaded card keeps its rows.
+          console.warn("[index] networks read failed", e);
+          setNetworksFailed(true);
+        });
     }
 
     function mergeIntentDetail(baseIntent, detail) {
@@ -5649,6 +5872,7 @@
       const statusCounts = statusCountsFromOpportunities(opps);
       return Object.assign({}, baseIntent, {
         radarLoaded: !!(detail && detail.opportunities),
+        radarError: !!(detail && detail.radarError),
         opportunities: opps,
         opportunityCount: statusCounts.pending || 0,
         totalOpportunityCount: opps.length,
@@ -5686,10 +5910,16 @@
       const radarPromise = fetchPluginJSON(radarPath)
         .then(function (radarPayload) {
           if (selectedIdRef.current !== intentId) return;
-          const opportunities = (radarPayload && radarPayload.items) || [];
-          mergeDetail({ opportunities: opportunities });
+          if (!radarPayload || radarPayload.success === false) throw new Error((radarPayload && radarPayload.error) || "unreadable");
+          const opportunities = radarPayload.items || [];
+          mergeDetail({ opportunities: opportunities, radarError: false });
         })
-        .catch(function () { /* keep prior detail on failure */ })
+        .catch(function (e) {
+          // Keep prior detail on failure; the radar only says so when it has
+          // nothing else to show.
+          console.warn("[index] radar read failed", e);
+          mergeDetail({ radarError: true });
+        })
         .finally(function () {
           if (selectedIdRef.current === intentId && !passive) setRadarLoading(false);
         });
@@ -5708,9 +5938,13 @@
       window.dispatchEvent(new CustomEvent("index-network-attention", { detail: total }));
     }
 
-    function load() {
-      setLoading(true);
-      setError(null);
+    // `quiet` is the background poll: it neither flips the page back to the
+    // loader nor clears an error before it has something better to show.
+    function load(quiet) {
+      if (quiet !== true) {
+        setLoading(true);
+        setError(null);
+      }
       if (!SDK.fetchJSON && !window.fetch) {
         setError("This Hermes dashboard host does not expose authenticated plugin fetches.");
         setLoading(false);
@@ -5719,14 +5953,17 @@
       return fetchPluginJSON(API + "/bootstrap")
         .then(function (payload) {
           if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
+            throw new Error((payload && payload.error) || "bootstrap failed");
           }
           setSummary(payload);
+          setError(null);
           setNeedsOnboarding(!!(payload.onboarding && payload.onboarding.needsProfileConfirm));
           publishAttention(payload);
         })
         .catch(function (err) {
-          setError(err && err.message ? err.message : String(err));
+          // The raw reason goes to the console; the page says it plainly.
+          console.warn("[index] bootstrap failed", err);
+          setError("couldn't load your dashboard.");
         })
         .finally(function () {
           setLoading(false);
@@ -5762,10 +5999,25 @@
     }, [messagesOpen, auth]);
 
     useEffect(function () {
-      const ctl = headerCtlRef.current;
-      if (!ctl || !ctl.messages) return;
-      ctl.messages.classList.toggle("index-dashboard__hdr-account--dot", !!hasUnread);
-    }, [hasUnread]);
+      if (inlineHdr) return undefined;
+      window.dispatchEvent(new CustomEvent("index-network-unread", { detail: !!hasUnread }));
+      return undefined;
+    }, [hasUnread, inlineHdr]);
+
+    useEffect(function () {
+      function onToggleProfile() {
+        if (toggleProfileRef.current) toggleProfileRef.current();
+      }
+      function onOpenMessages() {
+        if (openMessagesRef.current) openMessagesRef.current(null);
+      }
+      window.addEventListener("index-network-toggle-profile", onToggleProfile);
+      window.addEventListener("index-network-open-messages", onOpenMessages);
+      return function () {
+        window.removeEventListener("index-network-toggle-profile", onToggleProfile);
+        window.removeEventListener("index-network-open-messages", onOpenMessages);
+      };
+    }, []);
 
     // Open (or resolve) the in-dashboard DM for an opportunity via the same
     // start-chat endpoint the Mac app uses; the backend resolves the counterpart.
@@ -5867,7 +6119,7 @@
       })
         .then(function (payload) {
           if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Intent status could not be updated.");
+            throw new Error((payload && payload.error) || "Signal status could not be updated.");
           }
           load();
         })
@@ -5890,7 +6142,7 @@
       })
         .then(function (payload) {
           if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Intent could not be archived.");
+            throw new Error((payload && payload.error) || "Signal could not be archived.");
           }
           goBack();
           load();
@@ -5978,19 +6230,28 @@
       if (initial.intentId) loadIntentDetail(initial.intentId);
     }
 
+    // Only a real "signed out" answer shows the login screen. An API outage,
+    // a 5xx or a failed request is "unreachable": it never admits the
+    // dashboard either, but it says so and offers a retry instead of asking
+    // someone who is signed in to sign in again.
     function checkAuth() {
+      setAuth("checking");
       fetchPluginJSON(API + "/auth/status")
         .then(function (payload) {
           if (payload && payload.needsLogin) {
             setAuth("needsLogin");
             setLoading(false);
+          } else if (!payload || payload.success === false || payload.unreachable) {
+            console.warn("[index] auth status unavailable", payload && payload.error);
+            setAuth("unreachable");
+            setLoading(false);
           } else {
             enterDashboard();
           }
         })
-        .catch(function () {
-          // Status uncertainty never admits the dashboard.
-          setAuth("needsLogin");
+        .catch(function (e) {
+          console.warn("[index] auth status failed", e);
+          setAuth("unreachable");
           setLoading(false);
         });
     }
@@ -6036,59 +6297,13 @@
     }, [auth, selectedId]);
 
     useEffect(function () {
-      const header = document.querySelector('header[role="banner"]');
-      if (!header) {
-        setInlineHdr(true);
-        return undefined;
-      }
-      const container = header.querySelector("div") || header;
-
-      const wrap = document.createElement("div");
-      wrap.className = "index-dashboard__hdr";
-
-      const messages = document.createElement("button");
-      messages.type = "button";
-      messages.className = "index-dashboard__hdr-account";
-      messages.setAttribute("aria-label", "Messages");
-      messages.title = "Messages";
-      messages.innerHTML = MESSAGES_ICON_SVG;
-      const onMessages = function () {
-        if (openMessagesRef.current) openMessagesRef.current(null);
-      };
-      messages.addEventListener("click", onMessages);
-
-      const account = document.createElement("button");
-      account.type = "button";
-      account.className = "index-dashboard__hdr-account";
-      account.setAttribute("aria-label", "Profile & settings");
-      account.title = "Profile & settings";
-      account.innerHTML = ACCOUNT_ICON_SVG;
-      const onAccount = function () {
-        if (toggleProfileRef.current) toggleProfileRef.current();
-      };
-      account.addEventListener("click", onAccount);
-
-      wrap.appendChild(messages);
-      wrap.appendChild(account);
-      container.appendChild(wrap);
-      headerCtlRef.current = { account: account, messages: messages };
-
-      return function () {
-        messages.removeEventListener("click", onMessages);
-        account.removeEventListener("click", onAccount);
-        wrap.remove();
-        headerCtlRef.current = null;
-      };
-    }, []);
-
-    useEffect(function () {
       // Only poll once signed in: firing bootstrap while the login gate (or the
       // initial auth check) is showing produces 401s that can land after the
       // login transition and clobber the fresh state, forcing a manual reload.
       if (auth !== "authed") return undefined;
       const id = setInterval(function () {
         if (loadRef.current) {
-          loadRef.current().then(function () {
+          loadRef.current(true).then(function () {
             if (selectedIdRef.current && loadIntentDetailRef.current) {
               loadIntentDetailRef.current(selectedIdRef.current, true);
             }
@@ -6221,26 +6436,32 @@
       : selectedIntent
         ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: goBack }, ICON_ARROW_LEFT(), "Back")
         : React.createElement(IntentPitch, { onLight: true });
+    const intentsError = !!(summary && summary.errors && summary.errors.intents);
+    function startSignal() { setNewSignalOpen(true); }
+    function retryRadar() { if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current); }
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, actionError: actionError, onBack: goBack, backInHeader: inlineHdr, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, radarLoading: radarLoading, onRetryRadar: retryRadar, actionError: actionError, onBack: goBack, backInHeader: inlineHdr, onOpenUser: openUser, onOpenNegotiation: setNegotiation, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent, focusQuestion: focusQuestion })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         inlineHdr ? null : React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
           React.createElement(Panel, {
             icon: ICON_SPARKLES(),
-            title: "Intents",
-            count: intents.length,
+            title: "Signals",
+            count: intentsError && !intents.length ? undefined : intents.length,
             action: React.createElement(Button, {
               type: "button", outlined: true, size: "sm",
               className: "index-dashboard__net-create-btn index-dashboard__new-signal-btn",
               onClick: function () { setNewSignalOpen(true); },
             }, ICON_PLUS(), "New signal"),
           },
-            React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
+            React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent, error: intentsError, onRetry: load, onStartSignal: startSignal }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
             React.createElement(NetworksMini, {
               networks: networks,
+              loadError: networksFailed,
+              onRetry: loadNetworks,
+              onStartSignal: startSignal,
               requests: networkRequests,
               webUrl: summary && summary.webUrl,
               apiUrl: summary && summary.apiUrl,
@@ -6272,9 +6493,9 @@
                 });
               },
             }),
-            summary && summary.currentUserId
-              ? React.createElement(NegotiationStream, { userId: summary.currentUserId })
-              : null,
+            // Always drawn: without an account id the card says it couldn't
+            // load rather than vanishing from the column.
+            React.createElement(NegotiationStream, { userId: summary && summary.currentUserId, onRetry: load }),
           ),
         ),
       );
@@ -6298,7 +6519,11 @@
         ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
         : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); }, onSignOut: signOut }) : null),
       messagesOpen
-        ? React.createElement(MessagesPanel, { initialConversationId: messagesTarget, onClose: function () { setMessagesOpen(false); setMessagesTarget(null); } })
+        ? React.createElement(MessagesPanel, {
+          initialConversationId: messagesTarget,
+          onClose: function () { setMessagesOpen(false); setMessagesTarget(null); },
+          onStartSignal: function () { setMessagesOpen(false); setMessagesTarget(null); setNewSignalOpen(true); },
+        })
         : null,
       newSignalOpen
         ? React.createElement(NewSignalModal, { onDone: finishNewSignal, onClose: function () { setNewSignalOpen(false); } })
@@ -6306,12 +6531,18 @@
       createOpen
         ? React.createElement(NetworkCreateModal, { initial: editingRequest, onSubmit: submitNetworkRequest, onClose: closeCreate })
         : null,
-      error
-        ? React.createElement("div", { className: "index-dashboard__error" }, error)
+      // A failed refresh over a page that already loaded: the page stays, this
+      // line says the latest read failed. With nothing loaded the body below
+      // carries the error instead, so it is not said twice.
+      error && summary && auth === "authed"
+        ? React.createElement(EmptyState, { tone: "error", className: "index-dashboard__page-banner", message: error, action: { label: "try again", onClick: load } })
         : null,
 
       auth === "needsLogin"
         ? React.createElement(LoginScreen, { onAuthed: enterDashboard })
+        : auth === "unreachable"
+        ? React.createElement("div", { className: "index-dashboard__page-state" },
+          React.createElement(EmptyState, { tone: "error", message: "can't reach index right now.", action: { label: "try again", onClick: checkAuth } }))
         : (auth === "checking"
           ? React.createElement(HeroLoader)
           : (needsOnboarding
@@ -6324,7 +6555,33 @@
             })
             : (loading && !summary
               ? React.createElement(HeroLoader)
-              : React.createElement("div", { className: "index-dashboard__body" }, intentsView)))),
+              : (!summary
+                ? React.createElement("div", { className: "index-dashboard__page-state" },
+                  React.createElement(EmptyState, { tone: "error", message: error || "couldn't load your dashboard.", action: { label: "try again", onClick: load } }))
+                : React.createElement("div", { className: "index-dashboard__body" }, intentsView))))),
+    );
+  }
+
+  function IndexHeaderSlot() {
+    const unreadState = React.useState(false);
+    React.useEffect(function () {
+      function onUnread(event) { unreadState[1](!!(event && event.detail)); }
+      window.addEventListener("index-network-unread", onUnread);
+      return function () { window.removeEventListener("index-network-unread", onUnread); };
+    }, []);
+    function button(label, svg, kind, dot) {
+      return React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__hdr-account" + (dot ? " index-dashboard__hdr-account--dot" : ""),
+        "aria-label": label,
+        title: label,
+        onClick: function () { openIndexQuery(kind); },
+        dangerouslySetInnerHTML: { __html: svg },
+      });
+    }
+    return React.createElement("div", { className: "index-dashboard__hdr" },
+      button("Messages", MESSAGES_ICON_SVG, "chat", unreadState[0]),
+      button("Profile & settings", ACCOUNT_ICON_SVG, "profile", false),
     );
   }
 
@@ -6341,6 +6598,7 @@
       .then(function (payload) {
         if (!payload || payload.success !== true || payload.mode !== "full") return;
         window.__HERMES_PLUGINS__.register("index-network", IndexNetworkDashboard);
+        window.__HERMES_PLUGINS__.registerSlot("index-network", "header-right", IndexHeaderSlot);
       })
       .catch(function () { /* Restricted mode or unavailable backend: stay inert. */ });
   }

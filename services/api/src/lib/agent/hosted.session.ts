@@ -183,9 +183,9 @@ export class HostedSession {
       this.closing.delete(intentId);
       if (failed) {
         this.resettle.delete(intentId);
-        return;
+      } else if (this.resettle.delete(intentId) && this.io.running()) {
+        await this.settle(userId, intentId);
       }
-      if (this.resettle.delete(intentId) && this.io.running()) await this.settle(userId, intentId);
     }
   }
 

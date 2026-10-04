@@ -35,10 +35,11 @@ ChatGPT reads the full record with the tools.
 | --- | --- | --- |
 | `opportunity.new` | An opportunity is waiting on you | `intentId` |
 | `opportunity.status` | An opportunity you are in changes status | `intentId`, `status` |
+| `negotiation.turn` | Your negotiator owes the next turn, or the turn limit paused it | `intentId` |
 | `question.pending` | Your agent stopped on a question only you can answer | `intentId` |
 
 - **Delivery** is a signed webhook ([Standard Webhooks](https://www.standardwebhooks.com/)) to the callback ChatGPT registers. Index first sends a challenge to the callback, and nothing else reaches it until the challenge is echoed.
-- **Payloads** carry ids, a link, and Index-written text (the opportunity headline or the question). They never include messages you wrote.
+- **Payloads** carry ids, a link, and Index-written text (the opportunity headline, the negotiation summary, or the question). They never include messages you wrote.
 - **History is not replayed.** A subscription sees events from the moment it is created.
 - **Subscriptions last up to 7 days.** ChatGPT renews them before `refreshBefore`.
 
@@ -47,6 +48,10 @@ ChatGPT reads the full record with the tools.
 :::prompt
 Index is connected as an MCP server. When an `opportunity.new` event arrives,
 read it with `get_opportunity` and tell the person who it is with and why.
-Accept or pass only after they say so. When a `question.pending` event arrives,
+Accept or pass only after they say so. When a `negotiation.turn` event arrives,
+read it with `get_opportunity`. Submit the next action with
+`submit_negotiation_turn` only if you are that negotiator and you pass your
+agent id. Otherwise tell them their negotiator owes a turn, or that the turn
+limit paused it. When a `question.pending` event arrives,
 ask them the question and send them the link to the signal.
 :::

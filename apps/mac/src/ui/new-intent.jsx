@@ -102,7 +102,13 @@ function NewIntent({ onDone, onBack }) {
       preparationReceiptRef.current = "";
       setCalibrating(false);
       setStage("summary");
-      setFeedback(`that didn't go through — ${(_e && _e.message) || "try again."}`);
+      // A 4xx usually says what to change; anything else is ours, and the
+      // raw text stays in the console.
+      console.warn("[new signal] create failed", _e);
+      const status = _e && _e.status;
+      const said = String((_e && _e.message) || "").trim().replace(/\.?$/, ".");
+      const reason = status >= 400 && status < 500 && said !== "." ? said : "try again.";
+      setFeedback(`that didn't go through. ${reason}`);
     }
   };
 
@@ -266,7 +272,7 @@ function RecoveryFormView({ fields, feedback, onSubmit }) {
         const answer = own || singleSelected[field.id]?.trim();
         return answer ? [{ prompt: field.label, answer }] : [];
       }
-      const answer = [...(multiSelected[field.id] ?? []), ...(own ? [own] : [])].join(" — ");
+      const answer = [...(multiSelected[field.id] ?? []), ...(own ? [own] : [])].join(", ");
       return answer ? [{ prompt: field.label, answer }] : [];
     });
     onSubmit(answers);

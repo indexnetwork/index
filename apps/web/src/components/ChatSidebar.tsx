@@ -5,6 +5,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface RecentChat {
   groupId: string;
@@ -44,12 +45,15 @@ const formatConversationTime = (timestamp: number) => {
   }).format(date).toLowerCase();
 };
 
-export default function ChatSidebar() {
+export default function ChatSidebar({ showEmpty = true }: {
+  /** Off when the adjacent pane already renders the no-conversations empty state. */
+  showEmpty?: boolean;
+} = {}) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const activePeerId = pathname.match(/^\/u\/([^/]+)\/chat/)?.[1] ?? null;
   const { user } = useAuthContext();
-  const { conversations, refreshConversations } = useConversation();
+  const { conversations, conversationsStatus, refreshConversations } = useConversation();
 
   const [refreshing, setRefreshing] = useState(true);
 
@@ -97,10 +101,22 @@ export default function ChatSidebar() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-1 overflow-y-auto mac-scroll">
-        {recentChats.length === 0 && refreshing ? (
+        {recentChats.length === 0 && (refreshing || conversationsStatus === 'loading') ? (
           renderSkeleton()
+        ) : recentChats.length === 0 && conversationsStatus === 'error' ? (
+          <EmptyState
+            tone="error"
+            style={{ margin: 16 }}
+            message="couldn't load conversations."
+            action={{ label: 'try again', onClick: () => { setRefreshing(true); void refreshConversations().finally(() => setRefreshing(false)); } }}
+          />
         ) : recentChats.length === 0 ? (
-          <p style={{ margin: 16, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>no conversations yet.</p>
+          // When showEmpty is off, the main pane next to this sidebar carries the empty state.
+          !showEmpty ? null : <EmptyState
+            style={{ margin: 16 }}
+            message="no conversations yet. a chat opens when you and someone both accept an intro."
+            action={{ label: 'start a signal', to: '/i/new' }}
+          />
         ) : (
           <div>
             {recentChats.map((chat) => (
@@ -139,7 +155,11 @@ export default function ChatSidebar() {
                       lastMessage: chat.lastMessage,
                       lastMessageIsInternal: chat.lastMessageIsInternal,
                     });
-                    if (preview.kind === "empty") return null;
+                    if (preview.kind === "empty") {
+                      return (
+                        <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-3)" }}>{`${preview.text.toLowerCase()}.`}</span>
+                      );
+                    }
                     return (
                       <span style={{ fontFamily: "var(--mac-sans)", fontSize: 12, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview.text}</span>
                     );

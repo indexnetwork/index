@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { Loader2, Share2 } from "lucide-react";
-import { ContentContainer } from "@/components/layout";
+import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import SiteLayout from "@/app/site/SiteLayout";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { apiUrl } from "@/lib/api";
+import { log } from "@/lib/logger";
+
+const logger = log.ui.from("SharedChatView");
 
 interface SharedMessage {
   id: string;
@@ -91,73 +94,78 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
   const [session, setSession] = useState<SharedSession | null>(null);
   const [messages, setMessages] = useState<SharedMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"notFound" | "failed" | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     fetch(apiUrl(`/api/chat/shared/${token}`))
       .then(async (res) => {
-        if (!res.ok) throw new Error("Conversation not found");
+        if (res.status === 404 || res.status === 410) {
+          setError("notFound");
+          return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         setSession(data.session);
-        setMessages(data.messages);
+        setMessages(data.messages ?? []);
+        setError(data.session ? null : "notFound");
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        logger.error("Failed to load shared conversation", { error: err });
+        setError("failed");
+      })
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, reloadKey]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-      </div>
+      <SiteLayout>
+        <p className="site-p">Loading…</p>
+      </SiteLayout>
+    );
+  }
+
+  if (error === "failed") {
+    return (
+      <SiteLayout>
+        <section className="site-hero">
+          <h1 className="site-h1">Couldn&apos;t load this conversation</h1>
+          <p className="site-p">Check your connection and try again.</p>
+          <button
+            type="button"
+            className="site-btn"
+            onClick={() => { setLoading(true); setError(null); setReloadKey((k) => k + 1); }}
+          >
+            Try again
+          </button>
+        </section>
+      </SiteLayout>
     );
   }
 
   if (error || !session) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <p className="text-gray-500 text-sm">
-          {error || "This shared conversation could not be found."}
-        </p>
-        <a
-          href="/"
-          className="text-sm font-medium text-[#4091BB] hover:underline"
-        >
-          Go to Index
-        </a>
-      </div>
+      <SiteLayout>
+        <section className="site-hero">
+          <h1 className="site-h1">Conversation not found</h1>
+          <p className="site-p">This shared conversation doesn&apos;t exist, or its link was turned off.</p>
+          <Link className="site-btn" to="/">Go home</Link>
+        </section>
+      </SiteLayout>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-white">
-      <div className="sticky top-0 bg-white z-10 border-b border-gray-100 px-4 py-3">
-        <ContentContainer>
-          <div className="flex items-center gap-3">
-            <a
-              href="/"
-              className="font-bold font-ibm-plex-mono text-lg text-black hover:text-gray-700"
-            >
-              Index
-            </a>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-              <Share2 className="w-3 h-3" />
-              Shared conversation
-            </span>
-          </div>
-          {session.title && (
-            <h1 className="font-semibold font-ibm-plex-mono text-gray-900 mt-1 truncate">
-              {session.title}
-            </h1>
-          )}
-        </ContentContainer>
-      </div>
+  const visibleMessages = messages.filter((msg) => msg.role !== "system");
 
-      <div className="px-6 lg:px-8 py-8">
-        <ContentContainer>
-          <div className="space-y-4">
-            {messages
-              .filter((msg) => msg.role !== "system")
+  return (
+    <SiteLayout>
+      <section className="site-hero">
+        <h1 className="site-h1">{session.title || "Shared conversation"}</h1>
+        {visibleMessages.length === 0 && (
+          <p className="site-p">This conversation has no messages yet.</p>
+        )}
+        <div className="space-y-4">
+            {visibleMessages
               .map((msg) => (
                 <div key={msg.id}>
                   <div
@@ -227,24 +235,9 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
                 </div>
               ))}
           </div>
-        </ContentContainer>
-      </div>
-
-      <div className="border-t border-gray-100 py-6">
-        <ContentContainer>
-          <div className="text-center">
-            <p className="text-sm text-gray-500 mb-3">
-              This is a shared conversation from Index.
-            </p>
-            <a
-              href="/"
-              className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-[#041729] text-white hover:bg-[#0a2d4a] transition-colors"
-            >
-              Try Index
-            </a>
-          </div>
-        </ContentContainer>
-      </div>
-    </div>
+        <p className="site-p">This is a shared conversation from Index.</p>
+        <Link className="site-btn" to="/">Try Index</Link>
+      </section>
+    </SiteLayout>
   );
 }

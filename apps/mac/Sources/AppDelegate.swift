@@ -356,7 +356,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                  didFail navigation: WKNavigation!,
                  withError error: Error) {
         deepLinkNavigationFailed()
-        presentError("Failed to load: \(error.localizedDescription)")
+        presentLoadFailure(error)
+    }
+
+    /// The bundled page failed after it started loading. Offer a way back in
+    /// rather than a dead end: Try Again reloads the bundled document, Quit
+    /// leaves.
+    private func presentLoadFailure(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Index couldn't load"
+        alert.informativeText = "\(error.localizedDescription) Try again, or quit and reopen Index if it keeps happening."
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Try Again")
+        alert.addButton(withTitle: "Quit")
+        if alert.runModal() == .alertFirstButtonReturn {
+            loadBundledHTML()
+        } else {
+            NSApp.terminate(nil)
+        }
     }
 
     // A provisional failure is often just a cancelled navigation, so it stays

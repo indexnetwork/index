@@ -25,6 +25,11 @@ export class APIError extends Error {
   }
 }
 
+/** True only for a real 404 from the API. Network and 5xx errors are not "not found". */
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof APIError && error.status === 404;
+}
+
 // API Client class
 class APIClient {
   private baseURL: string;

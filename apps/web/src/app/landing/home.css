@@ -40,45 +40,159 @@
   display: block;
 }
 
-/* ---------- trace ---------- */
+/* ---------- trace (overview card) ---------- */
 .home-trace-section { padding-top: 48px; }
 .home-trace {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
   border-top: 1px solid var(--divider);
   padding-top: 28px;
 }
-.home-trace-title { font-size: 18px; line-height: 1.4; }
-/* The table is fixed-width text; on narrow screens it scrolls inside its own box. */
-.home-trace-scroll { overflow-x: auto; }
-.home-trace-pre {
-  margin: 0;
+.home-trace-label {
   font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.85;
-  color: var(--muted);
-  white-space: pre;
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: #9AA0A6;
+  margin-bottom: 10px;
 }
-.home-trace-dim { color: var(--muted); }
-.home-trace-ink { color: var(--ink); }
-.home-trace-rule { color: rgba(4, 23, 41, .22); }
-/* one colour per phase of the trace */
-.home-trace-p-query { color: var(--ink); }
-.home-trace-p-intent { color: #7A5AA6; }
-.home-trace-p-reach { color: var(--blue); }
-.home-trace-p-negotiate { color: #C07A1E; }
-.home-trace-p-present { color: #2E7D32; }
+.home-trace-card {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid rgba(4, 23, 41, .16);
+}
+.home-trace-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px 6px;
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+.home-trace-bar-end {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.home-trace-rule {
+  height: 1em;
+  overflow: hidden;
+  color: rgba(4, 23, 41, .22);
+  line-height: 1;
+  white-space: pre;
+  padding: 0 12px;
+}
+.home-trace-rule::before {
+  content: "--------------------------------------------------------------------------------------------------------------";
+}
+.home-trace-rows { padding: 4px 0 6px; }
+.home-trace-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 12px;
+}
+.home-trace-line--q { padding-left: 36px; }
+.home-trace-line--child { padding-left: 28px; }
+.home-trace-line--intent { background: #F5F3FF; box-shadow: inset 2px 0 0 #C4B5FD; }
+.home-trace-line--discover { background: #EFF6FF; box-shadow: inset 2px 0 0 #93C5FD; }
+.home-trace-line--reach { background: #FFFBEB; box-shadow: inset 2px 0 0 #FCD34D; }
+.home-trace-line--deal,
+.home-trace-line--ready { background: #ECFDF5; box-shadow: inset 2px 0 0 #6EE7B7; }
+.home-trace-text { flex: 1; min-width: 0; }
+.home-trace-strong { font-weight: 600; }
+.home-trace-dim { color: #8A9199; }
+.home-trace-deal { color: #1B7F4E; font-weight: 400; }
+.home-trace-ok { color: #1B7F4E; flex-shrink: 0; }
+.home-trace-skip { color: #8A9199; text-decoration: line-through; }
+.home-trace-time { flex-shrink: 0; color: #8A9199; font-variant-numeric: tabular-nums; }
+.home-trace-tree,
+.home-trace-bullet { flex-shrink: 0; color: rgba(4, 23, 41, .35); white-space: pre; }
+.home-trace-slot {
+  flex-shrink: 0;
+  white-space: pre;
+  color: var(--muted);
+}
+.home-trace-slot--ok { color: #1B7F4E; }
+.home-trace-slot--run { color: var(--ink); }
+.home-trace-swap { animation: home-trace-swap .3s ease; }
+@keyframes home-trace-swap {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: none; }
+}
 
 /* ---------- where index runs ---------- */
-.home-runs-links {
+/* Where Index runs: one row per audience, title beside the copy; the first row shows the apps. */
+.home-runs { display: flex; flex-direction: column; border-top: 1px solid var(--ink); }
+.home-run {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  gap: 16px 32px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+.home-run-body { display: flex; flex-direction: column; gap: 12px; }
+.home-run-body .site-p { margin: 0; }
+.home-run-shots {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+.home-run-shot {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 16px;
+  gap: 10px;
+}
+/* The product view sits on a painted scene, the same treatment as the /hermes hero. */
+.home-run-scene {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  padding: 5%;
+}
+/* The painting, softened a touch so the product view reads first. */
+.home-run-scene::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  z-index: -2;
+  background: var(--scene) center / cover no-repeat;
+  filter: blur(2px) saturate(1.05);
+  transition: transform .5s ease;
+}
+.home-run-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(252, 254, 251, .1);
+}
+/* Hover zooms in: the product view comes forward and the painting drifts a little further. */
+.home-run-shot:hover .pm-frame { transform: scale(1.05); }
+.home-run-shot:hover .home-run-scene::before { transform: scale(1.08); }
+@media (prefers-reduced-motion: reduce) {
+  .home-run-scene::before, .pm-frame { transition: none; }
+}
+/* Same as the row links below: 13px, underlined, blue on hover. */
+.home-run-caption {
+  align-self: flex-start;
+  font-family: var(--sans);
   font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.site .home-run-caption:hover { color: var(--blue); }
+
+@media (max-width: 640px) {
+  .home-run { grid-template-columns: minmax(0, 1fr); }
+  .home-run-shots { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---------- blog ---------- */

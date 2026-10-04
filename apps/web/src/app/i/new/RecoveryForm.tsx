@@ -1,8 +1,8 @@
 import { useState } from "react";
 
-import { AgentPortrait, OptionChip, WriteOwn } from "@/components/workbench/mac-blocks";
+import { OptionChip, WriteOwn } from "@/components/workbench/mac-blocks";
+import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Btn } from "@/components/workbench/Workbench";
-import { useAuthContext } from "@/contexts/AuthContext";
 import type { PrepareAnswer, RecoveryField } from "@/services/signals";
 
 /** Dynamic recovery form rendered from server-generated fields and options. */
@@ -15,7 +15,6 @@ export function RecoveryForm({
   feedback: string;
   onSubmit: (answers: PrepareAnswer[]) => Promise<void>;
 }) {
-  const { user } = useAuthContext();
   const [singleSelected, setSingleSelected] = useState<Record<string, string>>({});
   const [multiSelected, setMultiSelected] = useState<Record<string, string[]>>({});
   const [textValues, setTextValues] = useState<Record<string, string>>({});
@@ -43,13 +42,13 @@ export function RecoveryForm({
       const answer = own || singleSelected[field.id]?.trim();
       return answer ? [{ prompt: field.label, answer }] : [];
     }
-    const answer = [...(multiSelected[field.id] ?? []), ...(own ? [own] : [])].join(" — ");
+    const answer = [...(multiSelected[field.id] ?? []), ...(own ? [own] : [])].join(", ");
     return answer ? [{ prompt: field.label, answer }] : [];
   });
 
   return (
     <div className="fade-up" style={{ display: "grid", gap: 16 }}>
-      <AgentLine user={user}>{feedback || "help me understand what you're looking for."}</AgentLine>
+      <AgentLine>{feedback || "help me understand what you're looking for."}</AgentLine>
       <div style={{ marginLeft: 42, display: "grid", gap: 18, maxWidth: 620 }}>
         {fields.map((field) => (
           <div key={field.id}>
@@ -107,14 +106,13 @@ export function RecoveryForm({
   );
 }
 
-function AgentLine({ user, children, muted = false }: {
-  user: { id?: string; name?: string; avatar?: string | null } | null;
+function AgentLine({ children, muted = false }: {
   children: React.ReactNode;
   muted?: boolean;
 }) {
   return (
     <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-      <AgentPortrait id={user?.id} name={user?.name} photo={user?.avatar} size={30} />
+      <MyAgentAvatar size={30} style={{ marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ marginBottom: 6, color: "#8f8f88", fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>your agent</div>
         <div style={{ maxWidth: "92%", fontFamily: "var(--mac-sans)", fontSize: 14, fontWeight: muted ? 400 : 700, lineHeight: 1.55, color: muted ? "#2a2a2a" : "#111" }}>{children}</div>

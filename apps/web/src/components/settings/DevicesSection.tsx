@@ -4,6 +4,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { authClient } from "@/lib/auth-client";
 import { isHermesUserAgent, isMacUserAgent } from "@/lib/devices";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const th: CSSProperties = {
   textAlign: "left", padding: "6px 10px", borderBottom: "1px solid #000",
@@ -143,7 +144,13 @@ export default function DevicesSection() {
       </p>
 
       {loadError ? (
-        <p style={note}>{loadError} · <button type="button" onClick={() => void reload()} style={{ fontFamily: "var(--mac-sans)", fontSize: 12, border: "none", background: "none", color: "var(--ink-2)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>retry</button></p>
+        <EmptyState
+          tone="error"
+          align="start"
+          style={{ padding: 0, margin: "0 0 10px" }}
+          message="couldn't load devices."
+          action={{ label: "try again", onClick: () => void reload() }}
+        />
       ) : sessions === null ? (
         <p style={note}>loading…</p>
       ) : sessions.length === 0 ? (

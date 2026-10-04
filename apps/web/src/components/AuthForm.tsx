@@ -212,7 +212,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
                 </h2>
               </div>
               <p className="av-lede">
-                Write what you want — let the network bring people to you.
+                Write what you want. Let the network bring people to you.
               </p>
             </>
           ))}

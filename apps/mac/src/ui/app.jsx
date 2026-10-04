@@ -142,7 +142,8 @@ function App() {
             : raw.map((n) => ({ id: n.id, name: n.title || n.name || "untitled", joined: true })),
         };
       }
-      if (!net || !Array.isArray(net.networks)) return;
+      // A failed refresh keeps the list already on screen.
+      if (!net || net.failed || !Array.isArray(net.networks)) return;
       setNetworks(net.networks);
       Object.assign(window.INDEX_DATA, { NETWORKS: net.networks });
     } catch (e) { /* keep prior list */ }
@@ -214,7 +215,7 @@ function App() {
         const ours = (window.IndexApi && window.IndexApi.isIndexDeepLink)
           ? window.IndexApi.isIndexDeepLink(url, deepLinkHosts)
           : false;
-        if (ours) setNotice("that link doesn't open in the app — view it on index.network.");
+        if (ours) setNotice("that link doesn't open in the app. view it on index.network.");
         return;
       }
       setPendingLink(route);
@@ -644,7 +645,9 @@ function App() {
             {overlay.view === "settings" && <Settings initialTab={overlay.tab} onClose={closeOverlay}/>}
             {overlay.view === "networks" && (
               <Networks
+                initialCreate={overlay.tab === "create"}
                 onClose={closeOverlay}
+                onNewSignal={() => { closeOverlay(); goNewIntent(); }}
                 onOpenSignal={(sig) => {
                   const intent = (window.INDEX_DATA.INTENTS || []).find(s => s.id === sig.id);
                   closeOverlay();
@@ -653,7 +656,8 @@ function App() {
               />
             )}
             {overlay.view === "conversations" && (
-              <Conversations initialConversationId={overlay.conversationId} onClose={closeOverlay} onRead={refreshChatUnread}/>
+              <Conversations initialConversationId={overlay.conversationId} onClose={closeOverlay} onRead={refreshChatUnread}
+                onNewSignal={() => { closeOverlay(); goNewIntent(); }}/>
             )}
             {overlay.view === "negotiations" && <NegotiationHistory onClose={closeOverlay}/>}
           </div>

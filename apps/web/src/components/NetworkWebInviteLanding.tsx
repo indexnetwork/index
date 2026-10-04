@@ -15,6 +15,21 @@ const logger = log.page.from("l/[code]");
 
 type PreviewStep = "loading" | "ready" | "error";
 
+/** Friendly copy for a failed invite preview. Raw API strings stay in the console. */
+const INVALID_INVITE = "This link is invalid or has expired.";
+const PREVIEW_FAILED = "Couldn't load this invitation. Check your connection and try again.";
+const JOIN_EXPIRED = "Couldn't join. The invite may have expired.";
+const JOIN_FAILED = "Couldn't join right now. Try again in a moment.";
+
+/**
+ * 4xx (or a 200 without a network) means the code itself is bad; 5xx and
+ * network failures (APIError status 0) are worth retrying.
+ */
+function isInviteRejected(err: unknown): boolean {
+  if (!(err instanceof APIError)) return true;
+  return err.status >= 400 && err.status < 500;
+}
+
 /** Terminal outcomes that keep the visitor on this page instead of the app. */
 type JoinOutcome = "pending" | "declined";
 
@@ -31,8 +46,10 @@ export default function NetworkWebInviteLanding() {
   const [previewStep, setPreviewStep] = useState<PreviewStep>(code ? "loading" : "error");
   const [network, setNetwork] = useState<Network | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(
-    code ? null : "Invalid or expired invitation link",
+    code ? null : INVALID_INVITE,
   );
+  const [previewRetryable, setPreviewRetryable] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joinOutcome, setJoinOutcome] = useState<JoinOutcome | null>(null);
@@ -57,15 +74,17 @@ export default function NetworkWebInviteLanding() {
       } catch (err) {
         if (cancelled) return;
         logger.error("Failed to load network", { error: err });
+        const retryable = !isInviteRejected(err);
         setPreviewStep("error");
-        setPreviewError((err as Error)?.message || "Invalid or expired invitation link");
+        setPreviewRetryable(retryable);
+        setPreviewError(retryable ? PREVIEW_FAILED : INVALID_INVITE);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [code]);
+  }, [code, previewKey]);
 
   const attemptJoin = useCallback(async () => {
     if (!code || joinStartedRef.current) return;
@@ -92,7 +111,7 @@ export default function NetworkWebInviteLanding() {
         return;
       }
       joinStartedRef.current = false;
-      setJoinError((err as Error)?.message || "Couldn't join — the invite may have expired.");
+      setJoinError(isInviteRejected(err) ? JOIN_EXPIRED : JOIN_FAILED);
       logger.error("Failed to accept invitation", { error: err });
     }
   }, [code, navigate, networkService]);
@@ -125,8 +144,19 @@ export default function NetworkWebInviteLanding() {
           <>
             <h1 className="invite-title">Invitation unavailable</h1>
             <p className="invite-error">
-              {previewError || "This link is invalid or has expired."}
+              {previewError || INVALID_INVITE}
             </p>
+            {previewRetryable ? (
+              <button
+                type="button"
+                className="invite-retry"
+                onClick={() => { setPreviewStep("loading"); setPreviewError(null); setPreviewKey((k) => k + 1); }}
+              >
+                Try again
+              </button>
+            ) : (
+              <Link className="invite-retry" to="/" style={{ display: "inline-block", textDecoration: "none" }}>Go home</Link>
+            )}
           </>
         )}
 
@@ -153,9 +183,12 @@ export default function NetworkWebInviteLanding() {
             )}
 
             {joinOutcome === "declined" && (
-              <p className="invite-error">
-                An admin declined your request to join this network.
-              </p>
+              <>
+                <p className="invite-error">
+                  An admin declined your request to join this network.
+                </p>
+                <Link className="invite-retry" to="/" style={{ display: "inline-block", textDecoration: "none" }}>Go home</Link>
+              </>
             )}
 
             {joinError && (
@@ -166,7 +199,7 @@ export default function NetworkWebInviteLanding() {
                   className="invite-retry"
                   onClick={() => void attemptJoin()}
                 >
-                  Retry
+                  Try again
                 </button>
               </>
             )}

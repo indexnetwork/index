@@ -13,6 +13,8 @@ export interface RunInput {
   prompt: string;
   tools: Tool<never>[];
   maxSteps: number;
+  /** The first step must call a tool. Later steps may answer with text and end the run. */
+  requireTool?: boolean;
   now?: () => Date;
   signal?: AbortSignal;
 }
@@ -59,7 +61,12 @@ export async function run(input: RunInput): Promise<void> {
   ];
 
   for (let step = 0; step < input.maxSteps; step++) {
-    const assistant = await input.model.complete(messages, definitions, input.signal);
+    const assistant = await input.model.complete(
+      messages,
+      definitions,
+      input.signal,
+      step === 0 && input.requireTool ? "required" : undefined,
+    );
     messages.push(assistant);
 
     const calls = assistant.tool_calls ?? [];

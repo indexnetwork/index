@@ -130,7 +130,7 @@ export function Btn({
 export function QCount({ n, title }: { n: number; title?: string }) {
   if (!n) return null;
   return (
-    <span className="wb-count" title={title || `${n} waiting on you — pending opportunities`}>
+    <span className="wb-count" title={title || `${n} waiting on you: pending opportunities`}>
       {n}
     </span>
   );

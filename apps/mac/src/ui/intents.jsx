@@ -327,6 +327,7 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
       <InviteNetworks
         networks={NETWORKS}
         onClose={() => setShowInvite(false)}
+        onCreate={onOpenView ? () => { setShowInvite(false); onOpenView("networks", "create"); } : null}
       />
     );
   }
@@ -438,9 +439,10 @@ function Intents({ onPickExisting, onNew, onBack, onOpenView, onSignOut, fresh =
                 display:"flex", flexDirection:"column", gap: SHELF_ROW_GAP,
                 paddingRight: 6,
               }}>
-                {/* No empty state: the blurb above already says what a signal
-                    does, and an empty list whose only row is "start a new
-                    signal" doesn't need a second box to explain itself. */}
+                {/* Same line as web and Hermes. The new signal row below is its action. */}
+                {ordered.length === 0 && (
+                  <EmptyState message="no signals yet. start one and your agent goes looking."/>
+                )}
                 {ordered.map(intent => (
                   <IntentRow
                     key={intent.id}

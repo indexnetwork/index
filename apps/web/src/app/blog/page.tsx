@@ -1,19 +1,25 @@
 import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
-import { formatEntryDate, useBlogEntries } from "@/app/site/blog-entries";
+import { formatEntryDate, useBlogIndex } from "@/app/site/blog-entries";
 
 function BlogIndexPage() {
-  const entries = useBlogEntries();
+  const { entries, failed, retry } = useBlogIndex();
 
   return (
     <SiteLayout>
       <section className="site-hero">
         <h1 className="site-h1">Field notes from Index</h1>
         <p className="site-p">Writing on intent-driven discovery, agents, and finding your others.</p>
+        {failed && (
+          <div role="alert" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 16, margin: "0 0 20px" }}>
+            <span className="site-p" style={{ margin: 0 }}>Couldn&apos;t load the latest posts.</span>
+            <button type="button" className="site-btn site-btn--secondary" onClick={retry}>Try again</button>
+          </div>
+        )}
         <div className="site-post-index">
           {entries === null ? (
             <div className="site-post-row" aria-busy="true">
-              <span className="site-meta">loading…</span>
+              <span className="site-meta">Loading…</span>
             </div>
           ) : (
             entries.map((entry) => (

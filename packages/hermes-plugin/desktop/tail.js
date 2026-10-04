@@ -178,8 +178,15 @@ function rememberDiscover() {
   } catch (e) { /* noop */ }
 }
 
+function goDiscover(path) {
+  host.navigate(path)
+  window.setTimeout(function () {
+    window.dispatchEvent(new Event("index-network-location"))
+  }, 0)
+}
+
 function restoreDiscover() {
-  if (bootPath && !discoverHash()) host.navigate(bootPath)
+  if (bootPath && !discoverHash()) goDiscover(bootPath)
 }
 
 function watchPhantomResume() {
@@ -199,7 +206,7 @@ const INDEX_LINK_HOSTS = ['index.network', 'dev.index.network']
 const INDEX_LINK_PARAM = { u: 'user', i: 'intent', o: 'o' }
 
 function openIndexEntity(kind, id) {
-  host.navigate(DISCOVER_PATH + '?' + INDEX_LINK_PARAM[kind] + '=' + encodeURIComponent(id))
+  goDiscover(DISCOVER_PATH + '?' + INDEX_LINK_PARAM[kind] + '=' + encodeURIComponent(id))
 }
 
 // An Index entity link clicked inside Hermes (a chat message, a tool result)
@@ -290,7 +297,7 @@ export default {
           id: 'index-network.open',
           label: 'Open Index Network',
           keywords: ['index', 'network', 'intents', 'opportunities', 'onboarding', 'getting started', 'profile'],
-          run: function () { host.navigate(DISCOVER_PATH) }
+          run: function () { goDiscover(DISCOVER_PATH) }
         }
       }
     ])

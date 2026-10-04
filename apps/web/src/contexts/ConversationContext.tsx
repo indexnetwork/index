@@ -25,9 +25,14 @@ export interface ConversationMessageEvent {
   message: ConversationMessage;
 }
 
+/** Fetch state of a list: `loading` until the first response, `error` when the last fetch failed. */
+export type ListLoadStatus = 'loading' | 'ready' | 'error';
+
 interface ConversationContextType {
   conversations: ConversationSummary[];
   negotiations: NegotiationSummary[];
+  conversationsStatus: ListLoadStatus;
+  negotiationsStatus: ListLoadStatus;
   messages: Map<string, ConversationMessage[]>;
   sessionHistory: Map<string, ConversationSessionHistoryState>;
   /** IND-570: Per-session opportunity attribution, keyed by sessionId. */
@@ -55,6 +60,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const conversationService = useConversations();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [negotiations, setNegotiations] = useState<NegotiationSummary[]>([]);
+  const [conversationsStatus, setConversationsStatus] = useState<ListLoadStatus>('loading');
+  const [negotiationsStatus, setNegotiationsStatus] = useState<ListLoadStatus>('loading');
   const [messages, setMessages] = useState<Map<string, ConversationMessage[]>>(new Map());
   const [sessionHistory, setSessionHistory] = useState<Map<string, ConversationSessionHistoryState>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -84,8 +91,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const refreshConversations = useCallback(async () => {
     try {
       setConversations(await conversationService.getConversations());
+      setConversationsStatus('ready');
     } catch (err) {
       logger.error('Failed to fetch conversations', { error: err });
+      setConversationsStatus('error');
     }
   }, [conversationService]);
   useEffect(() => { refreshConversationsRef.current = refreshConversations; }, [refreshConversations]);
@@ -93,9 +102,11 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const refreshNegotiations = useCallback(async () => {
     try {
       const data = await apiClient.get<{ negotiations: NegotiationSummary[] }>('/negotiations');
-      setNegotiations(data.negotiations);
+      setNegotiations(data.negotiations ?? []);
+      setNegotiationsStatus('ready');
     } catch (err) {
       logger.error('Failed to fetch negotiations', { error: err });
+      setNegotiationsStatus('error');
     }
   }, []);
   useEffect(() => { refreshNegotiationsRef.current = refreshNegotiations; }, [refreshNegotiations]);
@@ -434,6 +445,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       setIsConnected(false);
       setConversations([]);
       setNegotiations([]);
+      setConversationsStatus('loading');
+      setNegotiationsStatus('loading');
       setMessages(new Map());
       setSessionHistory(new Map());
       return;
@@ -465,6 +478,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       value={{
         conversations,
         negotiations,
+        conversationsStatus,
+        negotiationsStatus,
         messages,
         sessionHistory,
         isConnected,

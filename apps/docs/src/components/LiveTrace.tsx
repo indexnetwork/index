@@ -24,7 +24,17 @@ const DARK = `
   .text-emerald-900, .text-emerald-700, .text-emerald-600 { color:#6ee7b7 !important; }
 `
 
-/** The pitch trace is a self-running document; the frame grows with its rows. */
+/** Whether the docs are showing dark: resolve a light-dark() probe, so it follows whatever sets the scheme. */
+function docsIsDark() {
+  const probe = document.createElement('span')
+  probe.style.color = 'light-dark(rgb(0, 0, 0), rgb(255, 255, 255))'
+  document.body.appendChild(probe)
+  const dark = getComputedStyle(probe).color === 'rgb(255, 255, 255)'
+  probe.remove()
+  return dark
+}
+
+/** The pitch trace is a self-running document; the frame grows with its rows and follows the docs theme. */
 export function LiveTrace() {
   const frameRef = useRef<HTMLIFrameElement>(null)
 
@@ -36,12 +46,14 @@ export function LiveTrace() {
       try {
         const d = frame.contentWindow?.document
         if (!d) return
-        if (!d.getElementById('trace-dark')) {
-          const style = d.createElement('style')
+        let style = d.getElementById('trace-dark') as HTMLStyleElement | null
+        if (!style) {
+          style = d.createElement('style')
           style.id = 'trace-dark'
           style.textContent = DARK
           d.head.appendChild(style)
         }
+        style.disabled = !docsIsDark()
         const h = Math.max(d.body.scrollHeight, d.documentElement.scrollHeight)
         if (h > maxH) {
           maxH = h
@@ -58,7 +70,14 @@ export function LiveTrace() {
     }
     frame.addEventListener('load', onLoad)
     if (frame.contentDocument?.readyState === 'complete') onLoad()
+    // The theme toggle rewrites attributes on <html>; the system setting can flip too.
+    const themeObserver = new MutationObserver(fit)
+    themeObserver.observe(document.documentElement, { attributes: true })
+    const scheme = window.matchMedia('(prefers-color-scheme: dark)')
+    scheme.addEventListener('change', fit)
     return () => {
+      themeObserver.disconnect()
+      scheme.removeEventListener('change', fit)
       frame.removeEventListener('load', onLoad)
       if (interval) clearInterval(interval)
     }

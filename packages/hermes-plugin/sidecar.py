@@ -31,7 +31,7 @@ STATE_FILE = "index-negotiator.json"
 
 
 def read_state(path: Path) -> dict:
-    """@param path - The state file. @returns `{pid, paused, url, token}` as last written."""
+    """@param path - The state file. @returns `{pid, paused, url, token, morning}` as last written."""
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -41,6 +41,7 @@ def read_state(path: Path) -> dict:
         "paused": state.get("paused") is True,
         "url": state.get("url") or "",
         "token": state.get("token") or "",
+        "morning": state.get("morning") or 0,
     }
 
 
@@ -51,8 +52,12 @@ def write_state(path: Path, **changes) -> None:
     """
     state = read_state(path)
     state.update(changes)
+    path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(state), encoding="utf-8")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(state))
+    os.chmod(temp, 0o600)
     temp.replace(path)
 
 

@@ -5,11 +5,13 @@ import { useConversation } from "@/contexts/ConversationContext";
 import ChatSidebar from "@/components/ChatSidebar";
 import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export default function ChatLandingPage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
-  const { conversations } = useConversation();
+  const { conversations, conversationsStatus } = useConversation();
+  const hasConversations = conversations.some(isVisibleH2HConversation);
 
   const latestPeerId = useMemo(() => {
     const visible = conversations.filter(isVisibleH2HConversation).slice().sort(
@@ -32,9 +34,20 @@ export default function ChatLandingPage() {
       <Window title="conversations" onClose={() => navigate("/")} style={{ height: "100%" }}>
         <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
           <div style={{ borderRight: "2px solid #000", minHeight: 0 }}>
-            <ChatSidebar />
+            <ChatSidebar showEmpty={false} />
           </div>
-          <div />
+          <div style={{ display: "grid", placeItems: "center", padding: 24, minHeight: 0 }}>
+            {hasConversations ? (
+              <EmptyState message="pick a conversation." />
+            ) : conversationsStatus === "ready" ? (
+              <EmptyState
+                framed
+                style={{ maxWidth: 360 }}
+                message="no conversations yet. a chat opens when you and someone both accept an intro."
+                action={{ label: "start a signal", to: "/i/new" }}
+              />
+            ) : null /* loading shows the sidebar skeleton; errors show in the sidebar with try again */}
+          </div>
         </div>
       </Window>
     </Stage>

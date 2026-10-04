@@ -73,6 +73,9 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
   const [showSug, setShowSug] = useState(false);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
+  const searchRef = useRef(null);
 
   useEffect(() => {
     if (!live || !networkId) return;
@@ -80,15 +83,19 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
     if (!c) return;
     let cancelled = false;
     setLoading(true);
+    setLoadFailed(false);
     c.networks.getMembers(networkId)
       .then((res) => {
         if (cancelled) return;
         setMembers((res && res.members) || []);
       })
-      .catch(() => { if (!cancelled) setMembers([]); })
+      .catch((err) => {
+        console.warn("[network] members failed", err);
+        if (!cancelled) setLoadFailed(true);
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [live, networkId]);
+  }, [live, networkId, retryTick]);
 
   useEffect(() => {
     if (!live || !query.trim()) { setSuggestions([]); return; }
@@ -174,10 +181,11 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
       <RuleLabel>Members ({members.length})</RuleLabel>
       <div style={{ marginTop:12, position:"relative" }}>
         <input
+          ref={searchRef}
           value={query}
           onChange={(e) => { setQuery(e.target.value); setShowSug(true); }}
           onFocus={() => setShowSug(true)}
-          placeholder="Search by name or add by email…"
+          placeholder="search by name or add by email…"
           style={{
             width:"100%", boxSizing:"border-box",
             padding:"9px 12px", border:"1px solid #000", background:"#fff",
@@ -203,7 +211,7 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
                 }}>
                 <MemberFace member={u} size={24}/>
                 <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}</span>
-                <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>Add</span>
+                <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>add</span>
               </button>
             ))}
           </div>
@@ -223,20 +231,26 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
                   width:"100%", padding:"10px 12px", border:"none", background:"transparent",
                   cursor:"pointer", textAlign:"left",
                   fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-                }}>Invite &quot;{query.trim()}&quot;</button>
+                }}>invite &quot;{query.trim()}&quot;</button>
             ) : (
               <div style={{
                 padding:"10px 12px", fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-              }}>No results found</div>
+              }}>no one found. enter a full email to invite them.</div>
             )}
           </div>
         )}
       </div>
 
       <div style={{ marginTop:12, display:"grid", gap:2 }}>
-        {loading && (
-          <p style={{ fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)" }}>Loading members…</p>
-        )}
+        {loading ? (
+          <EmptyState tone="loading" message="loading members…" framed={false} align="left"/>
+        ) : loadFailed ? (
+          <EmptyState tone="error" message="couldn't load members." align="left"
+            onRetry={() => setRetryTick(n => n + 1)}/>
+        ) : members.length === 0 ? (
+          <EmptyState message="no members yet." align="left"
+            action={{ label:"invite someone", onClick:() => searchRef.current && searchRef.current.focus() }}/>
+        ) : null}
         {!loading && slice.map(m => {
           const perms = Array.isArray(m.permissions) ? m.permissions : [];
           const isOwner = perms.includes("owner");
@@ -341,10 +355,12 @@ function networkIsOwner(net) {
 // `initialTab` is the tab the window opens on. The list opens a network on its
 // overview; creation opens it on access, where the invitation link is, with
 // `flash` set to the line confirming the network now exists.
-function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onDeleted, onOpenSignal }) {
+function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onDeleted, onOpenSignal, onNewSignal }) {
   const [local, setLocal] = useState(net);
   const [signals, setSignals] = useState(net.signals || []);
   const [signalsLoading, setSignalsLoading] = useState(false);
+  const [signalsFailed, setSignalsFailed] = useState(false);
+  const [signalsTry, setSignalsTry] = useState(0);
   const [undo, setUndo] = useState(null);
   const isOwner = networkIsOwner(local);
   const [tab, setTab] = useState(initialTab || "overview");
@@ -392,6 +408,7 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
     if (!c) return;
     let cancelled = false;
     setSignalsLoading(true);
+    setSignalsFailed(false);
     c.networks.overview(local.id)
       .then((res) => {
         if (cancelled) return;
@@ -403,10 +420,13 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
           source: i,
         })));
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.warn("[network] signals failed", err);
+        if (!cancelled) setSignalsFailed(true);
+      })
       .finally(() => { if (!cancelled) setSignalsLoading(false); });
     return () => { cancelled = true; };
-  }, [live, local.id]);
+  }, [live, local.id, signalsTry]);
 
   // `live`, not `client`: getClient() hands back a new object every render, so
   // depending on it would re-run this on every render.
@@ -872,7 +892,10 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
                       flex:1, minWidth:0,
                       fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                    }}>{shareUrl || "No invitation link yet."}</code>
+                    }}>{shareUrl || "no invitation link yet."}</code>
+                    {!shareUrl && (
+                      <Btn small onClick={regenerateLink} disabled={busy || !client}>create link</Btn>
+                    )}
                     {shareUrl && (
                       <>
                         <button
@@ -1023,10 +1046,13 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
                   ))}
                 </div>
 
-                {!signalsLoading && !signals.length && (
-                  <p style={{
-                    fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-                  }}>You haven&apos;t shared any signals in this network yet</p>
+                {!signals.length && (
+                  signalsLoading ? <EmptyState tone="loading" message="loading signals…" framed={false} align="left"/>
+                  : signalsFailed ? <EmptyState tone="error" message="couldn't load signals." align="left"
+                      onRetry={() => setSignalsTry(n => n + 1)}/>
+                  : <EmptyState align="left"
+                      message="you haven't shared any signals in this network yet."
+                      action={onNewSignal ? { label:"start a signal", onClick:onNewSignal } : null}/>
                 )}
               </>
             )}

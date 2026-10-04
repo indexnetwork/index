@@ -8,6 +8,7 @@ import { JoinRequest, Member } from '@/services/networks';
 import UserAvatar from '@/components/UserAvatar';
 import { RuleLabel } from '@/components/workbench/Workbench';
 import { log } from '@/lib/logger';
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const logger = log.ui.from('AccessTab');
 const MEMBERS_PAGE_SIZE = 10;
@@ -45,7 +46,8 @@ export default function AccessTab({
   const [members, setMembers] = useState<Member[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
-  const [isMembersLoading, setIsMembersLoading] = useState(false);
+  const [isMembersLoading, setIsMembersLoading] = useState(true);
+  const [membersFailed, setMembersFailed] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchIsLoading, setSearchIsLoading] = useState(false);
   const [searchHasQueried, setSearchHasQueried] = useState(false);
@@ -71,8 +73,10 @@ export default function AccessTab({
     try {
       const response = await networkService.getMembers(networkId, {});
       setMembers(response.members);
+      setMembersFailed(false);
     } catch (err) {
       logger.error('Error loading members', { error: err });
+      setMembersFailed(true);
     } finally {
       setIsMembersLoading(false);
     }
@@ -200,7 +204,7 @@ export default function AccessTab({
       onUpdated(updatedNetwork);
       if (updatedNetwork.permissions?.invitationLink?.code) setInvitationLink({ code: updatedNetwork.permissions.invitationLink.code });
       setShowRegenerateConfirm(false);
-      success('Invitation link regenerated');
+      success(invitationLink ? 'Invitation link regenerated' : 'Invitation link created');
     } catch (err) {
       logger.error('Error regenerating invitation link', { error: err });
       error('Failed to regenerate invitation link');
@@ -297,7 +301,12 @@ export default function AccessTab({
       <div>
         <RuleLabel>Invitation link</RuleLabel>
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid #000", background: "#F2F0EC" }}>
-          <code style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl || "No invitation link yet."}</code>
+          <code style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shareUrl || "no invitation link yet."}</code>
+          {!shareUrl && (
+            <button type="button" className="wb-btn small" disabled={isRegeneratingLink} onClick={() => void handleRegenerateLink()}>
+              {isRegeneratingLink ? "creating…" : "create link"}
+            </button>
+          )}
           {shareUrl && (
             <>
               <button type="button" onClick={() => setShowRegenerateConfirm((open) => !open)} disabled={isRegeneratingLink} title="Regenerate invitation link" aria-label="Regenerate invitation link" style={{ ...act, padding: "4px 10px", background: showRegenerateConfirm ? "#000" : "#fff", color: showRegenerateConfirm ? "#fff" : "#000", boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", opacity: isRegeneratingLink ? 0.5 : 1 }}>↻</button>
@@ -361,14 +370,26 @@ export default function AccessTab({
               {memberSearchQuery.includes('@') ? (
                 <button type="button" disabled={isAddingMember} onClick={() => void handleInviteMember(memberSearchQuery.trim())} style={{ width: "100%", padding: "10px 12px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--mac-sans)", fontSize: 13 }}>Invite &quot;{memberSearchQuery.trim()}&quot;</button>
               ) : (
-                <div style={{ padding: "10px 12px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>No results found</div>
+                <div style={{ padding: "10px 12px", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>no one found. enter a full email to invite them.</div>
               )}
             </div>
           )}
         </div>
 
         <div style={{ marginTop: 12, display: "grid", gap: 2 }}>
-          {isMembersLoading && <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>Loading members…</p>}
+          {isMembersLoading && members.length === 0 && <EmptyState tone="loading" align="start" message="loading members…" />}
+          {!isMembersLoading && membersFailed && members.length === 0 && (
+            <EmptyState
+              tone="error"
+              align="start"
+              message="couldn't load members."
+              action={{ label: "try again", onClick: () => void loadMembers() }}
+            />
+          )}
+          {!isMembersLoading && !membersFailed && members.length === 0 && (
+            // The search box above is the invite action: type a name or a full email.
+            <EmptyState align="start" message="no members yet. search above or enter an email to add someone." />
+          )}
           {!isMembersLoading && slice.map((member) => {
             const isOwner = member.permissions.includes('owner');
             const isSelf = currentUser?.id === member.id;

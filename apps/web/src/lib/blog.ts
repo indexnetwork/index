@@ -87,15 +87,12 @@ export function transformAssetPaths(content: string, slug: string): string {
   return transformed;
 }
 
-export async function getAllPosts(): Promise<BlogPost[]> {
-  try {
-    const response = await fetch('/blog/posts.json');
-    if (!response.ok) return [];
-    const posts: BlogPost[] = await response.json();
-    return posts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  } catch {
-    return [];
-  }
+/** Newest-first posts. Throws when the index can't be fetched, so callers can show an error. */
+export async function fetchAllPosts(): Promise<BlogPost[]> {
+  const response = await fetch('/blog/posts.json');
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const posts: BlogPost[] = await response.json();
+  return posts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 export async function getPostBySlug(slug: string): Promise<BlogPost | null> {

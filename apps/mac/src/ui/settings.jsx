@@ -90,6 +90,10 @@ function SocialField({ platform, value, onChange, onReset, onRemove }) {
   const unresolved = !!text.trim() && !buildSocialHref(platform, text);
   const clear = onRemove || onReset;
   const normalize = (raw) => {
+    // Text that resolves to no address is left exactly as typed. Parsing it
+    // anyway kept only the first word ("my portfolio" became "my"), which
+    // hid what was wrong behind something that looked like a fix.
+    if (!buildSocialHref(platform, raw)) return raw.trim();
     const parsed = parseSocial({ id: platform, handle: raw });
     // A URL for some other platform keeps its full text, since that is where
     // it goes and where it will be filed; only this row's own gets shortened.
@@ -124,7 +128,7 @@ function SocialField({ platform, value, onChange, onReset, onRemove }) {
         placeholder={isWeb ? "your-site.com" : "username"}
         aria-label={isWeb ? "website domain" : `${platform} username`}
         title={unresolved
-          ? `“${text.trim()}” is not an address yet — paste the full link, or just the ${isWeb ? "domain" : "username"}`
+          ? `“${text.trim()}” is not a link yet. paste the full address, or just the ${isWeb ? "domain" : "username"}.`
           : undefined}
         onChange={e => onChange && onChange(e.target.value)}
         onBlur={e => onChange && onChange(normalize(e.target.value))}
@@ -163,14 +167,8 @@ function PhotoPicker({ me, name, photo, onPick }) {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:14 }}>
       <PicturePicker size={54} label="change photo" onPick={onPick} onError={setErr}>
-        {photo
-          ? <img
-              src={photo}
-              alt=""
-              style={{
-                width:54, height:54, objectFit:"cover", display:"block",
-              }}/>
-          : <Avatar id={me.id} name={me.name} size={54}/>}
+        {/* Avatar falls back to the default avatar when the photo is missing or fails to load. */}
+        <Avatar id={me.id} name={me.name} photo={photo} size={54}/>
       </PicturePicker>
 
       <div style={{ minWidth:0 }}>
@@ -450,7 +448,7 @@ function RetryLink({ onClick }) {
       style={{
         fontFamily:"var(--mac-sans)", fontSize:12, border:"none", background:"none",
         color:"var(--ink-2)", textDecoration:"underline", cursor:"pointer", padding:0,
-      }}>retry</button>
+      }}>try again</button>
   );
 }
 
@@ -491,19 +489,20 @@ function AccessPane() {
   // different limiters, so one being unavailable must not hide the other.
   const reload = React.useCallback(async () => {
     if (!app || !app.listApiKeys) return;
-    const reason = (e) => (e && e.message ? e.message : "could not load");
+    // Raw server strings stay in the console; the pane says it plainly.
+    const reason = (what) => (e) => { console.warn(`[access] ${what} failed`, e); return `couldn't load ${what}.`; };
     const [keyPage, devicePage] = await Promise.allSettled([app.listApiKeys(), app.listDevices()]);
 
     if (keyPage.status === "fulfilled") {
       setKeys((keyPage.value && keyPage.value.apiKeys) || []);
       setKeysError(null);
-    } else setKeysError(reason(keyPage.reason));
+    } else setKeysError(reason("api keys")(keyPage.reason));
 
     if (devicePage.status === "fulfilled") {
       setDevices((devicePage.value && devicePage.value.devices) || []);
       setCurrentId((devicePage.value && devicePage.value.currentId) || null);
       setDevicesError(null);
-    } else setDevicesError(reason(devicePage.reason));
+    } else setDevicesError(reason("devices")(devicePage.reason));
   }, [app]);
 
   useEffect(() => { reload(); }, [reload]);
@@ -511,7 +510,7 @@ function AccessPane() {
   const run = async (work, setError) => {
     setBusy(true);
     try { await work(); await reload(); }
-    catch (e) { setError(e && e.message ? e.message : "request failed"); }
+    catch (e) { console.warn("[access] request failed", e); setError("that didn't go through. try again."); }
     finally { setBusy(false); }
   };
 
@@ -552,8 +551,12 @@ function AccessPane() {
 
         {keysError ? (
           <p style={accessNote}>{keysError} · <RetryLink onClick={reload}/></p>
-        ) : keys === null || keys.length === 0 ? (
-          <p style={accessNote}>{keys === null ? "loading…" : "no api keys yet."}</p>
+        ) : keys === null ? (
+          <p style={accessNote}>loading…</p>
+        ) : keys.length === 0 ? (
+          <EmptyState message="no api keys yet." align="left"
+            action={{ label:"generate key", onClick:generate, primary:true }}
+            style={{ maxWidth:520 }}/>
         ) : (
           <div style={{
             border:"1px solid #000", background:"#fff",
@@ -594,7 +597,7 @@ function AccessPane() {
             <p style={{
               margin:"0 0 6px", fontFamily:"var(--mac-mono)", fontSize:11,
               fontWeight:700, color:"#000",
-            }}>copy this key now — it won&apos;t be shown again</p>
+            }}>copy this key now. it won&apos;t be shown again.</p>
             <code style={{
               display:"block", fontFamily:"var(--mac-mono)", fontSize:11,
               color:"#000", wordBreak:"break-all", userSelect:"text",
@@ -718,7 +721,7 @@ function ProtocolSection() {
         fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
       }}>
         requests go to <span style={{ fontFamily:"var(--mac-mono)", fontSize:12 }}>{active}</span>.
-        switching signs this mac out — a session belongs to the server it was made on.
+        switching signs this mac out. a session belongs to the server it was made on.
       </p>
       <MacSegmented
         value={choice}
@@ -843,6 +846,15 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
   const assembled = useRef(assembleProfile(ME, enriched, name));
+  // At first run an empty lookup is not a failure, but the review must say so:
+  // otherwise blank fields read as a screen that didn't load.
+  const foundNothing = useMemo(() => {
+    const p = enriched && enriched.profile;
+    if (!p) return true;
+    const found = splitProfileSocials(p.socials);
+    return !String(p.intro || "").trim() && !String(p.location || "").trim()
+      && !found.websites.length && !Object.values(found.handles).some(Boolean);
+  }, [enriched]);
   const [form, setForm] = useState(assembled.current);
   // In-session edits (ME.notify) win over the durable native store; the
   // defaults only apply on a truly fresh install. `messages` predates neither:
@@ -968,7 +980,9 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             <div style={{ padding:"14px 24px", borderBottom:"2px solid #000" }}>
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-              }}>here's what i pulled together. make sure it's right.</div>
+              }}>{firstRun && foundNothing
+                ? "i couldn't find anything public about you, so fill this in yourself. it's what your agent works from."
+                : "here's what i pulled together. make sure it's right."}</div>
             </div>
           ) : (
             <div style={{

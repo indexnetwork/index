@@ -1,15 +1,6 @@
-.mcp-consent {
-  min-height: 100vh;
-  background: #f5f4ed;
-  color: #14231b;
-  font-family: 'DM Sans', sans-serif;
-}
-
-.mcp-consent__nav { padding: 28px 40px; }
-.mcp-consent__nav img { width: 110px; }
 .mcp-consent__card {
-  width: min(600px, calc(100% - 36px));
-  margin: 8vh auto;
+  width: min(600px, 100%);
+  margin: 0 auto;
   padding: 36px;
   border: 1px solid #d5d9d0;
   border-radius: 16px;

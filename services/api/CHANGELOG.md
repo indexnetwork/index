@@ -13,11 +13,18 @@ section before promoting to `main`).
 - Opportunity status frames no longer wake the hosted agent; they remain available to clients.
 
 ### Added
+- **MCP `submit_negotiation_turn`.** Submits one negotiator turn (`propose`,
+  `counter`, `accept`, or `decline`) for the authenticated owner. The caller
+  passes `agentId` for their selected external negotiator. Refusals match the
+  REST turn errors, including a changed executor.
 - **MCP Events for ChatGPT.** `/mcp` advertises `capabilities.events` and
   serves `events/list`, `events/subscribe`, and `events/unsubscribe` for
-  `opportunity.new`, `opportunity.status`, and `question.pending`. Delivery is
-  a Standard Webhooks-signed POST to a public HTTPS callback, which must first
-  echo a challenge. Subscriptions live in Redis for at most 7 days and are
+  `opportunity.new`, `opportunity.status`, `negotiation.turn`, and
+  `question.pending`. `negotiation.turn` carries `opportunityId`, `intentId`,
+  `turnIndex`, a server-written `summary`, and the opportunity URL, and can be
+  filtered by `intentId`. Delivery is a Standard Webhooks-signed POST to a
+  public HTTPS callback, which must first echo a challenge. Subscriptions live
+  in Redis for at most 7 days and are
   delivered only while the creating OAuth grant, API key, or device session is
   live. The hosted-agents worker delivers them from the `mcp-events` consumer
   group. Every MCP tool now declares `readOnlyHint`, `destructiveHint`, and

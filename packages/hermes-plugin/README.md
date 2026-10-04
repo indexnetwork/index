@@ -61,6 +61,7 @@ New to Hermes? [Get Hermes](https://hermes-agent.nousresearch.com/).
 - The plugin calls the Index REST API (`/intents`, `/networks`, `/opportunities`, `/docs`) with this device's own session, which is saved as `INDEX_SESSION_TOKEN` in the Hermes env file. Rejected writes are never replayed.
 - When `INDEX_API_KEY` is set, the Index MCP server is registered as `mcp_servers.index`.
 - When Hermes is your selected negotiator, the gateway starts `runtime/dist/negotiator.js` (`@indexnetwork/agent`) as a child process and restarts it if it exits. It stops when the gateway stops, when you pause, or when you select another negotiator.
+- The morning brief is off until you turn it on in Profile. While this install is the selected negotiator, that switch creates a Hermes cron job at 08:00. Each run wakes the negotiator once per active intent that belongs to a network, which spends a model call and can send outreach. Turning it off, pausing, deselecting Hermes, or uninstalling removes the job.
 - **Sign out** in the Discover tab revokes the session on the server.
 - Overrides: `INDEX_API_URL` (default `https://protocol.index.network`) and `INDEX_APP_BASE_URL`.
 
@@ -76,7 +77,7 @@ python3 -m compileall -q .
 hermes plugins doctor . --ci
 ```
 
-Do not hand-edit `desktop/dist/plugin.js` or `runtime/dist/negotiator.js`. Rebuild them and commit the output, because CI fails on drift. Negotiation behaviour lives in `packages/agent`.
+Do not hand-edit `desktop/plugin.js` or `runtime/dist/negotiator.js`. Rebuild them and commit the output, because CI fails on drift. Negotiation behaviour lives in `packages/agent`. Hermes installs the desktop half from `desktop/plugin.js` and leaves it off until you enable it.
 
 ---
 

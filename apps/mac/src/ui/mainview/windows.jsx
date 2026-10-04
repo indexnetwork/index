@@ -182,7 +182,7 @@ function apiChatMessage(m, myId) {
   return { id: m.id || rid(), who, text, at: m.createdAt || m.created_at || null };
 }
 
-function ChatWindow({ person, messages, draft, setDraft, onSend, onClose }) {
+function ChatWindow({ person, messages, loading = false, failed = false, onRetry, draft, setDraft, onSend, onClose }) {
   const scrollRef = useRef(null);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -230,7 +230,10 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose }) {
             display:"flex", flexDirection:"column", gap:10, background:"#fff",
           }}>
             <ChatOpener person={person}/>
-            {messages.map(m => <ChatBubble key={m.id} m={m}/>)}
+            {messages.length > 0 ? messages.map(m => <ChatBubble key={m.id} m={m}/>)
+              : failed ? <EmptyState tone="error" message="couldn't load this conversation." align="left" onRetry={onRetry}/>
+              : loading ? <EmptyState tone="loading" framed={false} align="left"/>
+              : <EmptyState message="no messages yet. say hello." framed={false} align="left"/>}
           </div>
 
           {/* input */}

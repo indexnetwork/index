@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { type BlogPost, getAllPosts } from "@/lib/blog";
+import { useCallback, useEffect, useState } from "react";
+import { type BlogPost, fetchAllPosts } from "@/lib/blog";
 
 /** A row in the blog index: a markdown post or a standalone page. */
 export type BlogEntry = {
@@ -29,26 +29,42 @@ function toEntry(post: BlogPost): BlogEntry {
   };
 }
 
-/** Newest-first entries; `null` while loading. */
-export function useBlogEntries(): BlogEntry[] | null {
+/** Blog index state: `entries` is `null` while loading; `failed` when the post index didn't load. */
+export function useBlogIndex(): { entries: BlogEntry[] | null; failed: boolean; retry: () => void } {
   const [entries, setEntries] = useState<BlogEntry[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    getAllPosts()
-      .catch(() => [] as BlogPost[])
-      .then((posts) => {
+    fetchAllPosts()
+      .then((posts) => ({ posts, ok: true }))
+      .catch(() => ({ posts: [] as BlogPost[], ok: false }))
+      .then(({ posts, ok }) => {
         if (cancelled) return;
+        // External essays still render when the post index fails; the page flags the gap.
         const all = [...posts.map(toEntry), ...EXTERNAL_ENTRIES];
         all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setEntries(all);
+        setFailed(!ok);
       });
     return () => {
       cancelled = true;
     };
+  }, [attempt]);
+
+  const retry = useCallback(() => {
+    setEntries(null);
+    setFailed(false);
+    setAttempt((n) => n + 1);
   }, []);
 
-  return entries;
+  return { entries, failed, retry };
+}
+
+/** Newest-first entries; `null` while loading. */
+export function useBlogEntries(): BlogEntry[] | null {
+  return useBlogIndex().entries;
 }
 
 /** "JUL 29, 2026" */

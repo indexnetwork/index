@@ -671,7 +671,7 @@ function Agents({ onClose }) {
                   padding:"12px",
                   borderBottom: manualAgents.length ? "1px solid #000" : "none",
                   fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)",
-                }}>no agent runtimes found on this mac</div>
+                }}>no agent runtimes found on this mac.</div>
               )}
               {runtimes.map((runtime, i) => {
                 const match = agents.find(a => String(a.name || "").trim().toLowerCase() === runtime.name.toLowerCase());

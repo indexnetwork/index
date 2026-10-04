@@ -3,10 +3,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useConversations } from "@/contexts/APIContext";
-import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type PrincipalQuestion } from "@/services/conversation";
-import { AgentFeedNote, AgentPortrait, DiscoveryTrace, OptionChip, parseDiscovery } from "@/components/workbench/mac-blocks";
+import { AgentFeedNote, DiscoveryTrace, OptionChip, parseDiscovery } from "@/components/workbench/mac-blocks";
+import { MyAgentAvatar, TheirAgentAvatar, agentLabel } from "@/components/workbench/agent-avatar";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 type Provenance = {
   kind?: string;
@@ -125,13 +126,6 @@ function signalFeed(messages: ConversationMessage[], questions: PrincipalQuestio
   return feed;
 }
 
-function agentLabel(name: string) {
-  const owner = name.trim().replace(/[’']s\s+agent$|\s+agent$/i, "").trim();
-  if (!owner) return "your agent";
-  if (/^unknown$/i.test(owner)) return "someone's agent";
-  return `${owner}'s agent`;
-}
-
 /** One private intent conversation; every open question is answered in a single submit. */
 function questionAsker(question: { scope?: string; matches?: PrincipalQuestion["matches"] }) {
   const people = (question.matches ?? [])
@@ -149,9 +143,8 @@ function questionAskerLabel(question: QuestionCard, label: string, onSelectMatch
   return <button type="button" onClick={() => onSelectMatch(opportunityId)} style={{ ...style, background: "none", border: "none", padding: 0, cursor: "pointer" }}>{label}</button>;
 }
 
-function OpenQuestion({ question, user, selections, setSelections, writing, setWriting, onSelectMatch }: {
+function OpenQuestion({ question, selections, setSelections, writing, setWriting, onSelectMatch }: {
   question: QuestionCard;
-  user: { id?: string; name?: string; avatar?: string | null } | null;
   selections: Record<string, string>;
   setSelections: Dispatch<SetStateAction<Record<string, string>>>;
   writing: Record<string, boolean>;
@@ -167,7 +160,7 @@ function OpenQuestion({ question, user, selections, setSelections, writing, setW
   const write = writing[id] || options.length === 0;
   return (
     <article style={{ display: "flex", gap: 12 }}>
-      <AgentPortrait id={owner?.id ?? user?.id} name={owner?.name ?? user?.name} photo={owner ? null : user?.avatar} />
+      {owner ? <TheirAgentAvatar owner={owner} size={30} style={{ marginTop: 2 }} /> : <MyAgentAvatar size={30} style={{ marginTop: 2 }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
         <div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5 }}>
@@ -207,16 +200,15 @@ function OpenQuestion({ question, user, selections, setSelections, writing, setW
   );
 }
 
-function AnsweredQuestion({ question, answer, user }: {
+function AnsweredQuestion({ question, answer }: {
   question: QuestionCard;
   answer: string;
-  user: { id?: string; name?: string; avatar?: string | null } | null;
 }) {
   const asker = questionAsker(question);
   const owner = asker.owner;
   return (
     <article style={{ display: "flex", gap: 12 }}>
-      <AgentPortrait id={owner?.id ?? user?.id} name={owner?.name ?? user?.name} photo={owner ? null : user?.avatar} />
+      {owner ? <TheirAgentAvatar owner={owner} size={30} style={{ marginTop: 2 }} /> : <MyAgentAvatar size={30} style={{ marginTop: 2 }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
         <div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -234,7 +226,6 @@ function AnsweredQuestion({ question, answer, user }: {
 }
 
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
-  const { user } = useAuthContext();
   const conversations = useConversations();
   const { subscribeConversationMessage, isConnected } = useConversation();
   const [draft, setDraft] = useState("");
@@ -244,6 +235,7 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [agent, setAgent] = useState<PersonalAgentState>();
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [sending, setSending] = useState(false);
   const requests = useRef({ generation: 0, mounted: false });
   const endRef = useRef<HTMLDivElement>(null);
@@ -267,8 +259,11 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
       setConversationId(loaded.conversationId);
       mergeMessages(loaded.messages);
       setAgent(loaded.agent);
+      setLoadFailed(false);
     } catch {
       // Keep the last good transcript; the stream or the next read reconciles it.
+      // Only an empty transcript surfaces the failure (see the render below).
+      if (current === requests.current.generation) setLoadFailed(true);
     } finally {
       if (current === requests.current.generation) setLoading(false);
     }
@@ -328,9 +323,17 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }} data-testid="intent-negotiator-chat">
       <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 22 }}>
-      {loading ? <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-        : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45 }}>
-          Ask about your matches, share a preference, or give your agent direction for this signal.
+      {loading ? <EmptyState tone="loading" align="start" style={{ padding: 0 }} />
+        : feed.length === 0 && questions.length === 0 && loadFailed ? (
+          <EmptyState
+            tone="error"
+            align="start"
+            style={{ padding: 0 }}
+            message="couldn't load your agent's messages."
+            action={{ label: "try again", onClick: () => { setLoading(true); void refresh(); } }}
+          />
+        ) : feed.length === 0 && questions.length === 0 ? <p style={{ margin: 0, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45 }}>
+          ask about your matches, share a preference, or tell your agent what to look for.
         </p> : feed.map((piece) => {
           if (piece.kind === "discovery") {
             return <DiscoveryTrace key={piece.id} loading={piece.loading} plan={piece.plan} queries={piece.queries} discovered={piece.discovered} reached={piece.reached} progress={piece.progress} />;
@@ -349,11 +352,11 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           }
           if (piece.kind === "open-question") {
             return (
-              <OpenQuestion key={piece.id} question={piece.question} user={user} selections={selections} setSelections={setSelections} writing={writing} setWriting={setWriting} onSelectMatch={onSelectMatch} />
+              <OpenQuestion key={piece.id} question={piece.question} selections={selections} setSelections={setSelections} writing={writing} setWriting={setWriting} onSelectMatch={onSelectMatch} />
             );
           }
           if (piece.kind === "answered-question") {
-            return <AnsweredQuestion key={piece.id} question={piece.question} answer={piece.answer} user={user} />;
+            return <AnsweredQuestion key={piece.id} question={piece.question} answer={piece.answer} />;
           }
           return (
             <AgentFeedNote key={piece.id}>
@@ -380,8 +383,8 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
         <textarea ref={inputRef} rows={1} value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
-          placeholder="Message your personal agent…"
-          aria-label="Message your personal agent"
+          placeholder="message your agent…"
+          aria-label="Message your agent"
           style={{ flex: 1, border: "none", resize: "none", outline: "none", fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.4, background: "transparent", padding: "4px 0" }} />
         <button type="submit" disabled={!draft.trim() || sending} aria-label="send" title="send" style={{ background: "none", border: "none", color: draft.trim() && !sending ? "#111" : "#b9b3a4", cursor: draft.trim() ? "pointer" : "default" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="20" x2="12" y2="5" /><polyline points="5,12 12,5 19,12" /></svg>

@@ -325,13 +325,14 @@ function ownAgentSeed() { return myAgent().seed; }
 
 /** Just the agent's own mark, no owner attached. */
 function AgentMark({ size, agent, title }) {
-  if (agent.photo) {
+  const [broken, setBroken] = useState(null);
+  if (agent.photo && broken !== agent.photo) {
     return (
       <span title={title} style={{
         width:size, height:size, display:"block", flex:"0 0 auto",
         border:`1px solid ${FACE_INK}`, overflow:"hidden", boxSizing:"border-box",
       }}>
-        <img src={agent.photo} alt="" style={{
+        <img src={agent.photo} alt="" onError={() => setBroken(agent.photo)} style={{
           width:"100%", height:"100%", objectFit:"cover", display:"block",
         }}/>
       </span>

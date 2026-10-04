@@ -1,15 +1,13 @@
-import { PropsWithChildren, Suspense, useMemo } from 'react';
-import { Link } from 'react-router';
+import { PropsWithChildren, useMemo } from 'react';
 import { useLocation } from 'react-router';
-import Header from "@/components/Header";
 import { NetworkFilterProvider } from "@/contexts/NetworkFilterContext";
 import { NetworksProvider } from "@/contexts/NetworksContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents'];
-// /l is chrome-free web invite join; /index stays app-only public join.
-const bareRoutes = ['/', '/l', '/index', '/login', '/download', '/i/new', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth'];
+// /l is the chrome-free web invite join.
+const bareRoutes = ['/', '/l', '/login', '/download', '/i/new', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth', '/s', '/mcp'];
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
@@ -24,21 +22,12 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   }, [pathname, isAuthenticated]);
 
   const isAppRoute = useMemo(() => {
-    if (!isAuthenticated) return false;
     return appRoutes.some(route =>
       pathname === route || pathname?.startsWith(route + '/')
     );
-  }, [pathname, isAuthenticated]);
+  }, [pathname]);
 
   const showAppShell = isAppRoute && !isBareRoute;
-  const showHeader = !showAppShell && !isBareRoute;
-
-  const isLandingOrBlog = useMemo(() =>
-    (pathname === '/' && !isAuthenticated) ||
-    pathname === '/blog' ||
-    pathname?.startsWith('/blog/') ||
-    pathname?.startsWith('/pages/'),
-  [pathname, isAuthenticated]);
 
   if (isBareRoute) {
     return <NetworksProvider>{children}</NetworksProvider>;
@@ -75,36 +64,9 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                 </main>
               </div>
             ) : (
-              // Public layout without sidebar
-              <>
-                {showHeader && (
-                  <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-300'}>
-                    <div className="max-w-7xl mx-auto px-4">
-                      <Suspense
-                        fallback={
-                          <header className="w-full py-4 px-4 flex justify-between items-center">
-                            <Link to="/">
-                              <img
-                                src="/logos/logo-black-full.svg"
-                                alt="Index Network"
-                                width={200}
-                                height={36}
-                                className="object-contain"
-                              />
-                            </Link>
-                            <div className="animate-pulse bg-gray-200 h-10 w-20 rounded" />
-                          </header>
-                        }
-                      >
-                        <Header forcePublicView={isLandingOrBlog} />
-                      </Suspense>
-                    </div>
-                  </div>
-                )}
-                <main className="flex flex-col min-h-[calc(100vh-76px)]">
-                  {children}
-                </main>
-              </>
+              <main className="flex flex-col min-h-screen">
+                {children}
+              </main>
             )}
           </div>
       </NetworkFilterProvider>

@@ -158,7 +158,7 @@ def _unauthorized(error: BaseException) -> bool:
 
 
 def _recover(error: BaseException) -> bool:
-    """Rebuild the client from the env file, and on 401 follow the accepting host."""
+    """Rebuild the client from the env file. A 401 stays on the configured host."""
     from .env_transport import refresh_transport
 
     try:
@@ -216,19 +216,23 @@ def _pause_loop(done: threading.Event) -> None:
     if sidecar is None:
         return
     path = Path(sidecar.state_path)
-    seen = read_state(path)["paused"]
-    alive = _pid_alive(read_state(path)["pid"])
+    seen_state = read_state(path)
+    seen = seen_state["paused"]
+    seen_morning = seen_state["morning"]
+    alive = _pid_alive(seen_state["pid"])
     while not done.is_set() and _runner() is not None:
         if not _wait_state(path, done):
             continue
         state = read_state(path)
         paused = state["paused"]
+        morning = state["morning"]
         now_alive = _pid_alive(state["pid"])
         died = alive and not now_alive and not paused
         alive = now_alive
-        if paused == seen and not died:
+        if paused == seen and morning == seen_morning and not died:
             continue
         seen = paused
+        seen_morning = morning
         _apply_current()
 
 

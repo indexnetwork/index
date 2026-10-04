@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiKeysService, type ApiKeyInfo } from "@/services/api-keys";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const th: CSSProperties = {
   textAlign: "left", padding: "6px 10px", borderBottom: "1px solid #000",
@@ -143,11 +144,23 @@ export default function ApiKeysSection() {
       </p>
 
       {loadError ? (
-        <p style={note}>{loadError} · <button type="button" onClick={() => void reload()} style={{ fontFamily: "var(--mac-sans)", fontSize: 12, border: "none", background: "none", color: "var(--ink-2)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>retry</button></p>
+        <EmptyState
+          tone="error"
+          align="start"
+          style={{ padding: 0, margin: "0 0 10px" }}
+          message="couldn't load api keys."
+          action={{ label: "try again", onClick: () => void reload() }}
+        />
       ) : keys === null ? (
         <p style={note}>loading…</p>
       ) : keys.length === 0 ? (
-        <p style={note}>no api keys yet.</p>
+        <EmptyState
+          align="start"
+          framed
+          style={{ maxWidth: 520, margin: "0 0 10px" }}
+          message="no api keys yet."
+          action={{ label: generating ? "generating…" : "generate key", onClick: () => { if (!generating) void handleGenerateKey(); } }}
+        />
       ) : (
         <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -177,7 +190,7 @@ export default function ApiKeysSection() {
 
       {mintedKey && (
         <div style={{ marginTop: 10, border: "1px solid #000", background: "#FFF6E5", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)", padding: "10px 12px" }}>
-          <p style={{ margin: "0 0 6px", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700 }}>copy this key now — it won&apos;t be shown again</p>
+          <p style={{ margin: "0 0 6px", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700 }}>copy this key now. it won&apos;t be shown again.</p>
           <code style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 11, wordBreak: "break-all", userSelect: "text" }}>{mintedKey}</code>
           <button type="button" onClick={() => setMintedKey(null)} style={{ marginTop: 8, fontFamily: "var(--mac-mono)", fontSize: 10, border: "none", background: "none", color: "var(--ink-2)", textDecoration: "underline", cursor: "pointer", padding: 0 }}>dismiss</button>
         </div>

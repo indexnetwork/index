@@ -3,6 +3,7 @@ import { useMemo, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { signalStatus, signalTitle } from "@/lib/signal-display";
 import { QCount } from "@/components/workbench/Workbench";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 interface BaseIntent {
   id: string;
@@ -18,6 +19,9 @@ interface BaseIntent {
 interface IntentListProps<T extends BaseIntent> {
   intents: T[];
   isLoading?: boolean;
+  /** Set when the list fetch failed; renders the error state instead of empty copy. */
+  loadError?: boolean;
+  onRetry?: () => void;
   emptyMessage?: string;
   onArchiveIntent?: (intent: T) => void;
   onRemoveIntent?: (intent: T) => void;
@@ -33,6 +37,8 @@ interface IntentListProps<T extends BaseIntent> {
 export default function IntentList<T extends BaseIntent>({
   intents,
   isLoading = false,
+  loadError = false,
+  onRetry,
   emptyMessage = "nothing here yet.",
   onIntentClick,
   className = "",
@@ -54,16 +60,30 @@ export default function IntentList<T extends BaseIntent>({
     });
   }, [intents]);
 
-  if (isLoading) {
-    return <p className={cn("py-6 text-center", className)} style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>;
+  if (isLoading && sortedIntents.length === 0) {
+    return <EmptyState tone="loading" align={shelf ? "start" : "center"} className={className} />;
+  }
+
+  if (loadError && sortedIntents.length === 0) {
+    return (
+      <EmptyState
+        tone="error"
+        align={shelf ? "start" : "center"}
+        className={className}
+        message="couldn't load your signals."
+        action={onRetry ? { label: "try again", onClick: onRetry } : undefined}
+      />
+    );
   }
 
   if (sortedIntents.length === 0) {
-    if (shelf) return null;
+    // Shelf mode: the "new signal" button sits directly under this line and is the CTA.
     return (
-      <p className={className} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", padding: 6 }}>
-        {emptyMessage}
-      </p>
+      <EmptyState
+        align={shelf ? "start" : "center"}
+        className={className}
+        message={shelf ? "no signals yet. start one and your agent goes looking." : emptyMessage}
+      />
     );
   }
 

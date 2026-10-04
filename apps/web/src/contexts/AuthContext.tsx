@@ -5,6 +5,7 @@ import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
 import AuthModal from '@/components/AuthModal';
+import SiteLayout from '@/app/site/SiteLayout';
 import { log } from '@/lib/logger';
 
 const logger = log.context.from('AuthContext');
@@ -148,8 +149,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const isHomePage = pathname === '/';
     const publicPrefixes = [
-      '/simulation', '/l', '/index/', '/blog', '/pages', '/about', '/hermes',
-      '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/o/', '/i/', '/waitlist', '/download',
+      '/l', '/blog', '/pages', '/about', '/hermes',
+      '/login', '/s/', '/found-in-translation', '/protocol', '/cli-auth', '/u/', '/o/', '/i/', '/waitlist', '/download',
       '/9db20a5fbe',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
@@ -216,18 +217,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           </video>
         </div>
       ) : error ? (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-xl font-bold text-red-600 mb-2">Error</h2>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Refresh Page
+        <SiteLayout>
+          <section className="site-hero">
+            <h1 className="site-h1">Something went wrong</h1>
+            <p className="site-p">{error}</p>
+            <button type="button" className="site-btn" onClick={() => window.location.reload()}>
+              Refresh
             </button>
-          </div>
-        </div>
+          </section>
+        </SiteLayout>
       ) : (
         children
       )}
