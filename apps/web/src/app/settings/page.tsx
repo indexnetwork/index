@@ -11,6 +11,8 @@ import DevicesSection from "@/components/settings/DevicesSection";
 import SettingsTabs from "@/components/settings/SettingsTabs";
 import { parseSocial } from "@/lib/socials";
 import { forgetProtocolOrigin, isProtocolOrigin, rememberProtocolOrigin, visibleProtocolOrigin } from "@/lib/protocol-origin";
+import { useCompact } from "@/hooks/useCompact";
+import { useBack } from "@/hooks/useBack";
 
 const SETTINGS_TABS = ["profile", "notifications", "access", "advanced"] as const;
 
@@ -27,6 +29,8 @@ function isSettingsTab(v: string | null): v is SettingsTab {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const compact = useCompact();
+  const back = useBack("/");
   const [searchParams] = useSearchParams();
   const { user, isAuthenticated, isLoading: authLoading, refetchUser, signOut } = useAuthContext();
   const authService = useAuth();
@@ -164,8 +168,8 @@ export default function ProfilePage() {
   return (
       <>
         <Stage width={860} height="min(660px, calc(100vh - 112px))">
-        <Window title="settings" onClose={() => navigate("/")} style={{ height: "100%" }}>
-        <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px 22px" }}>
+        <Window title="settings" onClose={compact ? back : () => navigate("/")} style={{ height: "100%" }}>
+        <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
           <div style={{ marginBottom: 18 }}>
             <SettingsTabs />
           </div>
@@ -187,7 +191,7 @@ export default function ProfilePage() {
 
             <div className="space-y-4 pt-2">
 
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "14px 18px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: "14px 18px" }}>
                 <MacField label="name" required value={name} onChange={(v) => { setName(v); mark(); }} />
                 <MacField label="email" value={user?.email || ""} disabled />
                 <MacField label="location" value={location} onChange={(v) => { setLocation(v); mark(); }} />
@@ -210,7 +214,7 @@ export default function ProfilePage() {
                 <span>socials</span>
                 <span style={{ flex: 1, height: 1, background: "#000" }} />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "9px 14px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: "9px 14px" }}>
                 {[
                   { prefix: "x.com/", label: "twitter", value: getSocial("twitter") },
                   { prefix: "linkedin.com/in/", label: "linkedin", value: getSocial("linkedin") },

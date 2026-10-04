@@ -10,6 +10,8 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import IntentList from "@/components/IntentList";
 import InviteNetworksModal from "@/components/modals/InviteNetworksModal";
 import { QCount, RuleLabel, Stage, Window } from "@/components/workbench/Workbench";
+import { AgentGlyph, ChatGlyph, NetworksGlyph } from "@/components/workbench/nav-glyphs";
+import { useCompact } from "@/hooks/useCompact";
 import { log } from "@/lib/logger";
 
 const logger = log.ui.from("DiscoverHome");
@@ -33,27 +35,12 @@ function ShelfCount({ n }: { n: number }) {
   return <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 500, color: "#000" }}>{n}</span>;
 }
 
-function AgentGlyph() {
-  return (
-    <svg width="20.8" height="20.8" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth={2} strokeLinecap="square" strokeLinejoin="miter" style={{ display: "block" }}>
-      <line x1="12" y1="3" x2="12" y2="6" />
-      <circle cx="12" cy="2.5" r="1" fill="#000" stroke="none" />
-      <rect x="4" y="6" width="16" height="12" rx="1.5" />
-      <line x1="2" y1="11" x2="4" y2="11" />
-      <line x1="20" y1="11" x2="22" y2="11" />
-      <rect x="8.5" y="10" width="2" height="2.5" fill="#000" stroke="none" />
-      <rect x="13.5" y="10" width="2" height="2.5" fill="#000" stroke="none" />
-      <line x1="9" y1="15" x2="15" y2="15" />
-    </svg>
-  );
-}
-
 function ShelfRow({ icon, label, aside, rule, onClick }: { icon: ReactNode; label: string; aside?: ReactNode; rule?: boolean; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} style={{
       display: "flex", alignItems: "center", gap: 8.4, width: "100%",
       padding: "3px 0", cursor: "pointer", textAlign: "left",
-      border: "none", borderTop: rule ? "1px solid #DAD8D4" : "none", background: "transparent",
+      border: "none", borderTop: rule ? "1px solid #DAD8D4" : "none", background: "transparent", color: "#000",
     }}>
       <span style={{ flex: "0 0 auto", width: 20.8, height: 34, display: "grid", placeItems: "center start" }}>{icon}</span>
       <span style={{ flex: 1, minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 500, color: "#000" }}>{label}</span>
@@ -64,6 +51,7 @@ function ShelfRow({ icon, label, aside, rule, onClick }: { icon: ReactNode; labe
 
 export default function DiscoverHome() {
   const navigate = useNavigate();
+  const compact = useCompact();
   const { error: showError } = useNotifications();
   const { user, signOut } = useAuthContext();
   const agentsService = useAgents();
@@ -159,6 +147,60 @@ export default function DiscoverHome() {
     return <InviteNetworksModal onClose={() => setInviteOpen(false)} />;
   }
 
+  const newSignalButton = (
+    <button type="button" className="wb-new-signal" onClick={() => navigate("/i/new")}>
+      <span style={{
+        width: 24,
+        height: 24,
+        display: "grid",
+        placeItems: "center",
+        background: "#fff",
+        color: "#000",
+        border: "1px solid #000",
+        fontFamily: "var(--mac-mono)",
+        fontSize: 16,
+        fontWeight: 700,
+      }}>+</span>
+      <span style={{ fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 700 }}>new signal</span>
+    </button>
+  );
+
+  // Compact: signals are the whole screen. Conversations, agents and the
+  // profile menu move to the tab bar; networks and settings sit in its "you" sheet.
+  if (compact) {
+    return (
+      <Stage>
+        <Window title="index">
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "16px 16px 12px" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h1 style={{ fontFamily: "var(--amiga-mono)", fontWeight: 700, fontSize: 24, lineHeight: 1.1, letterSpacing: -0.4, margin: 0, color: "#000" }}>
+                  find your others
+                </h1>
+                <p style={{ margin: "8px 0 0", color: "#000", fontSize: 13, lineHeight: 1.45, fontFamily: "var(--mac-sans)" }}>
+                  start a signal by talking to your agent. it negotiates with other agents and makes an intro when both sides are interested.
+                </p>
+              </div>
+            </div>
+            <RuleLabel>your signals</RuleLabel>
+            <IntentList
+              intents={visible}
+              isLoading={loading}
+              loadError={intentsError}
+              onRetry={retryIntents}
+              shelf
+              className="mac-scroll"
+              style={{ flex: "1 1 auto", gap: SHELF_ROW_GAP }}
+              onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
+              onArchiveIntent={handleArchive}
+            />
+            <div style={{ flex: "0 0 auto" }}>{newSignalButton}</div>
+          </div>
+        </Window>
+      </Stage>
+    );
+  }
+
   return (
     <Stage width={980} height="min(560px, calc(100vh - 112px))">
       <Window title="index" style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
@@ -215,11 +257,7 @@ export default function DiscoverHome() {
                 <ShelfRow
                   onClick={() => navigate("/chat")}
                   label="conversations"
-                  icon={
-                    <svg width="17.6" height="16" viewBox="0 0 22 20" fill="none" stroke="#000" strokeWidth={2.5} strokeLinejoin="miter">
-                      <path d="M2 2h18v12H9l-5 4v-4H2z" />
-                    </svg>
-                  }
+                  icon={<ChatGlyph />}
                 />
                 <ShelfRow
                   rule
@@ -231,16 +269,7 @@ export default function DiscoverHome() {
                       <ShelfCount n={joinedCount} />
                     </>
                   }
-                  icon={
-                    <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 4 }}>
-                      {[0, 1].map((row) => (
-                        <span key={row} style={{ display: "flex", gap: 3.2, alignItems: "center" }}>
-                          <span style={{ width: 3.2, height: 3.2, background: "#000" }} />
-                          <span style={{ width: 10.4, height: 3.2, background: "#000" }} />
-                        </span>
-                      ))}
-                    </span>
-                  }
+                  icon={<NetworksGlyph />}
                 />
                 <ShelfRow rule onClick={() => navigate("/agents")} label="agents" aside={<ShelfCount n={agentCount} />} icon={<AgentGlyph />} />
               </div>
@@ -318,21 +347,7 @@ export default function DiscoverHome() {
               onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
               onArchiveIntent={handleArchive}
             />
-            <button type="button" className="wb-new-signal" onClick={() => navigate("/i/new")}>
-              <span style={{
-                width: 24,
-                height: 24,
-                display: "grid",
-                placeItems: "center",
-                background: "#fff",
-                color: "#000",
-                border: "1px solid #000",
-                fontFamily: "var(--mac-mono)",
-                fontSize: 16,
-                fontWeight: 700,
-              }}>+</span>
-              <span style={{ fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 700 }}>new signal</span>
-            </button>
+            {newSignalButton}
           </div>
         </div>
       </Window>

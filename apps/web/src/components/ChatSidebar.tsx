@@ -6,6 +6,7 @@ import { useConversation } from '@/contexts/ConversationContext';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { useCompact } from '@/hooks/useCompact';
 
 interface RecentChat {
   groupId: string;
@@ -50,6 +51,7 @@ export default function ChatSidebar({ showEmpty = true }: {
   showEmpty?: boolean;
 } = {}) {
   const navigate = useNavigate();
+  const compact = useCompact();
   const { pathname } = useLocation();
   const activePeerId = pathname.match(/^\/u\/([^/]+)\/chat/)?.[1] ?? null;
   const { user } = useAuthContext();
@@ -126,7 +128,8 @@ export default function ChatSidebar({ showEmpty = true }: {
                 onClick={() => {
                   const to = chat.peerUserId ? `/u/${chat.peerUserId}/chat` : "/chat";
                   if (to === pathname) return;
-                  navigate(to, { replace: pathname === "/chat" || activePeerId !== null });
+                  // Compact lists push so back returns to the list; desktop swaps the pane in place.
+                  navigate(to, { replace: !compact && (pathname === "/chat" || activePeerId !== null) });
                 }}
                 style={{
                   display: "grid",

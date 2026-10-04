@@ -12,6 +12,8 @@ import { Network as NetworkType } from '@/lib/types';
 import type { NetworkRequest, NetworkRequestInput } from '@/services/networkRequests';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useCompact } from "@/hooks/useCompact";
+import { useBack } from "@/hooks/useBack";
 
 const logger = log.page.from('networks');
 
@@ -43,6 +45,8 @@ function NetworkTile({ id, name, photo }: { id?: string; name?: string; photo?: 
 
 export default function NetworksPage() {
   const navigate = useNavigate();
+  const compact = useCompact();
+  const back = useBack("/");
   const { user } = useAuthContext();
   const { success, error } = useNotifications();
   const networksService = useNetworks();
@@ -181,9 +185,9 @@ export default function NetworksPage() {
   return (
     <>
       <Stage width={860} height="min(660px, calc(100vh - 112px))">
-      <Window title="networks" onClose={() => navigate('/')} style={{ height: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 24px' }}>
-        <div className="wb-segmented lg" role="tablist">
+      <Window title="networks" onClose={compact ? back : () => navigate('/')} style={{ height: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: compact ? '12px 12px' : '14px 24px' }}>
+        <div className={compact ? "wb-segmented" : "wb-segmented lg"} role="tablist">
           <button type="button" role="tab" aria-pressed={activeTab === 'mine'} onClick={() => setActiveTab('mine')}>my networks ({allNetworks.length})</button>
           <button type="button" role="tab" aria-pressed={activeTab === 'discover'} onClick={openDiscover}>discover</button>
         </div>

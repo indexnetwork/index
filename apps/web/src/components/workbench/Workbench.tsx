@@ -1,5 +1,7 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 
+import { useCompact } from "@/hooks/useCompact";
+
 const windowStack: Array<{ get: () => (() => void) | undefined }> = [];
 let escapeBound = false;
 
@@ -33,6 +35,17 @@ export function Stage({
   width?: number | string;
   height?: string;
 }) {
+  const compact = useCompact();
+  // Compact: the window is the screen, so the desktop sizing drops away.
+  if (compact) {
+    return (
+      <div className="wb-stage">
+        <div style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {children}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="wb-stage">
       <div style={{ width, maxWidth: "100%", height, minWidth: 0, maxHeight: "calc(100vh - 112px)" }}>
@@ -55,6 +68,7 @@ export function Window({
   children: ReactNode;
   style?: CSSProperties;
 }) {
+  const compact = useCompact();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
@@ -70,12 +84,13 @@ export function Window({
   return (
     <div className="amiga-window" style={{ height: "100%", ...style }}>
       <div className="mac-titlebar">
-        <span
-          className={dismiss ? "mac-close mac-dismiss" : "mac-close"}
+        {/* Compact: the close box reads as back, and tab roots (no onClose) drop it. */}
+        {compact && !onClose ? null : <span
+          className={compact ? "mac-close mac-back" : dismiss ? "mac-close mac-dismiss" : "mac-close"}
           role="button"
           tabIndex={0}
-          title={dismiss ? "put away" : "close"}
-          aria-label={dismiss ? "put away" : "close"}
+          title={compact ? "back" : dismiss ? "put away" : "close"}
+          aria-label={compact ? "back" : dismiss ? "put away" : "close"}
           onClick={onClose}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -83,7 +98,7 @@ export function Window({
               onClose?.();
             }
           }}
-        />
+        />}
         <span className="mac-title"><span className="t">{title}</span></span>
       </div>
       <div className="wb-body">{children}</div>
@@ -184,7 +199,7 @@ export function ConfirmWindow({
   children?: ReactNode;
 }) {
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", placeItems: "center", background: "rgba(0,85,170,0.28)", padding: 24 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center", background: "rgba(0,85,170,0.28)", padding: 24 }}>
       <div className="amiga-window" style={{ width: 420, maxWidth: "100%" }}>
         <div className="mac-titlebar">
           <span className="mac-title"><span className="t">{title}</span></span>

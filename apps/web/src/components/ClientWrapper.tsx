@@ -4,6 +4,8 @@ import { NetworkFilterProvider } from "@/contexts/NetworkFilterContext";
 import { NetworksProvider } from "@/contexts/NetworksContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useCompact } from "@/hooks/useCompact";
+import MobileTabBar, { isTabRoot } from "@/components/workbench/MobileTabBar";
 
 const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents'];
 // /l is the chrome-free web invite join.
@@ -12,6 +14,7 @@ const bareRoutes = ['/', '/l', '/login', '/download', '/i/new', '/found-in-trans
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
   const { isAuthenticated } = useAuthContext();
+  const compact = useCompact();
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.
@@ -58,10 +61,11 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
             `}</style>
 
             {showAppShell ? (
-              <div className="workbench mac-desktop h-screen overflow-hidden">
-                <main className="h-full overflow-hidden flex flex-col">
+              <div className="workbench mac-desktop h-[100dvh] overflow-hidden flex flex-col">
+                <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
                   {children}
                 </main>
+                {compact && isAuthenticated && isTabRoot(pathname) && <MobileTabBar />}
               </div>
             ) : (
               <main className="flex flex-col min-h-screen">

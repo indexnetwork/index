@@ -54,7 +54,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
   if (!open) return null;
   const field = { width: "100%", border: "1px solid #000", padding: "8px 10px", fontFamily: "var(--mac-sans)", fontSize: 13 } as const;
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", placeItems: "center", background: "rgba(0,85,170,0.28)", padding: 24 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center", background: "rgba(0,85,170,0.28)", padding: 24 }}>
       <div className="amiga-window" style={{ width: 480, maxWidth: "100%" }}>
         <div className="mac-titlebar">
           <span className="mac-title"><span className="t">{submitted ? "request sent" : isEdit ? "update request" : "request a network"}</span></span>

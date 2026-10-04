@@ -19,7 +19,9 @@ import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/oppor
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, personWindowTitle, radarBucketForOpportunity, radarEmptyLine, type RadarBucket } from "@/lib/radar-buckets";
 import { DiscoveryLoader, MatchCard, PipelineFunnel, SignalAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
-import { Btn, Window } from "@/components/workbench/Workbench";
+import { Btn, Segmented, Stage, Window } from "@/components/workbench/Workbench";
+import { MEDIUM_QUERY, useCompact, useMediaQuery } from "@/hooks/useCompact";
+import { useBack } from "@/hooks/useBack";
 
 function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus {
   if (status === "paused") return status;
@@ -51,6 +53,10 @@ export default function IntentDetailPage() {
 
 function IntentDetail() {
   const navigate = useNavigate();
+  const compact = useCompact();
+  const medium = useMediaQuery(MEDIUM_QUERY);
+  const back = useBack("/");
+  const [compactPane, setCompactPane] = useState<"agent" | "radar">("agent");
   const { intentId } = useParams<{ intentId: string }>();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { conversations } = useConversation();
@@ -379,6 +385,187 @@ function IntentDetail() {
   const discovering = !!intent && lifecycleStatus !== "paused" && shownCount === 0 && !discoveryExpired;
   const lifecycleBusy = intentStatusPending?.intentId === intentId;
 
+  const leave = compact ? back : () => navigate("/");
+  const closePerson = () => setOpenPersonId(null);
+  // Medium widths fit two panes, so an open person takes the agent chat's place.
+  const hideChat = !compact && medium && !!openPerson;
+
+  const signalHeader = (
+    <div style={{ padding: "12px 18px", minHeight: 68, boxSizing: "border-box", borderBottom: "1px solid #000", background: "#fff" }}>
+      {intentLoading ? (
+        <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <h2 title={title || "your signal"} style={{
+              margin: 0, fontFamily: "var(--amiga-title)", fontWeight: 500,
+              fontSize: 17, color: "#000", letterSpacing: -0.2, lineHeight: 1.2,
+              flex: 1, minWidth: 0,
+              display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 3,
+              maxHeight: "3.6em", overflow: "hidden",
+            }}>{title || "your signal"}</h2>
+            <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+              <SignalAction
+                label={lifecycleStatus === "paused" ? "▶ resume" : "❚❚ pause"}
+                active={lifecycleStatus === "paused"}
+                onClick={() => { if (!lifecycleBusy) void handleSetIntentStatus(lifecycleStatus === "paused" ? "active" : "paused"); }}
+              />
+              <SignalAction
+                danger
+                label={archiving ? "archiving…" : archiveArmed ? "archive · confirm" : "archive"}
+                active={archiveArmed || archiving}
+                onClick={clickArchive}
+              />
+            </div>
+          </div>
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 10, letterSpacing: 0.3, color: lifecycleStatus === "paused" ? "var(--ink-3)" : "#000" }}>
+            {lifecycleStatus !== "paused" && <span className="wb-live" style={{ width: 6, height: 6 }} />}
+            <span>{lifecycleStatus === "paused" ? "paused · agent on hold" : "live · agent is looking in the background"}</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+  const agentChat = (
+    <div style={{ minHeight: 0, display: "flex", flexDirection: "column", flex: 1 }}>
+      {intentId && <IntentNegotiatorChat key={intentId} intentId={intentId} onSelectMatch={(id) => setOpenPersonId(id)} />}
+    </div>
+  );
+  const radarFunnel = (
+    <div style={{ height: 56, boxSizing: "border-box", borderBottom: "1.5px solid #111" }}>
+      <PipelineFunnel
+        activeStage={selectedBucket}
+        onClickStage={(label) => setSelectedBucket(label as RadarBucket)}
+        stages={RADAR_STAGES.map((stage) => ({
+          label: stage,
+          count: bucketCounts[stage] ?? 0,
+          accent: stage === "awaiting you" || stage === "accepted",
+        }))}
+      />
+    </div>
+  );
+  const radarList = (
+    <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 22px 24px", display: "grid", gap: 8, alignContent: "start" }}>
+      {/* A failed fetch wins over the discovery loader, even inside the give-up window. */}
+      {opportunitiesError && visibleOpportunities.length === 0 && !opportunitiesLoading ? (
+        <EmptyState
+          tone="error"
+          style={{ padding: 16 }}
+          message="radar couldn't load."
+          action={{ label: "try again", onClick: () => void loadOpportunities() }}
+        />
+      ) : opportunitiesLoading && opportunities.length === 0 ? (
+        <div data-testid="radar-skeleton"><EmptyState tone="loading" style={{ padding: 28 }} /></div>
+      ) : discovering ? (
+        <div data-testid="radar-discovering"><DiscoveryLoader /></div>
+      ) : visibleOpportunities.length === 0 ? (
+        <EmptyState
+          framed
+          style={{ padding: 28, borderColor: "#000" }}
+          message={selectedBucket === "all" && lifecycleStatus === "paused" && shownCount === 0
+            ? "this signal is paused, so your agent isn't looking right now."
+            : radarEmptyLine(selectedBucket)}
+          action={selectedBucket === "accepted" && (bucketCounts["awaiting you"] ?? 0) > 0
+            ? { label: "see awaiting you", onClick: () => setSelectedBucket("awaiting you") }
+            : undefined}
+        />
+      ) : visibleOpportunities.map((item) => {
+        const bucket = bucketOf(item);
+        const busy = !!opportunityActionLoading[item.opportunityId];
+        const peer = item.peer;
+        const name = item.name || peer?.name || "unknown";
+        const blurb = item.headline || item.mainText || "";
+        // "waiting for them" only while this viewer has said yes and
+        // the other person has not. A mutual accept stays a plain
+        // accepted row, same as the Mac card.
+        const waitingOnThem = item.status === "pending" && (
+          opportunityStatusMap[item.opportunityId] === "accepted" || item.viewerCommitted === true
+        );
+        return (
+          <MatchCard
+            key={item.opportunityId}
+            name={name}
+            blurb={blurb}
+            photo={item.avatar ?? peer?.avatar}
+            userId={item.userId || peer?.userId}
+            accepted={bucket === "accepted"}
+            ready={bucket === "awaiting you"}
+            negotiating={bucket === "negotiating"}
+            expired={bucket === "missed"}
+            waitingOnThem={waitingOnThem}
+            hasChat={!!(item.userId || peer?.userId) && chatPeers.has(item.userId || peer?.userId || "")}
+            onOpen={() => setOpenPersonId(item.opportunityId)}
+            onAccept={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "accepted", item.userId || peer?.userId); }}
+            onPass={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "rejected", item.userId || peer?.userId); }}
+          />
+        );
+      })}
+    </div>
+  );
+  const personPane = openPerson ? (
+    <PersonPane
+      item={openPerson}
+      bucket={bucketOf(openPerson)}
+      intentId={intentId}
+      onClose={() => setOpenPersonId(null)}
+      onAccept={() => void handleOpportunityAction(openPerson.opportunityId, "accepted", openPerson.userId)}
+      onPass={() => void handleOpportunityAction(openPerson.opportunityId, "rejected", openPerson.userId)}
+    />
+  ) : null;
+
+  // Compact: one window. The signal switches between the agent chat and the
+  // radar, and an open person drills in full screen with back to the signal.
+  if (compact) {
+    return (
+      <>
+        {opportunityModalElement}
+        <Stage>
+          {!intent ? (
+            <Window title="signal" onClose={leave}>
+              <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 28 }}>
+                {intentLoading ? (
+                  <EmptyState tone="loading" />
+                ) : intentMissing ? (
+                  <EmptyState message="this signal doesn't exist or was removed." action={{ label: "go home", to: "/" }} />
+                ) : intentFailed ? (
+                  <EmptyState
+                    tone="error"
+                    message="couldn't load this signal."
+                    action={{ label: "try again", onClick: () => setIntentReloadKey((k) => k + 1) }}
+                  />
+                ) : null /* signed out: the effect above is already redirecting to /login */}
+              </div>
+            </Window>
+          ) : openPerson ? (
+            <Window title={personWindowTitle(bucketOf(openPerson))} onClose={closePerson}>
+              {personPane}
+            </Window>
+          ) : (
+            <Window title="signal" onClose={leave}>
+              {signalHeader}
+              <div style={{ padding: "8px 12px", borderBottom: "1px solid #000", background: "#fff" }}>
+                <Segmented
+                  value={compactPane}
+                  onChange={setCompactPane}
+                  options={[
+                    { value: "agent", label: "agent" },
+                    { value: "radar", label: shownCount ? `radar · ${shownCount}` : "radar" },
+                  ]}
+                />
+              </div>
+              {compactPane === "agent" ? agentChat : (
+                <>
+                  {radarFunnel}
+                  {radarList}
+                </>
+              )}
+            </Window>
+          )}
+        </Stage>
+      </>
+    );
+  }
+
   return (
     <>
       {opportunityModalElement}
@@ -386,14 +573,14 @@ function IntentDetail() {
         height: "100%",
         display: "grid",
         gridTemplateColumns: openPerson
-          ? "minmax(0, 40fr) minmax(0, 30fr) minmax(0, 30fr)"
+          ? hideChat ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 40fr) minmax(0, 30fr) minmax(0, 30fr)"
           : "minmax(0, 56fr) minmax(0, 44fr)",
         gap: 8,
-        padding: "56px 18px",
+        padding: medium ? "32px 16px" : "56px 18px",
         minHeight: 0,
       }}>
         {!intent ? (
-          <Window title="signal" onClose={() => navigate("/")}>
+          <Window title="signal" onClose={leave}>
             <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 28 }}>
               {intentLoading ? (
                 <EmptyState tone="loading" />
@@ -410,126 +597,21 @@ function IntentDetail() {
           </Window>
         ) : (
           <>
-            <Window title="signal" onClose={() => navigate("/")}>
-              <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
-                <div style={{ padding: "12px 18px", minHeight: 68, boxSizing: "border-box", borderBottom: "1px solid #000", background: "#fff" }}>
-                  {intentLoading ? (
-                    <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-                  ) : (
-                    <>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                        <h2 title={title || "your signal"} style={{
-                          margin: 0, fontFamily: "var(--amiga-title)", fontWeight: 500,
-                          fontSize: 17, color: "#000", letterSpacing: -0.2, lineHeight: 1.2,
-                          flex: 1, minWidth: 0,
-                          display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 3,
-                          maxHeight: "3.6em", overflow: "hidden",
-                        }}>{title || "your signal"}</h2>
-                        <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
-                          <SignalAction
-                            label={lifecycleStatus === "paused" ? "▶ resume" : "❚❚ pause"}
-                            active={lifecycleStatus === "paused"}
-                            onClick={() => { if (!lifecycleBusy) void handleSetIntentStatus(lifecycleStatus === "paused" ? "active" : "paused"); }}
-                          />
-                          <SignalAction
-                            danger
-                            label={archiving ? "archiving…" : archiveArmed ? "archive · confirm" : "archive"}
-                            active={archiveArmed || archiving}
-                            onClick={clickArchive}
-                          />
-                        </div>
-                      </div>
-                      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 10, letterSpacing: 0.3, color: lifecycleStatus === "paused" ? "var(--ink-3)" : "#000" }}>
-                        {lifecycleStatus !== "paused" && <span className="wb-live" style={{ width: 6, height: 6 }} />}
-                        <span>{lifecycleStatus === "paused" ? "paused · agent on hold" : "live · agent is looking in the background"}</span>
-                      </div>
-                    </>
-                  )}
+            {!hideChat && (
+              <Window title="signal" onClose={leave}>
+                <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
+                  {signalHeader}
+                  {agentChat}
                 </div>
-                <div style={{ minHeight: 0, display: "flex", flexDirection: "column", flex: 1 }}>
-                  {intentId && <IntentNegotiatorChat key={intentId} intentId={intentId} onSelectMatch={(id) => setOpenPersonId(id)} />}
-                </div>
-              </div>
-            </Window>
-            <Window title="radar" onClose={() => navigate("/")}>
-              <div style={{ height: 56, boxSizing: "border-box", borderBottom: "1.5px solid #111" }}>
-                <PipelineFunnel
-                  activeStage={selectedBucket}
-                  onClickStage={(label) => setSelectedBucket(label as RadarBucket)}
-                  stages={RADAR_STAGES.map((stage) => ({
-                    label: stage,
-                    count: bucketCounts[stage] ?? 0,
-                    accent: stage === "awaiting you" || stage === "accepted",
-                  }))}
-                />
-              </div>
-              <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 22px 24px", display: "grid", gap: 8, alignContent: "start" }}>
-                {/* A failed fetch wins over the discovery loader, even inside the give-up window. */}
-                {opportunitiesError && visibleOpportunities.length === 0 && !opportunitiesLoading ? (
-                  <EmptyState
-                    tone="error"
-                    style={{ padding: 16 }}
-                    message="radar couldn't load."
-                    action={{ label: "try again", onClick: () => void loadOpportunities() }}
-                  />
-                ) : opportunitiesLoading && opportunities.length === 0 ? (
-                  <div data-testid="radar-skeleton"><EmptyState tone="loading" style={{ padding: 28 }} /></div>
-                ) : discovering ? (
-                  <div data-testid="radar-discovering"><DiscoveryLoader /></div>
-                ) : visibleOpportunities.length === 0 ? (
-                  <EmptyState
-                    framed
-                    style={{ padding: 28, borderColor: "#000" }}
-                    message={selectedBucket === "all" && lifecycleStatus === "paused" && shownCount === 0
-                      ? "this signal is paused, so your agent isn't looking right now."
-                      : radarEmptyLine(selectedBucket)}
-                    action={selectedBucket === "accepted" && (bucketCounts["awaiting you"] ?? 0) > 0
-                      ? { label: "see awaiting you", onClick: () => setSelectedBucket("awaiting you") }
-                      : undefined}
-                  />
-                ) : visibleOpportunities.map((item) => {
-                  const bucket = bucketOf(item);
-                  const busy = !!opportunityActionLoading[item.opportunityId];
-                  const peer = item.peer;
-                  const name = item.name || peer?.name || "unknown";
-                  const blurb = item.headline || item.mainText || "";
-                  // "waiting for them" only while this viewer has said yes and
-                  // the other person has not. A mutual accept stays a plain
-                  // accepted row, same as the Mac card.
-                  const waitingOnThem = item.status === "pending" && (
-                    opportunityStatusMap[item.opportunityId] === "accepted" || item.viewerCommitted === true
-                  );
-                  return (
-                    <MatchCard
-                      key={item.opportunityId}
-                      name={name}
-                      blurb={blurb}
-                      photo={item.avatar ?? peer?.avatar}
-                      userId={item.userId || peer?.userId}
-                      accepted={bucket === "accepted"}
-                      ready={bucket === "awaiting you"}
-                      negotiating={bucket === "negotiating"}
-                      expired={bucket === "missed"}
-                      waitingOnThem={waitingOnThem}
-                      hasChat={!!(item.userId || peer?.userId) && chatPeers.has(item.userId || peer?.userId || "")}
-                      onOpen={() => setOpenPersonId(item.opportunityId)}
-                      onAccept={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "accepted", item.userId || peer?.userId); }}
-                      onPass={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "rejected", item.userId || peer?.userId); }}
-                    />
-                  );
-                })}
-              </div>
+              </Window>
+            )}
+            <Window title="radar" onClose={leave}>
+              {radarFunnel}
+              {radarList}
             </Window>
             {openPerson && (
-              <Window title={personWindowTitle(bucketOf(openPerson))} dismiss onClose={() => setOpenPersonId(null)}>
-                <PersonPane
-                  item={openPerson}
-                  bucket={bucketOf(openPerson)}
-                  intentId={intentId}
-                  onClose={() => setOpenPersonId(null)}
-                  onAccept={() => void handleOpportunityAction(openPerson.opportunityId, "accepted", openPerson.userId)}
-                  onPass={() => void handleOpportunityAction(openPerson.opportunityId, "rejected", openPerson.userId)}
-                />
+              <Window title={personWindowTitle(bucketOf(openPerson))} dismiss onClose={closePerson}>
+                {personPane}
               </Window>
             )}
           </>
