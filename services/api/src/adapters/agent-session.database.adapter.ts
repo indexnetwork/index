@@ -24,6 +24,8 @@ export interface PrincipalMessage {
   questionId?: string;
   /** `expire` is the agent retiring its own question: it leaves the queue unanswered. */
   kind: 'question' | 'answer' | 'user' | 'message' | 'expire';
+  /** The persisted user-message ID this direct reply answers; notes and progress answer nothing. */
+  replyToMessageId?: string;
   matches: readonly MatchReference[];
   text: string;
   scope?: QuestionScope;
