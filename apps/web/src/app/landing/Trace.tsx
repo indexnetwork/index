@@ -1,24 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
-/** Overview trace, opened on the landing page: same card, with the wrapper
- *  steps removed and ascii used for the tree and the live marker. */
+/** Overview trace on the landing page. The query wrapper is gone; the run
+ *  opens on the created intent. Tree branches and the live cursor are ascii. */
 
 const INTENT =
   "Traveling soon to San Francisco and looking to meet AI startup founders and builders";
 
 const QUESTIONS = [
-  "Which dates are you in San Francisco?",
-  "Founders, builders, or both?",
-  "Any AI domains in focus?",
-  "Open to intros or events?",
-  "Prefer 1:1 or small groups?",
-  "Raising, hiring, or building?",
-  "How long are you in town?",
-  "Any stage preference?",
-  "Warm intros or cold ok?",
-  "Research, product, or infra?",
-  "Any companies to prioritize?",
-  "Coffee, demo, or event?",
+  "Which dates are you in San Francisco?", "Founders, builders, or both?", "Any AI domains in focus?",
+  "Open to intros or events?", "Prefer 1:1 or small groups?", "Raising, hiring, or building?",
+  "How long are you in town?", "Any stage preference?", "Warm intros or cold ok?",
+  "Research, product, or infra?", "Any companies to prioritize?", "Coffee, demo, or event?",
 ];
 
 const NAMES = [
@@ -31,7 +23,7 @@ const NAMES = [
   "Theo Larsen", "Ana Ferreira", "Ivan Petrov", "Maya Goldberg", "Kenji Sato",
 ];
 
-const MAX_Q = 4;
+const MAX_Q = 5;
 const MAX_NEG = 9;
 const CONCURRENT = 4;
 const PEOPLE = 12610;
@@ -42,30 +34,30 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 
 type QState = "pending" | "answered" | "skipped";
 type Question = { id: number; text: string; state: QState };
-type Neg = {
-  id: number;
-  name: string;
-  running: boolean;
-  chain: string;
-  ok: boolean;
-  dur: string;
+type Neg = { id: number; name: string; running: boolean; chain: string; ok: boolean; dur: string };
+
+const outcome = () => {
+  const steps = rnd(0, 2);
+  let c = "propose";
+  for (let i = 0; i < steps; i++) c += " → counter";
+  const ok = Math.random() < 0.72;
+  return { chain: `${c}${ok ? " → accept" : " → reject"}`, ok };
 };
 
-const chain = () => {
-  const k = rnd(0, 2);
-  let c = "propose";
-  for (let i = 0; i < k; i++) c += " → counter";
-  const ok = Math.random() < 0.72;
-  return { chain: c + (ok ? " → accept" : " → reject"), ok };
-};
+const GLYPH = ["|", "/", "-", "\\"];
 
 function Tree() {
-  return <span className="text-gray-300 flex-shrink-0 select-none">└─</span>;
+  return <span className="home-trace-tree">└─</span>;
 }
 
-function Mark({ live }: { live?: boolean }) {
-  if (live) return <span className="site-blink-fast text-gray-400 flex-shrink-0">▮</span>;
-  return <span className="text-gray-300 flex-shrink-0 select-none">*</span>;
+function Bullet() {
+  return <span className="home-trace-bullet">*</span>;
+}
+
+/** Fixed-width status: `[ | ]` while running, `[ ok ]` or `[ -- ]` when settled. */
+function Slot({ glyph, state }: { glyph: string; state: "run" | "ok" | "skip" }) {
+  const inner = (state === "run" ? ` ${glyph}` : state === "ok" ? " ok" : " --").padEnd(4, " ");
+  return <span className={`home-trace-slot home-trace-slot--${state}`}>[{inner}]</span>;
 }
 
 export default function Trace() {
@@ -73,18 +65,24 @@ export default function Trace() {
   const [events, setEvents] = useState(0);
   const [people, setPeople] = useState(0);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [answered, setAnswered] = useState(0);
+  const [skipped, setSkipped] = useState(0);
   const [negs, setNegs] = useState<Neg[]>([]);
   const [accepted, setAccepted] = useState(0);
   const [more, setMore] = useState(0);
   const [ready, setReady] = useState(0);
+  const [frame, setFrame] = useState(0);
+  const pending = questions.filter((q) => q.state === "pending").length;
+  const glyph = GLYPH[frame];
+  const negsRef = useRef<Neg[]>([]);
 
   useEffect(() => {
     const clock = setInterval(() => setSec((t) => t + 1), 1000);
-    const scan = setInterval(() => {
-      setPeople((n) => Math.min(PEOPLE, n + rnd(400, 3200)));
-    }, 320);
+    const spin = setInterval(() => setFrame((f) => (f + 1) % GLYPH.length), 120);
+    const scan = setInterval(() => setPeople((n) => Math.min(PEOPLE, n + rnd(400, 3200))), 320);
     return () => {
       clearInterval(clock);
+      clearInterval(spin);
       clearInterval(scan);
     };
   }, []);
@@ -98,18 +96,20 @@ export default function Trace() {
     let nSeq = 0;
     const timers: ReturnType<typeof setTimeout>[] = [];
     const later = (fn: () => void, ms: number) => {
-      const id = setTimeout(fn, ms);
-      timers.push(id);
+      timers.push(setTimeout(fn, ms));
     };
-
-    const bump = () => setEvents((n) => n + 1);
+    const bump = () => {
+      if (alive) setEvents((n) => n + 1);
+    };
 
     const trimQ = (rows: Question[]) => {
       const next = [...rows];
       while (next.length > MAX_Q) {
-        const idx = [...next].reverse().findIndex((r) => r.state !== "pending");
-        if (idx === -1) break;
-        const at = next.length - 1 - idx;
+        let at = -1;
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].state !== "pending") { at = i; break; }
+        }
+        if (at === -1) break;
         qSeen.delete(next[at].text);
         next.splice(at, 1);
       }
@@ -128,33 +128,19 @@ export default function Trace() {
       later(() => {
         if (!alive) return;
         const ans = Math.random() < 0.7;
-        setQuestions((prev) =>
-          trimQ(prev.map((r) => (r.id === id ? { ...r, state: ans ? "answered" : "skipped" } : r))),
-        );
+        if (ans) setAnswered((n) => n + 1);
+        else setSkipped((n) => n + 1);
+        setQuestions((prev) => trimQ(prev.map((r) => (
+          r.id === id ? { ...r, state: ans ? "answered" : "skipped" } : r
+        ))));
         bump();
       }, rnd(1300, 3200));
     };
 
-    const qLoop = () => {
-      if (!alive) return;
-      setQuestions((prev) => {
-        if (prev.filter((r) => r.state === "pending").length < 2) later(spawnQ, 0);
-        return prev;
-      });
-      later(qLoop, rnd(1500, 3000));
-    };
-
-    const trimNeg = (rows: Neg[], onDrop: () => void) => {
-      const next = [...rows];
-      while (next.length > MAX_NEG) {
-        const idx = [...next].reverse().findIndex((r) => !r.running);
-        if (idx === -1) break;
-        const at = next.length - 1 - idx;
-        names.delete(next[at].name);
-        next.splice(at, 1);
-        onDrop();
-      }
-      return next;
+    const noteOk = (ok: boolean) => {
+      if (!ok) return;
+      setAccepted((n) => n + 1);
+      if (Math.random() < 0.4) setReady((n) => Math.min(n + 1, 12));
     };
 
     const spawnNeg = (completed = false) => {
@@ -163,40 +149,41 @@ export default function Trace() {
       if (!free.length) return;
       const name = pick(free);
       names.add(name);
-      if (!completed) inFlight++;
       const id = ++nSeq;
-      const settled = chain();
-      const row: Neg = completed
-        ? { id, name, running: false, ...settled, dur: `${rnd(150, 720)}ms` }
+      const done = completed ? outcome() : null;
+      if (!completed) inFlight++;
+      const row: Neg = done
+        ? { id, name, running: false, chain: done.chain, ok: done.ok, dur: `${rnd(150, 720)}ms` }
         : { id, name, running: true, chain: "", ok: false, dur: "" };
-      setNegs((prev) => {
-        let dropped = 0;
-        const next = trimNeg([row, ...prev], () => {
-          dropped++;
-        });
-        if (dropped) setMore((m) => m + dropped);
-        return next;
-      });
-      bump();
-      if (completed && settled.ok) {
-        setAccepted((n) => n + 1);
-        setReady((n) => (Math.random() < 0.4 ? Math.min(n + 1, 12) : n));
+      const next = [row, ...negsRef.current];
+      let dropped = 0;
+      while (next.length > MAX_NEG) {
+        let at = -1;
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (!next[i].running) { at = i; break; }
+        }
+        if (at === -1) break;
+        names.delete(next[at].name);
+        next.splice(at, 1);
+        dropped++;
       }
+      negsRef.current = next;
+      setNegs(next);
+      if (dropped) setMore((m) => m + dropped);
+      bump();
+      if (done) noteOk(done.ok);
       if (completed) return;
       later(() => {
         if (!alive) return;
-        const result = chain();
+        const result = outcome();
         inFlight--;
-        setNegs((prev) =>
-          prev.map((r) =>
-            r.id === id ? { ...r, running: false, ...result, dur: `${rnd(150, 720)}ms` } : r,
-          ),
-        );
+        const settled = negsRef.current.map((r) => (
+          r.id === id ? { ...r, running: false, chain: result.chain, ok: result.ok, dur: `${rnd(150, 720)}ms` } : r
+        ));
+        negsRef.current = settled;
+        setNegs(settled);
         bump();
-        if (result.ok) {
-          setAccepted((n) => n + 1);
-          setReady((n) => (Math.random() < 0.4 ? Math.min(n + 1, 12) : n));
-        }
+        noteOk(result.ok);
       }, rnd(1400, 3800));
     };
 
@@ -207,7 +194,6 @@ export default function Trace() {
     };
 
     for (let i = 0; i < MAX_Q; i++) spawnQ();
-    later(qLoop, 1800);
     for (let i = 0; i < MAX_NEG - CONCURRENT; i++) spawnNeg(true);
     for (let i = 0; i < CONCURRENT; i++) spawnNeg();
     later(negLoop, 1400);
@@ -215,15 +201,20 @@ export default function Trace() {
     return () => {
       alive = false;
       timers.forEach(clearTimeout);
+      negsRef.current = [];
+      setQuestions([]);
+      setNegs([]);
+      setEvents(0);
+      setAnswered(0);
+      setSkipped(0);
+      setAccepted(0);
+      setMore(0);
+      setReady(0);
     };
   }, []);
 
-  const pending = questions.filter((q) => q.state === "pending").length;
-  const answered = questions.filter((q) => q.state === "answered").length
-    + questions.filter(() => false).length;
-  // answered/skipped counts survive rows scrolling off, so track them apart from the visible list
-  const [answeredN, skippedN] = useSettledCounts(questions);
   const clock = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+  const scanning = people < PEOPLE;
 
   return (
     <div className="home-trace">
@@ -235,157 +226,127 @@ export default function Trace() {
 
       <div className="home-trace-label">INDEX</div>
 
-      <div className="font-mono text-[11px] leading-tight border border-[#E8E8E8] rounded-sm overflow-hidden bg-white text-gray-700">
-        <div className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-gray-700 border-b border-[#E8E8E8] bg-[#FAFAFA]">
-          <span className="text-[10px] uppercase tracking-wider font-bold text-black font-sans">Trace</span>
-          <span className="w-px h-2.5 bg-gray-300" />
-          <span className="text-gray-500 tabular-nums">{fmt(events)} events</span>
-          <span className="ml-auto flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-gray-400 tabular-nums">{clock}</span>
-          </span>
+      <div className="home-trace-card">
+        <div className="home-trace-bar">
+          <span>+ trace</span>
+          <span>{fmt(events)} events</span>
+          <span className="home-trace-bar-end"><Slot glyph={glyph} state="run" /> {clock}</span>
         </div>
+        <div className="home-trace-rule" aria-hidden="true" />
 
-        <div className="divide-y divide-[#F4F4F4]">
-          <div className="flex items-start gap-2 px-3.5 py-1.5 bg-[#F5F3FF] shadow-[inset_2px_0_0_#C4B5FD]">
-            <span className="mt-px"><Mark /></span>
-            <span className="text-gray-800">
-              Create intent
-              <span className="text-gray-400">: {INTENT}</span>
+        <div className="home-trace-rows">
+          <div className="home-trace-line home-trace-line--intent">
+            <Bullet />
+            <span className="home-trace-text">
+              Create intent<span className="home-trace-dim">: {INTENT}</span>
             </span>
           </div>
 
-          <div className="flex items-center gap-2 px-3.5 py-1 bg-[#EFF6FF] shadow-[inset_2px_0_0_#93C5FD]">
-            <Mark />
-            <span className="flex-1 truncate text-blue-900 font-medium">Intent discovery</span>
-            <span className="tabular-nums flex-shrink-0 text-blue-400">0.6s</span>
-          </div>
-          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
-            <Tree />
-            <span className="flex-1 truncate text-gray-600">
+          <Row tone="home-trace-line--discover">
+            <Bullet />
+            <span className="home-trace-text home-trace-strong">Intent discovery</span>
+            <span className="home-trace-time">0.6s</span>
+          </Row>
+          <Child>
+            <span className="home-trace-text">
               Clarifying questions
-              <span className="text-gray-400">
-                : <span className="text-emerald-600">{answeredN}</span> answered ·{" "}
-                <span className="text-gray-500">{skippedN}</span> skipped ·{" "}
-                <span className="text-blue-500">{pending}</span> pending
+              <span className="home-trace-dim">
+                : {answered} answered · {skipped} skipped · {pending} pending
               </span>
             </span>
-          </div>
+          </Child>
           {questions.map((q) => (
-            <div key={q.id} className="home-trace-swap flex items-center gap-2 pl-12 pr-3.5 py-0.5">
+            <div key={q.id} className="home-trace-swap home-trace-line home-trace-line--q">
               <Tree />
-              <span className={`flex-1 truncate ${q.state === "skipped" ? "text-gray-400 line-through" : "text-gray-600"}`}>
-                “{q.text}”
+              <span className={`home-trace-text${q.state === "skipped" ? " home-trace-skip" : ""}`}>
+                &ldquo;{q.text}&rdquo;
               </span>
-              {q.state === "pending" && (
-                <span className="flex-shrink-0 inline-flex items-center gap-1 text-blue-500">
-                  <Mark live />pending
-                </span>
-              )}
-              {q.state === "answered" && <span className="flex-shrink-0 text-emerald-600">answered ✓</span>}
-              {q.state === "skipped" && <span className="flex-shrink-0 text-gray-400">skipped</span>}
+              <Slot glyph={glyph} state={q.state === "pending" ? "run" : q.state === "answered" ? "ok" : "skip"} />
             </div>
           ))}
-          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
-            <Tree />
-            <span className="flex-1 truncate text-gray-600">
+          <Child>
+            <span className="home-trace-text">
               Resolving intent
-              <span className="text-gray-400">: meet AI founders and builders in San Francisco</span>
+              <span className="home-trace-dim">: meet AI founders and builders in San Francisco</span>
             </span>
-            <span className="tabular-nums flex-shrink-0 text-gray-400">92ms</span>
-          </div>
+            <span className="home-trace-time">92ms</span>
+          </Child>
 
-          <div className="flex items-center gap-2 px-3.5 py-1 bg-[#FFFBEB] shadow-[inset_2px_0_0_#FCD34D]">
-            <Mark live />
-            <span className="flex-1 truncate text-amber-900 font-medium">Counterparty discovery</span>
-          </div>
-          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
-            <Tree />
-            <span className="flex-1 truncate text-gray-600">
-              Mapping reach<span className="text-gray-400">: 12 networks in scope</span>
+          <Row tone="home-trace-line--reach">
+            <Bullet />
+            <span className="home-trace-text home-trace-strong">Counterparty discovery</span>
+            <Slot glyph={glyph} state="run" />
+          </Row>
+          <Child>
+            <span className="home-trace-text">
+              Mapping reach<span className="home-trace-dim">: 12 networks in scope</span>
             </span>
-            <span className="tabular-nums flex-shrink-0 text-gray-400">110ms</span>
-          </div>
-          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
-            <Tree />
-            <Mark live />
-            <span className="flex-1 truncate text-gray-600">
-              Scanning counterparties
-              <span className="text-gray-400">: {fmt(people)} people</span>
+            <span className="home-trace-time">110ms</span>
+          </Child>
+          <Child>
+            <span className="home-trace-text">
+              Scanning counterparties<span className="home-trace-dim">: {fmt(people)} people</span>
             </span>
-            <span className="tabular-nums flex-shrink-0 text-gray-400">{people >= PEOPLE ? "" : ""}</span>
-          </div>
-          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
-            <Tree />
-            <span className="flex-1 truncate text-gray-600">
-              Shortlisting<span className="text-gray-400">: 100 counterparties advanced</span>
+            {scanning ? <Slot glyph={glyph} state="run" /> : <span className="home-trace-time">980ms</span>}
+          </Child>
+          <Child>
+            <span className="home-trace-text">
+              Shortlisting<span className="home-trace-dim">: 100 counterparties advanced, potentially mutual intent</span>
             </span>
-            <span className="tabular-nums flex-shrink-0 text-gray-400">60ms</span>
-          </div>
+            <span className="home-trace-time">60ms</span>
+          </Child>
 
-          <div className="flex items-center gap-2 px-3.5 py-1 bg-[#ECFDF5] shadow-[inset_2px_0_0_#6EE7B7]">
-            <Mark live />
-            <span className="flex-1 truncate text-emerald-900 font-medium">
+          <Row tone="home-trace-line--deal">
+            <Bullet />
+            <span className="home-trace-text home-trace-strong">
               Opportunity discovery
-              <span className="text-emerald-600 font-normal">: negotiating in parallel</span>
+              <span className="home-trace-dim home-trace-deal">: negotiating in parallel</span>
             </span>
-          </div>
+            <Slot glyph={glyph} state="run" />
+          </Row>
           {negs.map((row) => (
-            <div key={row.id} className="home-trace-swap flex items-center gap-2 pl-8 pr-3.5 py-0.5">
+            <div key={row.id} className="home-trace-swap home-trace-line home-trace-line--child">
               <Tree />
-              {row.running ? <Mark live /> : <Mark />}
-              <span className={`flex-1 truncate ${row.running ? "text-gray-400" : "text-gray-600"}`}>
+              <span className={`home-trace-text${row.running ? " home-trace-dim" : ""}`}>
                 Negotiating with {row.name}
                 {!row.running && (
                   <>
-                    <span className="text-gray-400">: {row.chain}</span>
-                    {row.ok && <span className="text-emerald-700"> ✓ opportunity</span>}
+                    <span className="home-trace-dim">: {row.chain}</span>
+                    {row.ok && <span className="home-trace-ok"> ok</span>}
                   </>
                 )}
               </span>
-              {!row.running && (
-                <span className="tabular-nums flex-shrink-0 text-gray-400">{row.dur}</span>
-              )}
+              {row.running ? <Slot glyph={glyph} state="run" /> : <span className="home-trace-time">{row.dur}</span>}
             </div>
           ))}
-          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
-            <Tree />
-            <Mark live />
-            <span className="flex-1 truncate text-gray-500">
-              … {more} more connected
-              <span className="text-gray-400">: {accepted} accepted</span>
+          <Child>
+            <span className="home-trace-text home-trace-dim">
+              ... {fmt(more)} more connected<span>: {fmt(accepted)} accepted</span>
             </span>
-          </div>
+            <Slot glyph={glyph} state="run" />
+          </Child>
 
-          <div className="flex items-center gap-2 px-3.5 py-1.5 bg-[#ECFDF5] shadow-[inset_2px_0_0_#34D399]">
-            <Mark />
-            <span className="text-gray-800 font-medium">Present opportunities</span>
-            <span className="tabular-nums flex-shrink-0 ml-auto text-emerald-600">{ready} ready</span>
-          </div>
+          <Row tone="home-trace-line--ready">
+            <Bullet />
+            <span className="home-trace-text home-trace-strong">Present opportunities</span>
+            <span className="home-trace-ok">{ready} ready</span>
+          </Row>
         </div>
+        <div className="home-trace-rule" aria-hidden="true" />
       </div>
     </div>
   );
 }
 
-/** Cumulative answered / skipped totals. Rows leave the list; the counts stay. */
-function useSettledCounts(questions: Question[]) {
-  const [seen, setSeen] = useState<Record<number, QState>>({});
-  useEffect(() => {
-    setSeen((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const q of questions) {
-        if (q.state !== "pending" && next[q.id] !== q.state) {
-          next[q.id] = q.state;
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [questions]);
-  const vals = Object.values(seen);
-  return [vals.filter((s) => s === "answered").length, vals.filter((s) => s === "skipped").length] as const;
+function Row({ tone, children }: { tone: string; children: ReactNode }) {
+  return <div className={`home-trace-line ${tone}`}>{children}</div>;
 }
 
-void answered;
+function Child({ children }: { children: ReactNode }) {
+  return (
+    <div className="home-trace-line home-trace-line--child">
+      <Tree />
+      {children}
+    </div>
+  );
+}
