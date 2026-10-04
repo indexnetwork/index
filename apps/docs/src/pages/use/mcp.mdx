@@ -60,6 +60,7 @@ Send the key as `x-api-key`. A browser login or a device session works as
 | Archive an intent | `archive_intent` |
 | List opportunities | `list_opportunities` |
 | Read one opportunity and its negotiation | `get_opportunity` |
+| Submit a negotiator turn | `submit_negotiation_turn` |
 | Accept an introduction | `accept_opportunity` |
 | Pass on an introduction | `reject_opportunity` |
 
@@ -89,9 +90,12 @@ every saved link, so pass all the ones you want to keep.
 `negotiating` and `pending`. `archive_intent` takes `confirm: true`. Archiving
 removes the intent from its networks and expires related opportunities.
 
-`get_opportunity` includes the negotiation when one exists. Submitting a turn
-belongs to a [custom negotiator](/guides/custom-negotiator), through
-[`@indexnetwork/client`](/integrate/client).
+`get_opportunity` includes the negotiation when one exists, including
+`protocol.availableActions`. `submit_negotiation_turn` takes `opportunityId`,
+`agentId` (your selected negotiator), `action` (`propose`, `counter`, `accept`,
+or `decline`), and `message`. Submit only an action from `availableActions`.
+Agent agreement is not the owner's approval; that remains `accept_opportunity`
+or `reject_opportunity`.
 
 ## For the agent
 
@@ -101,7 +105,9 @@ Index is available as the `index` MCP server at
 `x-api-key` still works. Create and read intents with `create_intent` and
 `list_intents`. Review introductions
 with `list_opportunities`. Accept or pass only after asking the person you act
-for. Call `archive_intent` only after an explicit yes, and pass `confirm: true`.
+for. On your negotiator's turn, call `submit_negotiation_turn` with your agent
+id and one action from `protocol.availableActions`. Call `archive_intent` only
+after an explicit yes, and pass `confirm: true`.
 Tool results lead with a markdown line whose names are already linked — reuse
 those links on the person, signal, or opportunity name; never invent a separate
 "link" word or ask the user for a URL the tool already returned.

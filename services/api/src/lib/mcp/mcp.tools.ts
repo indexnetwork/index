@@ -1,11 +1,13 @@
+import { NEGOTIATION_MESSAGE_LIMIT } from '@indexnetwork/protocol';
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod-v4';
 
 import { IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../../services/intent.service';
 import { enrichmentService } from '../../services/enrichment.service';
-import { negotiationService } from '../../services/negotiation.service';
+import { negotiationService, type SubmitTurnRejection } from '../../services/negotiation.service';
 import { opportunityService } from '../../services/opportunity.service';
 import { userService } from '../../services/user.service';
+import { RuntimeConflictError } from '../agent/runtime-errors';
 import { appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
@@ -145,6 +147,20 @@ function intentTransitionError(
     retryable: true,
   });
 }
+
+const TURN_ERRORS: Record<SubmitTurnRejection, string> = {
+  not_found: 'No negotiation for this opportunity',
+  not_a_seat: 'You do not hold a seat in this negotiation',
+  already_settled: 'This negotiation has already settled',
+  not_your_turn: 'It is not your turn',
+  counter_is_first: 'counter needs a turn to answer; use propose',
+  accept_without_offer: 'accept needs a standing propose from the other seat; answer a counter by proposing again',
+  propose_over_offer: 'a proposal from the other seat is already standing; counter, accept or decline it',
+  signal_inactive: 'A signal in this negotiation is paused or removed',
+  turn_limit: 'The protocol turn limit was reached; the outcome remains undecided',
+  invalid_turn: 'Invalid negotiation action or message',
+  raced: 'The other seat moved first; re-read the negotiation',
+};
 
 function runTool(
   name: string,
@@ -510,6 +526,40 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         },
         negotiation,
       }, `${mdLink('Opportunity', url)}${people ? ` with ${people}` : ''}: ${opportunity.headline || 'New match'} — ${opportunityState(opportunity.status)}`);
+    }),
+  );
+
+  server.registerTool(
+    'submit_negotiation_turn',
+    {
+      description: 'Submit one negotiator turn on an opportunity. Pass your own agent id. Use only an action from protocol.availableActions on get_opportunity. This is the agents\' exchange, not the owner\'s approval — accept_opportunity and reject_opportunity remain separate.' + LINK_HINT,
+      inputSchema: z.object({
+        opportunityId: z.string().trim().min(1),
+        agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
+        action: z.enum(['propose', 'counter', 'accept', 'decline']),
+        message: z.string().trim().min(1).max(NEGOTIATION_MESSAGE_LIMIT),
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    ({ opportunityId, agentId, action, message }) => runTool('submit_negotiation_turn', principal, async () => {
+      const resolved = await resolveOpportunity(opportunityId, principal);
+      if ('error' in resolved) return resolved.error;
+      let result;
+      try {
+        result = await negotiationService.submitTurn(resolved.id, principal.userId, { action, message }, {
+          userId: principal.userId,
+          agentId,
+        });
+      } catch (error) {
+        if (error instanceof RuntimeConflictError) {
+          return mcpError('executor_changed', 'The selected negotiation executor changed; stop this work');
+        }
+        throw error;
+      }
+      if ('rejection' in result) return mcpError(result.rejection, TURN_ERRORS[result.rejection]);
+      const url = appLink('o', resolved.id);
+      const settled = result.outcome ? ` — ${result.outcome}` : '';
+      return mcpSuccess({ negotiation: result, url }, `${mdLink('Opportunity', url)} — ${action} submitted${settled}`);
     }),
   );
 

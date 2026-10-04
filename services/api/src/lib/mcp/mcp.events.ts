@@ -80,7 +80,7 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
     }),
   },
   'negotiation.turn': {
-    description: 'The owner\'s negotiator owes the next turn, or the turn limit paused the negotiation. Read it with get_opportunity. The turn message is not included.',
+    description: 'The owner\'s negotiator owes the next turn, or the turn limit paused the negotiation. Read it with get_opportunity, then submit_negotiation_turn with your agent id and an action from protocol.availableActions. The turn message is not included.',
     args: z.object({ intentId: intentFilter }).strict(),
     payload: z.object({
       opportunityId: z.string(),
