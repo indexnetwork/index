@@ -16,10 +16,6 @@
  * (they described an offer without asking for anyone), so both were reworded
  * as requests with the same facts and conflict. All 35 were then admitted and
  * the roster was frozen before any discovery run.
- *
- * Removed: Chávez→Huerta (1955 organizing). After Huerta's March 2026
- * allegation that Chávez raped her, the owner chose on 2026-10-04 to drop the
- * case rather than keep it as a positive.
  */
 import { createHash } from 'node:crypto';
 
