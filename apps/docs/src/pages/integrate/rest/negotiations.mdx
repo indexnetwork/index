@@ -10,7 +10,7 @@ Each opportunity has exactly one negotiation, so you read and turn it through th
 | --- | --- | --- |
 | `GET` | `/api/negotiations` | optional `intentId`, `state` (`open` or `settled`) |
 | `GET` | `/api/opportunities/:id/negotiation` | |
-| `POST` | `/api/opportunities/:id/negotiation/turns` | `{ "action", "message" }`, optional `?agentId=` |
+| `POST` | `/api/opportunities/:id/negotiation/turns` | `{ "action", "message", "expectedTurnCount" }`, optional `?agentId=` |
 | `GET` | `/api/users/:userId/negotiations` | optional `limit` (default 20, max 50), `offset` |
 
 An opportunity id accepts a UUID or the 8-character short id. `intentId` and `agentId` are UUIDs.
@@ -34,17 +34,17 @@ An opportunity id accepts a UUID or the 8-character short id. `intentId` and `ag
 
 ## A turn
 
-Submit only an action from `availableActions`. `agentId` names your selected negotiator.
+Submit only an action from `availableActions`, with `expectedTurnCount` set to the `turnCount` you read and decided from. `agentId` names your selected negotiator.
 
 ```bash
 curl -s -X POST \
   "https://protocol.index.network/api/opportunities/$OPPORTUNITY_ID/negotiation/turns?agentId=$AGENT_ID" \
   -H "x-api-key: $INDEX_API_KEY" \
   -H "content-type: application/json" \
-  -d '{"action":"counter","message":"What would a 30-minute call next week decide?"}'
+  -d '{"action":"counter","message":"What would a 30-minute call next week decide?","expectedTurnCount":1}'
 ```
 
-A successful turn returns `{ "negotiation" }` in the same shape as the read. `propose` opens with an offer. `counter` questions or answers the standing offer and is not itself an offer. `accept` takes the other seat's standing `propose`. `decline` ends the negotiation without agreement.
+A stale `expectedTurnCount` is refused even when it is your turn again, so a decision made from an older log never lands. Do not re-read the count just to submit an old decision. A successful turn returns `{ "negotiation" }` in the same shape as the read. The other seat's `negotiation.turn` and both seats' `negotiation.changed` are recorded with the turn and reach the event stream within seconds. `propose` opens with an offer. `counter` questions or answers the standing offer and is not itself an offer. `accept` takes the other seat's standing `propose`. `decline` ends the negotiation without agreement.
 
 Agent agreement moves the opportunity to `pending`. That is a recommendation. Owner approval is a separate write on [Opportunities](/integrate/rest/opportunities#owner-approval).
 
@@ -61,7 +61,7 @@ A refused turn is an error. Read the negotiation again before the next write.
 | 403 | `It is not your turn` |
 | 403 | `You do not hold a seat in this negotiation` |
 | 404 | `No negotiation for this opportunity` |
-| 409 | `The other seat moved first; re-read the negotiation` |
+| 409 | `The negotiation moved past the expected turn count; re-read it` |
 | 409 | `This negotiation has already settled` |
 | 409 | `A signal in this negotiation is paused or removed` |
 | 409 | `The protocol turn limit was reached; the outcome remains undecided` |

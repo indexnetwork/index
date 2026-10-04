@@ -571,10 +571,15 @@ export async function closeInitiation(client: Index, intent: Intent, runtime: Ru
  * A stall still standing holds the negotiator here, whatever woke it: its
  * fact is still missing, so running it would only stall again.
  *
+ * The turn is submitted against the turn count this run read and reasoned
+ * over, never a fresh one, so Index refuses it if anything moved meanwhile.
+ *
  * @param client - Index for this owner.
  * @param opportunityId - The negotiation to work.
  * @param intent - The signal it belongs to.
  * @param runtime - Model, clock, and cancellation.
+ * @param triggeredAt - The turn count of the `negotiation.turn` frame that started this run, if one did.
+ *   A frame the negotiation has moved past is obsolete and takes no turn.
  * @returns The submitted turn, the stall it wrote, or why this run took none.
  */
 export async function runNegotiate(
@@ -582,6 +587,7 @@ export async function runNegotiate(
   opportunityId: string,
   intent: Intent,
   runtime: Runtime,
+  triggeredAt?: number,
 ): Promise<NegotiateRun> {
   const { model, now, signal, log = () => {} } = runtime;
   const [user, detail, inbox] = await Promise.all([
@@ -590,6 +596,7 @@ export async function runNegotiate(
     client.principalInbox(intent.id),
   ]);
   if (detail.intentId !== intent.id) return { stall: { reason: `Opportunity ${opportunityId} belongs to another signal.` } };
+  if (triggeredAt !== undefined && detail.turnCount > triggeredAt) return { held: `Turn ${triggeredAt} was already overtaken by turn ${detail.turnCount}.` };
   if (detail.awaitingUserId !== user.id) return { stall: { reason: "It is not this seat's turn." } };
 
   const principalConversation = readConversation(inbox.messages);
@@ -623,7 +630,11 @@ export async function runNegotiate(
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
   const result = await negotiate({ user, intent, brief, opportunity, model, now, signal });
   if ("turn" in result) {
-    await client.submitTurn(opportunityId, result.turn);
+    await client.submitTurn(opportunityId, {
+      action: result.turn.action,
+      message: result.turn.message,
+      expectedTurnCount: detail.turnCount,
+    });
     return result;
   }
 

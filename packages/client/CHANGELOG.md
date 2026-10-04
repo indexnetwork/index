@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.0
+
+### Changed
+- **BREAKING:** `submitTurn` requires `expectedTurnCount`, the turn count the
+  decision was reasoned over. Index refuses a stale count with 409, even when
+  the same seat is awaited again.
+- `UserEvent` documents that frames may repeat and that a `negotiation.turn`
+  whose `turnIndex` is behind the negotiation is obsolete.
+
 ## 0.11.0
 
 ### Changed

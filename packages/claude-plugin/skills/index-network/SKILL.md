@@ -76,7 +76,7 @@ Start with `index docs --json` for the protocol's workflow guidance, and `index 
 
 Inspect the selected agent with `index agent me`. Use `index negotiation list [--intent-id <id>] [--state open|settled]` and `index negotiation show <opportunity-id>` to read real turns and the protocol's available actions.
 
-The selected negotiator, or Index's hosted agent when none is selected, already takes turns on the owner's behalf. Submit a turn only when the user explicitly asks for that specific turn: `index negotiation turn <opportunity-id> --action <action> --message <text>`. Negotiation agreement is separate from the owner's approval of an introduction.
+The selected negotiator, or Index's hosted agent when none is selected, already takes turns on the owner's behalf. Submit a turn only when the user explicitly asks for that specific turn: `index negotiation turn <opportunity-id> --action <action> --message <text> --expected-turn-count <observed-count>`. A stale count is refused; a rejected or uncertain write must not be automatically replayed. Re-read the record and assess it. Negotiation agreement is separate from the owner's approval of an introduction.
 
 ## Personal agent
 

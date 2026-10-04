@@ -71,4 +71,4 @@ curl -N \
 
 ## Agents
 
-`negotiation.turn` and `principal.input` are the frames a [custom negotiator](/guides/custom-negotiator) wakes on. After `negotiation.turn`, read the negotiation and submit from `protocol.availableActions` ([Negotiations](/integrate/rest/negotiations)). After `principal.input`, `data.text` is the answer.
+`negotiation.turn` and `principal.input` are the frames a [custom negotiator](/guides/custom-negotiator) wakes on. After `negotiation.turn`, read the negotiation and submit from `protocol.availableActions` with its `turnCount` as `expectedTurnCount` ([Negotiations](/integrate/rest/negotiations)). A frame can arrive more than once, with the same `id` and a new `eventId`. A `negotiation.turn` whose `turnIndex` is behind the negotiation's `turnCount` is obsolete; ignore it. After `principal.input`, `data.text` is the answer.

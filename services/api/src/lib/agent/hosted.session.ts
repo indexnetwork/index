@@ -19,6 +19,7 @@ export const WAKE_RETRY_MS = 30_000;
 export interface NegotiationSeat {
   settledAt: string | null;
   awaitingUserId: string | null;
+  turnCount: number;
 }
 
 /** What the loop asks the process for. Nothing here touches Redis or the database itself. */
@@ -28,7 +29,7 @@ export interface HostedSessionIO {
   activeIntent(userId: string, intentId: string): Promise<Intent | null>;
   runWake(userId: string, intent: Intent): Promise<void>;
   closeInitiation(userId: string, intent: Intent): Promise<'pending' | 'idle' | 'done'>;
-  runNegotiate(userId: string, intent: Intent, opportunityId: string): Promise<NegotiateRun>;
+  runNegotiate(userId: string, intent: Intent, opportunityId: string, triggeredAt?: number): Promise<NegotiateRun>;
   getNegotiation(userId: string, opportunityId: string): Promise<NegotiationSeat | null>;
   schedule(run: () => void, delayMs: number): void;
   /** One already-formatted failure line. */
@@ -136,15 +137,16 @@ export class HostedSession {
    * @param userId - The seat owner.
    * @param intentId - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
+   * @param triggeredAt - The turn count of the `negotiation.turn` frame that asked for it, if one did.
    */
-  async negotiate(userId: string, intentId: string, opportunityId: string): Promise<void> {
+  async negotiate(userId: string, intentId: string, opportunityId: string, triggeredAt?: number): Promise<void> {
     if (!this.io.running() || this.working.has(opportunityId)) return;
     this.working.set(opportunityId, intentId);
     // The wake waits for this negotiator to be out of flight: it re-decides the
     // opportunity, and a decision starts a negotiator for it again.
     const outcome = { ran: false };
     try {
-      await this.takeTurn(userId, intentId, opportunityId, outcome);
+      await this.takeTurn(userId, intentId, opportunityId, outcome, triggeredAt);
     } finally {
       this.working.delete(opportunityId);
       // Not this seat's turn, or already settled: there is nothing to summarize.
@@ -194,12 +196,14 @@ export class HostedSession {
    * @param intentId - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
    * @param outcome - Set once the negotiator itself starts, including when it throws.
+   * @param triggeredAt - The turn count of the frame that asked for this run, if one did.
    */
   private async takeTurn(
     userId: string,
     intentId: string,
     opportunityId: string,
     outcome: { ran: boolean },
+    triggeredAt?: number,
   ): Promise<void> {
     if (!await this.io.holdsSeat(userId)) return;
     const intent = await this.io.activeIntent(userId, intentId);
@@ -210,9 +214,11 @@ export class HostedSession {
     // the negotiator, which would stall and ask for a wake over nothing.
     const record = await this.io.getNegotiation(userId, opportunityId);
     if (!record || record.settledAt || record.awaitingUserId !== userId) return;
+    // A repeated or late frame the negotiation has already moved past is obsolete.
+    if (triggeredAt !== undefined && record.turnCount > triggeredAt) return;
 
     outcome.ran = true;
-    const result = await this.io.runNegotiate(userId, intent, opportunityId);
+    const result = await this.io.runNegotiate(userId, intent, opportunityId, triggeredAt);
     if ('turn' in result) {
       this.unread.delete(opportunityId);
       return;

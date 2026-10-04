@@ -5,12 +5,12 @@
  * Index is the server for every negotiation. Both seats read the same rows and
  * append against them; there is no wire between agents and nothing to mirror.
  */
-import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, negotiations, negotiationTurns, networkMembers, opportunities, or, schema, sql, users } from './database.shared';
+import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, intentNetworks, intents, isNull, logger, lt, negotiations, negotiationTurns, networkMembers, opportunities, or, schema, sql, users } from './database.shared';
 
 import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-session.database.adapter';
 
 import { applyOpportunityEvent, seedOpportunityLog } from '../lib/opportunity/opportunity.command';
-import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
+import { publishNegotiationChange, publishUserEvent, type UserEvent } from '../lib/user-events';
 import { publishOpeningTurns } from '../lib/negotiation-opening.events';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
@@ -129,9 +129,27 @@ export type NegotiationDecision = { ok: false; rejection: NegotiationRejection }
   blockedReason: 'turn_limit' | null;
 };
 
-export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string }
+export interface NegotiationTurnInput { action: NegotiationTurnAction; message: string; expectedTurnCount: number }
 export type SubmitTurnRejection = NegotiationRejection;
+export type AppliedNegotiationDecision = Extract<NegotiationDecision, { ok: true }>;
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** One seat of a negotiation, as a turn's notifications address it. */
+export interface NegotiationSeat {
+  userId: string;
+  intentId: string;
+}
+
+/** A frame an applied turn owes one recipient. */
+export interface OwedNotification {
+  recipientUserId: string;
+  frame: UserEvent;
+}
+
+/** A pending notification claimed for one relay pass. */
+export interface ClaimedNotification extends OwedNotification {
+  id: string;
+}
 
 /** Postgres unique-violation. A second turn at the same index is a lost race, not an error. */
 function isUniqueViolation(error: unknown): boolean {
@@ -444,15 +462,20 @@ export class NegotiationDatabaseAdapter {
   }
 
   /**
-   * Append one turn and apply its effect, in a single transaction.
+   * Append one turn, apply its effect, and record the notifications it owes,
+   * in a single transaction.
    *
-   * Turn order is validated against the log read inside the transaction, and
-   * the unique index on `(negotiation_id, turn_index)` settles any race that
-   * slips past it: the loser sees a unique violation and is told to re-read.
+   * Turn order and the expected turn count are validated against the log read
+   * inside the transaction, and the unique index on `(negotiation_id,
+   * turn_index)` settles any race that slips past it: the loser sees a unique
+   * violation and is told to re-read. A refused turn records nothing. When an
+   * owed notification cannot be recorded, the turn rolls back with it.
    *
    * @param opportunityId - The negotiation's opportunity.
    * @param callerUserId - The seat submitting.
-   * @param turn - The decision and its message.
+   * @param turn - The decision, its message, and the turn count it was reasoned over.
+   * @param decide - Protocol policy evaluated against the locked state.
+   * @param owe - The frames an applied decision owes the seats, recorded as pending deliveries.
    * @param execution - Hosted lease or external executor binding to fence before applying a decision.
    *   An unnamed caller is the hosted seat and is refused while an external negotiator holds it.
    * @returns The applied turn, or the reason it was refused.
@@ -463,6 +486,7 @@ export class NegotiationDatabaseAdapter {
     callerUserId: string,
     turn: NegotiationTurnInput,
     decide: (state: NegotiationState | null) => NegotiationDecision,
+    owe: (decision: AppliedNegotiationDecision, seats: NegotiationSeat[]) => OwedNotification[],
     execution?: NegotiationExecution,
   ): Promise<NegotiationDecision> {
     try {
@@ -512,12 +536,61 @@ export class NegotiationDatabaseAdapter {
           });
           if (!applied.ok) throw new Error(applied.error);
         }
+        const seats = [
+          { userId: negotiation.initiatorUserId, intentId: negotiation.initiatorIntentId },
+          { userId: negotiation.responderUserId, intentId: negotiation.responderIntentId },
+        ];
+        await tx.insert(schema.negotiationDeliveries).values(owe(decision, seats).map((owed) => ({
+          recipientUserId: owed.recipientUserId,
+          payload: { ...owed.frame },
+        })));
         return decision;
       });
     } catch (error) {
       if (isUniqueViolation(error)) return { ok: false, rejection: 'raced' };
       throw error;
     }
+  }
+
+  /**
+   * Lease the oldest pending notifications to one relay pass. A row whose
+   * earlier claim expired is pending again, so a relay that crashed or lost
+   * Redis leaves nothing stranded. Concurrent relays skip each other's rows.
+   *
+   * @param limit - Most rows to claim.
+   * @param leaseMs - How long the claim holds before another pass may take the rows.
+   * @returns The claim token and the claimed notifications, oldest first.
+   */
+  async claimNotifications(limit: number, leaseMs: number): Promise<{ claimToken: string; notifications: ClaimedNotification[] }> {
+    const deliveries = schema.negotiationDeliveries;
+    const claimToken = crypto.randomUUID();
+    const pending = db.select({ id: deliveries.id }).from(deliveries)
+      .where(or(isNull(deliveries.claimedUntil), lt(deliveries.claimedUntil, sql`now()`)))
+      .orderBy(asc(deliveries.createdAt)).limit(limit)
+      .for('update', { skipLocked: true });
+    const rows = await db.update(deliveries)
+      .set({ claimToken, claimedUntil: sql`now() + ${leaseMs} * interval '1 millisecond'` })
+      .where(inArray(deliveries.id, pending))
+      .returning({ id: deliveries.id, recipientUserId: deliveries.recipientUserId, payload: deliveries.payload, createdAt: deliveries.createdAt });
+    rows.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    return {
+      claimToken,
+      notifications: rows.map((row) => ({ id: row.id, recipientUserId: row.recipientUserId, frame: row.payload as unknown as UserEvent })),
+    };
+  }
+
+  /**
+   * Retire a notification after its frame reached the recipient's stream.
+   *
+   * @param id - The delivered row.
+   * @param claimToken - The claim it was published under.
+   * @returns False when the claim expired and another pass took the row, which then publishes it again.
+   */
+  async completeNotification(id: string, claimToken: string): Promise<boolean> {
+    const deleted = await db.delete(schema.negotiationDeliveries)
+      .where(and(eq(schema.negotiationDeliveries.id, id), eq(schema.negotiationDeliveries.claimToken, claimToken)))
+      .returning({ id: schema.negotiationDeliveries.id });
+    return deleted.length > 0;
   }
 
   /** @param opportunityId - Match identity. @param userId - Reading seat. @returns Current facts for protocol observation. */

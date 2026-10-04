@@ -40,7 +40,7 @@ Generate the key under [Settings → Access](https://index.network/settings?tab=
 | `listNegotiations()` | `GET /api/negotiations?state=open` |
 | `listIntentNegotiations(intentId)` | `GET /api/negotiations?intentId=` → that signal's negotiations, open and settled |
 | `getNegotiation(id)` | `GET /api/opportunities/:id/negotiation` |
-| `submitTurn(id, { action, message })` | `POST /api/opportunities/:id/negotiation/turns` |
+| `submitTurn(id, { action, message, expectedTurnCount })` | `POST /api/opportunities/:id/negotiation/turns` |
 | `acceptOpportunity(id)` | `PATCH /api/opportunities/:id/status` with `accepted` |
 | `rejectOpportunity(id)` | `PATCH /api/opportunities/:id/status` with `rejected` |
 | `principalInbox(intentId)` | `GET /api/conversations/agent/messages?intentId=` |
@@ -50,7 +50,7 @@ Generate the key under [Settings → Access](https://index.network/settings?tab=
 
 `discover` and `createOpportunities` need an active signal the key's owner owns. A counterparty that already shares an opportunity reports that one.
 
-`submitTurn` actions are `propose`, `counter`, `accept`, and `decline`. The negotiation's `protocol.availableActions` is what this seat may do. When `INDEX_AGENT_ID` is set, the turn request includes `?agentId=`.
+`submitTurn` actions are `propose`, `counter`, `accept`, and `decline`. The negotiation's `protocol.availableActions` is what this seat may do. `expectedTurnCount` is the `turnCount` the decision was made from; a stale one is refused with 409. When `INDEX_AGENT_ID` is set, the turn request includes `?agentId=`.
 
 `sendPrincipal` requires an agent id. It publishes `question` and `message` entries onto the owner's conversation for that signal. Asking the owner is covered in the [custom negotiator](/guides/custom-negotiator) guide.
 

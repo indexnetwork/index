@@ -1,6 +1,9 @@
 import type { NegotiationDecision, NegotiationState, NegotiationTurn } from '../../protocol/negotiation.rules.js';
 
-/** A host must evaluate the supplied policy against locked, current data and apply its transition atomically. */
+/**
+ * A host must evaluate the supplied policy against locked, current data and apply its transition atomically,
+ * recording in the same transaction any notification the turn owes a participant.
+ */
 export interface NegotiationDatabase {
   readNegotiationState(id: string, userId: string): Promise<NegotiationState | null>;
   commitNegotiationTurn(id: string, userId: string, turn: NegotiationTurn, decide: (state: NegotiationState | null) => NegotiationDecision): Promise<NegotiationDecision>;

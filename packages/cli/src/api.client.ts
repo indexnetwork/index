@@ -567,7 +567,7 @@ export class ApiClient {
   }
 
   /** Submit one turn; rejected or uncertain writes are never replayed. */
-  async submitNegotiationTurn(opportunityId: string, turn: { action: NegotiationTurnAction; message: string }): Promise<NegotiationDetail> {
+  async submitNegotiationTurn(opportunityId: string, turn: { action: NegotiationTurnAction; message: string; expectedTurnCount: number }): Promise<NegotiationDetail> {
     const body = await (await this.post(`/api/opportunities/${encodeURIComponent(opportunityId)}/negotiation/turns`, turn)).json() as { negotiation: NegotiationDetail };
     return body.negotiation;
   }
