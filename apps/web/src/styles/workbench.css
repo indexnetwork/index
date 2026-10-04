@@ -636,6 +636,18 @@
   }
 }
 
+/* The app shell, pinned to what is actually visible. Fixed so the document
+   never scrolls behind it; height and offset track visualViewport
+   (hooks/useVisualViewport.ts), falling back to 100dvh. */
+.wb-viewport {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--vv-h, 100dvh);
+  transform: translateY(var(--vv-top, 0px));
+}
+
 /* Hidden everywhere but compact; the tab bar only mounts in compact anyway. */
 .wb-tabbar {
   display: none;

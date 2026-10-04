@@ -9,6 +9,7 @@ import { Btn, Window } from "@/components/workbench/Workbench";
 import { signalService, type PrepareAnswer, type RecoveryField } from "@/services/signals";
 import { APIError } from "@/lib/api";
 import { useCompact } from "@/hooks/useCompact";
+import { useVisualViewport } from "@/hooks/useVisualViewport";
 
 const OPENING_PROMPT = "what are you looking for right now?";
 const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
@@ -29,6 +30,7 @@ type Turn = { id: string; prompt: string; answer: string };
 export default function NewSignalPage() {
   const navigate = useNavigate();
   const compact = useCompact();
+  useVisualViewport();
   const { isAuthenticated } = useAuthContext();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [stage, setStage] = useState<Stage>("opening");
@@ -90,7 +92,7 @@ export default function NewSignalPage() {
   const stepIdx = stage === "opening" ? 1 : 2;
 
   return (
-    <div className="workbench mac-desktop" style={{ position: "relative", height: "100dvh" }}>
+    <div className="workbench mac-desktop wb-viewport">
       {creating || (thinking && recoveryUsed) ? (
         <Calibrating />
       ) : (
