@@ -3,10 +3,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useConversations } from "@/contexts/APIContext";
-import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { AGENT_DM_ID, type ConversationMessage, type PersonalAgentState, type PrincipalQuestion } from "@/services/conversation";
-import { AgentFeedNote, AgentPortrait, DiscoveryTrace, OptionChip, parseDiscovery } from "@/components/workbench/mac-blocks";
+import { AgentFeedNote, DiscoveryTrace, OptionChip, parseDiscovery } from "@/components/workbench/mac-blocks";
+import { MyAgentAvatar, TheirAgentAvatar, agentLabel } from "@/components/workbench/agent-avatar";
 
 type Provenance = {
   kind?: string;
@@ -125,13 +125,6 @@ function signalFeed(messages: ConversationMessage[], questions: PrincipalQuestio
   return feed;
 }
 
-function agentLabel(name: string) {
-  const owner = name.trim().replace(/[’']s\s+agent$|\s+agent$/i, "").trim();
-  if (!owner) return "your agent";
-  if (/^unknown$/i.test(owner)) return "someone's agent";
-  return `${owner}'s agent`;
-}
-
 /** One private intent conversation; every open question is answered in a single submit. */
 function questionAsker(question: { scope?: string; matches?: PrincipalQuestion["matches"] }) {
   const people = (question.matches ?? [])
@@ -149,9 +142,8 @@ function questionAskerLabel(question: QuestionCard, label: string, onSelectMatch
   return <button type="button" onClick={() => onSelectMatch(opportunityId)} style={{ ...style, background: "none", border: "none", padding: 0, cursor: "pointer" }}>{label}</button>;
 }
 
-function OpenQuestion({ question, user, selections, setSelections, writing, setWriting, onSelectMatch }: {
+function OpenQuestion({ question, selections, setSelections, writing, setWriting, onSelectMatch }: {
   question: QuestionCard;
-  user: { id?: string; name?: string; avatar?: string | null } | null;
   selections: Record<string, string>;
   setSelections: Dispatch<SetStateAction<Record<string, string>>>;
   writing: Record<string, boolean>;
@@ -167,7 +159,7 @@ function OpenQuestion({ question, user, selections, setSelections, writing, setW
   const write = writing[id] || options.length === 0;
   return (
     <article style={{ display: "flex", gap: 12 }}>
-      <AgentPortrait id={owner?.id ?? user?.id} name={owner?.name ?? user?.name} photo={owner ? null : user?.avatar} />
+      {owner ? <TheirAgentAvatar owner={owner} size={30} style={{ marginTop: 2 }} /> : <MyAgentAvatar size={30} style={{ marginTop: 2 }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
         <div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5 }}>
@@ -207,16 +199,15 @@ function OpenQuestion({ question, user, selections, setSelections, writing, setW
   );
 }
 
-function AnsweredQuestion({ question, answer, user }: {
+function AnsweredQuestion({ question, answer }: {
   question: QuestionCard;
   answer: string;
-  user: { id?: string; name?: string; avatar?: string | null } | null;
 }) {
   const asker = questionAsker(question);
   const owner = asker.owner;
   return (
     <article style={{ display: "flex", gap: 12 }}>
-      <AgentPortrait id={owner?.id ?? user?.id} name={owner?.name ?? user?.name} photo={owner ? null : user?.avatar} />
+      {owner ? <TheirAgentAvatar owner={owner} size={30} style={{ marginTop: 2 }} /> : <MyAgentAvatar size={30} style={{ marginTop: 2 }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
         <div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, fontFamily: "var(--mac-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -234,7 +225,6 @@ function AnsweredQuestion({ question, answer, user }: {
 }
 
 export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { intentId: string; onSelectMatch(opportunityId: string): void }) {
-  const { user } = useAuthContext();
   const conversations = useConversations();
   const { subscribeConversationMessage, isConnected } = useConversation();
   const [draft, setDraft] = useState("");
@@ -349,11 +339,11 @@ export default function IntentNegotiatorChat({ intentId, onSelectMatch }: { inte
           }
           if (piece.kind === "open-question") {
             return (
-              <OpenQuestion key={piece.id} question={piece.question} user={user} selections={selections} setSelections={setSelections} writing={writing} setWriting={setWriting} onSelectMatch={onSelectMatch} />
+              <OpenQuestion key={piece.id} question={piece.question} selections={selections} setSelections={setSelections} writing={writing} setWriting={setWriting} onSelectMatch={onSelectMatch} />
             );
           }
           if (piece.kind === "answered-question") {
-            return <AnsweredQuestion key={piece.id} question={piece.question} answer={piece.answer} user={user} />;
+            return <AnsweredQuestion key={piece.id} question={piece.question} answer={piece.answer} />;
           }
           return (
             <AgentFeedNote key={piece.id}>

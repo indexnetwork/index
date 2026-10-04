@@ -7,6 +7,7 @@ import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import NegotiationConversation from "@/components/NegotiationConversation";
 import ChatView from "@/components/chat/ChatView";
 import UserAvatar from "@/components/UserAvatar";
+import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
@@ -531,7 +532,7 @@ function PersonPane({
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
-          <UserAvatar id={item.userId} name={name} avatar={item.avatar} size={34} />
+          <TheirAgentAvatar owner={{ id: item.userId, name, photo: item.avatar }} size={34} />
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
             <div style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600 }}>your agent ⇄ {first}&apos;s agent</div>
             <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "var(--ink-2)" }}>
