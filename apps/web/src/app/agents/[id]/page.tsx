@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import ClientLayout from "@/components/ClientLayout";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import type { Agent } from "@/services/agents";
@@ -78,28 +77,28 @@ export default function AgentDetailPage() {
 
   if (authLoading || !isAuthenticated || loading) {
     return (
-      <ClientLayout>
+      <>
         <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-      </ClientLayout>
+      </>
     );
   }
 
   if (!agent) {
     return (
-      <ClientLayout>
+      <>
         <Stage>
           <Window title="agents" onClose={() => navigate("/agents")}>
             <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>agent not found.</p>
           </Window>
         </Stage>
-      </ClientLayout>
+      </>
     );
   }
 
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
   return (
-    <ClientLayout>
+    <>
       <Stage width={860} height="min(720px, calc(100vh - 112px))">
         <Window title="agents" onClose={() => navigate("/agents")} style={{ height: "100%" }}>
           <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px" }}>
@@ -112,7 +111,7 @@ export default function AgentDetailPage() {
           </div>
         </Window>
       </Stage>
-    </ClientLayout>
+    </>
   );
 }
 

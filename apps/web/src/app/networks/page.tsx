@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import ClientLayout from '@/components/ClientLayout';
 import { resolveNetworkImageSrc } from '@/lib/network-image';
 import { Stage, Window } from '@/components/workbench/Workbench';
 import CreateNetworkModal from '@/components/modals/CreateNetworkModal';
@@ -166,7 +165,7 @@ export default function NetworksPage() {
   }, [networksService, addNetwork, navigate, success, error]);
 
   return (
-    <ClientLayout>
+    <>
       <Stage width={860} height="min(660px, calc(100vh - 112px))">
       <Window title="networks" onClose={() => navigate('/')} style={{ height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 24px' }}>
@@ -346,7 +345,7 @@ export default function NetworksPage() {
         onSubmit={handleRequestSubmit}
         initial={editingRequest}
       />
-    </ClientLayout>
+    </>
   );
 }
 

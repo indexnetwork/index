@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
-import ClientLayout from '@/components/ClientLayout';
 import { MyAgentAvatar } from '@/components/workbench/agent-avatar';
 import { Stage, Window } from '@/components/workbench/Workbench';
 import { useAgents } from '@/contexts/APIContext';
@@ -296,16 +295,14 @@ export default function AgentsPage() {
 
   if (authLoading || !isAuthenticated) {
     return (
-      <ClientLayout>
-        <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-      </ClientLayout>
+      <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
     );
   }
 
   const kind = selectedNegotiator ? "registered manually" : "hosted by index";
 
   return (
-    <ClientLayout>
+    <>
       <Stage width={860} height="min(880px, calc(100vh - 96px))">
       <Window title="agents" onClose={() => navigate('/')} style={{ height: '100%' }}>
       <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: '18px 24px 22px' }}>
@@ -397,7 +394,7 @@ export default function AgentsPage() {
         </div>
       </Window>
       </Stage>
-    </ClientLayout>
+    </>
   );
 }
 

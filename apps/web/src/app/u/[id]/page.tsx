@@ -6,7 +6,6 @@ import AppHandoff from "@/components/AppHandoff";
 import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import { Link } from "react-router";
-import ClientLayout from "@/components/ClientLayout";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import { getPublicUserProfile } from "@/services/users";
@@ -87,20 +86,20 @@ function UserProfile() {
 
   if (authLoading || isLoading) {
     return (
-      <ClientLayout>
+      <>
         <p style={{ padding: 24, fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
-      </ClientLayout>
+      </>
     );
   }
 
   if (error) {
     return (
-      <ClientLayout>
+      <>
         <div style={{ padding: 24 }}>
           <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-warn)" }}>{error}</p>
           <button type="button" className="wb-btn" onClick={() => navigate(-1)}>back</button>
         </div>
-      </ClientLayout>
+      </>
     );
   }
 
@@ -112,8 +111,6 @@ function UserProfile() {
   const socialLinks = resolveSocials(profileData.socials);
 
   return (
-    <>
-    <ClientLayout>
       <Stage width={720} height="min(720px, calc(100vh - 112px))">
       <Window title="profile" onClose={() => navigate(-1)} style={{ height: "100%" }}>
       <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "grid", gap: 20, alignContent: "start" }}>
@@ -175,8 +172,6 @@ function UserProfile() {
       </div>
       </Window>
       </Stage>
-    </ClientLayout>
-    </>
   );
 }
 

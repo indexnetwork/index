@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
 import AuthForm from "@/components/AuthForm";
-import { ensureLandingFonts } from "@/app/landing/fonts";
+import { AppsShell } from "@/app/download/page";
 import { buildCliDeviceCodeCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequest, DEVICE_CLIENT_ID, type CliAuthRequest } from "@/lib/cli-auth";
 
 import "./cli-auth.css";
@@ -53,10 +53,6 @@ function CliAuthPage() {
     request ? null : "Invalid sign-in request. Start the sign-in from the Index app, or run `index login` from the CLI.",
   );
   const exchangeStartedRef = useRef(false);
-
-  useEffect(() => {
-    ensureLandingFonts();
-  }, []);
 
   useEffect(() => {
     if (!request || exchangeStartedRef.current) return;
@@ -116,11 +112,8 @@ function CliAuthPage() {
   }, [request]);
 
   return (
-    <div className="cli-auth">
-      <nav className="cli-auth__nav">
-        <img src="/landing/index-wordmark.svg" alt="Index Network" />
-      </nav>
-      <main className="cli-auth__main">
+    <AppsShell>
+      <div className="cli-auth">
         {status === "login" && request && (
           <div className="auth cli-auth__form">
             <AuthForm
@@ -138,8 +131,8 @@ function CliAuthPage() {
         {status === "error" && (
           <Status title="Authorization failed" message={error ?? ""} />
         )}
-      </main>
-    </div>
+      </div>
+    </AppsShell>
   );
 }
 

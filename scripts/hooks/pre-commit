@@ -18,14 +18,25 @@ bunx lint-staged || {
   exit 1
 }
 
-# ── Non-interactive build checks ─────────────────────────────────────
-echo "[pre-commit] Running build checks..."
-(cd packages/protocol && bun run build) &&
-  (cd services/api && bun run build) &&
-  (cd apps/web && bun run build) || {
-  echo "[pre-commit] Build checks failed. Fix build errors before committing." >&2
-  exit 1
+# ── Typecheck packages touched by this commit ────────────────────────
+staged=$(git diff --cached --name-only)
+
+typecheck_if() {
+  local prefix="$1" label="$2" dir="$3"
+  shift 3
+  printf '%s\n' "$staged" | grep -q "^${prefix}" || return 0
+  echo "[pre-commit] Checking ${label}..."
+  (cd "$dir" && "$@") || {
+    echo "[pre-commit] ${label} check failed." >&2
+    exit 1
+  }
 }
+
+typecheck_if packages/protocol/ protocol packages/protocol bunx tsc --noEmit
+typecheck_if services/api/ api services/api bun run typecheck
+typecheck_if packages/client/ client packages/client bun run typecheck
+typecheck_if packages/agent/ agent packages/agent bun run typecheck
+typecheck_if apps/web/ web apps/web bun run build
 
 # ── Adapter naming check (only if adapter files are staged) ─────────
 changed_adapters=$(git diff --cached --name-only | grep -E '^services/api/src/adapters/.*\.ts$' || true)

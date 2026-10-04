@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useNavigate, useParams } from "react-router";
 
 import AppHandoff from "@/components/AppHandoff";
-import ClientLayout from "@/components/ClientLayout";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import NegotiationConversation from "@/components/NegotiationConversation";
 import ChatView from "@/components/chat/ChatView";
@@ -375,7 +374,7 @@ function IntentDetail() {
   const lifecycleBusy = intentStatusPending?.intentId === intentId;
 
   return (
-    <ClientLayout>
+    <>
       {opportunityModalElement}
       <div style={{
         height: "100%",
@@ -506,7 +505,7 @@ function IntentDetail() {
           </>
         )}
       </div>
-    </ClientLayout>
+    </>
   );
 }
 

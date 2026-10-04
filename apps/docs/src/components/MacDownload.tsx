@@ -1,7 +1,7 @@
 /**
  * Card for the macOS app, used on `/use/mac`.
  *
- * Access is invite-only, so the card sends people to the request-access page
+ * Access is invite-only, so the card sends people to the install page
  * on the landing site. The release link points at the stable rolling release
  * that `.github/workflows/mac-app-release.yml` publishes from `main` to the
  * public `indexnetwork/mac-client` mirror.
@@ -9,7 +9,7 @@
  */
 
 const RELEASE_TAG = 'mac'
-const REQUEST_ACCESS_URL = 'https://index.network/waitlist'
+const REQUEST_ACCESS_URL = 'https://index.network/download'
 const RELEASE_URL = `https://github.com/indexnetwork/mac-client/releases/tag/${RELEASE_TAG}`
 
 /** Mirrors `LSMinimumSystemVersion` and the arm64-only build in apps/mac. */

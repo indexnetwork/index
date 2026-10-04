@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
 
-import ClientLayout from '@/components/ClientLayout';
 import { resolveNetworkImageSrc } from '@/lib/network-image';
 import { Stage, Window } from '@/components/workbench/Workbench';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
@@ -161,7 +160,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const isPublic = network?.permissions?.joinPolicy === 'anyone';
 
   return (
-    <ClientLayout>
+    <>
       <Stage width={860} height="min(660px, calc(100vh - 112px))">
       <Window title={network?.title?.toLowerCase() || 'networks'} onClose={() => navigate('/networks')} style={{ height: '100%' }}>
       {loading ? (
@@ -216,7 +215,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
       ) : null}
       </Window>
       </Stage>
-    </ClientLayout>
+    </>
   );
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { decideMcpConsent, getMcpConsentDetails } from '@/lib/auth-client';
-import { ensureLandingFonts } from '@/app/landing/fonts';
+import { AppsShell } from '@/app/download/page';
 import './consent.css';
 
 const consentCode = new URLSearchParams(window.location.search).get('consent_code');
@@ -16,7 +16,6 @@ function McpConsentPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    ensureLandingFonts();
     if (!consentCode) return;
     getMcpConsentDetails(consentCode).then(setClient).catch((cause: Error) => setError(cause.message));
   }, []);
@@ -35,8 +34,7 @@ function McpConsentPage() {
   }
 
   return (
-    <div className="mcp-consent">
-      <nav className="mcp-consent__nav"><img src="/landing/index-wordmark.svg" alt="Index Network" /></nav>
+    <AppsShell>
       <main className="mcp-consent__card">
         <span className="mcp-consent__eyebrow">MCP access request</span>
         <h1>Allow this client to access your Index account?</h1>
@@ -54,7 +52,7 @@ function McpConsentPage() {
         ) : !error ? <p>Checking authorization request…</p> : null}
         {error && <p role="alert" className="mcp-consent__error">{error}</p>}
       </main>
-    </div>
+    </AppsShell>
   );
 }
 

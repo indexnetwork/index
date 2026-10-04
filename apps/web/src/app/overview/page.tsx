@@ -2,7 +2,6 @@
 import { useEffect, useRef } from 'react';
 
 import SiteLayout from '@/app/site/SiteLayout';
-import overviewBodyHtml from './overview-body.html?raw';
 import './overview.css';
 
 // ── Protocol Overview ──────────────────────────────────────────────
@@ -12,8 +11,7 @@ import './overview.css';
 // markup is imported raw and injected inline, and its stylesheet is scoped
 // under `.ovw` so it cannot collide with the app's Tailwind/global styles.
 // It sits inside the shared site shell (navbar, column, footer).
-// Meta is set here for client-side navigation; server.ts/meta.config.ts
-// inject the same tags for crawlers.
+// `/protocol` is the public route. Meta for that path lives in meta.config.ts.
 
 const TITLE = 'Index Network: Protocol Overview';
 const DESCRIPTION =
@@ -100,9 +98,3 @@ export function OverviewArticle({
     </SiteLayout>
   );
 }
-
-export default function OverviewPage() {
-  return <OverviewArticle bodyHtml={overviewBodyHtml} pathname="/overview" />;
-}
-
-export const Component = OverviewPage;

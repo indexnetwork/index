@@ -54,15 +54,11 @@ export const router = createBrowserRouter([
       },
       {
         path: "/waitlist",
-        lazy: lazyRoute("/waitlist", () => import("@/app/waitlist/page")),
+        element: <Navigate to="/download" replace />,
       },
       {
         path: "/found-in-translation",
         lazy: lazyRoute("/found-in-translation", () => import("@/app/found-in-translation/page")),
-      },
-      {
-        path: "/overview",
-        lazy: lazyRoute("/overview", () => import("@/app/overview/page")),
       },
       {
         path: "/protocol",

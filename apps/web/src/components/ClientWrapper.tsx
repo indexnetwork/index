@@ -6,8 +6,8 @@ import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents'];
-// /l is chrome-free web invite join; /index stays app-only public join.
-const bareRoutes = ['/', '/l', '/index', '/login', '/download', '/i/new', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth'];
+// /l is the chrome-free web invite join.
+const bareRoutes = ['/', '/l', '/login', '/download', '/i/new', '/found-in-translation', '/protocol', '/blog', '/about', '/hermes', '/pages', '/waitlist', '/9db20a5fbe', '/cli-auth', '/s', '/mcp'];
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();

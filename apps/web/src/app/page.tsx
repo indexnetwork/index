@@ -1,5 +1,4 @@
 import { useAuthContext } from "@/contexts/AuthContext";
-import ClientLayout from "@/components/ClientLayout";
 import DiscoverHome from "@/components/DiscoverHome";
 import LandingPage from "@/app/landing/page";
 
@@ -14,11 +13,7 @@ function RootPage() {
   const { isAuthenticated } = useAuthContext();
 
   if (isAuthenticated) {
-    return (
-      <ClientLayout>
-        <DiscoverHome />
-      </ClientLayout>
-    );
+    return <DiscoverHome />;
   }
 
   return <LandingPage />;

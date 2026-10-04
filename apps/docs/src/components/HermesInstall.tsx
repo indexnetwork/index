@@ -9,7 +9,7 @@
 
 import { useState } from 'react'
 
-const REQUEST_ACCESS_URL = 'https://index.network/waitlist'
+const REQUEST_ACCESS_URL = 'https://index.network/download'
 const REPO_URL = 'https://github.com/indexnetwork/hermes-plugin'
 const COMMAND = 'hermes plugins install indexnetwork/hermes-plugin'
 

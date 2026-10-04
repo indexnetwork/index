@@ -33,13 +33,6 @@ const MARKETING: Record<string, PageMeta> = {
     image: DEFAULT_IMAGE,
     type: "website",
   },
-  "/overview": {
-    title: "Index Network: Protocol Overview",
-    description:
-      "Index Network is a private, intent-driven social discovery protocol.",
-    image: DEFAULT_IMAGE,
-    type: "website",
-  },
   "/pages/privacy-policy": {
     title: "Privacy Policy | Index Network",
     description: "How Index Network handles personal information — what we collect, why, and what choices you have.",

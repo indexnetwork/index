@@ -1,29 +1,6 @@
-/* Mac/CLI/Hermes loopback parity: wordmark on #14241f, centered status. */
 .cli-auth {
-  min-height: 100vh;
   display: flex;
-  flex-direction: column;
-  background: #14241f;
-  color: #F4FBF6;
-  font-family: "Public Sans", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-.cli-auth__nav {
-  display: flex;
-  align-items: center;
-  padding: 22px 56px;
-}
-.cli-auth__nav img {
-  height: 14px;
-  width: auto;
-  display: block;
-}
-.cli-auth__main {
-  flex: 1;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  padding: 24px;
 }
 .cli-auth__status {
   text-align: center;
@@ -40,15 +17,16 @@
   justify-content: center;
 }
 .cli-auth__status h1 {
-  font-size: 20px;
-  font-weight: 600;
+  font-family: var(--serif);
+  font-size: 32px;
+  font-weight: 400;
   margin: 0 0 10px;
 }
 .cli-auth__status p {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 300;
   margin: 0;
-  color: rgba(244, 251, 246, 0.78);
+  color: var(--body);
 }
 .cli-auth__form {
   width: 100%;
