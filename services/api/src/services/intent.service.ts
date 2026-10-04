@@ -48,8 +48,7 @@ export const DISCOVER_LIMIT_MAX = 30;
 
 /**
  * How deep retrieval reads to fill one search. A signal shared in several of
- * the searched communities takes one row per community, and the counterparties
- * already paired with this signal drop out afterwards, so reading exactly the
+ * the searched communities takes one row per community, so reading exactly the
  * caller's limit would return fewer than it asked for.
  */
 const DISCOVER_RETRIEVAL_MAX = 90;
@@ -427,9 +426,9 @@ export class IntentService {
    * the ranked counterparties and decides which are worth an opportunity.
    *
    * Retrieval has no similarity floor, so what comes back is the strongest N
-   * the caller can still act on rather than however many clear a cutoff. A
-   * counterparty this signal already shares a negotiation with is left out
-   * without spending one of those N.
+   * rather than however many clear a cutoff. A repeat can return the same
+   * counterparties. The caller compares them with opportunities already
+   * started and opens only the ones that have none.
    *
    * @param intentId - Full intent UUID, owned by the caller.
    * @param userId - Authenticated owner.
