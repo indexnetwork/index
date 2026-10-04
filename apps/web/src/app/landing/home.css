@@ -123,14 +123,76 @@
 }
 
 /* ---------- where index runs ---------- */
-.home-runs-links {
+/* Where Index runs: one row per audience, title beside the copy; the first row shows the apps. */
+.home-runs { display: flex; flex-direction: column; border-top: 1px solid var(--ink); }
+.home-run {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  gap: 16px 32px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+.home-run-body { display: flex; flex-direction: column; gap: 12px; }
+.home-run-body .site-p { margin: 0; }
+.home-run-shots {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+.home-run-shot {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 16px;
+  gap: 10px;
+}
+/* The product view sits on a painted scene, the same treatment as the /hermes hero. */
+.home-run-scene {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  padding: 5%;
+}
+/* The painting, softened a touch so the product view reads first. */
+.home-run-scene::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  z-index: -2;
+  background: var(--scene) center / cover no-repeat;
+  filter: blur(2px) saturate(1.05);
+  transition: transform .5s ease;
+}
+.home-run-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(252, 254, 251, .1);
+}
+/* Hover zooms in: the product view comes forward and the painting drifts a little further. */
+.home-run-shot:hover .pm-frame { transform: scale(1.05); }
+.home-run-shot:hover .home-run-scene::before { transform: scale(1.08); }
+@media (prefers-reduced-motion: reduce) {
+  .home-run-scene::before, .pm-frame { transition: none; }
+}
+/* Same as the row links below: 13px, underlined, blue on hover. */
+.home-run-caption {
+  align-self: flex-start;
+  font-family: var(--sans);
   font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.site .home-run-caption:hover { color: var(--blue); }
+
+@media (max-width: 640px) {
+  .home-run { grid-template-columns: minmax(0, 1fr); }
+  .home-run-shots { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---------- blog ---------- */

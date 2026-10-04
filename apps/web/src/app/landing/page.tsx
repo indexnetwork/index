@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
 import FeaturedPost from "@/app/site/FeaturedPost";
@@ -5,6 +6,7 @@ import { formatEntryDate, useBlogEntries } from "@/app/site/blog-entries";
 import { CONTACT_EMAIL, DOCS_URL, docsUrl } from "@/app/site/links";
 import FanCanvas from "./FanCanvas";
 import HeroAccess from "./HeroAccess";
+import { HermesMock, MacMock } from "./ProductMocks";
 import Trace from "./Trace";
 import "./home.css";
 
@@ -102,37 +104,51 @@ export default function LandingPage() {
 
       <section className="site-section site-section--wide">
         <h2 className="site-tag">Where Index runs</h2>
-        <div className="site-grid home-runs">
-          <div>
+        <div className="home-runs">
+          <div className="home-run">
             <h3 className="site-col-title">For you &amp; your agent</h3>
-            <p className="site-p">
-              Install Index and use your agent as you already do, or install our app. Any of your
-              intents that need another person to fulfill them quietly route through Index.
-            </p>
-            <div className="home-runs-links">
-              <Link to="/hermes" target="_blank" rel="noreferrer">Hermes plugin →</Link>
-              <a href={docsUrl("/use/mac")} target="_blank" rel="noreferrer">Mac app →</a>
+            <div className="home-run-body">
+              <p className="site-p">
+                Install Index and use your agent as you already do, or install our app. Any of your
+                intents that need another person to fulfill them quietly route through Index.
+              </p>
+            </div>
+            <div className="home-run-shots">
+              <div className="home-run-shot">
+                <div className="home-run-scene" style={{ "--scene": "url(/site/runs-cactus.jpg)" } as CSSProperties}>
+                  <MacMock />
+                </div>
+                <a className="home-run-caption" href={docsUrl("/use/mac")} target="_blank" rel="noreferrer">Mac app →</a>
+              </div>
+              <div className="home-run-shot">
+                <div className="home-run-scene" style={{ "--scene": "url(/site/runs-tableau.jpg)" } as CSSProperties}>
+                  <HermesMock />
+                </div>
+                <Link className="home-run-caption" to="/hermes" target="_blank" rel="noreferrer">Hermes plugin →</Link>
+              </div>
             </div>
           </div>
-          <div>
+
+          <div className="home-run">
             <h3 className="site-col-title">For community owners</h3>
-            <p className="site-p">
-              Run Index to surface the latent potential of your community by connecting the right
-              people. You set the guidelines of what intents are discoverable.
-            </p>
-            <div className="home-runs-links">
-              <a href={`mailto:${CONTACT_EMAIL}`}>Create your network →</a>
+            <div className="home-run-body">
+              <p className="site-p">
+                Run Index to surface the latent potential of your community by connecting the right
+                people. You set the guidelines of what intents are discoverable.
+              </p>
+              <a className="site-arrow-link site-arrow-link--13" href={`mailto:${CONTACT_EMAIL}`}>Create your network →</a>
             </div>
           </div>
-          <div>
+
+          <div className="home-run">
             <h3 className="site-col-title">For developers</h3>
-            <p className="site-p">
-              We&rsquo;re open source. Build on our primitives - intents, networks, negotiation, and
-              opportunities - that extend into products across sales, recruiting, dating, and
-              marketplaces.
-            </p>
-            <div className="home-runs-links">
-              <a href={DOCS_URL} target="_blank" rel="noreferrer">Read the documentation →</a>
+            <div className="home-run-body">
+              <p className="site-p">
+                We&rsquo;re open source. Build on our primitives - intents, networks, negotiation, and
+                opportunities - that extend into products across sales, recruiting, dating, and
+                marketplaces.
+              </p>
+              <a className="site-arrow-link site-arrow-link--13" href={DOCS_URL} target="_blank" rel="noreferrer">Read the documentation →</a>
             </div>
           </div>
         </div>
