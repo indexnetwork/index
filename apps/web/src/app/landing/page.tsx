@@ -111,7 +111,7 @@ export default function LandingPage() {
             </p>
             <div className="home-runs-links">
               <Link to="/hermes" target="_blank" rel="noreferrer">Hermes plugin →</Link>
-              <Link to="/download" target="_blank" rel="noreferrer">Mac app →</Link>
+              <a href={docsUrl("/use/mac")} target="_blank" rel="noreferrer">Mac app →</a>
             </div>
           </div>
           <div>

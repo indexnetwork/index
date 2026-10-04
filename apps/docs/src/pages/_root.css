@@ -4,33 +4,34 @@
 
 /* #region Brand tokens
  *
- * Match the marketing site (apps/web/src/app/site/site.css): ink on an
- * off-white page, blue accent, square buttons, 10px cards. The landing is
- * light only, so the dark scheme is derived from the same ink. Vocs layers its
- * own tokens, so these unlayered values win.
+ * Light mode matches the marketing site (apps/web/src/app/site/site.css): ink
+ * on an off-white page, blue accent, square buttons, 10px cards. Dark mode is
+ * tuned for reading rather than brand: neutral charcoal with a faint cool cast,
+ * soft off-white body text, brighter headings, and borders that separate
+ * without glaring. Vocs layers its own tokens, so these unlayered values win.
  */
 
 :root {
-  --vocs-background-color-primary: light-dark(#f4f7f2, #03111f);
-  --vocs-background-color-surface: light-dark(#fcfefb, #061d33);
-  --vocs-background-color-surfaceMuted: light-dark(#eceeec, #03111f);
-  --vocs-background-color-surfaceTint: light-dark(#f4f7f2, #0a2540);
+  --vocs-background-color-primary: light-dark(#f4f7f2, #0d0f12);
+  --vocs-background-color-surface: light-dark(#fcfefb, #111317);
+  --vocs-background-color-surfaceMuted: light-dark(#eceeec, #0b0c0f);
+  --vocs-background-color-surfaceTint: light-dark(#f4f7f2, #181b20);
 
-  --vocs-text-color-primary: light-dark(#2e3b45, #dde6ec);
-  --vocs-text-color-secondary: light-dark(#5e6f7c, #9db3c4);
-  --vocs-text-color-muted: light-dark(#7a8b97, #7a8e9e);
-  --vocs-text-color-heading: light-dark(#041729, #fcfefb);
-  --vocs-text-color-link: light-dark(#041729, #fcfefb);
-  --vocs-text-color-link-hover: light-dark(#4091bb, #6fb3d6);
-  --vocs-text-color-quote: light-dark(#5e6f7c, #9db3c4);
+  --vocs-text-color-primary: light-dark(#2e3b45, #c9ced6);
+  --vocs-text-color-secondary: light-dark(#5e6f7c, #9097a2);
+  --vocs-text-color-muted: light-dark(#7a8b97, #6c737e);
+  --vocs-text-color-heading: light-dark(#041729, #f1f3f6);
+  --vocs-text-color-link: light-dark(#041729, #eef1f5);
+  --vocs-text-color-link-hover: light-dark(#4091bb, #7fc1e3);
+  --vocs-text-color-quote: light-dark(#5e6f7c, #9097a2);
 
-  --vocs-border-color-primary: light-dark(#dce7d7, #163450);
-  --vocs-border-color-secondary: light-dark(#e6ece3, #10283f);
+  --vocs-border-color-primary: light-dark(#dce7d7, #24272e);
+  --vocs-border-color-secondary: light-dark(#e6ece3, #1b1e24);
 
-  --vocs-background-color-code-block: light-dark(#f4f7f2, #03111f);
-  --vocs-background-color-code-highlighted: light-dark(#e6ece3, #0a2540);
-  --vocs-background-color-inline-code: light-dark(#eceeec, #0a2540);
-  --vocs-border-color-code-highlighted: light-dark(#dce7d7, #163450);
+  --vocs-background-color-code-block: light-dark(#f4f7f2, #0a0b0e);
+  --vocs-background-color-code-highlighted: light-dark(#e6ece3, #1a1d23);
+  --vocs-background-color-inline-code: light-dark(#eceeec, #1c1f25);
+  --vocs-border-color-code-highlighted: light-dark(#dce7d7, #2a2e36);
 
   --vocs-radius-xs: 2px;
   --vocs-radius-sm: 4px;
