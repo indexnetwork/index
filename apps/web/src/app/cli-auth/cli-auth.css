@@ -32,3 +32,13 @@
   width: 100%;
   max-width: 440px;
 }
+
+/* AuthForm's cream tokens are for the dark card. This page sits on the light site. */
+.cli-auth .auth {
+  --av-cream: var(--ink);
+  --av-cream-soft: var(--body);
+  --av-cream-faint: var(--muted);
+  --av-rule: var(--divider);
+  --av-rule-strong: var(--ink);
+  --av-ink: var(--bg);
+}
