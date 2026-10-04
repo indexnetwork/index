@@ -150,6 +150,13 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
   return (req: Request): Response => {
     const reqUrl = new URL(req.url);
     const pathname = reqUrl.pathname;
+    // `//` is a real pathname. The History API reads it as a protocol-relative
+    // URL (`https:`), so the app must not boot there.
+    const canonicalPath = pathname.replace(/\/{2,}/g, "/") || "/";
+    if (canonicalPath !== pathname) {
+      reqUrl.pathname = canonicalPath;
+      return Response.redirect(reqUrl, 308);
+    }
 
     if (pathname === AASA_PATH && (req.method === "GET" || req.method === "HEAD")) {
       return new Response(req.method === "HEAD" ? null : appleAppSiteAssociation(), {
