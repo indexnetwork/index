@@ -60,7 +60,7 @@ export function SiteNav() {
         <Link className="site-nav-link" to="/blog">blog</Link>
         <a className="site-nav-link" href={DOCS_URL}>docs</a>
         <Link className="site-nav-link" to="/about">about</Link>
-        <Link className="site-btn" to={EARLY_ACCESS_PATH}>Get early access</Link>
+        <Link className="site-btn" to={EARLY_ACCESS_PATH}>Request your invite</Link>
       </div>
     </nav>
   );

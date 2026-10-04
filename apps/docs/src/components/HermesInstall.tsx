@@ -40,7 +40,7 @@ export function HermesInstall() {
       </div>
       <div className="mac-download__actions">
         <a className="mac-download__button" href={REQUEST_ACCESS_URL}>
-          <span>Request access</span>
+          <span>Request your invite</span>
         </a>
         <a className="mac-download__releases" href={REPO_URL}>
           View plugin on GitHub →

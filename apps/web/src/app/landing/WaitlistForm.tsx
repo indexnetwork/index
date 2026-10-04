@@ -107,7 +107,7 @@ export function WaitlistForm({ idPrefix, header, successAction, onStatusChange }
           className="landing-modal-submit is-primary"
           disabled={status === "loading"}
         >
-          {status === "loading" ? "Submitting…" : "Request Access"}
+          {status === "loading" ? "Submitting…" : "Request your invite"}
         </button>
       </form>
     </>

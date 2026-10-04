@@ -5,7 +5,7 @@ import { ensureLandingFonts } from "@/app/landing/fonts";
  * Animated replay of the Hermes plugin's "Negotiation history" card (the Mac
  * app's wire stream): turns from several threads interleave in one tail -f
  * log, each thread ends in a closed/open line, and the header counts move as
- * threads settle. Counterparties are anonymous handles; the script is
+ * threads settle. Counterparties are named people; the script is
  * illustrative, not real negotiation data.
  */
 
@@ -17,22 +17,22 @@ type Event =
   | { kind: "close"; peer: string; result: Result; turns?: number };
 
 const SCRIPT: Event[] = [
-  { kind: "turn", peer: "3b9e", mine: true, action: "propose", text: "Founder building agent coordination infra, in SF next month and meeting pre-seed investors who back technical teams. Open to a coffee?" },
-  { kind: "turn", peer: "c41a", mine: false, action: "propose", text: "Building a scheduling agent for small teams in SoMa. Looking for founders working on agent-to-agent protocols to compare notes." },
-  { kind: "turn", peer: "3b9e", mine: false, action: "question", text: "Is there a lead on the round yet, and is it priced?" },
-  { kind: "turn", peer: "3b9e", mine: true, action: "counter", text: "No lead yet. It's a SAFE, and they'd be in the first group of checks." },
-  { kind: "turn", peer: "c41a", mine: true, action: "accept", text: "Strong overlap: both building agent-to-agent tooling, both in SF the same week. Worth a first conversation." },
-  { kind: "turn", peer: "c41a", mine: false, action: "accept", text: "Agreed. Suggesting coffee the week of the 14th." },
-  { kind: "close", peer: "c41a", result: "won" },
-  { kind: "turn", peer: "3b9e", mine: false, action: "decline", text: "They only write checks once a lead is set, so this isn't a fit right now." },
-  { kind: "close", peer: "3b9e", result: "lost" },
-  { kind: "turn", peer: "91d0", mine: false, action: "propose", text: "Hosts a monthly dinner for people building with agents in SF. Looking for a speaker with field data from a live deployment." },
-  { kind: "turn", peer: "91d0", mine: true, action: "question", text: "Which date is the next dinner, and how long is the talk?" },
-  { kind: "turn", peer: "91d0", mine: false, action: "counter", text: "The 16th. A ten minute talk, then open Q&A." },
-  { kind: "turn", peer: "91d0", mine: true, action: "accept", text: "Lines up with the trip and the village results. Worth an intro." },
-  { kind: "close", peer: "91d0", result: "won" },
-  { kind: "turn", peer: "e7f5", mine: false, action: "propose", text: "Designer relocating to SF, looking for an early team working on agents." },
-  { kind: "close", peer: "e7f5", result: "open", turns: 1 },
+  { kind: "turn", peer: "Alex", mine: true, action: "propose", text: "Founder building agent coordination infra, in SF next month and meeting pre-seed investors who back technical teams. Open to a coffee?" },
+  { kind: "turn", peer: "Mary", mine: false, action: "propose", text: "Building a scheduling agent for small teams in SoMa. Looking for founders working on agent-to-agent protocols to compare notes." },
+  { kind: "turn", peer: "Alex", mine: false, action: "question", text: "Is there a lead on the round yet, and is it priced?" },
+  { kind: "turn", peer: "Alex", mine: true, action: "counter", text: "No lead yet. It's a SAFE, and they'd be in the first group of checks." },
+  { kind: "turn", peer: "Mary", mine: true, action: "accept", text: "Strong overlap: both building agent-to-agent tooling, both in SF the same week. Worth a first conversation." },
+  { kind: "turn", peer: "Mary", mine: false, action: "accept", text: "Agreed. Suggesting coffee the week of the 14th." },
+  { kind: "close", peer: "Mary", result: "won" },
+  { kind: "turn", peer: "Alex", mine: false, action: "decline", text: "They only write checks once a lead is set, so this isn't a fit right now." },
+  { kind: "close", peer: "Alex", result: "lost" },
+  { kind: "turn", peer: "Priya", mine: false, action: "propose", text: "Hosts a monthly dinner for people building with agents in SF. Looking for a speaker with field data from a live deployment." },
+  { kind: "turn", peer: "Priya", mine: true, action: "question", text: "Which date is the next dinner, and how long is the talk?" },
+  { kind: "turn", peer: "Priya", mine: false, action: "counter", text: "The 16th. A ten minute talk, then open Q&A." },
+  { kind: "turn", peer: "Priya", mine: true, action: "accept", text: "Lines up with the trip and the village results. Worth an intro." },
+  { kind: "close", peer: "Priya", result: "won" },
+  { kind: "turn", peer: "Theo", mine: false, action: "propose", text: "Designer relocating to SF, looking for an early team working on agents." },
+  { kind: "close", peer: "Theo", result: "open", turns: 1 },
 ];
 
 /** Lifetime counts before the replay starts; the script adds four threads. */
@@ -106,7 +106,7 @@ export default function NegotiationWire() {
                 <div className="wire-turn-head">
                   <span className="wire-clock">{time}</span>
                   <span className="wire-tag">{e.peer}</span>
-                  <b>{e.mine ? "you.agent" : `${e.peer}.agent`}</b>
+                  <b>{e.mine ? "your agent" : `${e.peer}’s agent`}</b>
                   <span>{e.mine ? "→" : "←"}</span>
                   <span className={e.mine ? "wire-action wire-action--mine" : "wire-action"}>{e.action}</span>
                 </div>
