@@ -1454,7 +1454,6 @@
           "aria-label": matches === 1 ? "1 waiting on you" : matches + " waiting on you",
         }, String(matches))
         : null,
-      React.createElement("span", { className: "index-dashboard__intent-chevron", "aria-hidden": "true" }, "\u203A"),
     );
   }
 

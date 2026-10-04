@@ -259,6 +259,7 @@
   line-height: 1.2;
   letter-spacing: 0.12em;
   border: 1px solid var(--color-foreground, #f8fafc);
+  border-radius: var(--index-radius, 2px);
 }
 
 /* Accept is the one filled thing on a radar row; pass is the same box, empty.
@@ -561,7 +562,7 @@
   align-items: center;
   gap: 10px;
   border: 1px solid #E4E0D9;
-  border-radius: 4px;
+  border-radius: var(--index-radius, 2px);
   background: #FFFFFF;
   color: #1C1B19;
 }
@@ -604,7 +605,7 @@
   align-items: center;
   gap: 5px;
   border: 1px solid #E4E0D9;
-  border-radius: 3px;
+  border-radius: var(--index-radius, 2px);
   font-family: ui-monospace, Menlo, monospace;
   font-size: 10px;
   letter-spacing: 0.06em;
@@ -636,7 +637,7 @@
   justify-content: center;
   padding: 0;
   border: 1px solid #E4E0D9;
-  border-radius: 4px;
+  border-radius: var(--index-radius, 2px);
   background: #FFFFFF;
 }
 
@@ -664,7 +665,7 @@
   width: 420px;
   max-width: calc(100vw - 32px);
   background: #FFFFFF;
-  border-radius: 6px;
+  border-radius: var(--index-radius, 2px);
   box-shadow: 0 20px 50px rgba(28, 27, 25, 0.18);
   color: #1C1B19;
 }
@@ -680,7 +681,7 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--index-radius, 2px);
   background: transparent;
   color: #1C1B19;
   font-size: 18px;
@@ -710,7 +711,7 @@
   justify-content: space-between;
   gap: 12px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--index-radius, 2px);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -770,6 +771,7 @@
   font-size: 0.72rem;
   line-height: 1;
   letter-spacing: 0.1em;
+  border-radius: var(--index-radius, 2px);
 }
 
 /* Mirrors the mac app's LiveDot beacon: fixed accent-orange square with a
@@ -1078,6 +1080,7 @@
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  border-radius: var(--index-radius, 2px);
 }
 
 .index-dashboard__net-create-btn .index-dashboard__net-discover-icon {
@@ -2064,14 +2067,7 @@
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.2;
-}
-
-.index-dashboard__intent-chevron {
-  flex: 0 0 auto;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 1rem;
-  line-height: 1.3;
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  border-radius: var(--index-radius, 2px);
 }
 
 .index-dashboard__intent-row--selected {
