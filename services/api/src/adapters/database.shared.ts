@@ -93,7 +93,7 @@ export interface ArchiveResultShape {
   success: boolean;
   error?: string;
 }
-export type IntentLifecycleStatus = 'active' | 'paused';
+export type IntentLifecycleStatus = 'active' | 'paused' | 'draft';
 
 export interface IntentListRow {
   id: string;

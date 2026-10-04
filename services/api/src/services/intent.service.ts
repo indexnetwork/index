@@ -117,8 +117,8 @@ export type IntentTransitionOutcome =
   | { kind: 'not_found' }
   | { kind: 'scope_violation' }
   | { kind: 'stale' }
-  | { kind: 'conflict'; status: 'active' | 'paused' | null; archived: boolean }
-  | { kind: 'enqueue_failed'; id: string; status: 'active' | 'paused'; lifecycleVersionMs: number };
+  | { kind: 'conflict'; status: 'active' | 'paused' | 'draft' | null; archived: boolean }
+  | { kind: 'enqueue_failed'; id: string; status: 'active' | 'paused' | 'draft'; lifecycleVersionMs: number };
 
 /**
  * IntentService

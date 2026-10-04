@@ -196,7 +196,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
               if (!dbResult.changed) {
                 outcome = { kind: 'enqueue_failed', id: dbResult.id, status: dbResult.status, lifecycleVersionMs: dbResult.lifecycleVersionMs };
               } else {
-                let authoritative: { status: 'active' | 'paused'; lifecycleVersionMs: number } | null = null;
+                let authoritative: { status: 'active' | 'paused' | 'draft'; lifecycleVersionMs: number } | null = null;
                 try {
                   authoritative = await deps.database.compensateFailedResume({
                     intentId: transitionAction.id,
