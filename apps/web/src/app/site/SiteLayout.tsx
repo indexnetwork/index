@@ -58,7 +58,7 @@ export function SiteNav() {
         <Link className="site-nav-link" to="/">home</Link>
         <Link className="site-nav-link" to="/hermes">hermes</Link>
         <Link className="site-nav-link" to="/blog">blog</Link>
-        <a className="site-nav-link" href={DOCS_URL}>docs</a>
+        <a className="site-nav-link" href={DOCS_URL} target="_blank" rel="noreferrer">docs</a>
         <Link className="site-nav-link" to="/about">about</Link>
         <Link className="site-btn" to={EARLY_ACCESS_PATH}>Request your invite</Link>
       </div>

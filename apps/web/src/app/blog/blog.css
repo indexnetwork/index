@@ -82,6 +82,14 @@
   border-radius: 10px;
   margin: 8px 0 24px;
 }
+/* Charts are drawn at the size they should read at, so they don't stretch to the column,
+   and sit straight on the page rather than in a card. */
+.post-body img[src$=".svg"] {
+  width: auto;
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+}
 
 /* ------------------------------------------------------------
    DATA TABLES
