@@ -17,6 +17,12 @@ section before promoting to `main`).
   `counter`, `accept`, or `decline`) for the authenticated owner. The caller
   passes `agentId` for their selected external negotiator. Refusals match the
   REST turn errors, including a changed executor.
+- **Historical match-quality evaluator.** `bun run eval:match-quality`
+  (`src/cli/match-quality/`) seeds five documented introductions with
+  synthetic hard and easy negatives into local `index_test`, admits every
+  signal through `IntentService.create`, runs one live first wake per case
+  through the real `discover()` path without opening opportunities, and writes
+  a scores-and-ranks report to `ignored/`. Exploratory only; no gate.
 - **MCP Events for ChatGPT.** `/mcp` advertises `capabilities.events` and
   serves `events/list`, `events/subscribe`, and `events/unsubscribe` for
   `opportunity.new`, `opportunity.status`, `negotiation.turn`, and
