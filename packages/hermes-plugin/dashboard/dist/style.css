@@ -1217,6 +1217,17 @@
   min-width: 0;
 }
 
+/* Short options (team size) read as one segmented row; two per row when narrow. */
+.index-dashboard__net-size-grid--row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 520px) {
+  .index-dashboard__net-size-grid--row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
 .index-dashboard__net-size {
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
@@ -1238,11 +1249,11 @@
   background: color-mix(in srgb, var(--color-primary, #4fd1c5) 16%, transparent);
 }
 
+/* Picture beside the name field, centred on it. */
 .index-dashboard__net-request-identity {
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  margin-bottom: 0.35rem;
 }
 
 .index-dashboard__net-request-photo {
@@ -1252,14 +1263,34 @@
 }
 
 .index-dashboard__net-request-photo-mark {
-  width: 42px;
-  height: 42px;
+  width: 3.25rem;
+  height: 3.25rem;
   display: block;
 }
 
-.index-dashboard__net-request-identity-main {
+.index-dashboard__net-request-photo-badge {
+  position: absolute;
+  right: -0.25rem;
+  bottom: -0.25rem;
+  width: 1.15rem;
+  height: 1.15rem;
   display: grid;
-  gap: 0.15rem;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  background: var(--color-card, #fff);
+  color: var(--color-card-foreground, inherit);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.index-dashboard__net-request-photo:hover .index-dashboard__net-request-photo-badge,
+.index-dashboard__net-request-photo:focus-within .index-dashboard__net-request-photo-badge {
+  border-color: var(--color-primary, #4fd1c5);
+}
+
+.index-dashboard__net-request-identity-main {
+  flex: 1 1 auto;
   min-width: 0;
 }
 

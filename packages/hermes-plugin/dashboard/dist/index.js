@@ -2611,23 +2611,26 @@
     return React.createElement("div", { className: "index-dashboard__profile-section" },
       React.createElement("p", { className: "index-dashboard__net-request-intro" },
         "Network creation is still early. Fill this in and it gets reviewed before it goes live."),
+      // Picture and name share one row: the picture is the network's mark, so it
+      // sits beside the name it belongs to instead of taking a row of its own.
       React.createElement("div", { className: "index-dashboard__net-request-identity" },
-        React.createElement("label", { className: "index-dashboard__net-request-photo", title: "Change network picture" },
+        React.createElement("label", { className: "index-dashboard__net-request-photo", title: photo ? "Change picture" : "Add a picture (optional)" },
           React.createElement(NetworkAvatar, { className: "index-dashboard__net-request-photo-mark", imageUrl: photo, seed: trimmed || "network" }),
+          React.createElement("span", { className: "index-dashboard__net-request-photo-badge", "aria-hidden": "true" }, "+"),
           React.createElement("input", {
             ref: photoFileRef,
             type: "file",
             accept: "image/*",
+            "aria-label": "Network picture (optional)",
             className: "index-dashboard__profile-avatar-input",
             onChange: onPhotoFile,
           }),
         ),
-        React.createElement("span", { className: "index-dashboard__net-request-photo-hint" }, "Picture optional"),
+        React.createElement("div", { className: "index-dashboard__net-request-identity-main" },
+          React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "Network name", "aria-label": "Network name", onChange: function (e) { setName(e.target.value); } }),
+        ),
       ),
-      React.createElement(ProfileField, { label: "Name" },
-        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "Network name", onChange: function (e) { setName(e.target.value); } }),
-      ),
-      React.createElement(ProfileField, { label: "Description", hint: "Optional" },
+      React.createElement(ProfileField, { label: "Description", note: "optional" },
         React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: desc, placeholder: "What people can share in this network…", onChange: function (e) { setDesc(e.target.value); } }),
       ),
       React.createElement(ProfileField, { label: "Access" },
@@ -2637,7 +2640,7 @@
         ),
       ),
       React.createElement(ProfileField, { label: "How many people are you hoping to bring together?" },
-        React.createElement("div", { className: "index-dashboard__net-size-grid" },
+        React.createElement("div", { className: "index-dashboard__net-size-grid index-dashboard__net-size-grid--row" },
           NETWORK_SIZE_OPTIONS.map(function (opt) {
             const active = size === opt;
             return React.createElement("button", {
