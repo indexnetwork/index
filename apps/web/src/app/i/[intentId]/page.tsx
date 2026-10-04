@@ -26,15 +26,15 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
 /**
- * Lifecycle statuses the radar fetches. This switches the home view into
- * lifecycle mode (terminal statuses pass through; pending stays gated by
- * viewer actionability).
+ * Same lifecycle set as the Mac radar. Rejected is left out on purpose:
+ * the list keeps one card per person, newest first, and a rejection is
+ * usually the agent's filter, not a choice the person made. Including it
+ * hides the pending or accepted card the Mac app still shows.
  */
 const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
   "pending",
   "negotiating",
   "accepted",
-  "rejected",
   "expired",
 ];
 
@@ -92,6 +92,7 @@ function IntentDetail() {
     if (archiveTimer.current) window.clearTimeout(archiveTimer.current);
     setArchiving(false);
     setOpenPersonId(null);
+    setOpportunities([]);
   }, [intentId]);
 
   const scope = useMemo(
@@ -127,11 +128,11 @@ function IntentDetail() {
       opportunitiesLoadingRef.current = false;
       setOpportunitiesLoading(false);
     };
-    const applyItems = (items: RadarCardItem[]) => {
-      // Every response is an authoritative snapshot for this exact intent.
-      // Passive refreshes avoid loading flicker, but must still remove rows
-      // that changed lifecycle or disappeared from the server response.
-      setOpportunities(items);
+    const applyItems = (items: RadarCardItem[], skeleton = false) => {
+      // Every full response is an authoritative snapshot for this exact intent.
+      // A skeleton pass is only the first paint: applying it over cards that
+      // already have presenter text blanks the line the Mac radar keeps.
+      setOpportunities((prev) => (skeleton && prev.length > 0 ? prev : items));
     };
     const baseOptions = {
       intentId,
@@ -148,7 +149,7 @@ function IntentDetail() {
           presentation: "skeleton",
         });
         if (seq !== loadSeqRef.current) return;
-        applyItems(fast.items);
+        applyItems(fast.items, true);
         setOpportunitiesError(false);
         settleLoading();
       } catch {
@@ -324,7 +325,7 @@ function IntentDetail() {
       const bucket = bucketOf(item);
       if (!bucket) return false;
       return selectedBucket === "all" || bucket === selectedBucket;
-    }),
+    }).sort((a, b) => Date.parse(b.createdAt || "") - Date.parse(a.createdAt || "")),
     [opportunities, bucketOf, selectedBucket],
   );
   const chatPeers = useMemo(() => {
@@ -428,22 +429,31 @@ function IntentDetail() {
                 ) : visibleOpportunities.map((item) => {
                   const bucket = bucketOf(item);
                   const busy = !!opportunityActionLoading[item.opportunityId];
+                  const peer = item.peer;
+                  const name = item.name || peer?.name || "unknown";
+                  const blurb = item.headline || item.mainText || "";
+                  // "waiting for them" only while this viewer has said yes and
+                  // the other person has not. A mutual accept stays a plain
+                  // accepted row, same as the Mac card.
+                  const waitingOnThem = item.status === "pending" && (
+                    opportunityStatusMap[item.opportunityId] === "accepted" || item.viewerCommitted === true
+                  );
                   return (
                     <MatchCard
                       key={item.opportunityId}
-                      name={item.name || "someone"}
-                      blurb={item.headline || item.mainText || ""}
-                      photo={item.avatar}
-                      userId={item.userId}
+                      name={name}
+                      blurb={blurb}
+                      photo={item.avatar ?? peer?.avatar}
+                      userId={item.userId || peer?.userId}
                       accepted={bucket === "accepted"}
                       ready={bucket === "awaiting you"}
                       negotiating={bucket === "negotiating"}
                       expired={bucket === "missed"}
-                      waitingOnThem={item.viewerCommitted}
-                      hasChat={!!item.userId && chatPeers.has(item.userId)}
+                      waitingOnThem={waitingOnThem}
+                      hasChat={!!(item.userId || peer?.userId) && chatPeers.has(item.userId || peer?.userId || "")}
                       onOpen={() => setOpenPersonId(item.opportunityId)}
-                      onAccept={() => void handleOpportunityAction(item.opportunityId, "accepted", item.userId)}
-                      onPass={() => void handleOpportunityAction(item.opportunityId, "rejected", item.userId)}
+                      onAccept={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "accepted", item.userId || peer?.userId); }}
+                      onPass={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "rejected", item.userId || peer?.userId); }}
                     />
                   );
                 })}

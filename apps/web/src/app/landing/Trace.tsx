@@ -1,127 +1,391 @@
 import { useEffect, useState } from "react";
 
-/** Each phase of the trace has its own colour (see `.home-trace-p-*` in home.css). */
-type Phase = "query" | "intent" | "reach" | "negotiate" | "present";
-/** How progress moves within a step: steady, front-loaded, back-loaded, or stalling midway. */
-type Pace = "steady" | "fast" | "slow" | "stall";
+/** Overview trace, opened on the landing page: same card, with the wrapper
+ *  steps removed and ascii used for the tree and the live marker. */
 
-type Row = {
-  ind: 0 | 1 | 2;
-  t: string;
-  label: (k: number) => string;
-  phase: Phase;
-  /** How long the step runs, in 100ms ticks. */
-  dur: number;
-  pace: Pace;
-};
+const INTENT =
+  "Traveling soon to San Francisco and looking to meet AI startup founders and builders";
 
-const n = (v: number) => Math.round(v).toLocaleString("en-US");
-
-const ROWS: Row[] = [
-  { ind: 0, t: "0.41s", label: () => "Analyzing query", phase: "query", dur: 4, pace: "fast" },
-  { ind: 0, t: "", label: () => "Decided to find opportunities", phase: "query", dur: 2, pace: "steady" },
-  { ind: 0, t: "ongoing", label: (k) => `Find opportunities: ${n(3 * k)} high-signal matches`, phase: "query", dur: 5, pace: "slow" },
-  { ind: 1, t: "0.6s", label: () => "Intent discovery", phase: "intent", dur: 4, pace: "fast" },
-  { ind: 2, t: "", label: (k) => `Clarifying questions: ${n(2 * k)} answered · 1 skipped`, phase: "intent", dur: 9, pace: "stall" },
-  { ind: 2, t: "92ms", label: () => "Resolving intent: signal locked", phase: "intent", dur: 3, pace: "fast" },
-  { ind: 1, t: "2.1s", label: () => "Counterparty discovery", phase: "reach", dur: 4, pace: "steady" },
-  { ind: 2, t: "110ms", label: () => "Mapping reach: 5 networks in scope", phase: "reach", dur: 3, pace: "fast" },
-  { ind: 2, t: "980ms", label: (k) => `Scanning counterparties: ${n(1000 * k)} people`, phase: "reach", dur: 14, pace: "slow" },
-  { ind: 2, t: "60ms", label: (k) => `Shortlisting: ${n(100 * k)} counterparties advanced`, phase: "reach", dur: 5, pace: "steady" },
-  { ind: 1, t: "1.1s", label: () => "Opportunity discovery: negotiating 12 in parallel", phase: "negotiate", dur: 16, pace: "stall" },
-  { ind: 2, t: "", label: (k) => `… ${n(3 * k)} accepted by both agents`, phase: "negotiate", dur: 7, pace: "slow" },
-  { ind: 0, t: "", label: () => "Present opportunities: 3 ready", phase: "present", dur: 3, pace: "fast" },
+const QUESTIONS = [
+  "Which dates are you in San Francisco?",
+  "Founders, builders, or both?",
+  "Any AI domains in focus?",
+  "Open to intros or events?",
+  "Prefer 1:1 or small groups?",
+  "Raising, hiring, or building?",
+  "How long are you in town?",
+  "Any stage preference?",
+  "Warm intros or cold ok?",
+  "Research, product, or infra?",
+  "Any companies to prioritize?",
+  "Coffee, demo, or event?",
 ];
 
-/** When each step starts, and the loop: the run, then a hold on the finished trace. */
-const STARTS = ROWS.reduce<number[]>((acc, r, i) => [...acc, i === 0 ? 0 : acc[i - 1] + ROWS[i - 1].dur], []);
-const RUN = STARTS[ROWS.length - 1] + ROWS[ROWS.length - 1].dur;
-const LOOP = RUN + 30;
+const NAMES = [
+  "Sarah Chen", "Marcus Feldman", "Priya Nair", "David Okafor", "Lena Vogt",
+  "Diego Alvarez", "Mei Lin", "Tomás Reyes", "Aisha Khan", "Jonas Berg",
+  "Yuki Tanaka", "Noah Bello", "Ravi Menon", "Clara Fontaine", "Omar Haddad",
+  "Ines Costa", "Kojo Mensah", "Sofia Ricci", "Ellis Ward", "Hana Park",
+  "Leo Nakamura", "Amara Diallo", "Felix Braun", "Nadia Petrova", "Ben Cohen",
+  "Grace Liu", "Samir Rao", "Elena Ivanova", "Marco Bianchi", "Zoe Adeyemi",
+  "Theo Larsen", "Ana Ferreira", "Ivan Petrov", "Maya Goldberg", "Kenji Sato",
+];
 
-const shape = (pace: Pace, u: number) => {
-  if (pace === "fast") return 1 - (1 - u) * (1 - u);
-  if (pace === "slow") return u * u;
-  if (pace === "stall") return u < 0.35 ? (u / 0.35) * 0.45 : u < 0.65 ? 0.45 + ((u - 0.35) / 0.3) * 0.07 : 0.52 + ((u - 0.65) / 0.35) * 0.48;
-  return u;
+const MAX_Q = 4;
+const MAX_NEG = 9;
+const CONCURRENT = 4;
+const PEOPLE = 12610;
+
+const rnd = (a: number, b: number) => Math.floor(a + Math.random() * (b - a + 1));
+const pick = <T,>(a: T[]) => a[rnd(0, a.length - 1)];
+const fmt = (n: number) => n.toLocaleString("en-US");
+
+type QState = "pending" | "answered" | "skipped";
+type Question = { id: number; text: string; state: QState };
+type Neg = {
+  id: number;
+  name: string;
+  running: boolean;
+  chain: string;
+  ok: boolean;
+  dur: string;
 };
 
-/** Tree prefix per indent level, drawn in text so the columns stay aligned. */
-const INDENT = ["", "└─ ", "   └─ "];
-
-/** Fixed-width text table: column widths in characters. */
-const W_EVENT = 60;
-const BAR = 30;
-const W_TIME = 9;
-const col = (s: string, w: number) => s.padEnd(w);
-
-/** Only the running step gets a full bar; finished ones keep a faint line, upcoming ones nothing. */
-const bar = (done: boolean, cur: boolean, k: number) => {
-  if (done) return "[" + "=".repeat(BAR) + "]";
-  if (!cur) return " ".repeat(BAR + 2);
-  const filled = Math.min(BAR - 1, Math.floor(k * BAR));
-  return "[" + "#".repeat(filled) + ">" + "-".repeat(BAR - filled - 1) + "]";
+const chain = () => {
+  const k = rnd(0, 2);
+  let c = "propose";
+  for (let i = 0; i < k; i++) c += " → counter";
+  const ok = Math.random() < 0.72;
+  return { chain: c + (ok ? " → accept" : " → reject"), ok };
 };
 
-const HEAD = col("EVENT", W_EVENT) + col("PROGRESS", BAR + 4) + col("TIME", W_TIME) + "STATE";
-const RULE = "-".repeat(HEAD.length + 4);
+function Tree() {
+  return <span className="text-gray-300 flex-shrink-0 select-none">└─</span>;
+}
 
-/** A live, looping agent trace for "I am going to SF, who should I meet". */
+function Mark({ live }: { live?: boolean }) {
+  if (live) return <span className="site-blink-fast text-gray-400 flex-shrink-0">▮</span>;
+  return <span className="text-gray-300 flex-shrink-0 select-none">*</span>;
+}
+
 export default function Trace() {
-  const [tick, setTick] = useState(0);
+  const [sec, setSec] = useState(0);
+  const [events, setEvents] = useState(0);
+  const [people, setPeople] = useState(0);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [negs, setNegs] = useState<Neg[]>([]);
+  const [accepted, setAccepted] = useState(0);
+  const [more, setMore] = useState(0);
+  const [ready, setReady] = useState(0);
 
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % LOOP), 100);
-    return () => clearInterval(id);
+    const clock = setInterval(() => setSec((t) => t + 1), 1000);
+    const scan = setInterval(() => {
+      setPeople((n) => Math.min(PEOPLE, n + rnd(400, 3200)));
+    }, 320);
+    return () => {
+      clearInterval(clock);
+      clearInterval(scan);
+    };
   }, []);
 
-  const found = STARTS.findIndex((s, i) => tick >= s && tick < s + ROWS[i].dur);
-  const step = found === -1 ? ROWS.length : found;
-  const events = Math.min(ROWS.length, step + 1);
-  const seconds = Math.floor(Math.min(tick, RUN) / 10);
+  useEffect(() => {
+    let alive = true;
+    const qSeen = new Set<string>();
+    const names = new Set<string>();
+    let inFlight = 0;
+    let qSeq = 0;
+    let nSeq = 0;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const later = (fn: () => void, ms: number) => {
+      const id = setTimeout(fn, ms);
+      timers.push(id);
+    };
+
+    const bump = () => setEvents((n) => n + 1);
+
+    const trimQ = (rows: Question[]) => {
+      const next = [...rows];
+      while (next.length > MAX_Q) {
+        const idx = [...next].reverse().findIndex((r) => r.state !== "pending");
+        if (idx === -1) break;
+        const at = next.length - 1 - idx;
+        qSeen.delete(next[at].text);
+        next.splice(at, 1);
+      }
+      return next;
+    };
+
+    const spawnQ = () => {
+      if (!alive) return;
+      const free = QUESTIONS.filter((q) => !qSeen.has(q));
+      if (!free.length) return;
+      const text = pick(free);
+      qSeen.add(text);
+      const id = ++qSeq;
+      setQuestions((prev) => trimQ([{ id, text, state: "pending" }, ...prev]));
+      bump();
+      later(() => {
+        if (!alive) return;
+        const ans = Math.random() < 0.7;
+        setQuestions((prev) =>
+          trimQ(prev.map((r) => (r.id === id ? { ...r, state: ans ? "answered" : "skipped" } : r))),
+        );
+        bump();
+      }, rnd(1300, 3200));
+    };
+
+    const qLoop = () => {
+      if (!alive) return;
+      setQuestions((prev) => {
+        if (prev.filter((r) => r.state === "pending").length < 2) later(spawnQ, 0);
+        return prev;
+      });
+      later(qLoop, rnd(1500, 3000));
+    };
+
+    const trimNeg = (rows: Neg[], onDrop: () => void) => {
+      const next = [...rows];
+      while (next.length > MAX_NEG) {
+        const idx = [...next].reverse().findIndex((r) => !r.running);
+        if (idx === -1) break;
+        const at = next.length - 1 - idx;
+        names.delete(next[at].name);
+        next.splice(at, 1);
+        onDrop();
+      }
+      return next;
+    };
+
+    const spawnNeg = (completed = false) => {
+      if (!alive) return;
+      const free = NAMES.filter((n) => !names.has(n));
+      if (!free.length) return;
+      const name = pick(free);
+      names.add(name);
+      if (!completed) inFlight++;
+      const id = ++nSeq;
+      const settled = chain();
+      const row: Neg = completed
+        ? { id, name, running: false, ...settled, dur: `${rnd(150, 720)}ms` }
+        : { id, name, running: true, chain: "", ok: false, dur: "" };
+      setNegs((prev) => {
+        let dropped = 0;
+        const next = trimNeg([row, ...prev], () => {
+          dropped++;
+        });
+        if (dropped) setMore((m) => m + dropped);
+        return next;
+      });
+      bump();
+      if (completed && settled.ok) {
+        setAccepted((n) => n + 1);
+        setReady((n) => (Math.random() < 0.4 ? Math.min(n + 1, 12) : n));
+      }
+      if (completed) return;
+      later(() => {
+        if (!alive) return;
+        const result = chain();
+        inFlight--;
+        setNegs((prev) =>
+          prev.map((r) =>
+            r.id === id ? { ...r, running: false, ...result, dur: `${rnd(150, 720)}ms` } : r,
+          ),
+        );
+        bump();
+        if (result.ok) {
+          setAccepted((n) => n + 1);
+          setReady((n) => (Math.random() < 0.4 ? Math.min(n + 1, 12) : n));
+        }
+      }, rnd(1400, 3800));
+    };
+
+    const negLoop = () => {
+      if (!alive) return;
+      if (inFlight < CONCURRENT) spawnNeg();
+      later(negLoop, rnd(600, 1300));
+    };
+
+    for (let i = 0; i < MAX_Q; i++) spawnQ();
+    later(qLoop, 1800);
+    for (let i = 0; i < MAX_NEG - CONCURRENT; i++) spawnNeg(true);
+    for (let i = 0; i < CONCURRENT; i++) spawnNeg();
+    later(negLoop, 1400);
+
+    return () => {
+      alive = false;
+      timers.forEach(clearTimeout);
+    };
+  }, []);
+
+  const pending = questions.filter((q) => q.state === "pending").length;
+  const answered = questions.filter((q) => q.state === "answered").length
+    + questions.filter(() => false).length;
+  // answered/skipped counts survive rows scrolling off, so track them apart from the visible list
+  const [answeredN, skippedN] = useSettledCounts(questions);
+  const clock = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 
   return (
     <div className="home-trace">
-      <div className="home-trace-head">
-        <span className="home-trace-title">&ldquo;I am going to SF, who should I meet&rdquo;</span>
+      <div className="flex justify-end mb-6">
+        <div className="max-w-[34rem] px-4 py-2 rounded-full border border-[#E8E8E8] bg-white text-[15px] text-gray-800 leading-snug shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          {INTENT}
+        </div>
       </div>
-      <div className="home-trace-scroll">
-        <pre className="home-trace-pre" aria-hidden="true">
-          <span className="home-trace-dim">{HEAD}</span>
-          {"\n"}
-          <span className="home-trace-rule">{RULE}</span>
-          {"\n"}
-          {ROWS.map((r, i) => {
-            const done = i < step;
-            const cur = i === step;
-            const k = done ? 1 : cur ? shape(r.pace, (tick - STARTS[i]) / r.dur) : 0;
-            const showCursor = cur || (i === ROWS.length - 1 && done);
-            const tree = INDENT[r.ind];
-            const text = r.label(k);
-            const used = tree.length + text.length;
-            const phase = `home-trace-p-${r.phase}`;
-            return (
-              <span key={i} style={{ opacity: done || cur ? 1 : 0.3 }}>
-                <span className={phase}>{tree}</span>
-                <span className={phase}>{text}</span>
-                {showCursor ? <span className="site-blink-fast home-trace-ink">▮</span> : " "}
-                {" ".repeat(Math.max(1, W_EVENT - used - 1))}
-                <span className={phase} style={{ opacity: done ? 0.35 : 1 }}>
-                  {bar(done, cur, k)}
-                </span>
-                {"  "}
-                <span className={phase}>{col(done ? r.t : "", W_TIME)}</span>
-                <span className={phase}>{done ? "done" : cur ? "running" : "queued"}</span>
-                {"\n"}
-              </span>
-            );
-          })}
-          <span className="home-trace-rule">{RULE}</span>
-          {"\n"}
-          <span className="home-trace-dim">
-            TRACE · {events} EVENTS · 0:{String(seconds).padStart(2, "0")}
+
+      <div className="home-trace-label">INDEX</div>
+
+      <div className="font-mono text-[11px] leading-tight border border-[#E8E8E8] rounded-sm overflow-hidden bg-white text-gray-700">
+        <div className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-gray-700 border-b border-[#E8E8E8] bg-[#FAFAFA]">
+          <span className="text-[10px] uppercase tracking-wider font-bold text-black font-sans">Trace</span>
+          <span className="w-px h-2.5 bg-gray-300" />
+          <span className="text-gray-500 tabular-nums">{fmt(events)} events</span>
+          <span className="ml-auto flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-gray-400 tabular-nums">{clock}</span>
           </span>
-        </pre>
+        </div>
+
+        <div className="divide-y divide-[#F4F4F4]">
+          <div className="flex items-start gap-2 px-3.5 py-1.5 bg-[#F5F3FF] shadow-[inset_2px_0_0_#C4B5FD]">
+            <span className="mt-px"><Mark /></span>
+            <span className="text-gray-800">
+              Create intent
+              <span className="text-gray-400">: {INTENT}</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 px-3.5 py-1 bg-[#EFF6FF] shadow-[inset_2px_0_0_#93C5FD]">
+            <Mark />
+            <span className="flex-1 truncate text-blue-900 font-medium">Intent discovery</span>
+            <span className="tabular-nums flex-shrink-0 text-blue-400">0.6s</span>
+          </div>
+          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
+            <Tree />
+            <span className="flex-1 truncate text-gray-600">
+              Clarifying questions
+              <span className="text-gray-400">
+                : <span className="text-emerald-600">{answeredN}</span> answered ·{" "}
+                <span className="text-gray-500">{skippedN}</span> skipped ·{" "}
+                <span className="text-blue-500">{pending}</span> pending
+              </span>
+            </span>
+          </div>
+          {questions.map((q) => (
+            <div key={q.id} className="home-trace-swap flex items-center gap-2 pl-12 pr-3.5 py-0.5">
+              <Tree />
+              <span className={`flex-1 truncate ${q.state === "skipped" ? "text-gray-400 line-through" : "text-gray-600"}`}>
+                “{q.text}”
+              </span>
+              {q.state === "pending" && (
+                <span className="flex-shrink-0 inline-flex items-center gap-1 text-blue-500">
+                  <Mark live />pending
+                </span>
+              )}
+              {q.state === "answered" && <span className="flex-shrink-0 text-emerald-600">answered ✓</span>}
+              {q.state === "skipped" && <span className="flex-shrink-0 text-gray-400">skipped</span>}
+            </div>
+          ))}
+          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
+            <Tree />
+            <span className="flex-1 truncate text-gray-600">
+              Resolving intent
+              <span className="text-gray-400">: meet AI founders and builders in San Francisco</span>
+            </span>
+            <span className="tabular-nums flex-shrink-0 text-gray-400">92ms</span>
+          </div>
+
+          <div className="flex items-center gap-2 px-3.5 py-1 bg-[#FFFBEB] shadow-[inset_2px_0_0_#FCD34D]">
+            <Mark live />
+            <span className="flex-1 truncate text-amber-900 font-medium">Counterparty discovery</span>
+          </div>
+          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
+            <Tree />
+            <span className="flex-1 truncate text-gray-600">
+              Mapping reach<span className="text-gray-400">: 12 networks in scope</span>
+            </span>
+            <span className="tabular-nums flex-shrink-0 text-gray-400">110ms</span>
+          </div>
+          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
+            <Tree />
+            <Mark live />
+            <span className="flex-1 truncate text-gray-600">
+              Scanning counterparties
+              <span className="text-gray-400">: {fmt(people)} people</span>
+            </span>
+            <span className="tabular-nums flex-shrink-0 text-gray-400">{people >= PEOPLE ? "" : ""}</span>
+          </div>
+          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
+            <Tree />
+            <span className="flex-1 truncate text-gray-600">
+              Shortlisting<span className="text-gray-400">: 100 counterparties advanced</span>
+            </span>
+            <span className="tabular-nums flex-shrink-0 text-gray-400">60ms</span>
+          </div>
+
+          <div className="flex items-center gap-2 px-3.5 py-1 bg-[#ECFDF5] shadow-[inset_2px_0_0_#6EE7B7]">
+            <Mark live />
+            <span className="flex-1 truncate text-emerald-900 font-medium">
+              Opportunity discovery
+              <span className="text-emerald-600 font-normal">: negotiating in parallel</span>
+            </span>
+          </div>
+          {negs.map((row) => (
+            <div key={row.id} className="home-trace-swap flex items-center gap-2 pl-8 pr-3.5 py-0.5">
+              <Tree />
+              {row.running ? <Mark live /> : <Mark />}
+              <span className={`flex-1 truncate ${row.running ? "text-gray-400" : "text-gray-600"}`}>
+                Negotiating with {row.name}
+                {!row.running && (
+                  <>
+                    <span className="text-gray-400">: {row.chain}</span>
+                    {row.ok && <span className="text-emerald-700"> ✓ opportunity</span>}
+                  </>
+                )}
+              </span>
+              {!row.running && (
+                <span className="tabular-nums flex-shrink-0 text-gray-400">{row.dur}</span>
+              )}
+            </div>
+          ))}
+          <div className="flex items-center gap-2 pl-8 pr-3.5 py-0.5">
+            <Tree />
+            <Mark live />
+            <span className="flex-1 truncate text-gray-500">
+              … {more} more connected
+              <span className="text-gray-400">: {accepted} accepted</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 px-3.5 py-1.5 bg-[#ECFDF5] shadow-[inset_2px_0_0_#34D399]">
+            <Mark />
+            <span className="text-gray-800 font-medium">Present opportunities</span>
+            <span className="tabular-nums flex-shrink-0 ml-auto text-emerald-600">{ready} ready</span>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+
+/** Cumulative answered / skipped totals. Rows leave the list; the counts stay. */
+function useSettledCounts(questions: Question[]) {
+  const [seen, setSeen] = useState<Record<number, QState>>({});
+  useEffect(() => {
+    setSeen((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const q of questions) {
+        if (q.state !== "pending" && next[q.id] !== q.state) {
+          next[q.id] = q.state;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [questions]);
+  const vals = Object.values(seen);
+  return [vals.filter((s) => s === "answered").length, vals.filter((s) => s === "skipped").length] as const;
+}
+
+void answered;

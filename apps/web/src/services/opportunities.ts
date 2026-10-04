@@ -80,11 +80,13 @@ export type RadarCardItem = PresentedOpportunity & {
 };
 
 function toRadarCardItem(card: PresentedOpportunity): RadarCardItem {
+  const peer = card.peer;
+  const flat = card as PresentedOpportunity & { userId?: string; name?: string; avatar?: string | null };
   return {
     ...card,
-    userId: card.peer.userId,
-    name: card.peer.name,
-    avatar: card.peer.avatar,
+    userId: flat.userId || peer?.userId,
+    name: flat.name || peer?.name || "unknown",
+    avatar: flat.avatar ?? peer?.avatar ?? null,
   };
 }
 

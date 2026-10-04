@@ -306,7 +306,7 @@ function FieldGlyph() {
 function Calibrating() {
   return (
     <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
-      <Window title="calibrating" style={{ width: 420 }}>
+      <Window title="calibrating" style={{ width: 420, height: "auto" }}>
         <div style={{ padding: "26px 28px 24px", textAlign: "center" }}>
           <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginBottom: 18 }}>
             <span className="wb-live" style={{ width: 9, height: 9 }} />
