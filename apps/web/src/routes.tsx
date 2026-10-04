@@ -35,6 +35,17 @@ function NegotiationIndexRedirect() {
   return <Navigate to="/negotiations" replace />;
 }
 
+// Collapse `//` before the router reads location. A path of `//` is
+// protocol-relative to history.pushState/replaceState and throws.
+if (typeof window !== "undefined" && window.location.pathname.includes("//")) {
+  const pathname = window.location.pathname.replace(/\/{2,}/g, "/") || "/";
+  window.history.replaceState(
+    window.history.state,
+    "",
+    pathname + window.location.search + window.location.hash,
+  );
+}
+
 export const router = createBrowserRouter([
   {
     element: <RootLayout />,
