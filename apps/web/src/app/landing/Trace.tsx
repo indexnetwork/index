@@ -68,7 +68,6 @@ export default function Trace() {
   const [answered, setAnswered] = useState(0);
   const [skipped, setSkipped] = useState(0);
   const [negs, setNegs] = useState<Neg[]>([]);
-  const [accepted, setAccepted] = useState(0);
   const [more, setMore] = useState(0);
   const [ready, setReady] = useState(0);
   const [frame, setFrame] = useState(0);
@@ -139,7 +138,6 @@ export default function Trace() {
 
     const noteOk = (ok: boolean) => {
       if (!ok) return;
-      setAccepted((n) => n + 1);
       if (Math.random() < 0.4) setReady((n) => Math.min(n + 1, 12));
     };
 
@@ -207,12 +205,12 @@ export default function Trace() {
       setEvents(0);
       setAnswered(0);
       setSkipped(0);
-      setAccepted(0);
       setMore(0);
       setReady(0);
     };
   }, []);
 
+  const accepted = Math.round(more * 0.24);
   const clock = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
   const scanning = people < PEOPLE;
 
@@ -291,7 +289,7 @@ export default function Trace() {
           </Child>
           <Child>
             <span className="home-trace-text">
-              Shortlisting<span className="home-trace-dim">: 100 counterparties advanced, potentially mutual intent</span>
+              Shortlisting<span className="home-trace-dim">: 100 counterparties with potentially mutual intent</span>
             </span>
             <span className="home-trace-time">60ms</span>
           </Child>
