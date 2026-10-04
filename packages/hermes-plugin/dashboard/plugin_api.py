@@ -262,7 +262,7 @@ def _notification_preferences(value: Any) -> dict[str, bool]:
         "opportunity": on("opportunity"),
         "accepted": on("accepted"),
         "messages": on("messages"),
-        "morningBrief": on("morningBrief"),
+        "morningBrief": prefs.get("morningBrief") is True,
     }
 
 
@@ -357,7 +357,7 @@ def _sanitize_profile_update(body: Any) -> tuple[dict[str, Any] | None, str | No
             "opportunity": prefs.get("opportunity") is not False,
             "accepted": prefs.get("accepted") is not False,
             "messages": prefs.get("messages") is not False,
-            "morningBrief": prefs.get("morningBrief") is not False,
+            "morningBrief": prefs.get("morningBrief") is True,
         }
     return update, None
 
@@ -1752,6 +1752,9 @@ def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str
     payload = tools._api_request("PATCH", "/auth/profile/update", update)
     if payload.get("success") is False:
         return payload
+    if "notificationPreferences" in update:
+        import time
+        negotiator.write_state(_negotiator_state_path(), morning=time.time())
     return {"success": True, "applied": update}
 
 

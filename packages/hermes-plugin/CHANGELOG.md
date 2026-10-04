@@ -3,6 +3,14 @@
 
 ## Unreleased
 
+### Changed
+- Negotiator completions use the gateway's main model client. They no longer go through the auxiliary client.
+- The desktop bundle ships at `desktop/plugin.js`. Hermes installs that half and keeps it off until enabled. The plugin no longer copies itself into `desktop-plugins`.
+- Discover no longer wraps `history.pushState` or inserts buttons into the host header. The web dashboard uses the `header-right` slot. Desktop keeps its own header.
+- The morning brief is off until turned on. The 08:00 cron job runs only while that switch is on and this install is the selected, unpaused negotiator. It wakes once per active networked intent. Deselect, pause, turning the switch off, and uninstall remove the job and its launcher.
+- A rejected session stays on the Index host already configured. The plugin no longer sends the session token to dev or localhost to hunt for another origin.
+- `index-negotiator.json` is written with mode 0600.
+
 ### Added
 - `index_create_intent` and `index_list_opportunities` descriptions say when to
   reach for them: meeting, finding, hiring, funding, collaborating with, or
@@ -19,10 +27,9 @@
 - A failed profile load no longer crashes Discover. The panel rendered
   `form.avatar` while `form` was still null, and the page error boundary
   replaced the signal.
-- A `hermes://open/index-network?intent=` link opens that signal's detail
-  while Discover is already showing. Hermes writes the hash with
-  `history.pushState`, which does not fire `hashchange`, so the open page
-  never read `?intent=`.
+- A `hermes://open/index-network?intent=` link opens that signal when Discover
+  loads or the hash changes. The plugin does not wrap `history.pushState`.
+  Navigations this plugin makes on Desktop still dispatch a location event.
 - `plugin.yaml` reports the package version (was stuck at 0.43.0).
 - The desktop header now shows the negotiator the gateway is running. The
   dashboard runs in a separate process and used to report its own idle copy as

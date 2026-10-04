@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 /**
- * Generate dist/plugin.js — the Hermes DESKTOP app plugin — from the shared
+ * Generate plugin.js — the Hermes DESKTOP app plugin — from the shared
  * dashboard bundle, so both hosts render the same UI from one source:
  *
  *   head.js + ../dashboard/dist/index.js + notifications.mjs + tail.js
  *   (SDK wiring, dashboard, pure notification helpers, registration; CSS inlined)
  *
  * Run after any dashboard change:  node packages/hermes-plugin/desktop/build.mjs
- * Install: ln -s .../packages/hermes-plugin/desktop/dist ~/.hermes/desktop-plugins/index-network
+ * Hermes installs this file from desktop/plugin.js. Do not copy it into
+ * desktop-plugins yourself.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -39,6 +40,5 @@ const out = [
   // swallow the next fragment's leading `(` (ASI would parse it as a call).
 ].join('\n;\n')
 
-mkdirSync(join(here, 'dist'), { recursive: true })
-writeFileSync(join(here, 'dist/plugin.js'), out)
-console.log(`wrote desktop/dist/plugin.js (${(out.length / 1024).toFixed(0)} KB)`)
+writeFileSync(join(here, 'plugin.js'), out)
+console.log(`wrote desktop/plugin.js (${(out.length / 1024).toFixed(0)} KB)`)

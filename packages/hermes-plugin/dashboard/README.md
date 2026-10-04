@@ -10,11 +10,11 @@ The tab displays connection status. When no `INDEX_SESSION_TOKEN` is configured,
 
 The dashboard exposes intent work, opportunities, networks, profile context, and bounded conversation SSE.
 
-`dashboard/dist/` is the dashboard source. `desktop/dist/plugin.js` is generated from it. From the package root:
+`dashboard/dist/` is the dashboard source. `desktop/plugin.js` is generated from it. From the package root:
 
 ```bash
 bun run build:desktop
 python3 tests/smoke.py
 ```
 
-Edit `dashboard/dist/` directly. Do not edit `desktop/dist/plugin.js`.
+Edit `dashboard/dist/` directly. Do not edit `desktop/plugin.js`.

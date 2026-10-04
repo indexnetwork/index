@@ -10,18 +10,17 @@ from .bridge import HermesBridge
 from .sidecar import Sidecar
 
 
-def _install_desktop_plugin():
-    src = Path(__file__).parent / "desktop" / "dist"
-    dest = Path.home() / ".hermes" / "desktop-plugins" / "index-network"
-    try:
-        if not (src / "plugin.js").exists():
-            return
-        if dest.exists() and (dest / "plugin.js").read_bytes() == (src / "plugin.js").read_bytes():
-            return
-        shutil.rmtree(dest, ignore_errors=True)
-        shutil.copytree(src, dest)
-    except Exception:  # noqa: BLE001
-        pass
+def _remove_unmarked_desktop_copy(home: Path) -> None:
+    """Drop a copy this plugin used to write itself.
+
+    Hermes installs `desktop/plugin.js` and stamps `.hermes-package.json`. A
+    folder without that marker was copied by an older register() and loads
+    enabled. A marked folder belongs to Hermes.
+    """
+    dest = Path(home) / "desktop-plugins" / "index-network"
+    if (dest / ".hermes-package.json").is_file() or not dest.exists():
+        return
+    shutil.rmtree(dest, ignore_errors=True)
 
 
 _sidecar: Sidecar | None = None
@@ -29,11 +28,12 @@ _sidecar: Sidecar | None = None
 
 def register(ctx):
     global _sidecar
-    _install_desktop_plugin()
     from hermes_constants import get_hermes_home
     from . import events
+    from .morning import sync_morning_cron
 
     home = get_hermes_home()
+    _remove_unmarked_desktop_copy(home)
     bridge = HermesBridge()
     sidecar = Sidecar(bridge, home)
     _sidecar = sidecar
@@ -61,3 +61,4 @@ def register(ctx):
     from .mcp import sync_index_mcp
 
     sync_index_mcp()
+    ctx.on_unload(lambda: sync_morning_cron(home, False))

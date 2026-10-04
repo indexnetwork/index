@@ -4,32 +4,26 @@ from __future__ import annotations
 
 import base64
 import json
-import logging
 import os
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any, Iterator
 
-logger = logging.getLogger(__name__)
-
 _DEFAULT_API = "https://protocol.index.network"
 _INDEX_DOMAIN = "index.network"
-_KNOWN_ORIGINS = (
-    "https://protocol.index.network",
-    "https://protocol.dev.index.network",
-    "http://localhost:3001",
-)
-_realign_not_before = 0.0
 
 def hermes_env_path() -> Path:
-    """The default Hermes `.env` (overridable for tests via HERMES_ENV_PATH)."""
+    """The Hermes `.env` for this profile (overridable for tests via HERMES_ENV_PATH)."""
     override = os.environ.get("HERMES_ENV_PATH", "").strip()
     if override:
         return Path(override)
-    return Path.home() / ".hermes" / ".env"
+    try:
+        from hermes_constants import get_hermes_home
+        return Path(get_hermes_home()) / ".env"
+    except Exception:  # noqa: BLE001 - tests and a missing Hermes install use the default home.
+        return Path.home() / ".hermes" / ".env"
 
 
 def _matches_env_key(line: str, name: str) -> bool:
@@ -139,27 +133,6 @@ def _normalize_origin(origin: str) -> str:
     return origin.strip().rstrip("/").removesuffix("/api")
 
 
-def _session_accepted(origin: str, token: str) -> bool:
-    """Whether this device session is accepted by `origin`."""
-    request = urllib.request.Request(
-        _normalize_origin(origin) + "/api/agents/me",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json",
-            "User-Agent": "Index-Hermes",
-        },
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=5) as response:
-            if getattr(response, "status", 200) != 200:
-                return False
-            payload = json.loads(response.read(4096).decode("utf-8", "replace"))
-    except Exception:  # noqa: BLE001 - a down or rejecting host is not this session's home.
-        return False
-    return isinstance(payload, dict) and payload.get("success") is not False and not payload.get("error")
-
-
 def remember_api_origin(origin: str) -> bool:
     """Store the API host next to the session so later processes call the same one.
 
@@ -189,14 +162,14 @@ def remember_api_origin(origin: str) -> bool:
 
 
 def refresh_transport(*, unauthorized: bool = False) -> bool:
-    """Drop a stale Index client, and on 401 follow the host that accepts this session.
+    """Drop a stale Index client so the next call uses the env file.
 
     The gateway keeps the first token and origin it built. Login writes the pair
     into the Hermes env, which a different process does not see until the client
-    is rebuilt. A 401 from the current host may be a session that belongs to
-    another known Index environment. Returns True when the caller should retry.
+    is rebuilt. A 401 stays on the origin the user configured. Returns True when
+    the caller should retry.
     """
-    global _realign_not_before
+    del unauthorized
     token = _stored_env("INDEX_SESSION_TOKEN")
     if not token:
         return False
@@ -214,23 +187,6 @@ def refresh_transport(*, unauthorized: bool = False) -> bool:
     ):
         reset_transport()
         return True
-    if not unauthorized:
-        return False
-    now = time.monotonic()
-    if now < _realign_not_before:
-        return False
-    if _session_accepted(origin, token):
-        return False
-    for candidate in _KNOWN_ORIGINS:
-        if _normalize_origin(candidate) == _normalize_origin(origin):
-            continue
-        if not _session_accepted(candidate, token):
-            continue
-        logger.warning("Index session was rejected by %s; using %s", origin, candidate)
-        remember_api_origin(candidate)
-        reset_transport()
-        return True
-    _realign_not_before = now + 30.0
     return False
 
 
