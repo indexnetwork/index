@@ -10,6 +10,7 @@ import UserAvatar from "@/components/UserAvatar";
 import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { APIError } from "@/lib/api";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { getPublicUserProfile } from "@/services/users";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -51,7 +52,7 @@ export default function IntentDetailPage() {
 function IntentDetail() {
   const navigate = useNavigate();
   const { intentId } = useParams<{ intentId: string }>();
-  const { user } = useAuthContext();
+  const { user, isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
   const { conversations } = useConversation();
   const intentsService = useIntents();
   const opportunitiesService = useOpportunities();
@@ -61,6 +62,7 @@ function IntentDetail() {
     ReturnType<typeof intentsService.getIntent>
   > | null>(null);
   const [intentLoading, setIntentLoading] = useState(true);
+  const [intentMissing, setIntentMissing] = useState(false);
   const [intentStatusPending, setIntentStatusPending] = useState<{
     intentId: string;
     status: MutableIntentLifecycleStatus;
@@ -179,16 +181,25 @@ function IntentDetail() {
   }, [intentId, opportunitiesService]);
 
   useEffect(() => {
-    if (!intentId) return;
+    if (!intentId || authLoading) return;
+    if (!isAuthenticated) {
+      setIntent(null);
+      setIntentMissing(false);
+      setIntentLoading(false);
+      return;
+    }
     let active = true;
     setIntentLoading(true);
+    setIntentMissing(false);
     intentsService
       .getIntent(intentId)
       .then((res) => {
         if (active) setIntent(res);
       })
-      .catch(() => {
-        if (active) setIntent(null);
+      .catch((error: unknown) => {
+        if (!active) return;
+        setIntent(null);
+        setIntentMissing(error instanceof APIError && error.status === 404);
       })
       .finally(() => {
         if (active) setIntentLoading(false);
@@ -197,7 +208,7 @@ function IntentDetail() {
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadOpportunities]);
+  }, [intentId, intentsService, loadOpportunities, authLoading, isAuthenticated]);
 
   useEffect(() => {
     if (selectedBucketEffectRef.current === null) {
@@ -371,7 +382,17 @@ function IntentDetail() {
       }}>
         {!intentLoading && !intent ? (
           <Window title="signal" onClose={() => navigate("/")}>
-            <p style={{ padding: 28, fontFamily: "var(--mac-mono)", fontSize: 12 }}>signal not found</p>
+            {intentMissing ? (
+              <p style={{ padding: 28, fontFamily: "var(--mac-mono)", fontSize: 12 }}>signal not found</p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openLoginModal(window.location.href)}
+                style={{ margin: 28, fontFamily: "var(--mac-mono)", fontSize: 12, background: "none", border: 0, padding: 0, cursor: "pointer" }}
+              >
+                sign in to open this signal
+              </button>
+            )}
           </Window>
         ) : (
           <>
