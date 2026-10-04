@@ -49,6 +49,8 @@ export interface ParsedCommand {
   receipt?: string;
   sourceType?: string;
   sourceId?: string;
+  /** Persist a draft signal (`index intent create --draft`). */
+  draft?: boolean;
   name?: string;
   intro?: string;
   location?: string;
@@ -173,6 +175,9 @@ export function parseArgs(args: string[]): ParsedCommand {
       i += 2;
     } else if (arg === "--archived") {
       result.archived = true;
+      i++;
+    } else if (arg === "--draft") {
+      result.draft = true;
       i++;
     } else if (arg === "--status") {
       result.status = args[i + 1];

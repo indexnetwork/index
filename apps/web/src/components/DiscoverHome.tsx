@@ -141,7 +141,8 @@ export default function DiscoverHome() {
     }
   }, [showError]);
 
-  const visible = intents.filter((intent) => intent.status !== "archived");
+  const visible = intents.filter((intent) => intent.status !== "archived" && intent.status !== "draft");
+  const drafts = intents.filter((intent) => intent.status === "draft");
   const shelfMax = SHELF_VISIBLE_ROWS * SHELF_ROW_H + (SHELF_VISIBLE_ROWS - 1) * SHELF_ROW_GAP;
 
   if (inviteOpen) {
@@ -305,6 +306,19 @@ export default function DiscoverHome() {
               onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
               onArchiveIntent={handleArchive}
             />
+            {drafts.length > 0 && (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ fontFamily: "var(--mac-mono)", fontSize: 12, cursor: "pointer" }}>drafts</summary>
+                <IntentList
+                  intents={drafts}
+                  shelf
+                  className="mac-scroll"
+                  style={{ maxHeight: shelfMax, gap: SHELF_ROW_GAP, marginTop: 8 }}
+                  onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
+                  onArchiveIntent={handleArchive}
+                />
+              </details>
+            )}
             <button type="button" className="wb-new-signal" onClick={() => navigate("/i/new")}>
               <span style={{
                 width: 24,

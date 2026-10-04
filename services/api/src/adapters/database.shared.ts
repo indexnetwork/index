@@ -58,6 +58,8 @@ export interface CreateIntentInput {
   felicityClarity?: number | null;
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
+  /** Persisted lifecycle. Omitted rows stay the column default (`active`). */
+  status?: 'draft';
 }
 export interface UpdateIntentInput {
   payload?: string;

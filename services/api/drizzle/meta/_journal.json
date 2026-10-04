@@ -85,6 +85,13 @@
       "when": 1791300000000,
       "tag": "0011_user_last_morning_brief_at",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791400000000,
+      "tag": "0012_intent_status_draft",
+      "breakpoints": true
     }
   ]
 }

@@ -155,6 +155,12 @@ export const IntentGraphState = Annotation.Root({
   /** Client-owned reference written on create or update. Undefined leaves it; null clears it. */
   sourceId: Annotation<string | null | undefined>,
 
+  /** Create route: persist `draft` instead of the active default. Not the pause/resume `status` route. */
+  draft: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
   /**
    * Optional network scope (network ID) for read operations. Prep always
    * fetches ALL user intents via getActiveIntents(userId) regardless of network

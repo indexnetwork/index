@@ -17,6 +17,7 @@ const CreateSchema = z.object({
   networkIds: z.array(z.string().uuid('networkIds must be UUIDs')).default([]),
   sourceType: SourceFieldSchema,
   sourceId: SourceFieldSchema,
+  draft: z.boolean().optional().default(false),
 }).strict();
 const PrepareSchema = z.object({
   payload: z.string().trim().min(1, 'payload is required').max(65_536),
@@ -132,10 +133,10 @@ export class IntentController {
         { status: 400 },
       );
     }
-    const { description, networkIds, preparationReceipt, sourceType = null, sourceId = null } = parsed.data;
+    const { description, networkIds, preparationReceipt, sourceType = null, sourceId = null, draft } = parsed.data;
 
     try {
-      const created = await intentService.create(user.id, description, networkIds, preparationReceipt, { sourceType, sourceId });
+      const created = await intentService.create(user.id, description, networkIds, preparationReceipt, { sourceType, sourceId }, draft);
       return Response.json({ intentId: created.id, networkIds: created.networkIds, sourceType, sourceId });
     } catch (err) {
       if (err instanceof IntentPreparationReceiptError) {

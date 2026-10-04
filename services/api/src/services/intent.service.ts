@@ -192,6 +192,7 @@ export class IntentService {
    * @param networkIds - Networks to share it in; empty means all memberships.
    * @param preparationReceipt - Server authorization from guided preparation, valid for final revisions.
    * @param source - Optional client-owned source fields, stored unchanged.
+   * @param draft - Persist `draft` and skip the owner-agent wake. Discovery ignores it.
    * @returns The created intent id and the networks it was linked to.
    * @throws {IntentNetworkMembershipError} When a named id is not a current membership.
    */
@@ -201,6 +202,7 @@ export class IntentService {
     networkIds: string[],
     preparationReceipt?: string,
     source: IntentSource = {},
+    draft = false,
   ): Promise<{ id: string; networkIds: string[] }> {
     const targetNetworkIds = networkIds.length > 0
       ? networkIds
@@ -222,7 +224,7 @@ export class IntentService {
     logger.verbose('Creating intent', { userId, networkCount: targetNetworkIds.length });
 
     const result = await this.intentGraph.invoke(
-      { userId, userProfile: '', inputContent: description, preparation, networkIds: targetNetworkIds, ...source },
+      { userId, userProfile: '', inputContent: description, preparation, networkIds: targetNetworkIds, ...source, ...(draft ? { draft: true } : {}) },
       { recursionLimit: 100 },
     ) as {
       executionResults?: Array<{ actionType: string; success: boolean; intentId?: string; error?: string; linkedNetworkIds?: string[] }>;
@@ -243,7 +245,7 @@ export class IntentService {
       throw new IntentNetworkMembershipError(missing[0]);
     }
 
-    this.emitCreated(created.intentId, userId);
+    if (!draft) this.emitCreated(created.intentId, userId);
     return { id: created.intentId, networkIds: linked };
   }
 

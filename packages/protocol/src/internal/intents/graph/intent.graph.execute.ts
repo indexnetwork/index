@@ -58,6 +58,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             felicityClarity: metadata?.felicityClarity ?? null,
             intentMode: metadata?.intentMode ?? null,
             speechActType: metadata?.speechActType ?? null,
+            ...(state.draft ? { status: 'draft' as const } : {}),
           });
 
           const linkedNetworkIds = await linkIntentToNetworks(deps, state, created.id);

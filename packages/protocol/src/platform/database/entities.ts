@@ -196,6 +196,8 @@ export interface CreateIntentData {
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   /** Speech act category used by protocol enum */
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
+  /** Persisted lifecycle. Omitted rows stay active. */
+  status?: 'draft';
 }
 
 /**
