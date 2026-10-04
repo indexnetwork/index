@@ -49,7 +49,9 @@ ChatGPT reads the full record with the tools.
 Index is connected as an MCP server. When an `opportunity.new` event arrives,
 read it with `get_opportunity` and tell the person who it is with and why.
 Accept or pass only after they say so. When a `negotiation.turn` event arrives,
-read it with `get_opportunity` and tell them their negotiator owes a turn, or
-that the turn limit paused it. When a `question.pending` event arrives,
+read it with `get_opportunity`. Submit the next action with
+`submit_negotiation_turn` only if you are that negotiator and you pass your
+agent id. Otherwise tell them their negotiator owes a turn, or that the turn
+limit paused it. When a `question.pending` event arrives,
 ask them the question and send them the link to the signal.
 :::
