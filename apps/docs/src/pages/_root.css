@@ -43,7 +43,7 @@
 
 /* #endregion */
 
-/* Live trace on the overview. The pitch document is light; the frame paints it dark. */
+/* Live trace on the overview. The pitch document is light; in dark mode the frame paints it dark. */
 .live-trace {
   width: 100%;
   height: 600px;
@@ -52,7 +52,7 @@
   border-radius: 10px;
   display: block;
   overflow: hidden;
-  background: #141414;
+  background: light-dark(#ffffff, #141414);
 }
 
 /* Header wordmark. Vocs caps it at 1.75rem (`max-h-7`). */
