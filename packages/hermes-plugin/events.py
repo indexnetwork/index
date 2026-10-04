@@ -12,7 +12,6 @@ import os
 import select
 import sys
 import threading
-import time
 from pathlib import Path
 
 from .morning import sync_morning_cron
@@ -24,48 +23,33 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _apply_lock = threading.Lock()
 _started = False
-_waiting = False
 _current = None
 
 
-def _runner():
-    """The Hermes gateway in this process, or None in the dashboard, CLI, and doctor."""
-    run = sys.modules.get("gateway.run")
-    ref = getattr(run, "_gateway_runner_ref", None) if run is not None else None
-    return ref() if ref is not None else None
+def _server() -> bool:
+    """Whether this process is a long-lived Hermes server.
+
+    That is `hermes gateway run`, Desktop's `hermes serve` backend, or
+    `hermes dashboard`. Hermes strips `-p <profile>` from argv before plugins
+    load. Plugins also load in the CLI and doctor, which exit soon after.
+    """
+    argv = sys.argv[1:]
+    words = [arg for arg in argv if not arg.startswith("-")]
+    return words[:1] in (["serve"], ["dashboard"]) or any(
+        a == "gateway" and b == "run" for a, b in zip(argv, argv[1:])
+    )
 
 
 def watch(sidecar) -> None:
-    """Follow the selection while this process is the Hermes gateway.
+    """Follow the selection while this process is a Hermes server.
 
-    Plugin registration also runs in the dashboard and the CLI, and the gateway
-    itself discovers plugins before its runner exists. Those calls must not start
-    a negotiator. The gateway call waits until the runner is up, then starts.
+    Desktop only configures the negotiator; whichever server holds the sidecar's
+    lock runs it.
     """
-    global _current, _waiting
+    global _current
     _current = sidecar
-    if _runner() is not None:
+    if _server():
         _start_watch()
-        return
-    with _lock:
-        if _waiting:
-            return
-        _waiting = True
-    threading.Thread(target=_wait_for_runner, name="index-events-wait", daemon=True).start()
-
-
-def _wait_for_runner() -> None:
-    """Plugin discovery often runs before GatewayRunner sets its ref."""
-    global _waiting
-    try:
-        for _ in range(120):
-            if _runner() is not None:
-                _start_watch()
-                return
-            time.sleep(0.5)
-    finally:
-        with _lock:
-            _waiting = False
 
 
 def _start_watch() -> None:
@@ -123,7 +107,7 @@ def _watch() -> None:
         threading.Thread(target=_pause_loop, args=(done,), name="index-pause", daemon=True).start()
         _apply_current()
         delay = 1.0
-        while _runner() is not None and not done.is_set():
+        while not done.is_set():
             try:
                 heard = _follow_events(done)
             except Exception as error:  # noqa: BLE001
@@ -133,17 +117,13 @@ def _watch() -> None:
                     delay = 1.0
                     _apply_current()
                     continue
-            if _runner() is None or done.is_set():
+            if done.is_set():
                 break
             if heard:
                 delay = 1.0
             if done.wait(delay):
                 break
             delay = min(delay * 2, 30.0)
-        # The gateway process exiting is the only reason to stop from here.
-        # A dropped stream or a plugin reload must not kill the negotiator.
-        if _runner() is None and _current is not None:
-            _current.stop()
     finally:
         done.set()
         with _lock:
@@ -175,7 +155,7 @@ def _follow_events(done: threading.Event) -> bool:
     heard = False
     data: list[str] = []
     for raw in get_transport().stream_sse("/events"):
-        if done.is_set() or _runner() is None:
+        if done.is_set():
             return heard
         line = raw.decode("utf-8", "replace").rstrip("\r\n")
         if line != "":
@@ -220,7 +200,7 @@ def _pause_loop(done: threading.Event) -> None:
     seen = seen_state["paused"]
     seen_morning = seen_state["morning"]
     alive = _pid_alive(seen_state["pid"])
-    while not done.is_set() and _runner() is not None:
+    while not done.is_set():
         if not _wait_state(path, done):
             continue
         state = read_state(path)
@@ -249,7 +229,7 @@ def _wait_state(path: Path, done: threading.Event) -> bool:
 def _wait_kqueue(path: Path, done: threading.Event) -> bool:
     kq = select.kqueue()
     try:
-        while not done.is_set() and _runner() is not None:
+        while not done.is_set():
             if not path.exists():
                 if done.wait(0.25):
                     return False
@@ -289,7 +269,7 @@ def _wait_inotify(path: Path, done: threading.Event) -> bool:
         if watch < 0:
             return not done.wait(0.25)
         header = struct.Struct("iIII")
-        while not done.is_set() and _runner() is not None:
+        while not done.is_set():
             ready, _, _ = select.select([fd], [], [], 1)
             if not ready:
                 continue

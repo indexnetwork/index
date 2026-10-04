@@ -921,7 +921,7 @@ def negotiator_status() -> dict[str, Any]:
 
 @full_router.post("/negotiator/start")
 def negotiator_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Lift the pause. The gateway starts the negotiator when this file changes."""
+    """Lift the pause. The Hermes server starts the negotiator when this file changes."""
     try:
         agent = tools.selected_agent()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
@@ -937,7 +937,7 @@ def negotiator_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[
 
 @full_router.post("/negotiator/stop")
 def negotiator_stop(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Pause the negotiator. The gateway stops it when this file changes."""
+    """Pause the negotiator. The Hermes server stops it when this file changes."""
     try:
         negotiator.write_state(_negotiator_state_path(), paused=True)
     except OSError as exc:
