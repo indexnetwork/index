@@ -2,28 +2,12 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
 import ClientLayout from '@/components/ClientLayout';
-import UserAvatar from '@/components/UserAvatar';
-import { AgentFace } from '@/components/workbench/agent-face';
+import { MyAgentAvatar } from '@/components/workbench/agent-avatar';
 import { Stage, Window } from '@/components/workbench/Workbench';
 import { useAgents } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import type { Agent } from '@/services/agents';
-
-function NegotiatorPicture({ id, name, photo }: { id?: string; name?: string; photo?: string | null }) {
-  const size = 48;
-  const badge = Math.max(8, Math.round(size * 0.44));
-  const ring = Math.max(1, Math.round(size * 0.055 * 10) / 10);
-  const seed = id || name || "index";
-  return (
-    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
-      <UserAvatar id={id} name={name} avatar={photo} size={size} />
-      <span style={{ position: "absolute", right: 0, bottom: 0, display: "block", lineHeight: 0, boxShadow: `0 0 0 ${ring}px #fff` }}>
-        <AgentFace seed={seed} size={badge} />
-      </span>
-    </div>
-  );
-}
 
 function NegotiatorBadge() {
   return (
@@ -335,7 +319,7 @@ export default function AgentsPage() {
               </p>
               <div style={{ border: "1px solid #000", background: "#fff", boxShadow: "2px 2px 0 rgba(0,0,0,0.22)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 14px", borderBottom: picking ? "1px solid #000" : "none" }}>
-                  <NegotiatorPicture id={user?.id} name={user?.name} photo={user?.avatar} />
+                  <MyAgentAvatar size={48} />
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontFamily: "var(--mac-mono)", fontSize: 16, fontWeight: 700 }}>{selectedNegotiator?.name || "Index"}</div>
                     <div style={{ marginTop: 2, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{kind}</div>

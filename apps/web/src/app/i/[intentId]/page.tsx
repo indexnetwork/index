@@ -7,6 +7,7 @@ import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import NegotiationConversation from "@/components/NegotiationConversation";
 import ChatView from "@/components/chat/ChatView";
 import UserAvatar from "@/components/UserAvatar";
+import { TheirAgentAvatar } from "@/components/workbench/agent-avatar";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
@@ -16,13 +17,16 @@ import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, personWindowTitle, radarBucketForOpportunity, radarEmptyLine, type RadarBucket } from "@/lib/radar-buckets";
-import { MatchCard, PipelineFunnel, SignalAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
+import { DiscoveryLoader, MatchCard, PipelineFunnel, SignalAction, SummarySection, expiryReason } from "@/components/workbench/mac-blocks";
 import { Btn, Window } from "@/components/workbench/Workbench";
 
 function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus {
   if (status === "paused") return status;
   return "active";
 }
+
+/** A signal can match nobody, so the radar stops showing the loader after this. Same as the Mac app. */
+const DISCOVERY_GIVE_UP_MS = 120_000;
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
 /**
@@ -340,6 +344,16 @@ function IntentDetail() {
   const openPerson = opportunities.find((item) => item.opportunityId === openPersonId) ?? null;
   const title = (intent?.payload?.trim() || intent?.summary?.trim() || "");
   const lifecycleStatus = normalizeIntentLifecycleStatus(intent?.status);
+  // Nothing on the radar in any stage and not yet given up: the agent is still out.
+  const shownCount = Object.values(bucketCounts).reduce((sum, n) => sum + (n ?? 0), 0);
+  const [discoveryExpired, setDiscoveryExpired] = useState(false);
+  useEffect(() => { setDiscoveryExpired(false); }, [intentId]);
+  useEffect(() => {
+    if (lifecycleStatus === "paused" || shownCount > 0) return;
+    const timer = setTimeout(() => setDiscoveryExpired(true), DISCOVERY_GIVE_UP_MS);
+    return () => clearTimeout(timer);
+  }, [lifecycleStatus, shownCount, intentId]);
+  const discovering = !!intent && lifecycleStatus !== "paused" && shownCount === 0 && !discoveryExpired;
   const lifecycleBusy = intentStatusPending?.intentId === intentId;
 
   return (
@@ -415,8 +429,8 @@ function IntentDetail() {
                 />
               </div>
               <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 22px 24px", display: "grid", gap: 8, alignContent: "start" }}>
-                {opportunitiesLoading ? (
-                  <p data-testid="radar-skeleton" style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>loading…</p>
+                {opportunitiesLoading || discovering ? (
+                  <div data-testid="radar-skeleton"><DiscoveryLoader /></div>
                 ) : opportunitiesError && visibleOpportunities.length === 0 ? (
                   <div style={{ padding: 16, textAlign: "center" }}>
                     <p style={{ fontFamily: "var(--mac-mono)", fontSize: 12 }}>radar couldn’t load.</p>
@@ -531,7 +545,7 @@ function PersonPane({
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
-          <UserAvatar id={item.userId} name={name} avatar={item.avatar} size={34} />
+          <TheirAgentAvatar owner={{ id: item.userId, name, photo: item.avatar }} size={34} />
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
             <div style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600 }}>your agent ⇄ {first}&apos;s agent</div>
             <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "var(--ink-2)" }}>

@@ -111,11 +111,11 @@ function faceFor(seed: string) {
   return { face, colors };
 }
 
-export function AgentFace({ seed, size = 22 }: { seed: string; size?: number }) {
+export function AgentFace({ seed, size = 22, title = "agent" }: { seed: string; size?: number; title?: string }) {
   const { face, colors } = faceFor(seed);
   const scale = size / UNIT;
   return (
-    <div title="agent" style={{ width: size, height: size, flex: "0 0 auto", boxSizing: "border-box", position: "relative", overflow: "hidden", border: `${size >= 40 ? 2 : 1}px solid ${INK}`, background: face.bg(colors) }}>
+    <div title={title} style={{ width: size, height: size, flex: "0 0 auto", boxSizing: "border-box", position: "relative", overflow: "hidden", border: `${size >= 40 ? 2 : 1}px solid ${INK}`, background: face.bg(colors) }}>
       <div style={{ position: "absolute", left: 0, top: 0, width: UNIT, height: UNIT, transform: `scale(${scale})`, transformOrigin: "top left" }}>
         {face.layers(colors).map((layer) => (
           <div key={layer.key} style={{
