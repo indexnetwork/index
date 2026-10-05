@@ -2,19 +2,6 @@
 
 .site-section:target { scroll-margin-top: 24px; }
 
-/* ---------- primitives ---------- */
-.hermes-prims { display: flex; flex-direction: column; border-top: 1px solid var(--ink); }
-.hermes-prim {
-  display: grid;
-  grid-template-columns: minmax(110px, 160px) minmax(0, 1fr);
-  gap: 16px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--card-border);
-  align-items: baseline;
-}
-.hermes-prim-k { font-family: var(--mono); font-size: 13px; }
-.hermes-prim-v { font-size: 15px; line-height: 1.6; font-weight: 300; color: var(--body); }
-
 /* ---------- install ---------- */
 .hermes-install-section { padding-bottom: 40px; }
 .hermes-install {
@@ -171,6 +158,7 @@
   gap: 28px 32px;
 }
 .hermes-built > div { display: flex; flex-direction: column; gap: 8px; }
+.hermes-built > div:last-child { grid-column: 1 / -1; }
 .hermes-install-intro { display: flex; flex-direction: column; gap: 8px; }
 
 @media (max-width: 520px) {

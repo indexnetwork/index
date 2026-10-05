@@ -1,9 +1,11 @@
 import type { CSSProperties } from "react";
 import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
+import DevGuides from "@/app/site/DevGuides";
 import FeaturedPost from "@/app/site/FeaturedPost";
+import GithubStars from "@/app/site/GithubStars";
 import { formatEntryDate, useBlogEntries } from "@/app/site/blog-entries";
-import { CONTACT_EMAIL, DOCS_URL, docsUrl } from "@/app/site/links";
+import { CONTACT_EMAIL, docsUrl } from "@/app/site/links";
 import FanCanvas from "./FanCanvas";
 import HeroAccess from "./HeroAccess";
 import { HermesMock, MacMock } from "./ProductMocks";
@@ -115,15 +117,15 @@ export default function LandingPage() {
             </div>
             <div className="home-run-shots">
               <div className="home-run-shot">
-                <div className="home-run-scene" style={{ "--scene": "url(/site/runs-cactus.jpg)" } as CSSProperties}>
+                <a className="home-run-scene" href={docsUrl("/use/mac")} target="_blank" rel="noreferrer" aria-label="Mac app" style={{ "--scene": "url(/site/runs-cactus.jpg)" } as CSSProperties}>
                   <MacMock />
-                </div>
+                </a>
                 <a className="home-run-caption" href={docsUrl("/use/mac")} target="_blank" rel="noreferrer">Mac app →</a>
               </div>
               <div className="home-run-shot">
-                <div className="home-run-scene" style={{ "--scene": "url(/site/runs-tableau.jpg)" } as CSSProperties}>
+                <Link className="home-run-scene" to="/hermes" target="_blank" rel="noreferrer" aria-label="Hermes plugin" style={{ "--scene": "url(/site/runs-tableau.jpg)" } as CSSProperties}>
                   <HermesMock />
-                </div>
+                </Link>
                 <Link className="home-run-caption" to="/hermes" target="_blank" rel="noreferrer">Hermes plugin →</Link>
               </div>
             </div>
@@ -144,11 +146,23 @@ export default function LandingPage() {
             <h3 className="site-col-title">For developers</h3>
             <div className="home-run-body">
               <p className="site-p">
-                We&rsquo;re open source. Build on our primitives - intents, networks, negotiation, and
-                opportunities - that extend into products across sales, recruiting, dating, and
-                marketplaces.
+                Intents, networks, negotiation, and opportunities are open building blocks. Compose
+                them into products for sales, recruiting, dating, and marketplaces, or bring your
+                own agent to negotiate.
               </p>
-              <a className="site-arrow-link site-arrow-link--13" href={DOCS_URL} target="_blank" rel="noreferrer">Read the documentation →</a>
+              <DevGuides />
+            </div>
+            <div className="home-run-oss">
+              <div>
+                <span className="site-meta">Open source</span>
+                <p className="site-col-title">Read the code. Run your own.</p>
+              </div>
+              <div className="home-run-body">
+                <p className="site-p">
+                  Index is developed in the open. Fork it, open an issue, or self-host an instance.
+                </p>
+                <GithubStars />
+              </div>
             </div>
           </div>
         </div>

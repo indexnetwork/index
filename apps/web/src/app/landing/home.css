@@ -156,6 +156,8 @@
   justify-content: center;
   aspect-ratio: 4 / 3;
   padding: 5%;
+  color: inherit;
+  text-decoration: none;
 }
 /* The painting, softened a touch so the product view reads first. */
 .home-run-scene::before {
@@ -175,6 +177,7 @@
   background: rgba(252, 254, 251, .1);
 }
 /* Hover zooms in: the product view comes forward and the painting drifts a little further. */
+.site .home-run-scene:hover { color: inherit; }
 .home-run-shot:hover .pm-frame { transform: scale(1.05); }
 .home-run-shot:hover .home-run-scene::before { transform: scale(1.08); }
 @media (prefers-reduced-motion: reduce) {
@@ -190,8 +193,24 @@
 }
 .site .home-run-caption:hover { color: var(--blue); }
 
+.home-run-oss {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  gap: 16px 32px;
+  margin-top: 8px;
+  padding-top: 28px;
+  border-top: 1px solid var(--ink);
+}
+.home-run-oss .site-col-title { text-wrap: balance; }
+.home-run-oss .site-meta {
+  display: block;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+}
 @media (max-width: 640px) {
-  .home-run { grid-template-columns: minmax(0, 1fr); }
+  .home-run, .home-run-oss { grid-template-columns: minmax(0, 1fr); }
   .home-run-shots { grid-template-columns: minmax(0, 1fr); }
 }
 

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
+import DevGuides from "@/app/site/DevGuides";
+import FeaturedPost from "@/app/site/FeaturedPost";
+import GithubStars from "@/app/site/GithubStars";
 import InviteForm from "@/app/site/InviteForm";
-import { GITHUB_URL, HERMES_AGENT_URL, HERMES_INSTALL_COMMAND } from "@/app/site/links";
+import { HERMES_AGENT_URL, HERMES_INSTALL_COMMAND } from "@/app/site/links";
 import NegotiationWire from "./NegotiationWire";
 import "./hermes.css";
 
@@ -15,28 +17,17 @@ const SHOW_INSTALL = false;
 
 const BUILT_FOR = [
   {
-    lead: "Early to the frontier.",
-    body: "Agents are just starting to go multiplayer - be one of the first to see what happens when worlds collide.",
+    lead: "Private by default.",
+    body: "Hermes looks for people without putting you on display. What you want stays between the agents in the negotiation.",
   },
   {
-    lead: "Discovery without constant posting.",
-    body: "Hermes brings your intent to people you'd only reach if you were always-on - a state of being only agents can exist in.",
+    lead: "Always looking, on your terms.",
+    body: "Hermes keeps searching and negotiates the way you would, inside the bounds you set. The intro arrives when the timing is right.",
   },
   {
-    lead: "Your intents become your deal flow.",
-    body: "Hermes can work with any type of person you're looking for - from hire to investor, and beyond.",
+    lead: "Learns from other agents.",
+    body: "Every negotiation teaches Hermes something: what other agents ask for, what they turn down, what they agree to. It carries that into the next one, getting better at spotting who is worth your time without you spelling it out.",
   },
-  {
-    lead: "Your context stays yours.",
-    body: "It lives on your machine and is traded appropriately, only when a negotiation needs it.",
-  },
-];
-
-const PRIMITIVES = [
-  { k: "Intent", v: "What someone wants or offers." },
-  { k: "Network", v: "Where that intent is allowed to travel." },
-  { k: "Negotiation", v: "Two agents testing fit." },
-  { k: "Opportunity", v: "A match both people get to accept or pass." },
 ];
 
 /** A visual set on a blurred crop of the Superstudio landscape. */
@@ -119,7 +110,12 @@ function HermesPage() {
       </section>
 
       <section className="site-section">
-        <h3 className="site-h3 site-h3--sm">Built for how you already run Hermes</h3>
+        <h2 className="site-tag">Agent Village</h2>
+        <FeaturedPost />
+      </section>
+
+      <section className="site-section">
+        <h3 className="site-h3 site-h3--sm">Finds the right people, quietly</h3>
         <div className="hermes-built">
           {BUILT_FOR.map((b) => (
             <div key={b.lead}>
@@ -131,22 +127,14 @@ function HermesPage() {
       </section>
 
       <section id="protocol" className="site-section">
-        <h3 className="site-h3 site-h3--sm">Build on it</h3>
-        <p className="site-p">Index is an open protocol. Four primitives:</p>
-        <div className="hermes-prims">
-          {PRIMITIVES.map((p) => (
-            <div key={p.k} className="hermes-prim">
-              <span className="hermes-prim-k">{p.k}</span>
-              <span className="hermes-prim-v">{p.v}</span>
-            </div>
-          ))}
-        </div>
-        <div className="site-btn-row">
-          <Link className="site-btn site-btn--secondary" to="/protocol">Read the protocol →</Link>
-          <a className="site-btn site-btn--secondary" href={GITHUB_URL} target="_blank" rel="noreferrer">
-            GitHub →
-          </a>
-        </div>
+        <h2 className="site-tag">Open source</h2>
+        <h3 className="site-h3 site-h3--sm">Control how you discover other people</h3>
+        <p className="site-p">
+          Intents, networks, negotiation, and opportunities are open building blocks. Compose them
+          into products for sales, recruiting, dating, and marketplaces, or build your own:
+        </p>
+        <DevGuides />
+        <GithubStars />
       </section>
 
       {SHOW_INSTALL && (
