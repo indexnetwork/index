@@ -424,6 +424,22 @@ window.IndexApp = (function () {
     return post("setOpenAtLogin", { value: !!enabled });
   }
 
+  // macOS notification authorization, as last reported by UNUserNotificationCenter.
+  // "authorized" | "denied" | "notDetermined" | "provisional", or null in
+  // browser preview where there is no system permission to read.
+  const notifyPermissionSubscribers = new Set();
+  window.__indexNotifyPermissionChanged = function (status) {
+    notifyPermissionSubscribers.forEach((cb) => { try { cb(status); } catch (e) { /* ignore */ } });
+  };
+  function onNotifyPermissionChanged(cb) {
+    notifyPermissionSubscribers.add(cb);
+    return () => notifyPermissionSubscribers.delete(cb);
+  }
+  function notifyPermission() { return native().notifyPermission || null; }
+  function requestNotifyPermission() {
+    return post("requestNotifyPermission");
+  }
+
   // The Dock icon shows the same waiting total as the hub. Zero clears it.
   // No-op in browser preview, where there is no Dock tile.
   function setDockBadge(count) {
@@ -540,6 +556,9 @@ window.IndexApp = (function () {
     setOpenAtLogin,
     setDockBadge,
     onOpenAtLoginChanged,
+    notifyPermission,
+    onNotifyPermissionChanged,
+    requestNotifyPermission,
     startDesktopNotifications,
     confirmOnboardingProfile,
     completeOnboarding,

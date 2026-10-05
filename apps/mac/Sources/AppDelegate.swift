@@ -74,6 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var stagingSHA: String?
     /// Each staged build prompts at most once.
     private var promptedUpdateSHA: String?
+    /// Last macOS notification authorization the page was told about.
+    /// "authorized" | "denied" | "notDetermined" | "provisional".
+    private var notifyPermission = "notDetermined"
     /// The ready prompt is deferred until the app is frontmost with its window up.
     private var updatePromptPending = false
     private var relaunchAfterUpdate = false
@@ -135,11 +138,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // toast tapped while the app was closed still routes once it boots.
         config.userContentController.add(self, name: "indexNotify")
         UNUserNotificationCenter.current().delegate = self
-        if currentOwnerCredential() != nil {
-            // Signed-in relaunch: surface the permission prompt now rather than
-            // at the moment the first toast would otherwise silently drop.
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        // First launch after install is the only time macOS shows the prompt;
+        // later launches return the stored decision immediately.
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] _, _ in
+            self?.refreshNotifyPermission()
         }
+        refreshNotifyPermission()
 
         let contentRect = Self.defaultContentFrame(for: NSScreen.main)
         webView = ShellWebView(frame: contentRect, configuration: config)
@@ -175,13 +179,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             backing: .buffered,
             defer: false
         )
-        window.title = "Index, Workbench 1.3"
+        window.title = "Index"
         // Float the traffic lights directly over the content, no title bar
         // strip. The web content fills the full window height.
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
-        // Match the Amiga Workbench desktop blue so there's no white flash
+        // Match the desktop blue so there's no white flash
         // before the React app paints.
         window.backgroundColor = NSColor(srgbRed: 0x00/255.0, green: 0x55/255.0, blue: 0xAA/255.0, alpha: 1.0)
         // No center(), the default frame is already the usable screen, and
@@ -192,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         window.contentView = webView
         window.delegate = self
         window.isReleasedWhenClosed = false
-        // The web layout has a real floor. Below roughly 860x600 the Workbench
+        // The web layout has a real floor. Below roughly 860x600 the
         // windows start cutting into their own content, the intents hero and
         // account shelf, the onboarding pane, the radar cards, so resizing
         // past it produces a broken screen rather than a smaller one. Hold a
@@ -228,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     func applicationDidBecomeActive(_ notification: Notification) {
         if updatePromptPending { presentUpdateReady() }
+        refreshNotifyPermission()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -317,7 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     private func presentError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "Index, Workbench 1.3"
+        alert.messageText = "Index"
         alert.informativeText = message
         alert.alertStyle = .critical
         alert.runModal()
@@ -456,6 +461,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // captured user scripts before decidePolicyFor rebuilt them. Push the
         // live Keychain flag so a Reload after login does not stick on sign-in.
         notifyAuthChanged(authenticated: ownerIsAuthenticated(), admittedGeneration: trustedDocumentGeneration)
+        notifyNotifyPermissionChanged()
         flushPendingDeepLinks()
     }
 
@@ -517,6 +523,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 // Same story as the agent face: prefs must survive a relaunch,
                 // and file:// localStorage does not.
                 NotifyPrefsStore.save(body?["value"] as? [String: Any])
+            }
+            else if action == "requestNotifyPermission" {
+                requestNotifyPermission()
             }
             else if action == "setOpenAtLogin" {
                 setOpenAtLogin(body?["value"] as? Bool == true, admittedGeneration: admittedGeneration)
@@ -724,6 +733,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         completionHandler()
     }
 
+    /// Read the real macOS authorization and push it to the page. The settings
+    /// row renders this, not a preference the app stores itself.
+    private func refreshNotifyPermission() {
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            let status: String
+            switch settings.authorizationStatus {
+            case .authorized, .ephemeral: status = "authorized"
+            case .denied: status = "denied"
+            case .provisional: status = "provisional"
+            case .notDetermined: status = "notDetermined"
+            @unknown default: status = "notDetermined"
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.notifyPermission = status
+                self.notifyNotifyPermissionChanged()
+            }
+        }
+    }
+
+    private func notifyNotifyPermissionChanged() {
+        let status = jsonValue(notifyPermission)
+        evaluateInTrustedDocument("""
+        window.INDEX_NATIVE = Object.assign(window.INDEX_NATIVE || {}, { notifyPermission: \(status) });
+        if (typeof window.__indexNotifyPermissionChanged === 'function') { window.__indexNotifyPermissionChanged(\(status)); }
+        """)
+    }
+
+    /// The settings row's button. A first decision can still be prompted in
+    /// process; a denial can only be reversed in System Settings.
+    private func requestNotifyPermission() {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { [weak self] settings in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if settings.authorizationStatus == .notDetermined {
+                    center.requestAuthorization(options: [.alert, .sound]) { [weak self] _, _ in
+                        self?.refreshNotifyPermission()
+                    }
+                } else {
+                    self.openNotificationSettings()
+                }
+            }
+        }
+    }
+
+    private func openNotificationSettings() {
+        let id = Bundle.main.bundleIdentifier ?? ""
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     // MARK: - Native owner credential + request bridge
 
     private func configureOwnerCredentialStore() {
@@ -823,6 +884,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             "appUrl": AppConfig.trimTrailingSlash(AppConfig.appURL),
             "deepLinkHosts": AppConfig.deepLinkHosts,
             "openAtLogin": openAtLoginStatus(),
+            "notifyPermission": notifyPermission,
         ]
         let json = (try? JSONSerialization.data(withJSONObject: obj))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"

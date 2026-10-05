@@ -1,5 +1,5 @@
 /* =================== LEFT, CONVERSATION =================== */
-// Small Workbench-style control for managing the running signal (pause / stop).
+// Small control for managing the running signal (pause / stop).
 // `danger` carries the app's destructive treatment (--ink-warn, same as the
 // delete-account gadget in settings): warn-red outline at rest so archiving
 // never looks like the pause next to it, a red wash on hover, and a solid red
