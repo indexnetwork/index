@@ -33,21 +33,22 @@ function McpConsentPage() {
   }
 
   return (
-    <SiteSignInPage title="Allow this client to access your Index account?">
+    // A request that can't be loaded asks nothing, so it doesn't get the question as its title.
+    <SiteSignInPage title={error && !client ? "Request unavailable" : "Allow this client to access your Index account?"}>
       <SiteSignInPanel bar="MCP access request" wide>
         {client ? (
           <>
             <p className="signin-subtitle" style={{ overflowWrap: "anywhere" }}>{client.clientName}</p>
             <p className="site-p">This client name is unverified. Approving grants this client <strong>full Index MCP access</strong> to your account, including the ability to use MCP tools as you.</p>
-            <p className="signin-label">Your authorization code will be sent to this exact callback destination:</p>
-            <p className="signin-code">{client.redirectURI}</p>
-            <div className="signin-actions">
+            {/* Above the actions, so a failed decision reads next to the buttons (and clear of the sticky bar on phones). */}
+            {error && <p role="alert" className="signin-error">{error}</p>}
+            <div className="signin-actions signin-actions--sticky">
               <button type="button" className="site-btn site-btn--secondary" disabled={submitting} onClick={() => decide(false)}>Deny</button>
               <button type="button" className="site-btn" disabled={submitting} onClick={() => decide(true)}>Approve</button>
             </div>
           </>
         ) : !error ? <p className="site-p">Checking authorization request…</p> : null}
-        {error && <p role="alert" className="signin-error">{error}</p>}
+        {error && !client && <p role="alert" className="signin-error">{error}</p>}
         {error && !client && (
           // Nothing to retry here: a fresh request has to come from the MCP client.
           <div className="signin-actions">

@@ -33,9 +33,12 @@
   margin: 0;
   font-family: var(--serif);
   font-weight: 400;
-  font-size: clamp(32px, 6vh, 44px);
+  /* Scales with width too, so a long title (the MCP consent question) stays
+     two lines on a phone instead of pushing the actions below the fold. */
+  font-size: min(clamp(32px, 6vh, 44px), 7.4vw);
   line-height: 1.1;
   color: var(--ink);
+  text-wrap: balance;
 }
 
 .signin-meta {
@@ -181,9 +184,21 @@
 .signin .auth .av-link { color: var(--ink); text-underline-offset: 3px; }
 .signin .auth .av-link:hover { color: var(--blue); }
 
-@media (max-width: 420px) {
+@media (max-width: 480px) {
+  .signin { gap: 24px; }
   .signin-card__bar { padding: 12px 18px; }
   .signin-card__body { padding: 18px; }
+  /* Thumb-sized: the actions split the card's width instead of hugging the right edge. */
+  .signin-actions .site-btn { flex: 1 1 0; }
+  /* A decision (consent) stays in reach while the request scrolls under it. */
+  .signin-actions--sticky {
+    position: sticky;
+    bottom: 0;
+    margin: 0 -18px -18px;
+    padding: 12px 18px 18px;
+    background: var(--bg);
+    border-top: 1px solid var(--card-border);
+  }
 }
 
 /* ---------- shared bits for the device and consent pages ---------- */
@@ -204,21 +219,7 @@
   margin-top: 8px;
 }
 .signin .site-btn { height: 40px; padding: 0 18px; font-size: 14px; }
-.signin-code {
-  margin: 0;
-  padding: 12px;
-  border: 1px solid var(--card-border);
-  background: #F4F6F2;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-  user-select: all;
-}
 .signin-error { margin: 0; font-size: 13px; line-height: 1.5; color: #B3261E; }
-.signin-label { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--ink); }
-.signin-card__body > .site-p,
-.signin-card__body > .signin-code { margin: 0; }
+.signin-card__body > .site-p { margin: 0; }
 .signin-card--wide { max-width: 560px; }
 .signin-card__body--stack { display: flex; flex-direction: column; gap: 12px; }
