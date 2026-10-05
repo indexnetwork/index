@@ -38,14 +38,14 @@
   -webkit-font-smoothing: antialiased;
 }
 
-.workbench,
-.workbench * {
-  cursor: default;
-}
-.workbench input,
-.workbench textarea,
-.workbench [contenteditable] {
-  cursor: text;
+/* Zero-specificity + base layer so clickables (globals.css) and cursor-* utilities win. */
+@layer base {
+  :where(.workbench, .workbench *) {
+    cursor: default;
+  }
+  :where(.workbench input, .workbench textarea, .workbench [contenteditable]) {
+    cursor: text;
+  }
 }
 
 .mac-desktop {
