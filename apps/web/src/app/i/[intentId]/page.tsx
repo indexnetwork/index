@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { getPublicUserProfile } from "@/services/users";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useOpportunityActions } from "@/hooks/useOpportunityActions";
+import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { DEFAULT_RADAR_BUCKET, RADAR_STAGES, personWindowTitle, radarBucketForOpportunity, radarEmptyLine, type RadarBucket } from "@/lib/radar-buckets";
@@ -114,12 +114,21 @@ function IntentDetail() {
     [intentId],
   );
 
+  const onAccepted = useCallback((update: AcceptedOpportunityUpdate) => {
+    setOpportunities((prev) => prev.map((item) =>
+      item.opportunityId === update.opportunityId
+        ? { ...item, status: update.status, viewerCommitted: update.viewerCommitted ?? true }
+        : item,
+    ));
+    setOpenPersonId(update.opportunityId);
+  }, []);
+
   const {
     opportunityStatusMap,
     opportunityActionLoading,
     handleOpportunityAction,
     opportunityModalElement,
-  } = useOpportunityActions({ scope });
+  } = useOpportunityActions({ scope, onAccepted });
 
   /** Monotonic load ids guard every intent-scoped feed against stale responses. */
   const loadSeqRef = useRef(0);

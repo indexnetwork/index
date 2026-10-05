@@ -1,20 +1,29 @@
 import { useCallback, useState } from "react";
-import { useNavigate } from "react-router";
 
 import { useOpportunities } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useConversation } from "@/contexts/ConversationContext";
+import type { OpportunityLifecycleStatus } from "@/services/opportunities";
 
 /** Intent scope threaded into opportunity status/start-chat calls, if any. */
 export type OpportunityActionScope =
   | { intentId: string }
   | undefined;
 
+/** Local radar update after this viewer accepts, so the open signal can show the chat. */
+export type AcceptedOpportunityUpdate = {
+  opportunityId: string;
+  status: OpportunityLifecycleStatus;
+  viewerCommitted?: boolean;
+};
+
 interface UseOpportunityActionsOptions {
   /** Optional intent scope applied to accept/reject/start-chat calls. */
   scope?: OpportunityActionScope;
   /** Called after an opportunity resolves so callers can drop it from their local list. */
   onRemove?: (opportunityId: string) => void;
+  /** Called after accept opens a conversation. Stays on the current view. */
+  onAccepted?: (update: AcceptedOpportunityUpdate) => void;
 }
 
 /**
@@ -26,8 +35,8 @@ interface UseOpportunityActionsOptions {
 export function useOpportunityActions({
   scope,
   onRemove,
+  onAccepted,
 }: UseOpportunityActionsOptions = {}) {
-  const navigate = useNavigate();
   const opportunitiesService = useOpportunities();
   const { error: showError } = useNotifications();
   const { refreshConversations } = useConversation();
@@ -42,7 +51,7 @@ export function useOpportunityActions({
     async (
       opportunityId: string,
       action: "accepted" | "rejected",
-      fallbackUserId?: string,
+      _fallbackUserId?: string,
     ) => {
       // Accept: atomically accept the opp and resolve the DM in one round-trip
       // via POST /opportunities/:id/start-chat.
@@ -50,11 +59,17 @@ export function useOpportunityActions({
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
           const result = await opportunitiesService.startChat(opportunityId, scope);
-          setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: result.opportunity.status }));
+          // Local "accepted" keeps the chat column up while the row is still
+          // pending on the other person. A radar refresh cannot put it back.
+          setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
           onRemove?.(opportunityId);
           if (result.conversationId) {
             refreshConversations();
-            navigate(`/u/${result.counterpartUserId ?? fallbackUserId ?? ""}/chat`);
+            onAccepted?.({
+              opportunityId,
+              status: result.opportunity.status,
+              viewerCommitted: result.opportunity.viewerCommitted ?? true,
+            });
           }
         } catch (error) {
           showError(error instanceof Error ? error.message : "Failed to start chat");
@@ -76,23 +91,27 @@ export function useOpportunityActions({
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, navigate, showError, refreshConversations, onRemove, scope],
+    [opportunitiesService, showError, refreshConversations, onRemove, onAccepted, scope],
   );
 
   /**
    * Start Chat handler. Uses the atomic POST /opportunities/:id/start-chat
-   * endpoint to flip the opp to `accepted` and resolve the pair's conversation
-   * in one round-trip, then navigates to the h2h chat.
+   * endpoint to record this viewer's accept and resolve the pair's conversation
+   * in one round-trip, then opens that chat in the current view.
    */
   const handleStreamingDraftStartChat = useCallback(
-    async (opportunityId: string, counterpartUserId: string) => {
+    async (opportunityId: string, _counterpartUserId: string) => {
       setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
       try {
         const result = await opportunitiesService.startChat(opportunityId, scope);
-        setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: result.opportunity.status }));
+        setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
         if (result.conversationId) {
           refreshConversations();
-          navigate(`/u/${result.counterpartUserId ?? counterpartUserId}/chat`);
+          onAccepted?.({
+            opportunityId,
+            status: result.opportunity.status,
+            viewerCommitted: result.opportunity.viewerCommitted ?? true,
+          });
         }
       } catch (error) {
         showError(error instanceof Error ? error.message : "Failed to start chat");
@@ -100,7 +119,7 @@ export function useOpportunityActions({
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, navigate, showError, refreshConversations, scope],
+    [opportunitiesService, showError, refreshConversations, onAccepted, scope],
   );
 
   // The uptake-preflight modal is retired; nothing renders here any more.
