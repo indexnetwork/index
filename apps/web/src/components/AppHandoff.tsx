@@ -42,8 +42,8 @@ function writeStayOnWeb() {
  * tell what is installed.
  *
  * Continue on web remembers the choice in this browser. Later external opens
- * of a page that has a web view skip the launch screen. The app stays one
- * click away. A link with no web page (`/o`) always uses the launch screen.
+ * of a page that has a web view skip the launch screen. A link with no web
+ * page (`/o`) always uses the launch screen.
  */
 export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: string; webPage?: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthContext();
@@ -95,21 +95,6 @@ export default function AppHandoff({ kind, id, webPage }: { kind: Kind; id: stri
         href={route === "mac" ? macUrl : hermesUrl}
         onContinue={webPage ? () => { writeStayOnWeb(); setShowWeb(true); } : undefined}
       />
-    );
-  }
-  const appTarget = target === "mac" || target === "hermes" ? target : null;
-  if (external && webPage && (showWeb || stayOnWeb) && appTarget) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <a
-          href={appTarget === "mac" ? macUrl : hermesUrl}
-          className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:text-black"
-        >
-          <span>{appTarget === "mac" ? "Open in Index" : "Open in Hermes"}</span>
-          <span aria-hidden="true">→</span>
-        </a>
-        <div className="min-h-0 flex-1">{fallback}</div>
-      </div>
     );
   }
   return <>{fallback}</>;
