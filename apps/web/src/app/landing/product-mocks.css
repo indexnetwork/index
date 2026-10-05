@@ -9,7 +9,6 @@
   box-shadow: 0 14px 34px rgba(4, 23, 41, .3);
   transition: transform .4s ease;
   user-select: text;
-  cursor: text;
 }
 .pm-stage {
   position: absolute;
