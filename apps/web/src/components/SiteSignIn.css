@@ -1,0 +1,187 @@
+/* Public sign-in pages (`/login`, `/l/:code` invites). These links go out on
+   every channel, so they wear the public site's style (AppsShell + site.css
+   tokens), not the app's. Layout: intro, then a card with a header bar that
+   holds the sign-in form. */
+
+.signin {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+.signin-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 560px;
+  text-align: center;
+}
+
+.signin-kicker {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.signin-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(32px, 6vh, 44px);
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.signin-meta {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.signin-meta__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3FBF7F;
+}
+
+.signin-status {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.signin-status .site-btn { margin-top: 6px; }
+
+/* ---------- card ---------- */
+.signin-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+}
+.signin-card__bar {
+  margin: 0;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--card-border);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.signin-card__body { padding: 24px; }
+
+.signin-sent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.signin-subtitle {
+  margin: 0 0 2px;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.signin-sent strong { font-weight: 600; color: var(--ink); }
+.signin-sent .site-btn { margin-top: 10px; height: 40px; font-size: 14px; }
+
+/* ---------- form, in the site's language ----------
+   AuthForm ships the dark card's mono styling; here it takes the landing
+   page's: sans type, 1px ink rules, navy primary. */
+.signin .auth {
+  --av-cream: var(--ink);
+  --av-cream-soft: var(--body);
+  --av-cream-faint: var(--muted);
+  --av-rule: var(--divider);
+  --av-rule-strong: var(--ink);
+  --av-ink: var(--bg);
+}
+
+.signin .auth .av-oauth,
+.signin .auth .av-input,
+.signin .auth .av-submit,
+.signin .auth .av-divider,
+.signin .auth .av-label,
+.signin .auth .av-alt,
+.signin .auth .av-error {
+  font-family: var(--sans);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.signin .auth .av-oauth {
+  height: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--ink);
+}
+.signin .auth .av-oauth:hover { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+.signin .auth .av-divider {
+  margin: 20px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.signin .auth .av-divider::before,
+.signin .auth .av-divider::after { border-top: 1px solid var(--divider); }
+
+.signin .auth .av-form { gap: 8px; }
+.signin .auth .av-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.signin .auth .av-input {
+  height: 40px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--ink);
+}
+.signin .auth .av-input::placeholder { color: var(--muted); }
+.signin .auth .av-input:focus { box-shadow: 0 0 0 3px rgba(64, 145, 187, .25); }
+
+.signin .auth .av-submit {
+  margin-top: 8px;
+  height: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--bg);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+}
+.signin .auth .av-submit:hover { background: var(--blue); border-color: var(--blue); color: var(--bg); }
+
+.signin .auth .av-error { margin: 0; font-size: 13px; color: #B3261E; }
+
+.signin .auth .av-alt {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.signin .auth .av-link { color: var(--ink); text-underline-offset: 3px; }
+.signin .auth .av-link:hover { color: var(--blue); }
+
+@media (max-width: 420px) {
+  .signin-card__bar { padding: 12px 18px; }
+  .signin-card__body { padding: 18px; }
+}
