@@ -1,4 +1,4 @@
-// Amiga Workbench 1.3 primitives, same API as the Mac version, Amiga chrome.
+// Shared primitives, same API as the Mac version.
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
@@ -73,7 +73,7 @@ function KV({ k, v, accent = false }) {
   );
 }
 
-/* ---------- Tag: Workbench gadget-style pill ---------- */
+/* ---------- Tag: gadget-style pill ---------- */
 function Tag({ children, inverted = false, style }) {
   return (
     <span style={{

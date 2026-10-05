@@ -161,6 +161,6 @@ NOTARYTOOL_PROFILE='<local-keychain-profile>' ./scripts/dmg.sh
 xcrun stapler validate dist/Index.dmg
 ```
 
-`./scripts/dmg.sh` revalidates the signed, stapled bundle, lays out the branded disk image, notarizes it, and staples `dist/Index.dmg`. The local DMG is for debugging; GitHub Releases are the distribution path. Replace `scripts/dmg-background.png` (540×380) and `scripts/dmg-background@2x.png` (1080×760) to change the Finder window art; keep those sizes so they match the icon layout. The mounted-disk glyph (title bar / desktop) is `.VolumeIcon.icns`, copied from the app's `AppIcon.icns`.
+`./scripts/dmg.sh` revalidates the signed, stapled bundle, lays out the branded disk image, notarizes it, and staples `dist/Index.dmg`. The local DMG is for debugging; GitHub Releases are the distribution path. Replace `scripts/dmg-background.png` (660×420) and `scripts/dmg-background@2x.png` (1320×840) to change the Finder window art; keep those sizes so they match the icon layout. The art carries only the card and arrow: Finder draws the real icons and names at the positions set in `dmg.sh`, so do not bake them into the image. The mounted-disk glyph (title bar / desktop) is `.VolumeIcon.icns`, copied from the app's `AppIcon.icns`.
 
 Record only redacted commands and pass/fail status in PR evidence; never IDs, credentials, certificate subjects, or profile names.

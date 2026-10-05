@@ -362,6 +362,47 @@ const NOTIFY_OPTIONS = [
     blurb:"your agent looks again at 08:00, and speaks only when it has something new." },
 ];
 
+// The OS permission is not one of the toggles below: those choose which events
+// toast, this is whether macOS will deliver any of them. Absent in browser
+// preview, where there is no system permission to ask for.
+function NotifyPermissionRow() {
+  const app = window.IndexApp;
+  const [status, setStatus] = useState(() => (app && app.notifyPermission ? app.notifyPermission() : null));
+  useEffect(() => {
+    if (!app || !app.onNotifyPermissionChanged) return;
+    return app.onNotifyPermissionChanged(setStatus);
+  }, []);
+  if (!status) return null;
+  const allowed = status === "authorized" || status === "provisional";
+  if (allowed) return null;
+  const denied = status === "denied";
+  return (
+    <div style={{
+      display:"flex", gap:12, alignItems:"center",
+      width:"100%", boxSizing:"border-box", padding:"10px 12px", marginBottom:14,
+      border:"1px solid #000", background:"#fff",
+      boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
+    }}>
+      <span style={{ flex:1, minWidth:0 }}>
+        <span style={{
+          display:"block", fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:600, color:"#000",
+        }}>{denied ? "notifications are off" : "allow notifications"}</span>
+        <span style={{
+          display:"block", marginTop:3, fontFamily:"var(--mac-sans)",
+          fontSize:12, lineHeight:1.45, color:"var(--ink-2)",
+        }}>
+          {denied
+            ? "macos is blocking them, so none of the choices below can arrive."
+            : "index needs permission before any of these can reach you."}
+        </span>
+      </span>
+      <Btn small primary={!denied} onClick={() => app.requestNotifyPermission()}>
+        {denied ? "system settings" : "allow"}
+      </Btn>
+    </div>
+  );
+}
+
 function NotificationsPane({ notify, toggle, timezone, onTimezone }) {
   const zones = typeof Intl !== "undefined" && Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : [];
   return (
@@ -372,6 +413,7 @@ function NotificationsPane({ notify, toggle, timezone, onTimezone }) {
       }}>
         index works in the background. choose what's worth interrupting you for.
       </p>
+      <NotifyPermissionRow/>
       <label htmlFor="timezone" style={{ display:"block", marginBottom:5, fontFamily:"var(--mac-mono)", fontSize:11, fontWeight:600 }}>timezone</label>
       <select
         id="timezone"

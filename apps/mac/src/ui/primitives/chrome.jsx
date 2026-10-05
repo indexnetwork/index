@@ -19,7 +19,7 @@ function RuleLabel({ children, size = 10 }) {
   );
 }
 
-/* ---------- Btn: Workbench gadget. primary => orange. ---------- */
+/* ---------- Btn: gadget. primary => orange. ---------- */
 function Btn({ children, onClick, primary = false, small = false, style, disabled, type }) {
   const [active, setActive] = useState(false);
   const pad = small ? "3px 12px" : "5px 18px";
@@ -56,7 +56,7 @@ function Btn({ children, onClick, primary = false, small = false, style, disable
   );
 }
 
-/* ---------- Chip: Workbench mini gadget ---------- */
+/* ---------- Chip: mini gadget ---------- */
 function Chip({ children, onClick, active }) {
   const [down, setDown] = useState(false);
   const pressed = active || down;
@@ -86,7 +86,7 @@ function Chip({ children, onClick, active }) {
   );
 }
 
-/* ---------- Toggle: Workbench checkbox, a raised square that fills when checked ---------- */
+/* ---------- Toggle: checkbox, a raised square that fills when checked ---------- */
 function Toggle({ on, onClick, title, blurb }) {
   return (
     <button
@@ -148,7 +148,7 @@ function QCount({ n, muted, title }) {
   );
 }
 
-/* ---------- ScoreBar: Workbench progress gauge ---------- */
+/* ---------- ScoreBar: progress gauge ---------- */
 function ScoreBar({ value, w = 56 }) {
   const pct = Math.max(0, Math.min(1, value));
   return (
@@ -591,7 +591,7 @@ function MacWindow({ title, children, style, bodyStyle, onClose, noShadow, dismi
   );
 }
 
-/* ---------- Workbench segmented control ---------- */
+/* ---------- Segmented control ---------- */
 // size="lg" for full screens (settings, networks); default stays compact for
 // the mainview toolbar, where a taller control would crowd the bar.
 function MacSegmented({ value, onChange, options, size }) {

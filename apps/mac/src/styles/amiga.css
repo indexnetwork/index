@@ -18,7 +18,7 @@
   }
 
   :root{
-    /* Amiga Workbench 1.x 4-color palette */
+    /* 4-color palette */
     --amiga-bg:     #0055AA;   /* desktop blue */
     --amiga-fg:     #000000;   /* black ink */
     --amiga-paper:  #FFFFFF;   /* window body white */
@@ -79,7 +79,7 @@
   /* keep chrome elements using the same condensed font */
   body, button, input, textarea, select { font-family: var(--amiga-sans); }
 
-  /* ---------- Amiga workbench menu bar (white, like the reference) ---------- */
+  /* ---------- Menu bar (white) ---------- */
   .mac-menubar{
     position:fixed; top:0; left:0; right:0; height:24px;
     background: var(--amiga-paper);
@@ -120,7 +120,7 @@
     white-space: nowrap; color:#555;
   }
 
-  /* ---------- Workbench desktop (1.3 dotted blue) ---------- */
+  /* ---------- Desktop (dotted blue) ---------- */
   .mac-desktop{
     background-color: var(--amiga-bg);
     background-image:
@@ -129,7 +129,7 @@
     background-position: 0 0;
   }
 
-  /* ---------- Workbench window chrome ---------- */
+  /* ---------- Window chrome ---------- */
   .mac-titlebar{
     height:24px; flex:0 0 auto;
     border-bottom: 2px solid var(--amiga-fg);
@@ -142,8 +142,8 @@
     color: var(--amiga-fg);
     font-family: var(--amiga-sans);
   }
-  /* Close gadget: Workbench-style square button on LEFT.
-     Outlined square with a solid centre block, the 1.3 close gadget. An
+  /* Close gadget: square button on LEFT.
+     Outlined square with a solid centre block. An
      outline on its own reads as an empty box, so the centre is what makes it
      legible as a button. */
   .mac-titlebar .mac-close{
@@ -199,7 +199,7 @@
     color: var(--amiga-fg);
     position:relative;
     overflow:hidden;
-    /* horizontal drag-bar lines, Workbench-style */
+    /* horizontal drag-bar lines */
     background-image: repeating-linear-gradient(
       0deg, var(--amiga-fg) 0 2px, transparent 2px 6px);
     background-position: 0 4px;
@@ -236,7 +236,7 @@
     background: var(--amiga-paper);
   }
 
-  /* All windows get the Workbench double-bevel frame applied by primitives */
+  /* All windows get the double-bevel frame applied by primitives */
   .amiga-window{
     background: var(--amiga-paper);
     border: 2px solid var(--amiga-fg);
@@ -245,11 +245,11 @@
       inset -2px -2px 0 #6E6E6E;
   }
 
-  /* ---------- Scrollbars (Workbench style) ---------- */
+  /* ---------- Scrollbars ---------- */
   /* Scrollbar. The 16px beveled slab this replaced was as wide as a gadget and
      read as a piece of the layout rather than an indicator, at that size the
      bevel also crowded the content it sat beside. A slim bar keeps the
-     Workbench palette (accent thumb, black hairline, square corners, nothing
+     palette (accent thumb, black hairline, square corners, nothing
      in this app is rounded) while giving the width back to the list. The thumb
      is inset from the track by a wider left border so it reads as a mark
      travelling down a channel instead of a lid sliding in a groove.

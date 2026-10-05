@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { decideMcpConsent, getMcpConsentDetails } from '@/lib/auth-client';
-import { AppsShell } from '@/app/download/page';
-import './consent.css';
+import { SiteSignInPage, SiteSignInPanel } from '@/components/SiteSignIn';
 
 const consentCode = new URLSearchParams(window.location.search).get('consent_code');
 
@@ -34,31 +33,30 @@ function McpConsentPage() {
   }
 
   return (
-    <AppsShell>
-      <main className="mcp-consent__card">
-        <span className="mcp-consent__eyebrow">MCP access request</span>
-        <h1>Allow this client to access your Index account?</h1>
+    // A request that can't be loaded asks nothing, so it doesn't get the question as its title.
+    <SiteSignInPage title={error && !client ? "Request unavailable" : "Allow this client to access your Index account?"}>
+      <SiteSignInPanel bar="MCP access request" wide>
         {client ? (
           <>
-            <p className="mcp-consent__client">{client.clientName}</p>
-            <p className="mcp-consent__warning">This client name is unverified. Approving grants this client <strong>full Index MCP access</strong> to your account, including the ability to use MCP tools as you.</p>
-            <p className="mcp-consent__label">Your authorization code will be sent to this exact callback destination:</p>
-            <p className="mcp-consent__destination">{client.redirectURI}</p>
-            <div className="mcp-consent__actions">
-              <button type="button" disabled={submitting} onClick={() => decide(false)}>Deny</button>
-              <button type="button" disabled={submitting} onClick={() => decide(true)}>Approve</button>
+            <p className="signin-subtitle" style={{ overflowWrap: "anywhere" }}>{client.clientName}</p>
+            <p className="site-p">This client name is unverified. Approving grants this client <strong>full Index MCP access</strong> to your account, including the ability to use MCP tools as you.</p>
+            {/* Above the actions, so a failed decision reads next to the buttons (and clear of the sticky bar on phones). */}
+            {error && <p role="alert" className="signin-error">{error}</p>}
+            <div className="signin-actions signin-actions--sticky">
+              <button type="button" className="site-btn site-btn--secondary" disabled={submitting} onClick={() => decide(false)}>Deny</button>
+              <button type="button" className="site-btn" disabled={submitting} onClick={() => decide(true)}>Approve</button>
             </div>
           </>
-        ) : !error ? <p>Checking authorization request…</p> : null}
-        {error && <p role="alert" className="mcp-consent__error">{error}</p>}
+        ) : !error ? <p className="site-p">Checking authorization request…</p> : null}
+        {error && !client && <p role="alert" className="signin-error">{error}</p>}
         {error && !client && (
           // Nothing to retry here: a fresh request has to come from the MCP client.
-          <div className="mcp-consent__actions">
+          <div className="signin-actions">
             <a className="site-btn" href="/">Go home</a>
           </div>
         )}
-      </main>
-    </AppsShell>
+      </SiteSignInPanel>
+    </SiteSignInPage>
   );
 }
 

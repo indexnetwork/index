@@ -121,6 +121,10 @@ export const router = createBrowserRouter([
         element: <NegotiationIndexRedirect />,
       },
       {
+        path: "/onboarding",
+        lazy: lazyRoute("/onboarding", () => import("@/app/onboarding/page")),
+      },
+      {
         path: "/i/new",
         lazy: lazyRoute("/i/new", () => import("@/app/i/new/page")),
       },

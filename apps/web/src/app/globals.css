@@ -23,6 +23,28 @@
     background-color: #FAB8BD;
     color: black;
   }
+
+  a[href],
+  button,
+  summary,
+  select,
+  label[for],
+  label:has(input[type="checkbox"], input[type="radio"]),
+  input:is([type="checkbox"], [type="radio"], [type="file"], [type="button"], [type="submit"], [type="reset"]),
+  [role="button"],
+  [role="link"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  [role="checkbox"],
+  [role="switch"] {
+    cursor: pointer;
+  }
+
+  :disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
 
 @layer utilities {
@@ -81,7 +103,6 @@
 } 
 
 button {
-  cursor: pointer;
   font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 

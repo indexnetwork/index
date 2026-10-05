@@ -38,8 +38,8 @@ trap cleanup EXIT
 
 BG="$SCRIPT_DIR/dmg-background.png"
 BG2X="$SCRIPT_DIR/dmg-background@2x.png"
-[ -f "$BG" ] || { echo "missing $BG (540x380)" >&2; exit 1; }
-[ -f "$BG2X" ] || { echo "missing $BG2X (1080x760)" >&2; exit 1; }
+[ -f "$BG" ] || { echo "missing $BG (660x420)" >&2; exit 1; }
+[ -f "$BG2X" ] || { echo "missing $BG2X (1320x840)" >&2; exit 1; }
 
 APP_BASENAME="$(basename "$APP_PATH")"
 SIZE_KB=$(( $(du -sk "$APP_PATH" | awk '{print $1}') + 20480 ))
@@ -111,13 +111,15 @@ tell application "Finder"
         set current view of container window to icon view
         set toolbar visible of container window to false
         set statusbar visible of container window to false
-        set the bounds of container window to {100, 100, 640, 480}
+        set the bounds of container window to {100, 100, 760, 520}
         set viewOptions to the icon view options of container window
         set arrangement of viewOptions to not arranged
-        set icon size of viewOptions to 128
+        set icon size of viewOptions to 112
+        set text size of viewOptions to 13
         set background picture of viewOptions to file ".background:dmg-background.png"
-        set position of item "${APP_BASENAME}" of container window to {140, 190}
-        set position of item "Applications" of container window to {400, 190}
+        -- Icon centres sit on the white card in dmg-background.png, either side of the arrow.
+        set position of item "${APP_BASENAME}" of container window to {207, 252}
+        set position of item "Applications" of container window to {453, 252}
         close
         open
         update without registering applications

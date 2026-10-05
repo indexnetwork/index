@@ -1,5 +1,5 @@
 /* global useIndexEnv */
-// Intents, Workbench shelf of saved searches. This is the app's hub:
+// Intents, the shelf of saved searches. This is the app's hub:
 // brand promise ("find your others"), active signals, and the entry point for
 // a new signal.
 
