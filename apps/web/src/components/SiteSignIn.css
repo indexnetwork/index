@@ -185,3 +185,40 @@
   .signin-card__bar { padding: 12px 18px; }
   .signin-card__body { padding: 18px; }
 }
+
+/* ---------- shared bits for the device and consent pages ---------- */
+.signin-check {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #3FBF7F;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.signin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.signin .site-btn { height: 40px; padding: 0 18px; font-size: 14px; }
+.signin-code {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  background: #F4F6F2;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.signin-error { margin: 0; font-size: 13px; line-height: 1.5; color: #B3261E; }
+.signin-label { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.signin-card__body > .site-p,
+.signin-card__body > .signin-code { margin: 0; }
+.signin-card--wide { max-width: 560px; }
+.signin-card__body--stack { display: flex; flex-direction: column; gap: 12px; }

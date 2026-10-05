@@ -4,7 +4,6 @@ import { authClient, clearJwtToken } from '@/lib/auth-client';
 import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
-import AuthModal from '@/components/AuthModal';
 import SiteLayout from '@/app/site/SiteLayout';
 import { log } from '@/lib/logger';
 
@@ -33,6 +32,7 @@ type AuthContextType = {
   error: string | null;
   refetchUser: () => Promise<void>;
   updateUser: (user: User) => void;
+  /** Sends the visitor to /login, returning to `callbackURL` (same-origin) afterwards. */
   openLoginModal: (callbackURL?: string) => void;
   signOut: () => Promise<void>;
 };
@@ -48,8 +48,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userLoading, setUserLoading] = useState(false);
   const [userFetchAttempted, setUserFetchAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [pendingCallbackURL, setPendingCallbackURL] = useState<string | undefined>(undefined);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const api = useAuthenticatedAPI();
@@ -62,10 +60,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updatedUser);
   }, []);
 
+  // Web sign-in is always the public /login page, so every channel sees the
+  // same form; the retro sign-in window belongs to the Mac app only.
   const openLoginModal = useCallback((callbackURL?: string) => {
-    setPendingCallbackURL(callbackURL);
-    setLoginModalOpen(true);
-  }, []);
+    let next = '/';
+    try {
+      const target = new URL(callbackURL ?? window.location.href, window.location.origin);
+      if (target.origin === window.location.origin) next = target.pathname + target.search + target.hash;
+    } catch {
+      // Unparseable target: fall back to home after sign-in.
+    }
+    navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
+  }, [navigate]);
 
   const signOut = useCallback(async () => {
     clearJwtToken();
@@ -137,13 +143,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [authenticated, ready, user, userLoading, userFetchAttempted, fetchUser]);
 
-  // Close modal on successful auth
-  useEffect(() => {
-    if (authenticated && loginModalOpen) {
-      setLoginModalOpen(false);
-    }
-  }, [authenticated, loginModalOpen]);
-
   useEffect(() => {
     if (!ready) return;
 
@@ -164,17 +163,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (shouldRedirectToHome) {
       // Preserve the destination so the user returns to it after authenticating,
       // instead of being stranded on the home page. This makes protected deep
-      // links work when opened while logged out — e.g. a signal link surfaced
-      // in the daily digest. The
-      // captured URL is forwarded to Better Auth as `callbackURL`, mirroring the
-      // public `/u/:id/chat` page's `openLoginModal(window.location.href)` flow.
-      if (typeof window !== 'undefined') {
-        // Guarded one-shot: we open the modal and immediately redirect+return, so
-        // this does not cascade renders despite the set-state-in-effect lint.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        openLoginModal(window.location.href);
-      }
-      navigate('/');
+      // links work when opened while logged out, e.g. a signal link surfaced
+      // in the daily digest: /login?next= carries it through sign-in.
+      openLoginModal(window.location.href);
       return;
     }
 
@@ -229,11 +220,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ) : (
         children
       )}
-      <AuthModal
-        isOpen={loginModalOpen}
-        onClose={() => { setPendingCallbackURL(undefined); setLoginModalOpen(false); }}
-        callbackURL={pendingCallbackURL}
-      />
     </AuthContext.Provider>
   );
 }

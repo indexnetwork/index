@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
-import AuthForm from "@/components/AuthForm";
-import { AppsShell } from "@/app/download/page";
+import { SiteSignInCard, SiteSignInPage } from "@/components/SiteSignIn";
 import { buildCliDeviceCodeCallbackUrl, buildCliAuthReturnPath, parseCliAuthRequest, DEVICE_CLIENT_ID, type CliAuthRequest } from "@/lib/cli-auth";
-
-import "./cli-auth.css";
 
 function Status({ title, message, ok, action }: {
   title: string;
@@ -14,22 +11,19 @@ function Status({ title, message, ok, action }: {
   action?: { label: string; onClick: () => void };
 }) {
   return (
-    <div className="cli-auth__status">
-      {ok && (
-        <div className="cli-auth__check">
-          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#0b1612" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-        </div>
-      )}
-      <h1>{title}</h1>
-      <p>{message}</p>
-      {action && (
-        <div style={{ marginTop: 24 }}>
-          <button type="button" className="site-btn" onClick={action.onClick}>{action.label}</button>
-        </div>
-      )}
-    </div>
+    <SiteSignInPage title={title}>
+      <div className="signin-status">
+        {ok && (
+          <div className="signin-check" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#041729" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          </div>
+        )}
+        <p className="site-p">{message}</p>
+        {action && <button type="button" className="site-btn" onClick={action.onClick}>{action.label}</button>}
+      </div>
+    </SiteSignInPage>
   );
 }
 
@@ -63,6 +57,8 @@ function CliAuthPage() {
     request ? null : "Invalid sign-in request. Start the sign-in from the Index app, or run `index login` from the CLI.",
   );
   const exchangeStartedRef = useRef(false);
+  // The mailed link returns to this request in its own tab; this one stays on "check your email".
+  const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
 
   useEffect(() => {
     if (!request || exchangeStartedRef.current) return;
@@ -121,35 +117,39 @@ function CliAuthPage() {
     exchangeToken(request);
   }, [request]);
 
-  return (
-    <AppsShell>
-      <div className="cli-auth">
-        {status === "login" && request && (
-          <div className="auth cli-auth__form">
-            <AuthForm
-              callbackURL={`${window.location.origin}${buildCliAuthReturnPath(window.location.pathname, request)}`}
-              onAuthenticated={() => window.location.reload()}
-            />
-          </div>
-        )}
-        {status === "loading" && (
-          <Status title="Signing you in" message="Connecting to your account…" />
-        )}
-        {status === "redirecting" && (
-          <Status ok title="Authentication complete" message="You can close this window now." />
-        )}
-        {status === "error" && (
-          <Status
-            title="Authorization failed"
-            message={error ?? ""}
-            // A malformed request can only be fixed by starting again from the app or CLI.
-            // Runtime failures reload this same validated request, which mints a fresh device code.
-            action={request ? { label: "Try again", onClick: () => window.location.reload() } : undefined}
-          />
-        )}
-      </div>
-    </AppsShell>
-  );
+  if (status === "login" && request) {
+    return (
+      <SiteSignInPage
+        title="Sign in to Index"
+        meta={<p className="site-p">Sign in here to finish connecting your app or the Index CLI.</p>}
+      >
+        <SiteSignInCard
+          bar="Sign in"
+          sentTo={linkSentTo}
+          sentNote="Open the link in the email to finish signing in. It expires in 10 minutes."
+          callbackURL={`${window.location.origin}${buildCliAuthReturnPath(window.location.pathname, request)}`}
+          onAuthenticated={() => window.location.reload()}
+          onMagicLinkSent={setLinkSentTo}
+          onBack={() => setLinkSentTo(null)}
+        />
+      </SiteSignInPage>
+    );
+  }
+  if (status === "redirecting") {
+    return <Status ok title="Authentication complete" message="You can close this window now." />;
+  }
+  if (status === "error") {
+    return (
+      <Status
+        title="Authorization failed"
+        message={error ?? ""}
+        // A malformed request can only be fixed by starting again from the app or CLI.
+        // Runtime failures reload this same validated request, which mints a fresh device code.
+        action={request ? { label: "Try again", onClick: () => window.location.reload() } : undefined}
+      />
+    );
+  }
+  return <Status title="Signing you in" message="Connecting to your account…" />;
 }
 
 export const Component = CliAuthPage;

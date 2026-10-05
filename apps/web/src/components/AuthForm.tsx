@@ -13,7 +13,7 @@ interface AuthFormProps {
   /** Called after a non-redirecting (email/password) sign-in succeeds. */
   onAuthenticated?: () => void;
   /** Hide default title/lede when embedded (e.g. invite landing). */
-  variant?: 'default' | 'inline' | 'product';
+  variant?: 'default' | 'inline';
   /** Called once the magic link is on its way, with the address it went to. */
   onMagicLinkSent?: (email: string) => void;
 }
@@ -21,9 +21,9 @@ interface AuthFormProps {
 type AuthView = 'main' | 'magic-link-sent' | 'email-password';
 
 /**
- * Sign-in form (Google, magic link, optional email/password). Rendered inside
- * the AuthModal overlay or inline on a page (e.g. /cli-auth) — the surrounding
- * `.auth` wrapper supplies the landing tokens.
+ * Sign-in form (Google, magic link, optional email/password). Every web sign-in
+ * renders it through SiteSignInCard (/login, invites, /cli-auth), whose `.auth`
+ * wrapper and SiteSignIn.css give it the public site's style.
  */
 export default function AuthForm({ callbackURL, onAuthenticated, variant = 'default', onMagicLinkSent }: AuthFormProps) {
   const [view, setView] = useState<AuthView>('main');
@@ -163,51 +163,31 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
   };
 
   const inline = variant === 'inline';
-  const product = variant === 'product';
 
   return (
     <>
       {view === 'magic-link-sent' && (
         <>
-          {product ? (
-            <h2 id="auth-modal-title" className="wb-auth-h">check your email</h2>
-          ) : (
-            <div className="av-head">
-              <h2 id="auth-modal-title" className="av-title">
-                Check your email
-              </h2>
-            </div>
-          )}
-          <p className={product ? "wb-auth-p" : "av-lede"}>
-            {product ? "we sent a sign-in link to" : "We sent a sign-in link to"} <strong>{email}</strong>.
+          <div className="av-head">
+            <h2 id="auth-modal-title" className="av-title">
+              Check your email
+            </h2>
+          </div>
+          <p className="av-lede">
+            We sent a sign-in link to <strong>{email}</strong>.
           </p>
-          <p className={product ? "wb-auth-note" : "av-note"}>
-            {product
-              ? "click the link in the email to sign in. it expires in 10 minutes."
-              : "Click the link in the email to sign in. It expires in 10 minutes."}
+          <p className="av-note">
+            Click the link in the email to sign in. It expires in 10 minutes.
           </p>
-          <button
-            type="button"
-            className={product ? "wb-btn" : "av-submit ghost"}
-            onClick={resetForm}
-          >
-            {product ? "back" : "Back to sign in"}
+          <button type="button" className="av-submit ghost" onClick={resetForm}>
+            Back to sign in
           </button>
         </>
       )}
 
       {view === 'main' && (
         <>
-          {!inline && (product ? (
-            <>
-              <h2 id="auth-modal-title" className="wb-auth-h">
-                sign in to <span style={{ fontWeight: 700 }}>index</span>.
-              </h2>
-              <p className="wb-auth-p">
-                index finds the right people for you, before you even think to look.
-              </p>
-            </>
-          ) : (
+          {!inline && (
             <>
               <div className="av-head">
                 <h2 id="auth-modal-title" className="av-title">
@@ -218,17 +198,17 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
                 Write what you want. Let the network bring people to you.
               </p>
             </>
-          ))}
+          )}
 
           {providersStatus === 'error' && (
-            <p className={product ? "wb-auth-note" : "av-note"}>
-              {product ? "couldn't load all sign-in options." : "Couldn't load all sign-in options."}{' '}
+            <p className="av-note">
+              Couldn&apos;t load all sign-in options.{' '}
               <button
                 type="button"
                 className="av-link"
                 onClick={() => setProvidersRetryKey((k) => k + 1)}
               >
-                {product ? "retry" : "Retry"}
+                Retry
               </button>
             </p>
           )}
@@ -236,7 +216,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
           {hasGoogle && (
             <button
               type="button"
-              className={product ? "wb-btn" : "av-oauth"}
+              className="av-oauth"
               onClick={handleGoogleSignIn}
               disabled={loading}
             >
@@ -246,14 +226,14 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
                 <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.997 8.997 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
                 <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
               </svg>
-              {product ? "continue with google" : "Continue with Google"}
+              Continue with Google
             </button>
           )}
 
           {hasGoogle && <div className="av-divider">or</div>}
 
           <form onSubmit={handleMagicLink} className="av-form">
-            <label htmlFor="auth-email" className={product ? undefined : "av-label"}>{product ? "email" : "Email"}</label>
+            <label htmlFor="auth-email" className="av-label">Email</label>
             <input
               id="auth-email"
               type="email"
@@ -267,15 +247,10 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
 
             {error && <p className="av-error">{error}</p>}
 
-            <button type="submit" disabled={loading} className={product ? "wb-btn primary" : "av-submit"}>
-              {loading ? (product ? "sending…" : "Sending…") : (product ? "send sign-in link" : "Send sign-in link")}
+            <button type="submit" disabled={loading} className="av-submit">
+              {loading ? "Sending…" : "Send sign-in link"}
             </button>
           </form>
-          {product && (
-            <p className="wb-auth-note">
-              index only acts on what you tell it. you can stop any signal at any time.
-            </p>
-          )}
 
           {canUseEmailPassword && (
             <p className="av-alt">
@@ -292,38 +267,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
         </>
       )}
 
-      {view === 'email-password' && canUseEmailPassword && product && (
-        <>
-          <button type="button" className="av-back" onClick={() => { setView('main'); setError(null); }}>← back</button>
-          <h2 id="auth-modal-title" className="wb-auth-h">
-            {isSignUp ? "create an account" : "sign in with a password"}
-          </h2>
-          <form onSubmit={handleEmailPassword} style={{ display: "grid", gap: 8 }}>
-            {isSignUp && (
-              <>
-                <label htmlFor="auth-name">name</label>
-                <input id="auth-name" type="text" placeholder="your name" value={name} onChange={(e) => setName(e.target.value)} />
-              </>
-            )}
-            <label htmlFor="auth-email-pw">email</label>
-            <input id="auth-email-pw" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <label htmlFor="auth-password">password</label>
-            <input id="auth-password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
-            {error && <p className="wb-auth-note">{error}</p>}
-            <button type="submit" disabled={loading} className="wb-btn primary">
-              {loading ? "loading…" : isSignUp ? "create account" : "sign in"}
-            </button>
-          </form>
-          <p className="av-alt">
-            {isSignUp ? "already have an account? " : "don't have an account? "}
-            <button type="button" className="av-link" onClick={() => { setIsSignUp(!isSignUp); setError(null); }}>
-              {isSignUp ? "sign in" : "sign up"}
-            </button>
-          </p>
-        </>
-      )}
-
-      {view === 'email-password' && canUseEmailPassword && !product && (
+      {view === 'email-password' && canUseEmailPassword && (
         <>
           <div className="av-head">
             <button

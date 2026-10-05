@@ -434,40 +434,6 @@
   flex: 0 0 auto;
 }
 
-.wb-auth {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: grid;
-  place-items: center;
-  /* An auto track grows to the window's 420px, so max-width: 100% never
-     binds and phones zoom out to fit the overflow. */
-  grid-template-columns: minmax(0, 1fr);
-  padding: 56px 40px;
-}
-.wb-auth-h {
-  font-family: var(--amiga-mono);
-  font-weight: 500;
-  font-size: 32px;
-  line-height: 1.05;
-  letter-spacing: -0.6px;
-  margin: 0;
-  color: #000;
-}
-.wb-auth-p {
-  margin-top: 12px;
-  font-family: var(--mac-sans);
-  font-size: 13px;
-  line-height: 1.5;
-  color: #000;
-}
-.wb-auth-note {
-  margin-top: 20px;
-  font-family: var(--mac-mono);
-  font-size: 10px;
-  line-height: 1.5;
-  color: var(--ink-3);
-}
 /* Old product utilities still sit inside the desktop shell. Pull them onto
    the Workbench palette so a gray card or a navy button cannot show through. */
 .workbench .text-gray-400,
@@ -541,89 +507,6 @@
   color: #000;
 }
 
-.wb-auth label {
-  display: block;
-  font-family: var(--mac-mono);
-  font-size: 11px;
-  margin: 12px 0 4px;
-}
-.wb-auth input {
-  width: 100%;
-  border: 1px solid #000;
-  border-radius: 0;
-  background: #fff;
-  padding: 8px 10px;
-  font-family: var(--mac-sans);
-  font-size: 13px;
-  outline: none;
-  box-shadow: inset 1px 1px 0 #888, inset -1px -1px 0 #fff;
-}
-.wb-auth input:focus {
-  outline: none;
-  border-color: #000;
-}
-.wb-auth input::-webkit-contacts-auto-fill-button {
-  visibility: hidden;
-  pointer-events: none;
-  position: absolute;
-  right: 0;
-}
-.wb-auth .wb-btn {
-  width: 100%;
-  margin-top: 14px;
-  padding: 11px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-.wb-auth .av-form { display: flex; flex-direction: column; }
-.wb-auth .av-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 16px 0 4px;
-  font-family: var(--mac-mono);
-  font-size: 11px;
-  color: var(--ink-3);
-}
-.wb-auth .av-divider::before,
-.wb-auth .av-divider::after {
-  content: "";
-  flex: 1;
-  border-top: 1px solid #000;
-}
-.wb-auth .av-error {
-  margin: 6px 0 0;
-  font-family: var(--mac-mono);
-  font-size: 12px;
-  color: var(--ink-warn);
-}
-.wb-auth .av-alt {
-  margin: 14px 0 0;
-  text-align: center;
-  font-family: var(--mac-mono);
-  font-size: 12px;
-}
-.wb-auth .av-link {
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-  text-decoration: underline;
-}
-.wb-auth .av-back {
-  align-self: flex-start;
-  background: none;
-  border: 0;
-  padding: 0;
-  margin-bottom: 8px;
-  cursor: pointer;
-  font-family: var(--mac-mono);
-  font-size: 13px;
-  text-align: left;
-}
 
 /* ── Responsive ─────────────────────────────────────────────────────────
    Desktop: floating windows on the blue desktop. Medium: same, tighter
@@ -737,9 +620,6 @@
     padding: 13px 16px;
   }
 
-  .wb-auth {
-    padding: 24px 16px;
-  }
 
   .wb-tabbar {
     display: grid;

@@ -37,6 +37,16 @@ export function SiteSignInMeta({ children, dot = false }: { children: ReactNode;
   );
 }
 
+/** The bordered card with a small caps header bar that every public sign-in page uses. */
+export function SiteSignInPanel({ bar, wide = false, children }: { bar: string; wide?: boolean; children: ReactNode }) {
+  return (
+    <section className={wide ? "signin-card signin-card--wide" : "signin-card"}>
+      <h2 className="signin-card__bar">{bar}</h2>
+      <div className="signin-card__body signin-card__body--stack">{children}</div>
+    </section>
+  );
+}
+
 function Card({ bar, className, children }: { bar: string; className?: string; children: ReactNode }) {
   return (
     <section className="signin-card">
