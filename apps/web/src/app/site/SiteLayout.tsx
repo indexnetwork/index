@@ -55,8 +55,6 @@ export function SiteNav() {
         <span className="site-nav-toggle-bar" />
       </button>
       <div className="site-nav-links" id="site-nav-links">
-        <Link className="site-nav-link" to="/">home</Link>
-        <Link className="site-nav-link" to="/hermes">hermes</Link>
         <Link className="site-nav-link" to="/blog">blog</Link>
         <a className="site-nav-link" href={DOCS_URL} target="_blank" rel="noreferrer">docs</a>
         <Link className="site-nav-link" to="/about">about</Link>
