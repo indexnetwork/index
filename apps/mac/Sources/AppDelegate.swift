@@ -77,6 +77,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     /// Last macOS notification authorization the page was told about.
     /// "authorized" | "denied" | "notDetermined" | "provisional".
     private var notifyPermission = "notDetermined"
+    /// True while the in-app explanation is up behind the system dialog.
+    private var notifyPromptOpen = false
+    /// The page has been asked to show the interstitial and has not acked yet.
+    private var notifyPromptArmed = false
+    /// This launch already presented the system dialog, so a later status read
+    /// that is still undecided does not raise it again.
+    private var notifyPromptAsked = false
     /// The ready prompt is deferred until the app is frontmost with its window up.
     private var updatePromptPending = false
     private var relaunchAfterUpdate = false
@@ -138,11 +145,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // toast tapped while the app was closed still routes once it boots.
         config.userContentController.add(self, name: "indexNotify")
         UNUserNotificationCenter.current().delegate = self
-        // First launch after install is the only time macOS shows the prompt;
-        // later launches return the stored decision immediately.
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] _, _ in
-            self?.refreshNotifyPermission()
-        }
+        // Ask only once the page can show the explanation behind the dialog.
+        // macOS shows that dialog solely while the choice is still undecided.
         refreshNotifyPermission()
 
         let contentRect = Self.defaultContentFrame(for: NSScreen.main)
@@ -527,6 +531,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             else if action == "requestNotifyPermission" {
                 requestNotifyPermission()
             }
+            else if action == "notifyPromptReady" {
+                notifyPromptReady()
+            }
+            else if action == "dismissNotifyPrompt" {
+                dismissNotifyPrompt()
+            }
             else if action == "setOpenAtLogin" {
                 setOpenAtLogin(body?["value"] as? Bool == true, admittedGeneration: admittedGeneration)
             }
@@ -748,6 +758,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.notifyPermission = status
+                if status == "notDetermined" && !self.notifyPromptAsked && !self.notifyPromptOpen {
+                    self.beginNotifyPrompt()
+                } else if status != "notDetermined" {
+                    self.notifyPromptOpen = false
+                    self.notifyPromptArmed = false
+                }
                 self.notifyNotifyPermissionChanged()
             }
         }
@@ -755,23 +771,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     private func notifyNotifyPermissionChanged() {
         let status = jsonValue(notifyPermission)
+        let prompt = notifyPromptOpen ? "true" : "false"
         evaluateInTrustedDocument("""
-        window.INDEX_NATIVE = Object.assign(window.INDEX_NATIVE || {}, { notifyPermission: \(status) });
+        window.INDEX_NATIVE = Object.assign(window.INDEX_NATIVE || {}, { notifyPermission: \(status), notifyPrompt: \(prompt) });
         if (typeof window.__indexNotifyPermissionChanged === 'function') { window.__indexNotifyPermissionChanged(\(status)); }
+        if (typeof window.__indexNotifyPromptChanged === 'function') { window.__indexNotifyPromptChanged(\(prompt)); }
         """)
     }
 
-    /// The settings row's button. A first decision can still be prompted in
-    /// process; a denial can only be reversed in System Settings.
+    /// Cover the window with the explanation. The page's Allow button is what
+    /// asks macOS to put its dialog in front.
+    private func beginNotifyPrompt() {
+        notifyPromptOpen = true
+        notifyPromptArmed = true
+    }
+
+    /// Not now. Leave the system choice undecided and don't raise this again
+    /// until the next launch.
+    private func dismissNotifyPrompt() {
+        notifyPromptOpen = false
+        notifyPromptArmed = false
+        notifyPromptAsked = true
+        notifyNotifyPermissionChanged()
+    }
+
+    /// The page's Allow button. Present the system dialog now.
+    private func notifyPromptReady() {
+        guard notifyPromptArmed else { return }
+        notifyPromptArmed = false
+        notifyPromptAsked = true
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.notifyPromptOpen = false
+                self.notifyPromptArmed = false
+                self.notifyNotifyPermissionChanged()
+                self.refreshNotifyPermission()
+            }
+        }
+    }
+
+    /// The settings row's button. A first decision still goes through the
+    /// interstitial; a denial can only be reversed in System Settings.
     private func requestNotifyPermission() {
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { [weak self] settings in
             DispatchQueue.main.async {
                 guard let self else { return }
                 if settings.authorizationStatus == .notDetermined {
-                    center.requestAuthorization(options: [.alert, .sound]) { [weak self] _, _ in
-                        self?.refreshNotifyPermission()
-                    }
+                    self.beginNotifyPrompt()
+                    self.notifyNotifyPermissionChanged()
                 } else {
                     self.openNotificationSettings()
                 }
@@ -885,6 +934,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             "deepLinkHosts": AppConfig.deepLinkHosts,
             "openAtLogin": openAtLoginStatus(),
             "notifyPermission": notifyPermission,
+            "notifyPrompt": notifyPromptOpen,
         ]
         let json = (try? JSONSerialization.data(withJSONObject: obj))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"

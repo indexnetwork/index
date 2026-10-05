@@ -26,6 +26,137 @@ function useIndexEnv() {
   };
 }
 
+// Fictional, in the shape a real banner takes. Your agent sits on the left.
+// A person's photo, when there is one, sits on the right. An opportunity is
+// titled "New possibility:" plus the person. A question is titled "Question
+// from your agent". A message is the sender's name, then what they wrote.
+const NOTIFY_PREVIEWS = [
+  { lead:"New possibility:", name:"Leah Okonkwo", body:"She's building a rocket ship and needs the guidance system you've already flown.", face:"leah" },
+  { title:"Question from your agent", body:"Have you flown anything past the atmosphere, or only ground tests? I need that before I look further." },
+  { title:"Noah Ellis", body:"The tank weld lined up with the ship you're building. Sending the test notes.", face:"noah" },
+];
+
+function saveNotifyPromptChoices() {
+  const prev = (window.IndexApp && window.IndexApp.notifyPrefs && window.IndexApp.notifyPrefs()) || {};
+  const toast = {
+    ...prev,
+    opportunity: true,
+    accepted: true,
+    messages: true,
+  };
+  if (window.IndexApp && window.IndexApp.setNotifyPrefs) window.IndexApp.setNotifyPrefs(toast);
+  const me = window.INDEX_DATA && window.INDEX_DATA.ME;
+  if (me) {
+    me.notify = { ...(me.notify || {}), ...toast };
+    me.notificationPreferences = { ...(me.notificationPreferences || {}), ...toast };
+  }
+  const client = window.IndexApp && window.IndexApp.getClient && window.IndexApp.getClient();
+  if (client) client.auth.updateProfile({ notificationPreferences: toast }).catch(() => {});
+}
+
+const PREVIEW_FACES = {
+  leah:"data:image/jpeg;base64,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",
+  noah:"data:image/jpeg;base64,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",
+};
+
+function NotifyPreview({ lead, title, name, body, face }) {
+  const thumb = face && PREVIEW_FACES[face];
+  return (
+    <div style={{
+      display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
+      gap:12, alignItems:"center",
+      padding:"10px 12px",
+      background:"#fff", color:"#000",
+      border:"1px solid #000",
+      boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
+    }}>
+      <AgentAvatar size={36} seed="index" title="your agent"/>
+      <span style={{ display:"grid", gap:3, minWidth:0 }}>
+        <span style={{
+          display:"flex", alignItems:"baseline", gap:6, minWidth:0,
+          fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+        }}>
+          {lead && <span style={{ flex:"0 0 auto" }}>{lead}</span>}
+          <span style={{ minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{name || title}</span>
+        </span>
+        {body && (
+          <span style={{
+            fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.4, color:"var(--ink-2)",
+          }}>{body}</span>
+        )}
+      </span>
+      {thumb
+        ? <img alt="" src={thumb} width={36} height={36} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", display:"block" }}/>
+        : <span style={{ width:36 }}/>}
+    </div>
+  );
+}
+
+// Shown while macOS has not been asked yet. Allow turns on the three toasts
+// and raises the system dialog, which this screen stays behind until it is
+// answered. Not now leaves the choice for later.
+function NotifyPermissionInterstitial() {
+  const app = window.IndexApp;
+  const [open, setOpen] = useState(() => !!(app && app.notifyPrompt && app.notifyPrompt()));
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => {
+    if (!app || !app.onNotifyPromptChanged) return;
+    return app.onNotifyPromptChanged((next) => {
+      setOpen(!!next);
+      if (!next) setWaiting(false);
+    });
+  }, []);
+  if (!open) return null;
+  const allow = () => {
+    if (waiting || !app || !app.notifyPromptReady) return;
+    saveNotifyPromptChoices();
+    setWaiting(true);
+    app.notifyPromptReady();
+  };
+  const skip = () => {
+    if (waiting || !app || !app.dismissNotifyPrompt) return;
+    app.dismissNotifyPrompt();
+  };
+  return (
+    <div className="mac-desktop" style={{ position:"fixed", inset:0, zIndex:950, display:"grid", placeItems:"center", padding:"56px 40px" }}>
+      <MacWindow title="notifications" style={{ width:480, maxWidth:"100%" }}>
+        <div style={{ padding:"22px 22px 18px" }}>
+          <h1 style={{
+            fontFamily:"var(--mac-mono)", fontWeight:600,
+            fontSize:13, lineHeight:1.3, letterSpacing:0,
+            margin:0, color:"#000",
+          }}>don't miss the good ones.</h1>
+          <p style={{
+            margin:"8px 0 0",
+            fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
+          }}>
+            index is always looking. this is how it reaches you.
+          </p>
+          <div style={{ display:"grid", gap:9, marginTop:14 }}>
+            {NOTIFY_PREVIEWS.map((preview) => (
+              <NotifyPreview key={preview.title || preview.name} {...preview}/>
+            ))}
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:14, marginTop:16 }}>
+            <Btn primary disabled={waiting} onClick={allow}>
+              {waiting ? "waiting for macos…" : "allow"}
+            </Btn>
+            {!waiting && (
+              <button
+                onClick={skip}
+                style={{
+                  border:"none", background:"none", padding:0, cursor:"pointer",
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                  textDecoration:"underline", textUnderlineOffset:3,
+                }}>not now</button>
+            )}
+          </div>
+        </div>
+      </MacWindow>
+    </div>
+  );
+}
+
 function nativeAuthed() {
   return !!(window.IndexApp && window.IndexApp.isAuthed());
 }
@@ -663,6 +794,7 @@ function App() {
           </div>
         )}
         {notice && <MacNotice text={notice} onDismiss={() => setNotice(null)}/>}
+        <NotifyPermissionInterstitial/>
         {screen === "main"        && (
           <MainView
             profile={profile}

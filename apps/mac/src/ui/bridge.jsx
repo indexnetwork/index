@@ -440,6 +440,24 @@ window.IndexApp = (function () {
     return post("requestNotifyPermission");
   }
 
+  // True only while the system notification dialog is up. The page paints an
+  // explanation first, then tells Swift it can present the dialog.
+  const notifyPromptSubscribers = new Set();
+  window.__indexNotifyPromptChanged = function (open) {
+    notifyPromptSubscribers.forEach((cb) => { try { cb(!!open); } catch (e) { /* ignore */ } });
+  };
+  function onNotifyPromptChanged(cb) {
+    notifyPromptSubscribers.add(cb);
+    return () => notifyPromptSubscribers.delete(cb);
+  }
+  function notifyPrompt() { return native().notifyPrompt === true; }
+  function notifyPromptReady() {
+    return post("notifyPromptReady");
+  }
+  function dismissNotifyPrompt() {
+    return post("dismissNotifyPrompt");
+  }
+
   // The Dock icon shows the same waiting total as the hub. Zero clears it.
   // No-op in browser preview, where there is no Dock tile.
   function setDockBadge(count) {
@@ -559,6 +577,10 @@ window.IndexApp = (function () {
     notifyPermission,
     onNotifyPermissionChanged,
     requestNotifyPermission,
+    notifyPrompt,
+    onNotifyPromptChanged,
+    notifyPromptReady,
+    dismissNotifyPrompt,
     startDesktopNotifications,
     confirmOnboardingProfile,
     completeOnboarding,

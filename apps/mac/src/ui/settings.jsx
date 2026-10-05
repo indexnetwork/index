@@ -917,7 +917,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
     opportunity: prefer("opportunity"),
     accepted: prefer("accepted"),
     messages: prefer("messages"),
-    morningBrief: accountNotify.morningBrief !== false,
+    morningBrief: prefer("morningBrief"),
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -969,6 +969,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       opportunity: notify.opportunity,
       accepted: notify.accepted,
       messages: notify.messages,
+      morningBrief: notify.morningBrief,
     };
     if (window.IndexApp && window.IndexApp.setNotifyPrefs) window.IndexApp.setNotifyPrefs(toast);
     if (live && client) {
