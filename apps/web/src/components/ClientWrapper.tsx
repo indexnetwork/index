@@ -4,6 +4,9 @@ import { NetworkFilterProvider } from "@/contexts/NetworkFilterContext";
 import { NetworksProvider } from "@/contexts/NetworksContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useCompact } from "@/hooks/useCompact";
+import { useVisualViewport } from "@/hooks/useVisualViewport";
+import MobileTabBar, { isTabRoot } from "@/components/workbench/MobileTabBar";
 
 const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents'];
 // /l is the chrome-free web invite join.
@@ -12,6 +15,7 @@ const bareRoutes = ['/', '/l', '/login', '/download', '/i/new', '/found-in-trans
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
   const { isAuthenticated } = useAuthContext();
+  const compact = useCompact();
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.
@@ -28,6 +32,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   }, [pathname]);
 
   const showAppShell = isAppRoute && !isBareRoute;
+  useVisualViewport(showAppShell);
 
   if (isBareRoute) {
     return <NetworksProvider>{children}</NetworksProvider>;
@@ -37,7 +42,9 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     <NetworksProvider>
       <ConversationProvider>
       <NetworkFilterProvider>
-          <div className="backdrop relative min-h-screen bg-[#FDFDFD]">
+          {/* No min-h-screen under the app shell: iOS 100vh is the toolbar-hidden
+              height, which made the document scroll the shell under the URL bar. */}
+          <div className={`backdrop relative bg-[#FDFDFD] ${showAppShell ? "" : "min-h-screen"}`}>
             {/* Plain style tag: styled-jsx is a Next.js feature and no longer
                 transforms after the react-router/Vite migration — `<style jsx>`
                 leaked `jsx={true}` onto the DOM element (React non-boolean
@@ -58,10 +65,11 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
             `}</style>
 
             {showAppShell ? (
-              <div className="workbench mac-desktop h-screen overflow-hidden">
-                <main className="h-full overflow-hidden flex flex-col">
+              <div className="workbench mac-desktop wb-viewport overflow-hidden flex flex-col">
+                <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
                   {children}
                 </main>
+                {compact && isAuthenticated && isTabRoot(pathname) && <MobileTabBar />}
               </div>
             ) : (
               <main className="flex flex-col min-h-screen">

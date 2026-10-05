@@ -8,6 +8,8 @@ import { User } from "@/lib/types";
 import ChatView from "@/components/chat/ChatView";
 import ChatSidebar from "@/components/ChatSidebar";
 import { Stage, Window } from "@/components/workbench/Workbench";
+import { useCompact } from "@/hooks/useCompact";
+import { useBack } from "@/hooks/useBack";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { APIError, isNotFoundError } from "@/lib/api";
 import { log } from "@/lib/logger";
@@ -71,7 +73,10 @@ export default function ChatPage() {
     return () => { cancelled = true; };
   }, [id, isAuthenticated, authLoading, usersService, reloadKey]);
 
-  const leave = () => navigate("/");
+  const compact = useCompact();
+  const back = useBack("/chat");
+  // Compact threads are a drill-in, so the box goes back rather than home.
+  const leave = compact ? back : () => navigate("/");
 
   if (authLoading || !isAuthenticated) {
     return (
@@ -87,10 +92,12 @@ export default function ChatPage() {
   return (
     <Stage width={860} height="min(660px, calc(100vh - 112px))">
       <Window title="conversations" onClose={leave} style={{ height: "100%" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
-          <div style={{ borderRight: "2px solid #000", minHeight: 0, overflow: "hidden" }}>
-            <ChatSidebar />
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "280px minmax(0, 1fr)", minHeight: 0, flex: 1 }}>
+          {!compact && (
+            <div style={{ borderRight: "2px solid #000", minHeight: 0, overflow: "hidden" }}>
+              <ChatSidebar />
+            </div>
+          )}
           <div style={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
             {showMissingUser ? (
               <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 24 }}>

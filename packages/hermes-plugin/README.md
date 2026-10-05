@@ -49,7 +49,7 @@ New to Hermes? [Get Hermes](https://hermes-agent.nousresearch.com/).
 
 ## Requirements
 
-- Hermes, with the gateway running
+- Hermes Desktop open, or the Hermes gateway running (`hermes gateway run`)
 - [Bun](https://bun.sh), which runs the negotiator
 - An Index account; logging in with the browser creates one
 
@@ -60,7 +60,8 @@ New to Hermes? [Get Hermes](https://hermes-agent.nousresearch.com/).
 
 - The plugin calls the Index REST API (`/intents`, `/networks`, `/opportunities`, `/docs`) with this device's own session, which is saved as `INDEX_SESSION_TOKEN` in the Hermes env file. Rejected writes are never replayed.
 - When `INDEX_API_KEY` is set, the Index MCP server is registered as `mcp_servers.index`.
-- When Hermes is your selected negotiator, the gateway starts `runtime/dist/negotiator.js` (`@indexnetwork/agent`) as a child process and restarts it if it exits. It stops when the gateway stops, when you pause, or when you select another negotiator.
+- When Hermes is your selected negotiator, a long-running Hermes server starts `runtime/dist/negotiator.js` (`@indexnetwork/agent`) with Bun as a background child process, and restarts it if it exits. That server is `hermes gateway run`, Desktop's `hermes serve` backend, or `hermes dashboard`. CLI commands never start it. A lock file, `index-negotiator.lock` in the Hermes home, keeps it to one process. It stops when that server stops, when you pause, or when you select another negotiator. While it runs, it calls the Index API with an API key minted from your session and makes model calls through Hermes.
+- The desktop half ships as `desktop/plugin.js` and stays off until enabled. It only configures the negotiator; the negotiator runs without it.
 - The morning brief is off until you turn it on in Profile. While this install is the selected negotiator, that switch creates a Hermes cron job at 08:00. Each run wakes the negotiator once per active intent that belongs to a network, which spends a model call and can send outreach. Turning it off, pausing, deselecting Hermes, or uninstalling removes the job.
 - **Sign out** in the Discover tab revokes the session on the server.
 - Overrides: `INDEX_API_URL` (default `https://protocol.index.network`) and `INDEX_APP_BASE_URL`.

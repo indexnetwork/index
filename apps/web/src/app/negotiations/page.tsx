@@ -8,6 +8,8 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { NegotiationSummary, NegotiationTurn } from "@/services/negotiations";
+import { useCompact } from "@/hooks/useCompact";
+import { useBack } from "@/hooks/useBack";
 
 const emptyBox = { borderColor: "#000", padding: "18px 16px" } as const;
 
@@ -16,6 +18,8 @@ type HistoryMode = "stream" | "grouped";
 
 export default function NegotiationsPage() {
   const navigate = useNavigate();
+  const compact = useCompact();
+  const back = useBack("/");
   const { isAuthenticated, isLoading, user } = useAuthContext();
   const { negotiations, negotiationsStatus, refreshNegotiations } = useConversation();
   const negotiationsService = useNegotiations();
@@ -116,7 +120,7 @@ export default function NegotiationsPage() {
   if (isLoading || !isAuthenticated) return null;
   return (
     <Stage width={1000} height="calc(100vh - 112px)">
-      <Window title="negotiation history" onClose={() => navigate("/")} style={{ height: "100%" }}>
+      <Window title="negotiation history" onClose={compact ? back : () => navigate("/")} style={{ height: "100%" }}>
         <div style={{ display: "grid", gridTemplateRows: "auto 1fr", flex: 1, minHeight: 0 }}>
           <div style={{
             padding: "10px 16px", borderBottom: "2px solid #000", background: "#fff",
@@ -131,7 +135,24 @@ export default function NegotiationsPage() {
               { value: "all", label: "all" }, { value: "won", label: "won" }, { value: "lost", label: "lost" }, { value: "open", label: "open" },
             ]} />
           </div>
-          {mode === "stream" ? log : (
+          {mode === "stream" ? log : compact ? (
+            // One pane: the session list until a session is picked, then its log.
+            selectedId && selected ? (
+              <div style={{ display: "grid", gridTemplateRows: "auto 1fr", minHeight: 0 }}>
+                <button type="button" onClick={() => setSelectedId(null)} style={{
+                  padding: "10px 16px", border: "none", borderBottom: "1px solid #000", background: "#F2F0EC",
+                  textAlign: "left", fontFamily: "var(--mac-mono)", fontSize: 12, color: "#000", cursor: "pointer",
+                }}>← all sessions</button>
+                {log}
+              </div>
+            ) : (
+              <div className="mac-scroll" style={{ overflowY: "auto", padding: "12px 10px", background: "#F2F0EC", display: "flex", flexDirection: "column", gap: 6 }}>
+                {filtered.length === 0 ? log : filtered.map((th) => (
+                  <NegoThreadRow key={th.id} th={th} active={false} onPick={() => setSelectedId(th.id)} />
+                ))}
+              </div>
+            )
+          ) : (
             <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", minHeight: 0 }}>
               <div className="mac-scroll" style={{
                 overflowY: "auto", padding: "12px 10px", borderRight: "2px solid #000", background: "#F2F0EC",

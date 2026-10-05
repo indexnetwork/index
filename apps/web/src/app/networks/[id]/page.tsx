@@ -13,6 +13,7 @@ import { Network } from '@/lib/types';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { APIError } from "@/lib/api";
+import { useCompact } from "@/hooks/useCompact";
 
 const logger = log.page.from('networks/[id]');
 
@@ -57,6 +58,7 @@ export interface NetworkDetailProps {
 export default function NetworkDetailPage({ networkIdOverride, basePath }: NetworkDetailProps = {}) {
   const params = useParams();
   const navigate = useNavigate();
+  const compact = useCompact();
   const { user } = useAuthContext();
   const { networks } = useNetworksState();
   const networksService = useNetworks();
@@ -190,7 +192,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
         />
       ) : network ? (
         <Tabs.Root value={isOwner ? activeTab : "overview"} onValueChange={handleTabChange} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "14px 24px 0", borderBottom: "2px solid #000" }}>
+          <div style={{ padding: compact ? "12px 16px 0" : "14px 24px 0", borderBottom: "2px solid #000" }}>
             <button type="button" onClick={() => navigate('/networks')} style={{ padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>← back</button>
             <div style={{ marginTop: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 14 }}>
               <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
@@ -214,7 +216,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
               </Tabs.List>
             )}
           </div>
-          <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 24px 20px" }}>
+          <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: compact ? "14px 16px 20px" : "14px 24px 20px" }}>
             <Tabs.Content value="overview">
               <NetworkOverviewPanel network={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
             </Tabs.Content>

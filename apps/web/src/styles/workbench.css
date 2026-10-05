@@ -440,6 +440,9 @@
   z-index: 1000;
   display: grid;
   place-items: center;
+  /* An auto track grows to the window's 420px, so max-width: 100% never
+     binds and phones zoom out to fit the overflow. */
+  grid-template-columns: minmax(0, 1fr);
   padding: 56px 40px;
 }
 .wb-auth-h {
@@ -620,4 +623,231 @@
   font-family: var(--mac-mono);
   font-size: 13px;
   text-align: left;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────
+   Desktop: floating windows on the blue desktop. Medium: same, tighter
+   margins. Compact (phones, keep in sync with COMPACT_QUERY in
+   hooks/useCompact.ts): the window is the screen and navigation moves to
+   the bottom tab bar (.wb-tabbar). */
+@media (max-width: 1024px) {
+  .wb-stage {
+    padding: 32px 20px;
+  }
+}
+
+/* The app shell, pinned to what is actually visible. Fixed so the document
+   never scrolls behind it; height and offset track visualViewport
+   (hooks/useVisualViewport.ts), falling back to 100dvh. */
+.wb-viewport {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--vv-h, 100dvh);
+  transform: translateY(var(--vv-top, 0px));
+}
+
+/* Hidden everywhere but compact; the tab bar only mounts in compact anyway. */
+.wb-tabbar {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .workbench {
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wb-stage {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .wb-stage .amiga-window {
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    box-shadow: none;
+    flex: 1;
+  }
+
+  /* Titlebar doubles as the app bar: 44px tall for thumbs, safe-area aware. */
+  .mac-titlebar {
+    height: calc(44px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+  .mac-titlebar .mac-title {
+    font-size: 14px;
+    background-position: 0 7px;
+  }
+  .mac-titlebar .mac-title > .t {
+    padding: 0 14px 0 12px;
+  }
+  .mac-titlebar .mac-close {
+    width: 44px;
+  }
+  .mac-titlebar .mac-back::before {
+    width: 20px;
+    height: 20px;
+  }
+  .mac-titlebar .mac-back::after {
+    width: 8px;
+    height: 8px;
+    background: transparent;
+    border-left: 2px solid var(--amiga-fg);
+    border-bottom: 2px solid var(--amiga-fg);
+    transform: translate(-30%, -50%) rotate(45deg);
+  }
+
+  /* iOS zooms into any field under 16px; inline sizes need the override. */
+  .workbench input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .workbench textarea,
+  .workbench select {
+    font-size: 16px !important;
+  }
+
+  .wb-btn {
+    min-height: 36px;
+  }
+  .wb-btn.small {
+    min-height: 32px;
+  }
+  .wb-segmented {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .wb-segmented::-webkit-scrollbar {
+    display: none;
+  }
+  .wb-segmented button {
+    flex: 0 0 auto;
+    min-height: 32px;
+    padding: 3px 10px;
+  }
+  .wb-segmented.lg button {
+    padding: 6px 11px;
+    font-size: 12.5px;
+  }
+  .wb-shelf-row {
+    height: 64px;
+    padding: 0 14px;
+  }
+  .wb-new-signal {
+    padding: 13px 16px;
+  }
+
+  .wb-auth {
+    padding: 24px 16px;
+  }
+
+  .wb-tabbar {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    flex: 0 0 auto;
+    background: var(--amiga-paper);
+    border-top: 2px solid var(--amiga-fg);
+    padding-bottom: env(safe-area-inset-bottom);
+    position: relative;
+    z-index: 30;
+  }
+}
+
+.wb-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 56px;
+  border: none;
+  border-left: 1px solid var(--ink-4);
+  background: var(--amiga-paper);
+  color: var(--amiga-fg);
+  font-family: var(--mac-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: lowercase;
+}
+.wb-tab:first-child {
+  border-left: none;
+}
+.wb-tab[aria-current="page"] {
+  background: var(--amiga-accent);
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 #8a4500, inset -1px -1px 0 #ffd7a0;
+}
+.wb-tab:active {
+  background: #000;
+  color: var(--amiga-accent);
+}
+.wb-tab .wb-tab-badge {
+  position: absolute;
+  top: 5px;
+  left: calc(50% + 6px);
+  min-width: 16px;
+  padding: 1px 4px;
+  border: 1px solid #000;
+  background: var(--amiga-accent);
+  font-family: var(--mac-sans);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  color: #000;
+}
+.wb-tab[aria-current="page"] .wb-tab-badge {
+  background: #fff;
+}
+
+/* "you" sheet: slides up over the tab bar, Workbench window styling. */
+.wb-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(0, 85, 170, 0.28);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.wb-sheet {
+  background: var(--amiga-paper);
+  border-top: 2px solid var(--amiga-fg);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: wb-sheet-up 180ms cubic-bezier(.2, .7, .2, 1) both;
+}
+@keyframes wb-sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-sheet { animation: none; }
+}
+.wb-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 50px;
+  padding: 0 18px;
+  border: none;
+  border-top: 1px solid var(--ink-4);
+  background: var(--amiga-paper);
+  font-family: var(--mac-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: #000;
+  text-align: left;
+}
+.wb-sheet-row:active {
+  background: #000;
+  color: var(--amiga-accent);
+}
+.wb-sheet-row.danger {
+  color: var(--ink-warn);
+  font-weight: 600;
+  border-top: 2px solid #000;
 }

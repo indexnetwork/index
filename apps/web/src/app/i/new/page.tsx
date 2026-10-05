@@ -8,6 +8,8 @@ import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
 import { Btn, Window } from "@/components/workbench/Workbench";
 import { signalService, type PrepareAnswer, type RecoveryField } from "@/services/signals";
 import { APIError } from "@/lib/api";
+import { useCompact } from "@/hooks/useCompact";
+import { useVisualViewport } from "@/hooks/useVisualViewport";
 
 const OPENING_PROMPT = "what are you looking for right now?";
 const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
@@ -27,6 +29,8 @@ type Turn = { id: string; prompt: string; answer: string };
 /** Prepare the draft, asking follow-ups until it's ready, then create it. */
 export default function NewSignalPage() {
   const navigate = useNavigate();
+  const compact = useCompact();
+  useVisualViewport();
   const { isAuthenticated } = useAuthContext();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [stage, setStage] = useState<Stage>("opening");
@@ -88,18 +92,18 @@ export default function NewSignalPage() {
   const stepIdx = stage === "opening" ? 1 : 2;
 
   return (
-    <div className="workbench mac-desktop" style={{ position: "relative", height: "100vh" }}>
+    <div className="workbench mac-desktop wb-viewport">
       {creating || (thinking && recoveryUsed) ? (
         <Calibrating />
       ) : (
-        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: "56px 40px", overflow: "auto" }}>
-          <div style={{
+        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: compact ? "stretch" : "center", padding: compact ? 0 : "56px 40px", overflow: "auto" }}>
+          <div style={compact ? { display: "flex", flexDirection: "column", minHeight: 0 } : {
             width: 980, maxWidth: "100%",
             display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 18,
-            height: "min(720px, calc(100vh - 128px))",
+            height: "min(720px, calc(100dvh - 128px))",
           }}>
-            <Window title="calibrating" onClose={() => navigate("/")}>
-              <div style={{ padding: "18px 28px 12px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+            <Window title="calibrating" onClose={() => navigate("/")} style={compact ? { flex: 1, border: "none", boxShadow: "none" } : undefined}>
+              <div style={{ padding: compact ? "14px 16px 10px" : "18px 28px 12px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
                   <button type="button" onClick={() => navigate("/")} style={{ fontFamily: "var(--mac-mono)", fontSize: 13, color: "#000", background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>← back</button>
                 </div>
@@ -114,7 +118,7 @@ export default function NewSignalPage() {
                     ))}
                   </div>
                 </div>
-                <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20, marginRight: -28, paddingRight: 28, paddingBottom: 18 }}>
+                <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20, marginRight: compact ? -16 : -28, paddingRight: compact ? 16 : 28, paddingBottom: 18 }}>
                   {turns.map((turn) => (
                     <PastTurn key={turn.id} prompt={turn.prompt} answer={turn.answer} />
                   ))}
@@ -145,9 +149,12 @@ export default function NewSignalPage() {
                 </div>
               </div>
             </Window>
-            <Window title="warming up">
-              <FieldPreview turns={turns} stepIdx={stepIdx} />
-            </Window>
+            {/* The live preview is a side panel; a phone has no side. */}
+            {!compact && (
+              <Window title="warming up">
+                <FieldPreview turns={turns} stepIdx={stepIdx} />
+              </Window>
+            )}
           </div>
         </div>
       )}
@@ -304,8 +311,8 @@ function FieldGlyph() {
 
 function Calibrating() {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
-      <Window title="calibrating" style={{ width: 420, height: "auto" }}>
+    <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center" }}>
+      <Window title="calibrating" style={{ width: 420, maxWidth: "calc(100% - 32px)", height: "auto" }}>
         <div style={{ padding: "26px 28px 24px", textAlign: "center" }}>
           <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginBottom: 18 }}>
             <span className="wb-live" style={{ width: 9, height: 9 }} />

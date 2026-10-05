@@ -107,7 +107,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", placeItems: "center", background: "rgba(0,85,170,0.28)", padding: 24 }}
+      style={{ position: "fixed", inset: 0, zIndex: 110, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", placeItems: "center", background: "rgba(0,85,170,0.28)", padding: 24 }}
       onClick={() => handleOpenChange(false)}
     >
       <div

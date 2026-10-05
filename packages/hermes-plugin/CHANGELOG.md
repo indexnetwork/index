@@ -4,6 +4,8 @@
 ## Unreleased
 
 ### Changed
+- The negotiator runs in any Hermes server, not only the gateway: `hermes gateway run`, Desktop's `hermes serve` backend, or `hermes dashboard`. Before, it waited 60 seconds for a gateway runner, so Desktop alone never started it. A lock file in the Hermes home keeps it to one process. The plugin no longer reads the gateway's private runner reference to decide this.
+- Negotiator turns are written to the Hermes session list through the shared session database, so they show in the sidebar under any Hermes server. Before, they were written only through the gateway's private session store, so under Desktop alone they never appeared.
 - Negotiator completions use the gateway's main model client. They no longer go through the auxiliary client.
 - The desktop bundle ships at `desktop/plugin.js`. Hermes installs that half and keeps it off until enabled. The plugin no longer copies itself into `desktop-plugins`.
 - Discover no longer wraps `history.pushState` or inserts buttons into the host header. The web dashboard uses the `header-right` slot. Desktop keeps its own header.

@@ -2,9 +2,9 @@
 
 The negotiator is `@indexnetwork/agent` on `@indexnetwork/client`, bundled
 into `runtime/dist/negotiator.js`. This module starts it while this machine is
-the owner's selected negotiator, keeps that child alive for the gateway
-process, and stops it when the gateway exits or the selection moves
-elsewhere. It holds no negotiation state.
+the owner's selected negotiator, keeps that child alive for the Hermes server
+process (the gateway or Desktop's backend), and stops it when that process
+exits or the selection moves elsewhere. It holds no negotiation state.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ READY_SECONDS = 30.0
 CALL_SECONDS = 300.0
 RESTART_SECONDS = 1.0
 STATE_FILE = "index-negotiator.json"
+LOCK_FILE = "index-negotiator.lock"
 
 
 def read_state(path: Path) -> dict:
@@ -84,7 +85,34 @@ class Sidecar:
         self._wanted: tuple[str, str] | None = None
         self._agent_id = ""
         self._url = ""
+        self._slot: int | None = None
         atexit.register(self.stop)
+
+    def _claim(self) -> bool:
+        """Hold the one negotiator slot for this Hermes home.
+
+        The gateway and Desktop's backend may run at once; the lock keeps the
+        negotiator to one of them, and the OS frees it when that process exits.
+        """
+        if self._slot is not None:
+            return True
+        try:
+            import fcntl
+        except ImportError:
+            return True
+        fd = os.open(self.state_path.with_name(LOCK_FILE), os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            return False
+        self._slot = fd
+        return True
+
+    def _release(self) -> None:
+        fd, self._slot = self._slot, None
+        if fd is not None:
+            os.close(fd)
 
     def start(self, account: str, agent_id: str) -> None:
         """Ensure a negotiator is running for this owner and selected agent.
@@ -97,6 +125,8 @@ class Sidecar:
         @param agent_id - The selected external agent's ID.
         """
         with self._lock:
+            if not self._claim():
+                return
             write_state(self.state_path, paused=False)
             self._wanted = (account, agent_id)
             if self._process is not None and self._process.poll() is None:
@@ -156,15 +186,14 @@ class Sidecar:
             if paused:
                 write_state(self.state_path, paused=True)
             self._wanted = None
-            if self._process is None:
-                return
-            if self._process.poll() is None:
+            if self._process is not None and self._process.poll() is None:
                 try:
                     self._post("/shutdown", {})
                     self._process.wait(timeout=15)
                 except Exception:  # noqa: BLE001 - a stuck process is killed below
                     pass
             self._terminate()
+            self._release()
 
     @property
     def running(self) -> bool:

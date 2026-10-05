@@ -94,68 +94,45 @@ def _project_folder() -> Path:
     return folder
 
 
-class _IndexOrigin:
-    """Session key label. Hermes groups a session by this value; it is not a connected platform."""
-
-    value = PLATFORM
-
-
-def _session_store():
-    """The gateway's session store, present only in the gateway process."""
-    import sys
-
-    run = sys.modules.get("gateway.run")
-    ref = getattr(run, "_gateway_runner_ref", None) if run is not None else None
-    runner = ref() if ref is not None else None
-    return getattr(runner, "session_store", None) if runner is not None else None
-
-
 def _record(messages: list, assistant: dict) -> None:
     """Append this step onto the Index session so it shows in the Hermes session list."""
     located = _chat(messages)
     if located is None:
         return
-    store = _session_store()
-    if store is None:
-        return
     chat_id, title = located
-    from gateway.session import SessionSource
+    import hermes_state_registry
 
-    source = SessionSource(
-        platform=_IndexOrigin(), chat_id=chat_id, chat_type="dm", chat_name=title,
-        user_id="index", user_name="Index",
-    )
-    entry = store.get_or_create_session(source)
-    session_db = store._db_for_key(entry.session_key) if hasattr(store, "_db_for_key") else None
-    session_db = getattr(session_db, "_db", session_db) or getattr(store, "_db", None)
-    if session_db is None:
-        return
-    if not session_db.get_session_title(entry.session_id):
-        short = chat_id.split(":", 1)[0][:8]
-        for candidate in (title, f"{title} · {short}"):
-            try:
-                session_db.set_session_title(entry.session_id, candidate[:100])
-                break
-            except ValueError:
-                continue
-        session_db.update_session_cwd(entry.session_id, str(_project_folder()))
-    user = next((_text(message) for message in messages if message.get("role") == "user"), "")
-    previous, count = _written.get(chat_id, ("", 0))
-    if previous != user:
-        count = 0
-    pending = [message for message in messages[count:] if message.get("role") != "system"]
-    pending.append(assistant)
-    for message in pending:
-        content = _text(message)
-        tool_calls = message.get("tool_calls")
-        session_db.append_message(
-            entry.session_id,
-            role=str(message.get("role") or "assistant"),
-            content=content or None,
-            tool_calls=tool_calls if isinstance(tool_calls, list) else None,
-            tool_call_id=message.get("tool_call_id") if isinstance(message.get("tool_call_id"), str) else None,
-        )
-    _written[chat_id] = (user, len(messages) + 1)
+    session_id = f"{PLATFORM}_{chat_id.replace(':', '_')}"
+    session_db = hermes_state_registry.acquire()
+    try:
+        session_db.ensure_session(session_id, source=PLATFORM, cwd=str(_project_folder()))
+        if not session_db.get_session_title(session_id):
+            short = chat_id.split(":", 1)[0][:8]
+            for candidate in (title, f"{title} · {short}"):
+                try:
+                    session_db.set_session_title(session_id, candidate[:100])
+                    break
+                except ValueError:
+                    continue
+        user = next((_text(message) for message in messages if message.get("role") == "user"), "")
+        previous, count = _written.get(chat_id, ("", 0))
+        if previous != user:
+            count = 0
+        pending = [message for message in messages[count:] if message.get("role") != "system"]
+        pending.append(assistant)
+        for message in pending:
+            content = _text(message)
+            tool_calls = message.get("tool_calls")
+            session_db.append_message(
+                session_id,
+                role=str(message.get("role") or "assistant"),
+                content=content or None,
+                tool_calls=tool_calls if isinstance(tool_calls, list) else None,
+                tool_call_id=message.get("tool_call_id") if isinstance(message.get("tool_call_id"), str) else None,
+            )
+        _written[chat_id] = (user, len(messages) + 1)
+    finally:
+        hermes_state_registry.release_or_close(session_db)
 
 
 def _main_agent():

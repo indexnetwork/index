@@ -9,6 +9,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import type { Agent } from '@/services/agents';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { log } from "@/lib/logger";
+import { useCompact } from "@/hooks/useCompact";
 
 const logger = log.page.from("agents");
 
@@ -125,11 +126,14 @@ function RosterRow({
   onToggle?: () => void;
 }) {
   const [hover, setHover] = useState(false);
+  const compact = useCompact();
   const opens = !!(onClick || onToggle);
   const columns = id != null;
+  // Compact: name over detail, the id column drops, aside and chevron stay.
+  const stacked = compact && columns;
   const row: React.CSSProperties = {
     display: columns ? "grid" : "flex",
-    gridTemplateColumns: columns ? "minmax(0,1fr) 168px 84px 140px 18px" : undefined,
+    gridTemplateColumns: stacked ? "minmax(0,1fr) auto 18px" : columns ? "minmax(0,1fr) 168px 84px 140px 18px" : undefined,
     alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box",
     padding: "10px 12px", textAlign: "left",
     border: "none", borderBottom: last && !expanded ? "none" : "1px solid #000",
@@ -137,7 +141,22 @@ function RosterRow({
     cursor: opens ? "pointer" : "default",
     font: "inherit", color: "inherit",
   };
-  const body = (
+  const nameDetail = (
+    <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+      <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+        {badge}
+      </span>
+      <span style={{ minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
+    </span>
+  );
+  const body = stacked ? (
+    <>
+      {nameDetail}
+      <span onClick={onToggle ? (e) => e.stopPropagation() : undefined} style={{ minWidth: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", fontFamily: "var(--mac-mono)", fontSize: 12, color: "var(--ink-2)" }}>{aside}</span>
+      <span aria-hidden="true" style={{ width: 18, textAlign: "center", fontFamily: "var(--mac-mono)", fontSize: 12, color: "#000" }}>{onToggle ? (expanded ? "▾" : "›") : ""}</span>
+    </>
+  ) : (
     <>
       <span style={{ flex: columns ? undefined : "1 1 34%", minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ minWidth: 0, fontFamily: "var(--mac-mono)", fontSize: 13, fontWeight: 700, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
@@ -180,6 +199,7 @@ function OptionToggle({ on, title, blurb, onClick }: { on: boolean; title: strin
 
 export default function AgentsPage() {
   const navigate = useNavigate();
+  const compact = useCompact();
   const { isAuthenticated, isLoading: authLoading, user } = useAuthContext();
   const agentsService = useAgents();
   const { success, error } = useNotifications();
@@ -312,8 +332,8 @@ export default function AgentsPage() {
   return (
     <>
       <Stage width={860} height="min(880px, calc(100vh - 96px))">
-      <Window title="agents" onClose={() => navigate('/')} style={{ height: '100%' }}>
-      <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: '18px 24px 22px' }}>
+      <Window title="agents" onClose={compact ? undefined : () => navigate('/')} style={{ height: '100%' }}>
+      <div className="mac-scroll" style={{ flex: 1, overflowY: 'auto', padding: compact ? '14px 16px 22px' : '18px 24px 22px' }}>
           {loading ? (
             <EmptyState tone="loading" style={{ padding: 28 }} />
           ) : loadFailed ? (
@@ -397,6 +417,7 @@ export default function AgentsPage() {
                         <div style={{ background: "#F2F0EC", borderBottom: last ? "none" : "1px solid #000", padding: "11px 12px 12px" }}>
                           <div style={{ display: "grid", gap: 8 }}>
                             <OptionToggle on={agent.notifyOnOpportunity} onClick={() => void toggleSetting(agent, "notifyOnOpportunity")} title="connection updates" blurb="tells this agent when an opportunity is accepted or someone reaches out." />
+                            {compact && <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-2)" }}>id <CopyId id={agent.id} /></div>}
                           </div>
                         </div>
                       )}

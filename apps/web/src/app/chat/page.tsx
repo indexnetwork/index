@@ -6,9 +6,11 @@ import ChatSidebar from "@/components/ChatSidebar";
 import { isVisibleH2HConversation } from "@/lib/conversation-visibility";
 import { Stage, Window } from "@/components/workbench/Workbench";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useCompact } from "@/hooks/useCompact";
 
 export default function ChatLandingPage() {
   const navigate = useNavigate();
+  const compact = useCompact();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { conversations, conversationsStatus } = useConversation();
   const hasConversations = conversations.some(isVisibleH2HConversation);
@@ -25,9 +27,23 @@ export default function ChatLandingPage() {
     if (!authLoading && !isAuthenticated) navigate("/", { replace: true });
   }, [authLoading, isAuthenticated, navigate]);
 
+  // Desktop opens the latest thread beside the list. Compact shows one pane,
+  // so /chat stays the list; jumping ahead would make back loop forever.
   useEffect(() => {
-    if (latestPeerId) navigate(`/u/${latestPeerId}/chat`, { replace: true });
-  }, [latestPeerId, navigate]);
+    if (latestPeerId && !compact) navigate(`/u/${latestPeerId}/chat`, { replace: true });
+  }, [latestPeerId, compact, navigate]);
+
+  if (compact) {
+    return (
+      <Stage>
+        <Window title="conversations">
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <ChatSidebar />
+          </div>
+        </Window>
+      </Stage>
+    );
+  }
 
   return (
     <Stage width={860} height="min(660px, calc(100vh - 112px))">

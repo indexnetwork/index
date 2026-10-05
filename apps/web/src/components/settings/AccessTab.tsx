@@ -9,6 +9,7 @@ import UserAvatar from '@/components/UserAvatar';
 import { RuleLabel } from '@/components/workbench/Workbench';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useCompact } from "@/hooks/useCompact";
 
 const logger = log.ui.from('AccessTab');
 const MEMBERS_PAGE_SIZE = 10;
@@ -37,6 +38,7 @@ export default function AccessTab({
   info: _info,
 }: AccessTabProps) {
   const navigate = useNavigate();
+  const compact = useCompact();
   const { user: currentUser } = useAuthContext();
   const { refreshNetworks } = useNetworksState();
 
@@ -283,7 +285,7 @@ export default function AccessTab({
     <div style={{ display: "grid", gap: 22 }}>
       <div>
         <RuleLabel>Visibility</RuleLabel>
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
+        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: compact ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
           <ChoiceCard title="Public" sub="Anyone can join" selected={anyoneCanJoin} onClick={() => { setAnyoneCanJoin(true); void handleUpdatePermissions(true); }} />
           <ChoiceCard title="Private" sub="Invite only" selected={!anyoneCanJoin} onClick={() => { setAnyoneCanJoin(false); void handleUpdatePermissions(false); }} />
         </div>
