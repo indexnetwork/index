@@ -1,4 +1,7 @@
+import { Navigate } from "react-router";
+
 import { useAuthContext } from "@/contexts/AuthContext";
+import { needsOnboarding } from "@/services/onboarding";
 import DiscoverHome from "@/components/DiscoverHome";
 import LandingPage from "@/app/landing/page";
 
@@ -10,9 +13,11 @@ import LandingPage from "@/app/landing/page";
  * loading screen while pending).
  */
 function RootPage() {
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, user } = useAuthContext();
 
   if (isAuthenticated) {
+    // Same durable gate as the Mac app: an unconfirmed profile reviews it first.
+    if (needsOnboarding(user)) return <Navigate to="/onboarding" replace />;
     return <DiscoverHome />;
   }
 

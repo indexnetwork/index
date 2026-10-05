@@ -10,6 +10,7 @@ import { signalService, type PrepareAnswer, type RecoveryField } from "@/service
 import { APIError } from "@/lib/api";
 import { useCompact } from "@/hooks/useCompact";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
+import { awaitsFirstSignal, onboardingService } from "@/services/onboarding";
 
 const OPENING_PROMPT = "what are you looking for right now?";
 const OPENING_PLACEHOLDER = "type what you're thinking about or tinkering on…";
@@ -31,7 +32,7 @@ export default function NewSignalPage() {
   const navigate = useNavigate();
   const compact = useCompact();
   useVisualViewport();
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, user, refetchUser } = useAuthContext();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [stage, setStage] = useState<Stage>("opening");
   const [payload, setPayload] = useState("");
@@ -78,6 +79,10 @@ export default function NewSignalPage() {
     setCreating(true);
     try {
       const created = await signalService.create(description, receipt);
+      // The first signal after the profile review finishes onboarding, as on the Mac.
+      if (awaitsFirstSignal(user)) {
+        void onboardingService.complete(created.intentId).then(() => refetchUser()).catch(() => {});
+      }
       navigate(`/i/${created.intentId}`);
     } catch (error) {
       setPreparationReceipt("");

@@ -13,6 +13,7 @@ import { parseSocial } from "@/lib/socials";
 import { forgetProtocolOrigin, isProtocolOrigin, rememberProtocolOrigin, visibleProtocolOrigin } from "@/lib/protocol-origin";
 import { useCompact } from "@/hooks/useCompact";
 import { useBack } from "@/hooks/useBack";
+import { assembleFirstRunProfile, lookupFoundNothing, onboardingService, type PublicProfileLookup } from "@/services/onboarding";
 
 const SETTINGS_TABS = ["profile", "notifications", "access", "advanced"] as const;
 
@@ -27,7 +28,22 @@ function isSettingsTab(v: string | null): v is SettingsTab {
   return v !== null && (SETTINGS_TABS as readonly string[]).includes(v);
 }
 
+/**
+ * First run: the getting-started review the Mac app shows after the lookup.
+ * Profile only, prefilled from the lookup; "looks good" saves, confirms the
+ * profile, then hands off to `onDone`.
+ */
+export interface FirstRunReview {
+  lookup: PublicProfileLookup | null;
+  name: string;
+  onDone: () => void;
+}
+
 export default function ProfilePage() {
+  return <ProfileSettings />;
+}
+
+export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}) {
   const navigate = useNavigate();
   const compact = useCompact();
   const back = useBack("/");
@@ -62,10 +78,10 @@ export default function ProfilePage() {
   }>({});
 
   const tabParam = searchParams.get("tab");
-  const activeTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "profile";
+  const activeTab: SettingsTab = firstRun ? "profile" : isSettingsTab(tabParam) ? tabParam : "profile";
 
   const [saving, setSaving] = useState(false);
-  const [, setIsDirty] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
@@ -80,11 +96,15 @@ export default function ProfilePage() {
 
   const resetForm = (u: typeof user) => {
     if (!u) return;
-    setName(u.name || "");
-    setIntro(u.intro || "");
-    setLocation(u.location || "");
+    // First run opens on the account record with the lookup filling its blanks.
+    const base = firstRun
+      ? assembleFirstRunProfile(u, firstRun.lookup, firstRun.name)
+      : { name: u.name || "", intro: u.intro || "", location: u.location || "", socials: (u.socials ?? []).map((s: { label: string; value: string }) => ({ label: s.label, value: s.value })) };
+    setName(base.name);
+    setIntro(base.intro);
+    setLocation(base.location);
     setTimezone(u.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-    setSocials((u.socials ?? []).map((s: { label: string; value: string }) => ({ label: s.label, value: s.value })));
+    setSocials(base.socials);
     setNotificationPreferences(u.notificationPreferences || {});
     setAvatarFile(null);
     setAvatarPreview(null);
@@ -96,6 +116,8 @@ export default function ProfilePage() {
   useEffect(() => { resetForm(user); }, [user]); // eslint-disable-line react-hooks/set-state-in-effect -- resetForm mirrors server-fetched user into editable form fields; legitimate sync-from-external-state pattern.
 
   const mark = () => setIsDirty(true);
+  // The server only confirms a profile that has a name or an intro.
+  const confirmBlocked = !!firstRun && !name.trim() && !intro.trim();
 
   const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -132,6 +154,13 @@ export default function ProfilePage() {
         notificationPreferences,
       });
 
+      if (firstRun) {
+        // Same order as the Mac app: save, confirm, then the first signal.
+        await onboardingService.confirmProfile();
+        await refetchUser();
+        firstRun.onDone();
+        return;
+      }
       await refetchUser();
       setAvatarFile(null);
       setAvatarPreview(null);
@@ -168,11 +197,25 @@ export default function ProfilePage() {
   return (
       <>
         <Stage width={860} height="min(660px, calc(100vh - 112px))">
-        <Window title="settings" onClose={compact ? back : () => navigate("/")} style={{ height: "100%" }}>
-        <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
-          <div style={{ marginBottom: 18 }}>
-            <SettingsTabs />
+        <Window
+          title={firstRun ? "getting started" : "settings"}
+          // First run has nothing behind it to close back to, so the box signs out, as on the Mac.
+          onClose={firstRun ? () => void signOut() : compact ? back : () => navigate("/")}
+          style={{ height: "100%" }}
+        >
+        {firstRun && (
+          <div style={{ padding: compact ? "12px 16px" : "14px 24px", borderBottom: "2px solid #000", fontFamily: "var(--mac-sans)", fontSize: 13, color: "#000", flex: "0 0 auto" }}>
+            {lookupFoundNothing(firstRun.lookup)
+              ? "i couldn't find anything public about you, so fill this in yourself. it's what your agent works from."
+              : "here's what i pulled together. make sure it's right."}
           </div>
+        )}
+        <div className="mac-scroll" style={{ flex: 1, overflowY: "auto", padding: compact ? "14px 16px 22px" : "18px 24px 22px" }}>
+          {!firstRun && (
+            <div style={{ marginBottom: 18 }}>
+              <SettingsTabs />
+            </div>
+          )}
 
           {activeTab === "profile" && (
           <div className="space-y-10">
@@ -256,8 +299,8 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Danger Zone */}
-            <div style={{ marginTop: 26 }}>
+            {/* Danger Zone: settings only, not first-run setup */}
+            {!firstRun && <div style={{ marginTop: 26 }}>
               <button type="button" onClick={() => setIsDangerZoneExpanded((open) => !open)} style={{ display: "flex", alignItems: "center", gap: 7, padding: 0, border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--mac-mono)", fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: "var(--ink-warn)", textTransform: "uppercase" }}>
                 <span style={{ display: "inline-block", transform: isDangerZoneExpanded ? "rotate(90deg)" : "none" }}>›</span>
                 danger zone
@@ -271,7 +314,7 @@ export default function ProfilePage() {
                   <button type="button" onClick={() => { setDeleteConfirmationText(""); setShowDeleteConfirmation(true); }} style={{ fontFamily: "var(--mac-mono)", fontSize: 12, padding: "6px 15px", border: "1px solid var(--ink-warn)", background: "var(--ink-warn)", color: "#fff", cursor: "pointer" }}>delete</button>
                 </div>
               )}
-            </div>
+            </div>}
 
           </div>
           )}
@@ -335,17 +378,34 @@ export default function ProfilePage() {
           display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10,
           flex: "0 0 auto", background: "#fff",
         }}>
-          <button type="button" onClick={() => navigate("/")} disabled={saving} style={{
-            fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 17px",
-            border: "1px solid #000", background: "#fff", color: "#000",
-            boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: saving ? "default" : "pointer",
-          }}>cancel</button>
-          <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError} style={{
+          {/* First run, as on the Mac: reset restores the prefill, sign out
+              leaves without committing, "looks good" is the only commit. */}
+          {firstRun && isDirty && (
+            <button type="button" onClick={() => resetForm(user)} disabled={saving} style={{
+              marginRight: "auto", fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 17px",
+              border: "1px solid #000", background: "#fff", color: "var(--ink-2)",
+              boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: "pointer",
+            }}>reset</button>
+          )}
+          {firstRun ? (
+            <button type="button" onClick={() => void signOut()} disabled={saving} style={{
+              fontFamily: "var(--mac-mono)", fontSize: 12, padding: "7px 10px",
+              border: "none", background: "transparent", color: "var(--ink-2)",
+              textDecoration: "underline", cursor: "pointer", opacity: 0.7,
+            }}>sign out</button>
+          ) : (
+            <button type="button" onClick={() => navigate("/")} disabled={saving} style={{
+              fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 17px",
+              border: "1px solid #000", background: "#fff", color: "#000",
+              boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: saving ? "default" : "pointer",
+            }}>cancel</button>
+          )}
+          <button type="button" onClick={() => void handleSave()} disabled={saving || !!avatarError || confirmBlocked} style={{
             fontFamily: "var(--mac-mono)", fontSize: 13, padding: "7px 19px",
             border: "1px solid #000", background: "#000", color: "#fff",
             boxShadow: "1px 1px 0 rgba(0,0,0,0.2)", cursor: "pointer", fontWeight: 700,
-            opacity: saving || avatarError ? 0.5 : 1,
-          }}>{saving ? "saving…" : "save changes"}</button>
+            opacity: saving || avatarError || confirmBlocked ? 0.5 : 1,
+          }}>{saving ? "saving…" : firstRun ? "looks good →" : "save changes"}</button>
         </div>
         </Window>
         </Stage>
