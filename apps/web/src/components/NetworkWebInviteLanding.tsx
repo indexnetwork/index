@@ -8,8 +8,7 @@ import { APIError } from "@/lib/api";
 import { log } from "@/lib/logger";
 import { Network } from "@/lib/types";
 import { networksService as publicNetworksService, useNetworkService } from "@/services/networks";
-import "@/app/l/[code]/invite.css";
-import "@/components/AuthModal.css";
+import { RuleLabel } from "@/components/workbench/Workbench";
 
 const logger = log.page.from("l/[code]");
 
@@ -127,101 +126,92 @@ export default function NetworkWebInviteLanding() {
 
   const memberCount = network?._count?.members;
 
+  const retryStyle = { display: "flex", textDecoration: "none", color: "#000" } as const;
+
   return (
-    <div className="invite">
-      <header className="invite-header">
-        <Link className="invite-logo" to="/" aria-label="Index Network">
-          <img src="/logos/logo-white-full.svg" alt="Index Network" />
-        </Link>
-      </header>
-
-      <main className="invite-main">
-        {previewStep === "loading" && (
-          <p className="invite-status">Loading invitation…</p>
-        )}
-
-        {previewStep === "error" && (
-          <>
-            <h1 className="invite-title">Invitation unavailable</h1>
-            <p className="invite-error">
-              {previewError || INVALID_INVITE}
-            </p>
-            {previewRetryable ? (
-              <button
-                type="button"
-                className="invite-retry"
-                onClick={() => { setPreviewStep("loading"); setPreviewError(null); setPreviewKey((k) => k + 1); }}
-              >
-                Try again
-              </button>
-            ) : (
-              <Link className="invite-retry" to="/" style={{ display: "inline-block", textDecoration: "none" }}>Go home</Link>
-            )}
-          </>
-        )}
-
-        {previewStep === "ready" && network && (
-          <>
-            <p className="invite-kicker">You&apos;re invited to</p>
-            <h1 className="invite-title">{network.title}</h1>
-            {memberCount != null && (
-              <p className="invite-meta">
-                <span className="invite-meta__dot" aria-hidden="true" />
-                {memberCount} {memberCount === 1 ? "member" : "members"}
-              </p>
+    <div className="workbench mac-desktop wb-auth">
+      <div style={{ width: 440, maxWidth: "100%" }}>
+        <div className="amiga-window">
+          <div className="mac-titlebar">
+            <span className="mac-title"><span className="t">invite</span></span>
+          </div>
+          <div className="wb-body" style={{ padding: "26px 28px 24px" }}>
+            {previewStep === "loading" && (
+              <p className="wb-auth-p" style={{ margin: 0 }}>loading invitation…</p>
             )}
 
-            {joining && (
-              <p className="invite-status invite-status--join">Joining…</p>
-            )}
-
-            {joinOutcome === "pending" && (
-              <p className="invite-status invite-status--join">
-                Your request is waiting for an admin to review it. You&apos;ll be
-                in as soon as they approve it.
-              </p>
-            )}
-
-            {joinOutcome === "declined" && (
+            {previewStep === "error" && (
               <>
-                <p className="invite-error">
-                  An admin declined your request to join this network.
-                </p>
-                <Link className="invite-retry" to="/" style={{ display: "inline-block", textDecoration: "none" }}>Go home</Link>
+                <h1 className="wb-auth-h">invitation unavailable</h1>
+                <p className="wb-auth-p">{(previewError || INVALID_INVITE).toLowerCase()}</p>
+                {previewRetryable ? (
+                  <button
+                    type="button"
+                    className="wb-btn primary"
+                    onClick={() => { setPreviewStep("loading"); setPreviewError(null); setPreviewKey((k) => k + 1); }}
+                  >
+                    try again
+                  </button>
+                ) : (
+                  <Link className="wb-btn" to="/" style={retryStyle}>go home</Link>
+                )}
               </>
             )}
 
-            {joinError && (
+            {previewStep === "ready" && network && (
               <>
-                <p className="invite-error">{joinError}</p>
-                <button
-                  type="button"
-                  className="invite-retry"
-                  onClick={() => void attemptJoin()}
-                >
-                  Try again
-                </button>
+                <RuleLabel>you&apos;re invited to</RuleLabel>
+                <h1 className="wb-auth-h" style={{ marginTop: 4 }}>{network.title}</h1>
+                {memberCount != null && (
+                  <p style={{ margin: "10px 0 0", display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000" }}>
+                    <span className="wb-live" style={{ width: 7, height: 7 }} aria-hidden="true" />
+                    {memberCount} {memberCount === 1 ? "member" : "members"}
+                  </p>
+                )}
+
+                {joining && <p className="wb-auth-p">joining…</p>}
+
+                {joinOutcome === "pending" && (
+                  <p className="wb-auth-p">
+                    your request is waiting for an admin to review it. you&apos;ll be
+                    in as soon as they approve it.
+                  </p>
+                )}
+
+                {joinOutcome === "declined" && (
+                  <>
+                    <p className="wb-auth-p">an admin declined your request to join this network.</p>
+                    <Link className="wb-btn" to="/" style={retryStyle}>go home</Link>
+                  </>
+                )}
+
+                {joinError && (
+                  <>
+                    <p className="av-error">{joinError.toLowerCase()}</p>
+                    <button type="button" className="wb-btn primary" onClick={() => void attemptJoin()}>
+                      try again
+                    </button>
+                  </>
+                )}
+
+                {!joining && !joinError && !joinOutcome && !isAuthenticated && isReady && (
+                  /* AuthForm keeps every behaviour (Google OAuth, magic link,
+                     password fallback); .wb-auth styles its fields. */
+                  <div style={{ marginTop: 18 }}>
+                    <RuleLabel>join the network</RuleLabel>
+                    <AuthForm
+                      variant="product"
+                      showHeading={false}
+                      callbackURL={callbackURL}
+                      onAuthenticated={() => setLoginRequested(true)}
+                    />
+                  </div>
+                )}
               </>
             )}
-
-            {!joining && !joinError && !joinOutcome && !isAuthenticated && isReady && (
-              /* The card is chrome only; AuthForm keeps every behaviour it
-                  already had (Google OAuth, magic link, password fallback).
-                  Its .av-* internals are restyled from invite.css. */
-              <section className="invite-card">
-                <h2 className="invite-card__bar">JOIN THE NETWORK</h2>
-                <div className="invite-card__body auth">
-                  <AuthForm
-                    variant="inline"
-                    callbackURL={callbackURL}
-                    onAuthenticated={() => setLoginRequested(true)}
-                  />
-                </div>
-              </section>
-            )}
-          </>
-        )}
-      </main>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

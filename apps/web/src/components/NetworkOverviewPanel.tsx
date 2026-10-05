@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { Network } from '@/lib/types';
 import { ConfirmWindow } from '@/components/workbench/Workbench';
 import { SignalAction } from '@/components/workbench/mac-blocks';
@@ -132,11 +132,17 @@ export default function NetworkOverviewPanel({ network, onLeft, onLeaveRequest, 
         />
       )}
       {!overviewLoading && !overviewFailed && visible.length === 0 && (
-        <EmptyState
-          framed
-          message="you haven't shared any signals in this network yet."
-          action={{ label: "start a signal", to: "/i/new" }}
-        />
+        // Starting a signal is the one thing to do here, so it gets the home
+        // window's primary button rather than the small empty-state one.
+        <div style={{ border: "1px dashed var(--ink-3)", padding: "22px 18px", display: "grid", justifyItems: "center", gap: 14, textAlign: "center" }}>
+          <p style={{ margin: 0, fontFamily: "var(--mac-mono)", fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)" }}>
+            you haven&apos;t shared any signals in this network yet.
+          </p>
+          <Link to="/i/new" className="wb-new-signal" style={{ width: "auto", marginTop: 0, padding: "11px 22px 11px 16px", textDecoration: "none" }}>
+            <span style={{ width: 24, height: 24, display: "grid", placeItems: "center", background: "#fff", color: "#000", border: "1px solid #000", fontFamily: "var(--mac-mono)", fontSize: 16, fontWeight: 700 }}>+</span>
+            <span style={{ fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 700 }}>start a signal</span>
+          </Link>
+        </div>
       )}
 
       {showLeaveConfirmation && (

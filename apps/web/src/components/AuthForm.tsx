@@ -14,6 +14,8 @@ interface AuthFormProps {
   onAuthenticated?: () => void;
   /** Hide default title/lede when embedded (e.g. invite landing). */
   variant?: 'default' | 'inline' | 'product';
+  /** Product variant only: off when the surrounding window already carries the heading. */
+  showHeading?: boolean;
 }
 
 type AuthView = 'main' | 'magic-link-sent' | 'email-password';
@@ -23,7 +25,7 @@ type AuthView = 'main' | 'magic-link-sent' | 'email-password';
  * the AuthModal overlay or inline on a page (e.g. /cli-auth) — the surrounding
  * `.auth` wrapper supplies the landing tokens.
  */
-export default function AuthForm({ callbackURL, onAuthenticated, variant = 'default' }: AuthFormProps) {
+export default function AuthForm({ callbackURL, onAuthenticated, variant = 'default', showHeading = true }: AuthFormProps) {
   const [view, setView] = useState<AuthView>('main');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -167,7 +169,8 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
       {view === 'magic-link-sent' && (
         <>
           {product ? (
-            <h2 id="auth-modal-title" className="wb-auth-h">check your email</h2>
+            // Without its own heading the form sits under the page's title, so this step stays a subhead.
+            <h2 id="auth-modal-title" className="wb-auth-h" style={showHeading ? undefined : { fontSize: 18, marginTop: 4 }}>check your email</h2>
           ) : (
             <div className="av-head">
               <h2 id="auth-modal-title" className="av-title">
@@ -195,7 +198,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
 
       {view === 'main' && (
         <>
-          {!inline && (product ? (
+          {!inline && (product ? (showHeading && (
             <>
               <h2 id="auth-modal-title" className="wb-auth-h">
                 sign in to <span style={{ fontWeight: 700 }}>index</span>.
@@ -204,7 +207,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
                 index finds the right people for you, before you even think to look.
               </p>
             </>
-          ) : (
+          )) : (
             <>
               <div className="av-head">
                 <h2 id="auth-modal-title" className="av-title">

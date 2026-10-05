@@ -8,7 +8,7 @@ import "./download.css";
 export const MAC_APP_REQUIREMENTS = "macOS 13+, Apple silicon";
 
 /**
- * Single-viewport shell for the install pages: navbar, a vertically centred
+ * Single-viewport shell for the install pages: logo bar, a vertically centred
  * `main` that scrolls on its own when the window is short, and the footer.
  * `overlay` covers the chrome of a route that renders it in place.
  */
@@ -20,7 +20,7 @@ export function AppsShell({ overlay, children }: { overlay?: boolean; children: 
   return (
     <div className={overlay ? "site apps apps--overlay" : "site apps"}>
       <div className="apps-col">
-        <SiteNav />
+        <SiteNav logoOnly />
         <main className="apps-main">{children}</main>
         <SiteFooter className="site-footer apps-footer" />
       </div>

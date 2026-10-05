@@ -24,8 +24,11 @@ export function ensureSiteFonts() {
   document.head.append(preconnect1, preconnect2, font);
 }
 
-/** Navbar. Below 640px the links collapse behind a menu button. */
-export function SiteNav() {
+/**
+ * Navbar. Below 640px the links collapse behind a menu button. `logoOnly`:
+ * app steps (install, CLI sign-in, consent) keep the logo but drop the links.
+ */
+export function SiteNav({ logoOnly = false }: { logoOnly?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
 
@@ -43,6 +46,7 @@ export function SiteNav() {
       <Link className="site-nav-logo" to="/" aria-label="Index Network">
         <img src="/site/index-logo.svg" alt="Index Network" />
       </Link>
+      {!logoOnly && <>
       <button
         type="button"
         className="site-nav-toggle"
@@ -60,6 +64,7 @@ export function SiteNav() {
         <Link className="site-nav-link" to="/about">about</Link>
         <Link className="site-btn" to={EARLY_ACCESS_PATH}>Request your invite</Link>
       </div>
+      </>}
     </nav>
   );
 }
