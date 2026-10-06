@@ -10,7 +10,8 @@ import { activeIntentLifecycleWhere, and, asc, count, db, desc, eq, inArray, int
 import { AgentSessionDatabaseAdapter, type AgentExecution } from './agent-session.database.adapter';
 
 import { applyOpportunityEvent, seedOpportunityLog } from '../lib/opportunity/opportunity.command';
-import { publishNegotiationChange } from '../lib/user-events';
+import { publishNegotiationChange, publishUserEvent } from '../lib/user-events';
+import { publishOpeningTurns } from '../lib/negotiation-opening.events';
 import { RuntimeConflictError } from '../lib/agent/runtime-errors';
 
 export type NegotiationExecution = AgentExecution | { userId: string; agentId: string };
@@ -197,6 +198,9 @@ export class NegotiationDatabaseAdapter {
       seats.push({ userId: pair.userA, intentId: pair.intentA }, { userId: pair.userB, intentId: pair.intentB });
     }
     await publishNegotiationChange(seats);
+    await publishOpeningTurns(opened, publishUserEvent, (opportunityId, error) => {
+      logger.error('Failed to publish opening negotiation turn', { opportunityId, error: String(error) });
+    });
     return opened;
   }
 
