@@ -1,8 +1,14 @@
 import { log } from '../lib/log';
+import { detectSocialLabel } from '../adapters/database.shared';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 
 const logger = log.service.from("UserService");
+
+function sameSurface(requested: string, label: string): boolean {
+    const norm = (name: string) => (name === 'x' ? 'twitter' : name);
+    return norm(requested) === norm(label);
+}
 
 /**
  * UserService
@@ -62,6 +68,18 @@ export class UserService {
 
     async getSocials(userId: string) {
         return this.db.getSocials(userId);
+    }
+
+    /** Stored social values on one surface (`x` and `twitter` are the same). */
+    async socialValuesOnSurface(userId: string, surface: string): Promise<string[]> {
+        const values = new Set<string>();
+        for (const social of await this.db.getSocials(userId)) {
+            const label = social.label.trim().toLowerCase();
+            const value = social.value?.trim();
+            if (!value) continue;
+            if (sameSurface(surface, label) || sameSurface(surface, detectSocialLabel(value))) values.add(value);
+        }
+        return [...values];
     }
 
     async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {

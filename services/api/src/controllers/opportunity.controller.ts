@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
+import { userService } from '../services/user.service';
 import { negotiationService, negotiationTurnSchema as submitTurnSchema, type SubmitTurnRejection } from '../services/negotiation.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
@@ -62,6 +63,27 @@ export class OpportunityController {
 
     logger.verbose('Opportunities listed', { userId: user.id, count: result.opportunities.length });
     return Response.json(result);
+  }
+
+  /**
+   * GET /opportunities/:id/surface?surface= — public social values on this
+   * opportunity for one surface. The link is the credential; no session.
+   */
+  @Get('/:id/surface')
+  async surfaceLinks(req: Request, _user: unknown, params?: RouteParams) {
+    const id = params?.id;
+    const surface = new URL(req.url).searchParams.get('surface')?.trim().toLowerCase();
+    if (!id) return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    if (!surface) return Response.json({ error: 'Missing surface' }, { status: 400 });
+
+    const opportunity = await opportunityService.getStoredOpportunity(id);
+    if (!opportunity) return Response.json({ error: 'Opportunity not found' }, { status: 404 });
+
+    const values = new Set<string>();
+    for (const actor of opportunity.actors) {
+      for (const value of await userService.socialValuesOnSurface(actor.userId, surface)) values.add(value);
+    }
+    return Response.json({ values: [...values] });
   }
 
   /**
