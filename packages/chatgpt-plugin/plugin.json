@@ -1,7 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "index-network",
-  "version": "1.0.0",
+  "version": "1.1.3",
+  "skills": "./skills/",
   "description": "Index Network - find the right people and let them find you.",
   "author": {
     "name": "Index Network",
@@ -91,7 +92,7 @@
         "commerce": false
       },
       "publication": {
-        "release_notes": "Manage Index signals and opportunities from ChatGPT, with event notifications for new opportunities, status changes, and pending questions."
+        "release_notes": "Adds an MCP-native Index agent skill for dots, with discovery and negotiation event-task instructions. Requires a selected external negotiator; introduction approval remains with the owner."
       }
     }
   }
