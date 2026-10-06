@@ -1170,11 +1170,10 @@ function describe(action) {
       return `expire ${action.questionId}`;
   }
 }
-async function publishActions(client, intentId, actions, context) {
-  const { counterparts, questions, log = () => {} } = context;
+function encodeActions(actions, context) {
+  const { counterparts, questions } = context;
   const entries = [];
   for (const action of actions) {
-    log(`  ${describe(action)}`);
     const match = "opportunityId" in action && action.opportunityId ? counterparts.get(action.opportunityId) : undefined;
     switch (action.type) {
       case "brief":
@@ -1214,6 +1213,13 @@ async function publishActions(client, intentId, actions, context) {
         break;
     }
   }
+  return entries;
+}
+async function publishActions(client, intentId, actions, context) {
+  const { log = () => {} } = context;
+  for (const action of actions)
+    log(`  ${describe(action)}`);
+  const entries = encodeActions(actions, context);
   if (entries.length)
     await client.sendPrincipal(intentId, entries);
 }
