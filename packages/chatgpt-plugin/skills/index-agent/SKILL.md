@@ -20,6 +20,7 @@ Subscriptions receive future events. Offer an initial catch-up within the reques
 - Agent agreement establishes a reason to meet. accept_opportunity and reject_opportunity are separate owner decisions, requiring their explicit instruction. These background tasks never call them.
 - Reuse links returned by tools on the person, signal, or opportunity name. Stay quiet on unchanged or non-actionable events; notify for a qualified introduction, a missing owner fact, or a failure needing intervention.
 - After a rejected or uncertain write, reread the record and stop this attempt. Do not blindly replay writes. Stop on executor_changed.
+- The owner's agent conversation is the same inbox the native Index agent uses. Read it with get_agent_conversation. Save an ask, expire, note, reply or progress with publish_agent_actions. Record an answer only with answer_agent_questions, copying the owner's words and never inventing one. An ask is not a negotiation turn, and an answer is not approval to accept or pass an introduction.
 
 For ordinary signal and introduction requests, use the MCP tools according to their descriptions. A request to find someone creates a signal; it does not by itself invoke the agent-only discovery or negotiation tools outside an explicitly configured agent task.
 

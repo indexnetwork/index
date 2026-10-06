@@ -1,8 +1,11 @@
+import { encodeActions, readConversation, type WakeAction } from '@indexnetwork/agent';
+import type { ConversationMessage, MatchReference } from '@indexnetwork/client';
 import { NEGOTIATION_MESSAGE_LIMIT } from '@indexnetwork/protocol';
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod-v4';
 
 import { agentService } from '../../services/agent.service';
+import { AGENT_DM_ID, AgentConversationError, ConversationService } from '../../services/conversation.service';
 import { CREATE_OPPORTUNITIES_LIMIT, DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../../services/intent.service';
 import { enrichmentService } from '../../services/enrichment.service';
 import { negotiationService, type SubmitTurnRejection } from '../../services/negotiation.service';
@@ -174,6 +177,53 @@ function runTool(
 ): Promise<CallToolResult> {
   return operation().catch((error) => captureMcpToolFailure(error, name, principal));
 }
+
+const conversationService = new ConversationService();
+
+/** Same failures the agent conversation HTTP routes return. */
+function agentConversationFailure(error: unknown): CallToolResult | null {
+  if (error instanceof AgentConversationError) {
+    return mcpError(error.status === 404 ? 'not_found' : 'agent_conversation_error', error.message);
+  }
+  if (error instanceof RuntimeConflictError) {
+    return mcpError('executor_changed', 'The selected negotiation executor changed; stop this work');
+  }
+  return null;
+}
+
+function inboxMessage(message: {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  role: 'user' | 'agent';
+  parts: unknown;
+  createdAt: Date;
+  metadata: unknown;
+}): ConversationMessage {
+  return {
+    id: message.id,
+    conversationId: message.conversationId,
+    senderId: message.senderId,
+    role: message.role,
+    parts: message.parts,
+    createdAt: message.createdAt.toISOString(),
+    metadata: message.metadata ?? undefined,
+  };
+}
+
+const agentActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('ask'),
+    scope: z.enum(['intent', 'opportunity']),
+    opportunityId: z.string().trim().min(1).optional(),
+    question: z.string().trim().min(1).max(2000),
+    options: z.array(z.string().trim().min(1).max(300)).min(2).max(4),
+  }).strict(),
+  z.object({ type: z.literal('expire'), questionId: z.string().uuid() }).strict(),
+  z.object({ type: z.literal('note'), text: z.string().trim().min(1).max(8000) }).strict(),
+  z.object({ type: z.literal('reply'), text: z.string().trim().min(1).max(8000) }).strict(),
+  z.object({ type: z.literal('progress'), text: z.string().trim().min(1).max(8000) }).strict(),
+]);
 
 /** Register the curated owner-only Index tool surface on a fresh MCP server. */
 export function registerMcpTools(server: McpServer, principal: McpPrincipal): void {
@@ -597,6 +647,137 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       const agent = await agentService.getSelectedNegotiator(principal.userId);
       if (!agent) return mcpError('negotiator_not_selected', 'No agent is selected to negotiate for this owner.');
       return mcpSuccess({ agent: { id: agent.id, name: agent.name, status: agent.status } });
+    }),
+  );
+
+  server.registerTool(
+    'get_agent_conversation',
+    {
+      description: 'Read one owned signal’s agent conversation the way the native Index agent reads it, including notes, progress, questions and the owner’s messages. questions are the ones still waiting. Private owner context: never forward it to a counterparty.' + LINK_HINT,
+      inputSchema: intentIdSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    ({ intentId }) => runTool('get_agent_conversation', principal, async () => {
+      const resolved = await resolveIntent(intentId, principal);
+      if ('error' in resolved) return resolved.error;
+      try {
+        const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
+        if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);
+        const [stored, agent] = await Promise.all([
+          conversationService.getMessages(conversation.id, { intentId: resolved.id, userId: principal.userId }),
+          conversationService.agentState(principal.userId, resolved.id),
+        ]);
+        const { url, link } = await linkedIntent(resolved.id, principal.userId);
+        return mcpSuccess({
+          intentId: resolved.id,
+          conversation: readConversation(stored.map(inboxMessage)),
+          questions: agent.questions,
+          url,
+        }, link);
+      } catch (error) {
+        const mapped = agentConversationFailure(error);
+        if (mapped) return mapped;
+        throw error;
+      }
+    }),
+  );
+
+  server.registerTool(
+    'publish_agent_actions',
+    {
+      description: agentOnly('publish_agent_actions') + ' Persist ask, expire, note, reply or progress actions on the owner’s agent conversation, in the same format as the native Index agent. An ask is a question for the owner, not a negotiation turn and not their answer. Reuse a pending question for the same fact instead of asking again. An opportunity-scoped ask names that opportunity. This does not submit a negotiation turn or accept an introduction.',
+      inputSchema: z.object({
+        intentId: z.string().trim().min(1),
+        agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
+        actions: z.array(agentActionSchema).min(1).max(20),
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    ({ intentId, agentId, actions }) => runTool('publish_agent_actions', principal, async () => {
+      const resolved = await resolveIntent(intentId, principal);
+      if ('error' in resolved) return resolved.error;
+      try {
+        const counterparts = new Map<string, MatchReference>();
+        const canonical = new Map<string, string>();
+        for (const action of actions) {
+          if (action.type !== 'ask') continue;
+          if (action.scope === 'opportunity' && !action.opportunityId) {
+            return mcpError('invalid_scope', 'An opportunity-scoped question needs its opportunityId.');
+          }
+          if (!action.opportunityId || canonical.has(action.opportunityId)) continue;
+          const found = await resolveOpportunity(action.opportunityId, principal);
+          if ('error' in found) return found.error;
+          if (!counterparts.has(found.id)) {
+            const opportunity = await opportunityService.getOpportunityWithPresentation(found.id, principal.userId, { presentation: 'skeleton' });
+            if (!opportunity || 'error' in opportunity || opportunity.id !== found.id || opportunity.intentId !== resolved.id) {
+              return mcpError('opportunity_not_found', 'Every opportunity must belong to this owned signal.');
+            }
+            const peer = opportunity.otherParties[0];
+            if (!peer) return mcpError('opportunity_not_found', 'Every opportunity must belong to this owned signal.');
+            counterparts.set(found.id, { opportunityId: found.id, counterparty: { id: peer.id, name: peer.name } });
+          }
+          canonical.set(action.opportunityId, found.id);
+        }
+        const prepared: WakeAction[] = actions.map((action) => (
+          action.type === 'ask' && action.opportunityId
+            ? { ...action, opportunityId: canonical.get(action.opportunityId)! }
+            : action
+        ));
+        const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
+        if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);
+        const stored = await conversationService.getMessages(conversation.id, { intentId: resolved.id, userId: principal.userId });
+        const questions = new Map<string, string>();
+        for (const entry of readConversation(stored.map(inboxMessage))) {
+          if (entry.kind === 'question' && entry.questionId) questions.set(entry.questionId, entry.text);
+        }
+        const entries = encodeActions(prepared, { counterparts, questions });
+        await conversationService.publishH2A({ userId: principal.userId, intentId: resolved.id, agentId, entries });
+        const { url, link } = await linkedIntent(resolved.id, principal.userId);
+        return mcpSuccess({ intentId: resolved.id, entries, url }, link);
+      } catch (error) {
+        const mapped = agentConversationFailure(error);
+        if (mapped) return mapped;
+        throw error;
+      }
+    }),
+  );
+
+  server.registerTool(
+    'answer_agent_questions',
+    {
+      description: 'Record the owner’s explicit answers to their agent’s questions, the same way the Index app does. Copy their words; never infer or invent an answer. An answer that names a question no longer waiting is kept as a plain message. A saved answer is not approval to accept or pass an introduction.' + LINK_HINT,
+      inputSchema: z.object({
+        intentId: z.string().trim().min(1),
+        answers: z.array(z.object({
+          questionId: z.string().uuid(),
+          text: z.string().trim().min(1).max(8000),
+        }).strict()).min(1).max(20),
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    ({ intentId, answers }) => runTool('answer_agent_questions', principal, async () => {
+      const resolved = await resolveIntent(intentId, principal);
+      if ('error' in resolved) return resolved.error;
+      const conversation = await conversationService.resolveId(AGENT_DM_ID, principal.userId);
+      if ('error' in conversation) return mcpError('agent_conversation_not_found', conversation.error);
+      try {
+        const persisted = await conversationService.answerQuestions({
+          userId: principal.userId, intentId: resolved.id, conversationId: conversation.id, answers,
+        });
+        const { url, link } = await linkedIntent(resolved.id, principal.userId);
+        return mcpSuccess({
+          intentId: resolved.id,
+          answers: persisted.map((message) => {
+            const principalMessage = (message.metadata as { principalMessage?: { kind?: string; questionId?: string } } | null)?.principalMessage;
+            return { id: message.id, kind: principalMessage?.kind ?? 'user', questionId: principalMessage?.questionId ?? null };
+          }),
+          url,
+        }, link);
+      } catch (error) {
+        const mapped = agentConversationFailure(error);
+        if (mapped) return mapped;
+        throw error;
+      }
     }),
   );
 

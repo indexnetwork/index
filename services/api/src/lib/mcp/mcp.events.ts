@@ -49,8 +49,8 @@ function signalEvent(description: string): EventDefinition {
 
 /**
  * Events ChatGPT can subscribe to. Payloads are pointers plus server-written
- * copy; the agent reads full records through the tools. `message` and
- * `principal.input` are left out because they carry user-written text.
+ * copy; the agent reads full records through the tools. `message` is omitted.
+ * `principal.input` carries ids only, never the owner's text.
  */
 export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
   'intent.created': signalEvent('The owner created a signal. Read it with get_intent.'),
@@ -106,6 +106,20 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
       turnIndex: Number(data.turnIndex),
       summary: body ?? '',
       url: appLink('o', String(data.opportunityId)),
+    }),
+  },
+  'principal.input': {
+    description: 'The owner wrote in their Index agent conversation. Read get_agent_conversation for this signal. questionId is set when the message answers a question. The owner\'s text is not included.',
+    args: z.object({ intentId: intentFilter }).strict(),
+    payload: z.object({
+      intentId: z.string(),
+      questionId: z.string().nullable(),
+      url: z.string(),
+    }).strict(),
+    toPayload: ({ data = {} }) => ({
+      intentId: String(data.intentId),
+      questionId: typeof data.questionId === 'string' ? data.questionId : null,
+      url: appLink('i', String(data.intentId)),
     }),
   },
   'question.pending': {
