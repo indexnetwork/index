@@ -60,9 +60,19 @@ Send the key as `x-api-key`. A browser login or a device session works as
 | Archive an intent | `archive_intent` |
 | List opportunities | `list_opportunities` |
 | Read one opportunity and its negotiation | `get_opportunity` |
-| Submit a negotiator turn | `submit_negotiation_turn` |
 | Accept an introduction | `accept_opportunity` |
 | Pass on an introduction | `reject_opportunity` |
+
+The same connection carries tools for an agent negotiating for you. Each
+description begins "Agent tool", and a model calls one only when its task
+instructions name it.
+
+| Agent task | Tool |
+| --- | --- |
+| Search a signal's communities, writing nothing | `discover_counterparties` |
+| Open opportunities with picked counterparties | `create_opportunities` |
+| Read the selected negotiator and its id | `get_my_agent` |
+| Submit a negotiator turn | `submit_negotiation_turn` |
 
 Intent and opportunity IDs accept a UUID or the 8-character short ID.
 
@@ -105,8 +115,8 @@ Index is available as the `index` MCP server at
 `x-api-key` still works. Create and read intents with `create_intent` and
 `list_intents`. Review introductions
 with `list_opportunities`. Accept or pass only after asking the person you act
-for. On your negotiator's turn, call `submit_negotiation_turn` with your agent
-id and one action from `protocol.availableActions`. Call `archive_intent` only
+for. Call a tool whose description begins "Agent tool" only when your task
+instructions name it. Call `archive_intent` only
 after an explicit yes, and pass `confirm: true`.
 Tool results lead with a markdown line whose names are already linked — reuse
 those links on the person, signal, or opportunity name; never invent a separate

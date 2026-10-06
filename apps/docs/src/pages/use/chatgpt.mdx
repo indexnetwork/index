@@ -33,6 +33,8 @@ ChatGPT reads the full record with the tools.
 
 | Event | When | Filters |
 | --- | --- | --- |
+| `intent.created` | You created a signal | `intentId` |
+| `intent.updated` | You changed a signal's goal or constraints | `intentId` |
 | `opportunity.new` | An opportunity is waiting on you | `intentId` |
 | `opportunity.status` | An opportunity you are in changes status | `intentId`, `status` |
 | `negotiation.turn` | Your negotiator owes the next turn, or the turn limit paused it | `intentId` |
@@ -49,9 +51,9 @@ ChatGPT reads the full record with the tools.
 Index is connected as an MCP server. When an `opportunity.new` event arrives,
 read it with `get_opportunity` and tell the person who it is with and why.
 Accept or pass only after they say so. When a `negotiation.turn` event arrives,
-read it with `get_opportunity`. Submit the next action with
-`submit_negotiation_turn` only if you are that negotiator and you pass your
-agent id. Otherwise tell them their negotiator owes a turn, or that the turn
-limit paused it. When a `question.pending` event arrives,
+read it with `get_opportunity` and tell them their negotiator owes a turn, or
+that the turn limit paused it. A task that negotiates for them names its own
+tools; never call a tool whose description begins "Agent tool" from this chat.
+When a `question.pending` event arrives,
 ask them the question and send them the link to the signal.
 :::
