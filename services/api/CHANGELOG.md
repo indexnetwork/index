@@ -14,7 +14,8 @@ section before promoting to `main`).
   `expectedTurnCount`, the turn count the decision was reasoned over. A stale
   count is refused with 409 against the locked log, even when the same seat is
   awaited again; the hosted seat binds the count it reasoned over and ignores
-  `negotiation.turn` frames the negotiation has already moved past.
+  `negotiation.turn` frames the negotiation has already moved past. The MCP
+  `submit_negotiation_turn` tool takes the same `expectedTurnCount`.
 
 ### Fixed
 - A committed negotiation turn records the `negotiation.changed`,
