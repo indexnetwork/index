@@ -290,23 +290,20 @@ interface PublishContext {
 }
 
 /**
- * Write what a run decided onto the owner's agent DM.
+ * Turn a run's actions into agent DM entries.
  *
- * @param client - Index for this owner.
- * @param intentId - The signal these entries belong to.
+ * This is the only encoding of briefs, questions, notes and the rest. The
+ * native host and any other surface that writes the owner's inbox both call
+ * it, so a question stored from elsewhere is the question Index already shows.
+ *
  * @param actions - What the run produced.
- * @param context - Counterpart tags, open questions, and where to report.
+ * @param context - Counterpart tags and the questions a retirement can name.
+ * @returns Entries ready for the agent DM, in the order given.
  */
-export async function publishActions(
-  client: Index,
-  intentId: string,
-  actions: WakeAction[],
-  context: PublishContext,
-): Promise<void> {
-  const { counterparts, questions, log = () => {} } = context;
+export function encodeActions(actions: WakeAction[], context: Omit<PublishContext, "log">): PrincipalMessage[] {
+  const { counterparts, questions } = context;
   const entries: PrincipalMessage[] = [];
   for (const action of actions) {
-    log(`  ${describe(action)}`);
     const match = "opportunityId" in action && action.opportunityId ? counterparts.get(action.opportunityId) : undefined;
     switch (action.type) {
       case "brief":
@@ -348,6 +345,26 @@ export async function publishActions(
         break;
     }
   }
+  return entries;
+}
+
+/**
+ * Write what a run decided onto the owner's agent DM.
+ *
+ * @param client - Index for this owner.
+ * @param intentId - The signal these entries belong to.
+ * @param actions - What the run produced.
+ * @param context - Counterpart tags, open questions, and where to report.
+ */
+export async function publishActions(
+  client: Index,
+  intentId: string,
+  actions: WakeAction[],
+  context: PublishContext,
+): Promise<void> {
+  const { log = () => {} } = context;
+  for (const action of actions) log(`  ${describe(action)}`);
+  const entries = encodeActions(actions, context);
   if (entries.length) await client.sendPrincipal(intentId, entries);
 }
 

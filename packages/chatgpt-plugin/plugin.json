@@ -1,7 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "index-network",
-  "version": "1.0.0",
+  "version": "1.2.0",
+  "skills": "./skills/",
   "description": "Index Network - find the right people and let them find you.",
   "author": {
     "name": "Index Network",
@@ -91,7 +92,7 @@
         "commerce": false
       },
       "publication": {
-        "release_notes": "Manage Index signals and opportunities from ChatGPT, with event notifications for new opportunities, status changes, and pending questions."
+        "release_notes": "Shares the native Index agent inbox over MCP: read it, publish ask, expire, note, reply and progress actions, and record the owner's own answers. Requires a matching MCP server, refreshed task prompts, and a selected external negotiator. Introduction approval remains with the owner."
       }
     }
   }

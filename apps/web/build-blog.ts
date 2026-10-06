@@ -14,7 +14,7 @@ import { parseFrontmatter, transformAssetPaths } from "./src/lib/blog";
 const CONTENT_DIR = join(import.meta.dir, "content/blog");
 const PUBLIC_DIR = join(import.meta.dir, "public");
 const OUTPUT_DIR = join(PUBLIC_DIR, "blog");
-const DEFAULT_IMAGE = `${ORIGIN}/link-preview.png`;
+const DEFAULT_IMAGE = `${ORIGIN}/link-preview.png?v=2`;
 
 const FONTS_HREF =
   "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400&display=swap";

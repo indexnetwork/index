@@ -31,7 +31,10 @@
   gap: 6px;
   color: var(--ink);
 }
-.home-available-app img { width: 14px; height: 14px; display: block; object-fit: contain; }
+.site a.home-available-app { color: var(--ink); text-decoration: none; }
+.site a.home-available-app:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+.home-available-app img,
+.home-available-app svg { width: 14px; height: 14px; display: block; object-fit: contain; }
 
 .home-fan {
   width: 100%;

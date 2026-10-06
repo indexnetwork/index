@@ -7,7 +7,7 @@ type Status = "idle" | "loading" | "success" | "error";
  * Email field and "Request your invite" button joined into one control.
  * Joins the waitlist (POST /api/subscribe, type "waitlist").
  */
-export default function InviteForm() {
+export default function InviteForm({ autoFocus = false }: { autoFocus?: boolean } = {}) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
 
@@ -45,6 +45,7 @@ export default function InviteForm() {
             if (status === "error") setStatus("idle");
           }}
           disabled={status === "loading"}
+          autoFocus={autoFocus}
           required
         />
         <button type="submit" className="site-btn" disabled={status === "loading"}>

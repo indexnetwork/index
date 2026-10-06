@@ -205,6 +205,9 @@
 
 .mac-download__button {
   display: inline-flex;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
   align-items: center;
   height: 38px;
   padding: 0 16px;
@@ -297,6 +300,134 @@
 .hermes-install__copy {
   font-size: 0.75rem;
   font-weight: 600;
+  color: var(--vocs-text-color-muted);
+}
+
+/* #endregion */
+
+/* #region Invite dialog
+ *
+ * The email dialog behind "Request your invite" (src/components/InviteButton.tsx).
+ * Field and submit read as one control, like the landing site's invite form.
+ */
+
+.invite-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(4 23 41 / 0.45);
+}
+
+.invite-dialog__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  width: 100%;
+  max-width: 440px;
+  padding: 2rem 1.75rem 1.5rem;
+  border: 1px solid var(--vocs-border-color-primary);
+  border-radius: 10px;
+  background: var(--vocs-background-color-surface);
+}
+
+.invite-dialog__close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--vocs-text-color-muted);
+  cursor: pointer;
+}
+
+.invite-dialog__close:hover {
+  color: var(--vocs-text-color-heading);
+}
+
+.invite-dialog__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vocs-text-color-heading);
+}
+
+.invite-dialog__text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--vocs-text-color-primary);
+}
+
+.invite-dialog__form {
+  display: flex;
+  border: 1px solid var(--vocs-text-color-heading);
+}
+
+.invite-dialog__form:focus-within {
+  box-shadow: 0 0 0 3px rgb(64 145 187 / 0.25);
+}
+
+.invite-dialog__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: var(--vocs-background-color-surface);
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--vocs-text-color-heading);
+}
+
+.invite-dialog__input::placeholder {
+  color: var(--vocs-text-color-muted);
+}
+
+.invite-dialog__submit {
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--vocs-text-color-heading);
+  color: var(--vocs-background-color-surface);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.invite-dialog__submit:hover {
+  background: var(--vocs-color-accent);
+  color: #fcfefb;
+}
+
+.invite-dialog__submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.invite-dialog__error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #b3261e;
+}
+
+.invite-dialog__note {
+  margin: 0;
+  font-size: 0.75rem;
   color: var(--vocs-text-color-muted);
 }
 
