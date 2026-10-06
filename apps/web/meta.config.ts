@@ -9,7 +9,7 @@ export interface PageMeta {
 }
 
 export const ORIGIN = process.env.WEB_APP_URL || "https://index.network";
-const DEFAULT_IMAGE = `${ORIGIN}/link-preview.png`;
+const DEFAULT_IMAGE = `${ORIGIN}/link-preview.png?v=2`;
 
 const MARKETING: Record<string, PageMeta> = {
   "/found-in-translation": {

@@ -43,7 +43,7 @@ export function OverviewArticle({
 
     const origin = window.location.origin;
     const url = `${origin}${pathname}`;
-    const image = `${origin}/link-preview.png`;
+    const image = `${origin}/link-preview.png?v=2`;
 
     setMeta('description', DESCRIPTION);
     setMeta('og:type', 'website', 'property');
