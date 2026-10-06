@@ -2,7 +2,8 @@ import { NEGOTIATION_MESSAGE_LIMIT } from '@indexnetwork/protocol';
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod-v4';
 
-import { IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../../services/intent.service';
+import { agentService } from '../../services/agent.service';
+import { CREATE_OPPORTUNITIES_LIMIT, DISCOVER_LIMIT_MAX, IntentCreateRejectedError, IntentNetworkMembershipError, IntentPreparationFailedError, intentService } from '../../services/intent.service';
 import { enrichmentService } from '../../services/enrichment.service';
 import { negotiationService, type SubmitTurnRejection } from '../../services/negotiation.service';
 import { opportunityService } from '../../services/opportunity.service';
@@ -15,6 +16,10 @@ import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
 import type { McpPrincipal } from './mcp.types';
 
 const LINK_HINT = ' The result starts with a markdown summary whose names are already linked. Reuse those lines; when you rephrase, put the link on the person, signal, or opportunity name itself, never as a separate "link" word.';
+
+/** Shares one connection with the owner's chat, so the description is the only gate. */
+const agentOnly = (name: string) =>
+  `Agent tool. Call only when your task instructions name ${name}, never because the person asked for something.`;
 
 const emptyInputSchema = z.object({}).strict();
 const intentIdSchema = z.object({
@@ -530,9 +535,75 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   );
 
   server.registerTool(
+    'discover_counterparties',
+    {
+      description: agentOnly('discover_counterparties') + ' Search one active signal\'s communities for people who could serve it, strongest first. Writes nothing.'
+        + ' Use when a task is finding people for a signal that was just created, changed, or needs more reach.'
+        + ' Do not use when the person asks who to meet, what matches they have, or what is waiting: that is list_opportunities.'
+        + ' Do not use to look up a specific person, or for a paused or archived signal.',
+      inputSchema: z.object({
+        intentId: z.string().trim().min(1),
+        query: z.string().trim().min(1).max(2_000).describe('The kind of person this signal needs, in your own words.'),
+        limit: z.number().int().min(1).max(DISCOVER_LIMIT_MAX).optional(),
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    ({ intentId, query, limit }) => runTool('discover_counterparties', principal, async () => {
+      const resolved = await resolveIntent(intentId, principal);
+      if ('error' in resolved) return resolved.error;
+      const result = await intentService.discover(resolved.id, principal.userId, { query, limit });
+      if (result.kind === 'not_found') return mcpError('intent_not_found', 'Intent not found.');
+      if (result.kind === 'inactive') return mcpError('intent_inactive', 'Only an active signal can be searched.');
+      return mcpSuccess({ counterparties: result.counterparties });
+    }),
+  );
+
+  server.registerTool(
+    'create_opportunities',
+    {
+      description: agentOnly('create_opportunities') + ' Open an opportunity with each counterparty discover_counterparties returned, passing its intentId and networkId. A pair that already has one reports that one.'
+        + ' Use right after discover_counterparties in the same task, only for counterparties you judged worth a negotiation.'
+        + ' Do not use when the person asks to meet, connect with, or be introduced to someone: that is accept_opportunity on an existing opportunity.'
+        + ' Do not use with ids that did not come from discover_counterparties, or to re-open a passed or expired opportunity.',
+      inputSchema: z.object({
+        intentId: z.string().trim().min(1),
+        counterparties: z.array(z.object({
+          intentId: z.string().uuid(),
+          networkId: z.string().uuid(),
+        }).strict()).min(1).max(CREATE_OPPORTUNITIES_LIMIT),
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    ({ intentId, counterparties }) => runTool('create_opportunities', principal, async () => {
+      const resolved = await resolveIntent(intentId, principal);
+      if ('error' in resolved) return resolved.error;
+      const result = await intentService.createOpportunities(resolved.id, principal.userId, counterparties);
+      if (result.kind === 'not_found') return mcpError('intent_not_found', 'Intent not found.');
+      if (result.kind === 'inactive') return mcpError('intent_inactive', 'Only an active signal can open opportunities.');
+      return mcpSuccess({
+        opportunities: result.opportunities.map(({ opportunityId }) => ({ id: opportunityId, url: appLink('o', opportunityId) })),
+      });
+    }),
+  );
+
+  server.registerTool(
+    'get_my_agent',
+    {
+      description: agentOnly('get_my_agent') + ' Read the agent selected to negotiate for the owner. Its id is the agentId a negotiation turn takes.',
+      inputSchema: emptyInputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    () => runTool('get_my_agent', principal, async () => {
+      const agent = await agentService.getSelectedNegotiator(principal.userId);
+      if (!agent) return mcpError('negotiator_not_selected', 'No agent is selected to negotiate for this owner.');
+      return mcpSuccess({ agent: { id: agent.id, name: agent.name, status: agent.status } });
+    }),
+  );
+
+  server.registerTool(
     'submit_negotiation_turn',
     {
-      description: 'Submit one negotiator turn on an opportunity. Pass your own agent id. Use only an action from protocol.availableActions on get_opportunity. This is the agents\' exchange, not the owner\'s approval — accept_opportunity and reject_opportunity remain separate.' + LINK_HINT,
+      description: agentOnly('submit_negotiation_turn') + ' Submit one negotiator turn on an opportunity. Pass your own agent id. Use only an action from protocol.availableActions on get_opportunity. This is the agents\' exchange, not the owner\'s approval — accept_opportunity and reject_opportunity remain separate.' + LINK_HINT,
       inputSchema: z.object({
         opportunityId: z.string().trim().min(1),
         agentId: z.string().uuid().describe('UUID of your selected negotiator.'),

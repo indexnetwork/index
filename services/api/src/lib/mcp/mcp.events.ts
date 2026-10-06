@@ -38,12 +38,23 @@ interface EventDefinition {
 
 const intentFilter = z.string().optional().describe('Only events for this signal (UUID).');
 
+function signalEvent(description: string): EventDefinition {
+  return {
+    description,
+    args: z.object({ intentId: intentFilter }).strict(),
+    payload: z.object({ intentId: z.string(), url: z.string() }).strict(),
+    toPayload: ({ data = {} }) => ({ intentId: String(data.intentId), url: appLink('i', String(data.intentId)) }),
+  };
+}
+
 /**
  * Events ChatGPT can subscribe to. Payloads are pointers plus server-written
  * copy; the agent reads full records through the tools. `message` and
  * `principal.input` are left out because they carry user-written text.
  */
 export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
+  'intent.created': signalEvent('The owner created a signal. Read it with get_intent.'),
+  'intent.updated': signalEvent('The owner changed a signal\'s goal or constraints. Read it with get_intent.'),
   'opportunity.new': {
     description: 'Index has a new opportunity (a possible introduction) waiting on the owner. Read it with get_opportunity, then accept or pass only after asking the owner.',
     args: z.object({ intentId: intentFilter }).strict(),
@@ -80,7 +91,7 @@ export const MCP_EVENT_CATALOG: Record<string, EventDefinition> = {
     }),
   },
   'negotiation.turn': {
-    description: 'The owner\'s negotiator owes the next turn, or the turn limit paused the negotiation. Read it with get_opportunity, then submit_negotiation_turn with your agent id and an action from protocol.availableActions. The turn message is not included.',
+    description: 'The owner\'s negotiator owes the next turn, or the turn limit paused the negotiation. Read it with get_opportunity. The turn message is not included.',
     args: z.object({ intentId: intentFilter }).strict(),
     payload: z.object({
       opportunityId: z.string(),
