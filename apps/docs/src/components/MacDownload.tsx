@@ -1,15 +1,18 @@
+'use client'
+
 /**
  * Card for the macOS app, used on `/use/mac`.
  *
- * Access is invite-only, so the card sends people to the install page
- * on the landing site. The release link points at the stable rolling release
+ * Access is invite-only, so the main button opens the invite dialog. The
+ * release link points at the stable rolling release
  * that `.github/workflows/mac-app-release.yml` publishes from `main` to the
  * public `indexnetwork/mac-client` mirror.
  * Styles live in `src/pages/_root.css` under "Mac download".
  */
 
+import { InviteButton } from './InviteButton'
+
 const RELEASE_TAG = 'mac'
-const REQUEST_ACCESS_URL = 'https://index.network/download'
 const RELEASE_URL = `https://github.com/indexnetwork/mac-client/releases/tag/${RELEASE_TAG}`
 
 /** Mirrors `LSMinimumSystemVersion` and the arm64-only build in apps/mac. */
@@ -34,9 +37,7 @@ export function MacDownload() {
         </ul>
       </div>
       <div className="mac-download__actions">
-        <a className="mac-download__button" href={REQUEST_ACCESS_URL}>
-          <span>Request your invite</span>
-        </a>
+        <InviteButton className="mac-download__button" />
         <a className="mac-download__releases" href={RELEASE_URL}>
           View release on GitHub →
         </a>
