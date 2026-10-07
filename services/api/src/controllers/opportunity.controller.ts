@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { isSignedAction } from '../lib/app-link';
+import { isBotUserAgent } from '../lib/bot-agent';
 import { opportunityService } from '../services/opportunity.service';
 import { userService } from '../services/user.service';
 import { negotiationService, negotiationTurnSchema as submitTurnSchema, type SubmitTurnRejection } from '../services/negotiation.service';
@@ -29,14 +30,6 @@ const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: 
   invalid_turn: { status: 400, error: 'Invalid negotiation action or message' },
   raced: { status: 409, error: 'The other seat moved first; re-read the negotiation' },
 };
-
-/** Link previews, crawlers, and scripted clients. */
-const NON_HUMAN_AGENT = /bot|crawl|spider|preview|facebookexternalhit|slurp|headless|curl|wget|python|go-http|okhttp|axios|node-fetch|undici/i;
-
-/** False for a missing user agent or one that names a bot or script. */
-function isHumanAgent(userAgent: string | null): boolean {
-  return !!userAgent && !NON_HUMAN_AGENT.test(userAgent);
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -82,7 +75,7 @@ export class OpportunityController {
   async linkAction(req: Request, _user: unknown, params?: RouteParams) {
     const id = params?.id;
     if (!id) return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
-    if (!isHumanAgent(req.headers.get('user-agent'))) return Response.json({ error: 'Open this link in a browser' }, { status: 403 });
+    if (isBotUserAgent(req.headers.get('user-agent'))) return Response.json({ error: 'Open this link in a browser' }, { status: 403 });
 
     let body: unknown;
     try {
