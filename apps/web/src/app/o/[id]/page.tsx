@@ -31,10 +31,10 @@ function surfaceHrefs(surface: string, values: string[]): string[] {
 
 function SurfaceOpportunityLink({ id, surface }: { id: string; surface: string }) {
   const [hrefs, setHrefs] = useState<string[] | null>(null);
-  const [fallback, setFallback] = useState(!id);
+  const [fallback, setFallback] = useState(!id || navigator.webdriver);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || navigator.webdriver) return;
     let cancelled = false;
     const query = new URLSearchParams({ surface });
     fetch(apiUrl(`/api/opportunities/${encodeURIComponent(id)}/surface?${query}`))

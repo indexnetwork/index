@@ -29,6 +29,14 @@ const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: 
   raced: { status: 409, error: 'The other seat moved first; re-read the negotiation' },
 };
 
+/** Link previews, crawlers, and scripted clients. */
+const NON_HUMAN_AGENT = /bot|crawl|spider|preview|facebookexternalhit|slurp|headless|curl|wget|python|go-http|okhttp|axios|node-fetch|undici/i;
+
+/** False for a missing user agent or one that names a bot or script. */
+function isHumanAgent(userAgent: string | null): boolean {
+  return !!userAgent && !NON_HUMAN_AGENT.test(userAgent);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -75,6 +83,7 @@ export class OpportunityController {
     const surface = new URL(req.url).searchParams.get('surface')?.trim().toLowerCase();
     if (!id) return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
     if (!surface) return Response.json({ error: 'Missing surface' }, { status: 400 });
+    if (!isHumanAgent(req.headers.get('user-agent'))) return Response.json({ error: 'Open this link in a browser' }, { status: 403 });
 
     const opportunity = await opportunityService.getStoredOpportunity(id);
     if (!opportunity) return Response.json({ error: 'Opportunity not found' }, { status: 404 });
