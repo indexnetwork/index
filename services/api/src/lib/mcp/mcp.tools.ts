@@ -12,7 +12,7 @@ import { negotiationService, type SubmitTurnRejection } from '../../services/neg
 import { opportunityService } from '../../services/opportunity.service';
 import { userService } from '../../services/user.service';
 import { RuntimeConflictError } from '../agent/runtime-errors';
-import { actionLink, appLink } from '../app-link';
+import { appLink } from '../app-link';
 import { IntentPreparationReceiptError } from '../intent/intent.preparation';
 
 import { captureMcpToolFailure, mcpError, mcpSuccess } from './mcp.results';
@@ -531,8 +531,6 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       const opportunities = result.opportunities.slice(offset, offset + limit).map((opportunity) => ({
         id: opportunity.opportunityId,
         url: appLink('o', opportunity.opportunityId),
-        acceptUrl: actionLink(opportunity.opportunityId, principal.userId, 'accept'),
-        declineUrl: actionLink(opportunity.opportunityId, principal.userId, 'decline'),
         status: opportunity.status,
         negotiating: opportunity.status === 'negotiating',
         createdAt: opportunity.createdAt,
@@ -571,8 +569,6 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
       if ('error' in opportunity) return mcpError('opportunity_not_found', 'Opportunity not found.');
       const negotiation = await negotiationService.read(resolved.id, principal.userId);
       const url = appLink('o', opportunity.id);
-      const acceptUrl = actionLink(opportunity.id, principal.userId, 'accept');
-      const declineUrl = actionLink(opportunity.id, principal.userId, 'decline');
       const peer = { ...opportunity.peer, url: appLink('u', opportunity.peer.userId) };
       const otherParties = opportunity.otherParties.map((party) => ({ ...party, url: appLink('u', party.id) }));
       const people = otherParties.map((party) => mdLink(party.name, party.url)).join(', ');
@@ -580,8 +576,6 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
         opportunity: {
           ...opportunity,
           url,
-          acceptUrl,
-          declineUrl,
           peer,
           otherParties,
         },

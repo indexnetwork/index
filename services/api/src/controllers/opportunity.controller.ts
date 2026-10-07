@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { isSignedAction } from '../lib/app-link';
 import { opportunityService } from '../services/opportunity.service';
 import { userService } from '../services/user.service';
 import { negotiationService, negotiationTurnSchema as submitTurnSchema, type SubmitTurnRejection } from '../services/negotiation.service';
@@ -67,44 +66,22 @@ export class OpportunityController {
   }
 
   /**
-   * POST /opportunities/:id/link-action — accept or decline from a signed link.
-   * No session. The signature is the credential. A 409 means the action already landed.
+   * GET /opportunities/:id/surface?surface= — public social values on this
+   * opportunity for one surface. The link is the credential; no session.
    */
-  @Post('/:id/link-action')
-  async linkAction(req: Request, _user: unknown, params?: RouteParams) {
+  @Get('/:id/surface')
+  async surfaceLinks(req: Request, _user: unknown, params?: RouteParams) {
     const id = params?.id;
+    const surface = new URL(req.url).searchParams.get('surface')?.trim().toLowerCase();
     if (!id) return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    if (!surface) return Response.json({ error: 'Missing surface' }, { status: 400 });
 
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-    if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-
-    const action = body.action;
-    const viewer = typeof body.viewer === 'string' ? body.viewer : '';
-    const sig = typeof body.sig === 'string' ? body.sig : '';
-    const surface = typeof body.surface === 'string' ? body.surface.trim().toLowerCase() : '';
-    if (action !== 'accept' && action !== 'decline') {
-      return Response.json({ error: 'Invalid action' }, { status: 400 });
-    }
-    if (!isSignedAction(id, viewer, action, sig)) {
-      return Response.json({ error: 'Invalid link' }, { status: 403 });
-    }
-
-    const result = await opportunityService.updateOpportunityStatus(id, action === 'accept' ? 'accepted' : 'rejected', viewer);
-    if ('error' in result && result.status !== 409) {
-      return Response.json({ error: result.error }, { status: result.status });
-    }
+    const opportunity = await opportunityService.getStoredOpportunity(id);
+    if (!opportunity) return Response.json({ error: 'Opportunity not found' }, { status: 404 });
 
     const values = new Set<string>();
-    if (surface) {
-      const opportunity = await opportunityService.getStoredOpportunity(id);
-      for (const actor of opportunity?.actors.filter((entry) => entry.userId !== viewer) ?? []) {
-        for (const value of await userService.socialValuesOnSurface(actor.userId, surface)) values.add(value);
-      }
+    for (const actor of opportunity.actors) {
+      for (const value of await userService.socialValuesOnSurface(actor.userId, surface)) values.add(value);
     }
     return Response.json({ values: [...values] });
   }
