@@ -43,10 +43,10 @@ function ActionOpportunityLink({ id, action, viewer, sig, surface }: {
   surface: string;
 }) {
   const [hrefs, setHrefs] = useState<string[] | null>(null);
-  const [fallback, setFallback] = useState(!id);
+  const [fallback, setFallback] = useState(!id || navigator.webdriver);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || navigator.webdriver) return;
     let cancelled = false;
     fetch(apiUrl(`/api/opportunities/${encodeURIComponent(id)}/link-action`), {
       method: "POST",

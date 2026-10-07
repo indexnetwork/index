@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { isSignedAction } from '../lib/app-link';
+import { isBotUserAgent } from '../lib/bot-agent';
 import { opportunityService } from '../services/opportunity.service';
 import { userService } from '../services/user.service';
 import { negotiationService, negotiationTurnSchema as submitTurnSchema, type SubmitTurnRejection } from '../services/negotiation.service';
@@ -74,6 +75,7 @@ export class OpportunityController {
   async linkAction(req: Request, _user: unknown, params?: RouteParams) {
     const id = params?.id;
     if (!id) return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    if (isBotUserAgent(req.headers.get('user-agent'))) return Response.json({ error: 'Open this link in a browser' }, { status: 403 });
 
     let body: unknown;
     try {
