@@ -11,7 +11,7 @@ export class Negotiations {
     return state ? observeNegotiation(state, userId) : null;
   }
 
-  /** @param id - Opportunity identity. @param userId - Acting principal. @param turn - Proposed action. @returns The authoritative transition or refusal. */
+  /** @param id - Opportunity identity. @param userId - Acting principal. @param turn - Proposed action against the observed turn count. @returns The authoritative transition or refusal. */
   execute(id: string, userId: string, turn: NegotiationTurn) {
     return this.database.commitNegotiationTurn(id, userId, turn, (state) => decideNegotiationTurn(state, userId, turn));
   }

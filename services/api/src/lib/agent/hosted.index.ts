@@ -164,13 +164,13 @@ export class HostedIndex implements Index {
 
   /**
    * @param id - Opportunity id.
-   * @param turn - Action and message.
+   * @param turn - Action, message, and the turn count the decision was reasoned over.
    * @returns The negotiation after the turn.
-   * @throws When Index refuses the turn.
+   * @throws When Index refuses the turn, including a stale turn count.
    */
   async submitTurn(
     id: string,
-    turn: { action: NegotiationAction; message: string },
+    turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
   ): Promise<NegotiationDetail> {
     const result = await negotiationService.submitTurn(id, this.userId, turn);
     if ('rejection' in result) throw new Error(result.rejection);

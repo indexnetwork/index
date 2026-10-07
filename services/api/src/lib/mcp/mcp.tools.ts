@@ -167,7 +167,7 @@ const TURN_ERRORS: Record<SubmitTurnRejection, string> = {
   signal_inactive: 'A signal in this negotiation is paused or removed',
   turn_limit: 'The protocol turn limit was reached; the outcome remains undecided',
   invalid_turn: 'Invalid negotiation action or message',
-  raced: 'The other seat moved first; re-read the negotiation',
+  raced: 'The negotiation moved past the expected turn count; re-read it',
 };
 
 function runTool(
@@ -790,21 +790,22 @@ export function registerMcpTools(server: McpServer, principal: McpPrincipal): vo
   server.registerTool(
     'submit_negotiation_turn',
     {
-      description: agentOnly('submit_negotiation_turn') + ' Submit one negotiator turn on an opportunity. Pass your own agent id. Use only an action from protocol.availableActions on get_opportunity. This is the agents\' exchange, not the owner\'s approval — accept_opportunity and reject_opportunity remain separate.' + LINK_HINT,
+      description: agentOnly('submit_negotiation_turn') + ' Submit one negotiator turn on an opportunity. Pass your own agent id. Use only an action from protocol.availableActions on get_opportunity, and pass the negotiation turnCount you read and decided from as expectedTurnCount; a stale count is refused. This is the agents\' exchange, not the owner\'s approval — accept_opportunity and reject_opportunity remain separate.' + LINK_HINT,
       inputSchema: z.object({
         opportunityId: z.string().trim().min(1),
         agentId: z.string().uuid().describe('UUID of your selected negotiator.'),
         action: z.enum(['propose', 'counter', 'accept', 'decline']),
         message: z.string().trim().min(1).max(NEGOTIATION_MESSAGE_LIMIT),
+        expectedTurnCount: z.number().int().nonnegative().describe('The negotiation turnCount this decision was made from.'),
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    ({ opportunityId, agentId, action, message }) => runTool('submit_negotiation_turn', principal, async () => {
+    ({ opportunityId, agentId, action, message, expectedTurnCount }) => runTool('submit_negotiation_turn', principal, async () => {
       const resolved = await resolveOpportunity(opportunityId, principal);
       if ('error' in resolved) return resolved.error;
       let result;
       try {
-        result = await negotiationService.submitTurn(resolved.id, principal.userId, { action, message }, {
+        result = await negotiationService.submitTurn(resolved.id, principal.userId, { action, message, expectedTurnCount }, {
           userId: principal.userId,
           agentId,
         });

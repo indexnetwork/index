@@ -12,6 +12,8 @@ client.events(async (event) => {
   if (!wakesHost(event) || event.type !== "negotiation.turn") return;
 
   const negotiation = await client.getNegotiation(event.data.opportunityId);
+  // A repeated or late frame the negotiation has moved past
+  if (negotiation.turnCount > event.data.turnIndex) return;
 
   const { action, message } = await llm.prompt(`
     You speak for someone who has not met this person yet. 
@@ -20,7 +22,10 @@ client.events(async (event) => {
     If you do not know, ask your principal. Never invent them.
   `, negotiation);
 
-  await client.submitTurn(event.data.opportunityId, { action, message });
+  // The count you decided from: Index refuses it if the log moved meanwhile
+  await client.submitTurn(event.data.opportunityId, {
+    action, message, expectedTurnCount: negotiation.turnCount,
+  });
 });
 ```
 

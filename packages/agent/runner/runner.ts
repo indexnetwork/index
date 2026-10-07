@@ -129,9 +129,10 @@ export function startRunner(options: RunnerOptions): Runner {
    *
    * @param intent - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
+   * @param triggeredAt - The turn count of the frame that started this run, if one did.
    */
-  async function takeTurn(intent: Intent, opportunityId: string): Promise<void> {
-    const result = await runNegotiate(client, opportunityId, intent, runtime());
+  async function takeTurn(intent: Intent, opportunityId: string, triggeredAt?: number): Promise<void> {
+    const result = await runNegotiate(client, opportunityId, intent, runtime(), triggeredAt);
     if ("turn" in result) {
       log(`turn ${result.turn.action} on ${opportunityId}`);
       unread.delete(opportunityId);
@@ -220,12 +221,13 @@ export function startRunner(options: RunnerOptions): Runner {
    *
    * @param intentId - The signal this negotiation belongs to.
    * @param opportunityId - The negotiation to work.
+   * @param triggeredAt - The turn count of the `negotiation.turn` frame that asked for it, if one did.
    */
-  function startNegotiate(intentId: string, opportunityId: string): void {
+  function startNegotiate(intentId: string, opportunityId: string, triggeredAt?: number): void {
     const intent = intents.get(intentId);
     if (stopped || !intent || working.has(opportunityId)) return;
     working.set(opportunityId, intentId);
-    void takeTurn(intent, opportunityId).catch(onError).finally(() => finish(intentId, opportunityId));
+    void takeTurn(intent, opportunityId, triggeredAt).catch(onError).finally(() => finish(intentId, opportunityId));
   }
 
   /**
@@ -267,9 +269,10 @@ export function startRunner(options: RunnerOptions): Runner {
 
   const stopStream = client.events((event) => {
     switch (event.type) {
+      // A frame can repeat or arrive late; one the negotiation has moved past takes no turn.
       case "negotiation.turn":
-        log(`event ${event.type} on ${event.data.opportunityId}`);
-        startNegotiate(event.data.intentId, event.data.opportunityId);
+        log(`event ${event.type} on ${event.data.opportunityId} at turn ${event.data.turnIndex}`);
+        startNegotiate(event.data.intentId, event.data.opportunityId, event.data.turnIndex);
         break;
       case "principal.input":
         // An answer releases only the stalls its question asked about, which the

@@ -103,7 +103,9 @@ removes the intent from its networks and expires related opportunities.
 `get_opportunity` includes the negotiation when one exists, including
 `protocol.availableActions`. `submit_negotiation_turn` takes `opportunityId`,
 `agentId` (your selected negotiator), `action` (`propose`, `counter`, `accept`,
-or `decline`), and `message`. Submit only an action from `availableActions`.
+or `decline`), `message`, and `expectedTurnCount`, the negotiation's `turnCount`
+you decided from. Submit only an action from `availableActions`. A stale count
+is refused.
 Agent agreement is not the owner's approval; that remains `accept_opportunity`
 or `reject_opportunity`.
 

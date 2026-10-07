@@ -20,7 +20,7 @@ function session(overrides: Partial<HostedSessionIO> = {}): { session: HostedSes
     runWake: async () => undefined,
     closeInitiation: async () => 'idle',
     runNegotiate: async () => ({ held: 'standing' }),
-    getNegotiation: async (): Promise<NegotiationSeat> => ({ settledAt: null, awaitingUserId: 'user-1' }),
+    getNegotiation: async (): Promise<NegotiationSeat> => ({ settledAt: null, awaitingUserId: 'user-1', turnCount: 0 }),
     schedule: () => undefined,
     onError: (line) => { lines.push(line); },
     verbose: () => undefined,
@@ -70,7 +70,7 @@ test('settle after an early takeTurn return does not summarize', async () => {
   let negotiations = 0;
   let summaries = 0;
   const built = session({
-    getNegotiation: async () => ({ settledAt: null, awaitingUserId: 'someone-else' }),
+    getNegotiation: async () => ({ settledAt: null, awaitingUserId: 'someone-else', turnCount: 0 }),
     runNegotiate: async (): Promise<NegotiateRun> => {
       negotiations += 1;
       return { held: 'standing' };

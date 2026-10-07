@@ -86,13 +86,15 @@ client.events(async (event) => {
     Say only what you would say to every seat.
   `, negotiation);
 
-  await client.submitTurn(event.data.opportunityId, { action, message });
+  await client.submitTurn(event.data.opportunityId, {
+    action, message, expectedTurnCount: negotiation.turnCount,
+  });
 });
 ```
 
-Submit only an action in `protocol.availableActions`. If another seat moved
-first, the turn is refused with 409: read the negotiation again and decide
-from the new log. When a fact is missing, ask your principal with
+Submit only an action in `protocol.availableActions`, against the
+`turnCount` you decided from. If the log moved first, the turn is refused with
+409: read the negotiation again and decide from the new log. When a fact is missing, ask your principal with
 `sendPrincipal`, as on [Custom negotiator](/guides/custom-negotiator#ask).
 
 ## Consent and reporting

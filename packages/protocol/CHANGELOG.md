@@ -1,5 +1,12 @@
 # Changelog
 
+## 67.0.0
+
+### Breaking changes
+
+- `negotiationTurnSchema` and `NegotiationTurn` require `expectedTurnCount`, the log length the participant observed and reasoned over. `decideNegotiationTurn` refuses a mismatch with `raced` against the host's locked state, including when the same seat is awaited again, so a stale decision is never committed. Callers must bind the count they used for reasoning and never re-read it at submission.
+- `NegotiationDatabase.commitNegotiationTurn` hosts must record the notifications owed for an applied turn in the same transaction as the turn, so a committed turn always carries its delivery obligations.
+
 ## 66.0.0
 
 ### Breaking changes

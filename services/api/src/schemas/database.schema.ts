@@ -383,6 +383,25 @@ export const negotiationTurns = pgTable('negotiation_turns', {
   orderIdx: uniqueIndex('negotiation_turns_negotiation_turn_idx').on(table.negotiationId, table.turnIndex),
 }));
 
+/**
+ * A user-event frame a committed negotiation turn still owes one recipient.
+ * Written in the turn's transaction, so a turn never commits without it. The
+ * delivery cron claims a row for a lease, appends `payload` to the recipient's
+ * stream, and deletes the row only while it still holds that claim. A row is
+ * pending until then; an expired claim is taken again.
+ */
+export const negotiationDeliveries = pgTable('negotiation_deliveries', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  recipientUserId: text('recipient_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** The frame exactly as it is published, including its stable notification `id`. */
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  claimToken: text('claim_token'),
+  claimedUntil: timestamp('claimed_until', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, (table) => ({
+  createdAtIdx: index('negotiation_deliveries_created_at_idx').on(table.createdAt),
+}));
+
 export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   payload: text('payload').notNull(),

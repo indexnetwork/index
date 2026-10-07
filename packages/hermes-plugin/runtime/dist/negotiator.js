@@ -1361,7 +1361,7 @@ async function closeInitiation(client, intent, runtime) {
   log(`  note: ${text}`);
   return "done";
 }
-async function runNegotiate(client, opportunityId, intent, runtime) {
+async function runNegotiate(client, opportunityId, intent, runtime, triggeredAt) {
   const { model, now, signal, log = () => {} } = runtime;
   const [user, detail, inbox] = await Promise.all([
     client.me(),
@@ -1370,6 +1370,8 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
   ]);
   if (detail.intentId !== intent.id)
     return { stall: { reason: `Opportunity ${opportunityId} belongs to another signal.` } };
+  if (triggeredAt !== undefined && detail.turnCount > triggeredAt)
+    return { held: `Turn ${triggeredAt} was already overtaken by turn ${detail.turnCount}.` };
   if (detail.awaitingUserId !== user.id)
     return { stall: { reason: "It is not this seat's turn." } };
   const principalConversation = readConversation(inbox.messages);
@@ -1404,7 +1406,11 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
   const result2 = await negotiate({ user, intent, brief, opportunity, model, now, signal });
   if ("turn" in result2) {
-    await client.submitTurn(opportunityId, result2.turn);
+    await client.submitTurn(opportunityId, {
+      action: result2.turn.action,
+      message: result2.turn.message,
+      expectedTurnCount: detail.turnCount
+    });
     return result2;
   }
   const text = result2.stall.suggestedAsk ? `${result2.stall.reason}${TO_ASK}${result2.stall.suggestedAsk}` : result2.stall.reason;
@@ -1500,8 +1506,8 @@ function startRunner(options) {
     for (const opportunityId of owed.negotiate)
       startNegotiate(intentId, opportunityId);
   }
-  async function takeTurn(intent, opportunityId) {
-    const result2 = await runNegotiate(client, opportunityId, intent, runtime());
+  async function takeTurn(intent, opportunityId, triggeredAt) {
+    const result2 = await runNegotiate(client, opportunityId, intent, runtime(), triggeredAt);
     if ("turn" in result2) {
       log(`turn ${result2.turn.action} on ${opportunityId}`);
       unread.delete(opportunityId);
@@ -1566,12 +1572,12 @@ function startRunner(options) {
       onNegotiate: (opportunityId) => startNegotiate(intentId, opportunityId)
     });
   }
-  function startNegotiate(intentId, opportunityId) {
+  function startNegotiate(intentId, opportunityId, triggeredAt) {
     const intent = intents.get(intentId);
     if (stopped || !intent || working.has(opportunityId))
       return;
     working.set(opportunityId, intentId);
-    takeTurn(intent, opportunityId).catch(onError).finally(() => finish(intentId, opportunityId));
+    takeTurn(intent, opportunityId, triggeredAt).catch(onError).finally(() => finish(intentId, opportunityId));
   }
   async function recoverAll() {
     const open = await client.listNegotiations();
@@ -1606,8 +1612,8 @@ function startRunner(options) {
   const stopStream = client.events((event) => {
     switch (event.type) {
       case "negotiation.turn":
-        log(`event ${event.type} on ${event.data.opportunityId}`);
-        startNegotiate(event.data.intentId, event.data.opportunityId);
+        log(`event ${event.type} on ${event.data.opportunityId} at turn ${event.data.turnIndex}`);
+        startNegotiate(event.data.intentId, event.data.opportunityId, event.data.turnIndex);
         break;
       case "principal.input":
         log(`event ${event.type} on ${event.data.intentId}`);

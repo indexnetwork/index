@@ -32,9 +32,11 @@ import { auth } from './lib/betterauth/auth.instance';
 import { API_URL } from './lib/betterauth/betterauth';
 // Bootstrap crons (only in this process, not in CLI e.g. db:seed)
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
+import { negotiationDeliveryCron } from './crons/negotiation-delivery.cron';
 import { authenticateMcpRequest, handleMcpRequest } from './lib/mcp/mcp.server';
 
 opportunityExpirationCron.start();
+negotiationDeliveryCron.start();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';

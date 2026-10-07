@@ -155,6 +155,12 @@ export type ConnectedEvent = { type: "connected"; at?: string };
 
 type FrameStamp = { eventId?: string; at?: string };
 
+/**
+ * One frame on the owner's stream. A frame may arrive more than once, with a
+ * different `eventId` but the same `id`. `negotiation.turn` carries in
+ * `turnIndex` the turn count it was published for: when the negotiation has
+ * moved past it, the frame is obsolete.
+ */
 export type UserEvent = FrameStamp & (
   | { type: "opportunity.new"; id: string; title: string; body: string; link?: string; data?: { opportunityId: string } }
   | { type: "opportunity.status"; id: string; title: string; body: string; link?: string; data: { opportunityId: string; intentId: string | null; status: string } }
@@ -235,12 +241,12 @@ export interface Index {
   getNegotiation(id: string): Promise<NegotiationDetail>;
   /**
    * @param id - Opportunity id.
-   * @param turn - Action and message.
+   * @param turn - Action, message, and the turn count the decision was reasoned over. A stale count is refused.
    * @returns The negotiation after the turn.
    */
   submitTurn(
     id: string,
-    turn: { action: NegotiationAction; message: string },
+    turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
   ): Promise<NegotiationDetail>;
   /**
    * Accept one opportunity for this owner. Same write as the MCP `accept_opportunity` tool.
@@ -458,12 +464,12 @@ export class IndexClient implements Index {
 
   /**
    * @param id - Opportunity id.
-   * @param turn - Action and message.
+   * @param turn - Action, message, and the turn count the decision was reasoned over. A stale count is refused.
    * @returns The negotiation after the turn.
    */
   async submitTurn(
     id: string,
-    turn: { action: NegotiationAction; message: string },
+    turn: { action: NegotiationAction; message: string; expectedTurnCount: number },
   ): Promise<NegotiationDetail> {
     const { negotiation } = await this.request<{ negotiation: NegotiationDetail }>(
       "POST", this.fence(`/opportunities/${encodeURIComponent(id)}/negotiation/turns`), turn,

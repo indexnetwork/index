@@ -9,7 +9,21 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING:** `POST /api/opportunities/:id/negotiation/turns` requires
+  `expectedTurnCount`, the turn count the decision was reasoned over. A stale
+  count is refused with 409 against the locked log, even when the same seat is
+  awaited again; the hosted seat binds the count it reasoned over and ignores
+  `negotiation.turn` frames the negotiation has already moved past. The MCP
+  `submit_negotiation_turn` tool takes the same `expectedTurnCount`.
+
 ### Fixed
+- A committed negotiation turn records the `negotiation.changed`,
+  `negotiation.turn`, and `negotiation.settled` frames it owes in the turn's
+  own transaction (`negotiation_deliveries`), and a 5-second delivery cron in
+  the API process relays them under database leases, deleting each row only
+  after its append. A Redis outage, restart, or crash no longer loses them; a
+  frame may be published again with the same `id`.
 - Opportunity status frames no longer wake the hosted agent; they remain available to clients.
 
 ### Added

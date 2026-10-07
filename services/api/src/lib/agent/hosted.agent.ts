@@ -30,7 +30,7 @@ const WAKE_BLOCK_MS = 2000;
 /** One frame as this host reads it; every other field is somebody else's business. */
 interface WakeFrame {
   type?: string;
-  data?: { intentId?: string; opportunityId?: string; status?: string };
+  data?: { intentId?: string; opportunityId?: string; status?: string; turnIndex?: number };
 }
 
 /** Runs brief, wake and negotiate for owners who left the seat to Index. */
@@ -53,11 +53,11 @@ export class HostedAgent {
       activeIntent: (userId, intentId) => this.activeIntent(userId, intentId),
       runWake: (userId, intent) => this.invokeWake(userId, intent),
       closeInitiation: (userId, intent) => closeInitiation(new HostedIndex(userId), intent, this.runtime()),
-      runNegotiate: (userId, intent, opportunityId) => runNegotiate(new HostedIndex(userId), opportunityId, intent, this.runtime()),
+      runNegotiate: (userId, intent, opportunityId, triggeredAt) => runNegotiate(new HostedIndex(userId), opportunityId, intent, this.runtime(), triggeredAt),
       getNegotiation: async (userId, opportunityId) => {
         const record = await new HostedIndex(userId).getNegotiation(opportunityId).catch(() => null);
         if (!record) return null;
-        return { settledAt: record.settledAt, awaitingUserId: record.awaitingUserId };
+        return { settledAt: record.settledAt, awaitingUserId: record.awaitingUserId, turnCount: record.turnCount };
       },
       schedule: (run, delayMs) => { setTimeout(run, delayMs).unref(); },
       onError: (line) => {
@@ -177,11 +177,12 @@ export class HostedAgent {
   private dispatch({ userId, data }: UserEventRecord): void {
     let frame: WakeFrame;
     try { frame = JSON.parse(data) as WakeFrame; } catch { return; }
-    const { intentId, opportunityId, status } = frame.data ?? {};
+    const { intentId, opportunityId, status, turnIndex } = frame.data ?? {};
 
     switch (frame.type) {
+      // A frame can repeat or arrive late; the turn count it carries lets an obsolete one be ignored.
       case 'negotiation.turn':
-        if (intentId && opportunityId) this.session.run(this.session.negotiate(userId, intentId, opportunityId));
+        if (intentId && opportunityId) this.session.run(this.session.negotiate(userId, intentId, opportunityId, turnIndex));
         break;
       case 'principal.input':
         // An answer releases only the stalls its question asked about, which the

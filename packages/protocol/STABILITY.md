@@ -52,7 +52,8 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 `Negotiations`, `NegotiationDatabase`, the opening and turn decision functions,
 the observation function, and `negotiationTurnSchema` are stable. Hosts must
 evaluate supplied decision callbacks against locked current state and commit
-their effects atomically. `openCounterparties` takes the protocol opening callback.
+their effects, including the notifications a turn owes, atomically. A turn's
+`expectedTurnCount` must match the locked log. `openCounterparties` takes the protocol opening callback.
 
 ### Experimental
 

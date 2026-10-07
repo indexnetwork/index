@@ -29,7 +29,10 @@ that keep a directory.
 state and returns protocol guidance, available actions, and block reasons. Its
 execute path passes a pure protocol decision function into the host's transaction:
 the host locks current membership, intent, and negotiation state, evaluates the
-function, and atomically applies the turn and opportunity transition.
+function, and atomically applies the turn, the opportunity transition, and the
+notifications the turn owes each seat. A turn carries `expectedTurnCount`, the
+log length its decision was reasoned over; a mismatch is refused as `raced`,
+even when the same seat is awaited again.
 `openCounterparties` likewise receives the protocol's opening decision callback.
 The protocol enforces 12 total turns, leaving exhausted matches undecided, and
 A2A agreement only advances to pending owner review. `NegotiationContextDatabase`
@@ -105,7 +108,7 @@ The package defines interfaces — your application provides the concrete implem
 | `Cache` / `OpportunityCache` | Presentation/result caching |
 | `IntentFollowUp` | Lifecycle follow-up (`scoreIntent`, `onIntentSaved`, `onIntentArchived`, `onIntentResumed`) |
 | `ProfileEnricher` | Enrich profiles from external sources |
-| `NegotiationDatabase` | Current negotiation state and atomic commit with the supplied protocol decision function |
+| `NegotiationDatabase` | Current negotiation state and atomic commit with the supplied protocol decision function, including the turn's owed notifications |
 | `NegotiationContextDatabase` | Read-only negotiation turn log, for opportunity presentation (folded into `CompositeDatabase`) |
 
 **Optional** (enable specific capabilities; omit to run without that feature):

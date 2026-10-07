@@ -27,7 +27,7 @@ const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: 
   signal_inactive: { status: 409, error: 'A signal in this negotiation is paused or removed' },
   turn_limit: { status: 409, error: 'The protocol turn limit was reached; the outcome remains undecided' },
   invalid_turn: { status: 400, error: 'Invalid negotiation action or message' },
-  raced: { status: 409, error: 'The other seat moved first; re-read the negotiation' },
+  raced: { status: 409, error: 'The negotiation moved past the expected turn count; re-read it' },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
