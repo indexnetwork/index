@@ -22,7 +22,7 @@ export default function HeroAccess() {
             <ellipse cx="7" cy="7" rx="2.5" ry="5.9" />
             <path d="M1.1 7h11.8" />
           </svg>
-          Web app
+          Web
         </Link>
       </div>
 

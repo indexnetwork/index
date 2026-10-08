@@ -1,5 +1,8 @@
+import { existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+
 import { IndexClient } from '@indexnetwork/client';
-import type { Model, ModelMessage, ToolDefinition } from '@indexnetwork/agent';
+import type { Model, ModelMessage, NegotiateHook, ToolDefinition } from '@indexnetwork/agent';
 
 import { startRunner } from '@indexnetwork/agent/runner';
 
@@ -50,7 +53,19 @@ class HermesModel implements Model {
   }
 }
 
+/** The resident's negotiator, when `$HERMES_HOME/index/negotiator.ts` exists. A missing file uses the built-in negotiator. */
+async function loadHook(): Promise<NegotiateHook | undefined> {
+  const modulePath = process.env.INDEX_NEGOTIATOR_MODULE?.trim();
+  if (!modulePath || !existsSync(modulePath)) return undefined;
+  const loaded = await import(pathToFileURL(modulePath).href) as { default?: unknown };
+  if (typeof loaded.default !== 'function') {
+    throw new Error(`INDEX_NEGOTIATOR_MODULE must default-export a function (${modulePath}).`);
+  }
+  return loaded.default as NegotiateHook;
+}
+
 const bridge: Bridge = { url: required('INDEX_BRIDGE_URL'), token: required('INDEX_BRIDGE_TOKEN') };
+const negotiate = await loadHook();
 const runner = startRunner({
   client: new IndexClient({
     baseUrl: required('INDEX_API_URL'),
@@ -60,6 +75,7 @@ const runner = startRunner({
   model: new HermesModel(bridge),
   log: (line) => log('info', 'run', { line }),
   onError: (error) => log('warn', 'error', { reason: error instanceof Error ? error.message : String(error) }),
+  ...(negotiate ? { negotiate } : {}),
 });
 
 const server = Bun.serve({

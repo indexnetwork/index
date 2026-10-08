@@ -1,6 +1,6 @@
 import type { Index } from "@indexnetwork/client";
 
-import type { Intent, Model } from "../src/index.ts";
+import type { Intent, Model, NegotiateHook } from "../src/index.ts";
 import { closeInitiation, owedWork, runNegotiate, runWake } from "../src/host.ts";
 
 /** How many times a failed wake is retried before it waits for the next event or restart. */
@@ -15,6 +15,8 @@ export interface RunnerOptions {
   /** Every wake, turn and stall, as one line. */
   log?: (line: string) => void;
   onError?: (error: unknown) => void;
+  /** When set, decides each turn unless it calls `next`. */
+  negotiate?: NegotiateHook;
 }
 
 export interface Runner {
@@ -39,7 +41,7 @@ export interface Runner {
  * @returns A handle that wakes a signal on demand and stops everything.
  */
 export function startRunner(options: RunnerOptions): Runner {
-  const { client, model, now = () => new Date(), log = () => {}, onError = () => {} } = options;
+  const { client, model, now = () => new Date(), log = () => {}, onError = () => {}, negotiate } = options;
   const abort = new AbortController();
   const intents = new Map<string, Intent>();
   const waking = new Set<string>();
@@ -55,7 +57,7 @@ export function startRunner(options: RunnerOptions): Runner {
   const resettle = new Set<string>();
   let stopped = false;
 
-  const runtime = () => ({ model, now, signal: abort.signal, log });
+  const runtime = () => ({ model, now, signal: abort.signal, log, ...(negotiate ? { negotiate } : {}) });
 
   /**
    * Wake one signal, coalescing a request that arrives while one is running

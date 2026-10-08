@@ -4,8 +4,17 @@ import { briefIfMissing } from "./brief.ts";
 import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
 import { summarize } from "./summary.ts";
-import type { ConversationEntry, Decision, Intent, NegotiateRun, NegotiationAction, Opportunity, StandingStall, WakeAction, WakeResult } from "./types.ts";
+import type { ConversationEntry, Decision, Intent, NegotiateInput, NegotiateResult, NegotiateRun, NegotiationAction, Opportunity, StandingStall, WakeAction, WakeResult } from "./types.ts";
 import { wake } from "./wake.ts";
+
+/**
+ * Runs before the built-in negotiator on one turn. `next` is that negotiator.
+ * Return its result, or a turn or stall of your own. The host submits the turn.
+ */
+export type NegotiateHook = (
+  input: NegotiateInput,
+  next: () => Promise<NegotiateResult>,
+) => Promise<NegotiateResult>;
 
 /** What every run needs beyond Index: a model, a clock, a way to be cancelled, and somewhere to report. */
 export interface Runtime {
@@ -15,6 +24,8 @@ export interface Runtime {
   log?: (line: string) => void;
   /** Open this negotiation now, as soon as its brief and decision are published. */
   onNegotiate?: (opportunityId: string) => void;
+  /** When set, decides the turn instead of the built-in negotiator, unless it calls `next`. */
+  negotiate?: NegotiateHook;
 }
 
 const BRIEF = "Brief: ";
@@ -638,7 +649,8 @@ export async function runNegotiate(
   }
 
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
-  const result = await negotiate({ user, intent, brief, opportunity, model, now, signal });
+  const input: NegotiateInput = { user, intent, brief, opportunity, model, now, signal };
+  const result = runtime.negotiate ? await runtime.negotiate(input, () => negotiate(input)) : await negotiate(input);
   if ("turn" in result) {
     await client.submitTurn(opportunityId, result.turn);
     return result;
