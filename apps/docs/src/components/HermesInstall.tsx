@@ -8,10 +8,10 @@
  */
 
 import { useState } from 'react'
-import { InviteButton } from './InviteButton'
 
 const REPO_URL = 'https://github.com/indexnetwork/hermes-plugin'
 const COMMAND = 'hermes plugins install indexnetwork/hermes-plugin'
+const INSTALL_URL = 'hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1'
 
 export function HermesInstall() {
   const [copied, setCopied] = useState(false)
@@ -39,7 +39,9 @@ export function HermesInstall() {
         </ul>
       </div>
       <div className="mac-download__actions">
-        <InviteButton className="mac-download__button" />
+        <a className="mac-download__button" href={INSTALL_URL}>
+          Install plugin
+        </a>
         <a className="mac-download__releases" href={REPO_URL}>
           View plugin on GitHub →
         </a>

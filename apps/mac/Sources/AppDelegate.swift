@@ -928,6 +928,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private func nativeInjectionScript() -> String {
         let obj: [String: Any] = [
             "apiBaseUrl": AppConfig.apiBaseURL,
+            "indexEarlyNetworkId": AppConfig.indexEarlyNetworkId,
             "authenticated": ownerIsAuthenticated(),
             // Share / invitation links use the configured web origin.
             "appUrl": AppConfig.trimTrailingSlash(AppConfig.appURL),

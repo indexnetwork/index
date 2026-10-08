@@ -93,6 +93,7 @@ jobs:
         working-directory: apps/mac
         env:
           INDEX_LINK_HOST: ${{ steps.channel.outputs.link_host }}
+          INDEX_EARLY_NETWORK_ID: 5afc0751-84df-47ce-b519-88121e8aae38
           INDEX_APP_IDENTIFIER_PREFIX: ${{ secrets.MAC_APP_IDENTIFIER_PREFIX }}
           CODESIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_IDENTITY }}
           PROVISIONING_PROFILE: ${{ runner.temp }}/Index.provisionprofile

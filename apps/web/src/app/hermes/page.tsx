@@ -3,17 +3,9 @@ import SiteLayout from "@/app/site/SiteLayout";
 import DevGuides from "@/app/site/DevGuides";
 import FeaturedPost from "@/app/site/FeaturedPost";
 import GithubStars from "@/app/site/GithubStars";
-import InviteForm from "@/app/site/InviteForm";
 import { HERMES_AGENT_URL, HERMES_INSTALL_COMMAND } from "@/app/site/links";
 import NegotiationWire from "./NegotiationWire";
 import "./hermes.css";
-
-/**
- * Install instructions are switched off while access is invite-only: the hero
- * asks for an invite instead, and the install section is not rendered. Flip
- * this back on to restore "Add Index to Hermes" and "Try Index for Hermes".
- */
-const SHOW_INSTALL = false;
 
 const BUILT_FOR = [
   {
@@ -78,15 +70,9 @@ function HermesPage() {
           else. It socializes your intents for you and comes back when there&rsquo;s an intro or deal
           worth exploring.
         </p>
-        {SHOW_INSTALL ? (
-          <div className="site-btn-row">
-            <a className="site-btn" href="#install">Add Index to Hermes →</a>
-          </div>
-        ) : (
-          <div className="hermes-invite">
-            <InviteForm />
-          </div>
-        )}
+        <div className="site-btn-row">
+          <a className="site-btn" href="#install">Add Index to Hermes →</a>
+        </div>
         <Backdrop className="hermes-backdrop--shot">
           <img
             className="hermes-shot"
@@ -137,8 +123,7 @@ function HermesPage() {
         <GithubStars />
       </section>
 
-      {SHOW_INSTALL && (
-        <section id="install" className="site-section hermes-install-section">
+      <section id="install" className="site-section hermes-install-section">
           <h3 className="site-h3 site-h3--sm">Try Index for Hermes</h3>
           <div className="hermes-install-intro">
             <h4 className="site-col-title">Install the skill</h4>
@@ -149,8 +134,7 @@ function HermesPage() {
             New to Hermes?{" "}
             <a href={HERMES_AGENT_URL} target="_blank" rel="noreferrer">Get Hermes ↗</a>
           </p>
-        </section>
-      )}
+      </section>
     </SiteLayout>
   );
 }

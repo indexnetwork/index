@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 import { CONTACT_EMAIL, DOCS_URL, GITHUB_URL, X_URL } from "./links";
-import InviteModal from "./InviteModal";
 import "./site.css";
 
 const FONT_HREF =
@@ -31,8 +30,6 @@ export function ensureSiteFonts() {
  */
 export function SiteNav({ logoOnly = false }: { logoOnly?: boolean } = {}) {
   const [open, setOpen] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const closeInvite = useCallback(() => setInviteOpen(false), []);
   const { pathname } = useLocation();
 
   useEffect(() => setOpen(false), [pathname]);
@@ -65,9 +62,8 @@ export function SiteNav({ logoOnly = false }: { logoOnly?: boolean } = {}) {
         <Link className="site-nav-link" to="/blog">blog</Link>
         <a className="site-nav-link" href={DOCS_URL} target="_blank" rel="noreferrer">docs</a>
         <Link className="site-nav-link" to="/about">about</Link>
-        <button type="button" className="site-btn" onClick={() => { setOpen(false); setInviteOpen(true); }}>Request your invite</button>
+        <Link className="site-btn" to="/login" onClick={() => setOpen(false)}>Sign in</Link>
       </div>
-      {inviteOpen && <InviteModal onClose={closeInvite} />}
       </>}
     </nav>
   );

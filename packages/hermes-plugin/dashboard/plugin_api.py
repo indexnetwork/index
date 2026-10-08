@@ -1827,6 +1827,12 @@ def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict
     if confirm.get("success") is False:
         return confirm
 
+    # First confirmation joins Index Early Birds when the channel has the id.
+    # A failed join does not undo the confirmation.
+    early_network_id = _index_env("INDEX_EARLY_NETWORK_ID")
+    if early_network_id:
+        tools._api_request("POST", f"/networks/{quote(early_network_id, safe='')}/join", {})
+
     return {"success": True, "onboarding": _onboarding_gate(), "applied": update}
 
 
