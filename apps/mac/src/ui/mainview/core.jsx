@@ -718,6 +718,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
               setDraft={setChatDraft}
               onSend={sendChat}
               onClose={closeChats}
+              onProfile={openProfile}
+              onNegotiation={openNegotiation}
             />
           ) : summaryPerson ? (
             <SummaryWindow person={summaryPerson} onClose={closeChats}/>

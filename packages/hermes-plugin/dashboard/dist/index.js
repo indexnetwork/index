@@ -1344,6 +1344,14 @@
             onClick: function () { props.onStartChat(opportunity); },
           }, acting ? "Working…" : "open chat",
             acting ? null : React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A")),
+          props.onOpenNegotiation ? React.createElement("button", {
+            key: "negotiation", type: "button", className: "index-dashboard__opp-negotiating",
+            onClick: function () { props.onOpenNegotiation(opportunity); },
+          },
+            React.createElement("span", { className: "index-dashboard__opp-negotiating-dot", "aria-hidden": "true" }),
+            "negotiation",
+            React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"),
+          ) : null,
         ].filter(Boolean);
       } else if (opportunity.chatUrl) {
         actionButtons = [React.createElement("a", {
@@ -5686,7 +5694,16 @@
             activeId
               ? React.createElement(React.Fragment, null,
                 activeConv
-                  ? React.createElement("div", { className: "index-dashboard__msg-thread-head" },
+                  ? React.createElement("div", props.onOpenUser && activeConv.counterpartUserId
+                    ? {
+                      className: "index-dashboard__msg-thread-head index-dashboard__opp-id--clickable",
+                      role: "button",
+                      tabIndex: 0,
+                      title: "View " + (activeConv.counterpartName || "profile"),
+                      onClick: function () { props.onOpenUser(activeConv.counterpartUserId); },
+                      onKeyDown: function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); props.onOpenUser(activeConv.counterpartUserId); } },
+                    }
+                    : { className: "index-dashboard__msg-thread-head" },
                     React.createElement(UserAvatar, {
                       id: activeConv.counterpartUserId,
                       name: activeConv.counterpartName || activeConv.title,
@@ -6515,16 +6532,17 @@
           onClose: function () { setNegotiation(null); },
         })
         : null,
-      viewUserId
-        ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
-        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); }, onSignOut: signOut }) : null),
       messagesOpen
         ? React.createElement(MessagesPanel, {
           initialConversationId: messagesTarget,
           onClose: function () { setMessagesOpen(false); setMessagesTarget(null); },
           onStartSignal: function () { setMessagesOpen(false); setMessagesTarget(null); setNewSignalOpen(true); },
+          onOpenUser: openUser,
         })
         : null,
+      viewUserId
+        ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
+        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); }, onSignOut: signOut }) : null),
       newSignalOpen
         ? React.createElement(NewSignalModal, { onDone: finishNewSignal, onClose: function () { setNewSignalOpen(false); } })
         : null,

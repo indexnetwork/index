@@ -236,6 +236,7 @@
 
 .index-dashboard__opp-btns {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
 }
@@ -244,6 +245,10 @@
   flex: 1 1 0;
   min-width: 0;
   justify-content: center;
+}
+
+.index-dashboard .index-dashboard__opp-btns > .index-dashboard__opp-negotiating {
+  flex-basis: 100%;
 }
 
 /* Medium footprint for the SDK action buttons (no native `md` size). Used by

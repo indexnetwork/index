@@ -792,7 +792,8 @@ function App() {
             )}
             {overlay.view === "conversations" && (
               <Conversations initialConversationId={overlay.conversationId} onClose={closeOverlay} onRead={refreshChatUnread}
-                onNewSignal={() => { closeOverlay(); goNewIntent(); }}/>
+                onNewSignal={() => { closeOverlay(); goNewIntent(); }}
+                onOpenProfile={(id) => setPendingLink({ route: "profile", id })}/>
             )}
             {overlay.view === "negotiations" && <NegotiationHistory onClose={closeOverlay}/>}
           </div>

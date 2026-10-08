@@ -182,7 +182,7 @@ function apiChatMessage(m, myId) {
   return { id: m.id || rid(), who, text, at: m.createdAt || m.created_at || null };
 }
 
-function ChatWindow({ person, messages, loading = false, failed = false, onRetry, draft, setDraft, onSend, onClose }) {
+function ChatWindow({ person, messages, loading = false, failed = false, onRetry, draft, setDraft, onSend, onClose, onProfile, onNegotiation }) {
   const scrollRef = useRef(null);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -211,9 +211,12 @@ function ChatWindow({ person, messages, loading = false, failed = false, onRetry
             padding:"12px 16px", borderBottom:"1px solid #000",
             display:"flex", gap:12, alignItems:"center", background:"#fff",
           }}>
-            <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={34}/>
-            <div style={{ display:"grid", gap:2, minWidth:0 }}>
-              <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
+            <span onClick={() => onProfile && onProfile(person.id)} title="view profile" style={{ cursor:"pointer", lineHeight:0 }}>
+              <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={34}/>
+            </span>
+            <div style={{ display:"grid", gap:2, minWidth:0, flex:1 }}>
+              <div onClick={() => onProfile && onProfile(person.id)} title="view profile"
+                style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000", cursor:"pointer" }}>
                 {person.name}
               </div>
               {person.location && (
@@ -222,6 +225,16 @@ function ChatWindow({ person, messages, loading = false, failed = false, onRetry
                 </div>
               )}
             </div>
+            <button className="amiga-gadget"
+              title={`see what your agent and ${person.name}'s agent said`}
+              onClick={() => onNegotiation && onNegotiation(person.id)}
+              style={{
+                display:"flex", alignItems:"center", gap:5, flex:"0 0 auto", whiteSpace:"nowrap",
+                fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 12px",
+              }}>
+              <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
+              negotiation ›
+            </button>
           </div>
 
           {/* messages */}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useNavigate, useParams } from "react-router";
 
 import AppHandoff from "@/components/AppHandoff";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
@@ -630,16 +630,18 @@ function IntentDetail() {
   );
 }
 
-function PersonHead({ name, photo, userId, sub, size = 34 }: {
-  name: string; photo?: string | null; userId?: string; sub?: string; size?: number;
+function PersonHead({ name, photo, userId, sub, size = 34, action }: {
+  name: string; photo?: string | null; userId?: string; sub?: string; size?: number; action?: ReactNode;
 }) {
+  const nameStyle = { display: "block", fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 17 : 15, fontWeight: 600, color: "#000", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
   return (
     <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
-      <UserAvatar id={userId} name={name} avatar={photo} size={size} />
-      <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-        <div style={{ fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 17 : 15, fontWeight: 600, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+      {userId ? <Link to={`/u/${userId}`} title="view profile" style={{ lineHeight: 0 }}><UserAvatar id={userId} name={name} avatar={photo} size={size} /></Link> : <UserAvatar name={name} avatar={photo} size={size} />}
+      <div style={{ display: "grid", gap: 2, minWidth: 0, flex: 1 }}>
+        {userId ? <Link to={`/u/${userId}`} title="view profile" style={nameStyle}>{name}</Link> : <div style={nameStyle}>{name}</div>}
         {sub && <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: 1, textTransform: "uppercase" }}>{sub}</div>}
       </div>
+      {action}
     </div>
   );
 }
@@ -664,6 +666,8 @@ function PersonPane({
   // The userId whose profile fetch has finished, so switching people shows loading again.
   const [settledFor, setSettledFor] = useState<string | null>(null);
   const profileSettled = settledFor === item.userId;
+  const [negotiationFor, setNegotiationFor] = useState<string | null>(null);
+  const showNegotiation = negotiationFor === item.opportunityId;
   useEffect(() => {
     if (!item.userId || bucket === "negotiating" || bucket === "accepted" || bucket === "missed") return;
     let active = true;
@@ -678,10 +682,16 @@ function PersonPane({
   if (bucket === "accepted" && item.userId) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
-        <PersonHead name={name} photo={item.avatar} userId={item.userId} />
-        <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
-          <ChatView embedded userId={item.userId} userName={name} userAvatar={item.avatar ?? undefined} onClose={onClose} opener={{ headline: item.headline, detail: item.mainText }} />
-        </div>
+        <PersonHead name={name} photo={item.avatar} userId={item.userId} action={intentId && (
+          <Btn small onClick={() => setNegotiationFor(showNegotiation ? null : item.opportunityId)}>{showNegotiation ? "chat ›" : "negotiation ›"}</Btn>
+        )} />
+        {showNegotiation && intentId ? (
+          <NegotiationConversation intentId={intentId} opportunityId={item.opportunityId} expanded onToggle={() => setNegotiationFor(null)} />
+        ) : (
+          <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <ChatView embedded userId={item.userId} userName={name} userAvatar={item.avatar ?? undefined} onClose={onClose} opener={{ headline: item.headline, detail: item.mainText }} />
+          </div>
+        )}
       </div>
     );
   }
@@ -692,7 +702,9 @@ function PersonPane({
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
           <TheirAgentAvatar owner={{ id: item.userId, name, photo: item.avatar }} size={34} />
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-            <div style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600 }}>your agent ⇄ {first}&apos;s agent</div>
+            <div style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600 }}>
+              your agent ⇄ {item.userId ? <Link to={`/u/${item.userId}`} title="view profile" style={{ color: "inherit" }}>{first}</Link> : first}&apos;s agent
+            </div>
             <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "var(--ink-2)" }}>
               The two agents are working out whether you and {name} should meet. This isn&apos;t a chat with {name}.
             </div>

@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 
 import UserAvatar from "@/components/UserAvatar";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
@@ -52,6 +53,12 @@ export function MatchCard({
   onPass: () => void;
 }) {
   const [hover, setHover] = useState(false);
+  const navigate = useNavigate();
+  const openProfile = (e: MouseEvent) => {
+    if (!userId) return;
+    e.stopPropagation();
+    navigate(`/u/${userId}`);
+  };
   const cardClickable = accepted || expired || ready || negotiating;
   return (
     <div
@@ -72,13 +79,13 @@ export function MatchCard({
         cursor: cardClickable ? "pointer" : "default",
         transition: "all .12s ease",
       }}>
-      <span title="view profile" style={{ cursor: "pointer", lineHeight: 0 }}>
+      <span title="view profile" onClick={openProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
         <UserAvatar id={userId} name={name} avatar={photo} size={36} />
       </span>
       <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
-          <span style={{
-            fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 600,
+          <span title="view profile" onClick={openProfile} style={{
+            fontFamily: "var(--mac-sans)", fontSize: 15, fontWeight: 600, cursor: userId ? "pointer" : undefined,
             minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>{name}</span>
           {negotiating && <LiveTag label="live" />}

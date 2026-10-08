@@ -45,7 +45,7 @@ function isPersonThread(c) {
   return ps.length === 2 && ps.every(p => p && p.participantType === "user");
 }
 
-function Conversations({ initialConversationId, onClose, onRead, onNewSignal }) {
+function Conversations({ initialConversationId, onClose, onRead, onNewSignal, onOpenProfile }) {
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
   const [convs, setConvs] = useState(null);
   const [listError, setListError] = useState(false);
@@ -159,6 +159,7 @@ function Conversations({ initialConversationId, onClose, onRead, onNewSignal }) 
 
   const sorted = (convs || []).slice().sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
   const active = sorted.find(c => c.id === activeId) || null;
+  const openActiveProfile = () => { if (active && active.userId && onOpenProfile) onOpenProfile(active.userId); };
 
   return (
     <div style={{
@@ -231,9 +232,13 @@ function Conversations({ initialConversationId, onClose, onRead, onNewSignal }) 
                   padding:"12px 16px", borderBottom:"1px solid #000",
                   display:"flex", gap:12, alignItems:"center",
                 }}>
-                  {active && <Avatar id={active.userId || active.id} name={active.name} photo={active.photo} size={34}/>}
+                  {active && (
+                    <span onClick={openActiveProfile} title="view profile" style={{ cursor:"pointer", lineHeight:0 }}>
+                      <Avatar id={active.userId || active.id} name={active.name} photo={active.photo} size={34}/>
+                    </span>
+                  )}
                   <div style={{ display:"grid", gap:2, minWidth:0 }}>
-                    <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
+                    <div onClick={openActiveProfile} title="view profile" style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000", cursor:"pointer" }}>
                       {active ? active.name : ""}
                     </div>
                     {active && (chatDayLabel(active.createdAt) || active.via.length > 0) && (
