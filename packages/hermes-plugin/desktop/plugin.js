@@ -1471,14 +1471,17 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
               ),
             )
           : props.onOpenNegotiation && bucket === "negotiating"
-            ? React.createElement("button", {
-              type: "button",
-              className: "index-dashboard__opp-negotiating",
-              onClick: function () { props.onOpenNegotiation(opportunity); },
-            },
-              React.createElement("span", { className: "index-dashboard__opp-negotiating-dot", "aria-hidden": "true" }),
-              "negotiating",
-              React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"),
+            ? React.createElement("div", { className: "index-dashboard__opp-btns", style: { flexDirection: "column", alignItems: "flex-end" } },
+              React.createElement("span", { className: "index-dashboard__opp-status" }, "in progress"),
+              React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__opp-negotiating",
+                onClick: function () { props.onOpenNegotiation(opportunity); },
+              },
+                React.createElement("span", { className: "index-dashboard__opp-negotiating-dot", "aria-hidden": "true" }),
+                "negotiating",
+                React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"),
+              ),
             )
             : resolved
               ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
