@@ -170,7 +170,6 @@
   .wire-lines > * { animation: none; }
 }
 
-.hermes-invite { display: flex; flex-direction: column; gap: 10px; }
 /* The hero shot breaks out of the text column to almost the full window width. */
 .hermes-backdrop--shot {
   --shot-w: min(1440px, calc(100vw - 48px));

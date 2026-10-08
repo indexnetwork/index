@@ -1,8 +1,7 @@
 import { Link } from "react-router";
-import InviteForm from "@/app/site/InviteForm";
 import { docsUrl } from "@/app/site/links";
 
-/** Hero call to action: where Index runs, then the invite request. */
+/** Hero call to action: where Index runs. */
 export default function HeroAccess() {
   return (
     <div className="home-access">
@@ -25,10 +24,6 @@ export default function HeroAccess() {
           Web
         </Link>
       </div>
-
-      <p>The early network is invitation only - we&rsquo;ll open up public access soon.</p>
-
-      <InviteForm />
     </div>
   );
 }

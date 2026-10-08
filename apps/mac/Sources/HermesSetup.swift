@@ -53,10 +53,14 @@ enum HermesSetup {
         }
         progress("writing session into ~/.hermes/.env")
         do {
-            try writeEnv([
+            var env = [
                 ("INDEX_SESSION_TOKEN", sessionToken),
                 ("INDEX_API_URL", AppConfig.apiURL),
-            ])
+            ]
+            if !AppConfig.indexEarlyNetworkId.isEmpty {
+                env.append(("INDEX_EARLY_NETWORK_ID", AppConfig.indexEarlyNetworkId))
+            }
+            try writeEnv(env)
         } catch {
             return ["ok": false, "error": "could not write ~/.hermes/.env"]
         }
@@ -124,7 +128,7 @@ enum HermesSetup {
             removedPlugin = true
         }
         progress("clearing Index credentials")
-        removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL"])
+        removeEnv(["INDEX_SESSION_TOKEN", "INDEX_API_KEY", "INDEX_API_URL", "INDEX_EARLY_NETWORK_ID"])
         if removedPlugin,
            let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] {
             restartGatewayIfRunning(hermes, progress: progress)

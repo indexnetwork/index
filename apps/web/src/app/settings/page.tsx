@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useAuth } from "@/contexts/APIContext";
+import { useAuth, useNetworks } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import UserAvatar from "@/components/UserAvatar";
 import { validateFiles } from "@/lib/file-validation";
@@ -50,6 +50,7 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
   const [searchParams] = useSearchParams();
   const { user, isAuthenticated, isLoading: authLoading, refetchUser, signOut } = useAuthContext();
   const authService = useAuth();
+  const networksService = useNetworks();
   const { success, error } = useNotifications();
 
   const [name, setName] = useState("");
@@ -157,6 +158,8 @@ export function ProfileSettings({ firstRun }: { firstRun?: FirstRunReview } = {}
       if (firstRun) {
         // Same order as the Mac app: save, confirm, then the first signal.
         await onboardingService.confirmProfile();
+        const earlyNetworkId = String(import.meta.env.VITE_INDEX_EARLY_NETWORK_ID || "").trim();
+        if (earlyNetworkId) await networksService.joinNetwork(earlyNetworkId).catch(() => {});
         await refetchUser();
         firstRun.onDone();
         return;

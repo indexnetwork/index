@@ -1,19 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router";
 
+import { NetworkTile } from "@/app/networks/page";
 import { ProfileSettings } from "@/app/settings/page";
+import { EmptyState } from "@/components/ui/EmptyState";
+import RequestNetworkModal from "@/components/modals/RequestNetworkModal";
 import { Btn, Stage, Window } from "@/components/workbench/Workbench";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useNetworks, useNetworkRequests } from "@/contexts/APIContext";
+import { useNetworksState } from "@/contexts/NetworksContext";
+import { useNotifications } from "@/contexts/NotificationContext";
+import { log } from "@/lib/logger";
 import { needsOnboarding, onboardingService, type PublicProfileLookup } from "@/services/onboarding";
 
-type Step = "name" | "looking-up" | "review";
+const logger = log.page.from("onboarding");
+
+type Step = "name" | "looking-up" | "review" | "networks";
 
 const LOOKUP_LINES = ["looking you up…", "reading what's already public…", "almost there"];
 
 /**
- * First run, the same three screens as the Mac app: confirm the name, look the
- * person up behind the loader, then review what came back. The review saves
- * and confirms the profile; the first signal after it completes onboarding.
+ * First run: confirm the name, look the person up, review the profile, then
+ * pick networks. The review confirms the profile and joins Index Early Birds.
+ * The first signal after the networks step completes onboarding.
  */
 export default function OnboardingPage() {
   const navigate = useNavigate();
@@ -43,10 +52,12 @@ export default function OnboardingPage() {
 
   if (step === "looking-up") return <LookingUp />;
 
+  if (step === "networks") return <ChooseNetworks onContinue={() => navigate("/i/new", { replace: true })} onSignOut={() => void signOut()} />;
+
   if (step === "review") {
     return (
       <ProfileSettings
-        firstRun={{ lookup, name, onDone: () => navigate("/i/new", { replace: true }) }}
+        firstRun={{ lookup, name, onDone: () => setStep("networks") }}
       />
     );
   }
@@ -111,6 +122,162 @@ function AskName({ initialName, onSubmit, onSignOut }: {
         </form>
       </Window>
     </Stage>
+  );
+}
+
+type ListedNetwork = {
+  id: string;
+  title?: string;
+  imageUrl?: string | null;
+  isMember?: boolean;
+  memberCount?: number;
+  _count?: { members?: number };
+};
+
+function memberCount(network: ListedNetwork) {
+  return network._count?.members ?? network.memberCount ?? 0;
+}
+
+/**
+ * After the profile is confirmed the person is already in Index Early Birds.
+ * They can join other public networks, or ask for one of their own, then move on.
+ */
+function ChooseNetworks({ onContinue, onSignOut }: { onContinue: () => void; onSignOut: () => void }) {
+  const networksService = useNetworks();
+  const networkRequestsService = useNetworkRequests();
+  const { networks, loading, error: mineError, refreshNetworks, addNetwork } = useNetworksState();
+  const { error: notifyError } = useNotifications();
+  const [publicNetworks, setPublicNetworks] = useState<ListedNetwork[]>([]);
+  const [loadingPublic, setLoadingPublic] = useState(true);
+  const [publicError, setPublicError] = useState(false);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [requestOpen, setRequestOpen] = useState(false);
+
+  useEffect(() => {
+    void refreshNetworks();
+  }, [refreshNetworks]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingPublic(true);
+    networksService.discoverPublicNetworks(1, 20)
+      .then((response) => {
+        if (!cancelled) setPublicNetworks((response.data ?? []) as ListedNetwork[]);
+      })
+      .catch((err) => {
+        logger.error("Error loading public networks", { error: err });
+        if (!cancelled) setPublicError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPublic(false);
+      });
+    return () => { cancelled = true; };
+  }, [networksService]);
+
+  const mineIds = new Set(networks.map((network) => network.id));
+  const others = publicNetworks.filter((network) => !mineIds.has(network.id) && !network.isMember);
+
+  const join = async (network: ListedNetwork) => {
+    try {
+      setJoiningId(network.id);
+      const result = await networksService.joinNetwork(network.id);
+      addNetwork(result.network);
+    } catch (err) {
+      logger.error("Error joining network", { error: err });
+      notifyError("couldn't join that network.");
+    } finally {
+      setJoiningId(null);
+    }
+  };
+
+  return (
+    <Stage width={520} height="min(640px, calc(100vh - 112px))">
+      <Window title="getting started" onClose={onSignOut} style={{ height: "100%" }}>
+        <div style={{ padding: "22px 24px 0", flex: "0 0 auto" }}>
+          <h1 style={{ fontFamily: "var(--amiga-mono)", fontWeight: 500, fontSize: 20, lineHeight: 1.15, letterSpacing: -0.3, margin: 0, color: "#000" }}>
+            you&apos;re <span style={{ fontWeight: 700 }}>in</span>.
+          </h1>
+          <p style={{ marginTop: 12, marginBottom: 0, fontFamily: "var(--mac-sans)", fontSize: 13, lineHeight: 1.5, color: "#000" }}>
+            you&apos;re a member of index early birds. join more networks to widen who your agent talks to.
+          </p>
+        </div>
+
+        <div className="mac-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 12px" }}>
+          <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, margin: "0 12px 6px" }}>your networks</p>
+          {loading && networks.length === 0 ? (
+            <EmptyState tone="loading" style={{ padding: "24px 12px" }} />
+          ) : mineError && networks.length === 0 ? (
+            <EmptyState
+              tone="error"
+              style={{ padding: "24px 12px" }}
+              message="couldn't load your networks."
+              action={{ label: "try again", onClick: () => void refreshNetworks() }}
+            />
+          ) : networks.length === 0 ? (
+            <EmptyState style={{ padding: "24px 12px" }} message="index early birds will show up here." />
+          ) : (
+            networks.map((network) => (
+              <NetworkRow key={network.id} network={network as ListedNetwork} trailing={<span style={joinedStyle}>joined</span>} />
+            ))
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, margin: "18px 12px 6px" }}>
+            <p style={{ fontFamily: "var(--mac-mono)", fontSize: 11, margin: 0 }}>public networks</p>
+            <button type="button" className="wb-btn small" onClick={() => setRequestOpen(true)}>+ request a network</button>
+          </div>
+          {loadingPublic && others.length === 0 ? (
+            <EmptyState tone="loading" style={{ padding: "24px 12px" }} message="loading public networks…" />
+          ) : publicError && others.length === 0 ? (
+            <EmptyState tone="error" style={{ padding: "24px 12px" }} message="couldn't load public networks." />
+          ) : others.length === 0 ? (
+            <EmptyState style={{ padding: "24px 12px" }} message="no other public networks right now." />
+          ) : (
+            others.map((network) => (
+              <NetworkRow
+                key={network.id}
+                network={network}
+                trailing={
+                  <button
+                    type="button"
+                    className="wb-btn small"
+                    disabled={joiningId === network.id}
+                    onClick={() => void join(network)}
+                  >
+                    {joiningId === network.id ? "joining…" : "join"}
+                  </button>
+                }
+              />
+            ))
+          )}
+        </div>
+
+        <div style={{ padding: "14px 24px 18px", display: "grid", flex: "0 0 auto" }}>
+          <Btn primary onClick={onContinue}>continue →</Btn>
+        </div>
+      </Window>
+
+      <RequestNetworkModal
+        key={requestOpen ? "new" : "closed"}
+        open={requestOpen}
+        onOpenChange={setRequestOpen}
+        onSubmit={networkRequestsService.create}
+      />
+    </Stage>
+  );
+}
+
+const joinedStyle = { flex: "0 0 auto", color: "var(--ink-3)", fontFamily: "var(--mac-mono)", fontSize: 13 } as const;
+
+function NetworkRow({ network, trailing }: { network: ListedNetwork; trailing: ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: "1px solid #DDD8CC" }}>
+      <NetworkTile id={network.id} name={network.title} photo={network.imageUrl} />
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span style={{ display: "block", fontFamily: "var(--mac-mono)", fontSize: 15, fontWeight: 700, color: "#000" }}>{network.title}</span>
+        <span style={{ display: "block", marginTop: 2, fontFamily: "var(--mac-sans)", fontSize: 13, color: "var(--ink-2)" }}>{memberCount(network)} members</span>
+      </span>
+      {trailing}
+    </div>
   );
 }
 

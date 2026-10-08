@@ -19,7 +19,7 @@ const logger = log.page.from('networks');
 
 const TILE = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
 
-function NetworkTile({ id, name, photo }: { id?: string; name?: string; photo?: string | null }) {
+export function NetworkTile({ id, name, photo }: { id?: string; name?: string; photo?: string | null }) {
   const [broken, setBroken] = useState(false);
   const size = 36;
   if (photo && !broken) {

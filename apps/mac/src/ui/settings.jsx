@@ -989,6 +989,8 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       }).catch(() => {});
       if (firstRun && window.IndexApp && window.IndexApp.confirmOnboardingProfile) {
         await window.IndexApp.confirmOnboardingProfile().catch(() => {});
+        const earlyId = window.INDEX_NATIVE && window.INDEX_NATIVE.indexEarlyNetworkId;
+        if (earlyId && client.networks) await client.networks.join(earlyId).catch(() => {});
       }
     }
     (onDone || onClose)();

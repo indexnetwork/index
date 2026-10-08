@@ -3,6 +3,8 @@ import Foundation
 enum AppConfig {
     static var apiURL: String { value(for: "API_URL", default: "http://localhost:3001") }
     static var appURL: String { value(for: "APP_URL", default: "http://localhost:3000") }
+    /// Index Early Birds. Empty skips the first-run join.
+    static var indexEarlyNetworkId: String { value(for: "INDEX_EARLY_NETWORK_ID", default: "") }
 
     static var deepLinkHosts: [String] {
         var hosts: [String] = []
