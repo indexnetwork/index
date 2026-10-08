@@ -1,5 +1,4 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
-import { useNavigate } from "react-router";
 
 import UserAvatar from "@/components/UserAvatar";
 import { MyAgentAvatar } from "@/components/workbench/agent-avatar";
@@ -35,6 +34,7 @@ export function MatchCard({
   waitingOnThem,
   hasChat,
   onOpen,
+  onProfile,
   onAccept,
   onPass,
 }: {
@@ -49,15 +49,14 @@ export function MatchCard({
   waitingOnThem?: boolean;
   hasChat: boolean;
   onOpen: () => void;
+  onProfile: () => void;
   onAccept: () => void;
   onPass: () => void;
 }) {
   const [hover, setHover] = useState(false);
-  const navigate = useNavigate();
   const openProfile = (e: MouseEvent) => {
-    if (!userId) return;
     e.stopPropagation();
-    navigate(`/u/${userId}`);
+    onProfile();
   };
   const cardClickable = accepted || expired || ready || negotiating;
   return (

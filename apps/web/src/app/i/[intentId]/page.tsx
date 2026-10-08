@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 
 import AppHandoff from "@/components/AppHandoff";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
@@ -13,6 +13,7 @@ import { APIError, isNotFoundError } from "@/lib/api";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { getPublicUserProfile } from "@/services/users";
+import { resolveSocials } from "@/lib/socials";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions, type AcceptedOpportunityUpdate } from "@/hooks/useOpportunityActions";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
@@ -96,6 +97,9 @@ function IntentDetail() {
   // Below lg the Radar is the primary content and the negotiator column opens
   // as an off-canvas sheet; this is its open state.
   const [openPersonId, setOpenPersonId] = useState<string | null>(null);
+  // The third column. "stage" is whatever the radar row opens (chat, the live
+  // negotiation, a summary). Profile and a past negotiation replace that column.
+  const [pane, setPane] = useState<"stage" | "profile" | "negotiation">("stage");
 
   useLayoutEffect(() => {
     activeIntentIdRef.current = intentId;
@@ -106,6 +110,7 @@ function IntentDetail() {
     if (archiveTimer.current) window.clearTimeout(archiveTimer.current);
     setArchiving(false);
     setOpenPersonId(null);
+    setPane("stage");
     setOpportunities([]);
   }, [intentId]);
 
@@ -121,6 +126,7 @@ function IntentDetail() {
         : item,
     ));
     setOpenPersonId(update.opportunityId);
+    setPane("stage");
   }, []);
 
   const {
@@ -437,7 +443,7 @@ function IntentDetail() {
   );
   const agentChat = (
     <div style={{ minHeight: 0, display: "flex", flexDirection: "column", flex: 1 }}>
-      {intentId && <IntentNegotiatorChat key={intentId} intentId={intentId} onSelectMatch={(id) => setOpenPersonId(id)} />}
+      {intentId && <IntentNegotiatorChat key={intentId} intentId={intentId} onSelectMatch={(id) => { setPane("stage"); setOpenPersonId(id); }} />}
     </div>
   );
   const radarFunnel = (
@@ -503,7 +509,8 @@ function IntentDetail() {
             expired={bucket === "missed"}
             waitingOnThem={waitingOnThem}
             hasChat={!!(item.userId || peer?.userId) && chatPeers.has(item.userId || peer?.userId || "")}
-            onOpen={() => setOpenPersonId(item.opportunityId)}
+            onOpen={() => { setPane("stage"); setOpenPersonId(item.opportunityId); }}
+            onProfile={() => { setPane("profile"); setOpenPersonId(item.opportunityId); }}
             onAccept={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "accepted", item.userId || peer?.userId); }}
             onPass={() => { if (!busy) void handleOpportunityAction(item.opportunityId, "rejected", item.userId || peer?.userId); }}
           />
@@ -516,6 +523,8 @@ function IntentDetail() {
       item={openPerson}
       bucket={bucketOf(openPerson)}
       intentId={intentId}
+      pane={pane}
+      onPane={setPane}
       onClose={() => setOpenPersonId(null)}
       onAccept={() => void handleOpportunityAction(openPerson.opportunityId, "accepted", openPerson.userId)}
       onPass={() => void handleOpportunityAction(openPerson.opportunityId, "rejected", openPerson.userId)}
@@ -546,7 +555,7 @@ function IntentDetail() {
               </div>
             </Window>
           ) : openPerson ? (
-            <Window title={personWindowTitle(bucketOf(openPerson))} onClose={closePerson}>
+            <Window title={personPaneTitle(bucketOf(openPerson), pane)} onClose={closePerson}>
               {personPane}
             </Window>
           ) : (
@@ -619,7 +628,7 @@ function IntentDetail() {
               {radarList}
             </Window>
             {openPerson && (
-              <Window title={personWindowTitle(bucketOf(openPerson))} dismiss onClose={closePerson}>
+              <Window title={personPaneTitle(bucketOf(openPerson), pane)} dismiss onClose={closePerson}>
                 {personPane}
               </Window>
             )}
@@ -630,15 +639,23 @@ function IntentDetail() {
   );
 }
 
-function PersonHead({ name, photo, userId, sub, size = 34, action }: {
-  name: string; photo?: string | null; userId?: string; sub?: string; size?: number; action?: ReactNode;
+function personPaneTitle(bucket: ReturnType<typeof radarBucketForOpportunity>, pane: "stage" | "profile" | "negotiation") {
+  if (pane === "profile") return "profile";
+  if (pane === "negotiation") return "negotiation";
+  return personWindowTitle(bucket);
+}
+
+function PersonHead({ name, photo, userId, sub, size = 34, action, onOpenProfile }: {
+  name: string; photo?: string | null; userId?: string; sub?: string; size?: number; action?: ReactNode; onOpenProfile?: () => void;
 }) {
-  const nameStyle = { display: "block", fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 17 : 15, fontWeight: 600, color: "#000", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
+  const nameStyle = { display: "block", fontFamily: "var(--amiga-title)", fontSize: size > 34 ? 17 : 15, fontWeight: 600, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: onOpenProfile ? "pointer" : undefined } as const;
   return (
     <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
-      {userId ? <Link to={`/u/${userId}`} title="view profile" style={{ lineHeight: 0 }}><UserAvatar id={userId} name={name} avatar={photo} size={size} /></Link> : <UserAvatar name={name} avatar={photo} size={size} />}
+      <span title={onOpenProfile ? "view profile" : undefined} onClick={onOpenProfile} style={{ cursor: onOpenProfile ? "pointer" : undefined, lineHeight: 0 }}>
+        <UserAvatar id={userId} name={name} avatar={photo} size={size} />
+      </span>
       <div style={{ display: "grid", gap: 2, minWidth: 0, flex: 1 }}>
-        {userId ? <Link to={`/u/${userId}`} title="view profile" style={nameStyle}>{name}</Link> : <div style={nameStyle}>{name}</div>}
+        <div title={onOpenProfile ? "view profile" : undefined} onClick={onOpenProfile} style={nameStyle}>{name}</div>
         {sub && <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: 1, textTransform: "uppercase" }}>{sub}</div>}
       </div>
       {action}
@@ -650,6 +667,8 @@ function PersonPane({
   item,
   bucket,
   intentId,
+  pane,
+  onPane,
   onClose,
   onAccept,
   onPass,
@@ -657,6 +676,8 @@ function PersonPane({
   item: RadarCardItem;
   bucket: ReturnType<typeof radarBucketForOpportunity>;
   intentId?: string;
+  pane: "stage" | "profile" | "negotiation";
+  onPane: (pane: "stage" | "profile" | "negotiation") => void;
   onClose: () => void;
   onAccept: () => void;
   onPass: () => void;
@@ -666,10 +687,10 @@ function PersonPane({
   // The userId whose profile fetch has finished, so switching people shows loading again.
   const [settledFor, setSettledFor] = useState<string | null>(null);
   const profileSettled = settledFor === item.userId;
-  const [negotiationFor, setNegotiationFor] = useState<string | null>(null);
-  const showNegotiation = negotiationFor === item.opportunityId;
+  const showingProfile = pane === "profile" || (pane === "stage" && bucket !== "accepted" && bucket !== "negotiating" && bucket !== "missed");
+  const openProfile = () => onPane("profile");
   useEffect(() => {
-    if (!item.userId || bucket === "negotiating" || bucket === "accepted" || bucket === "missed") return;
+    if (!item.userId || !showingProfile) return;
     let active = true;
     const userId = item.userId;
     getPublicUserProfile(userId)
@@ -677,47 +698,44 @@ function PersonPane({
       .catch(() => {})
       .finally(() => { if (active) setSettledFor(userId); });
     return () => { active = false; };
-  }, [item.userId, bucket]);
+  }, [item.userId, showingProfile]);
 
-  if (bucket === "accepted" && item.userId) {
-    return (
-      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
-        <PersonHead name={name} photo={item.avatar} userId={item.userId} action={intentId && (
-          <Btn small onClick={() => setNegotiationFor(showNegotiation ? null : item.opportunityId)}>{showNegotiation ? "chat ›" : "negotiation ›"}</Btn>
-        )} />
-        {showNegotiation && intentId ? (
-          <NegotiationConversation intentId={intentId} opportunityId={item.opportunityId} expanded onToggle={() => setNegotiationFor(null)} />
-        ) : (
-          <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
-            <ChatView embedded userId={item.userId} userName={name} userAvatar={item.avatar ?? undefined} onClose={onClose} opener={{ headline: item.headline, detail: item.mainText }} />
-          </div>
-        )}
-      </div>
-    );
-  }
-  if (bucket === "negotiating" && intentId) {
+  if (!showingProfile && intentId && (pane === "negotiation" || (pane === "stage" && bucket === "negotiating"))) {
     const first = name.split(/\s+/)[0];
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #000", display: "flex", gap: 12, alignItems: "center", background: "#fff" }}>
           <TheirAgentAvatar owner={{ id: item.userId, name, photo: item.avatar }} size={34} />
-          <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+          <div style={{ display: "grid", gap: 2, minWidth: 0, flex: 1 }}>
             <div style={{ fontFamily: "var(--amiga-title)", fontSize: 15, fontWeight: 600 }}>
-              your agent ⇄ {item.userId ? <Link to={`/u/${item.userId}`} title="view profile" style={{ color: "inherit" }}>{first}</Link> : first}&apos;s agent
+              your agent ⇄ <span title="view profile" onClick={openProfile} style={{ cursor: "pointer" }}>{first}</span>&apos;s agent
             </div>
             <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "var(--ink-2)" }}>
               The two agents are working out whether you and {name} should meet. This isn&apos;t a chat with {name}.
             </div>
           </div>
+          {bucket === "accepted" && <Btn small onClick={() => onPane("stage")}>chat ›</Btn>}
         </div>
         <NegotiationConversation intentId={intentId} opportunityId={item.opportunityId} expanded onToggle={onClose} />
       </div>
     );
   }
-  if (bucket === "missed") {
+  if (!showingProfile && bucket === "accepted" && item.userId) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
-        <PersonHead name={name} photo={item.avatar} userId={item.userId} sub="expired" />
+        <PersonHead name={name} photo={item.avatar} userId={item.userId} onOpenProfile={openProfile} action={intentId && (
+          <Btn small onClick={() => onPane("negotiation")}>negotiation ›</Btn>
+        )} />
+        <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <ChatView embedded userId={item.userId} userName={name} userAvatar={item.avatar ?? undefined} onClose={onClose} opener={{ headline: item.headline, detail: item.mainText }} />
+        </div>
+      </div>
+    );
+  }
+  if (!showingProfile && bucket === "missed") {
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
+        <PersonHead name={name} photo={item.avatar} userId={item.userId} sub="expired" onOpenProfile={openProfile} />
         <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 16, alignContent: "start", background: "#fff" }}>
           <SummarySection label="what your agent found">{item.mainText || item.headline || "nothing recorded."}</SummarySection>
           <SummarySection label="why it closed">{expiryReason(item.opportunityId, name)}</SummarySection>
@@ -727,29 +745,49 @@ function PersonPane({
   }
   const bio = profile?.intro || "";
   const note = item.mainText && item.mainText !== bio ? item.mainText : item.headline;
+  const socials = resolveSocials(profile?.socials);
   return (
     <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr auto" }}>
       <PersonHead name={profile?.name || name} photo={profile?.avatar || item.avatar} userId={item.userId} size={42} />
       <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 15, alignContent: "start", background: "#fff" }}>
         {bio && <SummarySection label="bio">{bio}</SummarySection>}
         {note && <SummarySection label="why your agent surfaced them">{note}</SummarySection>}
-        {profile?.location && <SummarySection label="elsewhere">{profile.location}</SummarySection>}
-        {!bio && !note && !profile?.location && (
+        {socials.length > 0 && (
+          <SummarySection label="elsewhere">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {socials.map((s) => (
+                <a key={s.href} href={s.href} target="_blank" rel="noopener noreferrer" style={{ border: "1px solid #000", padding: "4px 9px", fontFamily: "var(--mac-mono)", fontSize: 11, color: "#000", textDecoration: "none" }}>{s.handle}</a>
+              ))}
+            </div>
+          </SummarySection>
+        )}
+        {profile?.location && (
+          <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>{profile.location}</div>
+        )}
+        {bucket === "missed" && <SummarySection label="why it closed">{expiryReason(item.opportunityId, name)}</SummarySection>}
+        {!bio && !note && socials.length === 0 && !profile?.location && (
           !profileSettled && item.userId
             ? <EmptyState tone="loading" align="start" />
             : <EmptyState align="start" message="nothing recorded yet." />
         )}
       </div>
-      <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ borderTop: "1px solid #000", padding: "10px 14px", background: "#fff", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         {bucket === "awaiting you" ? (
           <>
             <Btn primary small onClick={onAccept}>accept</Btn>
             <Btn small onClick={onPass}>pass</Btn>
           </>
-        ) : (
+        ) : bucket === "accepted" ? (
+          <Btn small onClick={() => onPane("stage")}>chat ›</Btn>
+        ) : bucket === "missed" ? (
+          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-3)" }}>this signal closed.</span>
+        ) : bucket !== "negotiating" ? (
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-3)" }}>
             answer their question in your feed to move forward.
           </span>
+        ) : null}
+        {intentId && (
+          <Btn small onClick={() => onPane(bucket === "negotiating" ? "stage" : "negotiation")}>negotiation ›</Btn>
         )}
       </div>
     </div>
