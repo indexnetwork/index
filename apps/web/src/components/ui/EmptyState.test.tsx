@@ -41,7 +41,7 @@ describe("empty-state copy", () => {
   it("uses the canonical radar lines", () => {
     expect(radarEmptyLine("awaiting you")).toBe("nothing waiting on you right now.");
     expect(radarEmptyLine("accepted")).toBe("no one accepted yet.");
-    expect(radarEmptyLine("missed")).toBe("nothing missed.");
+    expect(radarEmptyLine("closed")).toBe("nothing closed.");
   });
 
   it("treats only a real 404 as not found", () => {

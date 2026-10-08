@@ -33,16 +33,12 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
 const DISCOVERY_GIVE_UP_MS = 120_000;
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
-/**
- * Same lifecycle set as the Mac radar. Rejected is left out on purpose:
- * the list keeps one card per person, newest first, and a rejection is
- * usually the agent's filter, not a choice the person made. Including it
- * hides the pending or accepted card the Mac app still shows.
- */
+/** Same lifecycle set as the Mac radar. Rejected (failed) and expired (missed) both land in Closed. */
 const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
   "pending",
   "negotiating",
   "accepted",
+  "rejected",
   "expired",
 ];
 
@@ -506,7 +502,8 @@ function IntentDetail() {
             accepted={bucket === "accepted"}
             ready={bucket === "awaiting you"}
             negotiating={bucket === "negotiating"}
-            expired={bucket === "missed"}
+            expired={bucket === "closed"}
+            closedLabel={item.status === "rejected" ? "not a fit" : "missed"}
             waitingOnThem={waitingOnThem}
             hasChat={!!(item.userId || peer?.userId) && chatPeers.has(item.userId || peer?.userId || "")}
             onOpen={() => { setPane("stage"); setOpenPersonId(item.opportunityId); }}
@@ -687,7 +684,7 @@ function PersonPane({
   // The userId whose profile fetch has finished, so switching people shows loading again.
   const [settledFor, setSettledFor] = useState<string | null>(null);
   const profileSettled = settledFor === item.userId;
-  const showingProfile = pane === "profile" || (pane === "stage" && bucket !== "accepted" && bucket !== "negotiating" && bucket !== "missed");
+  const showingProfile = pane === "profile" || (pane === "stage" && bucket !== "accepted" && bucket !== "negotiating" && bucket !== "closed");
   const openProfile = () => onPane("profile");
   useEffect(() => {
     if (!item.userId || !showingProfile) return;
@@ -700,7 +697,7 @@ function PersonPane({
     return () => { active = false; };
   }, [item.userId, showingProfile]);
 
-  if (!showingProfile && intentId && (pane === "negotiation" || (pane === "stage" && bucket === "negotiating"))) {
+  if (!showingProfile && intentId && (pane === "negotiation" || (pane === "stage" && (bucket === "negotiating" || bucket === "closed")))) {
     const first = name.split(/\s+/)[0];
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
@@ -711,7 +708,9 @@ function PersonPane({
               your agent ⇄ <span title="view profile" onClick={openProfile} style={{ cursor: "pointer" }}>{first}</span>&apos;s agent
             </div>
             <div style={{ fontFamily: "var(--mac-sans)", fontSize: 12, lineHeight: 1.4, color: "var(--ink-2)" }}>
-              The two agents are working out whether you and {name} should meet. This isn&apos;t a chat with {name}.
+              {bucket === "closed"
+                ? <>This negotiation closed. This isn&apos;t a chat with {name}.</>
+                : <>The two agents are working out whether you and {name} should meet. This isn&apos;t a chat with {name}.</>}
             </div>
           </div>
           {bucket === "accepted" && <Btn small onClick={() => onPane("stage")}>chat ›</Btn>}
@@ -728,17 +727,6 @@ function PersonPane({
         )} />
         <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
           <ChatView embedded userId={item.userId} userName={name} userAvatar={item.avatar ?? undefined} onClose={onClose} opener={{ headline: item.headline, detail: item.mainText }} />
-        </div>
-      </div>
-    );
-  }
-  if (!showingProfile && bucket === "missed") {
-    return (
-      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
-        <PersonHead name={name} photo={item.avatar} userId={item.userId} sub="expired" onOpenProfile={openProfile} />
-        <div className="mac-scroll" style={{ overflowY: "auto", padding: 16, display: "grid", gap: 16, alignContent: "start", background: "#fff" }}>
-          <SummarySection label="what your agent found">{item.mainText || item.headline || "nothing recorded."}</SummarySection>
-          <SummarySection label="why it closed">{expiryReason(item.opportunityId, name)}</SummarySection>
         </div>
       </div>
     );
@@ -764,7 +752,7 @@ function PersonPane({
         {profile?.location && (
           <div style={{ fontFamily: "var(--mac-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>{profile.location}</div>
         )}
-        {bucket === "missed" && <SummarySection label="why it closed">{expiryReason(item.opportunityId, name)}</SummarySection>}
+        {bucket === "closed" && <SummarySection label="why it closed">{expiryReason(item.opportunityId, name)}</SummarySection>}
         {!bio && !note && socials.length === 0 && !profile?.location && (
           !profileSettled && item.userId
             ? <EmptyState tone="loading" align="start" />
@@ -779,7 +767,7 @@ function PersonPane({
           </>
         ) : bucket === "accepted" ? (
           <Btn small onClick={() => onPane("stage")}>chat ›</Btn>
-        ) : bucket === "missed" ? (
+        ) : bucket === "closed" ? (
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-3)" }}>this signal closed.</span>
         ) : bucket !== "negotiating" ? (
           <span style={{ fontFamily: "var(--mac-mono)", fontSize: 11, color: "var(--ink-3)" }}>

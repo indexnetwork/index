@@ -31,6 +31,7 @@ export function MatchCard({
   ready,
   negotiating,
   expired,
+  closedLabel,
   waitingOnThem,
   hasChat,
   onOpen,
@@ -46,6 +47,8 @@ export function MatchCard({
   ready: boolean;
   negotiating: boolean;
   expired: boolean;
+  /** Chip on a closed card: "not a fit" or "missed". */
+  closedLabel?: string;
   waitingOnThem?: boolean;
   hasChat: boolean;
   onOpen: () => void;
@@ -72,7 +75,6 @@ export function MatchCard({
         background: "#fff", color: "#000",
         border: "1px solid #000",
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
-        filter: expired ? "opacity(0.45)" : "none",
         boxShadow: (cardClickable && hover) ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
         transform: (cardClickable && hover) ? "translate(-1px, -1px)" : "none",
         cursor: cardClickable ? "pointer" : "default",
@@ -112,7 +114,12 @@ export function MatchCard({
             negotiating ›
           </button>
         ) : expired ? (
-          <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, opacity: 0.75 }}>expired · summary ›</span>
+          <>
+            <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10 }}>{closedLabel || "missed"}</span>
+            <button type="button" className="wb-btn small" onClick={onOpen} style={{ display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" }}>
+              negotiation ›
+            </button>
+          </>
         ) : null}
       </div>
     </div>

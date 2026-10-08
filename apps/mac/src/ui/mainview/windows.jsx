@@ -1,5 +1,5 @@
 function DeepLinkWindow({ person, route, onClose }) {
-  const expired = route === "card" && person.status === "expired";
+  const closed = route === "card" && (person.status === "expired" || person.status === "passed" || person.status === "rejected");
   return (
     <div
       onClick={onClose}
@@ -11,8 +11,8 @@ function DeepLinkWindow({ person, route, onClose }) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{ display:"flex", width:"min(460px, 100%)", maxHeight:"100%", minHeight:0 }}>
-        {expired
-          ? <SummaryWindow person={person} onClose={onClose}/>
+        {closed
+          ? <NegotiationWindow person={person} onClose={onClose}/>
           : <ProfileWindow person={person} onClose={onClose} actions={false}/>}
       </div>
     </div>
@@ -27,7 +27,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
   const status = person.status;
   const isReady = status === "ready";
   const isAccepted = status === "accepted";
-  const isExpired = status === "expired";
+  const isClosed = status === "expired" || status === "passed" || status === "rejected";
   // The intro someone wrote in their profile settings does not travel on an
   // opportunity card, so it is fetched here from GET /users/:id and merged
   // under anything the card already carried.
@@ -110,7 +110,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
             </SummarySection>
           )}
 
-          {isExpired && (
+          {isClosed && (
             <SummarySection label="why it closed">{expiryReason(person)}</SummarySection>
           )}
 
@@ -146,7 +146,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, onOpenNe
             <button className="amiga-gadget primary"
               onClick={() => onOpenChat && onOpenChat(person.id)}
               style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px", flex:"0 0 auto", whiteSpace:"nowrap" }}>send message</button>
-          ) : isExpired ? (
+          ) : isClosed ? (
             <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)", flex:"1 1 120px", minWidth:0 }}>this signal closed.</span>
           ) : (
             <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)", flex:"1 1 120px", minWidth:0 }}>
@@ -306,6 +306,7 @@ function NegotiationWindow({ person, onClose }) {
   // Named as the agent, never as the person: this is two agents talking on
   // their owners' behalf, not a conversation with them.
   const theirAgent = `${(person.name || "their").split(/\s+/)[0]}'s agent`;
+  const closed = person.status === "expired" || person.status === "passed" || person.status === "rejected";
 
   useEffect(() => {
     setNegotiation(null);
@@ -344,8 +345,9 @@ function NegotiationWindow({ person, onClose }) {
                 your agent ⇄ {theirAgent}
               </div>
               <div style={{ fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.4, color:"var(--ink-2)" }}>
-                The two agents are working out whether you and {person.name} should meet.
-                This isn't a chat with {person.name}.
+                {closed
+                  ? `This negotiation closed. This isn't a chat with ${person.name}.`
+                  : `The two agents are working out whether you and ${person.name} should meet. This isn't a chat with ${person.name}.`}
               </div>
             </div>
           </div>
@@ -487,8 +489,9 @@ function StatusBadge({ status, inv }) {
     negotiating: "negotiating",
     warm:        "discovered · warm",
     considering: "discovered",
-    expired:     "expired",
-    passed:      "passed",
+    expired:     "missed",
+    passed:      "not a fit",
+    rejected:    "not a fit",
   };
   const t = map[status] || "discovered";
   return (
