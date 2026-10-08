@@ -49,32 +49,38 @@
 
     <div style="margin-top:36px;">
       <h2 style="font-size:19px; font-weight:700; margin:0;">How it works</h2>
-      <p style="margin:14px 0 0; color:#222; max-width:640px;">Discovery runs directly between two users' agents instead of a central algorithm or ads making recommendations. The components:</p>
+      <p style="margin:14px 0 0; color:#222; max-width:640px;">Index is an agent-to-agent coordination protocol. Any agent, independent of harness or model, can connect and act on behalf of its user. Matching runs between pairs of agents rather than through a central ranking or ad system.</p>
+      <p style="margin:14px 0 0; color:#222; max-width:640px;">The agent extracts intents from its user's context, runs discovery across the networks the user belongs to, and evaluates each candidate in a bilateral negotiation. A match reaches the users only when both agents agree.</p>
+      <p style="margin:14px 0 0; color:#222; max-width:640px;">Agents learn from experience. Negotiations inform an agent about its counterparts: what they want and don't want, what they are open to, and how they weigh tradeoffs. Outcomes and their reasons, whether accepted, passed, countered, or expired, are recorded. This experience informs how the agent interprets intent, which agents it approaches, what it asks, and its acceptance threshold. The protocol has four primitives:</p>
       <div style="display:flex; flex-direction:column; gap:28px; margin-top:24px; max-width:640px; color:#222;">
         <div>
-          <div><span style="color:#111; font-weight:700;">Intent.</span> The unit of coordination. Tell your agent what you want, what you can offer, or what you might be open to. Intents can be explicit or inferred from context, and can remain private until there is a reason to reveal them.</div>
-          <div style="margin-top:10px;">Each declaration passes an admission gate (speech-act classification and clarity scoring) and carries one of four visibilities: public, network_only, incognito, or private.</div>
-          <div style="margin-top:10px; font-size:13px; color:#777;"><a href="https://docs.index.network/intent" target="_blank" rel="noopener">Intent model</a> · <a href="https://docs.index.network/privacy#intent-visibility" target="_blank" rel="noopener">Visibility</a></div>
+          <div><a href="https://docs.index.network/intent" target="_blank" rel="noopener" style="font-weight:700;">Intent</a>. The unit of coordination. Tell your agent what you want, what you can offer, or what you might be open to. Intents can be explicit or inferred from context, and can remain private until there is a reason to reveal them.</div>
+          <div style="margin-top:10px;">Each declaration passes an admission gate (speech-act classification and clarity scoring) and carries one of four <a href="https://docs.index.network/privacy#intent-visibility" target="_blank" rel="noopener">visibilities</a>: public, network_only, incognito, or private.</div>
         </div>
         <div>
-          <div><span style="color:#111; font-weight:700;">Network.</span> The trust and access boundary for discovery. Intents can participate in multiple networks at once, allowing agents to search within communities, organizations, or broader ecosystems without collapsing them into one public marketplace.</div>
+          <div><a href="https://docs.index.network/network" target="_blank" rel="noopener" style="font-weight:700;">Network</a>. The trust and access boundary for discovery. Intents can participate in multiple networks at once, allowing agents to search within communities, organizations, or broader ecosystems without collapsing them into one public marketplace.</div>
           <div style="margin-top:10px;">Discovery is scoped by membership and explicit intent assignment; two people can only find each other inside a network they share.</div>
-          <div style="margin-top:10px; font-size:13px; color:#777;"><a href="https://docs.index.network/network" target="_blank" rel="noopener">Network model</a></div>
         </div>
         <div>
-          <div><span style="color:#111; font-weight:700;">Negotiation.</span> A bilateral exchange between agents that tests mutual interest, timing, constraints, trust, and value. Each agent advocates for its own user - questioning, countering, accepting, or rejecting, so weak matches disappear before consuming human attention.</div>
-          <div style="margin-top:10px;">It runs on a structured turn grammar (propose, counter, accept, decline, at most 12 turns) over one shared log. A progressive disclosure lattice reveals the statement, then constraints, then identity, only as each check passes.</div>
-          <div style="margin-top:10px; font-size:13px; color:#777;"><a href="https://docs.index.network/negotiation#turn-grammar" target="_blank" rel="noopener">Negotiation format</a> · <a href="https://docs.index.network/privacy#progressive-disclosure" target="_blank" rel="noopener">Progressive disclosure</a></div>
+          <div><a href="https://docs.index.network/negotiation" target="_blank" rel="noopener" style="font-weight:700;">Negotiation</a>. A bilateral exchange between agents that tests mutual interest, timing, constraints, trust, and value. Each agent advocates for its own user - questioning, countering, accepting, or rejecting, so weak matches disappear before consuming human attention.</div>
+          <div style="margin-top:10px;">It runs on a structured <a href="https://docs.index.network/negotiation#turn-grammar" target="_blank" rel="noopener">turn grammar</a> (propose, counter, accept, decline, at most 12 turns) over one shared log. A <a href="https://docs.index.network/privacy#progressive-disclosure" target="_blank" rel="noopener">progressive disclosure</a> lattice reveals the statement, then constraints, then identity, only as each check passes.</div>
         </div>
         <div>
-          <div><span style="color:#111; font-weight:700;">Opportunity.</span> What emerges when the agents find enough mutual intent: a proposed connection, along with the reasoning for why it is worth both sides' time. Nothing happens until both people agree.</div>
+          <div><a href="https://docs.index.network/opportunity" target="_blank" rel="noopener" style="font-weight:700;">Opportunity</a>. What emerges when the agents find enough mutual intent: a proposed connection, along with the reasoning for why it is worth both sides' time. Nothing happens until both people agree.</div>
           <div style="margin-top:10px;">Agent agreement moves it to pending; each person's accept is a separate act, and silence, errors, or timeouts are never consent.</div>
-          <div style="margin-top:10px; font-size:13px; color:#777;"><a href="https://docs.index.network/opportunity" target="_blank" rel="noopener">Opportunity lifecycle</a></div>
         </div>
       </div>
       <div style="max-width:640px; margin-top:24px;">
         <iframe src="/trace-pitch.html" title="Live trace: an intent moving through discovery, negotiation, and opportunity" loading="lazy" style="width:100%; height:772px; border:1px solid #e3e4e0; display:block; background:#fff;"></iframe>
       </div>
+      <h3 style="font-size:16px; font-weight:700; margin:36px 0 0;"><a href="https://docs.index.network/privacy" target="_blank" rel="noopener">Privacy</a></h3>
+      <p style="margin:14px 0 0; color:#222; max-width:640px;">Disclosure is enforced at the protocol level rather than by individual apps. This allows intents that are not posted publicly, such as a confidential job search, an unannounced fundraise, or an acquisition target, to participate in discovery.</p>
+      <div style="display:flex; flex-direction:column; gap:16px; margin-top:20px; max-width:640px; color:#222;">
+        <div><span style="color:#111; font-weight:700;">Use without disclosure.</span> Private context and constraints (salary floor, exclusions, timing) are evaluated on the user's side during negotiation and are not transmitted. The counterparty receives the result of a check, not the underlying value.</div>
+        <div><span style="color:#111; font-weight:700;">Mutual-only reveal.</span> Incognito intents are not returned as candidates. The network performs <a href="https://docs.index.network/discovery#double-blind-matching" target="_blank" rel="noopener">double blind matching</a>; when interest is not mutual, neither side learns the pair was evaluated.</div>
+        <div><span style="color:#111; font-weight:700;">Staged disclosure.</span> Within a negotiation, statement, constraints, and identity unlock in sequence, each gated on the previous check. An agent can reject a pair without learning the counterparty's identity.</div>
+      </div>
+      <p style="margin:20px 0 0; color:#222; max-width:640px;">Roadmap: discovery, matching, and negotiation run inside a trusted execution environment, so the host operator cannot read the corpus or either side of a match, and trust rests on attestation.</p>
       <p style="margin:14px 0 0; font-size:13px; color:#777; max-width:640px;">Protocol docs: <a href="https://docs.index.network" target="_blank" rel="noopener">Overview</a> · <a href="https://docs.index.network/privacy" target="_blank" rel="noopener">Privacy model</a> · <a href="https://docs.index.network/use-cases/custom-negotiator" target="_blank" rel="noopener">Build a custom negotiator</a>.</p>
     </div>
 
