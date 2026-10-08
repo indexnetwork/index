@@ -3,7 +3,7 @@ import SiteLayout from "@/app/site/SiteLayout";
 import DevGuides from "@/app/site/DevGuides";
 import FeaturedPost from "@/app/site/FeaturedPost";
 import GithubStars from "@/app/site/GithubStars";
-import { HERMES_AGENT_URL, HERMES_INSTALL_COMMAND } from "@/app/site/links";
+import { HERMES_AGENT_URL, HERMES_INSTALL_COMMAND, HERMES_INSTALL_URL } from "@/app/site/links";
 import NegotiationWire from "./NegotiationWire";
 import "./hermes.css";
 
@@ -70,9 +70,6 @@ function HermesPage() {
           else. It socializes your intents for you and comes back when there&rsquo;s an intro or deal
           worth exploring.
         </p>
-        <div className="site-btn-row">
-          <a className="site-btn" href="#install">Add Index to Hermes →</a>
-        </div>
         <Backdrop className="hermes-backdrop--shot">
           <img
             className="hermes-shot"
@@ -80,6 +77,26 @@ function HermesPage() {
             alt="Index plugin inside Hermes: a signal, questions from other agents, and the radar of people surfaced"
           />
         </Backdrop>
+      </section>
+
+      <section id="install" className="site-section hermes-install-section">
+        <h3 className="site-h3 site-h3--sm">Add Index to Hermes</h3>
+        <div className="hermes-install-intro">
+          <h4 className="site-col-title">With the CLI</h4>
+          <p className="site-p">Running Hermes already? Install the plugin and let it start talking.</p>
+        </div>
+        <InstallCommand />
+        <div className="hermes-install-intro">
+          <h4 className="site-col-title">With Hermes Desktop</h4>
+          <p className="site-p">One click installs and enables the plugin.</p>
+        </div>
+        <div className="site-btn-row">
+          <a className="site-btn" href={HERMES_INSTALL_URL}>Install in Hermes Desktop →</a>
+        </div>
+        <p className="site-p">
+          New to Hermes?{" "}
+          <a href={HERMES_AGENT_URL} target="_blank" rel="noreferrer">Get Hermes ↗</a>
+        </p>
       </section>
 
       <section id="how" className="site-section">
@@ -123,18 +140,6 @@ function HermesPage() {
         <GithubStars />
       </section>
 
-      <section id="install" className="site-section hermes-install-section">
-          <h3 className="site-h3 site-h3--sm">Try Index for Hermes</h3>
-          <div className="hermes-install-intro">
-            <h4 className="site-col-title">Install the skill</h4>
-            <p className="site-p">Running Hermes already? Install the skill and let it start talking.</p>
-          </div>
-          <InstallCommand />
-          <p className="site-p">
-            New to Hermes?{" "}
-            <a href={HERMES_AGENT_URL} target="_blank" rel="noreferrer">Get Hermes ↗</a>
-          </p>
-      </section>
     </SiteLayout>
   );
 }

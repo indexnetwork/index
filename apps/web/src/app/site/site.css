@@ -349,6 +349,36 @@
 }
 .site .site-copy-btn:hover { background: var(--bg); color: var(--ink); }
 
+/* ---------- newsletter form ---------- */
+/* Field and button read as one control: shared edge, shared height. */
+.site-invite {
+  display: flex;
+  width: 100%;
+  max-width: 383px;
+  border: 1px solid var(--ink);
+}
+.site-invite-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--bg);
+  border: 0;
+  border-radius: 0;
+  outline: none;
+}
+.site-invite:focus-within { box-shadow: 0 0 0 3px rgba(64, 145, 187, .25); }
+.site .site-invite .site-btn { height: 30px; padding: 0 12px; flex: 0 0 auto; }
+.site-invite-input::placeholder { color: var(--muted); }
+.site .site-invite .site-btn:disabled { opacity: .6; cursor: default; }
+.site-invite-done { margin: 0; font-size: 15px; color: var(--ink); }
+.site-invite-error { margin: 0; color: #B3261E; font-size: 13px; }
+
 .site-guides {
   display: flex;
   flex-direction: column;

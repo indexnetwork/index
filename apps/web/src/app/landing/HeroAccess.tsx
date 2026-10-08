@@ -1,5 +1,6 @@
 import { Link } from "react-router";
-import { docsUrl } from "@/app/site/links";
+import { MAC_APP_DOWNLOAD_URL } from "@/app/site/links";
+import NewsletterForm from "@/app/site/NewsletterForm";
 
 /** Hero call to action: where Index runs. */
 export default function HeroAccess() {
@@ -7,7 +8,7 @@ export default function HeroAccess() {
     <div className="home-access">
       <div className="home-available">
         <span className="home-available-label">AVAILABLE ON</span>
-        <a className="home-available-app" href={docsUrl("/use/mac")} target="_blank" rel="noreferrer">
+        <a className="home-available-app" href={MAC_APP_DOWNLOAD_URL}>
           <img src="/site/index-mark.svg" alt="" aria-hidden="true" />
           Mac app
         </a>
@@ -24,6 +25,8 @@ export default function HeroAccess() {
           Web
         </Link>
       </div>
+
+      <NewsletterForm />
     </div>
   );
 }
