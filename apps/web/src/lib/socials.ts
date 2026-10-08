@@ -94,7 +94,7 @@ function platformForHost(host: string): SocialPlatform | '' {
 }
 
 function labelPlatform(social: SocialEntry): SocialPlatform | '' {
-  const id = String(social.id ?? social.label ?? social.platform ?? '').toLowerCase().trim();
+  const id = String(social.label ?? social.platform ?? social.id ?? '').toLowerCase().trim();
   if (GENERIC_LABELS.has(id)) return '';
   if (id === 'twitter' || id === 'x') return 'x';
   return PREFIX[id] ? (id as SocialPlatform) : '';

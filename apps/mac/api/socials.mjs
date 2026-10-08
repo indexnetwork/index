@@ -89,7 +89,7 @@ function platformForHost(host) {
 
 /** The platform an entry's own label names, or '' when it names a bucket. */
 function labelPlatform(social) {
-  const id = String(social.id ?? social.label ?? social.platform ?? '').toLowerCase().trim();
+  const id = String(social.label ?? social.platform ?? social.id ?? '').toLowerCase().trim();
   if (GENERIC_LABELS.has(id)) return '';
   if (id === 'twitter' || id === 'x') return 'x';
   return SOCIAL_PREFIX[id] ? id : '';
