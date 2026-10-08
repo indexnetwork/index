@@ -21,5 +21,6 @@ provides_tools:
   - index_read_docs
   - index_agent_me
   - index_open_app
-# The plugin authenticates with the INDEX_SESSION_TOKEN environment variable
-# (this device's own session, obtained via "log in with browser").
+# The plugin authenticates with INDEX_SESSION_TOKEN (this device's session,
+# from `hermes index login` or "log in with browser"), or with INDEX_API_KEY
+# when no session is set.

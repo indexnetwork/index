@@ -23,7 +23,7 @@ import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 _DASHBOARD_DIR = Path(__file__).resolve().parent
 _PLUGIN_ROOT = _DASHBOARD_DIR.parent
@@ -161,7 +161,7 @@ def _runtime_package() -> str:
 tools = _load_module(f"{_runtime_package()}.tools", _TOOLS_PATH)
 # Loaded under the same package so it can share the transport's API resolver;
 # sign-in and every later request must name one Index environment.
-auth_login = _load_module(f"{_runtime_package()}.dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
+auth_login = _load_module(f"{_runtime_package()}.auth_login", _PLUGIN_ROOT / "auth_login.py")
 def _call_read_intents() -> dict[str, Any]:
     """Fetch all of the caller's non-archived intents across pages over REST `POST /intents/list`.
 
@@ -1019,34 +1019,6 @@ def environment_set(body: dict[str, Any] | None = Body(default=None)) -> dict[st
     return {"success": True, "environment": name, "needsLogin": True}
 
 
-def _ensure_hermes_agent() -> None:
-    """Register an external agent named Hermes when this account has none.
-
-    Runs once a session is live. Does not select it as the negotiator.
-    A registry failure must not block sign-in.
-    """
-    try:
-        payload = tools._api_request("GET", "/agents")
-        if payload.get("success") is False:
-            return
-        for agent in _list(payload.get("agents")):
-            if not isinstance(agent, dict) or _text(agent.get("name")).lower() != "hermes":
-                continue
-            agent_id = _text(agent.get("id"))
-            if agent_id:
-                tools.remember_local_agent(agent_id)
-            return
-        created = tools._api_request("POST", "/agents", {"name": "Hermes"})
-        if created.get("success") is False:
-            return
-        agent = created.get("agent")
-        agent_id = _text(agent.get("id")) if isinstance(agent, dict) else ""
-        if agent_id:
-            tools.remember_local_agent(agent_id)
-    except Exception:  # noqa: BLE001 - sign-in still completes.
-        return
-
-
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
     """Report transport health from the configured API key.
@@ -1075,7 +1047,7 @@ def auth_status() -> dict[str, Any]:
         }
     connected = status.get("connected") is True and not status.get("reconnectRequired")
     if connected:
-        _ensure_hermes_agent()
+        tools.ensure_hermes_agent()
     return {
         "success": True,
         "authenticated": connected,
@@ -1090,45 +1062,16 @@ def auth_status() -> dict[str, Any]:
     }
 
 
-def _login_app_base_url() -> str:
-    """Web origin that serves `/cli-auth`, paired with the active API environment.
-
-    An explicit `INDEX_APP_BASE_URL` wins (it also drives deep links). Otherwise
-    the origin is derived from `INDEX_API_URL` by dropping a leading `protocol.`
-    host label (`protocol.dev.index.network` -> `dev.index.network`), so a plugin
-    pointed at dev/staging signs in against the matching web app instead of prod.
-    Without this pairing a dev-configured plugin would mint a prod key that then
-    401s against the dev API.
-    """
-    if _index_env("INDEX_APP_BASE_URL"):
-        return tools._app_base_url()
-    api_url = _index_env("INDEX_API_URL")
-    if not api_url:
-        return tools.INDEX_APP_BASE_URL
-    try:
-        parts = urlsplit(api_url)
-    except ValueError:
-        return tools.INDEX_APP_BASE_URL
-    if parts.scheme in ("http", "https") and parts.netloc:
-        hostname = (parts.hostname or "").lower()
-        if hostname in {"localhost", "127.0.0.1", "::1"}:
-            return f"{parts.scheme}://{hostname}:3000"
-        host = parts.netloc
-        if host.startswith("protocol."):
-            host = host[len("protocol."):]
-        return f"{parts.scheme}://{host}"
-    return tools.INDEX_APP_BASE_URL
-
-
 @full_router.post("/auth/login/start")
 def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Start the Mac/CLI `/cli-auth` handshake and open the browser to sign in.
 
-    Returns `authUrl` so the UI can offer a manual link when the plugin runs on
-    a headless/remote agent host where opening a browser is not possible.
+    Returns `authUrl`. The callback is a loopback port on this host, so a
+    browser on another machine cannot finish it. Use `hermes index login` and
+    paste the address the browser lands on.
     """
     try:
-        auth_url = auth_login.start_login(_login_app_base_url())
+        auth_url = auth_login.start_login(tools.login_app_base_url())
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Could not start login: {exc}"}
     opener = tools._url_opener_command(auth_url)
@@ -1141,7 +1084,7 @@ def auth_login_status() -> dict[str, Any]:
     """Poll the pending login; on success the user's API key is persisted."""
     result = auth_login.poll_status()
     if result.get("status") == "success":
-        _ensure_hermes_agent()
+        tools.ensure_hermes_agent()
     payload: dict[str, Any] = {"success": result.get("status") != "failed", "status": result.get("status")}
     if result.get("error"):
         payload["error"] = result.get("error")

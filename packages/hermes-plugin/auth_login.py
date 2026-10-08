@@ -331,6 +331,32 @@ def start_login(app_base_url: str) -> str:
     return f"{app_base_url.rstrip('/')}/cli-auth?{query}"
 
 
+def accept_callback(url: str) -> bool:
+    """Mark the pending login complete from a pasted callback URL.
+
+    The browser lands on this host's loopback listener. On a remote machine
+    that page never arrives, so the CLI accepts the same URL from stdin.
+    A URL that does not match the pending login is ignored, and the listener
+    can still finish it.
+
+    :param url: The address bar value, including `state` and `device_code`.
+    :returns: Whether this login was marked complete.
+    """
+    params = parse_qs(urlparse(url.strip()).query)
+    state = (params.get("state") or [None])[0]
+    device_code = (params.get("device_code") or [None])[0]
+    with _lock:
+        session = _session
+        if session is None or session.status != "pending" or session.consumed:
+            return False
+        if not session.state or state != session.state or not device_code:
+            return False
+        session.consumed = True
+        session.device_code = device_code
+        session.status = "success"
+        return True
+
+
 def poll_status() -> dict[str, Any]:
     """Report and, on success, persist the pending login's result.
 

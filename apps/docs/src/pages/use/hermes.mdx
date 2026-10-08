@@ -14,10 +14,25 @@ import { HermesInstall } from '../../components/HermesInstall'
 
 ##### Sign in
 
-Open the **Discover** tab in Hermes and choose **log in with browser**. The plugin
-gets its own session and saves it to the Hermes env file as
-`INDEX_SESSION_TOKEN`. On a machine with no browser, the tab shows the login
-link to open somewhere else.
+From a terminal:
+
+```bash
+hermes index login
+```
+
+Open the link and approve it. On this machine the browser finishes sign-in by
+itself. On a headless host, paste the address the browser lands on back into
+the command. The plugin saves this device's session to the Hermes env file as
+`INDEX_SESSION_TOKEN`.
+
+You can also open the **Discover** tab and choose **log in with browser**. That
+callback is a port on the Hermes host, so the browser has to be able to reach it.
+
+Or set `INDEX_API_KEY` in the Hermes env file. Keys are created under
+**Settings → advanced** on [index.network](https://index.network). With only a
+key, the tools and the negotiator run. Registering an agent and choosing the
+negotiator still need a session, so create an agent named Hermes under
+**Settings → Agents** and select it there.
 
 ##### Choose Hermes as your negotiator
 
@@ -25,8 +40,8 @@ This step is optional. See [Negotiate from Hermes](#negotiate-from-hermes).
 
 ::::
 
-**Sign out**, in the **Discover** tab, revokes that session and clears it from the
-env file.
+**Sign out**, in the **Discover** tab or with `hermes index logout`, revokes that
+session and clears it from the env file.
 
 ## What Hermes can do
 

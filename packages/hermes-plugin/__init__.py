@@ -7,6 +7,7 @@ from pathlib import Path
 
 from . import schemas, tools
 from .bridge import HermesBridge
+from .cli import index_command, register_cli
 from .sidecar import Sidecar
 
 
@@ -58,6 +59,12 @@ def register(ctx):
         ("index_open_app", schemas.INDEX_OPEN_APP, tools.index_open_app),
     ):
         ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
+    ctx.register_cli_command(
+        name="index",
+        help="Sign in to Index",
+        setup_fn=register_cli,
+        handler_fn=index_command,
+    )
     from .mcp import sync_index_mcp
 
     sync_index_mcp()
