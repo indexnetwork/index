@@ -11,30 +11,51 @@
 }
 .home-access p { margin: 0; }
 
-/* One quiet meta line, all in the label voice. */
-.home-available {
-  display: flex;
-  /* 16px access gap + 12px = the 28px hero gap above, so the line sits centred. */
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
-  font-size: 13px;
-  font-weight: 400;
+.home-available-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .1em;
   line-height: 1;
   color: var(--muted);
 }
-.home-available-label { font-size: 12px; letter-spacing: .06em; }
-.home-available-app {
+
+/* One chip per platform, sized and squared like the site buttons. */
+.home-platforms { display: flex; flex-wrap: wrap; gap: 8px; }
+.site a.home-platform {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
   color: var(--ink);
+  background: transparent;
+  border: 1px solid rgba(4, 23, 41, .45);
+  border-radius: 0;
+  text-decoration: none;
+  transition: background-color 120ms ease, color 120ms ease;
 }
-.site a.home-available-app { color: var(--ink); text-decoration: none; }
-.site a.home-available-app:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
-.home-available-app img,
-.home-available-app svg { width: 14px; height: 14px; display: block; object-fit: contain; }
+.site a.home-platform:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.home-platform svg { width: 13px; height: 13px; display: block; flex: none; }
+.home-platform-logo { width: 14px; height: 14px; display: block; flex: none; object-fit: contain; }
+.site a.home-platform:hover .home-platform-logo { filter: invert(1); }
+
+/* "We took discovery out of the feeds": text wraps the drawing's shape (FeedsFlow.tsx). */
+.home-flow { position: relative; }
+.home-flow-line { display: block; white-space: nowrap; }
+.home-flow-art {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: auto;
+  display: block;
+  pointer-events: none;
+}
+/* Before fonts load, and on narrow screens: text, then the drawing under it. */
+.home-flow--stacked { display: flex; flex-direction: column; gap: 24px; }
+.home-flow--stacked .home-flow-art { position: static; width: 100%; max-width: 480px; }
 
 .home-fan {
   width: 100%;

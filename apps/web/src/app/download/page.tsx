@@ -100,7 +100,7 @@ export default function Download({ overlay }: { overlay?: boolean }) {
         />
       </div>
 
-      <a className="apps-browser" href="/">
+      <a className="apps-browser" href="/login">
         <span className="apps-browser-icon apps-browser-icon--web" aria-hidden="true">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="0.8">
             <circle cx="8" cy="8" r="6.25" />

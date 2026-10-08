@@ -4,9 +4,11 @@ import SiteLayout from "@/app/site/SiteLayout";
 import DevGuides from "@/app/site/DevGuides";
 import FeaturedPost from "@/app/site/FeaturedPost";
 import GithubStars from "@/app/site/GithubStars";
+import NewsletterForm from "@/app/site/NewsletterForm";
 import { formatEntryDate, useBlogEntries } from "@/app/site/blog-entries";
 import { CONTACT_EMAIL, docsUrl } from "@/app/site/links";
 import FanCanvas from "./FanCanvas";
+import FeedsFlow from "./FeedsFlow";
 import HeroAccess from "./HeroAccess";
 import { HermesMock, MacMock } from "./ProductMocks";
 import Trace from "./Trace";
@@ -72,18 +74,7 @@ export default function LandingPage() {
 
       <section className="site-section">
         <h3 className="site-h3">We took discovery out of the feeds</h3>
-        <div className="site-prose">
-          <p>
-            For as long as the internet&rsquo;s been around, we&rsquo;ve used apps to find people. It
-            worked until it didn&rsquo;t. So we took discovery out of the feeds and made it
-            multiplayer across humans and their agents.
-          </p>
-          <p>
-            On the individual level, it&apos;s simple: state a purpose, and the network rearranges to
-            meet it. Posting and waiting give way to ambient optimism - or, trusting that the right
-            opportunities will find you.
-          </p>
-        </div>
+        <FeedsFlow />
         <Link className="site-arrow-link" to="/about" target="_blank" rel="noreferrer">About us →</Link>
       </section>
 
@@ -174,6 +165,10 @@ export default function LandingPage() {
         <RecentPosts />
         <div className="home-all-posts">
           <Link to="/blog" target="_blank" rel="noreferrer">All posts →</Link>
+        </div>
+        <div className="site-newsletter-block">
+          <h3 className="site-col-title">Letters from Index</h3>
+          <NewsletterForm />
         </div>
       </section>
     </SiteLayout>

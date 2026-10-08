@@ -3,7 +3,10 @@ import { apiUrl } from "@/lib/api";
 
 type Status = "idle" | "loading" | "success" | "error";
 
-/** Email field and Subscribe button joined into one control (POST /api/subscribe, type "newsletter"). */
+/**
+ * Email field and "Subscribe" button joined into one control.
+ * Joins the newsletter (POST /api/subscribe, type "newsletter").
+ */
 export default function NewsletterForm() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
@@ -24,15 +27,17 @@ export default function NewsletterForm() {
     }
   };
 
-  if (status === "success") return <p className="site-invite-done">You&rsquo;re subscribed. Thanks!</p>;
+  if (status === "success") {
+    return <p className="site-newsletter-done">You&rsquo;re in, we&rsquo;ll keep you posted on what&rsquo;s new.</p>;
+  }
 
   return (
     <>
-      <form className="site-invite" onSubmit={submit} noValidate>
+      <form className="site-newsletter" onSubmit={submit} noValidate>
         <input
           type="email"
-          className="site-invite-input"
-          placeholder="you@domain.com"
+          className="site-newsletter-input"
+          placeholder="Enter your email"
           aria-label="Email address"
           value={email}
           onChange={(e) => {
@@ -43,10 +48,10 @@ export default function NewsletterForm() {
           required
         />
         <button type="submit" className="site-btn" disabled={status === "loading"}>
-          {status === "loading" ? "Sending…" : "Get the newsletter →"}
+          {status === "loading" ? "Sending…" : "Subscribe"}
         </button>
       </form>
-      {status === "error" && <p className="site-invite-error">Something went wrong. Please try again.</p>}
+      {status === "error" && <p className="site-newsletter-error">Something went wrong. Please try again.</p>}
     </>
   );
 }

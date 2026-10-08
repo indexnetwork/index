@@ -350,16 +350,26 @@
 .site .site-copy-btn:hover { background: var(--bg); color: var(--ink); }
 
 /* ---------- newsletter form ---------- */
-/* Field and button read as one control: shared edge, shared height. */
-.site-invite {
+/* "Letters from Index": title over the form, under a divider (landing Blog section, /blog). */
+.site-newsletter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 28px;
+  border-top: 1px solid var(--divider);
+}
+/* The /blog list already ends on a rule. */
+.site-post-index + .site-newsletter-block { padding-top: 12px; border-top: 0; }
+.site-newsletter {
   display: flex;
   width: 100%;
   max-width: 383px;
   border: 1px solid var(--ink);
 }
-.site-invite-input {
+.site-newsletter-input {
   flex: 1 1 auto;
   min-width: 0;
+  /* 30px + the form's 1px border top and bottom = the 32px button height */
   height: 30px;
   padding: 0 12px;
   font: inherit;
@@ -369,15 +379,14 @@
   color: var(--ink);
   background: var(--bg);
   border: 0;
-  border-radius: 0;
   outline: none;
 }
-.site-invite:focus-within { box-shadow: 0 0 0 3px rgba(64, 145, 187, .25); }
-.site .site-invite .site-btn { height: 30px; padding: 0 12px; flex: 0 0 auto; }
-.site-invite-input::placeholder { color: var(--muted); }
-.site .site-invite .site-btn:disabled { opacity: .6; cursor: default; }
-.site-invite-done { margin: 0; font-size: 15px; color: var(--ink); }
-.site-invite-error { margin: 0; color: #B3261E; font-size: 13px; }
+.site-newsletter:focus-within { box-shadow: 0 0 0 3px rgba(64, 145, 187, .25); }
+.site-newsletter-input::placeholder { color: var(--muted); }
+.site .site-newsletter .site-btn { height: 30px; padding: 0 12px; flex: 0 0 auto; }
+.site .site-newsletter .site-btn:disabled { opacity: .6; cursor: default; }
+.site-newsletter-done { margin: 0; font-size: 15px; color: var(--ink); }
+.site-newsletter-error { margin: 0; color: #B3261E; font-size: 13px; }
 
 .site-guides {
   display: flex;

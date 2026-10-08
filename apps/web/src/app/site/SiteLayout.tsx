@@ -62,7 +62,7 @@ export function SiteNav({ logoOnly = false }: { logoOnly?: boolean } = {}) {
         <Link className="site-nav-link" to="/blog">blog</Link>
         <a className="site-nav-link" href={DOCS_URL} target="_blank" rel="noreferrer">docs</a>
         <Link className="site-nav-link" to="/about">about</Link>
-        <Link className="site-btn" to="/login" onClick={() => setOpen(false)}>Sign in</Link>
+        <Link className="site-btn" to="/download" onClick={() => setOpen(false)}>Get Index</Link>
       </div>
       </>}
     </nav>
