@@ -109,10 +109,13 @@ export function MatchCard({
             <button type="button" className="wb-btn small" onClick={onPass}>pass</button>
           </div>
         ) : negotiating ? (
-          <button type="button" className="wb-btn small" onClick={onOpen} style={{ display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" }}>
-            <span style={{ width: 6, height: 6, background: "#FF8A00", border: "1px solid #000", flex: "0 0 auto" }} />
-            negotiating ›
-          </button>
+          <>
+            <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10 }}>in progress</span>
+            <button type="button" className="wb-btn small" onClick={onOpen} style={{ display: "flex", alignItems: "center", gap: 5, letterSpacing: 1, textTransform: "uppercase" }}>
+              <span style={{ width: 6, height: 6, background: "#FF8A00", border: "1px solid #000", flex: "0 0 auto" }} />
+              negotiating ›
+            </button>
+          </>
         ) : expired ? (
           <>
             <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10 }}>{closedLabel || "missed"}</span>

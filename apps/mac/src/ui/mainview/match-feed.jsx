@@ -267,19 +267,22 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
             >pass</button>
           </div>
         ) : negotiating ? (
-          <button
-            className="amiga-gadget"
-            title={`see what your agent and ${person.name}'s agent are saying`}
-            onClick={(e) => { e.stopPropagation(); onNegotiation && onNegotiation(person.id); }}
-            style={{
-              display:"flex", alignItems:"center", gap:5,
-              fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1,
-              textTransform:"uppercase", padding:"2px 10px",
-            }}
-          >
-            <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
-            negotiating ›
-          </button>
+          <React.Fragment>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:10 }}>in progress</span>
+            <button
+              className="amiga-gadget"
+              title={`see what your agent and ${person.name}'s agent are saying`}
+              onClick={(e) => { e.stopPropagation(); onNegotiation && onNegotiation(person.id); }}
+              style={{
+                display:"flex", alignItems:"center", gap:5,
+                fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1,
+                textTransform:"uppercase", padding:"2px 10px",
+              }}
+            >
+              <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
+              negotiating ›
+            </button>
+          </React.Fragment>
         ) : isClosed ? (
           <React.Fragment>
             <span style={{ fontFamily:"var(--mac-mono)", fontSize:10 }}>
