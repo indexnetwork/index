@@ -155,6 +155,7 @@ class Sidecar:
                 "INDEX_API_KEY": api_key,
                 "INDEX_AGENT_ID": agent_id,
                 "INDEX_SUPERVISOR_PID": str(os.getpid()),
+                "INDEX_NEGOTIATOR_MODULE": str(self.state_path.parent / "index" / "negotiator.ts"),
             })
             process = subprocess.Popen(
                 [_bun(), str(BUNDLE)],

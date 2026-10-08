@@ -1,4 +1,8 @@
 // @bun
+// runtime/src/main.ts
+import { existsSync } from "fs";
+import { pathToFileURL } from "url";
+
 // ../client/src/client.ts
 class ApiError extends Error {
   status;
@@ -1402,7 +1406,8 @@ async function runNegotiate(client, opportunityId, intent, runtime) {
     return { stall: { reason: `Nothing this seat may do now carries out the standing decision to ${decision}.` } };
   }
   log(`  negotiating ${opportunityId} with ${opportunity.counterpart} at turn ${detail.turnCount}`);
-  const result2 = await negotiate({ user, intent, brief, opportunity, model, now, signal });
+  const input = { user, intent, brief, opportunity, model, now, signal };
+  const result2 = runtime.negotiate ? await runtime.negotiate(input, () => negotiate(input)) : await negotiate(input);
   if ("turn" in result2) {
     await client.submitTurn(opportunityId, result2.turn);
     return result2;
@@ -1441,7 +1446,7 @@ async function owedWork(client, intent) {
 var WAKE_RETRIES = 3;
 var WAKE_RETRY_MS = 30000;
 function startRunner(options) {
-  const { client, model, now = () => new Date, log = () => {}, onError = () => {} } = options;
+  const { client, model, now = () => new Date, log = () => {}, onError = () => {}, negotiate: negotiate2 } = options;
   const abort = new AbortController;
   const intents = new Map;
   const waking = new Set;
@@ -1452,7 +1457,7 @@ function startRunner(options) {
   const closing = new Set;
   const resettle = new Set;
   let stopped = false;
-  const runtime = () => ({ model, now, signal: abort.signal, log });
+  const runtime = () => ({ model, now, signal: abort.signal, log, ...negotiate2 ? { negotiate: negotiate2 } : {} });
   function startWake(intentId) {
     const intent = intents.get(intentId);
     if (stopped || !intent)
@@ -1687,7 +1692,18 @@ class HermesModel {
     throw last;
   }
 }
+async function loadHook() {
+  const modulePath = process.env.INDEX_NEGOTIATOR_MODULE?.trim();
+  if (!modulePath || !existsSync(modulePath))
+    return;
+  const loaded = await import(pathToFileURL(modulePath).href);
+  if (typeof loaded.default !== "function") {
+    throw new Error(`INDEX_NEGOTIATOR_MODULE must default-export a function (${modulePath}).`);
+  }
+  return loaded.default;
+}
 var bridge = { url: required("INDEX_BRIDGE_URL"), token: required("INDEX_BRIDGE_TOKEN") };
+var negotiate2 = await loadHook();
 var runner = startRunner({
   client: new IndexClient({
     baseUrl: required("INDEX_API_URL"),
@@ -1696,7 +1712,8 @@ var runner = startRunner({
   }),
   model: new HermesModel(bridge),
   log: (line) => log("info", "run", { line }),
-  onError: (error) => log("warn", "error", { reason: error instanceof Error ? error.message : String(error) })
+  onError: (error) => log("warn", "error", { reason: error instanceof Error ? error.message : String(error) }),
+  ...negotiate2 ? { negotiate: negotiate2 } : {}
 });
 var server = Bun.serve({
   hostname: "127.0.0.1",

@@ -14,6 +14,7 @@
 - `index-negotiator.json` is written with mode 0600.
 
 ### Added
+- `$HERMES_HOME/index/negotiator.ts`, when present, runs before the built-in negotiator on each turn. It can take the turn, stall, or call `next()` to use the built-in negotiator. No file leaves negotiation unchanged. The process reads the file when it starts.
 - `hermes index login` signs this device in from a terminal. On a headless host, paste the address the browser lands on. `hermes index status` and `hermes index logout` go with it.
 - With no session, the plugin calls Index with `INDEX_API_KEY` (`x-api-key`). Registering an agent and choosing the negotiator still need a session.
 - `index_create_intent` and `index_list_opportunities` descriptions say when to
