@@ -14,9 +14,12 @@ discover(intentId, query, limit?)
 ```
 
 `query` is the kind of person, in the caller's own words. `limit` is how many
-to return, from 1 to 30. Omit it and the strongest 10 come back. The search
-runs in the networks that intent is assigned to. An intent in no network
-returns no one. One query is one call.
+to return, from 1 to 30. Omit it and the strongest 10 come back. One query is
+one call.
+
+Discovery only searches inside networks, and only the intent's networks: the
+ones that intent is assigned to, not every network you belong to. An intent in
+no network returns no one.
 
 ```ts
 await client.discover(
@@ -26,9 +29,9 @@ await client.discover(
 )
 ```
 
-Pass `networkIds` to search a subset of the networks that intent is assigned to.
-Omit them and the search is every one of those networks. An id outside that
-assignment is refused.
+Pass `networkIds` to search a subset of the intent's networks. Omit
+`networkIds` and the search covers all of the intent's networks. An id for a
+network the intent is not assigned to is refused.
 
 ```ts
 await client.discover(intentId, {
