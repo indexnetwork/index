@@ -222,6 +222,73 @@ def this_install_selected(agent: dict[str, Any]) -> bool:
     return agent_id == stored
 
 
+def login_app_base_url() -> str:
+    """Web origin that serves `/cli-auth`, paired with the active API environment.
+
+    An explicit `INDEX_APP_BASE_URL` wins (it also drives deep links). Otherwise
+    the origin is derived from `INDEX_API_URL` by dropping a leading `protocol.`
+    host label (`protocol.dev.index.network` -> `dev.index.network`), so a plugin
+    pointed at dev/staging signs in against the matching web app instead of prod.
+    Without this pairing a dev-configured plugin would mint a prod key that then
+    401s against the dev API.
+    """
+    from .env_transport import _stored_env
+
+    if _stored_env("INDEX_APP_BASE_URL"):
+        return _app_base_url()
+    api_url = _stored_env("INDEX_API_URL")
+    if not api_url:
+        return INDEX_APP_BASE_URL
+    try:
+        parts = urllib.parse.urlsplit(api_url)
+    except ValueError:
+        return INDEX_APP_BASE_URL
+    if parts.scheme in ("http", "https") and parts.netloc:
+        hostname = (parts.hostname or "").lower()
+        if hostname in {"localhost", "127.0.0.1", "::1"}:
+            return f"{parts.scheme}://{hostname}:3000"
+        host = parts.netloc
+        if host.startswith("protocol."):
+            host = host[len("protocol."):]
+        return f"{parts.scheme}://{host}"
+    return INDEX_APP_BASE_URL
+
+
+def ensure_hermes_agent() -> None:
+    """Register an external agent named Hermes when this account has none.
+
+    Runs once a session is live. Does not select it as the negotiator.
+    A registry failure must not block sign-in. Creating an agent requires a
+    session, so an API-key-only install keeps an agent the web app already made.
+    """
+    try:
+        payload = _api_request("GET", "/agents")
+        if payload.get("success") is False:
+            return
+        agents = payload.get("agents")
+        if not isinstance(agents, list):
+            agents = []
+        for agent in agents:
+            if not isinstance(agent, dict):
+                continue
+            name = agent.get("name")
+            if not isinstance(name, str) or name.strip().lower() != "hermes":
+                continue
+            agent_id = agent.get("id")
+            if isinstance(agent_id, str) and agent_id.strip():
+                remember_local_agent(agent_id.strip())
+            return
+        created = _api_request("POST", "/agents", {"name": "Hermes"})
+        if created.get("success") is False:
+            return
+        agent = created.get("agent")
+        agent_id = agent.get("id") if isinstance(agent, dict) else ""
+        if isinstance(agent_id, str) and agent_id.strip():
+            remember_local_agent(agent_id.strip())
+    except Exception:  # noqa: BLE001 - sign-in still completes.
+        return
+
+
 def _api_result(
     method: str,
     path: str,

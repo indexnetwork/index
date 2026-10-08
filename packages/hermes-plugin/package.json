@@ -12,6 +12,8 @@
   "files": [
     "plugin.yaml",
     "__init__.py",
+    "auth_login.py",
+    "cli.py",
     "schemas.py",
     "tools.py",
     "transport.py",

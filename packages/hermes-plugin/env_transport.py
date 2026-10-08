@@ -1,4 +1,4 @@
-"""Direct HTTP operations using this device's Index session token."""
+"""Direct HTTP operations using this device's Index session, or an API key."""
 
 from __future__ import annotations
 
@@ -72,6 +72,18 @@ def _stored_env(name: str) -> str:
                 os.environ[name] = raw
             return raw
     return ""
+
+
+def _preferred_credential() -> tuple[str, bool]:
+    """The credential to send, and whether it is an API key.
+
+    A session acts as the owner, which registering an agent requires. An API
+    key is the fallback when no session is stored.
+    """
+    token = _stored_env("INDEX_SESSION_TOKEN")
+    if token:
+        return token, False
+    return _stored_env("INDEX_API_KEY"), True
 
 
 def ensure_negotiator_api_key() -> str:
@@ -170,7 +182,7 @@ def refresh_transport(*, unauthorized: bool = False) -> bool:
     the caller should retry.
     """
     del unauthorized
-    token = _stored_env("INDEX_SESSION_TOKEN")
+    token, via_key = _preferred_credential()
     if not token:
         return False
     origin = api_origin()
@@ -183,7 +195,9 @@ def refresh_transport(*, unauthorized: bool = False) -> bool:
         reset_transport()
     cached_origin = _normalize_origin(str(getattr(cached, "_origin", "") or ""))
     if cached is not None and (
-        getattr(cached, "_api_key", None) != token or cached_origin != _normalize_origin(origin)
+        getattr(cached, "_api_key", None) != token
+        or getattr(cached, "_via_key", False) != via_key
+        or cached_origin != _normalize_origin(origin)
     ):
         reset_transport()
         return True
@@ -219,8 +233,7 @@ def api_origin() -> str:
     return f"{parts.scheme}://protocol.{host}"
 
 _API_KEY_HELP = (
-    "Sign in from the Hermes dashboard (log in with browser), or set "
-    "INDEX_SESSION_TOKEN in the Hermes environment as a manual override."
+    "Run `hermes index login`, sign in from the Discover tab, or set INDEX_API_KEY."
 )
 
 
@@ -235,21 +248,26 @@ class TransportError(RuntimeError):
 
 
 class EnvironmentCredentialTransport:
-    """The production transport for tool handlers, dashboard HTTP, uploads, and streams."""
+    """The production transport for tool handlers, dashboard HTTP, uploads, and streams.
+
+    Sends the device session as a bearer token. When no session is stored, it
+    sends `INDEX_API_KEY` as `x-api-key` instead.
+    """
 
     def __init__(self) -> None:
-        self._api_key = _stored_env("INDEX_SESSION_TOKEN")
+        self._api_key, self._via_key = _preferred_credential()
         if not self._api_key:
             raise TransportError("api_key_missing", _API_KEY_HELP)
         self._origin = api_origin()
         self._api = self._origin + "/api"
 
     def _headers(self, *, content_type: str = "application/json", accept: str = "application/json") -> dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": content_type,
-            "Accept": accept,
-        }
+        headers = {"Content-Type": content_type, "Accept": accept}
+        if self._via_key:
+            headers["x-api-key"] = self._api_key
+        else:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        return headers
 
     @staticmethod
     def _timeout() -> float:
