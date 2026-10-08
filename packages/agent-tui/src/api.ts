@@ -41,7 +41,7 @@ export async function connectOwner() {
       return { messages: result.messages || [], questions: result.agent?.questions || [] };
     },
     async radar(intentId: string): Promise<Person[]> {
-      const result = await client.opportunities.radarForIntent(intentId, { statuses: "pending,negotiating,accepted,expired" }) as { opportunities?: Record<string, unknown>[] };
+      const result = await client.opportunities.radarForIntent(intentId, { statuses: "pending,negotiating,accepted,rejected,expired" }) as { opportunities?: Record<string, unknown>[] };
       return mapPeopleFromRadarItems(result.opportunities || []).map((row) => ({
         id: row.id, name: row.name, status: row.status, blurb: row.blurb, detail: row.detail, score: row.score,
       }));

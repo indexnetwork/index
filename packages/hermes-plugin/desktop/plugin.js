@@ -1162,22 +1162,21 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   }
 
   // Mirrors plugin_api.py _STATUS_BUCKET: raw status -> display bucket.
-  // Rejected is hidden (null bucket), matching the mac app: those are mostly
-  // agent-side filtering decisions, and listing them reads as user rejection.
+  // Not a fit (rejected) and missed (expired) share the closed stage.
   const STATUS_BUCKET = {
     pending: "pending",
     negotiating: "negotiating",
     stalled: "negotiating",
     accepted: "accepted",
-    rejected: null,
-    expired: "expired",
+    rejected: "closed",
+    expired: "closed",
   };
 
   const RADAR_BUCKETS = [
     { key: "pending", label: "Awaiting you" },
     { key: "negotiating", label: "negotiating" },
     { key: "accepted", label: "accepted" },
-    { key: "expired", label: "Missed" },
+    { key: "closed", label: "Closed" },
   ];
 
   function bucketForStatus(status, viewerCommitted) {
@@ -1187,7 +1186,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   }
 
   function statusCountsFromOpportunities(opportunities) {
-    const counts = { pending: 0, negotiating: 0, accepted: 0, expired: 0 };
+    const counts = { pending: 0, negotiating: 0, accepted: 0, closed: 0 };
     (opportunities || []).forEach(function (opp) {
       const bucket = bucketForStatus(opp && opp.status, opp && opp.viewerCommitted);
       if (bucket && bucket in counts) counts[bucket] += 1;
@@ -1255,7 +1254,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     );
   }
 
-  const OPP_RESOLVED_LABEL = { accepted: "Connected", expired: "Missed" };
+  const OPP_RESOLVED_LABEL = { accepted: "Connected", rejected: "Not a fit", expired: "Missed" };
 
   // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
   // palette, so dashboard avatars match the Index web app exactly.
@@ -1384,6 +1383,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const waitingOnThem = status === "pending" && opportunity.viewerCommitted;
     const resolved = waitingOnThem ? "Waiting for them" : OPP_RESOLVED_LABEL[status];
     const acting = !!props.actingId && props.actingId === opportunity.opportunityId;
+    const bucket = bucketForStatus(status, opportunity.viewerCommitted);
     let actionButtons = null;
     if (props.onAccept && bucketForStatus(status, opportunity.viewerCommitted) === "pending") {
       actionButtons = [
@@ -1456,9 +1456,21 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         // the card is actionable, otherwise the status label — never both.
         actionButtons
           ? React.createElement("div", { className: "index-dashboard__opp-btns" }, actionButtons)
-          // A negotiating row is the only status you can open: the two agents
-          // are mid-conversation and it is readable.
-          : props.onOpenNegotiation && bucketForStatus(status, opportunity.viewerCommitted) === "negotiating"
+          // Negotiating and closed rows both open the agent transcript.
+          // Closed keeps the status beside the button, not inside it.
+          : props.onOpenNegotiation && bucket === "closed"
+            ? React.createElement("div", { className: "index-dashboard__opp-btns", style: { flexDirection: "column", alignItems: "flex-end" } },
+              React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, status === "rejected" ? "Not a fit" : "Missed"),
+              React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__opp-negotiating",
+                onClick: function () { props.onOpenNegotiation(opportunity); },
+              },
+                "negotiation",
+                React.createElement("span", { className: "index-dashboard__opp-negotiating-chev", "aria-hidden": "true" }, "\u203A"),
+              ),
+            )
+          : props.onOpenNegotiation && bucket === "negotiating"
             ? React.createElement("button", {
               type: "button",
               className: "index-dashboard__opp-negotiating",

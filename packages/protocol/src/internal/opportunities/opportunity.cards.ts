@@ -168,8 +168,9 @@ export async function presentOpportunityCard(
 
 /**
  * List the viewer's opportunities in the given statuses as presented cards,
- * newest first, one card per counterpart. Cards whose presentation fails are
- * dropped.
+ * newest first, one card per counterpart. A not-a-fit (rejected) row never
+ * takes that slot from another status for the same person. Cards whose
+ * presentation fails are dropped.
  *
  * @param deps - Database, cache, and presenter.
  * @param input - Viewer, statuses, optional network/intent scope, limit, cache bypass, skeleton mode.
@@ -198,7 +199,11 @@ export async function listOpportunityCards(
   const requested = new Set(input.statuses);
   const visible = raw
     .filter((opp) => requested.has(opp.status) && canUserSeeOpportunity(opp.actors, opp.status, viewerId))
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    .sort((a, b) => {
+      const failed = Number(a.status === 'rejected') - Number(b.status === 'rejected');
+      if (failed !== 0) return failed;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
 
   const seen = new Set<string>();
   const opportunities = visible.filter((opp) => {

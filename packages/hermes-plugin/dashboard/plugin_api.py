@@ -90,16 +90,15 @@ _MAX_INTENT_PAGES = 10
 _PREVIEW_CHARS = 240
 
 # Maps raw opportunity status values to the radar status strip buckets.
-# stalled (a stalled negotiation) folds into "negotiating". Rejected
-# opportunities are hidden entirely (mac-app parity): those are mostly
-# agent-side filtering decisions, and listing them reads as if the user (or the
-# other person) did the rejecting.
+# stalled (a stalled negotiation) folds into "negotiating". Not a fit (rejected)
+# and missed (expired) share the closed bucket.
 _STATUS_BUCKET = {
     "pending": "pending",
     "negotiating": "negotiating",
     "stalled": "negotiating",
     "accepted": "accepted",
-    "expired": "expired",
+    "rejected": "closed",
+    "expired": "closed",
 }
 
 # Raw statuses surfaced in the flat Negotiations view (decoupled from the
@@ -109,7 +108,7 @@ _NEGOTIATION_STATUSES = {"pending", "negotiating", "stalled"}
 # Lifecycle statuses the intent radar requests, exactly the set the mac app asks
 # for. `stalled` is a negotiation state, not an opportunity lifecycle status, and
 # the API rejects the whole query when it appears here.
-_RADAR_STATUSES = "pending,negotiating,accepted,expired"
+_RADAR_STATUSES = "pending,negotiating,accepted,rejected,expired"
 
 # Static images the DESKTOP plugin fetches as base64 (its REST bridge cannot
 # address the dashboard's static file mount by URL). Allow-list only.
@@ -662,7 +661,7 @@ def _normalize_public_networks(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _empty_status_counts() -> dict[str, int]:
-    return {"pending": 0, "negotiating": 0, "accepted": 0, "expired": 0}
+    return {"pending": 0, "negotiating": 0, "accepted": 0, "closed": 0}
 
 
 def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
@@ -802,6 +801,11 @@ def _build_dashboard(
     general_opportunities: list[dict[str, Any]] = []
     general_status_counts = _empty_status_counts()
 
+    # A not-a-fit row must not cover a live card for the same person. Non-rejected
+    # rows are placed first; a rejected row is kept only when that person has
+    # no other card.
+    live_counterparts: set[str] = set()
+
     def place_opportunity(opp: dict[str, Any]) -> None:
         intent_id = _intent_for_opportunity(opp, known_ids)
         intent = intents.get(intent_id) if intent_id else None
@@ -811,10 +815,13 @@ def _build_dashboard(
                 return
             seen_opp_ids.add(opp_id)
         status = _text(opp.get("status"))
-        if status == "rejected":
-            return  # hidden — see _STATUS_BUCKET comment
+        counterpart = _counterpart_user_id(opp, current_user_id)
+        if status == "rejected" and counterpart and counterpart in live_counterparts:
+            return
         if status == "pending" and not _is_actionable_for_viewer(opp, current_user_id):
             return
+        if counterpart and status != "rejected":
+            live_counterparts.add(counterpart)
         bucket = _STATUS_BUCKET.get(status, "pending")
         item = _opportunity_item(opp, current_user_id)
         if intent is None:
@@ -836,9 +843,10 @@ def _build_dashboard(
             if net not in intent["networks"]:
                 intent["networks"].append(net)
 
-    for opp in opps_live:
-        place_opportunity(opp)
-    for opp in opps_extra:
+    def rejected_last(opp: dict[str, Any]) -> bool:
+        return _text(opp.get("status")) == "rejected"
+
+    for opp in sorted([*opps_live, *opps_extra], key=rejected_last):
         place_opportunity(opp)
 
     general_total_opportunity_count = sum(general_status_counts.values())

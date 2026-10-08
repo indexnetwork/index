@@ -1,12 +1,12 @@
 import type { OpportunityLifecycleStatus } from "@/services/opportunities";
 
-export type RadarBucket = "all" | "awaiting you" | "negotiating" | "accepted" | "missed";
+export type RadarBucket = "all" | "awaiting you" | "negotiating" | "accepted" | "closed";
 
 export const RADAR_STAGES: Array<Exclude<RadarBucket, "all">> = [
   "awaiting you",
   "negotiating",
   "accepted",
-  "missed",
+  "closed",
 ];
 
 export const DEFAULT_RADAR_BUCKET: RadarBucket = "all";
@@ -15,19 +15,18 @@ const EMPTY_RADAR: Record<Exclude<RadarBucket, "all">, string> = {
   "awaiting you": "nothing waiting on you right now.",
   negotiating: "no negotiations open. your agent starts one when it finds an overlap.",
   accepted: "no one accepted yet.",
-  missed: "nothing missed.",
+  closed: "nothing closed.",
 };
 
-/** Assign an opportunity to a desktop radar stage. Rejected people stay off the radar. */
+/** Assign an opportunity to a radar stage. Not a fit (rejected) and missed (expired) share Closed. */
 export function radarBucketForOpportunity(
   status: OpportunityLifecycleStatus | undefined,
   viewerCommitted = false,
 ): Exclude<RadarBucket, "all"> | null {
-  if (status === "rejected") return null;
+  if (status === "rejected" || status === "expired") return "closed";
   if (status === "pending" && viewerCommitted) return "accepted";
   if (status === "pending") return "awaiting you";
   if (status === "accepted") return "accepted";
-  if (status === "expired") return "missed";
   return "negotiating";
 }
 
@@ -39,6 +38,6 @@ export function radarEmptyLine(bucket: RadarBucket): string {
 export function personWindowTitle(bucket: Exclude<RadarBucket, "all"> | null): "profile" | "chat" | "negotiation" | "summary" {
   if (bucket === "accepted") return "chat";
   if (bucket === "negotiating") return "negotiation";
-  if (bucket === "missed") return "summary";
+  if (bucket === "closed") return "negotiation";
   return "profile";
 }

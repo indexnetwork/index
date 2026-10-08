@@ -1252,14 +1252,15 @@ function UserLine({ children }) {
 
 /* Which tab a person belongs under. The internal statuses are the older
    vocabulary (`ready`, `passed`, `expired`); these are the names the rest of
-   the product uses, so the tabs say what the state means to you rather than
-   what the record is called. */
+   the product uses. Not a fit (`passed`/`rejected`) and missed (`expired`)
+   share the closed tab. */
 function opportunityBucket(p) {
   switch (p.status) {
     case "accepted": return "accepted";
     case "ready":    return "awaiting you";
-    case "passed":   return null; // hidden — see funnelStages comment
-    case "expired":  return "missed";
+    case "passed":
+    case "rejected":
+    case "expired":  return "closed";
     default:         return "negotiating";
   }
 }

@@ -163,10 +163,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const forIntent = intentId;
     // Intent radar asks for the full lifecycle (like the web app's RADAR_STATUSES),
     // otherwise the home endpoint only returns actionable rows and the
-    // accepted/missed tabs stay empty. `rejected` is deliberately excluded:
-    // most rejections are agent-side filtering, not user decisions, so
-    // showing them implies choices the user never made.
-    const radarStatuses = "pending,negotiating,accepted,expired";
+    // accepted/closed tabs stay empty. Not a fit (rejected) and missed (expired)
+    // both belong in Closed.
+    const radarStatuses = "pending,negotiating,accepted,rejected,expired";
     const applyRadar = (radarR, skeleton = false) => {
       if (!radarR) return;
       const items = window.IndexApp.normalizeList(radarR, "opportunities");
@@ -347,18 +346,16 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   };
 
   // The four states an opportunity can be in for you, in the order they happen:
-  // it needs you, agents are still talking, you took it, it ran out.
+  // it needs you, agents are still talking, you took it, it closed.
   // "awaiting you" leads because it is the only one you can act on.
-  // Rejected/passed people are not shown: those are mostly agent-side
-  // filtering decisions, and listing them reads as if the user (or the
-  // other person) did the rejecting.
+  // Closed holds both not a fit (rejected/passed) and missed (expired).
   const funnelStages = useMemo(() => {
     const by = (s) => visiblePeople.filter(p => opportunityBucket(p) === s).length;
     return [
       { label:"awaiting you", count: by("awaiting you"), accent:true },
       { label:"negotiating",  count: by("negotiating") },
       { label:"accepted",     count: by("accepted"), accent:true },
-      { label:"missed",       count: by("missed") },
+      { label:"closed",       count: by("closed") },
     ];
   }, [visiblePeople]);
 
@@ -468,8 +465,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     openChat(personId);
   };
   // Pass is the other half of the ready-stage decision, decline the intro
-  // instead of accepting it. They drop out of the radar into "passed". Like
-  // accept, only commit the local status once the server confirms so a failed
+  // instead of accepting it. They move into Closed as not a fit. Like accept,
+  // only commit the local status once the server confirms so a failed
   // reject can't hide a still-pending opportunity; refresh on failure.
   const passPerson = (personId) => {
     if (chatId === personId) closeChats();

@@ -386,7 +386,7 @@ function SummaryWindow({ person, onClose }) {
             <div style={{
               fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
               letterSpacing:1, textTransform:"uppercase",
-            }}>expired{person.location ? ` · ${person.location}` : ""}</div>
+            }}>{(person.status === "passed" || person.status === "rejected" ? "not a fit" : "missed")}{person.location ? ` · ${person.location}` : ""}</div>
           </div>
         </div>
 

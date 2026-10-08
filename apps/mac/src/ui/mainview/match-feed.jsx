@@ -108,7 +108,7 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
               : tab === "awaiting you" ? "nothing waiting on you right now."
               : tab === "negotiating" ? "no negotiations open. your agent starts one when it finds an overlap."
               : tab === "accepted"    ? "no one accepted yet."
-              : tab === "missed"      ? "nothing missed."
+              : tab === "closed"      ? "nothing closed."
               : "no one here right now. the field keeps moving, so check back."
             }
             action={tab === "accepted" && awaitingCount > 0
@@ -171,15 +171,16 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
   const [hover, setHover] = useState(false);
   const accepted = person.status === "accepted";
   const readyStage = person.status === "ready";   // opportunity to accept
-  const isPassed = person.status === "passed";
+  const isPassed = person.status === "passed" || person.status === "rejected";
   const isExpired = person.status === "expired";
+  const isClosed = isPassed || isExpired;
   // everyone else discovered is still in negotiation, they have an open question
-  const negotiating = !accepted && !readyStage && !isPassed && !isExpired;
-  const cardClickable = accepted || isExpired || readyStage || negotiating;    // accepted opens chat; expired opens summary; ready opens profile; negotiating opens the negotiation
+  const negotiating = !accepted && !readyStage && !isClosed;
+  const cardClickable = accepted || isClosed || readyStage || negotiating;    // accepted opens chat; closed opens the negotiation; ready opens profile; negotiating opens the negotiation
   const handleClick = accepted
     ? () => onOpenRoom && onOpenRoom(person.id)
-    : isExpired
-      ? () => onSummary && onSummary(person.id)
+    : isClosed
+      ? () => onNegotiation && onNegotiation(person.id)
       : readyStage
         ? () => onProfile && onProfile(person.id)
         : negotiating
@@ -201,8 +202,6 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
         background:"#fff", color:"#000",
         border:"1px solid #000",
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
-        // filter (not opacity), the .fade-up animation ends at opacity:1 and would override it
-        filter: (isPassed || isExpired) ? "opacity(0.45)" : "none",
         boxShadow: (cardClickable && hover) ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
         transform: (cardClickable && hover) ? "translate(-1px, -1px)" : "none",
         cursor: cardClickable ? "pointer" : "default",
@@ -281,10 +280,24 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
             <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
             negotiating ›
           </button>
-        ) : isExpired ? (
-          <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, opacity:0.75 }}>
-            expired · summary ›
-          </span>
+        ) : isClosed ? (
+          <React.Fragment>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:10 }}>
+              {isPassed ? "not a fit" : "missed"}
+            </span>
+            <button
+              className="amiga-gadget"
+              title="see what the agents said"
+              onClick={(e) => { e.stopPropagation(); onNegotiation && onNegotiation(person.id); }}
+              style={{
+                display:"flex", alignItems:"center", gap:5,
+                fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1,
+                textTransform:"uppercase", padding:"2px 10px",
+              }}
+            >
+              negotiation ›
+            </button>
+          </React.Fragment>
         ) : (
           <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, opacity:0.5 }}>
             {person.status}
