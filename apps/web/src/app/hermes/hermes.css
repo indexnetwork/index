@@ -2,25 +2,69 @@
 
 .site-section:target { scroll-margin-top: 24px; }
 
-/* ---------- install ---------- */
-.hermes-install-section { padding-bottom: 40px; }
-.hermes-install {
-  padding: 20px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  line-height: 1.6;
+/* ---------- install options: desktop and CLI ---------- */
+.hermes-ways {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--divider);
 }
-.hermes-install-row {
+.hermes-way { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.hermes-way-title {
+  margin: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ink);
 }
-.hermes-install-cmd { min-width: 0; overflow-wrap: anywhere; }
-.hermes-install-prompt { color: #9DB3C4; }
-.hermes-install-ok { color: #7FC0E0; }
+.hermes-way-icon { width: 18px; height: 18px; flex: none; display: block; object-fit: contain; }
+.hermes-way-icon--term {
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: -.04em;
+  background: var(--tag-bg);
+  color: var(--ink);
+}
+.hermes-way-cmd {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--tag-bg);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.hermes-way-cmd code { flex: 1; min-width: 0; font: inherit; overflow-wrap: anywhere; }
+.hermes-way-prompt { color: #8A9199; }
+.site .hermes-way-copy {
+  flex: none;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.site .hermes-way-copy:hover { color: var(--blue); }
+
+@media (max-width: 640px) {
+  .hermes-ways { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Closing call to action at the end of the page. */
+.hermes-cta { padding-bottom: 40px; }
+.hermes-cta .hermes-ways { margin-top: 8px; }
 
 /* ---------- blurred landscape backdrop ---------- */
 .hermes-backdrop {
@@ -159,7 +203,6 @@
 }
 .hermes-built > div { display: flex; flex-direction: column; gap: 8px; }
 .hermes-built > div:last-child { grid-column: 1 / -1; }
-.hermes-install-intro { display: flex; flex-direction: column; gap: 8px; }
 
 @media (max-width: 520px) {
   .wire-text { padding-left: 0; }

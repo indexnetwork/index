@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@better-auth/api-key": "1.6.11",
+    "@chenglou/pretext": "^0.0.9",
     "@indexnetwork/protocol": "workspace:*",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-dialog": "^1.1.14",

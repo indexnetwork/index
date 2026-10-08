@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import SiteLayout from "@/app/site/SiteLayout";
+import NewsletterForm from "@/app/site/NewsletterForm";
 import { formatEntryDate, useBlogIndex } from "@/app/site/blog-entries";
 
 function BlogIndexPage() {
@@ -30,6 +31,10 @@ function BlogIndexPage() {
               </Link>
             ))
           )}
+        </div>
+        <div className="site-newsletter-block">
+          <h2 className="site-col-title">Letters from Index</h2>
+          <NewsletterForm />
         </div>
       </section>
     </SiteLayout>
