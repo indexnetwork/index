@@ -88,7 +88,10 @@
   justify-content: center;
   font-family: var(--mono);
   font-size: 14px;
+  flex: none;
 }
+.apps-browser-icon--web { width: 48px; height: 48px; border: none; }
+.apps-browser-icon--web svg { width: 48px; height: 48px; display: block; }
 .apps-browser-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
 .apps-browser-title { font-size: 15px; line-height: 1.4; font-weight: 500; }
 .apps-browser-sub { font-size: 14px; line-height: 1.5; font-weight: 300; color: var(--body); }

@@ -101,12 +101,18 @@ export default function Download({ overlay }: { overlay?: boolean }) {
       </div>
 
       <a className="apps-browser" href="/">
-        <span className="apps-browser-icon" aria-hidden="true">↗</span>
+        <span className="apps-browser-icon apps-browser-icon--web" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="0.8">
+            <circle cx="8" cy="8" r="6.25" />
+            <ellipse cx="8" cy="8" rx="2.6" ry="6.25" />
+            <path d="M1.75 8h12.5" />
+          </svg>
+        </span>
         <span className="apps-browser-text">
           <span className="apps-browser-title">Index in the browser</span>
           <span className="apps-browser-sub">The same app. Nothing to install.</span>
         </span>
-        <span className="apps-browser-cta">Open Index ↗</span>
+        <span className="apps-browser-cta">Open Index</span>
       </a>
     </AppsShell>
   );
