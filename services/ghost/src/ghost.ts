@@ -47,6 +47,8 @@ async function publicAvatar(email: string): Promise<string | null> {
 /** Ghost counterparties each member signal is opened with. */
 const GHOSTS_PER_SIGNAL = 10;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** A shared inbox is a firm, not a person. */
+const SHARED_INBOX = /^(info|hello|contact|team|press|office|support|hi|careers|jobs|media|pr|partners|invest|admin|enquiries|inquiries)@/;
 
 const embedder = new EmbedderAdapter();
 
@@ -88,7 +90,7 @@ export async function createGhostNetwork(ownerEmail: string): Promise<string> {
 async function upsertGhost(networkId: string, person: FoundPerson): Promise<string | null> {
   const email = person.email?.trim().toLowerCase();
   const signals = person.signals.map((signal) => signal.trim()).filter(Boolean);
-  if (!email || !EMAIL_REGEX.test(email) || !signals.length) return null;
+  if (!email || !EMAIL_REGEX.test(email) || SHARED_INBOX.test(email) || !signals.length) return null;
 
   // Soft-deleted rows count: someone who opted out is never seated again.
   const [existing] = await db.select({
@@ -132,7 +134,7 @@ export async function seedPass(): Promise<number> {
   const signals = await db.execute<{ id: string; payload: string; ghosts: number }>(sql`
     select i.id, i.payload,
       (select count(*)::int from negotiations g
-        join users gu on gu.id = g.initiator_user_id and not gu.email_verified
+        join users gu on gu.id = g.initiator_user_id and not gu.email_verified and gu.deleted_at is null
         where g.responder_intent_id = i.id) as ghosts
     from intents i
     join intent_networks a on a.intent_id = i.id and a.network_id = ${networkId}
