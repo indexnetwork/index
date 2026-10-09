@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, Copy } from "lucide-react";
 import SiteLayout from "@/app/site/SiteLayout";
 import DevGuides from "@/app/site/DevGuides";
 import FeaturedPost from "@/app/site/FeaturedPost";
@@ -66,8 +67,14 @@ function InstallOptions() {
             <span className="hermes-way-prompt">$ </span>
             {HERMES_INSTALL_COMMAND}
           </code>
-          <button type="button" className="hermes-way-copy" onClick={copy}>
-            {copied ? "copied" : "copy"}
+          <button
+            type="button"
+            className="hermes-way-copy"
+            onClick={copy}
+            aria-label={copied ? "Copied" : "Copy command"}
+            title={copied ? "Copied" : "Copy command"}
+          >
+            {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
           </button>
         </div>
         <a className="site-arrow-link" href={docsUrl("/use/hermes")} target="_blank" rel="noreferrer">
