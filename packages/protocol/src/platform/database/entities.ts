@@ -86,7 +86,7 @@ export interface UserSocial {
 
 /** Detection metadata recorded when an opportunity is created. */
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added';
+  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added' | 'introducer';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;

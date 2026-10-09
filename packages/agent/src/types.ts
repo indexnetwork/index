@@ -63,6 +63,8 @@ export interface Opportunity {
   /** What this seat may do right now. Constrains `submit_turn`. */
   actions?: NegotiationAction[];
   intent?: { statement: string };
+  /** A third party who opened this pair, and their unverified case for it. */
+  introducer?: { name: string | null; context: string };
   why?: string;
   brief?: string;
   decision?: Decision;

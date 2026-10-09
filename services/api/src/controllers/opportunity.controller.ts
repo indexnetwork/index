@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isSignedAction } from '../lib/app-link';
 import { isBotUserAgent } from '../lib/bot-agent';
 import { opportunityService } from '../services/opportunity.service';
+import { intentService } from '../services/intent.service';
 import { userService } from '../services/user.service';
 import { negotiationService, negotiationTurnSchema as submitTurnSchema, type SubmitTurnRejection } from '../services/negotiation.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
@@ -15,6 +16,18 @@ import { parseListOpportunitiesQuery } from '../services/opportunity.list-query'
 const logger = log.controller.from('opportunity');
 
 const uuidQuerySchema = z.string().uuid();
+
+const openOpportunitySchema = z.object({
+  networkId: z.string().uuid(),
+  intents: z.tuple([z.string().uuid(), z.string().uuid()]),
+  context: z.string().trim().min(1).max(2000),
+}).strict();
+
+const OPEN_REFUSALS = {
+  not_member: { status: 403, error: 'You are not a member of this network' },
+  not_seated: { status: 409, error: 'Both signals must be active and shared in this network' },
+  own_intent: { status: 403, error: 'An introducer owns neither signal, and the two owners must differ' },
+} as const;
 
 /** How each refusal to take a turn reads on the wire. */
 const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: string }> = {
@@ -65,6 +78,26 @@ export class OpportunityController {
 
     logger.verbose('Opportunities listed', { userId: user.id, count: result.opportunities.length });
     return Response.json(result);
+  }
+
+  /**
+   * POST /opportunities — open an opportunity between two signals the caller
+   * owns neither of. The caller holds no seat.
+   */
+  @Post('')
+  @UseGuards(AuthGuard)
+  async openOpportunity(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
+    const parsed = openOpportunitySchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return Response.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+    }
+    const { networkId, intents, context } = parsed.data;
+    const result = await intentService.openOpportunity(user.id, networkId, intents, context);
+    if (result.kind !== 'ok') {
+      const refusal = OPEN_REFUSALS[result.kind];
+      return Response.json({ error: refusal.error }, { status: refusal.status });
+    }
+    return Response.json({ opportunityId: result.opportunityId });
   }
 
   /**

@@ -271,7 +271,7 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
 });
 
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added';
+  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added' | 'introducer';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;

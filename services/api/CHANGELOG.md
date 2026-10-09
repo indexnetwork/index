@@ -13,6 +13,12 @@ section before promoting to `main`).
 - Opportunity status frames no longer wake the hosted agent; they remain available to clients.
 
 ### Added
+- **Introductions.** `POST /opportunities` lets a network member open an
+  opportunity between two signals they own neither of, with a `context` both
+  seats read, with the introducer's id and name, as `introducer` on the
+  negotiation. The text is kept in `metadata.introducer`, out of the match
+  reasoning presenters read. The introducer holds no seat; the owner of the
+  lower intent id takes the first turn.
 - **MCP `submit_negotiation_turn`.** Submits one negotiator turn (`propose`,
   `counter`, `accept`, or `decline`) for the authenticated owner. The caller
   passes `agentId` for their selected external negotiator. Refusals match the
