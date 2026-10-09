@@ -40,6 +40,24 @@ export const SECTIONS: LegalSection[] = [
           and privacy-respecting analytics to understand aggregate usage. See
           sharing &amp; processors for details.
         </li>
+        <li>
+          <strong>Signals and matches</strong> — the text of a signal (who you
+          want to meet), the networks you share it with, matches, and the
+          messages your agent exchanges while negotiating a match.
+        </li>
+        <li>
+          <strong>Your agent conversation</strong> — notes, progress updates,
+          questions your agent asks you, and the answers you give.
+        </li>
+        <li>
+          <strong>Connected assistants, including ChatGPT</strong> — when you
+          connect Index, each tool call sends only the fields that tool needs,
+          and we return only that tool&apos;s result. A profile read returns
+          your name, intro, location, timezone, avatar, and social links. A
+          signal read returns the signal text, status, and networks. A match
+          read returns who it is with, why it fits, and any negotiation. A
+          write saves the field you asked to change, on your account only.
+        </li>
       </ul>
     ),
   },
@@ -53,6 +71,10 @@ export const SECTIONS: LegalSection[] = [
         <li>Communicate with you about updates, security, and support.</li>
         <li>Monitor performance, debug issues, and ensure reliability.</li>
         <li>Comply with legal obligations and enforce our terms.</li>
+        <li>
+          Match a signal with people in networks you belong to, and let your
+          agent negotiate a match using the signal and the facts you confirmed.
+        </li>
       </ul>
     ),
   },
@@ -89,8 +111,25 @@ export const SECTIONS: LegalSection[] = [
             website and APIs.
           </li>
           <li>
-            <strong>Communications</strong> — email and support tools to contact
-            you upon request.
+            <strong>Communications</strong> — Resend, to send email you request
+            or that the service needs to operate your account.
+          </li>
+          <li>
+            <strong>Matching</strong> — OpenRouter, which receives signal text
+            so we can compute embeddings and find relevant people. It does not
+            receive your password or your agent conversation.
+          </li>
+          <li>
+            <strong>Other members</strong> — people in a network you join can
+            see the profile and signals you share there. The other person in a
+            match can see that match and its negotiation.
+          </li>
+          <li>
+            <strong>OpenAI, when you connect ChatGPT</strong> — ChatGPT sends
+            us the tool arguments and receives the tool result, so that text
+            is also processed by OpenAI under its own policy. Disconnecting
+            the plugin in ChatGPT stops further calls. We do not receive your
+            ChatGPT chat history beyond the tool call itself.
           </li>
         </ul>
         <p>
@@ -116,10 +155,17 @@ export const SECTIONS: LegalSection[] = [
     title: "data retention",
     body: (
       <p>
-        We retain personal information only as long as necessary for the purposes
-        described in this Policy, to comply with legal obligations, resolve
-        disputes, and enforce agreements. Retention periods depend on the type
-        and context of the data.
+        We keep your account, profile, signals, matches, negotiation messages,
+        and agent conversation while your account exists. Pausing a signal
+        stops new matching and leaves the signal in place. Archiving a signal
+        removes it from its networks and expires related matches; the archived
+        copy stays until you ask us to delete the account. Email{" "}
+        <a href="mailto:hello@index.network">hello@index.network</a> to access,
+        correct, or delete your account, and we delete it except where we must
+        keep a record for a legal claim or obligation. Operational logs used
+        to secure the service are kept only as long as that purpose requires
+        and are not used to profile you. ChatGPT keeps its own copy of your
+        chat under OpenAI&apos;s policy.
       </p>
     ),
   },
@@ -138,7 +184,10 @@ export const SECTIONS: LegalSection[] = [
           California residents may have additional rights, including to know
           categories of personal information, sources, purposes, and recipients;
           to request deletion or correction; to opt out of certain sharing; and
-          to not be discriminated against for exercising rights.
+          to not be discriminated against for exercising rights. In the product
+          you can edit your profile, pause or archive a signal, accept or pass
+          on a match, and disconnect a connected assistant. Those controls take
+          effect on your Index account immediately.
         </p>
       </>
     ),
