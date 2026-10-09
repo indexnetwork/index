@@ -10,7 +10,7 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { closeInitiation, owedWork, runNegotiate, runWake, type Intent, type Model } from '@indexnetwork/agent';
+import { closeInitiation, owedWork, runMorning, runNegotiate, runWake, type Intent, type Model } from '@indexnetwork/agent';
 
 import { AgentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { createRedisClient } from '../../adapters/cache.adapter';
@@ -77,14 +77,16 @@ export class HostedAgent {
   }
 
   /**
-   * One morning wake. The signal id stays here, so a person it opens takes
+   * One signal's morning. The signal id stays here, so a person it opens takes
    * the same negotiator an event wake starts.
+   *
+   * @param since - The owner's previous morning; people who arrived after it are reached without the model.
    */
-  async morningWake(userId: string, intent: Intent): Promise<void> {
+  async morningWake(userId: string, intent: Intent, since: Date | null): Promise<void> {
     if (!this.running || !await this.holdsSeat(userId)) return;
-    await runWake(new HostedIndex(userId), intent, {
+    await runMorning(new HostedIndex(userId), intent, {
       ...this.runtime(),
-      reason: 'morning',
+      ...(since ? { since: since.toISOString() } : {}),
       onNegotiate: (opportunityId) => this.session.run(this.session.negotiate(userId, intent.id, opportunityId)),
     });
   }

@@ -432,13 +432,13 @@ export class IntentService {
    *
    * @param intentId - Full intent UUID, owned by the caller.
    * @param userId - Authenticated owner.
-   * @param input - The query in the caller's own words, and how many counterparties to return.
+   * @param input - The query in the caller's own words, how many counterparties to return, and optionally only signals that arrived after `since`.
    * @returns Ranked counterparties, or why the signal cannot be searched.
    */
   async discover(
     intentId: string,
     userId: string,
-    input: { query: string; limit?: number },
+    input: { query: string; limit?: number; since?: Date },
   ): Promise<IntentDiscoverOutcome> {
     const intent = await this.adapter.getIntentById(intentId, userId);
     if (!intent) return { kind: 'not_found' };
@@ -457,6 +457,7 @@ export class IntentService {
       excludeUserId: userId,
       limit: Math.min(limit * 3, DISCOVER_RETRIEVAL_MAX),
       minScore: 0,
+      ...(input.since ? { since: input.since } : {}),
     });
 
     // One signal shared in several of the searched communities comes back once

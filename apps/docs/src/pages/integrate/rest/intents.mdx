@@ -16,7 +16,7 @@ An intent is what you are looking for or can offer, in your own words. These rou
 | `GET` | `/api/intents/:id/networks` | |
 | `POST` | `/api/intents/:id/networks` | `networkId` |
 | `DELETE` | `/api/intents/:id/networks/:networkId` | |
-| `POST` | `/api/intents/:id/discover` | `query`, optional `limit` (1–30) |
+| `POST` | `/api/intents/:id/discover` | `query`, optional `limit` (1–30), optional `since` (ISO time: only signals created or shared into a community after it) |
 | `POST` | `/api/intents/:id/opportunities` | `counterparties`: `{ intentId, networkId }[]`, at most 30 |
 | `GET` | `/api/intents/:id/opportunities` | same query as [listing opportunities](/integrate/rest/opportunities) |
 | `PATCH` | `/api/intents/:id/opportunities/:opportunityId/status` | `status` |

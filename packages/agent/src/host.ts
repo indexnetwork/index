@@ -5,7 +5,7 @@ import type { Model } from "./model.ts";
 import { negotiate } from "./negotiate.ts";
 import { summarize } from "./summary.ts";
 import type { ConversationEntry, Decision, Intent, NegotiateInput, NegotiateResult, NegotiateRun, NegotiationAction, Opportunity, StandingStall, WakeAction, WakeResult } from "./types.ts";
-import { wake } from "./wake.ts";
+import { reach, unansweredPrincipalMessage, wake } from "./wake.ts";
 
 /**
  * Runs before the built-in negotiator on one turn. `next` is that negotiator.
@@ -402,11 +402,16 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
     client.listIntentNegotiations(intent.id),
     client.principalInbox(intent.id),
   ]);
+  const principalConversation = readConversation(inbox.messages);
+  // A morning has nothing to decide on a settled one, unless the principal's
+  // message names it, so accept and reject still reach it then.
+  const read = reason === "morning" && !unansweredPrincipalMessage(principalConversation)
+    ? negotiations.filter((negotiation) => !negotiation.settledAt)
+    : negotiations;
   const details = await Promise.all(
-    negotiations.map((negotiation) => client.getNegotiation(negotiation.opportunityId)),
+    read.map((negotiation) => client.getNegotiation(negotiation.opportunityId)),
   );
 
-  const principalConversation = readConversation(inbox.messages);
   const carried = latestBriefs(principalConversation);
   const opportunities = details.map((detail) => ({ ...toOpportunity(detail, user.id), ...standing(carried.get(detail.opportunityId), detail) }));
   const context: PublishContext = {
@@ -470,6 +475,63 @@ export async function runWake(client: Index, intent: Intent, runtime: Runtime & 
   if (result.unresolved.length) throw new Error(`Wake left stalls unresolved on ${result.unresolved.join(", ")}.`);
 
   return result;
+}
+
+/** @param conversation - The signal's conversation. @returns The queries of its newest discovery, or none. */
+function savedQueries(conversation: ConversationEntry[]): string[] {
+  for (const entry of [...conversation].reverse()) {
+    if (entry.kind !== "progress") continue;
+    try {
+      const { queries } = JSON.parse(entry.text) as { queries?: unknown };
+      if (Array.isArray(queries) && queries.length) return queries.filter((query): query is string => typeof query === "string");
+    } catch {
+      // A plain progress line, not a discovery.
+    }
+  }
+  return [];
+}
+
+/**
+ * One signal's morning. People who arrived since the last morning are reached
+ * along the signal's saved queries without the model. The model wakes only
+ * when there is something to decide: a direct message waiting, a stall still
+ * owed, or nothing open, where it judges whether new queries are worth it.
+ *
+ * @param client - Index for this owner.
+ * @param intent - The signal.
+ * @param runtime - Model, clock, cancellation, where to open negotiations, and the last morning, if any.
+ * @returns The wake's actions, or null when the model was not needed.
+ */
+export async function runMorning(client: Index, intent: Intent, runtime: Runtime & { since?: string }): Promise<WakeResult | null> {
+  const { log = () => {}, onNegotiate, since, ...rest } = runtime;
+  const [negotiations, inbox] = await Promise.all([
+    client.listIntentNegotiations(intent.id),
+    client.principalInbox(intent.id),
+  ]);
+  const conversation = readConversation(inbox.messages);
+
+  const queries = since ? savedQueries(conversation) : [];
+  const { found, opened } = queries.length ? await reach(client, intent, queries, since) : { found: 0, opened: [] };
+  if (opened.length) {
+    log(`  opened ${opened.length} who arrived since ${since}`);
+    const plan = "Good morning: reaching out to people who joined since the last morning.";
+    await publishActions(client, intent.id, [{ type: "progress", text: JSON.stringify({ plan, queries, discovered: found, reached: opened.length }) }], { counterparts: new Map(), log });
+    for (const opportunityId of opened) onNegotiate?.(opportunityId);
+  }
+
+  const carried = latestBriefs(conversation);
+  const owed = negotiations.some((negotiation) => {
+    const { stall } = standing(carried.get(negotiation.opportunityId), negotiation);
+    return stall && (!stall.questionId || stall.answered);
+  });
+  const nothingOpen = !opened.length && negotiations.every((negotiation) => negotiation.settledAt);
+  const because = unansweredPrincipalMessage(conversation) ? "message" : owed ? "stall" : nothingOpen ? "nothing open" : "";
+  if (!because) {
+    log("  nothing to decide");
+    return null;
+  }
+  log(`  waking: ${because}`);
+  return runWake(client, intent, { ...rest, log, ...(onNegotiate ? { onNegotiate } : {}), reason: "morning" });
 }
 
 /**

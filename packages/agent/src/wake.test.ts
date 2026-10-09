@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 
-import type { ConversationMessage, Index, PrincipalMessage } from "@indexnetwork/client";
+import type { ConversationMessage, Counterparty, CounterpartyPick, Index, Negotiation, NegotiationDetail, PrincipalMessage } from "@indexnetwork/client";
 
-import { publishActions, readConversation, runWake } from "./host.ts";
+import { publishActions, readConversation, runMorning, runWake } from "./host.ts";
 import type { Model, ModelMessage, ToolDefinition } from "./model.ts";
 import type { ConversationEntry } from "./types.ts";
-import { unansweredPrincipalMessage, wake } from "./wake.ts";
+import { reach, unansweredPrincipalMessage, wake } from "./wake.ts";
 
 const intent = { id: "intent-1", statement: "Meet collaborators" };
 const user = { id: "owner-1", name: "Alex", profileConfirmed: false };
@@ -148,8 +148,96 @@ test("runWake retries a silent first pass and publishes one direct reply", async
   const { client, sent } = index([message("user", "Hello")]);
   const result = await runWake(client, intent, { model: new ScriptedModel([done, call("1", "reply_principal", { text: "Hello!" }), done]) });
   expect(result.actions).toEqual([{ type: "reply", text: "Hello!" }]);
-  expect(sent).toHaveLength(1);
-  expect(sent[0]![0]).toMatchObject({ reply: true, text: "Hello!" });
+  expect(sent.flat().filter((entry) => entry.reply)).toMatchObject([{ reply: true, text: "Hello!" }]);
   await expect(runWake(client, intent, { model: new ScriptedModel([done, done]) }))
     .rejects.toThrow("No reply to principal's direct message.");
+});
+
+const since = "2026-10-07T08:00:00.000Z";
+
+function negotiation(opportunityId: string, userId: string, settled = false): Negotiation {
+  return {
+    id: opportunityId, opportunityId, intentId: intent.id, awaitingUserId: "them", outcome: settled ? "rejected" : null,
+    settledAt: settled ? since : null, turnCount: 1, createdAt: since, updatedAt: since,
+    counterparty: { intentId: `${userId}-signal`, userId, name: userId, avatar: null, statement: "Building tools" },
+  } as Negotiation;
+}
+
+function counterparty(userId: string): Counterparty {
+  return { intentId: `${userId}-signal`, userId, name: userId, statement: "Building tools", networkId: "network-1", score: 0.5 };
+}
+
+function stall(opportunityId: string): ConversationMessage {
+  return {
+    ...message("agent", "Stall: Their budget is unknown."),
+    metadata: { principalMessage: { kind: "message", matches: [{ opportunityId, counterparty: { id: "u2", name: "u2" } }], stall: { turnCount: 1 } } },
+  };
+}
+
+/** A signal that searched once, with one negotiation still open. */
+function morning(messages: ConversationMessage[] = [message("agent", `Progress: ${JSON.stringify({ plan: "p", queries: ["toolmakers"], discovered: 1, reached: 1 })}`)]) {
+  const { client, sent } = index(messages);
+  const discovered: { query: string; since?: string }[] = [];
+  const picked: CounterpartyPick[][] = [];
+  const open = [negotiation("opp-1", "u2")];
+  client.listIntentNegotiations = async () => open;
+  client.discover = async (_intentId, query, _limit, after) => {
+    discovered.push({ query, ...(after ? { since: after } : {}) });
+    return [];
+  };
+  client.createOpportunities = async (_intentId, picks) => {
+    picked.push(picks);
+    return picks.map((pick) => ({ opportunityId: `opp-${pick.intentId}` }));
+  };
+  client.getNegotiation = async (id) => ({
+    ...open.find((item) => item.opportunityId === id)!,
+    turns: [],
+    protocol: { guidance: "", availableActions: ["propose"], blockedReason: null, maxTurns: 6, messageLimit: 1000 },
+  } as NegotiationDetail);
+  return { client, sent, discovered, picked, open };
+}
+
+test("a morning with nobody new and nothing owed reruns the saved queries and calls no model", async () => {
+  const { client, discovered, picked } = morning();
+  expect(await runMorning(client, intent, { model: new ScriptedModel([]), since })).toBeNull();
+  expect(discovered).toEqual([{ query: "toolmakers", since }]);
+  expect(picked).toEqual([]);
+});
+
+test("a morning opens a new arrival without the model and starts their negotiator", async () => {
+  const { client, sent, picked } = morning();
+  client.discover = async () => [counterparty("u3")];
+  const started: string[] = [];
+  expect(await runMorning(client, intent, { model: new ScriptedModel([]), since, onNegotiate: (id) => started.push(id) })).toBeNull();
+  expect(picked).toEqual([[{ intentId: "u3-signal", networkId: "network-1" }]]);
+  expect(started).toEqual(["opp-u3-signal"]);
+  expect(sent.flat().map((entry) => entry.text)).toEqual([
+    `Progress: ${JSON.stringify({ plan: "Good morning: reaching out to people who joined since the last morning.", queries: ["toolmakers"], discovered: 1, reached: 1 })}`,
+  ]);
+});
+
+test("a morning with nothing open wakes the model, which may discover with new queries", async () => {
+  const { client, discovered, open } = morning([]);
+  open[0] = negotiation("opp-1", "u2", true);
+  const model = new ScriptedModel([call("1", "reach_counterparties", { plan: "Reaching out to designers.", queries: ["designers"] }), done]);
+  await runMorning(client, intent, { model });
+  expect(model.seen).toHaveLength(2);
+  expect(model.seen[0]![1]!.content).toContain('"opportunities":[]');
+  expect(discovered).toEqual([{ query: "designers" }]);
+});
+
+test("a morning with a stall still owed wakes the model", async () => {
+  const { client } = morning([stall("opp-1")]);
+  const model = new ScriptedModel([done, done]);
+  await runMorning(client, intent, { model, since }).catch(() => null);
+  expect(model.seen.length).toBeGreaterThan(0);
+});
+
+test("reach skips anyone the owner already negotiates with on any signal", async () => {
+  const { client, picked } = morning();
+  client.listIntents = async () => [{ id: "intent-2", statement: "Hire", status: "active" }];
+  client.listIntentNegotiations = async (id) => (id === "intent-2" ? [negotiation("opp-9", "u4")] : []);
+  client.discover = async () => [counterparty("u4"), counterparty("u5")];
+  expect(await reach(client, intent, ["toolmakers"])).toEqual({ found: 2, picked: 1, opened: ["opp-u5-signal"] });
+  expect(picked).toEqual([[{ intentId: "u5-signal", networkId: "network-1" }]]);
 });

@@ -122,11 +122,16 @@ export class HostedIndex implements Index {
    * @param intentId - The signal to search from.
    * @param query - What to look for, in the caller's own words.
    * @param limit - How many counterparties to return.
+   * @param since - When set, only signals created or shared into a community after this ISO time.
    * @returns Counterparties, strongest first.
    * @throws When the signal is not the owner's, or is no longer active.
    */
-  async discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]> {
-    const result = await intentService.discover(intentId, this.userId, { query, ...(limit === undefined ? {} : { limit }) });
+  async discover(intentId: string, query: string, limit?: number, since?: string): Promise<Counterparty[]> {
+    const result = await intentService.discover(intentId, this.userId, {
+      query,
+      ...(limit === undefined ? {} : { limit }),
+      ...(since === undefined ? {} : { since: new Date(since) }),
+    });
     if (result.kind !== 'ok') throw new Error(`Signal ${intentId} is ${result.kind}.`);
     return result.counterparties;
   }

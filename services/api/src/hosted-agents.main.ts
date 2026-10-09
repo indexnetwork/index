@@ -19,7 +19,7 @@ const morningDisabled = process.env.DISABLE_MORNING_BRIEF === 'true';
 const morning = morningDisabled
   ? { stop() {} }
   : startMorningBrief({
-      wake: (userId, intent) => hostedAgent.morningWake(userId, intent),
+      wake: (userId, intent, since) => hostedAgent.morningWake(userId, intent, since),
     });
 if (morningDisabled) logger.info('Morning brief disabled (DISABLE_MORNING_BRIEF)');
 const mcpEventDispatcher = new McpEventDispatcher();

@@ -213,9 +213,10 @@ export interface Index {
    * @param intentId - The signal to search from.
    * @param query - What to look for, in the caller's own words.
    * @param limit - How many counterparties to return, 1..30.
+   * @param since - When set, only signals created or shared into a community after this ISO time.
    * @returns Counterparties, strongest first.
    */
-  discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]>;
+  discover(intentId: string, query: string, limit?: number, since?: string): Promise<Counterparty[]>;
   /**
    * @param intentId - The signal the opportunities belong to.
    * @param counterparties - Counterparty signals and the community each pair sits in.
@@ -400,12 +401,13 @@ export class IndexClient implements Index {
    * @param intentId - The signal to search from.
    * @param query - What to look for, in the caller's own words.
    * @param limit - How many counterparties to return, 1..30. Index decides when omitted.
+   * @param since - When set, only signals created or shared into a community after this ISO time.
    * @returns Counterparties, strongest first.
    */
-  async discover(intentId: string, query: string, limit?: number): Promise<Counterparty[]> {
+  async discover(intentId: string, query: string, limit?: number, since?: string): Promise<Counterparty[]> {
     const { counterparties } = await this.request<{ counterparties: Counterparty[] }>(
       "POST", `/intents/${encodeURIComponent(intentId)}/discover`,
-      { query, ...(limit === undefined ? {} : { limit }) },
+      { query, ...(limit === undefined ? {} : { limit }), ...(since === undefined ? {} : { since }) },
     );
     return counterparties;
   }

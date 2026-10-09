@@ -20,6 +20,8 @@ export interface IntentSearchOptions {
   networkScope: string[]; excludeUserId?: string; limit: number;
   /** Similarity cutoff, 0..1. Zero searches without one, for a caller that wants a top-N. */
   minScore: number;
+  /** Only signals created, or shared into the community, after this. */
+  since?: Date;
   signal?: AbortSignal;
 }
 
@@ -194,6 +196,9 @@ export class EmbedderAdapter {
       isNotNull(intents.embedding),
       ...(minScore > 0
         ? [sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`]
+        : []),
+      ...(filter.since
+        ? [sql`greatest(${intents.createdAt}, ${intentNetworks.createdAt}) > ${filter.since.toISOString()}::timestamptz`]
         : []),
     ];
 

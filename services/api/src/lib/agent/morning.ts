@@ -58,7 +58,7 @@ export type MorningLock = () => Promise<(() => Promise<void>) | null>;
 interface MorningBriefDeps {
   listHostedOwners: () => Promise<MorningOwner[]>;
   claim: (userId: string, now: Date, timeZone: string) => Promise<MorningClaim | null>;
-  work: (owner: MorningOwner) => Promise<void>;
+  work: (owner: MorningOwner, claim: MorningClaim) => Promise<void>;
   onError?: (error: unknown) => void;
   cap?: number;
   /**
@@ -100,7 +100,7 @@ export function createMorningBrief(deps: MorningBriefDeps): { tick: (now?: Date)
         running.delete(owner.id);
         continue;
       }
-      jobs.push(Promise.resolve().then(() => deps.work(owner)).catch((error: unknown) => {
+      jobs.push(Promise.resolve().then(() => deps.work(owner, claim)).catch((error: unknown) => {
         deps.onError?.(error);
       }).finally(() => {
         inFlight -= 1;
