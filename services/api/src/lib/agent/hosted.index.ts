@@ -38,6 +38,7 @@ function toNegotiation(negotiation: NegotiationView): Negotiation {
     turnCount: negotiation.turnCount,
     createdAt: negotiation.createdAt.toISOString(),
     updatedAt: negotiation.updatedAt.toISOString(),
+    introducer: negotiation.introducer,
     counterparty: negotiation.counterparty,
   };
 }

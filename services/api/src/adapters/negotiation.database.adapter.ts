@@ -40,6 +40,8 @@ export interface IntentCounterpartyPair {
    * afterwards.
    */
   detection?: { source: string; createdBy: string };
+  /** A third party who opened the pair, and their case for it. Kept out of `reasoning`, which presenters read. */
+  introducer?: { userId: string; context: string };
 }
 
 /** A signal eligible to hold a seat in a negotiation, with its owner. */
@@ -77,6 +79,8 @@ export interface NegotiationView {
   turnCount: number;
   createdAt: Date;
   updatedAt: Date;
+  /** The third party who opened this pair, and their case for it. Null when the seats' own agents opened it. */
+  introducer: { userId: string; name: string | null; context: string } | null;
   counterparty: {
     intentId: string;
     userId: string;
@@ -310,7 +314,7 @@ export class NegotiationDatabaseAdapter {
           // exists because someone is opening it right now.
           status: decision.opportunityStatus,
           updatedAt: new Date(),
-          metadata: { evidence: pair.evidence ?? [] },
+          metadata: { evidence: pair.evidence ?? [], ...(pair.introducer ? { introducer: pair.introducer } : {}) },
         } as never).returning();
         if (!row) return null;
         await seedOpportunityLog(tx, row.id, 'negotiating', [pair.userA, pair.userB]);
@@ -621,7 +625,8 @@ export class NegotiationDatabaseAdapter {
       : { userId: row.initiatorUserId, intentId: row.initiatorIntentId, ownIntentId: row.responderIntentId };
 
     const counterparts = rows.map(counterpartOf);
-    const [people, statements, turnCounts] = await Promise.all([
+    const introducer = sql`${opportunities.metadata}->'introducer'`;
+    const [people, statements, turnCounts, introducers] = await Promise.all([
       connection.select({ id: users.id, name: users.name, avatar: users.avatar }).from(users)
         .where(inArray(users.id, [...new Set(counterparts.map((c) => c.userId))])),
       connection.select({ id: intents.id, payload: intents.payload, summary: intents.summary }).from(intents)
@@ -630,10 +635,23 @@ export class NegotiationDatabaseAdapter {
         .from(negotiationTurns)
         .where(inArray(negotiationTurns.negotiationId, rows.map((row) => row.id)))
         .groupBy(negotiationTurns.negotiationId),
+      connection.select({
+        id: opportunities.id,
+        userId: sql<string>`${introducer}->>'userId'`,
+        name: users.name,
+        context: sql<string>`${introducer}->>'context'`,
+      })
+        .from(opportunities)
+        .leftJoin(users, sql`${users.id} = ${introducer}->>'userId'`)
+        .where(and(
+          inArray(opportunities.id, rows.map((row) => row.opportunityId)),
+          sql`${introducer} IS NOT NULL`,
+        )),
     ]);
     const personById = new Map(people.map((row) => [row.id, row]));
     const statementById = new Map(statements.map((row) => [row.id, row.summary ?? row.payload]));
     const turnCountById = new Map(turnCounts.map((row) => [row.negotiationId, row.count]));
+    const introducerById = new Map(introducers.map(({ id, userId, name, context }) => [id, { userId, name, context }]));
 
     return rows.map((row) => {
       const counterpart = counterpartOf(row);
@@ -648,6 +666,7 @@ export class NegotiationDatabaseAdapter {
         turnCount: turnCountById.get(row.id) ?? 0,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
+        introducer: introducerById.get(row.opportunityId) ?? null,
         counterparty: {
           intentId: counterpart.intentId,
           userId: counterpart.userId,
