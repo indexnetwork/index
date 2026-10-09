@@ -124,7 +124,7 @@ function UserProfile() {
 
           {/* Avatar, Name, Location, Socials */}
           <div style={{ display: "flex", alignItems: "center", gap: 14, paddingBottom: 14, borderBottom: "1px solid #000" }}>
-            <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={54} blur={profileData.isGhost} />
+            <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={54} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontFamily: "var(--amiga-title)", fontSize: 20, fontWeight: 600 }}>{profileData.name}</div>
               {profileData.isGhost && <GhostTag />}

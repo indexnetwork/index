@@ -25,7 +25,11 @@ export function LiveTag({ label }: { label: string }) {
 /** Marks someone found on the web who has not joined Index yet. */
 export function GhostTag() {
   return (
-    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)", flex: "0 0 auto" }}>Not yet on Index</span>
+    <span style={{
+      display: "inline-flex", alignItems: "center", flex: "0 0 auto",
+      fontFamily: "var(--mac-mono)", fontSize: 10, lineHeight: 1.4,
+      color: "var(--ink-2)", background: "#E8E6E1", padding: "2px 6px",
+    }}>Not yet on Index</span>
   );
 }
 
@@ -90,7 +94,7 @@ export function MatchCard({
         transition: "all .12s ease",
       }}>
       <span title="view profile" onClick={openProfile} style={{ cursor: "pointer", lineHeight: 0 }}>
-        <UserAvatar id={userId} name={name} avatar={photo} size={36} blur={ghost} />
+        <UserAvatar id={userId} name={name} avatar={photo} size={36} />
       </span>
       <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>

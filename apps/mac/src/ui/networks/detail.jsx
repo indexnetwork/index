@@ -60,7 +60,6 @@ function MemberFace({ member, size = 28 }) {
       name={member.name}
       photo={member.avatar}
       size={size}
-      blur={!!member.isGhost}
     />
   );
 }
@@ -277,7 +276,9 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
                   {m.name}
                   {m.isGhost && (
                     <span style={{
-                      marginLeft:6, fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                      marginLeft: 6, display: "inline-flex", alignItems: "center",
+                      fontFamily: "var(--mac-mono)", fontSize: 10, lineHeight: 1.4,
+                      color: "var(--ink-2)", background: "#E8E6E1", padding: "2px 6px",
                     }}>Not yet on Index</span>
                   )}
                 </span>
