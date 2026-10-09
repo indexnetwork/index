@@ -25,7 +25,7 @@ export function LiveTag({ label }: { label: string }) {
 /** Marks someone found on the web who has not joined Index yet. */
 export function GhostTag() {
   return (
-    <span title="not on Index yet" style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)", flex: "0 0 auto" }}>ghost</span>
+    <span style={{ fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)", flex: "0 0 auto" }}>Not yet on Index</span>
   );
 }
 

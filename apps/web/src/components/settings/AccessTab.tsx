@@ -6,6 +6,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworksState } from '@/contexts/NetworksContext';
 import { JoinRequest, Member } from '@/services/networks';
 import UserAvatar from '@/components/UserAvatar';
+import { GhostTag } from '@/components/workbench/mac-blocks';
 import { RuleLabel } from '@/components/workbench/Workbench';
 import { log } from '@/lib/logger';
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -402,7 +403,7 @@ export default function AccessTab({
                   <UserAvatar id={member.id} name={member.name} avatar={member.avatar} size={28} blur={ghost} />
                   <span style={{ fontFamily: "var(--mac-sans)", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {member.name}
-                    {ghost && <span style={{ marginLeft: 6, fontFamily: "var(--mac-mono)", fontSize: 10, color: "var(--ink-3)" }}>ghost</span>}
+                    {ghost && <GhostTag />}
                   </span>
                 </button>
                 <span style={{ flex: "0 0 auto", fontFamily: "var(--mac-mono)", fontSize: 11, padding: "2px 6px", background: isOwner ? "#000" : "#E8E6E1", color: isOwner ? "#fff" : "var(--ink-2)" }}>{isOwner ? "Owner" : (member.permissions.includes('member') ? "Member" : "Contact")}</span>

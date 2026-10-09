@@ -278,7 +278,7 @@ function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy })
                   {m.isGhost && (
                     <span style={{
                       marginLeft:6, fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
-                    }}>ghost</span>
+                    }}>Not yet on Index</span>
                   )}
                 </span>
               </button>

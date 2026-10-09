@@ -724,7 +724,7 @@ function PersonPane({
   if (!showingProfile && bucket === "accepted" && item.userId) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
-        <PersonHead name={name} photo={item.avatar} userId={item.userId} onOpenProfile={openProfile} action={intentId && (
+        <PersonHead name={name} photo={item.avatar} userId={item.userId} ghost={item.peer?.isGhost} onOpenProfile={openProfile} action={intentId && (
           <Btn small onClick={() => onPane("negotiation")}>negotiation ›</Btn>
         )} />
         <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
